@@ -189,6 +189,31 @@ packages (`ludic.core`, `ludic.gameplay`, `ludic.rpg`, ...) are checked together
 program, since they define unprefixed names (`Stats`) that the modern ones leave to the game. Run
 it after adding a package, a registry or an export; CI runs it on every push.
 
+## Naming a model — how a row reaches the game's own model table
+
+A package never draws, so a record that stands for something on screen has to say which mesh. The convention is one
+pair of fields, the same in every package:
+
+```ludic
+@Asset("gltf") model: string = ""      # the glTF file, as a path under the game's assets
+@Node(model) node: string = ""         # a node inside it ("" for the file's root); a record with several nodes
+                                       # names each by its purpose (`body_node`, `muzzle`, `mount_*`)
+```
+
+The **path is the link**. A package row does not hold a key into a registry only the game has (a `@Ref(Models)` would
+be a reference the package cannot declare and a game's table it cannot know the name of), and the game does not match
+rows to models by a naming convention in code (`models_find(CarModels[m].key)`). The game's own model table declares
+the same file as a field of its own row (`@Asset("gltf") path`) and finds a row by the path a package row carries.
+The studio's model viewer, socket editor and seat editor read `model`, and `@Node(model)` and `@Clip(model)` validate
+and offer the names inside that file, so they need nothing from the game.
+
+Where it is: `CarModel.model` / `body_node` (ludic.cars; its sockets and seats name nodes of the same file),
+`Weapon.model` and its `mount_*` / `muzzle` nodes, `Attachment.model`, `AvatarBody.model`, `VehicleSpec.model`,
+`FurnitureItem.model`, `PedLook.model`, and the city's `model` / `node` pairs. A new package that has a record drawn
+as a model uses these two names, with `@Clip(model)` for any animation the model carries. A record that can only
+be given a body by a game's own rules (a citizen archetype's `look`, a pool of bodies per kind of person) keeps a
+key string for the game and says so in its comment; it does not invent a second way to name a file.
+
 ## Consuming a package — namespace registration
 
 A **source package** ships plain Ludic. The consumer imports the package files by

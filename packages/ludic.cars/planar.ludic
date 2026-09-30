@@ -75,6 +75,11 @@ function cr_end_force(cars_st: mut CarsState, c: Car, front: bool, n: int, load:
   t[21] = fx * sn + fy * cs
 }
 
+# the most a planar car turns per second and the most it travels per second (m/s, 1800 km/h): bounds, not
+# behaviour - a car that reaches either has already left the model
+const CR_MAX_YAW_RATE: float = 30.0
+const CR_MAX_SPEED: float = 500.0
+
 function cr_planar_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
   let m = CarModels[c.model]
   let s = c.stats
@@ -141,10 +146,32 @@ function cr_planar_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
   fxb += -s.mass * g * c.fy
   let iyaw = Math.max(1.0, s.mass * (m.length * m.length + m.width * m.width) / 12.0 * m.yaw_inertia)
   mz += cr_yaw_assist(c)
-  let nvx = vx + (fxb / s.mass - w_yaw * vr) * dt
-  let nvr = vr + (frb / s.mass + w_yaw * vx) * dt
-  let nw = w_yaw + mz / iyaw * dt
-  c.acc = (nvx - vx) / dt
+  # the forces change the velocity, then the body's axes turn under it: the turn is a rotation of the
+  # (forward, right) pair by the yaw step, exact, where adding `-w * vr` and `w * vx` per step (explicit
+  # Euler) makes the speed grow by sqrt(1 + (w dt)^2) every step and a spin feeds itself
+  let nvx0 = vx + fxb / s.mass * dt
+  let nvr0 = vr + frb / s.mass * dt
+  var nw = w_yaw + mz / iyaw * dt
+  nw = Math.clamp(nw, -CR_MAX_YAW_RATE, CR_MAX_YAW_RATE)
+  let dth = nw * dt
+  let cth = Math.cos(dth)
+  let sth = Math.sin(dth)
+  var nvx = nvx0 * cth - nvr0 * sth
+  var nvr = nvx0 * sth + nvr0 * cth
+  # a planar car is a road car: nothing it does takes it past a speed no car reaches
+  let nvl = Math.sqrt(nvx * nvx + nvr * nvr)
+  if nvl > CR_MAX_SPEED {
+    nvx = nvx * CR_MAX_SPEED / nvl
+    nvr = nvr * CR_MAX_SPEED / nvl
+  }
+  c.acc = (nvx0 - vx) / dt
+  if not (is_finite(nvx) and is_finite(nvr) and is_finite(nw) and is_finite(c.acc)) {
+    # a number that has left the real line is not carried: the car stands where it is
+    nvx = 0.0
+    nvr = 0.0
+    nw = 0.0
+    c.acc = 0.0
+  }
   # the wheels of each end turn as the representative does
   for i in 0 .. c.nwheels {
     let wh = c.wheels[i]
@@ -176,8 +203,11 @@ function cr_planar_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
   c.x = ox + wvx * dt
   c.z = oz + wvz * dt
   c.yaw = yaw
-  let gf = CarWorld.ground(c.x + sy * zf, c.z + cyw * zf)
-  let gr = CarWorld.ground(c.x + sy * zr, c.z + cyw * zr)
+  var gf = CarWorld.ground(c.x + sy * zf, c.z + cyw * zf)
+  var gr = CarWorld.ground(c.x + sy * zr, c.z + cyw * zr)
+  # a ground that answers with no number is level with the car
+  if not is_finite(gf) { gf = oy }
+  if not is_finite(gr) { gr = oy }
   let rest = car_rest_height(c.model, s)
   c.y = (gf + gr) * 0.5 + rest
   let pitch = Math.atan2(gf - gr, l)

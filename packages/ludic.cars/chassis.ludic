@@ -4,6 +4,11 @@
 # body pitches, rolls and heaves as a body does; the body's own box and mass are the game's physics.
 # Nothing is allocated: the pose, the hit and the scratch are kept in the state.
 
+# a pose made of real numbers (a NaN from the game's physics stops here, before it is anyone's position)
+function cr_pose_ok(p: CarPose) -> bool {
+  return is_finite(p.x + p.y + p.z + p.fx + p.fy + p.fz + p.ux + p.uy + p.uz + p.vx + p.vy + p.vz)
+}
+
 # the body's pose read into the car, and its rates from the change of its basis since the last read
 function cr_adopt(c: Car, p: CarPose, dt: float) -> void {
   var fx = p.fx
@@ -350,6 +355,11 @@ function cr_assist_torques(cars_st: mut CarsState, c: Car, dt: float) -> void {
 # one fixed step of a body car: read it, work out the drivetrain and the steering, apply every force
 function cr_body_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
   if not CarBody.read(c.nid, cars_st.cr_pose) {
+    c.body = false
+    return
+  }
+  if not cr_pose_ok(cars_st.cr_pose) {
+    # a body that has left the real line is no body: the planar model takes the car on from where it last was
     c.body = false
     return
   }

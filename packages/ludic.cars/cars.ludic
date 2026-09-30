@@ -41,6 +41,12 @@ function cr_driver_of(c: Car) -> int {
 
 export function car_driver(c: Car) -> int { return cr_driver_of(c) }
 
+# a number a game handed in, or 0 when it is NaN or an infinity
+function cr_real(v: float) -> float {
+  if is_finite(v) { return v }
+  return 0.0
+}
+
 # the car's own state from a model at a place, standing still on the ground. Returns its id, -1 for no such
 # model or no wheels
 @alloc_ok("a car made: an event, not a frame")
@@ -49,6 +55,10 @@ export function car_spawn(cars_st: mut CarsState, model: int, x: float, z: float
   let m = CarModels[model]
   let nw = car_wheel_count(model)
   if nw == 0 or nw > 30 { return -1 }
+  # a place that is not a number is the origin: a NaN made here would reach every system that reads the car
+  let x = cr_real(x)
+  let z = cr_real(z)
+  let yaw = cr_real(yaw)
   let c = new Car
   c.nid = CarWorld.next_id()
   c.model = model
@@ -149,10 +159,10 @@ export function car_nearest(cars_st: CarsState, x: float, z: float, reach: float
 export function car_drive(cars_st: CarsState, nid: int, throttle: float, brake: float, steer: float, hand: float) -> bool {
   let c = car_by_nid(cars_st, nid)
   if c == null { return false }
-  c.in_throttle = Math.clamp(throttle, 0.0, 1.0)
-  c.in_brake = Math.clamp(brake, 0.0, 1.0)
-  c.in_steer = Math.clamp(steer, -1.0, 1.0)
-  c.in_hand = Math.clamp(hand, 0.0, 1.0)
+  c.in_throttle = Math.clamp(cr_real(throttle), 0.0, 1.0)
+  c.in_brake = Math.clamp(cr_real(brake), 0.0, 1.0)
+  c.in_steer = Math.clamp(cr_real(steer), -1.0, 1.0)
+  c.in_hand = Math.clamp(cr_real(hand), 0.0, 1.0)
   return true
 }
 
@@ -243,6 +253,9 @@ export function car_follow_lane(cars_st: CarsState, nid: int, on: bool, pace: fl
 export function car_place(cars_st: mut CarsState, nid: int, x: float, z: float, yaw: float) -> bool {
   let c = car_by_nid(cars_st, nid)
   if c == null { return false }
+  let x = cr_real(x)
+  let z = cr_real(z)
+  let yaw = cr_real(yaw)
   c.x = x
   c.z = z
   c.yaw = yaw

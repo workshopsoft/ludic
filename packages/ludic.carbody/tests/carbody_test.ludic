@@ -1,0 +1,154 @@
+# carbody_test.ludic - ludic.carbody as a game binds it, on a real Jolt world: the bind is the two lines below and nothing else.
+# A sedan rests on its springs, drives, turns hard at speed and stays bounded, a NaN force or ray is refused, the world's grip
+# reaches the wheel rays, a body is dropped and made again, and a run allocates nothing.
+import "ludic.cars"
+import "ludic.base"
+import "ludic.physics"
+import "ludic.carbody"
+program CarBodyTest {
+  numbers float
+  def CarTyres from "../../ludic.cars/tests/cars_tyres.lres"
+  def CarClasses from "../../ludic.cars/tests/cars_classes.lres"
+  def CarModels from "../../ludic.cars/tests/cars_models.lres"
+  def CarSeats from "../../ludic.cars/tests/cars_seats.lres"
+  def CarSockets from "../../ludic.cars/tests/cars_sockets.lres"
+
+  bind CarBody { make: fn carbody_make, drop: fn carbody_drop, read: fn carbody_read, push: fn carbody_push, torque: fn carbody_torque, step: fn carbody_step }
+  bind CarWorld { cast: fn carbody_cast, grip: fn slippery }
+
+  # the game's own grip: gravel past z = 200
+  function slippery(x: float, z: float) -> float {
+    if z > 200.0 { return 0.5 }
+    return 1.0
+  }
+
+  state Rig { tk: Tick = new Tick }
+
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+
+  function world(physics_st: mut PhysicsState) -> void {
+    expect(phys_open(physics_st, 256, 1))
+    let h = floats(256 * 256)
+    phys_ground_add(physics_st, phys_heightfield(physics_st, h, 256, -100.0, -100.0, 2.0))
+  }
+
+  function frames(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(rig.tk, 0.016666668, i, 0.0))
+    }
+  }
+
+  function driver(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, x: float, z: float) -> Car {
+    let nid = car_spawn(cars_st, CARM_SEDAN, x, z, 0.0, -1)
+    expect(nid >= 0)
+    expect_eq(car_seat_driver(cars_st, nid, 1), 0)
+    frames(cars_st, doors, owns, rig, 3)
+    let c = car_by_nid(cars_st, nid)
+    expect(c.phase == CarPhase.Driven)
+    return c
+  }
+
+  function go(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, c: Car, seconds: float, throttle: float, brake: float, steer: float) -> void {
+    for i in 0 .. int(seconds * 60.0) {
+      car_drive(cars_st, c.nid, throttle, brake, steer, 0.0)
+      frames(cars_st, doors, owns, rig, 1)
+    }
+  }
+
+  test "a car is a body in the world once bound, and rests on its springs" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    frames(cars_st, doors, owns, rig, 180)
+    let c = car_by_nid(cars_st, nid)
+    expect(c.sim == CAR_SIM_BODY)
+    expect(c.body)
+    expect(near(c.y, 0.0, 0.06))
+    expect(Math.abs(c.speed) < 0.1)
+    expect(c.uy > 0.995)
+    for i in 0 .. 4 { expect(c.wheels[i].contact) }
+  }
+
+  test "it accelerates, and a hard turn at speed stays bounded and finite" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 5.0, 1.0, 0.0, 0.0)
+    expect(c.speed > 15.0)
+    expect(c.sim == CAR_SIM_BODY)
+    let v0 = Math.sqrt(c.vx * c.vx + c.vz * c.vz)
+    var peak = 0.0
+    for i in 0 .. 420 {
+      var st = 0.6
+      if i >= 120 and (i / 30) % 2 == 1 { st = -1.0 }
+      if i >= 120 and (i / 30) % 2 == 0 { st = 1.0 }
+      car_drive(cars_st, c.nid, 0.0, 0.0, st, 0.0)
+      frames(cars_st, doors, owns, rig, 1)
+      peak = Math.max(peak, Math.sqrt(c.vx * c.vx + c.vz * c.vz))
+      expect(is_finite(c.x + c.y + c.z + c.vx + c.vy + c.vz))
+    }
+    expect(peak <= v0 + 1.5)
+  }
+
+  test "the world's grip reaches the wheel rays, and a ray that is not a number hits nothing" (physics_st: mut PhysicsState, bodies_st: mut CarBodyState) {
+    world(physics_st)
+    let h = new CarHit
+    expect(carbody_cast(physics_st, bodies_st, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 3.0, h))
+    expect(near(h.dist, 1.0, 0.01))
+    expect(h.ny > 0.99)
+    expect(near(h.grip, 1.0, 0.0001))
+    expect(carbody_cast(physics_st, bodies_st, 0.0, 1.0, 250.0, 0.0, -1.0, 0.0, 3.0, h))
+    expect(near(h.grip, 0.5, 0.0001))
+    let nan = 0.0 / 0.0
+    expect(not carbody_cast(physics_st, bodies_st, nan, 1.0, 0.0, 0.0, -1.0, 0.0, 3.0, h))
+    expect(not carbody_cast(physics_st, bodies_st, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, nan, h))
+    expect(not carbody_cast(physics_st, bodies_st, 0.0, 10.0, 0.0, 0.0, -1.0, 0.0, 3.0, h))
+  }
+
+  test "a body is made, read, refused a NaN force, dropped and made again" (physics_st: mut PhysicsState, bodies_st: mut CarBodyState) {
+    let p = new CarPose
+    # no world open: no body
+    expect(not carbody_make(physics_st, bodies_st, 7, CARM_SEDAN, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    world(physics_st)
+    expect(not carbody_make(physics_st, bodies_st, 7, -1, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    expect(not carbody_make(physics_st, bodies_st, 7, CARM_SEDAN, 0.0 / 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    expect(not carbody_read(physics_st, bodies_st, 7, p))
+    expect(carbody_make(physics_st, bodies_st, 7, CARM_SEDAN, 3.0, 1.0, 4.0, 0.0, 0.0, 0.0, 10.0))
+    expect(carbody_read(physics_st, bodies_st, 7, p))
+    expect(near(p.x, 3.0, 0.001) and near(p.z, 4.0, 0.001))
+    expect(near(p.fz, 1.0, 0.001) and near(p.uy, 1.0, 0.001))
+    expect(near(p.vz, 10.0, 0.001))
+    # a force that is not a number is refused, so the body stays real
+    let nan = 0.0 / 0.0
+    carbody_push(physics_st, bodies_st, 7, nan, 0.0, 0.0, 0.0, 0.0, 0.0)
+    carbody_torque(physics_st, bodies_st, 7, 0.0, nan, 0.0)
+    carbody_step(physics_st, 0.016666668)
+    expect(carbody_read(physics_st, bodies_st, 7, p))
+    expect(is_finite(p.x + p.y + p.z + p.vx + p.vy + p.vz))
+    # a push at a point off the centre makes the body turn: a force ahead of the centre, to the right, yaws it
+    carbody_drop(physics_st, bodies_st, 7)
+    expect(not carbody_read(physics_st, bodies_st, 7, p))
+    expect(carbody_make(physics_st, bodies_st, 7, CARM_SEDAN, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    for i in 0 .. 30 {
+      carbody_push(physics_st, bodies_st, 7, 3000.0, 0.0, 0.0, 0.0, 0.6, 2.0)
+      carbody_step(physics_st, 0.016666668)
+    }
+    expect(carbody_read(physics_st, bodies_st, 7, p))
+    expect(p.vx > 0.05)
+    expect(p.fx > 0.0001)
+  }
+
+  test "nothing is allocated once the cars and their bodies are made" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 2.0, 1.0, 0.0, 0.3)
+    q_drain(cars_facts(cars_st))
+    let before = Os.heap_bytes()
+    for i in 0 .. 600 {
+      car_drive(cars_st, c.nid, 1.0, 0.0, 0.3, 0.0)
+      frames(cars_st, doors, owns, rig, 1)
+      q_drain(cars_facts(cars_st))
+    }
+    let after = Os.heap_bytes()
+    if before > 0 { expect(after <= before + 4096) }
+  }
+}

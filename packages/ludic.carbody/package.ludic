@@ -1,0 +1,5 @@
+# ludic.carbody - ludic.cars' body and wheel rays over ludic.physics (Jolt): the adapter a game binds in one line per port. Uses
+# ludic.base, ludic.cars and ludic.physics.
+package "ludic.carbody"
+version "0.1.0"
+kind source

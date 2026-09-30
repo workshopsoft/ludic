@@ -1,0 +1,108 @@
+# bodies.ludic - the CarBody port and the wheel ray of CarWorld over ludic.physics. The raycast-wheel model (ludic.cars) puts
+# the suspension, the tyres and the drivetrain on the body as forces; Jolt only has to carry a rigid box and answer rays, so
+# the body is the model's own box (width, height, length about the body's centre, `car_body_centre` above the origin), its
+# mass the model's. The car's forward is the body's local +z and its up local +y; the body's yaw is the car's yaw.
+#
+# Every function takes the physics state (and this package's own state) by type, so a bind names nothing else. A pose or a
+# hit that is not a real number is never handed to the cars.
+state CarBodyState {
+  ids: IntMap = imap_new()       # a car's nid -> the body's id in the physics world
+  cys: IntMap = imap_new()       # a car's nid -> the box's centre above the origin, in millimetres
+  pose: PhysPose = new PhysPose
+  hit: PhysHit = new PhysHit
+}
+
+function cbd_body(bodies_st: CarBodyState, nid: int) -> int { return imap_get(bodies_st.ids, nid, -1) }
+
+# a body for car `nid` of `model` at a place with a velocity; false when the world is not open or refuses it. A car that
+# already has one keeps it (and the old is not leaked)
+export function carbody_make(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int, model: int, x: float, y: float, z: float, yaw: float, vx: float, vy: float, vz: float) -> bool {
+  if not phys_is_open(physics_st) { return false }
+  if model < 0 or model >= CARM_COUNT { return false }
+  if not is_finite(x + y + z + yaw + vx + vy + vz) { return false }
+  if cbd_body(bodies_st, nid) >= 0 { carbody_drop(physics_st, bodies_st, nid) }
+  let m = CarModels[model]
+  let centre = car_body_centre(model)
+  let shape = phys_offset(physics_st, phys_box(physics_st, m.width * 0.5, m.height * 0.5, m.length * 0.5), 0.0, centre, 0.0, 0.0)
+  let id = phys_body_add(physics_st, shape, x, y, z, yaw, m.mass)
+  if id < 0 { return false }
+  phys_own(physics_st, id, shape)
+  phys_set_velocity(physics_st, id, vx, vy, vz)
+  imap_put(bodies_st.ids, nid, id)
+  imap_put(bodies_st.cys, nid, int(centre * 1000.0))
+  return true
+}
+
+export function carbody_drop(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int) -> void {
+  let id = cbd_body(bodies_st, nid)
+  if id < 0 { return }
+  phys_remove(physics_st, id)
+  imap_del(bodies_st.ids, nid)
+  imap_del(bodies_st.cys, nid)
+}
+
+# the body's pose as the car reads it: its origin, its forward and up axes from the orientation, its velocity
+export function carbody_read(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int, p: CarPose) -> bool {
+  let id = cbd_body(bodies_st, nid)
+  if id < 0 { return false }
+  let q = bodies_st.pose
+  if not phys_pose(physics_st, id, q) { return false }
+  if not is_finite(q.x + q.y + q.z + q.qx + q.qy + q.qz + q.qw + q.vx + q.vy + q.vz) { return false }
+  p.x = q.x
+  p.y = q.y
+  p.z = q.z
+  p.fx = 2.0 * (q.qx * q.qz + q.qw * q.qy)
+  p.fy = 2.0 * (q.qy * q.qz - q.qw * q.qx)
+  p.fz = 1.0 - 2.0 * (q.qx * q.qx + q.qy * q.qy)
+  p.ux = 2.0 * (q.qx * q.qy - q.qw * q.qz)
+  p.uy = 1.0 - 2.0 * (q.qx * q.qx + q.qz * q.qz)
+  p.uz = 2.0 * (q.qy * q.qz + q.qw * q.qx)
+  p.vx = q.vx
+  p.vy = q.vy
+  p.vz = q.vz
+  return true
+}
+
+# a force at a world point: the force through the body's centre, and the torque its lever makes about it
+export function carbody_push(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int, fx: float, fy: float, fz: float, px: float, py: float, pz: float) -> void {
+  let id = cbd_body(bodies_st, nid)
+  if id < 0 { return }
+  if not is_finite(fx + fy + fz + px + py + pz) { return }
+  let q = bodies_st.pose
+  if not phys_pose(physics_st, id, q) { return }
+  # the body's centre: the origin lifted along the body's up by the box's middle
+  let cy = float(imap_get(bodies_st.cys, nid, 0)) / 1000.0
+  let cx = q.x + 2.0 * (q.qx * q.qy - q.qw * q.qz) * cy
+  let cyy = q.y + (1.0 - 2.0 * (q.qx * q.qx + q.qz * q.qz)) * cy
+  let cz = q.z + 2.0 * (q.qy * q.qz + q.qw * q.qx) * cy
+  let rx = px - cx
+  let ry = py - cyy
+  let rz = pz - cz
+  phys_force(physics_st, id, fx, fy, fz)
+  phys_torque(physics_st, id, ry * fz - rz * fy, rz * fx - rx * fz, rx * fy - ry * fx)
+}
+
+export function carbody_torque(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int, tx: float, ty: float, tz: float) -> void {
+  let id = cbd_body(bodies_st, nid)
+  if id < 0 { return }
+  if not is_finite(tx + ty + tz) { return }
+  phys_torque(physics_st, id, tx, ty, tz)
+}
+
+# the physics world steps here, once for the cars' step; ludic.physics keeps its own fixed 1/60 s
+export function carbody_step(physics_st: mut PhysicsState, dt: float) -> void { phys_step(physics_st) }
+
+# a wheel's ray against the solid world: how far along it, the surface's normal, its grip from the world's `CarWorld.grip`
+# at the point it found (1 unless the game binds another), and the body it touched
+export function carbody_cast(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, len: float, h: CarHit) -> bool {
+  if not is_finite(ox + oy + oz + dx + dy + dz + len) { return false }
+  let q = bodies_st.hit
+  if not phys_ray(physics_st, ox, oy, oz, dx * len, dy * len, dz * len, PHYS_M_SOLID, q) { return false }
+  h.dist = q.fraction * len
+  h.nx = q.nx
+  h.ny = q.ny
+  h.nz = q.nz
+  h.grip = CarWorld.grip(ox + dx * h.dist, oz + dz * h.dist)
+  h.body = q.body
+  return true
+}

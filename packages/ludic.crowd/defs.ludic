@@ -9,6 +9,8 @@
 export property PedLook {
   key: string = ""
   @Range(1, 4096) variants: int = 1          # how many distinct looks the set makes
+  @Asset("gltf") model: string = ""          # the mesh the set is shown with (a base body); the crowd never draws it
+  @Node(model) node: string = ""             # its node in that file
   parts: []string = new []string             # the game's part keys; the crowd only hands them on
 }
 

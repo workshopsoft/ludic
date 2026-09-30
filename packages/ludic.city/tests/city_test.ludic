@@ -85,6 +85,28 @@ program CityTest {
     expect_eq(city_cell_count(city_st), 0)
   }
 
+  test "a point that is not a place streams nothing, and one far off or a wild reach cannot spin the loop" (city_st: mut CityState, bl: mut Buildings) {
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, 1), 9)
+    let nan = 0.0 / 0.0
+    let inf = 1.0 / 0.0
+    let far = 1000000.0 * 1000000.0 * 1000000.0 * 1000000.0 * 1000000.0
+    expect_eq(city_stream(city_st, bl, "metro", nan, 100.0, 1), 0)
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, inf, 1), 0)
+    expect_eq(city_stream(city_st, bl, "metro", -inf, nan, 1), 0)
+    expect_eq(city_stream_step(city_st, bl, "metro", nan, nan, 1), 0)
+    expect_eq(city_stream_step(city_st, bl, "metro", inf, 0.0, 1), 0)
+    expect_eq(city_cell_count(city_st), 9)                                      # nothing went out for it
+    # 1e30 m away is a cell far from everything: the nine go out, the nine there come in (empty), and it returns
+    expect(city_stream(city_st, bl, "metro", far, far, 1) >= 0)
+    expect_eq(city_cell_count(city_st), 9)
+    expect_eq(city_cell_of(city_st, 0, 0), -1)
+    # a negative reach is none: the one cell under the point
+    city_clear(city_st, bl)
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, -5), 1)
+    expect_eq(city_cell_count(city_st), 1)
+    city_clear(city_st, bl)
+  }
+
   test "a stream a frame at a time loads one cell a call, nearest first, and the census leaves no facts" (city_st: mut CityState, bl: mut Buildings, districts: mut Districts) {
     expect(load_districts(city_st, districts))
     expect_eq(city_stream_step(city_st, bl, "metro", 100.0, 100.0, 1), 8)     # the cell under the player first

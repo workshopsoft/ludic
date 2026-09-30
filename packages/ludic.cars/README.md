@@ -4,7 +4,8 @@ Wheeled vehicles - cars, trucks, buses, motorcycles, bicycles - as data and a si
 handling (engine curve, gears, brakes, steering, axles, tyres, aero), tuning parts, paint and classes as rows; a
 raycast-wheel model over the game's physics body, a planar model and a lane follower at a distance; getting in,
 getting out and carjacking as a machine; ownership with garage slots, insurance, delivery and the impound; and
-snapshots for a party. Uses [`ludic.base`](../ludic.base/README.md) and nothing else.
+snapshots for a party. Uses [`ludic.base`](../ludic.base/README.md) and nothing else. The Jolt body and wheel rays over
+[`ludic.physics`](../ludic.physics/README.md) are [`ludic.carbody`](../ludic.carbody/README.md): two `bind` lines.
 
 ```ludic
 import "ludic.cars"

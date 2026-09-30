@@ -1,0 +1,4 @@
+# num.ludic - a number's health, for the boundaries a package hands a game's numbers across
+
+# a real, finite number: not NaN and not an infinity (NaN - NaN and inf - inf are NaN, which is never 0)
+export function is_finite(v: float) -> bool { return v - v == 0.0 }

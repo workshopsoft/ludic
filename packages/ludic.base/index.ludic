@@ -2,6 +2,7 @@
 # that order it, queues for the facts it reports, its own dice, its save section, its system
 module ludic_base uses
 numbers float
+import "num.ludic"
 import "tick.ludic"
 import "kept.ludic"
 import "handle.ludic"

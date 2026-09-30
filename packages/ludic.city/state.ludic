@@ -90,7 +90,12 @@ function ci_say(city_st: mut CityState, what: int, cx: int, cz: int, count: int)
   q_push(city_st.ci_facts, f)
 }
 
-function ci_floor(v: float) -> int { return int(Math.floor(v)) }
+# a cell coordinate, held to a range a map has: int() of a NaN, an infinity or 1e30 is garbage, and a stream loop
+# over garbage never ends
+function ci_floor(v: float) -> int { return int(Math.floor(Math.clamp(v, -1000000000.0, 1000000000.0))) }
+
+# how far a stream may reach, in cells either way (a wrong reach is a square of that many thousand cells)
+const CI_MAX_REACH: int = 32
 
 # ---- districts ---------------------------------------------------------------------------------------------
 
@@ -256,6 +261,9 @@ function ci_cell_out(city_st: mut CityState, bl: mut Buildings, cx: int, cz: int
 # keep loaded exactly the cells within `reach` cells of the one holding the point (x, z): the rest go out, the missing
 # ones come in. How many cells changed. Call it when the player crosses into another cell, not every frame
 export function city_stream(city_st: mut CityState, bl: mut Buildings, map: string, x: float, z: float, reach: int) -> int {
+  # a point that is not a place (NaN, an infinity) streams nothing: the cells stay as they are
+  if not is_finite(x) or not is_finite(z) { return 0 }
+  let reach = Math.clamp(reach, 0, CI_MAX_REACH)
   let cx = ci_floor(x / 256.0)
   let cz = ci_floor(z / 256.0)
   var changed = 0
@@ -281,6 +289,8 @@ export function city_stream(city_st: mut CityState, bl: mut Buildings, map: stri
 # point; how many are still missing. Call it every frame while it returns more than 0 to spread a stream's loads over
 # frames instead of one hitch
 export function city_stream_step(city_st: mut CityState, bl: mut Buildings, map: string, x: float, z: float, reach: int) -> int {
+  if not is_finite(x) or not is_finite(z) { return 0 }
+  let reach = Math.clamp(reach, 0, CI_MAX_REACH)
   let cx = ci_floor(x / 256.0)
   let cz = ci_floor(z / 256.0)
   var i = 0

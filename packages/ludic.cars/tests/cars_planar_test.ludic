@@ -218,12 +218,14 @@ program CarsPlanarTest {
     drive_for(cars_st, doors, owns, rig, c, 6.0, 1.0, 0.0, 0.0, 0.0)
     var slid = 0
     q_clear(cars_facts(cars_st))
-    drive_for(cars_st, doors, owns, rig, c, 3.0, 1.0, 0.0, 1.0, 0.0)
+    # a full lock at 28 m/s is a steady corner the tyres hold (and the car stays bounded, see below); the handbrake
+    # in it is what makes them let go
+    drive_for(cars_st, doors, owns, rig, c, 1.0, 1.0, 0.0, 1.0, 0.0)
+    expect(Math.abs(c.wheels[0].slip_a) > 0.05)
+    drive_for(cars_st, doors, owns, rig, c, 2.0, 0.0, 0.0, 1.0, 1.0)
     let fs = q_drain(cars_facts(cars_st))
     for i in 0 .. len(fs) { if fs[i].what == CAR_SKID { slid += 1 } }
     expect(slid >= 1)
-    # the front tyres' slip angle is past the peak
-    expect(Math.abs(c.wheels[0].slip_a) > 0.1)
     let p = driven(cars_st, doors, owns, rig, CARM_SEDAN)
     expect(car_fit(cars_st, p.nid, CARPT_ENGINE2))
     expect(car_fit(cars_st, p.nid, CARPT_TURBO1))
@@ -272,5 +274,55 @@ program CarsPlanarTest {
     }
     let after = Os.heap_bytes()
     if before > 0 { expect(after <= before + 4096) }
+  }
+
+  # the world speed of a car (its body velocity, turned; the same as speed and side_speed's length)
+  function sp2(c: Car) -> float { return Math.sqrt(c.vx * c.vx + c.vz * c.vz) }
+
+  test "a hard turn at speed stays bounded: the speed only ever falls, the spin dies, nothing goes non-finite" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    for m in 0 .. 2 {
+      var model = CARM_SEDAN
+      if m == 1 { model = CARM_SUPER }
+      let c = driven(cars_st, doors, owns, rig, model)
+      drive_for(cars_st, doors, owns, rig, c, 12.0, 1.0, 0.0, 0.0, 0.0)
+      expect(c.speed > 25.0)
+      let v0 = sp2(c)
+      # the stick right at 0.6 with no pedal, then a swerve left and right every half second
+      var peak = 0.0
+      var spin = 0.0
+      for i in 0 .. 1200 {
+        var st = 0.6
+        if i >= 300 { st = 1.0 }
+        if i >= 300 and (i / 30) % 2 == 1 { st = -1.0 }
+        car_drive(cars_st, c.nid, 0.0, 0.0, st, 0.0)
+        frame(cars_st, doors, owns, rig, 1)
+        peak = Math.max(peak, sp2(c))
+        spin = Math.max(spin, Math.abs(c.yaw_rate))
+        expect(is_finite(c.x) and is_finite(c.y) and is_finite(c.z))
+        expect(is_finite(c.speed) and is_finite(c.side_speed) and is_finite(c.yaw_rate))
+      }
+      # never faster than it went in (a pedal-less car cannot gain speed), and the spin never passes what a car does
+      expect(peak <= v0 + 0.5)
+      expect(spin < 8.0)
+      # 20 s on, it has long since scrubbed its speed off
+      expect(sp2(c) < 5.0)
+    }
+  }
+
+  test "a number that is not finite never reaches the car" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, c, 3.0, 1.0, 0.0, 0.0, 0.0)
+    car_drive(cars_st, c.nid, 1.0, 0.0, 0.0 / 0.0, 0.0)
+    frame(cars_st, doors, owns, rig, 10)
+    expect(is_finite(c.x) and is_finite(c.z) and is_finite(c.speed) and is_finite(c.yaw))
+    car_drive(cars_st, c.nid, 1.0 / 0.0, -1.0 / 0.0, 1.0 / 0.0, 0.0)
+    frame(cars_st, doors, owns, rig, 10)
+    expect(is_finite(c.x) and is_finite(c.z) and is_finite(c.speed) and is_finite(c.yaw))
+    # and a car put somewhere that is not a place is put at the origin instead
+    let d = car_spawn(cars_st, CARM_SEDAN, 0.0 / 0.0, 1.0 / 0.0, 0.0, -1)
+    if d >= 0 {
+      let e = car_by_nid(cars_st, d)
+      expect(is_finite(e.x) and is_finite(e.z))
+    }
   }
 }
