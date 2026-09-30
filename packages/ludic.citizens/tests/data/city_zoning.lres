@@ -1,0 +1,49 @@
+# zoning.lres - how each kind of land in the fixture city is used
+downtown {
+  kind: "mixed"
+  res_pct: 30
+  m2_per_person: 40
+  m2_per_job: 25
+  crowd: 700
+  traffic: 600
+}
+residential_low {
+  kind: "residential"
+  res_pct: 95
+  m2_per_person: 45
+  m2_per_job: 25
+  crowd: 200
+  traffic: 150
+}
+residential_high {
+  kind: "residential"
+  res_pct: 80
+  m2_per_person: 35
+  m2_per_job: 25
+  crowd: 400
+  traffic: 300
+}
+industrial {
+  kind: "industrial"
+  res_pct: 0
+  m2_per_person: 40
+  m2_per_job: 60
+  crowd: 100
+  traffic: 500
+}
+park {
+  kind: "park"
+  res_pct: 0
+  m2_per_person: 40
+  m2_per_job: 25
+  crowd: 500
+  traffic: 50
+}
+rural {
+  kind: "rural"
+  res_pct: 90
+  m2_per_person: 60
+  m2_per_job: 40
+  crowd: 50
+  traffic: 100
+}

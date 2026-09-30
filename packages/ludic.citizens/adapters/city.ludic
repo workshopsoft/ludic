@@ -1,0 +1,114 @@
+# city.ludic - glue between ludic.citizens and ludic.city, for a game that uses both: the population comes from the
+# authored buildings' capacity. Neither package knows the other; this is the game's (copy it, or import it from a
+# program that imports both).
+#
+# ludic.city streams buildings in cells as a player moves; the citizens need every building of the map. The mirror
+# walks the map's cells once (one cell in memory at a time, like city_census) and keeps what citizens ask of a
+# building: where it is, how many it houses (`residents`, its own number or worked out from its floor area and
+# zoning), how many jobs it holds, and the tags that say what can be done there - the tags its zoning rule gives it
+# through the game's CzZoneTags table (a rule key and the PlaceTags keys of that land: downtown holds an office, a
+# shop, a restaurant and a bar). A building's stable id for saves is a hash of its key, moved on by one when two
+# keys hash alike (in the order the map is walked, so a rare pair may swap if buildings are added before them).
+#
+#   import "ludic.city"
+#   import "ludic.citizens"
+#   import "<path to>/ludic.citizens/adapters/city.ludic"
+#   def CzZoneTags from "zonetags.lres"
+#   bind CitizensCity { count: fn czk_count, id: fn czk_id, x: fn czk_x, z: fn czk_z, tags: fn czk_tags,
+#                       homes: fn czk_homes, jobs: fn czk_jobs, district: fn czk_district }
+#   ... czk_mirror(mirror, city_st, bl, districts, "map", cx0, cz0, cx1, cz1) ... citizens_build(cz) ... citizens_generate(cz, start)
+
+export property CzZoneTag {
+  key: string = ""                              # a ZoningRules key
+  @Ref(PlaceTags) tags: []string = new []string # what a building of that land can be used for
+}
+
+registry CzZoneTags of CzZoneTag as CZZT
+
+export state CzCityMirror {
+  n: int = 0
+  ids: []int = new []int
+  keys: []string = new []string
+  xs: []float = new []float
+  zs: []float = new []float
+  tags: []int = new []int
+  homes: []int = new []int
+  jobs: []int = new []int
+  district: []int = new []int
+  taken: IntMap = imap_new()
+}
+
+function czk_hash(key: string) -> int {
+  var h = 0x811C9DC5
+  for i in 0 .. len(key) { h = (h ^ key[i]) * 16777619 }
+  return h & 0x7FFFFFFF
+}
+
+function czk_tags_of_zone(zone: int) -> int {
+  if zone < 0 { return 0 }
+  let i = czzonetags_find(ZoningRules[zone].key)
+  if i < 0 { return 0 }
+  var mask = 0
+  for t in 0 .. len(CzZoneTags[i].tags) {
+    let b = placetags_find(CzZoneTags[i].tags[t])
+    if b >= 0 and b <= 30 { mask = mask | (1 << b) }
+  }
+  return mask
+}
+
+function czk_add(m: mut CzCityMirror, city_st: CityState, districts: Districts, b: CityBuilding) -> void {
+  var id = czk_hash(b.key)
+  while imap_get(m.taken, id, -1) >= 0 { id = (id + 1) & 0x7FFFFFFF }
+  imap_put(m.taken, id, m.n)
+  push(m.ids, id)
+  push(m.keys, `{b.key}`)                   # a chunked table's keys live in the chunk's buffers: what is kept past city_cell_out is a copy
+  push(m.xs, b.x)
+  push(m.zs, b.z)
+  push(m.tags, czk_tags_of_zone(city_zone_of(city_st, districts, b)))
+  push(m.homes, Math.max(city_residents(city_st, districts, b), 0))
+  push(m.jobs, Math.max(city_jobs(city_st, districts, b), 0))
+  push(m.district, city_district_at(city_st, districts, b.x, b.z))
+  m.n += 1
+}
+
+# every building of the map in the cells cx0 .. cx1, cz0 .. cz1 into the mirror (a cell that was loaded stays
+# loaded, any other goes out again). Districts must be loaded and indexed (city_index). How many buildings
+function czk_mirror(m: mut CzCityMirror, city_st: mut CityState, bl: mut Buildings, districts: Districts, map: string, cx0: int, cz0: int, cx1: int, cz1: int) -> int {
+  m.n = 0
+  List.clear(m.ids)
+  List.clear(m.keys)
+  List.clear(m.xs)
+  List.clear(m.zs)
+  List.clear(m.tags)
+  List.clear(m.homes)
+  List.clear(m.jobs)
+  List.clear(m.district)
+  imap_clear(m.taken)
+  for cz in cz0 .. cz1 + 1 {
+    for cx in cx0 .. cx1 + 1 {
+      let had = city_cell_of(city_st, cx, cz) >= 0
+      if city_cell_in(city_st, bl, map, cx, cz) < 0 { continue }
+      let ci = city_cell_of(city_st, cx, cz)
+      for row in 0 .. city_cell_size(city_st, bl, ci) { czk_add(m, city_st, districts, city_building(city_st, bl, ci, row)) }
+      if not had { city_cell_out(city_st, bl, cx, cz) }
+    }
+  }
+  return m.n
+}
+
+function czk_count(m: CzCityMirror) -> int { return m.n }
+function czk_id(m: CzCityMirror, p: int) -> int { return m.ids[p] }
+function czk_x(m: CzCityMirror, p: int) -> float { return m.xs[p] }
+function czk_z(m: CzCityMirror, p: int) -> float { return m.zs[p] }
+function czk_tags(m: CzCityMirror, p: int) -> int { return m.tags[p] }
+function czk_homes(m: CzCityMirror, p: int) -> int { return m.homes[p] }
+function czk_jobs(m: CzCityMirror, p: int) -> int { return m.jobs[p] }
+function czk_district(m: CzCityMirror, p: int) -> int { return m.district[p] }
+
+# the mirror's row of a building key, or -1
+function czk_find(m: CzCityMirror, key: string) -> int {
+  let i = imap_get(m.taken, czk_hash(key), -1)
+  if i >= 0 and m.keys[i] == key { return i }
+  for p in 0 .. m.n { if m.keys[p] == key { return p } }
+  return -1
+}

@@ -1,0 +1,247 @@
+# citizens_crowd_test.ludic - ludic.citizens' NEAR tier on the real ludic.crowd through adapters/crowd.ludic: a citizen
+# near a player is given a pedestrian, which owns its position and walks its leg; the activity's graph state, as data,
+# is the ped's key; a ped that fell behind or got there early moves the citizen's arrival when it is handed back; a
+# body the crowd lost (killed) leaves the citizen to the schedule; a citizen riding has no body; and the far state is the
+# same with a player there as without.
+import "ludic.crowd"
+import "ludic.citizens"
+import "ludic.base"
+import "../adapters/crowd.ludic"
+program CitizensCrowdTest {
+  numbers float
+  def NeedDefs from "data/needs.lres"
+  def PlaceTags from "data/tags.lres"
+  def Activities from "data/activities.lres"
+  def CitizenArchetypes from "data/archetypes.lres"
+  def CitizenNames from "data/names.lres"
+  def CitizenSettings from "data/settings.lres"
+  def PedLooks from "data/crowd_looks.lres"
+  def PedSchedules from "data/crowd_schedules.lres"
+  def PedTypes from "data/crowd_types.lres"
+  def CrowdThreats from "data/crowd_threats.lres"
+  def CrowdSettings main { max_peds: 500, max_full: 500, max_mid: 500 }
+
+  state World {
+    nb: int = 0
+    bx: []float = new []float
+    bz: []float = new []float
+    btag: []int = new []int
+    bhome: []int = new []int
+    bjob: []int = new []int
+    vx: float = 0.0
+    vz: float = 0.0
+    nview: int = 0
+    frame: int = 0
+    tk: Tick = tick_new(0.1, 0, 0.0)
+    born: int = 0
+    arrived: int = 0
+    handbacks: int = 0
+  }
+
+  function w_count(w: World) -> int { return w.nb }
+  function w_x(w: World, p: int) -> float { return w.bx[p] }
+  function w_z(w: World, p: int) -> float { return w.bz[p] }
+  function w_tags(w: World, p: int) -> int { return w.btag[p] }
+  function w_homes(w: World, p: int) -> int { return w.bhome[p] }
+  function w_jobs(w: World, p: int) -> int { return w.bjob[p] }
+  function w_viewers(w: World) -> int { return w.nview }
+  function w_vx(w: World, k: int) -> float { return w.vx }
+  function w_vz(w: World, k: int) -> float { return w.vz }
+  function cw_players(w: World) -> int { return w.nview }
+  function cw_px(w: World, i: int) -> float { return w.vx }
+  function cw_pz(w: World, i: int) -> float { return w.vz }
+  function cw_born(w: mut World, uid: int, type: int, look: int, x: float, z: float) -> void { w.born += 1 }
+
+  bind CitizensCity { count: fn w_count, x: fn w_x, z: fn w_z, tags: fn w_tags, homes: fn w_homes, jobs: fn w_jobs }
+  bind CitizensWorld { viewers: fn w_viewers, viewer_x: fn w_vx, viewer_z: fn w_vz }
+  bind CrowdWorld { players: fn cw_players, player_x: fn cw_px, player_z: fn cw_pz }
+  bind CrowdBody { born: fn cw_born }
+  bind CitizensBody { embody: fn czc_embody, leg: fn czc_leg, release: fn czc_release, back_x: fn czc_back_x, back_z: fn czc_back_z, back_arrived: fn czc_back_arrived, back_left: fn czc_back_left, back_fear: fn czc_back_fear }
+
+  function add(w: mut World, x: float, z: float, tag: int, homes: int, jobs: int) -> void {
+    push(w.bx, x)
+    push(w.bz, z)
+    push(w.btag, tag)
+    push(w.bhome, homes)
+    push(w.bjob, jobs)
+    w.nb += 1
+  }
+
+  function make_city(w: mut World) -> void {
+    w.nb = 0
+    List.clear(w.bx)
+    List.clear(w.bz)
+    List.clear(w.btag)
+    List.clear(w.bhome)
+    List.clear(w.bjob)
+    add(w, 0.0, 0.0, 0, 50, 0)
+    add(w, 300.0, 40.0, 0, 50, 0)
+    add(w, 120.0, 500.0, 0, 50, 0)
+    add(w, 600.0, 600.0, 1, 0, 300)        # the office
+    add(w, 80.0, 260.0, 16, 0, 0)          # a park, 260 m from the first home
+    add(w, 420.0, 180.0, 2, 0, 20)         # a shop
+    add(w, 500.0, 50.0, 4, 0, 14)
+    add(w, 50.0, 400.0, 8, 0, 0)
+  }
+
+  function fresh(cz: mut CitizensState, w: mut World, crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios, glue: mut CzCrowdGlue) -> void {
+    citizens_reset(cz)
+    crowd_reset(crowd_st)
+    expect(population_zones_load(zones, "metro"))
+    expect(ped_scenarios_load(scen, "metro"))
+    expect(crowd_build(crowd_st, zones, scen))
+    citizens_config_seed(cz, 33)
+    make_city(w)
+    w.nview = 0
+    w.frame = 0
+    glue.embodied = 0
+    glue.handed_back = 0
+    glue.lost = 0
+    citizens_build(cz)
+    citizens_generate(cz, 0)
+    q_clear(citizens_facts(cz))
+  }
+
+  const H: int = 3600
+
+  function frame(cz: mut CitizensState, crowd_st: mut CrowdState, m: mut CrowdStepsMachine, w: mut World, glue: mut CzCrowdGlue, dt: float, game_hours: float) -> void {
+    w.frame += 1
+    citizens_tick(cz, tick_new(dt, w.frame, game_hours))
+    w.tk.dt = dt
+    w.tk.frame = w.frame
+    w.tk.hours = 12.0
+    crowd_tick(crowd_st, m, w.tk)
+    czc_pump(crowd_st, cz)
+    let fs = q_drain(crowd_facts(crowd_st))
+    for i in 0 .. len(fs) {
+      if fs[i].what == CROWD_ARRIVED { w.arrived += 1 }
+      czc_fact(cz, glue, fs[i])
+    }
+  }
+
+  function find_home_doing(cz: CitizensState, arch: int, home: int) -> int {
+    for i in 0 .. citizens_count(cz) {
+      if citizens_archetype(cz, i) == arch and citizens_doing(cz, i) and citizens_place(cz, i) == citizens_home(cz, i) and citizens_home(cz, i) == home { return i }
+    }
+    return -1
+  }
+
+  test "a citizen at an office near a player is a standing ped with the activity's graph state as its key" (cz: mut CitizensState, w: mut World, crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, glue: mut CzCrowdGlue) {
+    fresh(cz, w, crowd_st, zones, scen, glue)
+    citizens_advance(cz, 11 * H)
+    let office = 3
+    expect(citizens_occupancy(cz, office) > 10)
+    w.nview = 1
+    w.vx = 600.0
+    w.vz = 600.0
+    frame(cz, crowd_st, m, w, glue, 0.6, 0.0)
+    expect(glue.embodied > 10)
+    var checked = 0
+    for i in 0 .. citizens_count(cz) {
+      if citizens_place(cz, i) != office or not citizens_doing(cz, i) { continue }
+      let uid = crowd_uid_of(crowd_st, i)
+      expect(uid != 0)
+      expect_eq(crowd_ext_of(crowd_st, uid), i)
+      expect(crowd_anim_key(crowd_st, uid) == "work_desk")
+      expect(Math.abs(crowd_x(crowd_st, uid) - 600.0) < 1.0)
+      checked += 1
+    }
+    expect(checked > 10)
+    # the player goes: every ped is handed back, none is left in the crowd
+    w.vx = 9000.0
+    for k in 0 .. 5 { frame(cz, crowd_st, m, w, glue, 0.6, 0.0) }
+    expect_eq(citizens_mid_count(cz), 0)
+    expect_eq(glue.handed_back, glue.embodied)
+    for i in 0 .. citizens_count(cz) { expect_eq(crowd_uid_of(crowd_st, i), 0) }
+  }
+
+  test "a walker's ped walks the leg itself, arrives, and a citizen who sees it through is where the schedule says" (cz: mut CitizensState, w: mut World, crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, glue: mut CzCrowdGlue) {
+    fresh(cz, w, crowd_st, zones, scen, glue)
+    citizens_advance(cz, 4 * H)
+    let c = find_home_doing(cz, 0, 0)
+    expect(c >= 0)
+    expect(citizens_force(cz, c, CZACT_PARK, 4, 600))             # 260 m to the park
+    expect_eq(citizens_mode(cz, c), CZ_MODE_WALK)
+    let until = citizens_until(cz, c)
+    w.nview = 1
+    w.vx = 0.0
+    w.vz = 0.0
+    frame(cz, crowd_st, m, w, glue, 0.6, 0.0)
+    let uid = crowd_uid_of(crowd_st, c)
+    expect(uid != 0)
+    expect(crowd_anim_key(crowd_st, uid) == "walk_loop")
+    # the clock and the crowd go on together, a second a frame
+    var f = 0
+    while citizens_now(cz) < until + 5 {
+      f += 1
+      frame(cz, crowd_st, m, w, glue, 1.0, 1.0 / 3600.0)
+      let body = crowd_uid_of(crowd_st, c)
+      if body != 0 {                                          # the player follows the walker
+        w.vx = crowd_x(crowd_st, body)
+        w.vz = crowd_z(crowd_st, body)
+      }
+      if f > 2000 { break }
+    }
+    expect(w.arrived >= 1)
+    expect(citizens_doing(cz, c))
+    expect_eq(citizens_place(cz, c), 4)
+    let after = crowd_uid_of(crowd_st, c)
+    expect(after != 0)
+    expect(Math.abs(crowd_x(crowd_st, after) - 80.0) < 15.0)                  # the ped is at the park, standing
+    expect(crowd_anim_key(crowd_st, after) == "sit_bench")
+  }
+
+  test "a ped that has not got far when the player leaves moves the citizen's arrival later" (cz: mut CitizensState, w: mut World, crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, glue: mut CzCrowdGlue) {
+    fresh(cz, w, crowd_st, zones, scen, glue)
+    citizens_advance(cz, 4 * H)
+    let c = find_home_doing(cz, CZARCH_RETIRED, 0)
+    expect(citizens_force(cz, c, CZACT_PARK, 4, 600))
+    let until = citizens_until(cz, c)
+    w.nview = 1
+    w.vx = 0.0
+    w.vz = 0.0
+    frame(cz, crowd_st, m, w, glue, 0.6, 0.0)
+    expect(crowd_uid_of(crowd_st, c) != 0)
+    # half the schedule passes in one step of the clock, while the ped has had a few seconds to walk
+    let half = (until - citizens_since(cz, c)) / 2
+    frame(cz, crowd_st, m, w, glue, 3.0, float(half) / 3600.0)
+    w.vx = 9000.0
+    for k in 0 .. 5 { frame(cz, crowd_st, m, w, glue, 0.6, 0.0) }
+    expect(citizens_lod(cz, c) == CZ_LOD_FAR)
+    expect(citizens_until(cz, c) > until + half / 3)
+  }
+
+  test "a body the crowd lost leaves the citizen to their schedule" (cz: mut CitizensState, w: mut World, crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, glue: mut CzCrowdGlue) {
+    fresh(cz, w, crowd_st, zones, scen, glue)
+    citizens_advance(cz, 11 * H)
+    w.nview = 1
+    w.vx = 600.0
+    w.vz = 600.0
+    frame(cz, crowd_st, m, w, glue, 0.6, 0.0)
+    var c = -1
+    for i in 0 .. citizens_count(cz) { if c < 0 and citizens_body(cz, i) >= 0 { c = i } }
+    expect(c >= 0)
+    let uid = crowd_uid_of(crowd_st, c)
+    let until = citizens_until(cz, c)
+    crowd_kill(crowd_st, uid)
+    frame(cz, crowd_st, m, w, glue, 0.6, 0.0)
+    expect(glue.lost >= 1)
+    expect_eq(citizens_body(cz, c), -1)
+    expect_eq(citizens_until(cz, c), until)                     # their day did not change
+    citizens_advance(cz, until + 10)
+    citizens_sync(cz, c, until + 10)
+    expect(citizens_until(cz, c) > until)
+  }
+
+  test "a citizen's ped is the crowd's, counted in its budget, never culled while embodied" (cz: mut CitizensState, w: mut World, crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, glue: mut CzCrowdGlue) {
+    fresh(cz, w, crowd_st, zones, scen, glue)
+    citizens_advance(cz, 11 * H)
+    w.nview = 1
+    w.vx = 600.0
+    w.vz = 600.0
+    for k in 0 .. 50 { frame(cz, crowd_st, m, w, glue, 0.6, 0.0) }
+    expect(glue.embodied > 10)
+    expect_eq(glue.handed_back, 0)
+    expect(crowd_count(crowd_st) >= glue.embodied)
+  }
+}

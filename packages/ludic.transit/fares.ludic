@@ -23,7 +23,7 @@ export function transit_fare(tr: TransitState, mode: int, a: int, b: int) -> int
 
 # the first mode that runs on demand (a taxi), or -1
 export function transit_taxi_mode() -> int {
-  for m in 0 .. TM_COUNT { if TransitModes[m].on_demand { return m } }
+  for m in 0 .. TRMODE_COUNT { if TransitModes[m].on_demand { return m } }
   return -1
 }
 

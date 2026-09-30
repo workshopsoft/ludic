@@ -24,6 +24,7 @@ function cz_cache_init(cz: mut CitizensState) -> void {
 
 # the planner's seconds (-1 none) and fare for a trip leaving at `depart` (a multiple of the bucket when the bucket is set)
 function cz_transit_eta(cz: mut CitizensState, from: int, to: int, depart: int) -> int {
+  cz.st_asks += 1
   let key = cz_fdiv(depart, Math.max(cz.cz_bucket, 1))
   let slot = cz_mix3(from, to, key) & (CZ_CACHE - 1)
   if cz.cz_bucket > 0 and cz.tc_a[slot] == from and cz.tc_b[slot] == to and cz.tc_c[slot] == key {
@@ -87,7 +88,7 @@ function cz_plan_trip(cz: mut CitizensState, i: int, from: int, to: int, T: int)
     best_secs = ws
   }
   # public transport: leaves on the bucket; the wait for it is part of the trip
-  if r.pref_transit > 0.0 {
+  if r.pref_transit > 0.0 and d > 250.0 {
     let dep = cz_depart_at(cz, T)
     let ts = cz_transit_eta(cz, from, to, dep)
     let cost = cz.trip_cost

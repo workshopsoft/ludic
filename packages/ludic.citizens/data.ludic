@@ -27,7 +27,7 @@ function cz_read_settings(cz: mut CitizensState) -> void {
   cz.cz_car_km = 1
   cz.cz_nfriends = 2
   cz.cz_idle_score = 0.25
-  if CSET_COUNT == 0 {
+  if CZSET_COUNT == 0 {
     if cz.cz_seed_set { cz.cz_world_seed = cz.cz_seed_val }
     return
   }
@@ -97,9 +97,9 @@ function cz_clear_data(cz: mut CitizensState) -> void {
 function cz_init_data(cz: mut CitizensState) -> void {
   cz_read_settings(cz)
   cz_clear_data(cz)
-  cz.cz_nn = Math.min(NEED_COUNT, CZ_NEED_MAX)
-  cz.cz_na = ACT_COUNT
-  cz.cz_nr = ARCH_COUNT
+  cz.cz_nn = Math.min(CZNEED_COUNT, CZ_NEED_MAX)
+  cz.cz_na = CZACT_COUNT
+  cz.cz_nr = CZARCH_COUNT
   cz.cz_money_need = -1
   for k in 0 .. cz.cz_nn {
     let d = NeedDefs[k]
@@ -116,7 +116,7 @@ function cz_init_data(cz: mut CitizensState) -> void {
     push(cz.cn_money, money)
     push(cz.cn_travel, int(d.travel * 10.0 + (0.5 * float(Math.sign(d.travel)))))
   }
-  for t in 0 .. PTAG_COUNT {
+  for t in 0 .. CZTAG_COUNT {
     push(cz.pt_from, PlaceTags[t].open_from)
     push(cz.pt_to, PlaceTags[t].open_to)
     push(cz.pt_rev, PlaceTags[t].revenue_per_job_hour)

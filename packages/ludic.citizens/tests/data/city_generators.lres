@@ -1,0 +1,17 @@
+# generators.lres - Blender generator presets, with the knobs the studio shows
+midrise_block {
+  generator: "blocks.midrise"
+  script: "scripts/midrise.py"
+  description: "Midrise blocks with setbacks and optional balconies"
+  output: "block"
+  tags: ["urban", "brick", "glass"]
+  params: [{ name: "floors", type: "int", min: 4.0, max: 12.0, default_value: 6.0, choices: [], label: "Floors", unit: "" }, { name: "setback", type: "float", min: 0.0, max: 10.0, default_value: 2.0, choices: [], label: "Setback", unit: "m" }, { name: "style", type: "choice", min: 0.0, max: 2.0, default_value: 0.0, choices: ["brick", "glass", "concrete"], label: "Facade", unit: "" }, { name: "balconies", type: "bool", min: 0.0, max: 1.0, default_value: 1.0, choices: [], label: "Balconies", unit: "" }]
+}
+suburb_houses {
+  generator: "blocks.suburb"
+  script: "scripts/suburb.py"
+  description: "Detached houses along a street"
+  output: "building"
+  tags: ["suburb"]
+  params: [{ name: "lot_w", type: "float", min: 8.0, max: 30.0, default_value: 14.0, choices: [], label: "Lot width", unit: "m" }, { name: "yard", type: "float", min: 0.0, max: 15.0, default_value: 4.0, choices: [], label: "Front yard", unit: "m" }]
+}

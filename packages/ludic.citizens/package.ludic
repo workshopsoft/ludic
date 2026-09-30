@@ -7,3 +7,5 @@
 package "ludic.citizens"
 version "0.1.0"
 kind source
+# the maps the adapter tests read (a transit network, a city, a crowd map); a game's own package.ludic names its maps
+maps "tests/maps"

@@ -24,7 +24,7 @@ function cz_in_window(hour: float, from: float, to: float) -> bool {
 function cz_open_at(cz: CitizensState, p: int, mask: int, hour: float) -> bool {
   let m = cz.pl_tags[p] & mask
   if m == 0 { return true }
-  for b in 0 .. PTAG_COUNT {
+  for b in 0 .. CZTAG_COUNT {
     if (m & (1 << b)) != 0 {
       let h = hour
       if cz_in_window(h, cz.pt_from[b], cz.pt_to[b]) { return true }

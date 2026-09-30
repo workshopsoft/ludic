@@ -222,7 +222,8 @@ export state CitizensState {
   st_spent: int = 0
   st_upkeep: int = 0
   st_steps: int = 0                          # episodes ended
-  st_plans: int = 0                          # transit plans asked for (cache misses)
+  st_plans: int = 0                          # transit plans asked of the port (cache misses)
+  st_asks: int = 0                           # transit plans wanted (hits and misses)
   st_hired: int = 0
   st_fired: int = 0
   st_moved: int = 0

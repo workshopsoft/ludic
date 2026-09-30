@@ -1,0 +1,143 @@
+# citizens_city_test.ludic - ludic.citizens on the real ludic.city's authored fixture (tests/maps/metro/city: five
+# districts, buildings in six chunks, kits, explicit head counts) through adapters/city.ludic: the population is housed
+# by the buildings' residents (their own number, or worked out from floor area and zoning), employed in buildings
+# that hold jobs and carry the tags the archetype's work needs (from the zoning rule), keyed by ids that survive a
+# rebuild of the mirror, and lives a day.
+import "ludic.city"
+import "ludic.citizens"
+import "ludic.base"
+import "../adapters/city.ludic"
+program CitizensCityTest {
+  numbers float
+  def NeedDefs from "data/needs.lres"
+  def PlaceTags from "data/tags.lres"
+  def Activities from "data/activities.lres"
+  def CitizenArchetypes from "data/archetypes.lres"
+  def CitizenNames from "data/names.lres"
+  def CitizenSettings from "data/settings.lres"
+  def ZoningRules from "data/city_zoning.lres"
+  def BuildingKits from "data/city_kits.lres"
+  def BuildingGenerators from "data/city_generators.lres"
+  def InteriorAtlases from "data/city_atlases.lres"
+  def CzZoneTags from "data/zonetags.lres"
+
+  bind CitizensCity { count: fn czk_count, id: fn czk_id, x: fn czk_x, z: fn czk_z, tags: fn czk_tags, homes: fn czk_homes, jobs: fn czk_jobs, district: fn czk_district }
+
+  const DAY: int = 86400
+
+  function load_city(city_st: mut CityState, bl: mut Buildings, districts: mut Districts, mirror: mut CzCityMirror) -> int {
+    expect(districts_load(districts, "metro"))
+    city_index(city_st, districts)
+    return czk_mirror(mirror, city_st, bl, districts, "metro", -1, 0, 1, 1)
+  }
+
+  test "the mirror holds every building of the authored map, with the head counts the city works out" (city_st: mut CityState, bl: mut Buildings, districts: mut Districts, mirror: mut CzCityMirror) {
+    let n = load_city(city_st, bl, districts, mirror)
+    expect_eq(n, 72)
+    var census = new CityCensus
+    city_census(city_st, bl, districts, "metro", -1, 0, 1, 1, census)
+    expect_eq(census.buildings, n)
+    var homes = 0
+    var jobs = 0
+    for p in 0 .. n {
+      homes += mirror.homes[p]
+      jobs += mirror.jobs[p]
+    }
+    expect_eq(homes, census.residents)
+    expect_eq(jobs, census.jobs)
+    expect(census.residents > 0 and census.jobs > 0)
+    # every id is its own
+    for p in 0 .. n { expect_eq(imap_get(mirror.taken, mirror.ids[p], -1), p) }
+  }
+
+  test "the zoning rule's land holds the tags activities look for: downtown an office, a shop, a restaurant and a bar" (city_st: mut CityState, bl: mut Buildings, districts: mut Districts, mirror: mut CzCityMirror) {
+    load_city(city_st, bl, districts, mirror)
+    var downtown = 0
+    var industrial = 0
+    for p in 0 .. mirror.n {
+      let zone = city_district_at(city_st, districts, mirror.xs[p], mirror.zs[p])
+      if zone < 0 { continue }
+      if (mirror.tags[p] & 15) == 15 { downtown += 1 }
+      if mirror.tags[p] == 32 { industrial += 1 }
+    }
+    expect(downtown > 0)
+    expect(mirror.n > 0)
+  }
+
+  test "the people of an authored city: housed by its residents, employed where there are jobs of their kind" (cz: mut CitizensState, city_st: mut CityState, bl: mut Buildings, districts: mut Districts, mirror: mut CzCityMirror) {
+    let n = load_city(city_st, bl, districts, mirror)
+    citizens_reset(cz)
+    citizens_config_seed(cz, 5)
+    citizens_build(cz)
+    let people = citizens_generate(cz, 0)
+    var lo = 0
+    var hi = 0
+    for p in 0 .. n {
+      lo += int(Math.floor(float(mirror.homes[p]) * 0.8))
+      hi += int(Math.floor(float(mirror.homes[p]) * 0.8)) + 1
+    }
+    expect(people >= lo and people <= Math.min(hi, lo + n))
+    expect(people > 50)
+    for i in 0 .. people {
+      expect(mirror.homes[citizens_home(cz, i)] > 0)
+      let w = citizens_work(cz, i)
+      if w >= 0 { expect(mirror.jobs[w] > 0) }
+    }
+    var employed = 0
+    for i in 0 .. people {
+      let w = citizens_work(cz, i)
+      if w < 0 { continue }
+      employed += 1
+      let a = citizens_archetype(cz, i)
+      if a == 0 { expect((mirror.tags[w] & 1) != 0) }
+      if a == 2 { expect((mirror.tags[w] & 32) != 0) }
+    }
+    expect(employed > 10)
+    # capacity held
+    for p in 0 .. n {
+      expect(citizens_place_staff(cz, p) <= mirror.jobs[p])
+      expect(citizens_place_room(cz, p) >= 0)
+    }
+  }
+
+  test "a building's stable id is the same after the mirror is made again, and the people are kept by it" (cz: mut CitizensState, city_st: mut CityState, bl: mut Buildings, districts: mut Districts, mirror: mut CzCityMirror) {
+    load_city(city_st, bl, districts, mirror)
+    citizens_reset(cz)
+    citizens_config_seed(cz, 5)
+    citizens_build(cz)
+    citizens_generate(cz, 0)
+    let key = mirror.keys[17]
+    let id = mirror.ids[17]
+    let home = citizens_home_id(cz, 0)
+    let work = citizens_work_id(cz, 1)
+    expect_eq(citizens_place_of_id(cz, id), 17)
+    citizens_advance(cz, 12 * 3600)
+    # the map is mirrored again (an edit, a reload): rows may come in another order, ids do not change
+    load_city(city_st, bl, districts, mirror)
+    let row = czk_find(mirror, key)
+    expect(row >= 0)
+    expect_eq(mirror.ids[row], id)
+    citizens_city_changed(cz)
+    expect_eq(citizens_place_of_id(cz, id), row)
+    expect_eq(citizens_home_id(cz, 0), home)
+    expect_eq(citizens_work_id(cz, 1), work)
+    citizens_advance(cz, 2 * 86400)
+    expect(citizens_stat_steps(cz) > 0)
+  }
+
+  test "a day in the authored city: the people work where the city says, and money is conserved" (cz: mut CitizensState, city_st: mut CityState, bl: mut Buildings, districts: mut Districts, mirror: mut CzCityMirror) {
+    load_city(city_st, bl, districts, mirror)
+    citizens_reset(cz)
+    citizens_config_seed(cz, 5)
+    citizens_build(cz)
+    citizens_generate(cz, 0)
+    let start = citizens_money_total(cz)
+    citizens_advance(cz, 11 * 3600)
+    var at_work = 0
+    for i in 0 .. citizens_count(cz) { if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 and citizens_doing(cz, i) and citizens_activity(cz, i) == CZACT_WORK { at_work += 1 } }
+    expect(at_work > 0)
+    citizens_advance(cz, 3 * DAY)
+    expect_eq(citizens_money_total(cz), start + citizens_stat_wages(cz) - citizens_stat_spent(cz) - citizens_stat_upkeep(cz))
+    expect(citizens_stat_steps(cz) > citizens_count(cz) * 10)
+  }
+}

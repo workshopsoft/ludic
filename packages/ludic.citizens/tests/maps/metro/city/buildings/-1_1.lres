@@ -1,0 +1,169 @@
+# buildings chunk (-1, 1): what stands in x -256 .. 0, z 256 .. 512
+bm1_1_00 {
+  kit: "tower"
+  x: -226.0
+  z: 286.0
+  yaw: 90.0
+  w: 24.0
+  d: 24.0
+  floors: 12
+  interior: "enterable"
+  interior_map: "tower_interior"
+  lot: "lot-m1-1-0"
+  address: "100 Main St"
+  entrances: [{ x: -226.0, z: 298.0, yaw: 180.0, kind: "door" }, { x: -226.0, z: 274.0, yaw: 0.0, kind: "service" }]
+}
+bm1_1_01 {
+  kit: "shop"
+  x: -171.0
+  z: 286.0
+  yaw: 0.0
+  w: 14.0
+  d: 10.0
+  floors: 3
+  interior: "fake"
+  atlas: "windows_a"
+  lot: "lot-m1-1-1"
+  address: "101 Main St"
+  entrances: [{ x: -171.0, z: 291.0, yaw: 180.0, kind: "door" }]
+}
+bm1_1_02 {
+  model: "blocks/core_1.glb"
+  node: "Bldg_2"
+  x: -116.0
+  z: 286.0
+  yaw: 270.0
+  scale: 1.0
+  w: 18.0
+  d: 16.0
+  floors: 5
+  height: 19.0
+  lot: "lot-m1-1-2"
+  address: "102 Side St"
+}
+bm1_1_03 {
+  kit: "house"
+  x: -61.0
+  z: 286.0
+  yaw: 180.0
+  w: 9.0
+  d: 8.0
+  floors: 2
+  residents: 6
+  jobs: 0
+  lot: "lot-m1-1-3"
+  address: "103 Side St"
+  entrances: [{ x: -61.0, z: 282.0, yaw: 0.0, kind: "door" }, { x: -56.5, z: 286.0, yaw: 90.0, kind: "garage" }]
+}
+bm1_1_04 {
+  kit: "tower"
+  x: -226.0
+  z: 346.0
+  yaw: 90.0
+  w: 24.0
+  d: 24.0
+  floors: 12
+  interior: "enterable"
+  interior_map: "tower_interior"
+  lot: "lot-m1-1-4"
+  address: "104 Main St"
+  entrances: [{ x: -226.0, z: 358.0, yaw: 180.0, kind: "door" }, { x: -226.0, z: 334.0, yaw: 0.0, kind: "service" }]
+}
+bm1_1_05 {
+  kit: "shop"
+  x: -171.0
+  z: 346.0
+  yaw: 0.0
+  w: 14.0
+  d: 10.0
+  floors: 3
+  interior: "fake"
+  atlas: "windows_a"
+  lot: "lot-m1-1-5"
+  address: "105 Main St"
+  entrances: [{ x: -171.0, z: 351.0, yaw: 180.0, kind: "door" }]
+}
+bm1_1_06 {
+  model: "blocks/core_1.glb"
+  node: "Bldg_6"
+  x: -116.0
+  z: 346.0
+  yaw: 270.0
+  scale: 1.0
+  w: 18.0
+  d: 16.0
+  floors: 5
+  height: 19.0
+  lot: "lot-m1-1-6"
+  address: "106 Side St"
+}
+bm1_1_07 {
+  kit: "house"
+  x: -61.0
+  z: 346.0
+  yaw: 180.0
+  w: 9.0
+  d: 8.0
+  floors: 2
+  residents: 6
+  jobs: 0
+  lot: "lot-m1-1-7"
+  address: "107 Side St"
+  entrances: [{ x: -61.0, z: 342.0, yaw: 0.0, kind: "door" }, { x: -56.5, z: 346.0, yaw: 90.0, kind: "garage" }]
+}
+bm1_1_08 {
+  kit: "tower"
+  x: -226.0
+  z: 406.0
+  yaw: 90.0
+  w: 24.0
+  d: 24.0
+  floors: 12
+  interior: "enterable"
+  interior_map: "tower_interior"
+  lot: "lot-m1-1-8"
+  address: "108 Main St"
+  entrances: [{ x: -226.0, z: 418.0, yaw: 180.0, kind: "door" }, { x: -226.0, z: 394.0, yaw: 0.0, kind: "service" }]
+}
+bm1_1_09 {
+  kit: "shop"
+  x: -171.0
+  z: 406.0
+  yaw: 0.0
+  w: 14.0
+  d: 10.0
+  floors: 3
+  interior: "fake"
+  atlas: "windows_a"
+  lot: "lot-m1-1-9"
+  address: "109 Main St"
+  entrances: [{ x: -171.0, z: 411.0, yaw: 180.0, kind: "door" }]
+}
+bm1_1_10 {
+  model: "blocks/core_1.glb"
+  node: "Bldg_10"
+  x: -116.0
+  z: 406.0
+  yaw: 270.0
+  scale: 1.0
+  w: 18.0
+  d: 16.0
+  floors: 5
+  height: 19.0
+  lot: "lot-m1-1-10"
+  address: "110 Side St"
+}
+bm1_1_11 {
+  kit: "house"
+  x: -61.0
+  z: 406.0
+  yaw: 180.0
+  w: 9.0
+  d: 8.0
+  floors: 2
+  residents: 6
+  jobs: 0
+  lot: "lot-m1-1-11"
+  address: "111 Side St"
+  entrances: [{ x: -61.0, z: 402.0, yaw: 0.0, kind: "door" }, { x: -56.5, z: 406.0, yaw: 90.0, kind: "garage" }]
+}

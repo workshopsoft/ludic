@@ -7,6 +7,7 @@ work {
   effects: [{ need: "fun", per_hour: -1.0 }, { need: "social", per_hour: 2.0 }]
   anim: "work_desk"
   clip: "type_keys"
+  stance: "sit"
 }
 overtime {
   where: "work"
@@ -28,6 +29,7 @@ sleep {
   slow: 0.4
   effects: [{ need: "energy", per_hour: 8.0 }]
   anim: "sleep_bed"
+  stance: "lie"
 }
 eat_home {
   where: "home"
@@ -36,6 +38,7 @@ eat_home {
   cost: 4
   effects: [{ need: "hunger", per_hour: 90.0 }]
   anim: "eat_table"
+  stance: "sit"
   prop: "plate"
 }
 eat_out {
@@ -46,6 +49,7 @@ eat_out {
   cost: 14
   effects: [{ need: "hunger", per_hour: 70.0 }, { need: "fun", per_hour: 6.0 }, { need: "social", per_hour: 4.0 }]
   anim: "eat_sit"
+  stance: "sit"
 }
 shower {
   where: "home"
@@ -62,6 +66,7 @@ shop {
   cost: 15
   effects: [{ need: "chores", per_hour: 90.0 }, { need: "fun", per_hour: 3.0 }]
   anim: "browse"
+  stance: "use"
 }
 bar {
   where: "tags"
@@ -84,6 +89,7 @@ park {
   hours_to: 20.0
   effects: [{ need: "fun", per_hour: 14.0 }, { need: "social", per_hour: 5.0 }]
   anim: "sit_bench"
+  stance: "sit"
 }
 visit {
   where: "friend"
@@ -93,6 +99,7 @@ visit {
   hours_to: 22.0
   effects: [{ need: "social", per_hour: 30.0 }, { need: "fun", per_hour: 8.0 }]
   anim: "chat_sit"
+  stance: "sit"
 }
 idle {
   where: "home"

@@ -131,7 +131,7 @@ program CitizensBench {
     let hr_us = Time.now_us() - t2
     print(`bench one hour in one-second ticks: {citizens_stat_steps(cz) - s2} episodes in {hr_us / 1000} ms: {hr_us / 3600} us a tick`)
     print(`bench money: {citizens_money_total(cz)} wages {citizens_stat_wages(cz)} spent {citizens_stat_spent(cz)} upkeep {citizens_stat_upkeep(cz)} leak {citizens_stat_leak(cz)} plans {citizens_stat_plans(cz)}`)
-    for a in 0 .. ACT_COUNT { print(`bench {Activities[a].key}: {citizens_stat_activity(cz, a)}`) }
+    for a in 0 .. CZACT_COUNT { print(`bench {Activities[a].key}: {citizens_stat_activity(cz, a)}`) }
     expect(steps > n * 8)
     expect(day_us < 30000000)
   }

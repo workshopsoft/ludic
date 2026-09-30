@@ -1,0 +1,7 @@
+# what a zoning rule's land holds, as the tags citizens' activities look for
+downtown { tags: ["office", "shop", "restaurant", "bar"] }
+residential_low { tags: ["park"] }
+residential_high { tags: ["shop", "restaurant"] }
+industrial { tags: ["factory"] }
+park { tags: ["park"] }
+rural { tags: [] }

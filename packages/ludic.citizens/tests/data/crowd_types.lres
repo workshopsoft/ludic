@@ -1,0 +1,5 @@
+# the ped types the citizens' archetypes name by `look`
+adult_office { anim_set: "walker", look: PEDL_BODY, schedule: PEDS_STROLLER, civic: 0.9, witness: 1.0, on_panic: "flee" }
+adult_casual { anim_set: "walker", look: PEDL_BODY, schedule: PEDS_STROLLER, on_panic: "cower", civic: 0.2 }
+adult_work { anim_set: "walker", look: PEDL_BODY, schedule: PEDS_STROLLER, on_panic: "flee", civic: 0.5 }
+elder { anim_set: "walker_slow", look: PEDL_BODY, schedule: PEDS_STROLLER, walk_speed: 0.9, on_panic: "cower", civic: 0.3 }

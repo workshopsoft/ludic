@@ -1,0 +1,177 @@
+# citizens_transit_test.ludic - ludic.citizens on the real ludic.transit through adapters/transit.ludic: a small city
+# laid out round the metro, bus and tram stops of the fixture map, its people commuting by the planner's own answers,
+# the trip's time the planner's, the legs of a citizen on real paths the planner's, and a citizen riding the metro is
+# where the timetable has the train. The city is a fake behind the citizens' port; the transport is the real package.
+import "ludic.transit"
+import "ludic.citizens"
+import "ludic.base"
+import "../adapters/transit.ludic"
+program CitizensTransitTest {
+  numbers float
+  def NeedDefs from "data/needs.lres"
+  def PlaceTags from "data/tags.lres"
+  def Activities from "data/activities.lres"
+  def CitizenArchetypes from "data/archetypes.lres"
+  def CitizenNames from "data/names.lres"
+  def CitizenSettings from "data/settings.lres"
+  def TransitModes metro { capacity: 400, speed: 20.0, accel: 1.0, dwell: 25, road: false, fare_kind: "zone", fare_base: 2, fare_per_zone: 1, transfer_free: 600 }
+  def TransitModes bus { capacity: 60, speed: 10.0, accel: 1.0, dwell: 20, detour: 1.3, fare_kind: "flat", fare_base: 2, transfer_free: 600 }
+  def TransitModes tram { capacity: 120, speed: 8.0, accel: 0.8, dwell: 15, road: false, fare_kind: "distance", fare_base: 1, fare_per_km: 1 }
+  def TransitModes taxi { capacity: 4, speed: 12.0, on_demand: true, wait: 200, detour: 1.4, fare_kind: "distance", fare_base: 3, fare_per_km: 2 }
+  def TransitSettings from "data/transit_settings.lres"
+
+  state CityState2 {
+    nb: int = 0
+    bx: []float = new []float
+    bz: []float = new []float
+    btag: []int = new []int
+    bhome: []int = new []int
+    bjob: []int = new []int
+    nview: int = 0
+    vx: float = 0.0
+    vz: float = 0.0
+  }
+
+  function c_count(c: CityState2) -> int { return c.nb }
+  function c_x(c: CityState2, p: int) -> float { return c.bx[p] }
+  function c_z(c: CityState2, p: int) -> float { return c.bz[p] }
+  function c_tags(c: CityState2, p: int) -> int { return c.btag[p] }
+  function c_homes(c: CityState2, p: int) -> int { return c.bhome[p] }
+  function c_jobs(c: CityState2, p: int) -> int { return c.bjob[p] }
+  function c_viewers(c: CityState2) -> int { return c.nview }
+  function c_vx(c: CityState2, k: int) -> float { return c.vx }
+  function c_vz(c: CityState2, k: int) -> float { return c.vz }
+  function no_car(x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return -1 }
+  function accept(id: int, what: int, arch: int, act: int, x: float, z: float, gx: float, gz: float, left: int) -> bool { return true }
+  function let_go(id: int) -> bool { return true }
+
+  bind CitizensCity { count: fn c_count, x: fn c_x, z: fn c_z, tags: fn c_tags, homes: fn c_homes, jobs: fn c_jobs }
+  bind CitizensWorld { viewers: fn c_viewers, viewer_x: fn c_vx, viewer_z: fn c_vz }
+  bind CitizensTransit { eta: fn czt_eta, fare: fn czt_fare, plan: fn czt_plan, leg_i: fn czt_leg_i, leg_f: fn czt_leg_f, ride_pose: fn czt_ride_pose, pose_x: fn czt_pose_x, pose_z: fn czt_pose_z, taxi_eta: fn czt_taxi_eta, taxi_fare: fn czt_taxi_fare }
+  bind CitizensBody { embody: fn accept, release: fn let_go }
+
+  function add(c: mut CityState2, x: float, z: float, tag: int, homes: int, jobs: int) -> void {
+    push(c.bx, x)
+    push(c.bz, z)
+    push(c.btag, tag)
+    push(c.bhome, homes)
+    push(c.bjob, jobs)
+    c.nb += 1
+  }
+
+  # homes by the stops of the fixture map, workplaces and leisure by others
+  function make_city(c: mut CityState2) -> void {
+    c.nb = 0
+    List.clear(c.bx)
+    List.clear(c.bz)
+    List.clear(c.btag)
+    List.clear(c.bhome)
+    List.clear(c.bjob)
+    add(c, 30.0, 20.0, 0, 50, 0)            # by Alder
+    add(c, 1040.0, -30.0, 0, 50, 0)         # by Birch
+    add(c, 20.0, 2030.0, 0, 50, 0)          # by the tram's first stop
+    add(c, 2010.0, -1450.0, 0, 50, 0)       # by North
+    add(c, 2020.0, 1450.0, 0, 50, 0)        # by South
+    add(c, 3990.0, 40.0, 1, 0, 200)         # offices by Elm, Dogwood and Cedar
+    add(c, 2990.0, -40.0, 1, 0, 200)
+    add(c, 1990.0, 50.0, 1, 0, 200)
+    add(c, 980.0, 60.0, 2, 0, 20)           # shops
+    add(c, 840.0, 2790.0, 2, 0, 20)
+    add(c, 2050.0, -30.0, 4, 0, 14)         # restaurants
+    add(c, 3010.0, 60.0, 8, 0, 0)           # bars
+    add(c, 780.0, 2020.0, 8, 0, 0)
+    add(c, 1960.0, -1400.0, 16, 0, 0)       # parks
+    add(c, 30.0, 2780.0, 16, 0, 0)
+    add(c, 4000.0, 100.0, 32, 0, 60)        # a factory
+  }
+
+  function load_network(tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines) -> void {
+    expect(transit_stops_load(stops, "metro"))
+    expect(transit_lines_load(lines, "metro"))
+    expect(transit_build(tr, stops, lines))
+  }
+
+  function fresh(cz: mut CitizensState, c: mut CityState2, tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines) -> void {
+    citizens_reset(cz)
+    citizens_config_seed(cz, 21)
+    load_network(tr, stops, lines)
+    transit_reset(tr)
+    make_city(c)
+    c.nview = 0
+    citizens_build(cz)
+    citizens_generate(cz, 0)
+    q_clear(citizens_facts(cz))
+  }
+
+  const DAY: int = 86400
+  const H: int = 3600
+
+  test "the people commute by the planner: transit is chosen, and plans are shared through the cache" (cz: mut CitizensState, c: mut CityState2, tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines) {
+    fresh(cz, c, tr, stops, lines)
+    expect_eq(citizens_count(cz), 200)
+    citizens_advance(cz, 2 * DAY)
+    let trips = citizens_stat_mode(cz, CZ_MODE_TRANSIT) + citizens_stat_mode(cz, CZ_MODE_WALK) + citizens_stat_mode(cz, CZ_MODE_CAR) + citizens_stat_mode(cz, CZ_MODE_TAXI)
+    expect(citizens_stat_mode(cz, CZ_MODE_TRANSIT) > 100)
+    expect(citizens_stat_plans(cz) > 0)
+    expect(citizens_stat_plans(cz) < citizens_stat_plan_asks(cz))                  # the same commute, within the bucket, is one plan
+    print(`citizens on transit: {trips} trips, {citizens_stat_mode(cz, CZ_MODE_TRANSIT)} by transit, {citizens_stat_plan_asks(cz)} plans wanted, {citizens_stat_plans(cz)} asked of the planner`)
+  }
+
+  test "a trip's time is the planner's: leaving on the bucket, arriving when the real plan does" (cz: mut CitizensState, c: mut CityState2, tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines) {
+    fresh(cz, c, tr, stops, lines)
+    citizens_advance(cz, 5 * H)
+    var who = -1
+    for i in 0 .. citizens_count(cz) { if who < 0 and citizens_doing(cz, i) and citizens_place(cz, i) == citizens_home(cz, i) and citizens_home(cz, i) == 0 and not citizens_has_car(cz, i) { who = i } }
+    expect(who >= 0)
+    let office = 5                                              # by Elm
+    let t = citizens_now(cz)
+    expect(citizens_force(cz, who, CZACT_PARK, office, 600))
+    expect_eq(citizens_mode(cz, who), CZ_MODE_TRANSIT)
+    let dep = ((t + 119) / 120) * 120
+    let eta = transit_eta(tr, c.bx[0], c.bz[0], c.bx[office], c.bz[office], dep)
+    expect(eta > 600)
+    expect_eq(citizens_until(cz, who), dep + eta)
+    expect_eq(citizens_since(cz, who), t)
+  }
+
+  test "a citizen on real paths follows the planner's legs, and rides where the timetable has the train" (cz: mut CitizensState, c: mut CityState2, tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines) {
+    fresh(cz, c, tr, stops, lines)
+    citizens_advance(cz, 5 * H)
+    var who = -1
+    for i in 0 .. citizens_count(cz) { if who < 0 and citizens_doing(cz, i) and citizens_place(cz, i) == citizens_home(cz, i) and citizens_home(cz, i) == 0 and not citizens_has_car(cz, i) { who = i } }
+    let office = 5
+    let t = citizens_now(cz)
+    expect(citizens_force(cz, who, CZACT_PARK, office, 600))
+    let dep = ((t + 119) / 120) * 120
+    let legs = transit_plan(tr, c.bx[0], c.bz[0], c.bx[office], c.bz[office], dep)
+    expect(legs >= 3)
+    var ride = -1
+    for k in 0 .. legs { if ride < 0 and transit_plan_kind(tr, k) == TRANSIT_LEG_RIDE { ride = k } }
+    expect(ride >= 0)
+    let route = transit_plan_route(tr, ride)
+    let run = transit_plan_run(tr, ride)
+    let mid = (transit_plan_from(tr, ride) + transit_plan_to(tr, ride)) / 2
+    c.nview = 1
+    c.vx = c.bx[0]
+    c.vz = c.bz[0]
+    citizens_tick(cz, tick_new(0.6, 1, 0.0))
+    expect(citizens_lod(cz, who) != CZ_LOD_FAR)
+    expect(citizens_leg(cz, who) == CZ_LEG_WAIT or citizens_leg(cz, who) == CZ_LEG_WALK)
+    citizens_set_time(cz, mid)
+    citizens_tick(cz, tick_new(0.6, 2, 0.0))
+    expect_eq(citizens_leg(cz, who), CZ_LEG_RIDE)
+    expect(transit_pose(tr, route, run, mid))
+    let tx = transit_pose_x(tr)
+    let tz = transit_pose_z(tr)
+    expect(Math.abs(citizens_x(cz, who) - tx) < 0.01)
+    expect(Math.abs(citizens_z(cz, who) - tz) < 0.01)
+    # and their anim state, as data, is the settings' for riding
+    expect(citizens_anim(cz, who) == "ride_stand")
+  }
+
+  test "a taxi is the real package's: the wait for it, the road, the fare" (cz: mut CitizensState, c: mut CityState2, tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines) {
+    fresh(cz, c, tr, stops, lines)
+    expect_eq(CitizensTransit.taxi_eta(0.0, 0.0, 1000.0, 0.0, 0), 200 + 116 + 1)
+    expect_eq(CitizensTransit.taxi_fare(0.0, 0.0, 1000.0, 0.0), 3 + 2 * 2)
+  }
+}

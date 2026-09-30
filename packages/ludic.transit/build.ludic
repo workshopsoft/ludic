@@ -111,7 +111,7 @@ function tr_read_settings(tr: mut TransitState) -> void {
   tr.tr_min_transfer = 45
   tr.tr_horizon = 14400
   tr.tr_dflt_headway = 600
-  if TRS_COUNT == 0 { return }
+  if TRSET_COUNT == 0 { return }
   let r = TransitSettings[0]
   tr.tr_walk_speed = r.walk_speed
   tr.tr_max_walk = r.max_walk

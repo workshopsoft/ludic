@@ -28,10 +28,10 @@ export function citizens_friend_count(cz: CitizensState) -> int { return cz.cz_n
 # the row of CitizenNames this citizen was given as a first or a last name (by weight, from the seed), or -1
 function cz_name_row(cz: CitizensState, i: int, part: string, salt: int) -> int {
   var total = 0
-  for r in 0 .. CNAME_COUNT { if CitizenNames[r].part == part { total += CitizenNames[r].weight } }
+  for r in 0 .. CZNAME_COUNT { if CitizenNames[r].part == part { total += CitizenNames[r].weight } }
   if total == 0 { return -1 }
   var pick = cz_pick(cz_mix(cz.cz_seed[i], salt), total)
-  for r in 0 .. CNAME_COUNT {
+  for r in 0 .. CZNAME_COUNT {
     if CitizenNames[r].part != part { continue }
     if pick < CitizenNames[r].weight { return r }
     pick -= CitizenNames[r].weight
@@ -108,7 +108,7 @@ export function citizens_anim(cz: mut CitizensState, i: int) -> string {
     if cz.cz_act[i] < 0 { return "" }
     return Activities[cz.cz_act[i]].anim
   }
-  if CSET_COUNT == 0 { return "" }
+  if CZSET_COUNT == 0 { return "" }
   let m = cz.cz_mode[i]
   let s = CitizenSettings[0]
   if m == CZ_MODE_CAR { return s.anim_drive }
@@ -121,6 +121,16 @@ export function citizens_anim(cz: mut CitizensState, i: int) -> string {
 export function citizens_clip(cz: CitizensState, i: int) -> string {
   if cz.cz_phase[i] != CZ_DOING or cz.cz_act[i] < 0 { return "" }
   return Activities[cz.cz_act[i]].clip
+}
+# what a body does while the activity lasts (CZ_STANCE_*), for a game to map to its own acts
+export function citizens_stance(a: int) -> int {
+  if a < 0 { return CZ_STANCE_STAND }
+  let s = Activities[a].stance
+  if s == "sit" { return CZ_STANCE_SIT }
+  if s == "lie" { return CZ_STANCE_LIE }
+  if s == "use" { return CZ_STANCE_USE }
+  if s == "wait" { return CZ_STANCE_WAIT }
+  return CZ_STANCE_STAND
 }
 export function citizens_prop(cz: CitizensState, i: int) -> string {
   if cz.cz_phase[i] != CZ_DOING or cz.cz_act[i] < 0 { return "" }
@@ -218,12 +228,16 @@ export function citizens_stat_upkeep(cz: CitizensState) -> int { return cz.st_up
 export function citizens_stat_leak(cz: CitizensState) -> int { return cz.st_leak }
 export function citizens_stat_steps(cz: CitizensState) -> int { return cz.st_steps }
 export function citizens_stat_plans(cz: CitizensState) -> int { return cz.st_plans }
+export function citizens_stat_plan_asks(cz: CitizensState) -> int { return cz.st_asks }
 export function citizens_stat_hired(cz: CitizensState) -> int { return cz.st_hired }
 export function citizens_stat_fired(cz: CitizensState) -> int { return cz.st_fired }
 export function citizens_stat_moved(cz: CitizensState) -> int { return cz.st_moved }
 export function citizens_stat_activity(cz: CitizensState, a: int) -> int { return cz.st_act[a] }
 export function citizens_stat_mode(cz: CitizensState, m: int) -> int { return cz.st_mode[m] }
 export function citizens_mid_count(cz: CitizensState) -> int { return cz.md_n }
+# the slots of the closely simulated, and who is in one (-1 none): for a game that walks them each frame
+export function citizens_mid_slots(cz: CitizensState) -> int { return cz.cz_max_mid }
+export function citizens_mid_at(cz: CitizensState, slot: int) -> int { return cz.md_id[slot] }
 
 # all the money the citizens hold (a walk over the population: for a report, not a frame)
 export function citizens_money_total(cz: CitizensState) -> int {

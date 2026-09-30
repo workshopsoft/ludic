@@ -16,7 +16,7 @@ export property NeedDef {
 }
 
 @AppendOnly @ByKey
-export open registry NeedDefs of NeedDef as NEED
+export open registry NeedDefs of NeedDef as CZNEED
 
 # a tag a city's buildings carry ("bar", "office", "shop", "park", "clinic"): what a place is, for the
 # activities that need one. The city (an authored model in another package) says which tags a building has
@@ -29,7 +29,7 @@ export property PlaceTag {
 }
 
 @AppendOnly @ByKey
-export open registry PlaceTags of PlaceTag as PTAG
+export open registry PlaceTags of PlaceTag as CZTAG
 
 export property ActivityNeed {
   @Ref(NeedDefs) need: string = ""
@@ -63,10 +63,11 @@ export property Activity {
   anim: string = ""                                  # animation graph state while doing it
   clip: string = ""                                  # clip key hint
   prop: string = ""                                  # a prop key the embodied citizen holds, if any
+  @OneOf("stand", "sit", "lie", "use", "wait") stance: string = "stand"   # what a body does while it lasts: a game maps it to its own acts (the graph state is `anim`)
 }
 
 @AppendOnly @ByKey
-export open registry Activities of Activity as ACT
+export open registry Activities of Activity as CZACT
 
 # a shift: the hour it starts, how many hours it lasts, its odds among the archetype's shifts, and on which
 # weekdays (bit d set: weekday d) it is worked
@@ -113,7 +114,7 @@ export property CitizenArchetype {
 }
 
 @AppendOnly @ByKey
-export open registry CitizenArchetypes of CitizenArchetype as ARCH
+export open registry CitizenArchetypes of CitizenArchetype as CZARCH
 
 # the names a citizen is given: a key for the game's text (or the plain name), by part, with odds
 export property CitizenName {
@@ -124,7 +125,7 @@ export property CitizenName {
 }
 
 @AppendOnly @ByKey
-export open registry CitizenNames of CitizenName as CNAME
+export open registry CitizenNames of CitizenName as CZNAME
 
 # the numbers of the simulation, one row of the open registry `CitizenSettings` (`def CitizenSettings from
 # "citizens.lres"`); the first row is used
@@ -157,7 +158,7 @@ export property CitizenSetting {
 }
 
 @ByKey
-export open registry CitizenSettings of CitizenSetting as CSET
+export open registry CitizenSettings of CitizenSetting as CZSET
 
 export const CZ_DAY: int = 86400
 export const CZ_NEED_MAX: int = 8              # needs a game may declare
@@ -184,6 +185,12 @@ export const CZ_BODY_AT_PLACE: int = 0         # a person at a building: an NPC 
 export const CZ_BODY_PEDESTRIAN: int = 1
 export const CZ_BODY_VEHICLE: int = 2          # their own car, or a taxi
 export const CZ_BODY_RIDER: int = 3            # inside a transit vehicle: no body of their own
+
+export const CZ_STANCE_STAND: int = 0
+export const CZ_STANCE_SIT: int = 1
+export const CZ_STANCE_LIE: int = 2
+export const CZ_STANCE_USE: int = 3
+export const CZ_STANCE_WAIT: int = 4
 
 export const CZ_LEG_WALK: int = 0
 export const CZ_LEG_WAIT: int = 1

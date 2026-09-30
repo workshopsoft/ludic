@@ -1,0 +1,55 @@
+# transit.ludic - glue between ludic.citizens and ludic.transit, for a game that uses both. Neither package knows
+# the other: this file is the game's (copy it, or import it from a program that imports both packages) and binds
+# citizens' transport port to transit's planner.
+#
+#   import "ludic.transit"
+#   import "ludic.citizens"
+#   import "<path to>/ludic.citizens/adapters/transit.ludic"
+#   bind CitizensTransit { eta: fn czt_eta, fare: fn czt_fare, plan: fn czt_plan, leg_i: fn czt_leg_i, leg_f: fn czt_leg_f,
+#                          ride_pose: fn czt_ride_pose, pose_x: fn czt_pose_x, pose_z: fn czt_pose_z,
+#                          taxi_eta: fn czt_taxi_eta, taxi_fare: fn czt_taxi_fare }
+#
+# A leg's "line" as citizens sees it is transit's ROUTE (line * 2 + direction), which is what transit_pose needs.
+# CZ_LEG_WALK, _WAIT and _RIDE are the same numbers as TRANSIT_LEG_WALK, _WAIT and _RIDE.
+
+function czt_eta(tr: mut TransitState, x0: float, z0: float, x1: float, z1: float, depart: int) -> int {
+  return transit_eta(tr, x0, z0, x1, z1, depart)
+}
+
+function czt_fare(tr: TransitState) -> int { return transit_plan_fare(tr) }
+
+function czt_plan(tr: mut TransitState, x0: float, z0: float, x1: float, z1: float, depart: int) -> int {
+  return transit_plan(tr, x0, z0, x1, z1, depart)
+}
+
+function czt_leg_i(tr: TransitState, leg: int, field: int) -> int {
+  if field == CZ_LI_KIND { return transit_plan_kind(tr, leg) }
+  if field == CZ_LI_T0 { return transit_plan_from(tr, leg) }
+  if field == CZ_LI_T1 { return transit_plan_to(tr, leg) }
+  if field == CZ_LI_LINE { return transit_plan_route(tr, leg) }
+  return transit_plan_run(tr, leg)
+}
+
+function czt_leg_f(tr: TransitState, leg: int, field: int) -> float {
+  if field == CZ_LF_X0 { return transit_plan_x0(tr, leg) }
+  if field == CZ_LF_Z0 { return transit_plan_z0(tr, leg) }
+  if field == CZ_LF_X1 { return transit_plan_x1(tr, leg) }
+  return transit_plan_z1(tr, leg)
+}
+
+# where the vehicle a ride leg is in, at a time: the timetable's exact place
+function czt_ride_pose(tr: mut TransitState, route: int, run: int, t: int) -> bool { return transit_pose(tr, route, run, t) }
+function czt_pose_x(tr: TransitState) -> float { return transit_pose_x(tr) }
+function czt_pose_z(tr: TransitState) -> float { return transit_pose_z(tr) }
+
+function czt_taxi_eta(x0: float, z0: float, x1: float, z1: float, depart: int) -> int {
+  let m = transit_taxi_mode()
+  if m < 0 { return -1 }
+  return transit_taxi_secs(m, x0, z0, x1, z1)
+}
+
+function czt_taxi_fare(x0: float, z0: float, x1: float, z1: float) -> int {
+  let m = transit_taxi_mode()
+  if m < 0 { return 0 }
+  return transit_taxi_fare(m, x0, z0, x1, z1)
+}

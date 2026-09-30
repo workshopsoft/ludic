@@ -47,7 +47,7 @@ function cz_new_day_hook(cz: mut CitizensState, day: int) -> void {
     }
     var ext = 0.0
     var tags = cz.pl_tags[p]
-    for b in 0 .. PTAG_COUNT {
+    for b in 0 .. CZTAG_COUNT {
       if (tags & (1 << b)) != 0 { ext += cz.pt_rev[b] * float(cz.pl_hours[p]) / 3600.0 }
     }
     cz.pl_cash[p] += int(ext)

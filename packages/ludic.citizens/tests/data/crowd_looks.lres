@@ -1,0 +1,2 @@
+body { variants: 12, parts: ["torso", "legs", "head"] }
+runner { variants: 4, parts: ["torso", "legs"] }

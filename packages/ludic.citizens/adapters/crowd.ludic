@@ -1,0 +1,102 @@
+# crowd.ludic - glue between ludic.citizens and ludic.crowd, for a game that uses both: a citizen near a player
+# is given a pedestrian by the crowd (which then owns its position and walks its leg), and handed back when the
+# player goes. Neither package knows the other; this is the game's (copy it, or import it from a program that
+# imports both).
+#
+#   bind CitizensBody { embody: fn czc_embody, leg: fn czc_leg, release: fn czc_release, back_x: fn czc_back_x,
+#                       back_z: fn czc_back_z, back_arrived: fn czc_back_arrived, back_left: fn czc_back_left,
+#                       back_fear: fn czc_back_fear }
+#
+# and once a frame, after crowd_tick and citizens_tick: czc_pump(crowd_st, cz, glue) - it tells citizens where each
+# embodied citizen's ped is (citizens_body_at) and which were lost to the crowd (killed, reset: citizens_body_lost).
+#
+# What is data and what is the game's: the ped type of a citizen is the PedTypes row whose key is the archetype's
+# `look`; the graph state a ped plays is the Activity's `anim` (or the settings' for a citizen between places), passed
+# as the crowd's act key; the act is the Activity's `stance` mapped to the crowd's own acts. No pose is written
+# anywhere: the crowd sets graph parameters, ludic.anim plays the artist's clips. A citizen's own CAR is not the
+# crowd's: this adapter refuses CZ_BODY_VEHICLE (the game's cars take that kind), and a rider has no body.
+
+export state CzCrowdGlue {
+  back_x: float = 0.0
+  back_z: float = 0.0
+  back_arrived: bool = false
+  back_left: int = 0
+  back_fear: int = 0
+  embodied: int = 0
+  handed_back: int = 0
+  lost: int = 0
+}
+
+function czc_act_of(stance: int) -> int {
+  if stance == CZ_STANCE_SIT { return CROWD_SIT }
+  if stance == CZ_STANCE_USE { return CROWD_USE }
+  if stance == CZ_STANCE_WAIT { return CROWD_WAIT }
+  return CROWD_STAND
+}
+
+function czc_key_of(cz: mut CitizensState, id: int, what: int, act: int) -> string {
+  if what == CZ_BODY_AT_PLACE and act >= 0 { return Activities[act].anim }
+  return citizens_anim(cz, id)
+}
+
+function czc_embody(crowd_st: mut CrowdState, cz: mut CitizensState, glue: mut CzCrowdGlue, id: int, what: int, arch: int, act: int, x: float, z: float, gx: float, gz: float, left: int) -> bool {
+  if what == CZ_BODY_VEHICLE or what == CZ_BODY_RIDER { return false }
+  var type = pedtypes_find(CitizenArchetypes[arch].look)
+  if type < 0 { type = 0 }
+  let key = czc_key_of(cz, id, what, act)
+  var crowd_act = CROWD_WALK
+  var has_dest = true
+  if what == CZ_BODY_AT_PLACE {
+    crowd_act = czc_act_of(citizens_stance(act))
+    has_dest = false
+  }
+  let uid = crowd_embody(crowd_st, id, type, -1, x, z, 0.0, has_dest, gx, gz, crowd_act, key, float(left))
+  if uid == 0 { return false }
+  glue.embodied += 1
+  return true
+}
+
+function czc_leg(crowd_st: mut CrowdState, cz: mut CitizensState, id: int, what: int, act: int, has_goal: bool, gx: float, gz: float, left: int) -> void {
+  var crowd_act = CROWD_WALK
+  if what == CZ_BODY_AT_PLACE { crowd_act = czc_act_of(citizens_stance(act)) }
+  let key = czc_key_of(cz, id, what, act)
+  crowd_set_leg(crowd_st, id, has_goal, gx, gz, crowd_act, key, float(left))
+}
+
+function czc_release(crowd_st: mut CrowdState, glue: mut CzCrowdGlue, id: int) -> bool {
+  if not crowd_release(crowd_st, id) { return false }
+  let h = crowd_handoff(crowd_st)
+  glue.back_x = h.x
+  glue.back_z = h.z
+  glue.back_arrived = h.arrived
+  glue.back_left = int(h.act_left)
+  glue.back_fear = int(h.fear * 100.0)
+  glue.handed_back += 1
+  return true
+}
+
+function czc_back_x(glue: CzCrowdGlue) -> float { return glue.back_x }
+function czc_back_z(glue: CzCrowdGlue) -> float { return glue.back_z }
+function czc_back_arrived(glue: CzCrowdGlue) -> bool { return glue.back_arrived }
+function czc_back_left(glue: CzCrowdGlue) -> int { return glue.back_left }
+function czc_back_fear(glue: CzCrowdGlue) -> int { return glue.back_fear }
+
+# each frame: where every embodied citizen's ped is, and the bodies the crowd lost on its own (its CROWD_HANDBACK
+# facts that citizens did not ask for). The crowd's facts are the game's to drain: pass each in with czc_fact
+function czc_pump(crowd_st: CrowdState, cz: mut CitizensState) -> void {
+  for s in 0 .. citizens_mid_slots(cz) {
+    let id = citizens_mid_at(cz, s)
+    if id < 0 or citizens_body(cz, id) < 0 { continue }
+    let uid = crowd_uid_of(crowd_st, id)
+    if uid == 0 { continue }
+    citizens_body_at(cz, id, crowd_x(crowd_st, uid), crowd_z(crowd_st, uid))
+  }
+}
+
+# a crowd fact the game drained: a body lost to the crowd (killed, the crowd reset) is the citizen's to go on without
+function czc_fact(cz: mut CitizensState, glue: mut CzCrowdGlue, f: CrowdFact) -> void {
+  if f.what == CROWD_HANDBACK and f.why != CROWD_WHY_RELEASED and f.from >= 0 {
+    citizens_body_lost(cz, f.from)
+    glue.lost += 1
+  }
+}

@@ -21,7 +21,7 @@ export property TransitMode {
 }
 
 @AppendOnly @ByKey
-export open registry TransitModes of TransitMode as TM
+export open registry TransitModes of TransitMode as TRMODE
 
 # the numbers a planner and a timetable share, one row of the open registry `TransitSettings`
 # (`def TransitSettings from "transit.lres"`); the first row is used
@@ -37,7 +37,7 @@ export property TransitSetting {
 }
 
 @ByKey
-export open registry TransitSettings of TransitSetting as TRS
+export open registry TransitSettings of TransitSetting as TRSET
 
 export property TransitPt {
   @Unit("m") x: float = 0.0

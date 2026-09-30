@@ -1,0 +1,13 @@
+# blocks chunk (0, 0): outlined blocks and how each was built
+blk_core_1 {
+  x: 128.0
+  z: 128.0
+  district: "core"
+  preset: "midrise_block"
+  seed: 7
+  values: [{ name: "floors", value: 6.0, text: "" }, { name: "setback", value: 2.5, text: "" }, { name: "style", value: 1.0, text: "glass" }, { name: "balconies", value: 1.0, text: "" }]
+  asset: "blocks/core_1.glb"
+  node: "Block"
+  built_hash: -172806178
+  pts: [{ x: 64.0, z: 64.0 }, { x: 192.0, z: 64.0 }, { x: 192.0, z: 192.0 }, { x: 64.0, z: 192.0 }]
+}

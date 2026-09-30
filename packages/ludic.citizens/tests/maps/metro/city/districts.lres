@@ -1,0 +1,46 @@
+# districts.lres - polygons of land with a zoning each; where two overlap the first row wins
+core {
+  zoning: ZR_DOWNTOWN
+  density: 900
+  tags: ["urban", "brick"]
+  generator: "midrise_block"
+  crowd: -1
+  traffic: -1
+  pts: [{ x: 0.0, z: 0.0 }, { x: 512.0, z: 0.0 }, { x: 512.0, z: 256.0 }, { x: 0.0, z: 256.0 }]
+}
+mall {
+  zoning: ZR_DOWNTOWN
+  density: 600
+  tags: ["urban"]
+  generator: "midrise_block"
+  crowd: -1
+  traffic: -1
+  pts: [{ x: 256.0, z: 0.0 }, { x: 768.0, z: 0.0 }, { x: 768.0, z: 256.0 }, { x: 256.0, z: 256.0 }]
+}
+west {
+  zoning: ZR_RESIDENTIAL_LOW
+  density: 300
+  tags: ["suburb"]
+  generator: "suburb_houses"
+  crowd: 100
+  traffic: -1
+  pts: [{ x: -256.0, z: 0.0 }, { x: 0.0, z: 0.0 }, { x: 0.0, z: 256.0 }, { x: -256.0, z: 256.0 }]
+}
+south {
+  zoning: ZR_RESIDENTIAL_HIGH
+  density: 700
+  tags: ["urban", "glass"]
+  generator: "midrise_block"
+  crowd: -1
+  traffic: 250
+  pts: [{ x: 0.0, z: 256.0 }, { x: 512.0, z: 256.0 }, { x: 512.0, z: 512.0 }, { x: 0.0, z: 512.0 }]
+}
+green {
+  zoning: ZR_PARK
+  density: 0
+  tags: []
+  generator: ""
+  crowd: -1
+  traffic: -1
+  pts: [{ x: -256.0, z: 256.0 }, { x: 0.0, z: 256.0 }, { x: 0.0, z: 512.0 }, { x: -128.0, z: 512.0 }, { x: -256.0, z: 384.0 }]
+}

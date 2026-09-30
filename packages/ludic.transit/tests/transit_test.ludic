@@ -215,14 +215,14 @@ program TransitTest {
 
   test "fares: a flat fare, by zone, by kilometre, and a taxi's" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {
     fresh(tr, stops, lines, tt)
-    expect_eq(transit_fare(tr, TM_BUS, 5, 7), 2)
-    expect_eq(transit_fare(tr, TM_METRO, 0, 4), 4)            # 2 and two zones
-    expect_eq(transit_fare(tr, TM_METRO, 1, 2), 2)            # the same zone
-    expect_eq(transit_fare(tr, TM_TRAM, 8, 10), 1 + 1 * 2)    # 1.6 km: two started kilometres
-    expect_eq(transit_taxi_mode(), TM_TAXI)
+    expect_eq(transit_fare(tr, TRMODE_BUS, 5, 7), 2)
+    expect_eq(transit_fare(tr, TRMODE_METRO, 0, 4), 4)            # 2 and two zones
+    expect_eq(transit_fare(tr, TRMODE_METRO, 1, 2), 2)            # the same zone
+    expect_eq(transit_fare(tr, TRMODE_TRAM, 8, 10), 1 + 1 * 2)    # 1.6 km: two started kilometres
+    expect_eq(transit_taxi_mode(), TRMODE_TAXI)
     # 1000 m on the map is 1400 m by road: 200 s to come, 116 s to drive, 3 + 2 * 2
-    expect_eq(transit_taxi_secs(TM_TAXI, 0.0, 0.0, 1000.0, 0.0), 200 + 116 + 1)
-    expect_eq(transit_taxi_fare(TM_TAXI, 0.0, 0.0, 1000.0, 0.0), 3 + 2 * 2)
+    expect_eq(transit_taxi_secs(TRMODE_TAXI, 0.0, 0.0, 1000.0, 0.0), 200 + 116 + 1)
+    expect_eq(transit_taxi_fare(TRMODE_TAXI, 0.0, 0.0, 1000.0, 0.0), 3 + 2 * 2)
   }
 
   test "a journey on one line: walk to the stop, wait for the next run, ride, walk on" (tr: mut TransitState, stops: mut TransitStops, lines: mut TransitLines, tt: mut TransitTestState) {

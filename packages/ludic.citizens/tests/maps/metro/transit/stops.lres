@@ -1,0 +1,14 @@
+# a metro along the x axis with a hub at c, a bus crossing it there, a tram loop to the south, a stop no line serves
+a { name: "Alder", x: 0.0, z: 0.0, zone: 0 }
+b { name: "Birch", x: 1000.0, z: 0.0, zone: 1 }
+c { name: "Cedar", x: 2000.0, z: 0.0, zone: 1, bays: [{ line: "M", x: 2000.0, z: 6.0 }] }
+d { name: "Dogwood", x: 3000.0, z: 0.0, zone: 2 }
+e { name: "Elm", x: 4000.0, z: 0.0, zone: 2 }
+n1 { name: "North", x: 2000.0, z: -1500.0, zone: 1 }
+c2 { name: "Cedar Street", x: 2050.0, z: -20.0, zone: 1 }
+s1 { name: "South", x: 2000.0, z: 1500.0, zone: 1 }
+t1 { name: "Tram 1", x: 0.0, z: 2000.0 }
+t2 { name: "Tram 2", x: 800.0, z: 2000.0 }
+t3 { name: "Tram 3", x: 800.0, z: 2800.0 }
+t4 { name: "Tram 4", x: 0.0, z: 2800.0, links: [{ to: "a", secs: 600 }] }
+far { name: "Nowhere", x: 9000.0, z: 9000.0 }

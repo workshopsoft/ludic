@@ -319,7 +319,7 @@ program CitizensTest {
       expect(ts.bhome[citizens_home(cz, i)] > 0)
       expect_eq(citizens_home_id(cz, i), ts.bid[citizens_home(cz, i)])
     }
-    expect(citizens_archetype(cz, 0) >= 0 and citizens_archetype(cz, 0) < ARCH_COUNT)
+    expect(citizens_archetype(cz, 0) >= 0 and citizens_archetype(cz, 0) < CZARCH_COUNT)
   }
 
   test "the same city and seed make the same people, another seed others" (cz: mut CitizensState, ts: mut CzTestState) {
@@ -397,20 +397,20 @@ program CitizensTest {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 3 * H)
     for i in 0 .. citizens_count(cz) {
-      if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { expect(not (citizens_doing(cz, i) and citizens_activity(cz, i) == ACT_WORK)) }
+      if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { expect(not (citizens_doing(cz, i) and citizens_activity(cz, i) == CZACT_WORK)) }
     }
     citizens_advance(cz, 11 * H)
     var workers = 0
     for i in 0 .. citizens_count(cz) {
       if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 {
         workers += 1
-        expect(citizens_doing(cz, i) and citizens_activity(cz, i) == ACT_WORK and citizens_place(cz, i) == citizens_work(cz, i))
+        expect(citizens_doing(cz, i) and citizens_activity(cz, i) == CZACT_WORK and citizens_place(cz, i) == citizens_work(cz, i))
       }
     }
     expect(workers > 200)
     citizens_advance(cz, 5 * DAY + 11 * H)            # day 6 is a Saturday: weekday 5
     for i in 0 .. citizens_count(cz) {
-      if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { expect(not (citizens_doing(cz, i) and citizens_activity(cz, i) == ACT_WORK)) }
+      if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { expect(not (citizens_doing(cz, i) and citizens_activity(cz, i) == CZACT_WORK)) }
     }
   }
 
@@ -421,7 +421,7 @@ program CitizensTest {
     for i in 0 .. citizens_count(cz) {
       if citizens_archetype(cz, i) == 2 and citizens_work(cz, i) >= 0 {
         n += 1
-        expect(citizens_doing(cz, i) and citizens_activity(cz, i) == ACT_WORK and citizens_place(cz, i) == citizens_work(cz, i))
+        expect(citizens_doing(cz, i) and citizens_activity(cz, i) == CZACT_WORK and citizens_place(cz, i) == citizens_work(cz, i))
       }
     }
     expect(n > 10)
@@ -454,29 +454,29 @@ program CitizensTest {
       }
     }
     citizens_advance(cz, 3 * DAY + 4 * H)
-    expect(citizens_count_doing(cz, ACT_SLEEP) > citizens_count(cz) / 2)
+    expect(citizens_count_doing(cz, CZACT_SLEEP) > citizens_count(cz) / 2)
     citizens_advance(cz, 3 * DAY + 19 * H)
-    expect(citizens_count_doing(cz, ACT_BAR) + citizens_count_doing(cz, ACT_EAT_OUT) + citizens_count_doing(cz, ACT_VISIT) > 30)
+    expect(citizens_count_doing(cz, CZACT_BAR) + citizens_count_doing(cz, CZACT_EAT_OUT) + citizens_count_doing(cz, CZACT_VISIT) > 30)
   }
 
   test "the bars of a place open when they say, and no bar is drunk at in the morning" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     for h in 6 .. 17 {
       citizens_advance(cz, h * H)
-      expect_eq(citizens_count_doing(cz, ACT_BAR), 0)
+      expect_eq(citizens_count_doing(cz, CZACT_BAR), 0)
     }
     citizens_advance(cz, 19 * H)
-    expect(citizens_count_doing(cz, ACT_BAR) > 0)
+    expect(citizens_count_doing(cz, CZACT_BAR) > 0)
   }
 
   test "fair or foul: nobody goes to the park in a storm" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     ts.weather = 90
     citizens_advance(cz, 2 * DAY)
-    expect_eq(citizens_stat_activity(cz, ACT_PARK), 0)
+    expect_eq(citizens_stat_activity(cz, CZACT_PARK), 0)
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 2 * DAY)
-    expect(citizens_stat_activity(cz, ACT_PARK) > 10)
+    expect(citizens_stat_activity(cz, CZACT_PARK) > 10)
   }
 
   test "the same day however the clock is stepped: at once, by the minute, by the second, in uneven steps" (cz: mut CitizensState, ts: mut CzTestState) {
@@ -534,25 +534,25 @@ program CitizensTest {
   test "a hungry citizen eats, one who has everything idles, and what they can afford matters" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 12 * H)
-    let c = find_doing(cz, 0, ARCH_RETIRED, false, false)
+    let c = find_doing(cz, 0, CZARCH_RETIRED, false, false)
     expect(c >= 0)
     calm(cz, c)
     set_money(cz, c, 2000)
     citizens_replan(cz, c)
-    expect_eq(citizens_activity(cz, c), ACT_IDLE)
+    expect_eq(citizens_activity(cz, c), CZACT_IDLE)
     set_need(cz, c, 0, 50)                                   # hunger at five
     set_money(cz, c, 2000)
     citizens_replan(cz, c)
-    expect(citizens_activity(cz, c) == ACT_EAT_HOME or citizens_activity(cz, c) == ACT_EAT_OUT)
+    expect(citizens_activity(cz, c) == CZACT_EAT_HOME or citizens_activity(cz, c) == CZACT_EAT_OUT)
     # with five coins only the cheaper meal is possible
-    let d = find_doing(cz, c + 1, ARCH_RETIRED, false, false)
+    let d = find_doing(cz, c + 1, CZARCH_RETIRED, false, false)
     calm(cz, d)
     set_need(cz, d, 0, 50)
     set_money(cz, d, 5)
     citizens_replan(cz, d)
-    expect_eq(citizens_activity(cz, d), ACT_EAT_HOME)
+    expect_eq(citizens_activity(cz, d), CZACT_EAT_HOME)
     # and with nothing, nothing costly
-    let e = find_doing(cz, d + 1, ARCH_RETIRED, false, false)
+    let e = find_doing(cz, d + 1, CZARCH_RETIRED, false, false)
     calm(cz, e)
     set_need(cz, e, 0, 50)
     set_money(cz, e, 1)
@@ -568,13 +568,13 @@ program CitizensTest {
     calm(cz, c)
     set_money(cz, c, -100)
     citizens_replan(cz, c)
-    expect_eq(citizens_activity(cz, c), ACT_OVERTIME)
+    expect_eq(citizens_activity(cz, c), CZACT_OVERTIME)
     expect_eq(citizens_place(cz, c), citizens_work(cz, c))
     let d = find_doing(cz, c + 1, 0, false, true)
     calm(cz, d)
     set_money(cz, d, 5000)
     citizens_replan(cz, d)
-    expect(citizens_activity(cz, d) != ACT_OVERTIME)
+    expect(citizens_activity(cz, d) != CZACT_OVERTIME)
   }
 
   test "the shift is kept: nothing is begun that would make them late, and they set out in time" (cz: mut CitizensState, ts: mut CzTestState) {
@@ -592,11 +592,11 @@ program CitizensTest {
     # at five to nine they are at work or on the way there
     citizens_advance(cz, DAY + 8 * H + 3300)
     citizens_sync(cz, c, DAY + 8 * H + 3300)
-    expect_eq(citizens_activity(cz, c), ACT_WORK)
+    expect_eq(citizens_activity(cz, c), CZACT_WORK)
     expect_eq(citizens_place(cz, c), citizens_work(cz, c))
     citizens_advance(cz, DAY + 9 * H + 600)
     citizens_sync(cz, c, DAY + 9 * H + 600)
-    expect(citizens_doing(cz, c) and citizens_activity(cz, c) == ACT_WORK)
+    expect(citizens_doing(cz, c) and citizens_activity(cz, c) == CZACT_WORK)
     expect(citizens_until(cz, c) >= DAY + 17 * H)
   }
 
@@ -626,18 +626,18 @@ program CitizensTest {
   test "a short trip is on foot" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_PARK, 50.0, 350.0) or find_trip(cz, ts, 0, ARCH_RETIRED, TAG_SHOP, 50.0, 350.0))
-    expect_eq(trip_of(cz, ts, ts.pc, ACT_PARK, ts.pq), CZ_MODE_WALK)
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_PARK, 50.0, 350.0) or find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_SHOP, 50.0, 350.0))
+    expect_eq(trip_of(cz, ts, ts.pc, CZACT_PARK, ts.pq), CZ_MODE_WALK)
   }
 
   test "a long trip without a car is public transport, leaving on the bucket, taking the planner's time" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
     let c = ts.pc
     let q = ts.pq
     citizens_set_car(cz, c, false)
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_TRANSIT)
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, q), CZ_MODE_TRANSIT)
     let eta = 180 + int(dist_p(ts, citizens_home(cz, c), q) / 9.0)
     let total = citizens_until(cz, c) - citizens_since(cz, c)
     expect(total >= eta and total < eta + 120)
@@ -649,12 +649,12 @@ program CitizensTest {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
     ts.transit = false
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
     let c = ts.pc
     let q = ts.pq
     citizens_set_car(cz, c, true)
     expect_eq(citizens_car_at(cz, c), citizens_home(cz, c))
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_CAR)
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, q), CZ_MODE_CAR)
     citizens_advance(cz, citizens_until(cz, c) + 1)
     citizens_sync(cz, c, citizens_until(cz, c) + 1)
     expect_eq(citizens_car_at(cz, c), q)
@@ -665,17 +665,17 @@ program CitizensTest {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
     ts.transit = false
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 2400.0, 4500.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_OFFICE, 2400.0, 4500.0))
     let c = ts.pc
     let q = ts.pq
     citizens_set_car(cz, c, false)
     set_money(cz, c, 1000)
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_TAXI)
-    expect(find_trip(cz, ts, c + 1, ARCH_RETIRED, TAG_OFFICE, 2400.0, 4500.0))
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, q), CZ_MODE_TAXI)
+    expect(find_trip(cz, ts, c + 1, CZARCH_RETIRED, TAG_OFFICE, 2400.0, 4500.0))
     let d = ts.pc
     citizens_set_car(cz, d, false)
     set_money(cz, d, 3)
-    expect_eq(trip_of(cz, ts, d, ACT_PARK, ts.pq), CZ_MODE_WALK)
+    expect_eq(trip_of(cz, ts, d, CZACT_PARK, ts.pq), CZ_MODE_WALK)
   }
 
   test "weather turns a walkable trip to public transport" (cz: mut CitizensState, ts: mut CzTestState) {
@@ -686,12 +686,12 @@ program CitizensTest {
     let q = ts.pq
     citizens_set_car(cz, c, false)
     ts.weather = 0
-    let fair = trip_of(cz, ts, c, ACT_PARK, q)
+    let fair = trip_of(cz, ts, c, CZACT_PARK, q)
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
     citizens_set_car(cz, c, false)
     ts.weather = 100
-    let foul = trip_of(cz, ts, c, ACT_PARK, q)
+    let foul = trip_of(cz, ts, c, CZACT_PARK, q)
     expect_eq(fair, CZ_MODE_WALK)
     expect_eq(foul, CZ_MODE_TRANSIT)
   }
@@ -732,7 +732,7 @@ program CitizensTest {
     let wage = citizens_wage(cz, c)
     citizens_advance(cz, 11 * H)
     citizens_sync(cz, c, 11 * H)
-    expect_eq(citizens_activity(cz, c), ACT_WORK)
+    expect_eq(citizens_activity(cz, c), CZACT_WORK)
     let before = citizens_money(cz, c)
     # the shift ends at five; by six they have been paid, and what they spent on the way is what differs
     citizens_advance(cz, 18 * H)
@@ -840,10 +840,10 @@ program CitizensTest {
   test "a walker's body that fell behind the schedule moves the arrival; one that got there early brings it forward" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_PARK, 400.0, 700.0) or find_trip(cz, ts, 0, ARCH_RETIRED, TAG_SHOP, 400.0, 700.0) or find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 400.0, 700.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_PARK, 400.0, 700.0) or find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_SHOP, 400.0, 700.0) or find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_OFFICE, 400.0, 700.0))
     let c = ts.pc
     let q = ts.pq
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_WALK)
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, q), CZ_MODE_WALK)
     let old_until = citizens_until(cz, c)
     let home = citizens_home(cz, c)
     ts.nview = 1
@@ -864,9 +864,9 @@ program CitizensTest {
     expect_eq(citizens_lod(cz, c), CZ_LOD_FAR)
     expect(citizens_until(cz, c) > old_until + third / 2)
     # another, whose body reached the park before the schedule
-    expect(find_trip(cz, ts, c + 1, ARCH_RETIRED, TAG_PARK, 400.0, 700.0) or find_trip(cz, ts, c + 1, ARCH_RETIRED, TAG_SHOP, 400.0, 700.0) or find_trip(cz, ts, c + 1, ARCH_RETIRED, TAG_OFFICE, 400.0, 700.0))
+    expect(find_trip(cz, ts, c + 1, CZARCH_RETIRED, TAG_PARK, 400.0, 700.0) or find_trip(cz, ts, c + 1, CZARCH_RETIRED, TAG_SHOP, 400.0, 700.0) or find_trip(cz, ts, c + 1, CZARCH_RETIRED, TAG_OFFICE, 400.0, 700.0))
     let d = ts.pc
-    expect_eq(trip_of(cz, ts, d, ACT_PARK, ts.pq), CZ_MODE_WALK)
+    expect_eq(trip_of(cz, ts, d, CZACT_PARK, ts.pq), CZ_MODE_WALK)
     let dhome = citizens_home(cz, d)
     ts.vx = ts.bx[dhome]
     ts.vz = ts.bz[dhome]
@@ -887,11 +887,11 @@ program CitizensTest {
   test "a transit trip on real legs: wait, walk, ride (no body of their own while riding), walk, and the arrival is the far state's" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
     let c = ts.pc
     let q = ts.pq
     citizens_set_car(cz, c, false)
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_TRANSIT)
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, q), CZ_MODE_TRANSIT)
     let until = citizens_until(cz, c)
     let home = citizens_home(cz, c)
     ts.nview = 1
@@ -927,11 +927,11 @@ program CitizensTest {
   test "where a traveller is comes from the legs, asked of a citizen no one is near as well" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
     let c = ts.pc
     let q = ts.pq
     citizens_set_car(cz, c, false)
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_TRANSIT)
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, q), CZ_MODE_TRANSIT)
     let home = citizens_home(cz, c)
     let x0 = citizens_x(cz, c)
     expect(Math.abs(x0 - ts.bx[home]) < 1.0)
@@ -964,7 +964,7 @@ program CitizensTest {
     expect(citizens_hire(cz, a, p1))
     expect_eq(citizens_work(cz, a), p1)
     expect_eq(count_facts(cz, CZ_F_HIRED), 1)
-    let r = find_doing(cz, 0, ARCH_RETIRED, false, false)
+    let r = find_doing(cz, 0, CZARCH_RETIRED, false, false)
     expect(not citizens_hire(cz, r, p1))                     # a retired person has no shifts
     var h2 = -1
     for p in 0 .. citizens_places(cz) { if h2 < 0 and p != citizens_home(cz, a) and ts.bhome[p] > 0 and citizens_place_room(cz, p) > 0 { h2 = p } }
@@ -981,16 +981,16 @@ program CitizensTest {
   test "a mission: forced to an activity somewhere, for a time, then released into their own day" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_PARK, 300.0, 700.0) or find_trip(cz, ts, 0, ARCH_RETIRED, TAG_SHOP, 300.0, 700.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_PARK, 300.0, 700.0) or find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_SHOP, 300.0, 700.0))
     let c = ts.pc
     let q = ts.pq
-    expect(citizens_force(cz, c, ACT_SHOP, q, 1200))
+    expect(citizens_force(cz, c, CZACT_SHOP, q, 1200))
     expect(citizens_forced(cz, c))
     let until = citizens_until(cz, c)
     citizens_advance(cz, until + 1)
     citizens_sync(cz, c, until + 1)
     expect(citizens_doing(cz, c))
-    expect_eq(citizens_activity(cz, c), ACT_SHOP)
+    expect_eq(citizens_activity(cz, c), CZACT_SHOP)
     expect_eq(citizens_place(cz, c), q)
     expect_eq(citizens_until(cz, c) - citizens_since(cz, c), 1200)
     q_clear(citizens_facts(cz))
@@ -1005,10 +1005,10 @@ program CitizensTest {
   test "a crime seen: the people out in the street near it witness it, go home afraid and stay in" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 11 * H)
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_PARK, 300.0, 700.0) or find_trip(cz, ts, 0, ARCH_RETIRED, TAG_SHOP, 300.0, 700.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_PARK, 300.0, 700.0) or find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_SHOP, 300.0, 700.0))
     let c = ts.pc
     let q = ts.pq
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_WALK)
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, q), CZ_MODE_WALK)
     let home = citizens_home(cz, c)
     ts.nview = 1
     ts.vx = ts.bx[home]
@@ -1024,7 +1024,7 @@ program CitizensTest {
     citizens_sync(cz, c, citizens_now(cz))
     expect_eq(citizens_place(cz, c), home)
     expect(citizens_doing(cz, c))
-    expect_eq(citizens_activity(cz, c), ACT_IDLE)
+    expect_eq(citizens_activity(cz, c), CZACT_IDLE)
     citizens_advance(cz, citizens_now(cz) + 2 * H)
     citizens_sync(cz, c, citizens_now(cz))
     expect(not citizens_afraid(cz, c))
@@ -1033,9 +1033,9 @@ program CitizensTest {
   test "an accident holds up the walkers near it" (cz: mut CitizensState, ts: mut CzTestState) {
     fresh(cz, ts, 20, 0)
     citizens_advance(cz, 4 * H)
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_PARK, 300.0, 700.0) or find_trip(cz, ts, 0, ARCH_RETIRED, TAG_SHOP, 300.0, 700.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_PARK, 300.0, 700.0) or find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_SHOP, 300.0, 700.0))
     let c = ts.pc
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, ts.pq), CZ_MODE_WALK)
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, ts.pq), CZ_MODE_WALK)
     let until = citizens_until(cz, c)
     let home = citizens_home(cz, c)
     ts.nview = 1
@@ -1070,14 +1070,14 @@ program CitizensTest {
     citizens_advance(cz, 10 * H)
     var a = -1
     for i in 0 .. citizens_count(cz) { if a < 0 and citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { a = i } }
-    let b = find_doing(cz, 0, ARCH_RETIRED, false, false)
-    let hold = find_doing(cz, b + 1, ARCH_RETIRED, false, false)
+    let b = find_doing(cz, 0, CZARCH_RETIRED, false, false)
+    let hold = find_doing(cz, b + 1, CZARCH_RETIRED, false, false)
     var q = -1
     for p in 0 .. citizens_places(cz) { if q < 0 and (ts.btag[p] & TAG_PARK) != 0 { q = p } }
     var h2 = -1
     for p in 0 .. citizens_places(cz) { if h2 < 0 and p != citizens_home(cz, 7) and ts.bhome[p] > 0 and citizens_place_room(cz, p) > 0 { h2 = p } }
     expect(citizens_fire(cz, a))
-    expect(citizens_force(cz, b, ACT_PARK, q, 900))
+    expect(citizens_force(cz, b, CZACT_PARK, q, 900))
     citizens_give(cz, 3, 250)
     expect(citizens_befriend(cz, 5, 40))
     expect(citizens_move(cz, 7, h2))
@@ -1179,7 +1179,7 @@ program CitizensTest {
     expect(found)
     # everyone is somewhere: at a place or on a trip, and the day goes on
     citizens_advance(cz, now + 3 * H)
-    expect(citizens_count_doing(cz, -1) + citizens_count_doing(cz, ACT_SLEEP) + citizens_count_doing(cz, ACT_WORK) > 0)
+    expect(citizens_count_doing(cz, -1) + citizens_count_doing(cz, CZACT_SLEEP) + citizens_count_doing(cz, CZACT_WORK) > 0)
   }
 
   test "a save made in another city is not applied to this one: a fresh population, and it says so" (cz: mut CitizensState, ts: mut CzTestState) {
@@ -1211,9 +1211,9 @@ program CitizensTest {
     expect(citizens_anim(cz, w) == "work_desk")
     expect(citizens_clip(cz, w) == "type_keys")
     expect(citizens_prop(cz, w) == "")
-    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_PARK, 300.0, 700.0) or find_trip(cz, ts, 0, ARCH_RETIRED, TAG_SHOP, 300.0, 700.0))
+    expect(find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_PARK, 300.0, 700.0) or find_trip(cz, ts, 0, CZARCH_RETIRED, TAG_SHOP, 300.0, 700.0))
     let c = ts.pc
-    expect_eq(trip_of(cz, ts, c, ACT_PARK, ts.pq), CZ_MODE_WALK)
+    expect_eq(trip_of(cz, ts, c, CZACT_PARK, ts.pq), CZ_MODE_WALK)
     expect(citizens_anim(cz, c) == "walk_loop")
     expect_eq(citizens_leg(cz, c), CZ_LEG_WALK)
     citizens_set_time(cz, citizens_until(cz, c) + 1)
