@@ -1,0 +1,51 @@
+# dates.ludic - UTC dates as minutes since 1970-01-01, in integers, and what day of the week a day is
+
+# whole days since 1970-01-01 of a civil date (the proleptic Gregorian calendar)
+export function liveops_days_from_civil(year: int, month: int, day: int) -> int {
+  var y = year
+  if month <= 2 { y -= 1 }
+  var era = y / 400
+  if y < 0 { era = (y - 399) / 400 }
+  let yoe = y - era * 400
+  var mp = month - 3
+  if month <= 2 { mp = month + 9 }
+  let doy = (153 * mp + 2) / 5 + day - 1
+  let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+  return era * 146097 + doe - 719468
+}
+
+# "2026-10-01" or "2026-10-01T18:30" as minutes since the epoch (UTC); -1 for "" (no limit) and -2 for a
+# text that is not a date
+export function liveops_date_minutes(text: string) -> int {
+  if text == "" { return -1 }
+  let n = len(text)
+  if n != 10 and n != 16 { return -2 }
+  if Text.slice(text, 4, 5) != "-" or Text.slice(text, 7, 8) != "-" { return -2 }
+  let y = Text.to_int(Text.slice(text, 0, 4))
+  let mo = Text.to_int(Text.slice(text, 5, 7))
+  let d = Text.to_int(Text.slice(text, 8, 10))
+  if y < 1970 or mo < 1 or mo > 12 or d < 1 or d > 31 { return -2 }
+  var mins = liveops_days_from_civil(y, mo, d) * 1440
+  if n == 16 {
+    if Text.slice(text, 10, 11) != "T" or Text.slice(text, 13, 14) != ":" { return -2 }
+    let h = Text.to_int(Text.slice(text, 11, 13))
+    let m = Text.to_int(Text.slice(text, 14, 16))
+    if h < 0 or h > 23 or m < 0 or m > 59 { return -2 }
+    mins += h * 60 + m
+  }
+  return mins
+}
+
+# 0 Monday ... 6 Sunday of a day number (day 0, 1970-01-01, was a Thursday)
+export function liveops_weekday(day: int) -> int { return (day + 3) % 7 }
+
+# now, in minutes since the epoch, as the world's clock says
+function live__now_min() -> int { return LiveWorld.utc_day() * 1440 + LiveWorld.utc_minute() }
+
+# is `now` inside a [from, to) in minutes, where -1 is open, and -2 (a bad date) never?
+function live__within(now: int, from: int, to: int) -> bool {
+  if from == -2 or to == -2 { return false }
+  if from >= 0 and now < from { return false }
+  if to >= 0 and now >= to { return false }
+  return true
+}

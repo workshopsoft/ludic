@@ -1,0 +1,163 @@
+# objectives.ludic - daily and weekly objectives. Which ones a day or a week has is drawn from the session's seed
+# and the period's number, so every machine draws the same; progress is each player's, reported by the host
+
+# the number of the day (it turns at the settings' UTC hour) and of the week (it turns on the settings' weekday)
+function live__day_index(liveops_st: LiveopsState) -> int {
+  return (live__now_min() - live__settings(liveops_st).reset_hour * 60) / 1440
+}
+
+function live__week_index(liveops_st: LiveopsState) -> int {
+  return (live__day_index(liveops_st) + 3 - live__settings(liveops_st).week_starts) / 7
+}
+
+function live__period_name(weekly: bool) -> string {
+  if weekly { return "weekly" }
+  return "daily"
+}
+
+function live__picks(liveops_st: LiveopsState, weekly: bool) -> []int {
+  if weekly { return liveops_st.live__week_pick }
+  return liveops_st.live__day_pick
+}
+
+# draw the period's objectives by weight, each at most once, into its list
+function live__draw_picks(liveops_st: mut LiveopsState, weekly: bool) -> void {
+  let picks = live__picks(liveops_st, weekly)
+  List.clear(picks)
+  let pool = liveops_st.live__pool
+  List.clear(pool)
+  let name = live__period_name(weekly)
+  for o in 0 .. LOBJ_COUNT { if LiveObjectives[o].period == name and LiveObjectives[o].weight > 0 { push(pool, o) } }
+  var want = live__settings(liveops_st).daily_count
+  var idx = live__day_index(liveops_st)
+  var tag = 3
+  if weekly {
+    want = live__settings(liveops_st).weekly_count
+    idx = live__week_index(liveops_st)
+    tag = 7
+  }
+  want = Math.min(Math.min(want, LIVE_SLOTS), len(pool))
+  rng_seed(liveops_st.live__roll, live__mix(live__mix(liveops_st.live__seed, idx), tag) | 1)
+  for n in 0 .. want {
+    var total = 0
+    for k in 0 .. len(pool) { total += LiveObjectives[pool[k]].weight }
+    var r = rng_between(liveops_st.live__roll, 1, total)
+    for k in 0 .. len(pool) {
+      r -= LiveObjectives[pool[k]].weight
+      if r <= 0 {
+        push(picks, pool[k])
+        List.remove_at(pool, k)
+        break
+      }
+    }
+  }
+}
+
+function live__zero_progress(liveops_st: mut LiveopsState, weekly: bool) -> void {
+  for i in 0 .. len(liveops_st.live__players) {
+    let p = liveops_st.live__players[i]
+    for s in 0 .. LIVE_SLOTS {
+      if weekly {
+        p.week_prog[s] = 0
+        p.week_done[s] = 0
+      } else {
+        p.day_prog[s] = 0
+        p.day_done[s] = 0
+      }
+    }
+  }
+}
+
+# a new day or week: draw again, everyone starts from nothing. `quiet` (the first look) makes no fact
+function live__objectives_tick(liveops_st: mut LiveopsState, quiet: bool) -> void {
+  let d = live__day_index(liveops_st)
+  if d != liveops_st.live__day_idx {
+    liveops_st.live__day_idx = d
+    live__draw_picks(liveops_st, false)
+    live__zero_progress(liveops_st, false)
+    if not quiet { live__fact(liveops_st, LIVE_OBJECTIVES_ROLLED).from = 0 }
+  }
+  let w = live__week_index(liveops_st)
+  if w != liveops_st.live__week_idx {
+    liveops_st.live__week_idx = w
+    live__draw_picks(liveops_st, true)
+    live__zero_progress(liveops_st, true)
+    if not quiet { live__fact(liveops_st, LIVE_OBJECTIVES_ROLLED).from = 1 }
+  }
+}
+
+export function liveops_objective_count(liveops_st: LiveopsState, weekly: bool) -> int { return len(live__picks(liveops_st, weekly)) }
+
+# the objective row in a slot, -1 past the ones drawn
+export function liveops_objective(liveops_st: LiveopsState, weekly: bool, slot: int) -> int {
+  let picks = live__picks(liveops_st, weekly)
+  if slot < 0 or slot >= len(picks) { return -1 }
+  return picks[slot]
+}
+
+export function liveops_objective_progress(liveops_st: LiveopsState, player: int, weekly: bool, slot: int) -> int {
+  let p = live__find(liveops_st, player)
+  if p == null or slot < 0 or slot >= liveops_objective_count(liveops_st, weekly) { return 0 }
+  if weekly { return p.week_prog[slot] }
+  return p.day_prog[slot]
+}
+
+# 0 going, 1 done and waiting to be claimed, 2 claimed
+export function liveops_objective_state(liveops_st: LiveopsState, player: int, weekly: bool, slot: int) -> int {
+  let p = live__find(liveops_st, player)
+  if p == null or slot < 0 or slot >= liveops_objective_count(liveops_st, weekly) { return 0 }
+  if weekly { return p.week_done[slot] }
+  return p.day_done[slot]
+}
+
+# something happened that `kind` names, `amount` of it (a delivery is 1, a distance is metres): every objective of the
+# day and the week that counts it moves on; how many were completed by it. Host only
+export function liveops_report(liveops_st: mut LiveopsState, player: int, kind: string, amount: int) -> int {
+  if not live__is_host() or amount <= 0 { return 0 }
+  let p = live__player(liveops_st, player)
+  var done = 0
+  for w in 0 .. 2 {
+    let weekly = w == 1
+    let picks = live__picks(liveops_st, weekly)
+    for s in 0 .. len(picks) {
+      let o = LiveObjectives[picks[s]]
+      if o.kind != kind { continue }
+      var prog = p.day_prog
+      var state = p.day_done
+      if weekly {
+        prog = p.week_prog
+        state = p.week_done
+      }
+      if state[s] != 0 { continue }
+      prog[s] = Math.min(prog[s] + amount, o.need)
+      if prog[s] >= o.need {
+        state[s] = 1
+        done += 1
+        let f = live__fact(liveops_st, LIVE_OBJECTIVE_DONE)
+        f.player = player
+        f.idx = picks[s]
+        f.from = w
+        f.to = s
+        f.amount = o.need
+      }
+    }
+  }
+  return done
+}
+
+# take a completed objective's reward (a fact, once). Host only
+export function liveops_objective_claim(liveops_st: mut LiveopsState, player: int, weekly: bool, slot: int) -> bool {
+  if not live__is_host() { return false }
+  let p = live__find(liveops_st, player)
+  if p == null or slot < 0 or slot >= liveops_objective_count(liveops_st, weekly) { return false }
+  let o = LiveObjectives[live__picks(liveops_st, weekly)[slot]]
+  if weekly {
+    if p.week_done[slot] != 1 { return false }
+    p.week_done[slot] = 2
+  } else {
+    if p.day_done[slot] != 1 { return false }
+    p.day_done[slot] = 2
+  }
+  live__reward(liveops_st, player, LIVE_FROM_OBJECTIVE, o.reward_kind, o.reward_key, o.reward_amount)
+  return true
+}

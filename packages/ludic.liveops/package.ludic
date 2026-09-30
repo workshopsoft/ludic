@@ -1,0 +1,7 @@
+# ludic.liveops - freemode events on a seeded schedule, live modifiers (double XP and money,
+# discounts, featured content) from dated or rotating rows and rows fetched remotely, seasons with
+# tiers, daily and weekly objectives, all host-authoritative. Uses ludic.base and nothing else. See
+# README.md.
+package "ludic.liveops"
+version "0.1.0"
+kind source

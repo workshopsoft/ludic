@@ -1,0 +1,109 @@
+# defs.ludic - the five tables a game fills. Dates are UTC, written "2026-10-01" (midnight) or
+# "2026-10-01T18:30"; an empty one is no limit on that side
+
+# the numbers of the schedule; the first row is used
+export property LiveSetting {
+  key: string = ""
+  @Unit("s") @Range(0, 864000) event_gap_min: int = 300       # least quiet between one event's end and the next
+  @Unit("s") @Range(0, 864000) event_gap_max: int = 900       # most (the next one is drawn between)
+  @Unit("s") @Range(0, 3600) event_announce: int = 30         # warning before an event starts (an event may say its own)
+  @Unit("s") @Range(1, 3600) retry: int = 60                  # when nothing can run, ask again after this
+  @Range(0, 16) daily_count: int = 3
+  @Range(0, 16) weekly_count: int = 3
+  @Unit("h") @Range(0, 23) reset_hour: int = 0                # the UTC hour a day turns at
+  @Range(0, 6) week_starts: int = 0                           # the day a week turns on: 0 Monday ... 6 Sunday
+  @Unit("%") @Range(100, 100000) max_bonus: int = 500         # the most all live XP (or money) bonuses add up to
+  @Unit("s") @Range(0, 864000) remote_refresh: int = 900      # how often the remote rows are asked again (0: once)
+}
+
+@ByKey
+export open registry LiveSettings of LiveSetting as LSET
+
+# a freemode event. `kind` is the game's word for what it is ("sprint", "supply_drop"); it runs `duration`
+# seconds at `area` (or one of `areas`, drawn), with at least `min_players` in the session, and cannot come
+# again within `cooldown` seconds. `weight` is its chance against the others, scaled by `hours` (24 percents,
+# the UTC hour) and `days` (7 percents, Monday first) when they are given. `announce` is its own warning
+# (-1: the settings'). The rewards are paid to whoever the game says completed it
+export property FreemodeEvent {
+  key: string = ""
+  kind: string = ""
+  @Text title: Key = null
+  @Range(1, 64) min_players: int = 1
+  @Range(0, 64) max_players: int = 0
+  @Unit("s") @Range(1, 86400) duration: int = 300
+  area: string = ""
+  areas: []string = null
+  @Unit("s") @Range(0, 864000) cooldown: int = 1800
+  @Range(0, 1000) weight: int = 10
+  hours: []int = null
+  days: []int = null
+  @Unit("s") @Range(-1, 3600) announce: int = -1
+  @Range(0, 100000000) reward_money: int = 0
+  @Range(0, 100000000) reward_xp: int = 0
+  reward_key: string = ""
+}
+
+@ByKey
+export open registry FreemodeEvents of FreemodeEvent as FEVT
+
+# a live modifier. `kind` "xp" or "money" makes the activity `target` ("*": every one) pay `percent` (200: double);
+# "discount" takes `percent` off the shop category `target`; "featured" puts `featured` (the game's key for a
+# vehicle, a mode, a sale) in the slot `target`. It is on between `starts` and `ends` (UTC), and - when `rot_days`
+# is above 0 - only on the days whose turn it is: the day number divided by `rot_days`, modulo `rot_slots`, is `rot_slot`
+export property LiveModifier {
+  key: string = ""
+  @OneOf("xp", "money", "discount", "featured") kind: string = "xp"
+  @Text title: Key = null
+  target: string = "*"
+  @Range(0, 10000) percent: int = 100
+  starts: string = ""
+  ends: string = ""
+  @Range(0, 3650) rot_days: int = 0
+  @Range(1, 64) rot_slots: int = 1
+  @Range(0, 63) rot_slot: int = 0
+  featured: string = ""
+}
+
+@ByKey
+export open registry LiveModifiers of LiveModifier as LMOD
+
+# a tier of a season: `xp` more than the tier before to reach it, then a reward in the free track and one in the
+# premium track (`kind` the game's word for what it is: "money", "item", "title"; `key` which; `amount` how many)
+export property SeasonTier {
+  xp: int = 100
+  kind: string = ""
+  key: string = ""
+  amount: int = 0
+  premium_kind: string = ""
+  premium_key: string = ""
+  premium_amount: int = 0
+}
+
+# a season between two dates, its tiers in order
+export property Season {
+  key: string = ""
+  @Text title: Key = null
+  starts: string = ""
+  ends: string = ""
+  tiers: []SeasonTier = null
+}
+
+@AppendOnly @ByKey
+export open registry Seasons of Season as SEAS
+
+# an objective that comes round: "daily" ones are drawn each day, "weekly" ones each week, by `weight`. The game
+# says what happened with `liveops_report(player, kind, amount)`; it is done at `need`
+export property LiveObjective {
+  key: string = ""
+  @OneOf("daily", "weekly") period: string = "daily"
+  @Text title: Key = null
+  kind: string = ""
+  @Range(1, 100000000) need: int = 1
+  @Range(0, 1000) weight: int = 10
+  reward_kind: string = ""
+  reward_key: string = ""
+  @Range(0, 100000000) reward_amount: int = 0
+}
+
+@AppendOnly @ByKey
+export open registry LiveObjectives of LiveObjective as LOBJ

@@ -1,0 +1,148 @@
+# system.ludic - reset, the tick, and the save. The session's clock starts at 0 each run, so the save holds
+# what is left of each timer (the next event, the running one, the cooldowns), not the clock itself; the picks
+# of the day and week come from the seed, so the save holds only the day and week they were drawn for
+
+export function liveops_reset(liveops_st: mut LiveopsState) -> void {
+  if liveops_st.live__remote_h >= 0 { LiveRemote.free(liveops_st.live__remote_h) }
+  liveops_st.live__remote_h = -1
+  liveops_st.live__remote_asked = false
+  liveops_st.live__remote_due = 0.0
+  List.clear(liveops_st.live__remote)
+  List.clear(liveops_st.live__remote_from)
+  List.clear(liveops_st.live__remote_to)
+  liveops_st.live__remote_text = ""
+  liveops_st.live__seed = LiveWorld.seed()
+  rng_seed(liveops_st.live__dice, liveops_st.live__seed | 1)
+  liveops_st.live__clock = 0.0
+  liveops_st.live__phase = LiveEventPhase.Idle
+  liveops_st.live__cur = -1
+  liveops_st.live__area = ""
+  liveops_st.live__event_id = 0
+  liveops_st.live__cool = new []float
+  for e in 0 .. FEVT_COUNT { push(liveops_st.live__cool, 0.0) }
+  liveops_st.live__day_idx = -1
+  liveops_st.live__week_idx = -1
+  liveops_st.live__season_cur = -2
+  List.clear(liveops_st.live__players)
+  live__read_dates(liveops_st)
+  liveops_st.live__next = live__gap(liveops_st)
+  liveops_st.live__sig = live__signature(liveops_st)
+  live__objectives_tick(liveops_st, true)
+  liveops_st.live__season_cur = liveops_season(liveops_st)
+  q_clear(liveops_st.live__facts)
+  liveops_st.live__ready = true
+}
+
+# once a frame. Modifiers and remote rows, seasons and objectives follow the UTC clock everywhere; only the host
+# runs the schedule of events
+export function liveops_tick(liveops_st: mut LiveopsState, t: Tick) -> void {
+  if not liveops_st.live__ready { liveops_reset(liveops_st) }
+  liveops_st.live__clock += t.dt
+  live__remote_tick(liveops_st)
+  live__mods_tick(liveops_st)
+  live__season_tick(liveops_st)
+  live__objectives_tick(liveops_st, false)
+  if live__is_host() { live__events_tick(liveops_st) }
+}
+
+function live__ms(seconds: float) -> int { return int(Math.max(seconds, 0.0) * 1000.0) }
+
+export function liveops_save(liveops_st: LiveopsState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "event_id", liveops_st.live__event_id)
+  sv_put_int(v, "phase", live__phase_int(liveops_st))
+  sv_put_int(v, "cur", liveops_st.live__cur)
+  sv_put_str(v, "area", liveops_st.live__area)
+  sv_put_int(v, "dice", liveops_st.live__dice.s)
+  sv_put_int(v, "next_ms", live__ms(liveops_st.live__next - liveops_st.live__clock))
+  sv_put_int(v, "left_ms", live__ms(live__left_of(liveops_st)))
+  let cool = new []int
+  for e in 0 .. FEVT_COUNT { push(cool, live__ms(liveops_st.live__cool[e] - liveops_st.live__clock)) }
+  sv_put_ints(v, "cool", cool)
+  sv_put_int(v, "day", liveops_st.live__day_idx)
+  sv_put_int(v, "week", liveops_st.live__week_idx)
+  sv_put_str(v, "remote", liveops_st.live__remote_text)
+  let flat = new []int
+  for i in 0 .. len(liveops_st.live__players) {
+    let p = liveops_st.live__players[i]
+    push(flat, p.player)
+    push(flat, p.season)
+    push(flat, p.season_xp)
+    push(flat, p.rewarded)
+    push(flat, len(p.claimed))
+    for k in 0 .. len(p.claimed) { push(flat, p.claimed[k]) }
+    for k in 0 .. LIVE_SLOTS { push(flat, p.day_prog[k]) }
+    for k in 0 .. LIVE_SLOTS { push(flat, p.day_done[k]) }
+    for k in 0 .. LIVE_SLOTS { push(flat, p.week_prog[k]) }
+    for k in 0 .. LIVE_SLOTS { push(flat, p.week_done[k]) }
+  }
+  sv_put_ints(v, "players", flat)
+  return v
+}
+
+function live__left_of(liveops_st: LiveopsState) -> float {
+  if liveops_st.live__phase == LiveEventPhase.Announced { return liveops_st.live__start - liveops_st.live__clock }
+  if liveops_st.live__phase == LiveEventPhase.Running { return liveops_st.live__end - liveops_st.live__clock }
+  return 0.0
+}
+
+export function liveops_load(liveops_st: mut LiveopsState, v: Val, version: int) -> void {
+  liveops_reset(liveops_st)
+  liveops_st.live__event_id = sv_int(v, "event_id", 0)
+  liveops_st.live__dice.s = sv_int(v, "dice", liveops_st.live__dice.s)
+  liveops_st.live__next = float(sv_int(v, "next_ms", 0)) / 1000.0
+  let cool = sv_ints(v, "cool")
+  for e in 0 .. Math.min(FEVT_COUNT, len(cool)) { liveops_st.live__cool[e] = float(cool[e]) / 1000.0 }
+  let cur = sv_int(v, "cur", -1)
+  let phase = sv_int(v, "phase", 0)
+  if cur >= 0 and cur < FEVT_COUNT and phase != LIVE_PHASE_IDLE {
+    liveops_st.live__cur = cur
+    liveops_st.live__area = sv_str(v, "area", "")
+    let left = float(sv_int(v, "left_ms", 0)) / 1000.0
+    if phase == LIVE_PHASE_ANNOUNCED {
+      liveops_st.live__phase = LiveEventPhase.Announced
+      liveops_st.live__start = left
+    } else {
+      liveops_st.live__phase = LiveEventPhase.Running
+      liveops_st.live__end = left
+    }
+  }
+  let text = sv_str(v, "remote", "")
+  if text != "" { liveops_remote_load(liveops_st, text) }
+  let flat = sv_ints(v, "players")
+  let same_day = sv_int(v, "day", -2) == liveops_st.live__day_idx
+  let same_week = sv_int(v, "week", -2) == liveops_st.live__week_idx
+  var i = 0
+  while i + 4 < len(flat) {
+    let p = live__player(liveops_st, flat[i])
+    p.season = flat[i + 1]
+    p.season_xp = flat[i + 2]
+    p.rewarded = flat[i + 3]
+    let n = flat[i + 4]
+    if n < 0 or i + 5 + n + 4 * LIVE_SLOTS > len(flat) { break }
+    List.clear(p.claimed)
+    for k in 0 .. n { push(p.claimed, flat[i + 5 + k]) }
+    var at = i + 5 + n
+    for k in 0 .. LIVE_SLOTS { if same_day { p.day_prog[k] = flat[at + k] } }
+    at += LIVE_SLOTS
+    for k in 0 .. LIVE_SLOTS { if same_day { p.day_done[k] = flat[at + k] } }
+    at += LIVE_SLOTS
+    for k in 0 .. LIVE_SLOTS { if same_week { p.week_prog[k] = flat[at + k] } }
+    at += LIVE_SLOTS
+    for k in 0 .. LIVE_SLOTS { if same_week { p.week_done[k] = flat[at + k] } }
+    i = at + LIVE_SLOTS
+  }
+  q_clear(liveops_st.live__facts)
+}
+
+function live__sys_tick(liveops_st: mut LiveopsState, t: Tick) -> void { liveops_tick(liveops_st, t) }
+
+export function liveops_system() -> System {
+  let s = system_new("liveops", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn liveops_reset
+  s.tick = fn live__sys_tick
+  s.save = fn liveops_save
+  s.load = fn liveops_load
+  return s
+}

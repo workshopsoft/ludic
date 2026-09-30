@@ -1,0 +1,16 @@
+# ludic.liveops - what a live game does around its players: a freemode event now and then, modifiers that
+# make a weekend better, a season to climb, objectives that come round each day and week. The events,
+# modifiers, seasons and objectives are rows; the clock, the players and the network are ports; what
+# happened and what is owed are facts the game routes.
+module ludic_liveops uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "dates.ludic"
+import "mods.ludic"
+import "remote.ludic"
+import "events.ludic"
+import "season.ludic"
+import "objectives.ludic"
+import "system.ludic"

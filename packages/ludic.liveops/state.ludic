@@ -1,0 +1,194 @@
+# state.ludic - the ports, the facts, and what the module keeps
+
+# what liveops asks the world. Unbound: this machine is the host and runs the schedule, one player is
+# there, the clock is the machine's own UTC, every area is free, nobody has the premium track, and the
+# dice start from 1
+export port LiveWorld {
+  is_host: fn() -> bool = fn live__yes
+  players: fn() -> int = fn live__one                 # how many are in the session now
+  utc_day: fn() -> int = fn live__today               # whole days since 1970-01-01, UTC
+  utc_minute: fn() -> int = fn live__minute           # the minute of that day, 0 to 1439
+  area_free: fn(string) -> bool = fn live__free       # may an event take this area (a mission has it, say)?
+  has_premium: fn(int) -> bool = fn live__no          # does this player have the season's premium track?
+  seed: fn() -> int = fn live__one                    # the session's seed: the schedule and the rolls follow from it
+}
+function live__yes() -> bool { return true }
+function live__no(player: int) -> bool { return false }
+function live__one() -> int { return 1 }
+function live__today() -> int { return Time.now() / 86400 }
+function live__minute() -> int { return (Time.now() % 86400) / 60 }
+function live__free(area: string) -> bool { return true }
+
+# where rows come from over the network, in the launcher's shape: `get` starts a request (a handle, or -1 for
+# nothing to ask), `poll` is -1 pending, 0 failed, 1 ok, `text` the body, `free` lets it go. Unbound: no remote rows
+export port LiveRemote {
+  get: fn() -> int = fn live__nothing
+  poll: fn(int) -> int = fn live__failed
+  text: fn(int) -> string = fn live__empty
+  free: fn(int) -> void = fn live__let_go
+}
+function live__nothing() -> int { return -1 }
+function live__failed(h: int) -> int { return 0 }
+function live__empty(h: int) -> string { return "" }
+function live__let_go(h: int) -> void { }
+
+export enum LiveEventPhase { Idle, Announced, Running }
+
+export const LIVE_EVENT_ANNOUNCED: int = 0     # an event is coming (idx, area, amount = seconds to go)
+export const LIVE_EVENT_STARTED: int = 1       # it began (idx, area, amount = its duration)
+export const LIVE_EVENT_ENDED: int = 2         # it is over (idx, area)
+export const LIVE_EVENT_CANCELLED: int = 3     # too few players by the start (idx)
+export const LIVE_OBJECTIVE_DONE: int = 4      # a player completed one (player, idx, from = period 0 daily / 1 weekly, to = slot)
+export const LIVE_OBJECTIVES_ROLLED: int = 5   # new ones were drawn (from = period)
+export const LIVE_SEASON_STARTED: int = 6      # (idx)
+export const LIVE_SEASON_ENDED: int = 7        # (idx)
+export const LIVE_SEASON_TIER: int = 8         # a player reached a tier (player, idx = season, to = tier)
+export const LIVE_REWARD: int = 9              # the game pays this: (player, kind, key, amount; from = where it came from)
+export const LIVE_MODIFIERS_CHANGED: int = 10  # the set of live modifiers changed (one began, one ended, rows arrived)
+
+export const LIVE_FROM_EVENT: int = 0          # where a reward came from
+export const LIVE_FROM_OBJECTIVE: int = 1
+export const LIVE_FROM_SEASON: int = 2
+
+export property LiveFact {
+  what: int = 0
+  player: int = -1
+  idx: int = -1
+  from: int = 0
+  to: int = 0
+  amount: int = 0
+  kind: string = ""
+  key: string = ""
+  area: string = ""
+}
+
+export const LIVE_SLOTS: int = 16       # the most daily (or weekly) objectives at once
+
+# one player's part: the season, and this period's objectives. `claimed` is per tier (1 free, 2 premium taken)
+export property LivePlayer {
+  player: int = 0
+  season: int = -1
+  season_xp: int = 0
+  claimed: []int = null
+  day_prog: []int = null
+  day_done: []int = null        # 0 going, 1 done, 2 claimed
+  week_prog: []int = null
+  week_done: []int = null
+  rewarded: int = -1            # the id of the event this player was last paid for
+}
+
+export state LiveopsState {
+  live__cfg: LiveSetting = new LiveSetting
+  live__clock: float = 0.0          # seconds since the session began
+  live__next: float = 0.0           # when the next event is due
+  live__phase: LiveEventPhase = LiveEventPhase.Idle
+  live__cur: int = -1
+  live__area: string = ""
+  live__start: float = 0.0
+  live__end: float = 0.0
+  live__event_id: int = 0
+  live__cool: []float = null        # per event: the clock it may run again at
+  live__dice: Rng = rng_new(1)
+  live__roll: Rng = rng_new(1)
+  live__seed: int = 1
+  live__players: []LivePlayer = new []LivePlayer
+  live__day_idx: int = -1
+  live__week_idx: int = -1
+  live__day_pick: []int = new []int
+  live__week_pick: []int = new []int
+  live__pool: []int = new []int
+  live__mod_from: []int = new []int
+  live__mod_to: []int = new []int
+  live__seas_from: []int = new []int
+  live__seas_to: []int = new []int
+  live__remote: []LiveModifier = new []LiveModifier
+  live__remote_from: []int = new []int
+  live__remote_to: []int = new []int
+  live__remote_text: string = ""
+  live__remote_h: int = -1
+  live__remote_due: float = 0.0
+  live__remote_asked: bool = false
+  live__sig: int = 0
+  live__season_cur: int = -2
+  live__ready: bool = false
+  live__facts: Queue<LiveFact> = live__facts__new()
+}
+function live__facts__new() -> Queue<LiveFact> { return queue_new("liveops.facts") }
+
+export function liveops_facts(liveops_st: LiveopsState) -> Queue<LiveFact> { return liveops_st.live__facts }
+
+@alloc_ok("past the ring: more facts in a frame than its records, then kept in it")
+function live__fact(liveops_st: mut LiveopsState, what: int) -> LiveFact {
+  var f = q_rec(liveops_st.live__facts)
+  if f == null {
+    f = new LiveFact
+    q_ring_add(liveops_st.live__facts, f)
+  }
+  f.what = what
+  f.player = -1
+  f.idx = -1
+  f.from = 0
+  f.to = 0
+  f.amount = 0
+  f.kind = ""
+  f.key = ""
+  f.area = ""
+  q_push(liveops_st.live__facts, f)
+  return f
+}
+
+function live__is_host() -> bool { return LiveWorld.is_host() }
+
+@alloc_ok("a player's first row, made once and kept")
+function live__make(liveops_st: mut LiveopsState, player: int) -> LivePlayer {
+  let p = new LivePlayer
+  p.player = player
+  p.claimed = new []int
+  p.day_prog = new []int
+  p.day_done = new []int
+  p.week_prog = new []int
+  p.week_done = new []int
+  for i in 0 .. LIVE_SLOTS {
+    push(p.day_prog, 0)
+    push(p.day_done, 0)
+    push(p.week_prog, 0)
+    push(p.week_done, 0)
+  }
+  push(liveops_st.live__players, p)
+  return p
+}
+
+function live__find(liveops_st: LiveopsState, player: int) -> LivePlayer {
+  for i in 0 .. len(liveops_st.live__players) {
+    if liveops_st.live__players[i].player == player { return liveops_st.live__players[i] }
+  }
+  return null
+}
+
+function live__player(liveops_st: mut LiveopsState, player: int) -> LivePlayer {
+  let p = live__find(liveops_st, player)
+  if p != null { return p }
+  return live__make(liveops_st, player)
+}
+
+export function liveops_forget(liveops_st: mut LiveopsState, player: int) -> void {
+  for i in 0 .. len(liveops_st.live__players) {
+    if liveops_st.live__players[i].player == player {
+      List.remove_at(liveops_st.live__players, i)
+      return
+    }
+  }
+}
+
+# a reward the game pays (a fact)
+function live__reward(liveops_st: mut LiveopsState, player: int, from: int, kind: string, key: string, amount: int) -> void {
+  if amount <= 0 and key == "" { return }
+  let f = live__fact(liveops_st, LIVE_REWARD)
+  f.player = player
+  f.from = from
+  f.kind = kind
+  f.key = key
+  f.amount = amount
+}
+
+function live__mix(a: int, b: int) -> int { return ((a & 0xFFFFF) * 31 + (b & 0xFFFFF)) & 0x3FFFFFFF }

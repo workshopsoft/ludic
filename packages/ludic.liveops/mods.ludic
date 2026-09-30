@@ -1,0 +1,132 @@
+# mods.ludic - live modifiers: the rows and the remote ones in one numbering (rows first), whether each is
+# on now, and what they do to an XP or money figure, a price, a slot
+
+# the settings row in use (the first), else the numbers a row has by default
+function live__settings(liveops_st: LiveopsState) -> LiveSetting {
+  if LSET_COUNT > 0 { return LiveSettings[0] }
+  return liveops_st.live__cfg
+}
+
+# the dates of the rows, read once (a bad one is -2: never on)
+function live__read_dates(liveops_st: mut LiveopsState) -> void {
+  List.clear(liveops_st.live__mod_from)
+  List.clear(liveops_st.live__mod_to)
+  for i in 0 .. LMOD_COUNT {
+    push(liveops_st.live__mod_from, liveops_date_minutes(LiveModifiers[i].starts))
+    push(liveops_st.live__mod_to, liveops_date_minutes(LiveModifiers[i].ends))
+  }
+  List.clear(liveops_st.live__seas_from)
+  List.clear(liveops_st.live__seas_to)
+  for i in 0 .. SEAS_COUNT {
+    push(liveops_st.live__seas_from, liveops_date_minutes(Seasons[i].starts))
+    push(liveops_st.live__seas_to, liveops_date_minutes(Seasons[i].ends))
+  }
+}
+
+export function liveops_mod_count(liveops_st: LiveopsState) -> int { return LMOD_COUNT + len(liveops_st.live__remote) }
+
+function live__mod(liveops_st: LiveopsState, i: int) -> LiveModifier {
+  if i < LMOD_COUNT { return LiveModifiers[i] }
+  return liveops_st.live__remote[i - LMOD_COUNT]
+}
+
+function live__mod_from(liveops_st: LiveopsState, i: int) -> int {
+  if i < LMOD_COUNT { return liveops_st.live__mod_from[i] }
+  return liveops_st.live__remote_from[i - LMOD_COUNT]
+}
+
+function live__mod_to(liveops_st: LiveopsState, i: int) -> int {
+  if i < LMOD_COUNT { return liveops_st.live__mod_to[i] }
+  return liveops_st.live__remote_to[i - LMOD_COUNT]
+}
+
+export function liveops_mod_key(liveops_st: LiveopsState, i: int) -> string {
+  if i < 0 or i >= liveops_mod_count(liveops_st) { return "" }
+  return live__mod(liveops_st, i).key
+}
+
+export function liveops_mod_remote(liveops_st: LiveopsState, i: int) -> bool { return i >= LMOD_COUNT }
+
+# is modifier `i` on at the world's UTC now?
+export function liveops_mod_active(liveops_st: LiveopsState, i: int) -> bool {
+  if i < 0 or i >= liveops_mod_count(liveops_st) { return false }
+  return live__active_at(liveops_st, i, live__now_min())
+}
+
+function live__active_at(liveops_st: LiveopsState, i: int, now: int) -> bool {
+  if not live__within(now, live__mod_from(liveops_st, i), live__mod_to(liveops_st, i)) { return false }
+  let m = live__mod(liveops_st, i)
+  if m.rot_days > 0 {
+    let day = now / 1440
+    if (day / m.rot_days) % Math.max(m.rot_slots, 1) != m.rot_slot { return false }
+  }
+  return true
+}
+
+function live__hits(m: LiveModifier, target: string) -> bool { return m.target == "*" or m.target == target }
+
+# a bonus is added, not multiplied: two double-XP weekends stacked are triple, and the total stops at the
+# settings' `max_bonus` percent. Returns a factor (1.0 for none)
+function live__bonus(liveops_st: LiveopsState, kind: string, target: string) -> float {
+  let now = live__now_min()
+  var pct = 100
+  for i in 0 .. liveops_mod_count(liveops_st) {
+    let m = live__mod(liveops_st, i)
+    if m.kind != kind or not live__hits(m, target) or not live__active_at(liveops_st, i, now) { continue }
+    pct += m.percent - 100
+  }
+  pct = Math.max(Math.min(pct, live__settings(liveops_st).max_bonus), 0)
+  return float(pct) / 100.0
+}
+
+# what an activity's XP is multiplied by now (bind this to progression's `xp_mult`)
+export function liveops_xp_mult(liveops_st: LiveopsState, activity: string) -> float { return live__bonus(liveops_st, "xp", activity) }
+
+# what an activity's pay is multiplied by now
+export function liveops_money_mult(liveops_st: LiveopsState, activity: string) -> float { return live__bonus(liveops_st, "money", activity) }
+
+# the best discount on a shop category now, in percent (0 none): the biggest one, not their sum
+export function liveops_discount(liveops_st: LiveopsState, category: string) -> int {
+  let now = live__now_min()
+  var best = 0
+  for i in 0 .. liveops_mod_count(liveops_st) {
+    let m = live__mod(liveops_st, i)
+    if m.kind != "discount" or not live__hits(m, category) or not live__active_at(liveops_st, i, now) { continue }
+    best = Math.max(best, m.percent)
+  }
+  return Math.min(best, 100)
+}
+
+# a price with the category's discount taken off, rounded up (a price is never 0 unless it was)
+export function liveops_price(liveops_st: LiveopsState, category: string, price: int) -> int {
+  let d = liveops_discount(liveops_st, category)
+  if d <= 0 or price <= 0 { return price }
+  return Math.max((price * (100 - d) + 99) / 100, 1)
+}
+
+# what is featured in a slot now ("" none): the first modifier on for it
+export function liveops_featured(liveops_st: LiveopsState, slot: string) -> string {
+  let now = live__now_min()
+  for i in 0 .. liveops_mod_count(liveops_st) {
+    let m = live__mod(liveops_st, i)
+    if m.kind == "featured" and m.target == slot and live__active_at(liveops_st, i, now) { return m.featured }
+  }
+  return ""
+}
+
+# a number standing for which modifiers are on: a fact is made when it moves
+function live__signature(liveops_st: LiveopsState) -> int {
+  let now = live__now_min()
+  var s = liveops_mod_count(liveops_st)
+  for i in 0 .. liveops_mod_count(liveops_st) {
+    if live__active_at(liveops_st, i, now) { s = live__mix(s, i + 1) }
+  }
+  return s
+}
+
+function live__mods_tick(liveops_st: mut LiveopsState) -> void {
+  let s = live__signature(liveops_st)
+  if s == liveops_st.live__sig { return }
+  liveops_st.live__sig = s
+  live__fact(liveops_st, LIVE_MODIFIERS_CHANGED)
+}

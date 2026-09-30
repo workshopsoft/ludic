@@ -1,0 +1,488 @@
+# liveops_test.ludic - the schedule of freemode events (seeded, host only, gated by players, cooldown, areas and
+# the hour), modifiers (dated, rotating, remote, stacked to a cap), seasons and their tiers, daily and weekly
+# objectives, UTC dates, and the save
+import "ludic.liveops"
+import "ludic.base"
+program LiveopsTest {
+  numbers float
+
+  # 2026-10-01 is day 20727, a Thursday; 2026-10-05 is a Monday
+  const OCT1: int = 20727
+
+  state LiveTestState {
+    host: bool = true
+    players: int = 1
+    day: int = 20727
+    minute: int = 600
+    taken: []string = new []string
+    premium: bool = false
+    seed: int = 7
+    body: string = ""
+    asked: int = 0
+    frame: int = 0
+  }
+
+  function f_host(live_test_st: LiveTestState) -> bool { return live_test_st.host }
+  function f_players(live_test_st: LiveTestState) -> int { return live_test_st.players }
+  function f_day(live_test_st: LiveTestState) -> int { return live_test_st.day }
+  function f_minute(live_test_st: LiveTestState) -> int { return live_test_st.minute }
+  function f_free(live_test_st: LiveTestState, area: string) -> bool {
+    for i in 0 .. len(live_test_st.taken) { if live_test_st.taken[i] == area { return false } }
+    return true
+  }
+  function f_premium(live_test_st: LiveTestState, player: int) -> bool { return live_test_st.premium }
+  function f_seed(live_test_st: LiveTestState) -> int { return live_test_st.seed }
+  function r_get(live_test_st: mut LiveTestState) -> int {
+    if live_test_st.body == "" { return -1 }
+    live_test_st.asked += 1
+    return live_test_st.asked
+  }
+  function r_poll(h: int) -> int { return 1 }
+  function r_text(live_test_st: LiveTestState, h: int) -> string { return live_test_st.body }
+  function r_free(h: int) -> void { }
+  bind LiveWorld { is_host: fn f_host, players: fn f_players, utc_day: fn f_day, utc_minute: fn f_minute, area_free: fn f_free, has_premium: fn f_premium, seed: fn f_seed }
+  bind LiveRemote { get: fn r_get, poll: fn r_poll, text: fn r_text, free: fn r_free }
+
+  def LiveSettings main { event_gap_min: 100, event_gap_max: 100, event_announce: 10, retry: 30, daily_count: 2, weekly_count: 1, max_bonus: 400, remote_refresh: 60 }
+
+  def FreemodeEvents sprint { kind: "sprint", min_players: 2, duration: 60, area: "north", cooldown: 500, weight: 10, reward_money: 500, reward_xp: 100 }
+  def FreemodeEvents drop { kind: "drop", min_players: 1, duration: 30, areas: ["a", "b", "c"], cooldown: 200, weight: 10, announce: 0, reward_key: "crate" }
+  def FreemodeEvents night { kind: "night", duration: 30, cooldown: 0, weight: 10, announce: 0, hours: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100] }
+  def FreemodeEvents monday { kind: "monday", duration: 30, cooldown: 0, weight: 10, announce: 0, days: [100, 0, 0, 0, 0, 0, 0] }
+
+  def LiveModifiers weekend_xp { kind: "xp", percent: 200, starts: "2026-10-03", ends: "2026-10-05" }
+  def LiveModifiers race_xp { kind: "xp", target: "race", percent: 150 }
+  def LiveModifiers huge { kind: "xp", percent: 500, starts: "2026-11-01", ends: "2026-11-02" }
+  def LiveModifiers sale { kind: "discount", target: "vehicles", percent: 25, starts: "2026-10-01", ends: "2026-10-08T12:00" }
+  def LiveModifiers sale_more { kind: "discount", target: "vehicles", percent: 10 }
+  def LiveModifiers car_a { kind: "featured", target: "car_of_the_week", featured: "car_a", rot_days: 7, rot_slots: 2, rot_slot: 0 }
+  def LiveModifiers car_b { kind: "featured", target: "car_of_the_week", featured: "car_b", rot_days: 7, rot_slots: 2, rot_slot: 1 }
+  def LiveModifiers garbled { kind: "money", percent: 300, starts: "not a date" }
+
+  def Seasons from "seasons.lres"
+
+  def LiveObjectives d_deliver { period: "daily", kind: "delivery", need: 3, reward_kind: "money", reward_amount: 100 }
+  def LiveObjectives d_race { period: "daily", kind: "race", need: 1, reward_kind: "xp", reward_amount: 200 }
+  def LiveObjectives d_far { period: "daily", kind: "distance", need: 1000, reward_kind: "money", reward_amount: 50 }
+  def LiveObjectives w_races { period: "weekly", kind: "race", need: 5, reward_kind: "item", reward_key: "trophy", reward_amount: 1 }
+  def LiveObjectives w_deliver { period: "weekly", kind: "delivery", need: 10, reward_kind: "money", reward_amount: 1000 }
+
+  function start(liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) -> void {
+    live_test_st.host = true
+    live_test_st.players = 1
+    live_test_st.day = OCT1
+    live_test_st.minute = 600
+    live_test_st.taken = new []string
+    live_test_st.premium = false
+    live_test_st.seed = 7
+    live_test_st.body = ""
+    live_test_st.asked = 0
+    liveops_reset(liveops_st)
+  }
+
+  function advance(liveops_st: mut LiveopsState, live_test_st: mut LiveTestState, secs: int) -> void {
+    for i in 0 .. secs {
+      live_test_st.frame += 1
+      liveops_tick(liveops_st, tick_new(1.0, live_test_st.frame, 12.0))
+    }
+  }
+
+  function count_of(liveops_st: mut LiveopsState, what: int) -> int {
+    let fs = q_drain(liveops_facts(liveops_st))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "dates are UTC minutes since the epoch, and a bad one is told apart from none" {
+    expect_eq(liveops_days_from_civil(1970, 1, 1), 0)
+    expect_eq(liveops_days_from_civil(2000, 3, 1), 11017)
+    expect_eq(liveops_days_from_civil(2026, 10, 1), 20727)
+    expect_eq(liveops_date_minutes("2026-10-01"), 20727 * 1440)
+    expect_eq(liveops_date_minutes("2026-10-01T18:30"), 20727 * 1440 + 18 * 60 + 30)
+    expect_eq(liveops_date_minutes(""), -1)
+    expect_eq(liveops_date_minutes("soon"), -2)
+    expect_eq(liveops_date_minutes("2026-13-01"), -2)
+    expect_eq(liveops_date_minutes("2026-10-01T25:00"), -2)
+    expect_eq(liveops_weekday(20727), 3)
+    expect_eq(liveops_weekday(20731), 0)
+  }
+
+  test "the first event comes after the gap, announced, then running, then over, and the next is drawn a gap later" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    advance(liveops_st, live_test_st, 99)
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    expect_eq(q_len(liveops_facts(liveops_st)), 0)
+    advance(liveops_st, live_test_st, 1)                              # one player: the drop (no minimum, no warning) is the only one that can run
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_RUNNING)
+    expect_eq(liveops_event_current(liveops_st), FEVT_DROP)
+    expect(liveops_event_left(liveops_st) > 29.0)
+    advance(liveops_st, live_test_st, 30)
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    let fs = q_drain(liveops_facts(liveops_st))
+    expect_eq(len(fs), 3)                                               # announced, started, ended
+    expect_eq(fs[0].what, LIVE_EVENT_ANNOUNCED)
+    expect_eq(fs[1].what, LIVE_EVENT_STARTED)
+    expect_eq(fs[1].amount, 30)
+    expect_eq(fs[2].what, LIVE_EVENT_ENDED)
+    expect(fs[1].area == "a" or fs[1].area == "b" or fs[1].area == "c")
+  }
+
+  test "an event's cooldown keeps it from coming again, and nothing to run asks again after the retry" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    advance(liveops_st, live_test_st, 130)                            # the drop ran and ended at 130
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    advance(liveops_st, live_test_st, 100)                            # 230: due, but the drop is cooling to 330
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    advance(liveops_st, live_test_st, 29)                             # 259: the retry (30 s from 230) has not come
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    advance(liveops_st, live_test_st, 100)                            # 359: the retries went on every 30 s; 350 is past the cooldown
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_RUNNING)
+  }
+
+  test "an event needs its players by the start, or it is cancelled" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    advance(liveops_st, live_test_st, 130)                            # drop done
+    live_test_st.players = 2
+    advance(liveops_st, live_test_st, 100)                            # 230: the sprint (drop cools, two players) is announced
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_ANNOUNCED)
+    expect_eq(liveops_event_current(liveops_st), FEVT_SPRINT)
+    expect(liveops_event_area(liveops_st) == "north")
+    q_clear(liveops_facts(liveops_st))
+    live_test_st.players = 1                                          # somebody left
+    advance(liveops_st, live_test_st, 10)
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    expect_eq(count_of(liveops_st, LIVE_EVENT_CANCELLED), 1)
+  }
+
+  test "an event skips an area that is not free, and every area taken keeps it from running" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    push(live_test_st.taken, "a")
+    push(live_test_st.taken, "b")
+    advance(liveops_st, live_test_st, 100)
+    expect_eq(liveops_event_current(liveops_st), FEVT_DROP)
+    expect(liveops_event_area(liveops_st) == "c")
+    liveops_event_end(liveops_st)
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    start(liveops_st, live_test_st)
+    push(live_test_st.taken, "a")
+    push(live_test_st.taken, "b")
+    push(live_test_st.taken, "c")
+    advance(liveops_st, live_test_st, 100)
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)        # nothing can run
+  }
+
+  function kinds_over(liveops_st: mut LiveopsState, live_test_st: mut LiveTestState, cycles: int) -> string {
+    var out = ""
+    for c in 0 .. cycles {
+      var guard = 0
+      while liveops_event_phase(liveops_st) == LIVE_PHASE_IDLE and guard < 2000 {
+        advance(liveops_st, live_test_st, 1)
+        guard += 1
+      }
+      out = out + FreemodeEvents[liveops_event_current(liveops_st)].kind + ","
+      liveops_event_end(liveops_st)
+      advance(liveops_st, live_test_st, 1)
+    }
+    return out
+  }
+
+  test "an event's hours and days scale its chance: the night one only at 23 UTC, the Monday one only on Mondays" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    let day = kinds_over(liveops_st, live_test_st, 30)
+    expect(not Text.contains(day, "night"))
+    expect(not Text.contains(day, "monday"))                           # 10:00 on a Thursday
+    start(liveops_st, live_test_st)
+    live_test_st.minute = 23 * 60 + 30
+    live_test_st.day = 20731                                           # a Monday
+    let late = kinds_over(liveops_st, live_test_st, 40)
+    expect(Text.contains(late, "night"))
+    expect(Text.contains(late, "monday"))
+    expect(Text.contains(late, "drop"))
+  }
+
+  test "the schedule is the session's seed: the same seed the same events, another seed another run" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    live_test_st.minute = 23 * 60 + 30
+    let first = kinds_over(liveops_st, live_test_st, 14)
+    live_test_st.seed = 7
+    liveops_reset(liveops_st)
+    live_test_st.minute = 23 * 60 + 30
+    expect(kinds_over(liveops_st, live_test_st, 14) == first)
+    live_test_st.seed = 1234
+    liveops_reset(liveops_st)
+    live_test_st.minute = 23 * 60 + 30
+    expect(kinds_over(liveops_st, live_test_st, 14) != first)
+  }
+
+  test "only the host runs the schedule; a client is told the event and makes the same facts" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    live_test_st.host = false
+    advance(liveops_st, live_test_st, 500)
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    expect(not liveops_event_start(liveops_st, FEVT_DROP))
+    expect(not liveops_event_end(liveops_st))
+    let snap = new []int
+    push(snap, LIVE_PHASE_RUNNING)
+    push(snap, FEVT_SPRINT)
+    push(snap, 4)
+    push(snap, 42000)
+    expect(liveops_event_adopt(liveops_st, snap, "north"))
+    expect(liveops_event_running(liveops_st))
+    expect_eq(liveops_event_id(liveops_st), 4)
+    expect(liveops_event_left(liveops_st) > 41.9 and liveops_event_left(liveops_st) < 42.1)
+    expect_eq(count_of(liveops_st, LIVE_EVENT_STARTED), 1)
+    expect(not liveops_event_adopt(liveops_st, [9, 0, 0, 0], ""))
+    live_test_st.host = true
+  }
+
+  test "a forced event, and its rewards paid once to each player who completed it" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    live_test_st.players = 2
+    expect(liveops_event_start(liveops_st, FEVT_SPRINT))
+    expect(not liveops_event_start(liveops_st, FEVT_DROP))             # one at a time
+    expect(not liveops_event_reward(liveops_st, 1))                    # not running yet
+    advance(liveops_st, live_test_st, 10)
+    expect(liveops_event_running(liveops_st))
+    q_clear(liveops_facts(liveops_st))
+    expect(liveops_event_reward(liveops_st, 1))
+    expect(not liveops_event_reward(liveops_st, 1))
+    expect(liveops_event_reward(liveops_st, 2))
+    let fs = q_drain(liveops_facts(liveops_st))
+    var money = 0
+    var xp = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == LIVE_REWARD and fs[i].kind == "money" { money += fs[i].amount }
+      if fs[i].what == LIVE_REWARD and fs[i].kind == "xp" { xp += fs[i].amount }
+    }
+    expect_eq(money, 1000)
+    expect_eq(xp, 200)
+    let snap = liveops_event_snapshot(liveops_st)
+    expect_eq(snap[0], LIVE_PHASE_RUNNING)
+    expect_eq(snap[1], FEVT_SPRINT)
+  }
+
+  test "XP and money bonuses add up by their dates, stop at the cap, and a bad date is never on" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    expect(liveops_xp_mult(liveops_st, "delivery") == 1.0)
+    expect(liveops_xp_mult(liveops_st, "race") == 1.5)                  # race_xp, always
+    live_test_st.day = OCT1 + 2                                        # the weekend
+    expect(liveops_xp_mult(liveops_st, "delivery") == 2.0)
+    expect(liveops_xp_mult(liveops_st, "race") == 2.5)                  # 100 + 100 + 50
+    live_test_st.day = OCT1 + 4                                        # the Monday: the weekend ended at 00:00
+    expect(liveops_xp_mult(liveops_st, "delivery") == 1.0)
+    live_test_st.day = 20758                                           # 2026-11-01: the huge one on top of race's
+    expect(liveops_xp_mult(liveops_st, "race") == 4.0)                  # capped at 400
+    expect(liveops_money_mult(liveops_st, "delivery") == 1.0)           # the garbled one is never on
+  }
+
+  test "a discount takes the biggest of those on, rounds up, and ends at its minute" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    expect_eq(liveops_discount(liveops_st, "vehicles"), 25)
+    expect_eq(liveops_price(liveops_st, "vehicles", 1000), 750)
+    expect_eq(liveops_price(liveops_st, "vehicles", 3), 3)              # 2.25 up
+    expect_eq(liveops_price(liveops_st, "clothes", 1000), 1000)
+    live_test_st.day = 20734                                           # 2026-10-08
+    live_test_st.minute = 11 * 60 + 59
+    expect_eq(liveops_discount(liveops_st, "vehicles"), 25)
+    live_test_st.minute = 12 * 60
+    expect_eq(liveops_discount(liveops_st, "vehicles"), 10)             # the dated sale is over: the plain one stays
+  }
+
+  test "a featured slot rotates by the day number" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    var first = liveops_featured(liveops_st, "car_of_the_week")
+    expect(first == "car_a" or first == "car_b")
+    live_test_st.day = OCT1 + 7
+    let second = liveops_featured(liveops_st, "car_of_the_week")
+    expect(second != first)
+    live_test_st.day = OCT1 + 14
+    expect(liveops_featured(liveops_st, "car_of_the_week") == first)
+    expect(liveops_featured(liveops_st, "nothing_here") == "")
+  }
+
+  test "a change of the live set is a fact, the day a modifier starts" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    live_test_st.day = OCT1 + 2
+    advance(liveops_st, live_test_st, 1)
+    expect_eq(count_of(liveops_st, LIVE_MODIFIERS_CHANGED), 1)
+    advance(liveops_st, live_test_st, 1)
+    expect_eq(count_of(liveops_st, LIVE_MODIFIERS_CHANGED), 0)
+  }
+
+  test "remote rows join the live ones, a body that is not one changes nothing, and they are asked for again" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    let base = liveops_mod_count(liveops_st)
+    expect_eq(liveops_remote_load(liveops_st, "{\"modifiers\": [{\"key\": \"r1\", \"kind\": \"xp\", \"target\": \"delivery\", \"percent\": 300}, {\"key\": \"r2\", \"kind\": \"discount\", \"target\": \"clothes\", \"percent\": 40, \"starts\": \"2026-10-01\", \"ends\": \"2026-10-02\"}]}"), 2)
+    expect_eq(liveops_mod_count(liveops_st), base + 2)
+    expect(liveops_mod_remote(liveops_st, base))
+    expect(liveops_mod_key(liveops_st, base) == "r1")
+    expect(liveops_xp_mult(liveops_st, "delivery") == 3.0)
+    expect_eq(liveops_discount(liveops_st, "clothes"), 40)
+    live_test_st.day = OCT1 + 1
+    expect_eq(liveops_discount(liveops_st, "clothes"), 0)               # its date is over
+    expect_eq(liveops_remote_load(liveops_st, "oh no"), -1)
+    expect_eq(liveops_remote_count(liveops_st), 2)
+    live_test_st.body = "[{\"key\": \"r3\", \"kind\": \"money\", \"percent\": 200}]"
+    advance(liveops_st, live_test_st, 1)                               # the first ask is at once, the answer on the next tick
+    expect_eq(live_test_st.asked, 1)
+    advance(liveops_st, live_test_st, 1)
+    expect_eq(liveops_remote_count(liveops_st), 1)
+    expect(liveops_money_mult(liveops_st, "delivery") == 2.0)
+    advance(liveops_st, live_test_st, 30)
+    expect_eq(live_test_st.asked, 1)
+    advance(liveops_st, live_test_st, 40)                              # past the refresh
+    expect_eq(live_test_st.asked, 2)
+  }
+
+  test "a season is the dates it holds, its tiers come by total XP, and each reward is taken once" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    expect_eq(liveops_season(liveops_st), SEAS_ONE)
+    expect_eq(liveops_tier_count(SEAS_ONE), 3)
+    expect_eq(liveops_tier_xp(SEAS_ONE, 2), 300)
+    expect_eq(liveops_tier_for(SEAS_ONE, 99), 0)
+    expect_eq(liveops_tier_for(SEAS_ONE, 100), 1)
+    expect_eq(liveops_tier_for(SEAS_ONE, 600), 3)
+    expect_eq(liveops_season_days_left(liveops_st), 30)
+    expect_eq(liveops_season_add_xp(liveops_st, 1, 150), 1)
+    expect_eq(liveops_season_tier(liveops_st, 1), 1)
+    expect_eq(liveops_season_add_xp(liveops_st, 1, 300), 1)             # 450: tier 2
+    expect_eq(count_of(liveops_st, LIVE_SEASON_TIER), 2)
+    expect(not liveops_season_claim(liveops_st, 1, 2, false))           # tier 3 is not reached
+    expect(liveops_season_claim(liveops_st, 1, 0, false))
+    expect(not liveops_season_claim(liveops_st, 1, 0, false))
+    expect(liveops_season_claimed(liveops_st, 1, 0, false))
+    expect(not liveops_season_claim(liveops_st, 1, 0, true))            # no premium
+    live_test_st.premium = true
+    expect(liveops_season_claim(liveops_st, 1, 0, true))
+    expect(not liveops_season_claim(liveops_st, 1, 1, true))            # that tier has no premium reward
+    let fs = q_drain(liveops_facts(liveops_st))
+    var paid = 0
+    var jacket = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == LIVE_REWARD and fs[i].kind == "money" { paid += fs[i].amount }
+      if fs[i].what == LIVE_REWARD and fs[i].key == "jacket" { jacket += 1 }
+    }
+    expect_eq(paid, 500)
+    expect_eq(jacket, 1)
+    expect_eq(liveops_season_add_xp(liveops_st, 2, 0), 0)
+  }
+
+  test "a new season starts everyone's climb over, and says so" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    liveops_season_add_xp(liveops_st, 1, 450)
+    live_test_st.day = 20758                                           # 2026-11-01
+    advance(liveops_st, live_test_st, 1)
+    expect_eq(liveops_season(liveops_st), SEAS_TWO)
+    expect_eq(count_of(liveops_st, LIVE_SEASON_ENDED), 1)
+    live_test_st.day = 20727
+    liveops_reset(liveops_st)
+    liveops_season_add_xp(liveops_st, 1, 450)
+    live_test_st.day = 20758
+    advance(liveops_st, live_test_st, 1)
+    expect_eq(liveops_season_xp(liveops_st, 1), 0)
+    expect_eq(liveops_season_days_left(liveops_st), -1)                 # the second has no end
+  }
+
+  test "a day's objectives are drawn from the seed, distinct, the same on every machine, and change with the day" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    expect_eq(liveops_objective_count(liveops_st, false), 2)
+    expect_eq(liveops_objective_count(liveops_st, true), 1)
+    let a = liveops_objective(liveops_st, false, 0)
+    let b = liveops_objective(liveops_st, false, 1)
+    expect(a != b and a >= 0 and b >= 0)
+    expect(LiveObjectives[a].period == "daily")
+    expect(LiveObjectives[liveops_objective(liveops_st, true, 0)].period == "weekly")
+    expect_eq(liveops_objective(liveops_st, false, 2), -1)
+    liveops_reset(liveops_st)                                          # another machine, the same seed
+    expect_eq(liveops_objective(liveops_st, false, 0), a)
+    expect_eq(liveops_objective(liveops_st, false, 1), b)
+    var changed = false
+    for d in 1 .. 12 {
+      live_test_st.day = OCT1 + d
+      liveops_reset(liveops_st)
+      if liveops_objective(liveops_st, false, 0) != a or liveops_objective(liveops_st, false, 1) != b { changed = true }
+    }
+    expect(changed)
+  }
+
+  function kind_in(liveops_st: LiveopsState, weekly: bool, kind: string) -> int {
+    for s in 0 .. liveops_objective_count(liveops_st, weekly) {
+      if LiveObjectives[liveops_objective(liveops_st, weekly, s)].kind == kind { return s }
+    }
+    return -1
+  }
+
+  test "a report moves the objectives that count it; done is a fact, claimed is a reward, once" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    var slot = -1
+    var kind = ""
+    for s in 0 .. 2 { if slot < 0 and LiveObjectives[liveops_objective(liveops_st, false, s)].need <= 3 { slot = s } }
+    kind = LiveObjectives[liveops_objective(liveops_st, false, slot)].kind
+    let need = LiveObjectives[liveops_objective(liveops_st, false, slot)].need
+    expect_eq(liveops_report(liveops_st, 1, kind, need - 1), 0)
+    expect_eq(liveops_objective_progress(liveops_st, 1, false, slot), need - 1)
+    expect_eq(liveops_objective_progress(liveops_st, 2, false, slot), 0)    # each player their own
+    expect(not liveops_objective_claim(liveops_st, 1, false, slot))         # not done
+    expect(liveops_report(liveops_st, 1, kind, 5) >= 1)
+    expect_eq(liveops_objective_progress(liveops_st, 1, false, slot), need)  # no more than it needs
+    expect_eq(liveops_objective_state(liveops_st, 1, false, slot), 1)
+    expect(count_of(liveops_st, LIVE_OBJECTIVE_DONE) >= 1)
+    expect(liveops_objective_claim(liveops_st, 1, false, slot))
+    expect(not liveops_objective_claim(liveops_st, 1, false, slot))
+    expect_eq(liveops_objective_state(liveops_st, 1, false, slot), 2)
+    let fs = q_drain(liveops_facts(liveops_st))
+    var rewards = 0
+    for i in 0 .. len(fs) { if fs[i].what == LIVE_REWARD and fs[i].from == LIVE_FROM_OBJECTIVE { rewards += 1 } }
+    expect_eq(rewards, 1)
+    expect_eq(liveops_report(liveops_st, 1, "nothing_counts_this", 10), 0)
+    expect_eq(liveops_report(liveops_st, 1, kind, 0), 0)
+  }
+
+  test "a new day draws again and everyone starts from nothing; a new week does the same for the weekly ones" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    live_test_st.day = 20731                                           # a Monday: a week begins
+    liveops_reset(liveops_st)
+    let weekly = liveops_objective(liveops_st, true, 0)
+    let wkind = LiveObjectives[weekly].kind
+    liveops_report(liveops_st, 1, wkind, 2)
+    expect_eq(liveops_objective_progress(liveops_st, 1, true, 0), 2)
+    live_test_st.day = 20732                                           # Tuesday
+    q_clear(liveops_facts(liveops_st))
+    advance(liveops_st, live_test_st, 1)
+    expect_eq(count_of(liveops_st, LIVE_OBJECTIVES_ROLLED), 1)           # the day only
+    expect_eq(liveops_objective_progress(liveops_st, 1, true, 0), 2)
+    live_test_st.day = 20738                                           # the next Monday
+    advance(liveops_st, live_test_st, 1)
+    expect_eq(liveops_objective_progress(liveops_st, 1, true, 0), 0)
+  }
+
+  test "the save keeps the timers, the season, the progress of this day, and the last remote rows" (liveops_st: mut LiveopsState, live_test_st: mut LiveTestState) {
+    start(liveops_st, live_test_st)
+    advance(liveops_st, live_test_st, 130)                            # the drop ran: it is cooling down
+    liveops_season_add_xp(liveops_st, 1, 450)
+    liveops_season_claim(liveops_st, 1, 0, false)
+    liveops_remote_load(liveops_st, "[{\"key\": \"kept\", \"kind\": \"xp\", \"target\": \"delivery\", \"percent\": 300}]")
+    let slot = 0
+    let kind = LiveObjectives[liveops_objective(liveops_st, false, slot)].kind
+    liveops_report(liveops_st, 1, kind, 1)
+    let root = save_tree()
+    save_section(root, "liveops", 1, liveops_save(liveops_st))
+    let text = save_encode(root)
+    liveops_reset(liveops_st)
+    expect_eq(liveops_remote_count(liveops_st), 0)
+    expect_eq(liveops_season_xp(liveops_st, 1), 0)
+    let n = load_section(save_decode(text), "liveops")
+    liveops_load(liveops_st, n.data, n.version)
+    expect_eq(liveops_season_xp(liveops_st, 1), 450)
+    expect(liveops_season_claimed(liveops_st, 1, 0, false))
+    expect_eq(liveops_remote_count(liveops_st), 1)
+    expect(liveops_xp_mult(liveops_st, "delivery") == 3.0)
+    expect(liveops_objective_progress(liveops_st, 1, false, slot) >= 1)
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    advance(liveops_st, live_test_st, 100)                             # the next event was due in 100 s, but the drop cools for 200
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_IDLE)
+    advance(liveops_st, live_test_st, 130)                             # 230: cooled at 200, and a retry came at 220
+    expect_eq(liveops_event_phase(liveops_st), LIVE_PHASE_RUNNING)
+  }
+}

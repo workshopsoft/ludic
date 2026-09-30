@@ -1,0 +1,10 @@
+# seasons.lres - a test game's seasons: the first with three tiers, the second open-ended
+one {
+  starts: "2026-10-01", ends: "2026-11-01"
+  tiers: [
+    { xp: 100, kind: "money", amount: 500, premium_kind: "item", premium_key: "jacket" }
+    { xp: 200, kind: "item", key: "emote" }
+    { xp: 300, kind: "money", amount: 2000 }
+  ]
+}
+two { starts: "2026-11-01", tiers: [{ xp: 50, kind: "money", amount: 100 }] }

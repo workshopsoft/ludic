@@ -1,0 +1,122 @@
+# season.ludic - the season the UTC date is in, its tiers, and a player's climb
+
+# the season whose dates hold now, -1 when none does
+export function liveops_season(liveops_st: LiveopsState) -> int {
+  let now = live__now_min()
+  for i in 0 .. SEAS_COUNT {
+    if live__within(now, liveops_st.live__seas_from[i], liveops_st.live__seas_to[i]) { return i }
+  }
+  return -1
+}
+
+# whole days left in the current season (0 on its last day, -1 when none is on or it has no end)
+export function liveops_season_days_left(liveops_st: LiveopsState) -> int {
+  let s = liveops_season(liveops_st)
+  if s < 0 or liveops_st.live__seas_to[s] < 0 { return -1 }
+  return (liveops_st.live__seas_to[s] - live__now_min() - 1) / 1440
+}
+
+export function liveops_tier_count(season: int) -> int {
+  if season < 0 or season >= SEAS_COUNT or Seasons[season].tiers == null { return 0 }
+  return len(Seasons[season].tiers)
+}
+
+# the total XP that reaches tier `tier` (1-based: tier 1 is the first row's xp)
+export function liveops_tier_xp(season: int, tier: int) -> int {
+  var sum = 0
+  for t in 0 .. Math.min(tier, liveops_tier_count(season)) { sum += Seasons[season].tiers[t].xp }
+  return sum
+}
+
+# how many tiers a total of season XP reaches
+export function liveops_tier_for(season: int, xp: int) -> int {
+  var n = 0
+  while n < liveops_tier_count(season) and xp >= liveops_tier_xp(season, n + 1) { n += 1 }
+  return n
+}
+
+# a player's climb belongs to one season: another season starts it again
+function live__season_row(liveops_st: mut LiveopsState, player: int) -> LivePlayer {
+  let p = live__player(liveops_st, player)
+  let cur = liveops_season(liveops_st)
+  if p.season != cur {
+    p.season = cur
+    p.season_xp = 0
+    List.clear(p.claimed)
+  }
+  while len(p.claimed) < liveops_tier_count(cur) { push(p.claimed, 0) }
+  return p
+}
+
+export function liveops_season_xp(liveops_st: LiveopsState, player: int) -> int {
+  let p = live__find(liveops_st, player)
+  if p == null or p.season != liveops_season(liveops_st) { return 0 }
+  return p.season_xp
+}
+
+# the tiers a player has reached this season
+export function liveops_season_tier(liveops_st: LiveopsState, player: int) -> int {
+  return liveops_tier_for(liveops_season(liveops_st), liveops_season_xp(liveops_st, player))
+}
+
+# season XP for a player (from anything the game likes: objectives, matches); the tiers it reached. Host only
+export function liveops_season_add_xp(liveops_st: mut LiveopsState, player: int, n: int) -> int {
+  let s = liveops_season(liveops_st)
+  if not live__is_host() or s < 0 or n <= 0 { return 0 }
+  let p = live__season_row(liveops_st, player)
+  let before = liveops_tier_for(s, p.season_xp)
+  p.season_xp += n
+  let after = liveops_tier_for(s, p.season_xp)
+  for t in before .. after {
+    let f = live__fact(liveops_st, LIVE_SEASON_TIER)
+    f.player = player
+    f.idx = s
+    f.to = t + 1
+  }
+  return after - before
+}
+
+# take the reward of a reached tier (0-based `tier`), in the free track or the premium one (the world says who
+# has it). Once each. False when not reached, taken, empty, or not the host
+export function liveops_season_claim(liveops_st: mut LiveopsState, player: int, tier: int, premium: bool) -> bool {
+  let s = liveops_season(liveops_st)
+  if not live__is_host() or s < 0 or tier < 0 or tier >= liveops_tier_count(s) { return false }
+  let p = live__season_row(liveops_st, player)
+  if tier >= liveops_tier_for(s, p.season_xp) { return false }
+  let t = Seasons[s].tiers[tier]
+  if premium {
+    if not LiveWorld.has_premium(player) or (p.claimed[tier] & 2) != 0 { return false }
+    if t.premium_kind == "" and t.premium_key == "" { return false }
+    p.claimed[tier] = p.claimed[tier] | 2
+    live__reward(liveops_st, player, LIVE_FROM_SEASON, t.premium_kind, t.premium_key, t.premium_amount)
+    return true
+  }
+  if (p.claimed[tier] & 1) != 0 or (t.kind == "" and t.key == "") { return false }
+  p.claimed[tier] = p.claimed[tier] | 1
+  live__reward(liveops_st, player, LIVE_FROM_SEASON, t.kind, t.key, t.amount)
+  return true
+}
+
+export function liveops_season_claimed(liveops_st: LiveopsState, player: int, tier: int, premium: bool) -> bool {
+  let p = live__find(liveops_st, player)
+  if p == null or p.season != liveops_season(liveops_st) or tier < 0 or tier >= len(p.claimed) { return false }
+  if premium { return (p.claimed[tier] & 2) != 0 }
+  return (p.claimed[tier] & 1) != 0
+}
+
+# a season that began or ended since the last tick is a fact (the first tick only notes where things stand)
+function live__season_tick(liveops_st: mut LiveopsState) -> void {
+  let cur = liveops_season(liveops_st)
+  if cur == liveops_st.live__season_cur { return }
+  let was = liveops_st.live__season_cur
+  liveops_st.live__season_cur = cur
+  if was == -2 { return }
+  if was >= 0 {
+    let f = live__fact(liveops_st, LIVE_SEASON_ENDED)
+    f.idx = was
+  }
+  if cur >= 0 {
+    let f = live__fact(liveops_st, LIVE_SEASON_STARTED)
+    f.idx = cur
+  }
+}

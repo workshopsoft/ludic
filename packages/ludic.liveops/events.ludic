@@ -1,0 +1,236 @@
+# events.ludic - freemode events on a schedule the session's seed decides. Idle until the next one is due,
+# Announced for its warning, Running for its duration; then quiet for a gap drawn between the settings' least
+# and most, and the event itself cannot come again within its cooldown. Only the host runs it: a client is
+# told the state (liveops_event_snapshot / liveops_event_adopt)
+
+export const LIVE_PHASE_IDLE: int = 0
+export const LIVE_PHASE_ANNOUNCED: int = 1
+export const LIVE_PHASE_RUNNING: int = 2
+
+function live__phase_int(liveops_st: LiveopsState) -> int {
+  if liveops_st.live__phase == LiveEventPhase.Announced { return LIVE_PHASE_ANNOUNCED }
+  if liveops_st.live__phase == LiveEventPhase.Running { return LIVE_PHASE_RUNNING }
+  return LIVE_PHASE_IDLE
+}
+
+export function liveops_event_phase(liveops_st: LiveopsState) -> int { return live__phase_int(liveops_st) }
+export function liveops_event_current(liveops_st: LiveopsState) -> int { return liveops_st.live__cur }
+export function liveops_event_area(liveops_st: LiveopsState) -> string { return liveops_st.live__area }
+export function liveops_event_id(liveops_st: LiveopsState) -> int { return liveops_st.live__event_id }
+export function liveops_event_running(liveops_st: LiveopsState) -> bool { return liveops_st.live__phase == LiveEventPhase.Running }
+
+# seconds to the start (announced), to the end (running), to the next event's turn (idle)
+export function liveops_event_left(liveops_st: LiveopsState) -> float {
+  var at = liveops_st.live__next
+  if liveops_st.live__phase == LiveEventPhase.Announced { at = liveops_st.live__start }
+  if liveops_st.live__phase == LiveEventPhase.Running { at = liveops_st.live__end }
+  return Math.max(at - liveops_st.live__clock, 0.0)
+}
+
+# how much chance an event has at this UTC hour and day: its weight scaled by its hours and days
+function live__weight(e: int) -> int {
+  let ev = FreemodeEvents[e]
+  if ev.weight <= 0 { return 0 }
+  var hp = 100
+  var dp = 100
+  if ev.hours != null and len(ev.hours) >= 24 { hp = ev.hours[LiveWorld.utc_minute() / 60] }
+  if ev.days != null and len(ev.days) >= 7 { dp = ev.days[liveops_weekday(LiveWorld.utc_day())] }
+  return (ev.weight * Math.max(hp, 0) * Math.max(dp, 0)) / 10000
+}
+
+# a free area for the event: its `area` or one of `areas` (drawn among the free ones); "" when it has none
+# to name; false when it has areas and none is free
+function live__area_ok(ev: FreemodeEvent) -> bool {
+  if ev.areas != null and len(ev.areas) > 0 {
+    for i in 0 .. len(ev.areas) { if LiveWorld.area_free(ev.areas[i]) { return true } }
+    return false
+  }
+  if ev.area == "" { return true }
+  return LiveWorld.area_free(ev.area)
+}
+
+function live__pick_area(liveops_st: mut LiveopsState, ev: FreemodeEvent) -> string {
+  if ev.areas != null and len(ev.areas) > 0 {
+    var n = 0
+    for i in 0 .. len(ev.areas) { if LiveWorld.area_free(ev.areas[i]) { n += 1 } }
+    if n == 0 { return ev.area }
+    var k = rng_between(liveops_st.live__dice, 0, n - 1)
+    for i in 0 .. len(ev.areas) {
+      if not LiveWorld.area_free(ev.areas[i]) { continue }
+      if k == 0 { return ev.areas[i] }
+      k -= 1
+    }
+  }
+  return ev.area
+}
+
+# may event `e` run now: enough (and not too many) in the session, off its cooldown, an area free
+function live__can_run(liveops_st: LiveopsState, e: int) -> bool {
+  let ev = FreemodeEvents[e]
+  let n = LiveWorld.players()
+  if n < ev.min_players or (ev.max_players > 0 and n > ev.max_players) { return false }
+  if liveops_st.live__cool[e] > liveops_st.live__clock { return false }
+  return live__area_ok(ev)
+}
+
+# the next event, drawn by weight from those that may run now; -1 when none can
+function live__draw(liveops_st: mut LiveopsState) -> int {
+  var total = 0
+  for e in 0 .. FEVT_COUNT { if live__can_run(liveops_st, e) { total += live__weight(e) } }
+  if total <= 0 { return -1 }
+  var k = rng_between(liveops_st.live__dice, 1, total)
+  for e in 0 .. FEVT_COUNT {
+    if not live__can_run(liveops_st, e) { continue }
+    k -= live__weight(e)
+    if k <= 0 { return e }
+  }
+  return -1
+}
+
+function live__gap(liveops_st: mut LiveopsState) -> float {
+  let c = live__settings(liveops_st)
+  let lo = Math.min(c.event_gap_min, c.event_gap_max)
+  let hi = Math.max(c.event_gap_min, c.event_gap_max)
+  return float(rng_between(liveops_st.live__dice, lo, hi))
+}
+
+function live__announce_secs(liveops_st: LiveopsState, ev: FreemodeEvent) -> float {
+  if ev.announce >= 0 { return float(ev.announce) }
+  return float(live__settings(liveops_st).event_announce)
+}
+
+function live__begin(liveops_st: mut LiveopsState, e: int, secs: float) -> void {
+  let ev = FreemodeEvents[e]
+  liveops_st.live__event_id += 1
+  liveops_st.live__cur = e
+  liveops_st.live__area = live__pick_area(liveops_st, ev)
+  liveops_st.live__start = liveops_st.live__clock + secs
+  liveops_st.live__phase = LiveEventPhase.Announced
+  let f = live__fact(liveops_st, LIVE_EVENT_ANNOUNCED)
+  f.idx = e
+  f.area = liveops_st.live__area
+  f.amount = int(secs)
+  f.kind = ev.kind
+}
+
+function live__run(liveops_st: mut LiveopsState) -> void {
+  let ev = FreemodeEvents[liveops_st.live__cur]
+  liveops_st.live__end = liveops_st.live__clock + float(ev.duration)
+  liveops_st.live__phase = LiveEventPhase.Running
+  let f = live__fact(liveops_st, LIVE_EVENT_STARTED)
+  f.idx = liveops_st.live__cur
+  f.area = liveops_st.live__area
+  f.amount = ev.duration
+  f.kind = ev.kind
+}
+
+function live__finish(liveops_st: mut LiveopsState, what: int) -> void {
+  let e = liveops_st.live__cur
+  let f = live__fact(liveops_st, what)
+  f.idx = e
+  f.area = liveops_st.live__area
+  f.kind = FreemodeEvents[e].kind
+  if what == LIVE_EVENT_ENDED { liveops_st.live__cool[e] = liveops_st.live__clock + float(FreemodeEvents[e].cooldown) }
+  liveops_st.live__cur = -1
+  liveops_st.live__area = ""
+  liveops_st.live__phase = LiveEventPhase.Idle
+  liveops_st.live__next = liveops_st.live__clock + live__gap(liveops_st)
+}
+
+# the schedule, once a tick, on the host only
+function live__events_tick(liveops_st: mut LiveopsState) -> void {
+  machine liveops_st.live__phase {
+    state Idle {
+      if FEVT_COUNT > 0 and liveops_st.live__clock >= liveops_st.live__next {
+        let e = live__draw(liveops_st)
+        if e < 0 {
+          liveops_st.live__next = liveops_st.live__clock + float(live__settings(liveops_st).retry)
+        } else {
+          let secs = live__announce_secs(liveops_st, FreemodeEvents[e])
+          live__begin(liveops_st, e, secs)
+          if secs <= 0.0 { live__run(liveops_st) }
+        }
+      }
+    }
+    state Announced {
+      if liveops_st.live__clock >= liveops_st.live__start {
+        if LiveWorld.players() < FreemodeEvents[liveops_st.live__cur].min_players { live__finish(liveops_st, LIVE_EVENT_CANCELLED) }
+        else { live__run(liveops_st) }
+      }
+    }
+    state Running {
+      if liveops_st.live__clock >= liveops_st.live__end { live__finish(liveops_st, LIVE_EVENT_ENDED) }
+    }
+  }
+}
+
+# start an event now whatever the schedule says (a dev verb, a story beat, a test): its warning first.
+# False when it is not the host, an event is on, or the row is not there. The cooldown is not asked
+export function liveops_event_start(liveops_st: mut LiveopsState, e: int) -> bool {
+  if not live__is_host() or e < 0 or e >= FEVT_COUNT or liveops_st.live__phase != LiveEventPhase.Idle { return false }
+  let secs = live__announce_secs(liveops_st, FreemodeEvents[e])
+  live__begin(liveops_st, e, secs)
+  if secs <= 0.0 { live__run(liveops_st) }
+  return true
+}
+
+# end the event that is on (announced or running) now: a fact, its cooldown from now, the next one drawn. Host only
+export function liveops_event_end(liveops_st: mut LiveopsState) -> bool {
+  if not live__is_host() or liveops_st.live__phase == LiveEventPhase.Idle { return false }
+  if liveops_st.live__phase == LiveEventPhase.Announced { live__finish(liveops_st, LIVE_EVENT_CANCELLED) }
+  else { live__finish(liveops_st, LIVE_EVENT_ENDED) }
+  return true
+}
+
+# the game says `player` completed the running event: its rewards go out as facts, once per player per event.
+# Host only
+export function liveops_event_reward(liveops_st: mut LiveopsState, player: int) -> bool {
+  if not live__is_host() or liveops_st.live__phase != LiveEventPhase.Running { return false }
+  let p = live__player(liveops_st, player)
+  if p.rewarded == liveops_st.live__event_id { return false }
+  p.rewarded = liveops_st.live__event_id
+  let ev = FreemodeEvents[liveops_st.live__cur]
+  live__reward(liveops_st, player, LIVE_FROM_EVENT, "money", "", ev.reward_money)
+  live__reward(liveops_st, player, LIVE_FROM_EVENT, "xp", "", ev.reward_xp)
+  live__reward(liveops_st, player, LIVE_FROM_EVENT, "item", ev.reward_key, 1)
+  return true
+}
+
+# the event's state for a client: [phase, event, id, seconds to go in thousandths]; the area goes beside it
+@alloc_ok("a snapshot is made to be sent")
+export function liveops_event_snapshot(liveops_st: LiveopsState) -> []int {
+  let out = new []int
+  push(out, live__phase_int(liveops_st))
+  push(out, liveops_st.live__cur)
+  push(out, liveops_st.live__event_id)
+  push(out, int(liveops_event_left(liveops_st) * 1000.0))
+  return out
+}
+
+# take the host's word about the event: a fact when the phase moved (a client's HUD needs the same ones)
+export function liveops_event_adopt(liveops_st: mut LiveopsState, xs: []int, area: string) -> bool {
+  if len(xs) < 4 or xs[0] < 0 or xs[0] > 2 or xs[1] >= FEVT_COUNT { return false }
+  let was = live__phase_int(liveops_st)
+  let left = float(xs[3]) / 1000.0
+  liveops_st.live__cur = xs[1]
+  liveops_st.live__event_id = xs[2]
+  liveops_st.live__area = area
+  if xs[0] == LIVE_PHASE_IDLE { liveops_st.live__phase = LiveEventPhase.Idle }
+  if xs[0] == LIVE_PHASE_ANNOUNCED {
+    liveops_st.live__phase = LiveEventPhase.Announced
+    liveops_st.live__start = liveops_st.live__clock + left
+  }
+  if xs[0] == LIVE_PHASE_RUNNING {
+    liveops_st.live__phase = LiveEventPhase.Running
+    liveops_st.live__end = liveops_st.live__clock + left
+  }
+  if was == xs[0] { return true }
+  var what = LIVE_EVENT_ENDED
+  if xs[0] == LIVE_PHASE_ANNOUNCED { what = LIVE_EVENT_ANNOUNCED }
+  if xs[0] == LIVE_PHASE_RUNNING { what = LIVE_EVENT_STARTED }
+  let f = live__fact(liveops_st, what)
+  f.idx = xs[1]
+  f.area = area
+  if xs[1] >= 0 { f.kind = FreemodeEvents[xs[1]].kind }
+  return true
+}

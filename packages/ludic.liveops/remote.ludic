@@ -1,0 +1,78 @@
+# remote.ludic - modifier rows that arrive over the network and change without a new build. A body is JSON:
+# `{"modifiers": [...]}` or a list, each { key, kind, target, percent, starts, ends, rot_days, rot_slots, rot_slot,
+# featured }. A body that is not one leaves the rows as they were; the last good body is saved, so the last
+# known offers hold while the network is away
+
+function live__num(o: Val, key: string, fallback: int) -> int {
+  if o == null or Value.kind(o) != 6 or Value.has(o, key) == 0 { return fallback }
+  return Value.as_int(Value.get(o, key))
+}
+
+function live__txt(o: Val, key: string, fallback: string) -> string {
+  if o == null or Value.kind(o) != 6 or Value.has(o, key) == 0 { return fallback }
+  let s = Value.get(o, key)
+  if Value.kind(s) != 4 { return fallback }
+  return intern(Value.as_str(s))
+}
+
+# the list a body holds, or null
+function live__items(v: Val) -> Val {
+  if v == null { return null }
+  if Value.kind(v) == 5 { return v }
+  if Value.kind(v) == 6 and Value.has(v, "modifiers") != 0 {
+    let l = Value.get(v, "modifiers")
+    if Value.kind(l) == 5 { return l }
+  }
+  return null
+}
+
+# read a body as the remote rows; how many rows it gave, or -1 when it was not one (nothing changes)
+@alloc_ok("a remote body is read into rows: when it arrives, not every frame")
+export function liveops_remote_load(liveops_st: mut LiveopsState, text: string) -> int {
+  let items = live__items(Json.parse(text))
+  if items == null { return -1 }
+  List.clear(liveops_st.live__remote)
+  List.clear(liveops_st.live__remote_from)
+  List.clear(liveops_st.live__remote_to)
+  for i in 0 .. Value.count(items) {
+    let o = Value.at(items, i)
+    if Value.kind(o) != 6 { continue }
+    let m = new LiveModifier
+    m.key = live__txt(o, "key", "remote")
+    m.kind = live__txt(o, "kind", "xp")
+    m.target = live__txt(o, "target", "*")
+    m.percent = live__num(o, "percent", 100)
+    m.starts = live__txt(o, "starts", "")
+    m.ends = live__txt(o, "ends", "")
+    m.rot_days = live__num(o, "rot_days", 0)
+    m.rot_slots = live__num(o, "rot_slots", 1)
+    m.rot_slot = live__num(o, "rot_slot", 0)
+    m.featured = live__txt(o, "featured", "")
+    push(liveops_st.live__remote, m)
+    push(liveops_st.live__remote_from, liveops_date_minutes(m.starts))
+    push(liveops_st.live__remote_to, liveops_date_minutes(m.ends))
+  }
+  liveops_st.live__remote_text = text
+  live__mods_tick(liveops_st)
+  return len(liveops_st.live__remote)
+}
+
+# how many remote rows there are now
+export function liveops_remote_count(liveops_st: LiveopsState) -> int { return len(liveops_st.live__remote) }
+
+# ask the port now and then (the first time at once, then every `remote_refresh` seconds; 0 asks only once)
+function live__remote_tick(liveops_st: mut LiveopsState) -> void {
+  if liveops_st.live__remote_h >= 0 {
+    let st = LiveRemote.poll(liveops_st.live__remote_h)
+    if st < 0 { return }
+    if st > 0 { liveops_remote_load(liveops_st, LiveRemote.text(liveops_st.live__remote_h)) }
+    LiveRemote.free(liveops_st.live__remote_h)
+    liveops_st.live__remote_h = -1
+    return
+  }
+  let every = live__settings(liveops_st).remote_refresh
+  if liveops_st.live__remote_asked and (every <= 0 or liveops_st.live__clock < liveops_st.live__remote_due) { return }
+  liveops_st.live__remote_asked = true
+  liveops_st.live__remote_due = liveops_st.live__clock + float(every)
+  liveops_st.live__remote_h = LiveRemote.get()
+}
