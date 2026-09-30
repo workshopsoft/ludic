@@ -23,7 +23,7 @@ export property BigWorld {
   origin: ForgOrigin,
   sched: WStream,
   index: CellIndex,
-  kits: []BuildingKit,
+  kits: []RenderKit,
   gpu: KGpu,                 # the kits' programs and meshes; its cull runs on the GPU unless it was made cpu_only (then cpu's lists are drawn)
   cpu: KCull,
   hlod: HlodGpu,
@@ -41,7 +41,7 @@ export property BigWorld {
 # Open a large world over a directory of cells (cells.lwi and the cell files: cellfile.ludic, hlod.ludic), the map's kit rows and its
 # partition row. `use_gpu`: cull and bin on the GPU (kgpu.ludic); `max_instances` is how many instances the arena holds.
 @alloc_ok("a world being set up: the scheduler, the index and the instancer are made once per map")
-export function bw_open(render3d_st: mut Render3dState, dir: string, row: WorldPartition, kits: []BuildingKit, use_gpu: bool, assets_dir: string, max_instances: int) -> BigWorld {
+export function bw_open(render3d_st: mut Render3dState, dir: string, row: WorldPartition, kits: []RenderKit, use_gpu: bool, assets_dir: string, max_instances: int) -> BigWorld {
   let bw = new BigWorld
   bw.dir = dir
   bw.assets = assets_dir

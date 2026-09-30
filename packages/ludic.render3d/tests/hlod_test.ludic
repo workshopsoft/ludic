@@ -6,9 +6,9 @@ program HlodTest {
   numbers float
   def InteriorAtlases from "interior_atlases.lres"
 
-  function kits() -> []BuildingKit {
-    let k = new BuildingKits
-    building_kits_load(k, "city")
+  function kits() -> []RenderKit {
+    let k = new RenderKits
+    render_kits_load(k, "city")
     return k.rows
   }
 

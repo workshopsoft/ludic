@@ -93,7 +93,7 @@ export function kinst_new(n_kits: int) -> KCull {
   return k
 }
 
-# a kit's distances and size: from a BuildingKit row (radius: half the diagonal of its box)
+# a kit's distances and size: from a RenderKit row (radius: half the diagonal of its box)
 export function kinst_kit(k: KCull, id: int, near: float, far: float, radius: float, has_card: bool) -> void {
   k.kit_near[id] = near
   k.kit_far[id] = far
@@ -102,7 +102,7 @@ export function kinst_kit(k: KCull, id: int, near: float, far: float, radius: fl
 }
 
 # every kit from the map's rows
-export function kinst_kits_from(k: KCull, rows: []BuildingKit) -> void {
+export function kinst_kits_from(k: KCull, rows: []RenderKit) -> void {
   for i in 0 .. min(len(rows), k.n_kits) {
     let r = rows[i]
     kinst_kit(k, i, r.near, r.far, 0.5 * Math.sqrt(r.w * r.w + r.d * r.d + r.h * r.h), r.impostor)

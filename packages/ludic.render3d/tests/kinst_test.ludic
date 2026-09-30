@@ -248,8 +248,8 @@ program KInstTest {
   }
 
   test "kits from the map's rows" {
-    let rows = new BuildingKits
-    expect(building_kits_load(rows, "city"))
+    let rows = new RenderKits
+    expect(render_kits_load(rows, "city"))
     let k = kinst_new(3)
     kinst_kits_from(k, rows.rows)
     expect(k.kit_near[1] == 500.0 and k.kit_far[2] == 8000.0)

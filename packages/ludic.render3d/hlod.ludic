@@ -136,7 +136,7 @@ function hlod_rgba(r: float, g: float, b: float) -> int {
 }
 
 # the key buildings are grouped by: ground cell and height band, packed (gx and gz below 64, the band below 256)
-function hlod_key(c: CellContent, i: int, k: BuildingKit, cluster_m: float, band: float) -> int {
+function hlod_key(c: CellContent, i: int, k: RenderKit, cluster_m: float, band: float) -> int {
   let o = i * CELL_XF
   let sc = c.xf[o + 4]
   var gx = int(Math.floor(c.xf[o] / cluster_m))
@@ -148,13 +148,13 @@ function hlod_key(c: CellContent, i: int, k: BuildingKit, cluster_m: float, band
 }
 
 # Bake a cell's proxy into `out` (made with hlod_new; its cx, cz and size should be the content's).
-#   kits         the map's BuildingKits rows, by kit id
+#   kits         the map's RenderKits rows, by kit id
 #   cluster_m    the ground grid buildings are merged on (0: no merging, one box a building)
 #   height_band  buildings are only merged with others in the same band of this many metres of height
 #   max_growth   a merged box may be at most this many times the volume of what it replaces
 # A thing whose kit id is not a row is skipped (counted in neither boxes nor source).
 @alloc_ok("a bake: its sort keys and the mesh are made once per cell")
-export function hlod_bake(c: CellContent, kits: []BuildingKit, cluster_m: float, height_band: float, max_growth: float, out: HlodMesh) -> void {
+export function hlod_bake(c: CellContent, kits: []RenderKit, cluster_m: float, height_band: float, max_growth: float, out: HlodMesh) -> void {
   out.cx = c.cx
   out.cz = c.cz
   out.size = c.size
@@ -206,7 +206,7 @@ export function hlod_bake(c: CellContent, kits: []BuildingKit, cluster_m: float,
 }
 
 # one building as its own box
-function hlod_single(c: CellContent, i: int, k: BuildingKit, px: floats, pz: floats, out: HlodMesh) -> void {
+function hlod_single(c: CellContent, i: int, k: RenderKit, px: floats, pz: floats, out: HlodMesh) -> void {
   let o = i * CELL_XF
   let sc = c.xf[o + 4]
   hlod_corners(c.xf[o], c.xf[o + 2], k.w * sc * 0.5, k.d * sc * 0.5, c.xf[o + 3], px, pz)
@@ -214,12 +214,12 @@ function hlod_single(c: CellContent, i: int, k: BuildingKit, px: floats, pz: flo
   out.source += 1
 }
 
-function hlod_tinted(k: BuildingKit, tint: int) -> int {
+function hlod_tinted(k: RenderKit, tint: int) -> int {
   return hlod_rgba(k.proxy_r * cell_rgba_r(tint), k.proxy_g * cell_rgba_g(tint), k.proxy_b * cell_rgba_b(tint))
 }
 
 # the buildings order[at .. end) share a group: one merged box if it is not too much bigger than they are, else each alone
-function hlod_group(c: CellContent, kits: []BuildingKit, order: words, at: int, end: int, max_growth: float, px: floats, pz: floats, out: HlodMesh) -> void {
+function hlod_group(c: CellContent, kits: []RenderKit, order: words, at: int, end: int, max_growth: float, px: floats, pz: floats, out: HlodMesh) -> void {
   if end - at < 2 {
     hlod_single(c, order[at], kits[c.kit[order[at]]], px, pz, out)
     return
@@ -333,7 +333,7 @@ export function hlod_load(dir: string, cx: int, cz: int) -> HlodMesh {
 # Bake every cell a content directory holds into `out_dir`, and write the index beside it: what the dev tool does
 # (tools/hlod_bake.ludic). Returns how many cells it baked. `dir_in` holds cell_<cx>_<cz>.lwc files.
 @alloc_ok("a bake: one mesh a cell")
-export function hlod_bake_dir(dir_in: string, out_dir: string, kits: []BuildingKit, size: float, cluster_m: float, height_band: float, max_growth: float) -> int {
+export function hlod_bake_dir(dir_in: string, out_dir: string, kits: []RenderKit, size: float, cluster_m: float, height_band: float, max_growth: float) -> int {
   let names = Fs.list(dir_in)
   if names == null { return 0 }
   let ix = cell_index_new(size)

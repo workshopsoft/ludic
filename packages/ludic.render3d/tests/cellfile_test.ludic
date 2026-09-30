@@ -90,13 +90,13 @@ program CellFileTest {
   }
 
   test "the map's kits load in file order, and a kit names its atlas" {
-    let kits = new BuildingKits
-    expect(building_kits_load(kits, "city"))
+    let kits = new RenderKits
+    expect(render_kits_load(kits, "city"))
     expect_eq(len(kits.rows), 3)
     expect(kits.rows[1].w == 24.0 and kits.rows[1].h == 30.0)
     expect(kits.rows[1].interior == "office")
     expect(kits.rows[0].interior == "")
-    expect_eq(building_kits_find(kits, "tower"), 2)
+    expect_eq(render_kits_find(kits, "tower"), 2)
     expect(InteriorAtlases[IA_OFFICE].rooms == 14)
     expect_eq(IA_COUNT, 2)
   }

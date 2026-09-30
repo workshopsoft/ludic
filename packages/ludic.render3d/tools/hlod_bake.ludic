@@ -4,7 +4,7 @@
 #   ludic build packages/ludic.render3d/tools/hlod_bake.ludic
 #   ./build/hlod_bake <map> <cells_dir> <out_dir> [cluster_m] [height_band] [max_growth]
 #
-#   <map>         the map whose building_kits.lres the content's kit ids index (assets/maps/<map>/)
+#   <map>         the map whose render_kits.lres the content's kit ids index (assets/maps/<map>/)
 #   <cells_dir>   the cell_<cx>_<cz>.lwc files the city generator wrote
 #   <out_dir>     where the proxies and cells.lwi go
 #   cluster_m     the ground grid buildings merge on (default 32); 0 keeps one box a building
@@ -35,9 +35,9 @@ program HlodBake {
       print("usage: hlod_bake <map> <cells_dir> <out_dir> [cluster_m] [height_band] [max_growth]")
       exit(2)
     }
-    let kits = new BuildingKits
-    if not building_kits_load(kits, map) {
-      print(`hlod_bake: no building_kits.lres for map {map} ({kits.err})`)
+    let kits = new RenderKits
+    if not render_kits_load(kits, map) {
+      print(`hlod_bake: no render_kits.lres for map {map} ({kits.err})`)
       exit(1)
     }
     let ix = cell_index_load(dir_in)

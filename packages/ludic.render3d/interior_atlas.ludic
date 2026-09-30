@@ -11,7 +11,7 @@
 # and up (v); the ceiling and the floor run across the room (u) and far -> near (v). A tile is painted in
 # daylight, lit from outside; the shader turns the lights on at night in the rooms it picks, warm, and leaves
 # the others dark. `InteriorAtlases` is the game's (`def InteriorAtlases from "interior_atlases.lres"`); a kit
-# names its row by key (BuildingKit.interior).
+# names its row by key (RenderKit.interior).
 # ============================================================================
 numbers float
 

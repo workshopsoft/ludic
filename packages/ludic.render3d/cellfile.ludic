@@ -14,7 +14,7 @@
 # the map's origin (forg.ludic): a thing at x = 12.5 in cell 312 is at world x = 312 * size + 12.5, added in
 # double, in render space, where it is drawn.
 #
-# A KIT is one building (or prop) kind: a row of the map's own building_kits.lres. Its id is its row's index,
+# A KIT is one building (or prop) kind: a row of the map's own render_kits.lres. Its id is its row's index,
 # so rows are only ever appended. The kit says what model draws it, how big it is (the HLOD and the impostor
 # atlas are built from these bounds), the distances it changes detail at, and which interior atlas (if any)
 # its windows use.
@@ -22,7 +22,7 @@
 numbers float
 
 # one kind of building or prop. Origin at the middle of the footprint, on the ground; +y up.
-export property BuildingKit {
+export property RenderKit {
   key: string = ""
   @Asset("gltf") model: string = ""
   @Node(model) node: string = ""
@@ -42,7 +42,7 @@ export property BuildingKit {
 }
 
 @PerMap @ByKey
-export registry BuildingKits of BuildingKit from "building_kits.lres"
+export registry RenderKits of RenderKit from "render_kits.lres"
 
 # ---- content -----------------------------------------------------------------------------------
 
@@ -55,7 +55,7 @@ export property CellContent {
   size: float = 256.0,
   n: int = 0,
   xf: floats,            # 5 floats a thing: x y z yaw scale
-  kit: words,            # the kit id (a row of BuildingKits)
+  kit: words,            # the kit id (a row of RenderKits)
   tint: words,           # RGBA8
   vari: words,           # variation (0 .. 65535)
   flags: words

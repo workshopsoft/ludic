@@ -1,4 +1,4 @@
-# building_kits.lres - the fixture city's kits (ids are the order below)
+# render_kits.lres - the fixture city's kits (ids are the order below)
 house {
   model: "models/house.glb", node: "house"
   w: 10.0, d: 8.0, h: 7.0

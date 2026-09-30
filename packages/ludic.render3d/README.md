@@ -110,7 +110,7 @@ city { cell_size: 256.0, full_radius: 900.0, hlod_radius: 4000.0, margin: 48.0,
 
 - `cx`, `cz`: the cell, `floor(world / size)`; **positions are relative to the cell's corner** (`x`, `z` in metres; `y` is the height
   itself), so they are exact floats however far the cell is. World position = `cx * size + x`, in double (`cell_world_x`).
-- `kit`: the id of a kit = its row's index in the map's `building_kits.lres` (`BuildingKits`, `@PerMap`; rows only ever appended):
+- `kit`: the id of a kit = its row's index in the map's `render_kits.lres` (`RenderKits`, `@PerMap`; rows only ever appended):
   `model` and `node` (a glTF), `w`, `d`, `h` (the footprint and height in metres, origin at the footprint's middle on the ground),
   `near` and `far` (mesh inside `near`, impostor card to `far`, nothing past it), `impostor`, `proxy_r/g/b` (the colour of its HLOD box),
   `interior` (the key of an `InteriorAtlases` row for its windows) and `win_w`, `win_h` (the window cell in metres), `casts_shadow`.
@@ -190,7 +190,7 @@ first (`oimp_local_dir`), so one atlas serves every turn. `kgpu_bake_kit` render
 ### Fake interiors: interior mapping (`interior_atlas.ludic`, `imi.ludic`, `kit.frag`)
 
 Behind each window of a facade the shader ray-marches a box room and paints it from an atlas: no geometry. A kit opts in by naming an atlas row
-(`BuildingKit.interior`), which selects the `INTERIOR_MAP` program variant: that variant *is* the material flag.
+(`RenderKit.interior`), which selects the `INTERIOR_MAP` program variant: that variant *is* the material flag.
 
 - **Data**: `InteriorAtlases` (open registry, the game's `def InteriorAtlases from "interior_atlases.lres"`): `image` (`@Asset("png")`), `cols` x `rows`
   room tiles, `rooms` painted, `depth` (m), `night_lit` (the share of rooms lit at full night), `lit_gain`, `dark_gain`, `lit_r/g/b`, `frame`, `curtain`.
