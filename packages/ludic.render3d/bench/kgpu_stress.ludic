@@ -1,0 +1,132 @@
+# kgpu_stress.ludic - the GPU instancer under load, offscreen: a city of KB_INSTANCES buildings in cells of 256 m (the same
+# city kinst_stress.ludic builds), a camera flying through it over a plate (no terrain), every frame culled and binned by
+# compute and drawn by indirect calls. A person runs this; nothing runs it for them (a run is heavy on a shared machine).
+#
+#   ludic build packages/ludic.render3d/bench/kgpu_stress.ludic --headless
+#   KB_INSTANCES=500000 KB_FRAMES=600 ./build/kgpu_stress_headless
+#
+#   KB_INSTANCES   buildings in the city (default 500000; at most 400 * 2000 cells)
+#   KB_FRAMES      frames flown (default 600)
+#   KB_SPEED       metres a second the camera flies (default 240)
+#   KB_IMPOSTOR    1 to bake an octahedral impostor for each kit and draw far buildings as cards (default 0)
+#
+# Each frame's wall time (the frame, then the wait for the GPU) is kept; the program prints its average, median, 99th
+# percentile and worst in milliseconds, how many instances the GPU kept after the last frame, and says STRESS OK when the 99th
+# percentile is within three times the median and instances were drawn. Compare with kinst_stress.ludic, which does the
+# culling alone on the CPU.
+program KGpuStress {
+  numbers float
+  import "ludic.render3d/r3d.ludic"
+  def InteriorAtlases from "../tests/interior_atlases.lres"
+
+  state KBench {
+    g: KGpu,
+    o: ForgOrigin
+  }
+
+  function scene_prepare(b: KBench, render3d_st: mut Render3dState) -> void { kgpu_frame(render3d_st, b.g, b.o) }
+  function scene_draw(b: KBench, render3d_st: mut Render3dState) -> void { kgpu_draw(render3d_st, b.g) }
+  function scene_casters(b: KBench, render3d_st: mut Render3dState, light_vp: floats) -> void { kgpu_draw_casters(render3d_st, b.g, light_vp) }
+
+  function env_int(name: string, fallback: int) -> int {
+    if not Os.has_env(name) { return fallback }
+    return Text.to_int(Os.env(name))
+  }
+
+  function city_cell(cx: int, cz: int) -> CellContent {
+    let c = cell_content_new(cx, cz, 256.0, 400)
+    var seed = wp_hash(cx, cz)
+    for i in 0 .. 400 {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      var kit = 0
+      let r = seed % 100
+      if r >= 80 { kit = 1 }
+      if r >= 96 { kit = 2 }
+      let jx = float((seed >> 4) % 100) * 0.06
+      let jz = float((seed >> 11) % 100) * 0.06
+      cell_add(c, kit, 4.0 + float(i % 20) * 12.4 + jx, 0.0, 4.0 + float(i / 20) * 12.4 + jz, float(seed % 628) * 0.01, 1.0, cell_rgba(200, 200, 200, 255), seed & 0xffff, 0)
+    }
+    return c
+  }
+
+  function percentile(xs: []float, n: int, p: float) -> float {
+    let order = floats(n)
+    for i in 0 .. n { order[i] = xs[i] }
+    for i in 1 .. n {
+      let v = order[i]
+      var j = i
+      while j > 0 and order[j - 1] > v { order[j] = order[j - 1];  j -= 1 }
+      order[j] = v
+    }
+    return order[min(int(float(n - 1) * p), n - 1)]
+  }
+
+  handler Boot(b: mut KBench, render3d_st: mut Render3dState) phase Start {
+    let total = min(env_int("KB_INSTANCES", 500000), 400 * 2000)
+    let frames = env_int("KB_FRAMES", 600)
+    let speed = float(env_int("KB_SPEED", 240))
+    let cells = max(total / 400, 1)
+    let side = int(Math.ceil(Math.sqrt(float(cells))))
+    r3d_plate_mode(render3d_st, true)
+    render3d_st.r3d_sky_path = "packages/ludic.lab/plate/sky.hdr"
+    if not r3d_init(render3d_st, 640, 360, "KGpuStress") {
+      quit()
+      return
+    }
+    r3d_on_prepare(render3d_st, fn scene_prepare)
+    r3d_on_draw(render3d_st, fn scene_draw)
+    r3d_on_casters(render3d_st, fn scene_casters)
+    b.o = forg_new(256.0, 1024.0)
+    b.g = kgpu_new(render3d_st, 3, total + 4096, total, 2048, false)
+    if not b.g.ready {
+      print("kgpu_stress: the instancer could not start (no compute?)")
+      quit()
+      return
+    }
+    # three kits, each its own model (a kit's model takes the instancer's attribute layout)
+    let near = floats(3)
+    let far = floats(3)
+    let rad = floats(3)
+    near[0] = 250.0;  near[1] = 400.0;  near[2] = 900.0
+    far[0] = 1500.0;  far[1] = 2500.0;  far[2] = 5000.0
+    rad[0] = 9.0;  rad[1] = 25.0;  rad[2] = 75.0
+    for id in 0 .. 3 {
+      let m = gltf_load(render3d_st, "packages/ludic.lab/plate", "plate.gltf", "plate")
+      kgpu_kit(render3d_st, b.g, id, m, near[id], far[id], rad[id], true)
+    }
+    if env_int("KB_IMPOSTOR", 0) == 1 {
+      for id in 0 .. 2 { kgpu_bake_kit(render3d_st, b.g, id, 10.0, 10.0, 10.0, 8, 128) }
+    }
+    let t_load = Time.now_us()
+    for n in 0 .. cells {
+      kgpu_add_cell(render3d_st, b.g, n, city_cell(n % side, n / side), b.o)
+    }
+    print(`kgpu_stress: {kgpu_instances(b.g)} instances in {cells} cells loaded in {int((Time.now_us() - t_load) / 1000)} ms`)
+    let ms = floats(frames)
+    let z0 = float(side) * 128.0
+    var wx = 200.0
+    var rebases = 0
+    for f in 0 .. frames {
+      wx = wx + speed / 60.0
+      let wz = z0 + Math.sin(float(f) * 0.02) * 40.0
+      if forg_update(b.o, double(wx), 25.0, double(wz)) { rebases += 1 }
+      cam_set(render3d_st, float(double(wx) - b.o.ox), 25.0, float(double(wz) - b.o.oz), -90.0, -6.0)
+      let t0 = Time.now_us()
+      r3d_frame(render3d_st, float(f) / 60.0)
+      r3d_present(render3d_st)
+      ms[f] = float(Time.now_us() - t0) / 1000.0
+    }
+    let kept = kgpu_visible(render3d_st, b.g)
+    var sum = 0.0
+    for f in 0 .. frames { sum = sum + ms[f] }
+    let p50 = percentile(ms, frames, 0.5)
+    let p99 = percentile(ms, frames, 0.99)
+    print(`kgpu_stress: {total} instances, {frames} frames: {sum / float(frames)} ms average, {p50} median, {p99} p99, {percentile(ms, frames, 1.0)} worst; {kept} kept by the last frame, {rebases} rebases`)
+    if kept > 0 and p99 <= p50 * 3.0 + 1.0 {
+      print("STRESS OK")
+    } else {
+      print("STRESS FAILED: nothing drawn, or the frame time is not steady")
+    }
+    quit()
+  }
+}

@@ -303,6 +303,31 @@ program IntrTest {
     expect_eq(intr_people(m, 1), 0)
   }
 
+  test "an interior's content re-homed into an instance sits at the instance's origin plus its own place, exactly" {
+    let m = mgr()
+    let counts = words(10)
+    intr_enter(m, 0, 5, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 2.0, true, counts)
+    let at = intr_active(m)
+    let c = cell_content_new(0, 0, 128.0, 4)
+    cell_add(c, 0, 3.5, 0.0, 7.25, 0.0, 1.0, 0, 0, 0)
+    cell_add(c, 0, 10.0, 2.0, 1.5, 0.0, 1.0, 0, 0, 0)
+    intr_rehome(m, at, c)
+    expect(cell_world_x(c, 0) == intr_origin_x(m, at) + 3.5)
+    expect(cell_world_z(c, 0) == intr_origin_z(m, at) + 7.25)
+    expect(cell_world_x(c, 1) == intr_origin_x(m, at) + 10.0)
+    expect(cell_world_z(c, 1) == intr_origin_z(m, at) + 1.5)
+    # and two instances of the same content land a spacing apart
+    intr_exit(m)
+    pump(m, 2.0, true, counts)
+    intr_enter(m, 0, 6, 0.0, 0.0, 0.0, 0.0, false, 0.0, 0.0, 0.0, 0.0)
+    pump(m, 2.0, true, counts)
+    let d = cell_content_new(0, 0, 128.0, 4)
+    cell_add(d, 0, 3.5, 0.0, 7.25, 0.0, 1.0, 0, 0, 0)
+    intr_rehome(m, intr_active(m), d)
+    expect(cell_world_x(d, 0) != cell_world_x(c, 0) or cell_world_z(d, 0) != cell_world_z(c, 0))
+  }
+
   test "an interior's map gives its rooms and doors as a portal graph" {
     let rooms = new InteriorRooms
     let doors = new InteriorDoors

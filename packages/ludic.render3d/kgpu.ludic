@@ -365,6 +365,16 @@ export function kgpu_remove_cell(render3d_st: mut Render3dState, g: KGpu, slot: 
   return false
 }
 
+# the portals' verdict (portal.ludic, vis[room]) for the cells of an interior's rooms: room r's cell is slot base + r
+export function pg_apply_gpu(g: PGraph, vis: words, kg: KGpu, base: int) -> int {
+  var shown = 0
+  for i in 0 .. len(g.rooms) {
+    kgpu_hide_cell(kg, base + i, vis[i] == 0)
+    if vis[i] != 0 { shown += 1 }
+  }
+  return shown
+}
+
 # hide or show a cell (a room the portals cannot see)
 export function kgpu_hide_cell(g: KGpu, slot: int, hidden: bool) -> void {
   for ix in 0 .. g.max_cells {

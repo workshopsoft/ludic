@@ -41,7 +41,7 @@ export function hlod_gpu_add(render3d_st: mut Render3dState, h: HlodGpu, slot: i
   gpu_mesh_vertices(render3d_st, mesh, data_of(m.vtx), m.nv * HLOD_V * 4, GPU_STATIC)
   gpu_mesh_attr(render3d_st, mesh, 0, 3, GPU_F32, HLOD_V * 4, 0, false)
   gpu_mesh_attr(render3d_st, mesh, 1, 3, GPU_F32, HLOD_V * 4, 12, false)
-  gpu_mesh_attr(render3d_st, mesh, 2, 4, GPU_UNSIGNED_BYTE, HLOD_V * 4, 24, true)
+  gpu_mesh_attr(render3d_st, mesh, 2, 4, GPU_U8, HLOD_V * 4, 24, true)
   gpu_mesh_indices(render3d_st, mesh, data_of(m.idx), m.ni * 4, 4)
   mesh.count = m.ni
   gpu_mesh_done(render3d_st, mesh)

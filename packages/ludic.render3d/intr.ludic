@@ -456,6 +456,25 @@ function intr_leave(m: IntrMgr) -> void {
   m.t = 0.0
 }
 
+# Re-home an interior's content (authored round the interior's own origin) into instance `inst`: its cell becomes the
+# instance's and its positions carry the part of the instance's origin that is not a whole number of cells, so that
+# cell_world_x / cell_world_z of a thing give the instance's origin plus where the thing is in the interior, exactly.
+# What kgpu_add_cell / kinst_add_cell then draw is that instance's copy: the same content, one origin each.
+export function intr_rehome(m: IntrMgr, inst: int, c: CellContent) -> void {
+  let i = m.insts[inst]
+  let size = double(c.size)
+  let cx = Math.floor(i.ox / size)
+  let cz = Math.floor(i.oz / size)
+  let rx = float(i.ox - cx * size)
+  let rz = float(i.oz - cz * size)
+  c.cx = int(cx)
+  c.cz = int(cz)
+  for k in 0 .. c.n {
+    c.xf[k * CELL_XF] = c.xf[k * CELL_XF] + rx
+    c.xf[k * CELL_XF + 2] = c.xf[k * CELL_XF + 2] + rz
+  }
+}
+
 # ---- an interior's rooms and doors as its map's data -------------------------------------------
 
 # a room of an interior: a box in the interior's own frame

@@ -1,0 +1,57 @@
+# bigworld_gpu_test.ludic - what can be checked of the large world's GPU halves without a device: they compile with the renderer
+# (this file imports all of it), the compute programs they ask for are built into spv/, every shader they name is in
+# the shaders directory, and the layouts the CPU writes and the shaders read agree in size
+import "ludic.render3d/r3d.ludic"
+program BigWorldGpuTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "the compute programs the instancer asks for are built" {
+    let dir = "packages/ludic.render3d/shaders"
+    let names = Text.split("kinst_reset kinst_cull kinst_args", " ")
+    for i in 0 .. len(names) {
+      expect(Fs.exists(`{dir}/spv/{names[i]}.comp.spv`))
+      expect(Fs.exists(`{dir}/{names[i]}.comp`))
+    }
+    let list = Fs.read_text(`{dir}/compute.list`)
+    for i in 0 .. len(names) { expect(Text.contains(list, `{names[i]}|{names[i]}.comp`)) }
+  }
+
+  test "every shader file a big-world program names exists" {
+    let dir = "packages/ludic.render3d/shaders"
+    let files = Text.split("kit.vert kit.frag oimp.vert oimp.frag hlod.vert hlod.frag shadow.frag bake.frag", " ")
+    for i in 0 .. len(files) { expect(Fs.exists(`{dir}/{files[i]}`)) }
+  }
+
+  test "the records the CPU writes are the sizes the compute shaders read" {
+    # kinst_cull.comp: a source instance is 4 vec4s, an output instance 3 vec4s; kinst_args.comp: 9 indirect records a kit
+    expect_eq(KG_SRC_FLOATS, 16)
+    expect_eq(KG_DST_FLOATS, 12)
+    expect_eq(KI_FLOATS, KG_DST_FLOATS)           # what the CPU culler lists and what the GPU writes are one layout
+    let src = Fs.read_text("packages/ludic.render3d/shaders/kinst_cull.comp")
+    expect(Text.contains(src, "src[i * 4u + 3u]"))
+    expect(Text.contains(src, "(offs[bin] + at) * 3u"))
+    let args = Fs.read_text("packages/ludic.render3d/shaders/kinst_args.comp")
+    expect(Text.contains(args, "k * 9u + j"))
+  }
+
+  test "a cell's content records become the layout the shader reads, field for field" {
+    # the CPU twin of kgpu_add_cell's packing (kinst_add_cell builds the same floats): kit at 12, cell at 13 in the GPU's
+    let c = cell_content_new(1, 2, 128.0, 2)
+    cell_add(c, 2, 10.0, 3.0, 20.0, 0.5, 1.5, cell_rgba(255, 0, 0, 255), 777, 4)
+    let k = kinst_new(3)
+    let kc = kinst_add_cell(k, 0, c, 0.0, 0.0, 0.0)
+    expect(kc.rec[0] == 10.0 and kc.rec[1] == 3.0 and kc.rec[2] == 20.0 and kc.rec[3] == 1.5)
+    expect_near(kc.rec[4], Math.sin(0.5), 0.0001)
+    expect(kc.rec[7] == 4.0 and kc.rec[11] == 777.0)
+    expect_eq(kc.kit[0], 2)
+  }
+
+  test "the preparation hook is registered and called by the frame" {
+    let src = Fs.read_text("packages/ludic.render3d/render.ludic")
+    expect(Text.contains(src, "r3d_scene_prepare(render3d_st)"))
+    let hooks = Fs.read_text("packages/ludic.render3d/hooks.ludic")
+    expect(Text.contains(hooks, "function r3d_on_prepare"))
+  }
+}

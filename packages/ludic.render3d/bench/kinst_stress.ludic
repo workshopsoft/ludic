@@ -1,0 +1,117 @@
+# kinst_stress.ludic - the instance culler under load, with no window and no GPU: a city of KB_INSTANCES buildings over cells
+# of 256 m (400 a cell, three kits), a camera flying through it, and the cost of culling and binning each frame.
+#
+#   ludic build packages/ludic.render3d/bench/kinst_stress.ludic
+#   KB_INSTANCES=500000 KB_FRAMES=600 ./build/kinst_stress
+#
+#   KB_INSTANCES   buildings in the city (default 500000)
+#   KB_FRAMES      frames flown (default 600)
+#   KB_TARGET      visible instances the adaptive scale aims for (0, the default: the scale stays 1)
+#   KB_SPEED       metres a second the camera flies (default 240)
+#
+# It prints the frame time (ms) - average, median, 99th percentile, worst - and the instances that made a list, and says
+# STRESS OK when the 99th percentile is within three times the median (a stable frame time, no hitches) and something was
+# drawn. A number to compare between machines and between changes to kinst.ludic; the GPU twin of this run is kgpu_stress.ludic.
+import "ludic.render3d/bigworld.ludic"
+program KInstStress {
+  numbers float
+  def InteriorAtlases from "../tests/interior_atlases.lres"
+
+  function env_int(name: string, fallback: int) -> int {
+    if not Os.has_env(name) { return fallback }
+    return Text.to_int(Os.env(name))
+  }
+
+  # a city: cells of 256 m holding 400 things on a jittered lattice, the kit mostly houses, some blocks, a few towers
+  function city_cell(cx: int, cz: int) -> CellContent {
+    let c = cell_content_new(cx, cz, 256.0, 400)
+    var seed = wp_hash(cx, cz)
+    for i in 0 .. 400 {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff
+      var kit = 0
+      let r = seed % 100
+      if r >= 80 { kit = 1 }
+      if r >= 96 { kit = 2 }
+      let jx = float((seed >> 4) % 100) * 0.06
+      let jz = float((seed >> 11) % 100) * 0.06
+      cell_add(c, kit, 4.0 + float(i % 20) * 12.4 + jx, 0.0, 4.0 + float(i / 20) * 12.4 + jz, float(seed % 628) * 0.01, 1.0, cell_rgba(200, 200, 200, 255), seed & 0xffff, 0)
+    }
+    return c
+  }
+
+  function percentile(xs: []float, n: int, p: float) -> float {
+    let order = floats(n)
+    for i in 0 .. n { order[i] = xs[i] }
+    for i in 1 .. n {
+      let v = order[i]
+      var j = i
+      while j > 0 and order[j - 1] > v { order[j] = order[j - 1];  j -= 1 }
+      order[j] = v
+    }
+    return order[min(int(float(n - 1) * p), n - 1)]
+  }
+
+  entry {
+    let total = env_int("KB_INSTANCES", 500000)
+    let frames = env_int("KB_FRAMES", 600)
+    let target = env_int("KB_TARGET", 0)
+    let speed = float(env_int("KB_SPEED", 240))
+    let cells = max(total / 400, 1)
+    let side = int(Math.ceil(Math.sqrt(float(cells))))
+    let o = forg_new(256.0, 1024.0)
+    let k = kinst_new(3)
+    kinst_kit(k, 0, 250.0, 1500.0, 9.0, true)
+    kinst_kit(k, 1, 400.0, 2500.0, 25.0, true)
+    kinst_kit(k, 2, 900.0, 5000.0, 75.0, false)
+    k.max_per_bin = 400000
+    let t_build = Time.now_us()
+    for n in 0 .. cells {
+      let cx = n % side
+      let cz = n / side
+      let c = city_cell(cx, cz)
+      kinst_add_cell(k, n, c, cell_render_x(o, cx, 256.0), 0.0, cell_render_z(o, cz, 256.0))
+    }
+    print(`built {kinst_total(k)} instances in {kinst_cell_count(k)} cells in {int((Time.now_us() - t_build) / 1000)} ms`)
+    let proj = m4_new()
+    let view = m4_new()
+    let vp = m4_new()
+    m4_perspective(proj, Math.deg_to_rad(60.0), 1.78, 0.3, 8000.0)
+    let ms = floats(frames)
+    var visible_sum = 0
+    var rebases = 0
+    let z0 = float(side) * 128.0
+    var wx = 200.0
+    for f in 0 .. frames {
+      wx = wx + speed / 60.0
+      let wz = z0 + Math.sin(float(f) * 0.02) * 40.0
+      if forg_update(o, double(wx), 25.0, double(wz)) {
+        kinst_rebase(k, o.shift_x, o.shift_y, o.shift_z)
+        rebases += 1
+      }
+      let rx = float(double(wx) - o.ox)
+      let rz = float(double(wz) - o.oz)
+      m4_look_at_xyz(view, rx, 25.0, rz, rx + 100.0, 15.0, rz, 0.0, 1.0, 0.0)
+      m4_mul(vp, proj, view)
+      let t0 = Time.now_us()
+      kinst_begin(k, vp, rx, 25.0, rz)
+      let vis = kinst_cull(k)
+      let t1 = Time.now_us()
+      if target > 0 { kinst_adapt(k, target, 0.03) }
+      ms[f] = float(t1 - t0) / 1000.0
+      visible_sum += vis
+    }
+    var sum = 0.0
+    for f in 0 .. frames { sum = sum + ms[f] }
+    let avg = sum / float(frames)
+    let p50 = percentile(ms, frames, 0.5)
+    let p99 = percentile(ms, frames, 0.99)
+    let worst = percentile(ms, frames, 1.0)
+    print(`kinst_stress: {total} instances, {frames} frames: {avg} ms average, {p50} median, {p99} p99, {worst} worst; {visible_sum / frames} visible a frame, {rebases} rebases, scale {k.scale}`)
+    if visible_sum > 0 and p99 <= p50 * 3.0 + 0.5 {
+      print("STRESS OK")
+    } else {
+      print("STRESS FAILED: no instances drawn, or the frame time is not steady")
+      exit(1)
+    }
+  }
+}

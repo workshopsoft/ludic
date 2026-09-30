@@ -13,6 +13,16 @@ program ImiTest {
     expect_eq(imi_pcg(12345), -195121906)
   }
 
+  test "the window hash equals the shader's uint arithmetic: golden values from an independent 32-bit implementation" {
+    # computed outside Ludic with the shader's parenthesised form, (seed * a) ^ (wall * b), each product wrapped to 32 bits
+    expect_eq(imi_hash(12345, 2, 3, -7, 0), -263961895)
+    expect_eq(imi_hash(12345, 2, 3, -7, 1), -1198391983)
+    expect_eq(imi_hash(99, 0, -100, 40, 2), 1470913944)
+    expect_eq(imi_hash(65535, 3, 1000, 5, 0), 169947113)
+    expect_eq(imi_room(14, 12345, 2, 3, -7), 13)
+    expect_eq(imi_room(14, 65535, 3, 1000, 5), 0)
+  }
+
   test "a window's room is a pure function of where it is: the same every call" {
     for c in 0 .. 50 {
       let a = imi_room(14, 7777, 2, c - 25, c % 9)
