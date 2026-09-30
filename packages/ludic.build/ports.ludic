@@ -1,0 +1,18 @@
+# ports.ludic - what building asks the game. Unbound, the world has no tags, nothing in the way and
+# every worker is alive; the bank is required
+export port BuildWorld {
+  tags: fn(int, int) -> int = fn bd__no_tags               # (cell x, cell z): a mask, bit i for BuildTags i
+  blocked: fn(int, int) -> bool = fn bd__clear             # something the world keeps there (a tree, a unit)
+  alive: fn(int) -> bool = fn bd__yes_of                   # a worker still there
+}
+
+function bd__no_tags(cx: int, cz: int) -> int { return 0 }
+function bd__clear(cx: int, cz: int) -> bool { return false }
+function bd__yes_of(worker: int) -> bool { return true }
+
+# the stockpile: (owner, resource) held, and taking and giving back. Required
+export port BuildBank {
+  have: fn(int, int) -> int
+  spend: fn(int, int, int) -> bool          # (owner, resource, n); false and nothing taken when it is not there
+  refund: fn(int, int, int) -> void
+}

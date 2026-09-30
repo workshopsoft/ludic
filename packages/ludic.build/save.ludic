@@ -1,0 +1,60 @@
+# save.ludic - the sites as rows of ints [uid, kind, owner, cx, cz, rot, state, progress in
+# thousandths]. The grid is the game's to set (`build_grid`) and is held again from the sites. A
+# site comes back Placed: a finished one is Done on the next tick, a ruin is knocked down again,
+# and none of them say so; one under construction waits for its workers to be sent again.
+function bd__milli(v: float) -> int { return int(Math.round(v * 1000.0)) }
+
+@alloc_ok("on a save: the rows written out")
+function build__save(build_st: BuildState) -> Val {
+  let v = Value.object()
+  let rows = new []int
+  for i in 0 .. tb_len(build_st.sites) {
+    let s = tb_rec(build_st.sites, i)
+    push(rows, s.uid)
+    push(rows, s.kind)
+    push(rows, s.owner)
+    push(rows, s.cx)
+    push(rows, s.cz)
+    push(rows, s.rot)
+    push(rows, int(s.state))
+    push(rows, bd__milli(s.progress))
+  }
+  sv_put_ints(v, "sites", rows)
+  sv_put_int(v, "uid", build_st.next_uid)
+  return v
+}
+
+function build__clear(build_st: mut BuildState) -> void {
+  build_st.sites = bd__sites_new()
+  imap_clear(build_st.by_worker)
+  for i in 0 .. len(build_st.occ) { build_st.occ[i] = 0 }
+  build_st.next_uid = 1
+  build_st.why = 0
+  q_clear(build_st.facts)
+}
+
+function build__load(build_st: mut BuildState, v: Val, version: int) -> void {
+  build__clear(build_st)
+  let next = sv_int(v, "uid", 1)
+  let rows = sv_ints(v, "sites")
+  var i = 0
+  while i + 7 < len(rows) {
+    let kind = rows[i + 1]
+    if kind >= 0 and kind < BK_COUNT {
+      let h = bd__add(build_st, kind, rows[i + 2], rows[i + 3], rows[i + 4], rows[i + 5])
+      let s = tb_rec(build_st.sites, tb_row(build_st.sites, h))
+      s.uid = rows[i]
+      s.progress = float(rows[i + 7]) / 1000.0
+      let st = rows[i + 6]
+      if st == 2 {
+        s.progress = BuildKinds[kind].work
+        s.quiet = true
+      } else if st == 3 {
+        s.quiet = true
+        dispatch SiteDestroy { site: h }
+      }
+    }
+    i += 8
+  }
+  build_st.next_uid = next
+}

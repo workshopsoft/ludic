@@ -1,0 +1,87 @@
+# rules.ludic - whether a kind may be placed here: the footprint on the grid and clear, the tags of
+# its cells, how many the owner has, what the owner has built, what is next to it and what is too
+# close, and what the bank says. Reads only; build_place is what acts on the answer
+
+# the bit of a list of tags, as the world's mask has them
+function bd__mask(tags: []int) -> int {
+  var m = 0
+  if tags == null { return 0 }
+  for i in 0 .. len(tags) { m = m | (1 << tags[i]) }
+  return m
+}
+
+# the footprint is on the grid and no structure holds a cell of it
+function bd__free(b: BuildState, kind: int, cx: int, cz: int, rot: int) -> bool {
+  let fw = bd__fw(kind, rot)
+  let fh = bd__fh(kind, rot)
+  if cx < 0 or cz < 0 or cx + fw > b.gw or cz + fh > b.gh { return false }
+  for dz in 0 .. fh {
+    for dx in 0 .. fw { if b.occ[(cz + dz) * b.gw + cx + dx] != 0 { return false } }
+  }
+  return true
+}
+
+# is a structure of one of `kinds` in the cells round the footprint, `d` cells out (`done`: only a
+# finished one, `owner` >= 0: only that owner's)
+function bd__around(b: BuildState, kinds: []int, cx: int, cz: int, fw: int, fh: int, d: int, owner: int, done: bool) -> bool {
+  if kinds == null or len(kinds) == 0 { return false }
+  for z in cz - d .. cz + fh + d {
+    for x in cx - d .. cx + fw + d {
+      if x < 0 or z < 0 or x >= b.gw or z >= b.gh { continue }
+      let o = b.occ[z * b.gw + x]
+      if o == 0 { continue }
+      let s = bd__site(b, o - 1)
+      if s == null or (owner >= 0 and s.owner != owner) or (done and s.state != SiteState.Done) { continue }
+      for k in 0 .. len(kinds) { if kinds[k] == s.kind { return true } }
+    }
+  }
+  return false
+}
+
+# how many of a kind an owner has that are not ruins (`done`: only the finished)
+export function build_count(build_st: BuildState, owner: int, kind: int, done: bool) -> int {
+  var n = 0
+  for i in 0 .. tb_len(build_st.sites) {
+    let s = tb_rec(build_st.sites, i)
+    if s.owner != owner or s.kind != kind or s.state == SiteState.Destroyed { continue }
+    if done and s.state != SiteState.Done { continue }
+    n += 1
+  }
+  return n
+}
+
+# 0 when `kind` may be placed for `owner` with its footprint's corner at cell (cx, cz), turned `rot`
+# quarter turns; else why not (BUILD_E_*). `paid`: leave the bank out (a structure the game gives)
+export function build_check(build_st: BuildState, kind: int, owner: int, cx: int, cz: int, rot: int, paid: bool) -> int {
+  if kind < 0 or kind >= BK_COUNT { return BUILD_E_KIND }
+  let k = BuildKinds[kind]
+  let r = rot % 4
+  if (not k.rotates and r != 0) or rot < 0 { return BUILD_E_KIND }
+  let fw = bd__fw(kind, r)
+  let fh = bd__fh(kind, r)
+  if cx < 0 or cz < 0 or cx + fw > build_st.gw or cz + fh > build_st.gh { return BUILD_E_BOUNDS }
+  let need = bd__mask(k.need)
+  let forbid = bd__mask(k.forbid)
+  for dz in 0 .. fh {
+    for dx in 0 .. fw {
+      if build_st.occ[(cz + dz) * build_st.gw + cx + dx] != 0 or BuildWorld.blocked(cx + dx, cz + dz) { return BUILD_E_BLOCKED }
+      let t = BuildWorld.tags(cx + dx, cz + dz)
+      if (t & need) != need { return BUILD_E_TERRAIN }
+      if (t & forbid) != 0 { return BUILD_E_FORBIDDEN }
+    }
+  }
+  if k.limit > 0 and build_count(build_st, owner, kind, false) >= k.limit { return BUILD_E_LIMIT }
+  if k.needs != null {
+    for i in 0 .. len(k.needs) { if build_count(build_st, owner, k.needs[i], true) == 0 { return BUILD_E_NEEDS } }
+  }
+  if k.near != null and len(k.near) > 0 and not bd__around(build_st, k.near, cx, cz, fw, fh, k.near_dist, owner, true) { return BUILD_E_ADJACENT }
+  if k.apart_dist > 0 and bd__around(build_st, k.apart, cx, cz, fw, fh, k.apart_dist, -1, false) { return BUILD_E_SPACING }
+  if paid and k.cost_res != null {
+    for i in 0 .. len(k.cost_res) { if BuildBank.have(owner, k.cost_res[i]) < k.cost_n[i] { return BUILD_E_COST } }
+  }
+  return BUILD_OK
+}
+
+export function build_can_place(build_st: BuildState, kind: int, owner: int, cx: int, cz: int, rot: int) -> bool {
+  return build_check(build_st, kind, owner, cx, cz, rot, true) == BUILD_OK
+}

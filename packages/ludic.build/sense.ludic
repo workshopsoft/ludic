@@ -1,0 +1,57 @@
+# sense.ludic - what the tick does round the machine. Before it: drop the workers that are gone,
+# work the sites that have workers, and set the flags the guards read. After it: hold the cells of a
+# site that is placed again, free those of one that is destroyed, and let go of the workers of a
+# site that is finished or gone
+
+function bd__release(b: mut BuildState, s: BuildSite, h: int, reason: int) -> void {
+  for k in 0 .. s.workers {
+    imap_del(b.by_worker, s.wk[k])
+    bd__say(b, BUILD_F_RELEASED, s, h, s.wk[k], reason, 0)
+  }
+  s.workers = 0
+}
+
+function bd__sense(b: mut BuildState, dt: float) -> void {
+  for i in 0 .. tb_len(b.sites) {
+    let s = tb_rec(b.sites, i)
+    s.busy = false
+    s.complete = false
+    if s.state != SiteState.Placed and s.state != SiteState.Building { continue }
+    var k = 0
+    while k < s.workers {
+      if BuildWorld.alive(s.wk[k]) {
+        k += 1
+      } else {
+        imap_del(b.by_worker, s.wk[k])
+        bd__say(b, BUILD_F_RELEASED, s, tb_handle(b.sites, i), s.wk[k], BUILD_R_LOST, 0)
+        s.workers -= 1
+        s.wk[k] = s.wk[s.workers]
+      }
+    }
+    let kind = BuildKinds[s.kind]
+    if s.workers > 0 {
+      s.busy = true
+      s.progress += dt * Math.pow(float(s.workers), kind.pace_exp)
+    }
+    s.complete = s.progress >= kind.work
+  }
+}
+
+function bd__settle(b: mut BuildState) -> void {
+  for i in 0 .. tb_len(b.sites) {
+    let s = tb_rec(b.sites, i)
+    let h = tb_handle(b.sites, i)
+    if s.state == SiteState.Destroyed {
+      if s.held {
+        bd__occupy(b, s, 0)
+        s.held = false
+      }
+      if s.workers > 0 { bd__release(b, s, h, BUILD_R_DONE) }
+    } else if s.state == SiteState.Done {
+      if s.workers > 0 { bd__release(b, s, h, BUILD_R_DONE) }
+    } else if not s.held {
+      bd__occupy(b, s, h + 1)
+      s.held = true
+    }
+  }
+}

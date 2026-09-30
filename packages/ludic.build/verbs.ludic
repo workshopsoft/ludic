@@ -1,0 +1,239 @@
+# verbs.ludic - placing, cancelling, destroying and working the sites, and asking about them. A
+# site is a handle (-1 stale); a worker is the game's own unit id
+
+function bd__add(build_st: mut BuildState, kind: int, owner: int, cx: int, cz: int, rot: int) -> int {
+  let s = new BuildSite
+  s.uid = build_st.next_uid
+  build_st.next_uid += 1
+  s.kind = kind
+  s.owner = owner
+  s.cx = cx
+  s.cz = cz
+  s.rot = rot % 4
+  @alloc_ok("a site made: its workers' room")
+  s.wk = new []int
+  for i in 0 .. BUILD_WORKERS_MAX { push(s.wk, 0) }
+  let h = tb_add(build_st.sites, s)
+  bd__occupy(build_st, s, h + 1)
+  s.held = true
+  return h
+}
+
+function bd__reject(build_st: mut BuildState, kind: int, owner: int, cx: int, cz: int, rot: int, why: int) -> int {
+  build_st.why = why
+  let s = build_st.scratch
+  s.kind = Math.max(kind, 0)
+  s.owner = owner
+  s.cx = cx
+  s.cz = cz
+  s.rot = rot
+  bd__say(build_st, BUILD_F_REJECTED, s, -1, -1, why, 0)
+  return -1
+}
+
+# place a structure, paid for through the bank: its handle, or -1 with `build_why` saying why not
+# (and a REJECTED fact). Its cells are held from now, and it is built when workers have done its work
+export function build_place(build_st: mut BuildState, kind: int, owner: int, cx: int, cz: int, rot: int) -> int {
+  let why = build_check(build_st, kind, owner, cx, cz, rot, true)
+  if why != BUILD_OK { return bd__reject(build_st, kind, owner, cx, cz, rot, why) }
+  let k = BuildKinds[kind]
+  if k.cost_res != null {
+    for i in 0 .. len(k.cost_res) { BuildBank.spend(owner, k.cost_res[i], k.cost_n[i]) }
+  }
+  let h = bd__add(build_st, kind, owner, cx, cz, rot)
+  bd__say(build_st, BUILD_F_PLACED, tb_rec(build_st.sites, tb_row(build_st.sites, h)), h, -1, 0, 0)
+  return h
+}
+
+# a structure the game gives: no cost, and finished (it becomes Done on the next tick), its rules kept.
+# -1 when the rules refuse it
+export function build_place_done(build_st: mut BuildState, kind: int, owner: int, cx: int, cz: int, rot: int) -> int {
+  let why = build_check(build_st, kind, owner, cx, cz, rot, false)
+  if why != BUILD_OK { return bd__reject(build_st, kind, owner, cx, cz, rot, why) }
+  let h = bd__add(build_st, kind, owner, cx, cz, rot)
+  let s = tb_rec(build_st.sites, tb_row(build_st.sites, h))
+  s.progress = BuildKinds[kind].work
+  bd__say(build_st, BUILD_F_PLACED, s, h, -1, 0, 0)
+  return h
+}
+
+export function build_why(build_st: BuildState) -> int { return build_st.why }
+
+# take a site back: only one that is not finished, refunded by its kind's percentages
+export function build_cancel(build_st: BuildState, site: int) -> bool {
+  let s = bd__site(build_st, site)
+  if s == null or (s.state != SiteState.Placed and s.state != SiteState.Building) { return false }
+  dispatch SiteCancel { site: site }
+  return true
+}
+
+# knock one down (finished or not); the game says when
+export function build_destroy(build_st: BuildState, site: int) -> bool {
+  let s = bd__site(build_st, site)
+  if s == null or s.state == SiteState.Destroyed { return false }
+  dispatch SiteDestroy { site: site }
+  return true
+}
+
+# place a ruin again, paid for again: false when it is not a ruin or cannot be paid for or its cells are taken
+export function build_rebuild(build_st: BuildState, site: int) -> bool {
+  let s = bd__site(build_st, site)
+  if s == null or s.state != SiteState.Destroyed { return false }
+  dispatch SiteRebuild { site: site }
+  return true
+}
+
+# take a ruin (or any site) off the table for good; frees its cells now
+export function build_remove(build_st: mut BuildState, site: int) -> bool {
+  let s = bd__site(build_st, site)
+  if s == null { return false }
+  if s.held { bd__occupy(build_st, s, 0) }
+  bd__release(build_st, s, site, BUILD_R_DONE)
+  return tb_remove(build_st.sites, site)
+}
+
+# send a worker to a site: false when the site is finished, gone or full. A worker works one site,
+# so this takes it off the one it was on
+export function build_assign(build_st: mut BuildState, site: int, worker: int) -> bool {
+  let s = bd__site(build_st, site)
+  if s == null or (s.state != SiteState.Placed and s.state != SiteState.Building) { return false }
+  if imap_get(build_st.by_worker, worker, -1) == site { return true }
+  if s.workers >= BuildKinds[s.kind].workers or s.workers >= BUILD_WORKERS_MAX { return false }
+  build_release(build_st, worker)
+  s.wk[s.workers] = worker
+  s.workers += 1
+  imap_put(build_st.by_worker, worker, site)
+  return true
+}
+
+# take a worker off whatever it works; false when it was on nothing
+export function build_release(build_st: mut BuildState, worker: int) -> bool {
+  let h = imap_get(build_st.by_worker, worker, -1)
+  if h < 0 { return false }
+  imap_del(build_st.by_worker, worker)
+  let s = bd__site(build_st, h)
+  if s == null { return true }
+  var k = 0
+  while k < s.workers {
+    if s.wk[k] == worker {
+      s.workers -= 1
+      s.wk[k] = s.wk[s.workers]
+      bd__say(build_st, BUILD_F_RELEASED, s, h, worker, BUILD_R_ASKED, 0)
+    } else {
+      k += 1
+    }
+  }
+  return true
+}
+
+# work a site without a worker: `seconds` of one worker's effort (an upgrade, a repair, a cheat)
+export function build_work(build_st: mut BuildState, site: int, seconds: float) -> bool {
+  let s = bd__site(build_st, site)
+  if s == null or (s.state != SiteState.Placed and s.state != SiteState.Building) { return false }
+  s.progress += seconds
+  return true
+}
+
+# the site a worker works, -1 none
+export function build_site_of(build_st: BuildState, worker: int) -> int { return imap_get(build_st.by_worker, worker, -1) }
+
+export function build_alive(build_st: BuildState, site: int) -> bool { return tb_alive(build_st.sites, site) }
+export function build_sites(build_st: BuildState) -> int { return tb_len(build_st.sites) }
+# the handle of the i-th site, for a sweep
+export function build_site_at(build_st: BuildState, i: int) -> int { return tb_handle(build_st.sites, i) }
+
+# a site's state as a SiteState's number (0 Placed, 1 Building, 2 Done, 3 Destroyed), -1 gone
+export function build_state(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return -1 }
+  return int(s.state)
+}
+export function build_is_done(build_st: BuildState, site: int) -> bool { return build_state(build_st, site) == 2 }
+
+# how far along it is, 0 to 1
+export function build_progress(build_st: BuildState, site: int) -> float {
+  let s = bd__site(build_st, site)
+  if s == null { return 0.0 }
+  let w = BuildKinds[s.kind].work
+  if w <= 0.0 { return 1.0 }
+  return Math.clamp(s.progress / w, 0.0, 1.0)
+}
+
+export function build_workers(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return 0 }
+  return s.workers
+}
+
+export function build_worker_at(build_st: BuildState, site: int, i: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null or i < 0 or i >= s.workers { return -1 }
+  return s.wk[i]
+}
+
+export function build_kind_of(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return -1 }
+  return s.kind
+}
+
+export function build_owner_of(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return -1 }
+  return s.owner
+}
+
+export function build_uid(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return 0 }
+  return s.uid
+}
+
+export function build_by_uid(build_st: BuildState, uid: int) -> int {
+  for i in 0 .. tb_len(build_st.sites) { if tb_rec(build_st.sites, i).uid == uid { return tb_handle(build_st.sites, i) } }
+  return -1
+}
+
+export function build_cell_x(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return -1 }
+  return s.cx
+}
+export function build_cell_z(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return -1 }
+  return s.cz
+}
+export function build_rotation(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return 0 }
+  return s.rot
+}
+
+# the footprint's width and height, turned
+export function build_width(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return 0 }
+  return bd__fw(s.kind, s.rot)
+}
+export function build_height(build_st: BuildState, site: int) -> int {
+  let s = bd__site(build_st, site)
+  if s == null { return 0 }
+  return bd__fh(s.kind, s.rot)
+}
+
+# the site holding a cell, -1 none
+export function build_at(build_st: BuildState, cx: int, cz: int) -> int {
+  if cx < 0 or cz < 0 or cx >= build_st.gw or cz >= build_st.gh { return -1 }
+  return build_st.occ[cz * build_st.gw + cx] - 1
+}
+
+# the grid cell a world coordinate is in (floor), and the world coordinate of a footprint's middle
+export function build_cell_of_x(build_st: BuildState, x: float) -> int { return int(Math.floor((x - build_st.ox) / build_st.cell)) }
+export function build_cell_of_z(build_st: BuildState, z: float) -> int { return int(Math.floor((z - build_st.oz) / build_st.cell)) }
+export function build_world_x(build_st: BuildState, kind: int, cx: int, rot: int) -> float {
+  return build_st.ox + (float(cx) + float(bd__fw(kind, rot)) * 0.5) * build_st.cell
+}
+export function build_world_z(build_st: BuildState, kind: int, cz: int, rot: int) -> float {
+  return build_st.oz + (float(cz) + float(bd__fh(kind, rot)) * 0.5) * build_st.cell
+}

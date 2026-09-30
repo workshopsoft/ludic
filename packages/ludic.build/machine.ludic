@@ -1,0 +1,71 @@
+# machine.ludic - construction as data. A site is Placed, Building, Done or Destroyed; the rows of
+# steps.lres (BuildSteps) say how it moves, `on` an action or "" for what the tick senses (workers
+# on it, the work done), and what happens as it does. Only a transition writes `state`.
+export enum SiteState { Placed, Building, Done, Destroyed }
+
+export action SiteCancel { @Target site: int = -1 }     # taken back by its owner: refunds by the kind's percentages
+export action SiteDestroy { @Target site: int = -1 }    # knocked down
+export action SiteRebuild { @Target site: int = -1 }    # a ruin placed again, paid for again
+
+export property BuildStep {
+  from: SiteState = SiteState.Placed
+  to: SiteState = SiteState.Placed
+  on: string = ""
+  guard: fn(Row<BuildSite>, BuildState) -> bool = null
+  enter: fn(Row<BuildSite>, BuildState) -> void = null
+}
+@Machine(BuildSite.state) registry BuildSteps of BuildStep as BSTEP from "steps.lres"
+
+# what the cost of a kind is, as a percentage of each line, handed back
+function bd__cost_back(s: BuildSite, pct: int) -> int {
+  let k = BuildKinds[s.kind]
+  if k.cost_res == null or pct <= 0 { return 0 }
+  for i in 0 .. len(k.cost_res) { BuildBank.refund(s.owner, k.cost_res[i], k.cost_n[i] * pct / 100) }
+  return pct
+}
+
+# guards
+function bd_complete(r: Row<BuildSite>, b: BuildState) -> bool { return r.rec.complete }
+function bd_busy(r: Row<BuildSite>, b: BuildState) -> bool { return r.rec.busy }
+function bd_can_rebuild(r: Row<BuildSite>, b: BuildState) -> bool {
+  if not bd__free(b, r.rec.kind, r.rec.cx, r.rec.cz, r.rec.rot) { return false }
+  let k = BuildKinds[r.rec.kind]
+  if k.cost_res == null { return true }
+  for i in 0 .. len(k.cost_res) { if BuildBank.have(r.rec.owner, k.cost_res[i]) < k.cost_n[i] { return false } }
+  return true
+}
+
+# enters
+function bd_started(r: mut Row<BuildSite>, b: BuildState) -> void {
+  bd__say(b, BUILD_F_STARTED, r.rec, r.h, -1, 0, 0)
+}
+function bd_completed(r: mut Row<BuildSite>, b: BuildState) -> void {
+  if not r.rec.quiet { bd__say(b, BUILD_F_COMPLETED, r.rec, r.h, -1, 0, 0) }
+  r.rec.quiet = false
+}
+function bd_cancelled(r: mut Row<BuildSite>, b: BuildState) -> void {
+  let n = bd__cost_back(r.rec, BuildKinds[r.rec.kind].refund_placed)
+  bd__say(b, BUILD_F_CANCELLED, r.rec, r.h, -1, 0, n)
+}
+function bd_cancelled_work(r: mut Row<BuildSite>, b: BuildState) -> void {
+  let n = bd__cost_back(r.rec, BuildKinds[r.rec.kind].refund_building)
+  bd__say(b, BUILD_F_CANCELLED, r.rec, r.h, -1, 0, n)
+}
+function bd_destroyed(r: mut Row<BuildSite>, b: BuildState) -> void {
+  let n = bd__cost_back(r.rec, BuildKinds[r.rec.kind].refund_destroyed)
+  bd__say(b, BUILD_F_DESTROYED, r.rec, r.h, -1, 0, n)
+}
+function bd_razed(r: mut Row<BuildSite>, b: BuildState) -> void {
+  if not r.rec.quiet { bd__say(b, BUILD_F_DESTROYED, r.rec, r.h, -1, 0, 0) }
+  r.rec.quiet = false
+}
+function bd_rebuilt(r: mut Row<BuildSite>, b: BuildState) -> void {
+  let k = BuildKinds[r.rec.kind]
+  if k.cost_res != null {
+    for i in 0 .. len(k.cost_res) { BuildBank.spend(r.rec.owner, k.cost_res[i], k.cost_n[i]) }
+  }
+  r.rec.progress = 0.0
+  r.rec.complete = false
+  r.rec.busy = false
+  bd__say(b, BUILD_F_REBUILT, r.rec, r.h, -1, 0, 0)
+}

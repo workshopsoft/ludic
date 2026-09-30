@@ -1,0 +1,17 @@
+# steps.lres - how a site moves. One row a way from one state to another: `on` an action
+# (SiteCancel, SiteDestroy, SiteRebuild), or "" for what the tick senses. The first row from a state
+# whose guard passes is taken, so the rows from one state are in priority order.
+#
+#   Placed -> Building -> Done -> Destroyed -> Placed (a ruin placed again)
+# A structure needing no work (`work: 0`), or one put in finished, goes from Placed straight to Done
+instant { from: SiteState.Placed, to: SiteState.Done, guard: fn bd_complete, enter: fn bd_completed }
+first_worker { from: SiteState.Placed, to: SiteState.Building, guard: fn bd_busy, enter: fn bd_started }
+finished { from: SiteState.Building, to: SiteState.Done, guard: fn bd_complete, enter: fn bd_completed }
+
+cancel_placed { from: SiteState.Placed, to: SiteState.Destroyed, on: "SiteCancel", enter: fn bd_cancelled }
+cancel_building { from: SiteState.Building, to: SiteState.Destroyed, on: "SiteCancel", enter: fn bd_cancelled_work }
+destroy_placed { from: SiteState.Placed, to: SiteState.Destroyed, on: "SiteDestroy", enter: fn bd_razed }
+destroy_building { from: SiteState.Building, to: SiteState.Destroyed, on: "SiteDestroy", enter: fn bd_razed }
+destroy_done { from: SiteState.Done, to: SiteState.Destroyed, on: "SiteDestroy", enter: fn bd_destroyed }
+
+rebuild { from: SiteState.Destroyed, to: SiteState.Placed, on: "SiteRebuild", guard: fn bd_can_rebuild, enter: fn bd_rebuilt }

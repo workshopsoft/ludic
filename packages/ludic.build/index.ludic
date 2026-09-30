@@ -1,0 +1,15 @@
+# ludic.build - a grid of cells, structures with a footprint of w x h cells placed on it under rules
+# written as data, paid for through the game's bank, and built by workers the game sends: a site is
+# Placed, Building, Done or Destroyed, and a @Machine table says how it moves between them
+module ludic_build uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "machine.ludic"
+import "rules.ludic"
+import "sense.ludic"
+import "verbs.ludic"
+import "save.ludic"
+import "system.ludic"

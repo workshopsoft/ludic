@@ -1,0 +1,17 @@
+# system.ludic - build as a system: sense, step the machine, settle the grid
+export function build_reset(build_st: mut BuildState) -> void { build__clear(build_st) }
+
+export function build_tick(build_st: mut BuildState, m: mut BuildStepsMachine, t: Tick) -> void {
+  bd__sense(build_st, t.dt)
+  build_steps_tick(m, build_st)
+  bd__settle(build_st)
+}
+
+export function build_system() -> System {
+  let s = system_new("build", PH_SIMULATE)
+  s.reset = fn build_reset
+  s.tick = fn build_tick
+  s.save = fn build__save
+  s.load = fn build__load
+  return s
+}

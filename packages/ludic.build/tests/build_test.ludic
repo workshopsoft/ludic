@@ -1,0 +1,382 @@
+# build_test.ludic - placement rules from a fake world (tags, a blocked cell, a bank): footprints and
+# their rotation, every reason a placement is refused, the cost, workers and their pace, the
+# construction machine's states and facts, cancelling and destroying with their refunds, a ruin
+# placed again, structures given finished, and the save
+import "ludic.build"
+import "ludic.base"
+program BuildTest {
+  numbers float
+  property Resource { key: string = "" }
+  registry Resources of Resource as RES
+  def Resources wood { }
+  def Resources stone { }
+  def BuildTags land { }
+  def BuildTags shore { }
+
+  def BuildKinds hut { w: 2, h: 2, work: 10.0, cost_res: [RES_WOOD], cost_n: [50], need: [BTAG_LAND], refund_placed: 100, refund_building: 75, refund_destroyed: 20, workers: 3 }
+  def BuildKinds farm { w: 3, h: 2, work: 6.0, need: [BTAG_LAND], forbid: [BTAG_SHORE], apart: [BK_FARM], apart_dist: 1, near: [BK_HUT], near_dist: 2, pace_exp: 0.5, workers: 4 }
+  def BuildKinds tower { w: 1, h: 1, work: 4.0, needs: [BK_HUT], cost_res: [RES_STONE], cost_n: [30] }
+  def BuildKinds camp { w: 1, h: 1, work: 0.0, limit: 1, rotates: false }
+  def BuildKinds dock { w: 1, h: 1, work: 3.0, need: [BTAG_SHORE] }
+  def BuildKinds fence { w: 1, h: 1, work: 1.0, apart: [BK_FENCE], apart_dist: 2 }
+
+  state BuildTestState {
+    wood: int = 100
+    stone: int = 100
+    dead: int = -1
+  }
+
+  # land to the west (x < 8), shore at x 8 and 9, water past it; a tree at (3, 3)
+  function tags(cx: int, cz: int) -> int {
+    if cx < 8 { return 1 }
+    if cx < 10 { return 2 }
+    return 0
+  }
+  function blocked(cx: int, cz: int) -> bool { return cx == 3 and cz == 3 }
+  function alive(build_test_st: BuildTestState, w: int) -> bool { return w != build_test_st.dead }
+  function have(build_test_st: BuildTestState, owner: int, res: int) -> int {
+    if res == RES_WOOD { return build_test_st.wood }
+    return build_test_st.stone
+  }
+  function spend(build_test_st: mut BuildTestState, owner: int, res: int, n: int) -> bool {
+    if res == RES_WOOD { build_test_st.wood -= n } else { build_test_st.stone -= n }
+    return true
+  }
+  function refund(build_test_st: mut BuildTestState, owner: int, res: int, n: int) -> void {
+    if res == RES_WOOD { build_test_st.wood += n } else { build_test_st.stone += n }
+  }
+  bind BuildWorld { tags: fn tags, blocked: fn blocked, alive: fn alive }
+  bind BuildBank { have: fn have, spend: fn spend, refund: fn refund }
+
+  function fresh(build_st: mut BuildState, build_test_st: mut BuildTestState) -> void {
+    build_reset(build_st)
+    build_grid(build_st, 12, 12, 2.0, 100.0, 50.0)
+    build_test_st.wood = 100
+    build_test_st.stone = 100
+    build_test_st.dead = -1
+  }
+
+  function step(build_st: mut BuildState, m: mut BuildStepsMachine, dt: float) -> void {
+    build_tick(build_st, m, tick_new(dt, 0, 0.0))
+    drain_actions()
+  }
+
+  function count_of(build_st: BuildState, what: int) -> int {
+    var n = 0
+    let f = q_drain(build_facts(build_st))
+    for i in 0 .. len(f) { if f[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "the registries are the game's, in the order written" {
+    expect_eq(BK_COUNT, 6)
+    expect_eq(BK_CAMP, 3)
+    expect_eq(BTAG_SHORE, 1)
+    expect_eq(BuildKinds[BK_FARM].apart[0], BK_FARM)
+  }
+
+  test "a footprint turned a quarter swaps its width and height, and the grid answers where" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    build_place_done(build_st, BK_HUT, 0, 0, 0, 0)
+    step(build_st, m, 0.1)
+    let a = build_place(build_st, BK_FARM, 0, 2, 0, 1)
+    expect(a >= 0)
+    expect_eq(build_width(build_st, a), 2)
+    expect_eq(build_height(build_st, a), 3)
+    expect_eq(build_at(build_st, 3, 2), a)
+    expect_eq(build_at(build_st, 4, 0), -1)            # not three wide: turned
+    expect_eq(build_at(build_st, -1, 0), -1)
+    expect_eq(build_cell_of_x(build_st, 107.0), 3)
+    expect_eq(build_cell_of_z(build_st, 49.0), -1)
+    expect_eq(build_world_x(build_st, BK_FARM, 2, 1), 106.0)   # cells of 2 m, the grid's corner at 100
+    expect_eq(build_world_z(build_st, BK_FARM, 0, 1), 53.0)
+    expect(build_check(build_st, BK_CAMP, 0, 5, 5, 1, true) != BUILD_OK)   # a camp never turns
+  }
+
+  test "every reason a placement is refused" (build_st: mut BuildState, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    expect_eq(build_check(build_st, 99, 0, 0, 0, 0, true), BUILD_E_KIND)
+    expect_eq(build_check(build_st, BK_HUT, 0, 11, 0, 0, true), BUILD_E_BOUNDS)
+    expect_eq(build_check(build_st, BK_HUT, 0, 0, -1, 0, true), BUILD_E_BOUNDS)
+    expect_eq(build_check(build_st, BK_HUT, 0, 2, 2, 0, true), BUILD_E_BLOCKED)      # the tree at (3, 3)
+    expect_eq(build_check(build_st, BK_HUT, 0, 7, 0, 0, true), BUILD_E_TERRAIN)      # half on the shore
+    expect_eq(build_check(build_st, BK_DOCK, 0, 4, 0, 0, true), BUILD_E_TERRAIN)
+    expect_eq(build_check(build_st, BK_DOCK, 0, 8, 0, 0, true), BUILD_OK)
+    expect_eq(build_check(build_st, BK_TOWER, 0, 0, 0, 0, true), BUILD_E_NEEDS)
+    expect_eq(build_check(build_st, BK_FARM, 0, 0, 0, 0, true), BUILD_E_ADJACENT)
+    build_test_st.wood = 40
+    expect_eq(build_check(build_st, BK_HUT, 0, 0, 0, 0, true), BUILD_E_COST)
+    expect_eq(build_check(build_st, BK_HUT, 0, 0, 0, 0, false), BUILD_OK)           # a gift is not charged
+    build_test_st.wood = 100
+    let h = build_place(build_st, BK_HUT, 0, 0, 0, 0)
+    expect(h >= 0)
+    expect_eq(build_check(build_st, BK_HUT, 0, 1, 1, 0, true), BUILD_E_BLOCKED)
+    expect_eq(build_check(build_st, BK_TOWER, 0, 6, 6, 0, true), BUILD_E_NEEDS)       # the hut is not finished
+    expect_eq(build_check(build_st, BK_FARM, 0, 4, 0, 0, true), BUILD_E_ADJACENT)     # near must be finished
+  }
+
+  test "placing charges, holds its cells and says so; a refusal says why" (build_st: mut BuildState, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let h = build_place(build_st, BK_HUT, 4, 0, 0, 0)
+    expect(h >= 0)
+    expect_eq(build_test_st.wood, 50)
+    expect_eq(build_state(build_st, h), 0)
+    expect_eq(build_at(build_st, 1, 1), h)
+    expect_eq(build_owner_of(build_st, h), 4)
+    expect_eq(build_count(build_st, 4, BK_HUT, false), 1)
+    expect_eq(build_count(build_st, 4, BK_HUT, true), 0)
+    expect_eq(build_place(build_st, BK_HUT, 4, 1, 1, 0), -1)
+    expect_eq(build_why(build_st), BUILD_E_BLOCKED)
+    expect_eq(build_test_st.wood, 50)
+    let f = q_drain(build_facts(build_st))
+    expect_eq(len(f), 2)
+    expect_eq(f[0].what, BUILD_F_PLACED)
+    expect_eq(f[0].uid, 1)
+    expect_eq(f[0].kind, BK_HUT)
+    expect_eq(f[0].owner, 4)
+    expect_eq(f[1].what, BUILD_F_REJECTED)
+    expect_eq(f[1].reason, BUILD_E_BLOCKED)
+  }
+
+  test "workers build it: Placed, Building, Done, each said once, the workers freed" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let h = build_place(build_st, BK_HUT, 0, 0, 0, 0)
+    step(build_st, m, 5.0)
+    expect_eq(build_state(build_st, h), 0)             # nobody is working it
+    expect_eq(build_progress(build_st, h), 0.0)
+    expect(build_assign(build_st, h, 7))
+    expect_eq(build_site_of(build_st, 7), h)
+    step(build_st, m, 4.0)
+    expect_eq(build_state(build_st, h), 1)
+    expect_eq(build_progress(build_st, h), 0.4)
+    step(build_st, m, 4.0)
+    expect_eq(build_state(build_st, h), 1)
+    step(build_st, m, 4.0)                              # 12 of 10 seconds
+    expect_eq(build_state(build_st, h), 2)
+    expect(build_is_done(build_st, h))
+    expect_eq(build_progress(build_st, h), 1.0)
+    expect_eq(build_workers(build_st, h), 0)
+    expect_eq(build_site_of(build_st, 7), -1)
+    expect_eq(build_count(build_st, 0, BK_HUT, true), 1)
+    let f = q_drain(build_facts(build_st))
+    var started = 0
+    var done = 0
+    var freed = 0
+    for i in 0 .. len(f) {
+      if f[i].what == BUILD_F_STARTED { started += 1 }
+      if f[i].what == BUILD_F_COMPLETED { done += 1 }
+      if f[i].what == BUILD_F_RELEASED and f[i].worker == 7 and f[i].reason == BUILD_R_DONE { freed += 1 }
+    }
+    expect_eq(started, 1)
+    expect_eq(done, 1)
+    expect_eq(freed, 1)
+    step(build_st, m, 4.0)
+    expect_eq(count_of(build_st, BUILD_F_COMPLETED), 0)
+  }
+
+  test "more workers are faster, by the kind's own curve" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let hut = build_place_done(build_st, BK_HUT, 0, 4, 0, 0)
+    step(build_st, m, 0.1)
+    let a = build_place(build_st, BK_HUT, 0, 0, 0, 0)       # linear
+    build_assign(build_st, a, 1)
+    build_assign(build_st, a, 2)
+    step(build_st, m, 1.0)
+    expect_eq(build_progress(build_st, a), 0.2)
+    let f = build_place(build_st, BK_FARM, 0, 4, 2, 0)      # 4 workers at exponent 0.5 work twice as fast
+    expect(f >= 0)
+    for w in 10 .. 14 { build_assign(build_st, f, w) }
+    step(build_st, m, 1.0)
+    expect_eq(build_progress(build_st, f), 2.0 / 6.0)
+    expect(hut >= 0)
+  }
+
+  test "a kind takes so many workers; a worker works one site" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let a = build_place(build_st, BK_HUT, 0, 0, 0, 0)
+    let b = build_place_done(build_st, BK_CAMP, 0, 5, 5, 0)
+    expect(build_assign(build_st, a, 1))
+    expect(build_assign(build_st, a, 1))
+    expect_eq(build_workers(build_st, a), 1)
+    expect(build_assign(build_st, a, 2))
+    expect(build_assign(build_st, a, 3))
+    expect(not build_assign(build_st, a, 4))            # three at most
+    expect_eq(build_worker_at(build_st, a, 1), 2)
+    expect(build_release(build_st, 2))
+    expect(not build_release(build_st, 2))
+    expect_eq(build_workers(build_st, a), 2)
+    expect(build_assign(build_st, a, 4))
+    let c = build_place(build_st, BK_DOCK, 0, 8, 0, 0)
+    expect(build_assign(build_st, c, 4))                # moved off the hut
+    expect_eq(build_workers(build_st, a), 2)
+    expect_eq(build_site_of(build_st, 4), c)
+    step(build_st, m, 1.0)
+    expect(not build_assign(build_st, b, 9))            # finished: nothing to work
+    expect(not build_assign(build_st, 99, 9))
+  }
+
+  test "a worker that is gone stops working, and is told" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let a = build_place(build_st, BK_HUT, 0, 0, 0, 0)
+    build_assign(build_st, a, 1)
+    build_assign(build_st, a, 2)
+    step(build_st, m, 1.0)
+    expect_eq(build_progress(build_st, a), 0.2)
+    q_drain(build_facts(build_st))
+    build_test_st.dead = 1
+    step(build_st, m, 1.0)
+    expect_eq(build_workers(build_st, a), 1)
+    expect_eq(build_site_of(build_st, 1), -1)
+    expect_eq(build_progress(build_st, a), 0.3)         # this second was the two's, the survivor's after
+    let f = q_drain(build_facts(build_st))
+    expect_eq(f[0].what, BUILD_F_RELEASED)
+    expect_eq(f[0].reason, BUILD_R_LOST)
+  }
+
+  test "a structure that needs no work is finished at once, and a gift is finished free" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let c = build_place(build_st, BK_CAMP, 0, 5, 5, 0)
+    expect_eq(build_state(build_st, c), 0)
+    step(build_st, m, 0.1)
+    expect_eq(build_state(build_st, c), 2)
+    expect_eq(build_place(build_st, BK_CAMP, 0, 6, 6, 0), -1)     # the limit is one
+    expect_eq(build_why(build_st), BUILD_E_LIMIT)
+    expect(build_place(build_st, BK_CAMP, 1, 6, 6, 0) >= 0)         # another owner's own
+    let g = build_place_done(build_st, BK_HUT, 0, 0, 0, 0)
+    expect_eq(build_test_st.wood, 100)
+    step(build_st, m, 0.1)
+    expect(build_is_done(build_st, g))
+    expect_eq(count_of(build_st, BUILD_F_COMPLETED), 3)
+  }
+
+  test "the rules that look round: near a finished one, apart from another, a tech" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    build_place_done(build_st, BK_HUT, 0, 0, 0, 0)
+    step(build_st, m, 0.1)
+    expect_eq(build_check(build_st, BK_FARM, 0, 2, 0, 0, true), BUILD_OK)          # touching the hut
+    expect_eq(build_check(build_st, BK_FARM, 0, 3, 0, 0, true), BUILD_OK)          # one cell away: within 2
+    expect_eq(build_check(build_st, BK_FARM, 1, 2, 0, 0, true), BUILD_E_ADJACENT)  # someone else's hut
+    expect_eq(build_check(build_st, BK_FARM, 0, 5, 0, 0, true), BUILD_E_ADJACENT)  # too far
+    expect_eq(build_check(build_st, BK_TOWER, 0, 6, 6, 0, true), BUILD_OK)         # a hut stands
+    expect(build_place(build_st, BK_FENCE, 0, 6, 6, 0) >= 0)
+    expect_eq(build_check(build_st, BK_FENCE, 1, 7, 6, 0, true), BUILD_E_SPACING)  # touching one, anyone's
+    expect_eq(build_check(build_st, BK_FENCE, 0, 8, 6, 0, true), BUILD_E_SPACING)  # a cell away still counts
+    expect_eq(build_check(build_st, BK_FENCE, 0, 9, 6, 0, true), BUILD_OK)         # two cells away is room
+    expect_eq(build_check(build_st, BK_FENCE, 0, 6, 9, 0, true), BUILD_OK)
+  }
+
+  test "cancel refunds by how far it got; its cells are free on the tick" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let a = build_place(build_st, BK_HUT, 0, 0, 0, 0)
+    expect(build_cancel(build_st, a))
+    drain_actions()
+    expect_eq(build_state(build_st, a), 3)
+    expect_eq(build_test_st.wood, 100)                  # all of it back: no work yet
+    step(build_st, m, 0.1)
+    expect_eq(build_at(build_st, 0, 0), -1)
+    let f = q_drain(build_facts(build_st))
+    expect_eq(f[len(f) - 1].what, BUILD_F_CANCELLED)
+    expect_eq(f[len(f) - 1].n, 100)
+    let b = build_place(build_st, BK_HUT, 0, 0, 0, 0)
+    build_assign(build_st, b, 1)
+    step(build_st, m, 1.0)
+    expect_eq(build_state(build_st, b), 1)
+    expect(build_cancel(build_st, b))
+    drain_actions()
+    expect_eq(build_test_st.wood, 87)                   # 75 percent of 50 is 37
+    step(build_st, m, 0.1)
+    expect_eq(build_workers(build_st, b), 0)
+    expect_eq(build_site_of(build_st, 1), -1)
+    expect(not build_cancel(build_st, b))               # a ruin is not taken back
+    let c = build_place_done(build_st, BK_CAMP, 0, 5, 5, 0)
+    step(build_st, m, 0.1)
+    expect(not build_cancel(build_st, c))               # nor is a finished one
+  }
+
+  test "destroyed: a finished one gives back its share, and a ruin may be placed again" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let a = build_place(build_st, BK_HUT, 0, 0, 0, 0)
+    build_assign(build_st, a, 1)
+    step(build_st, m, 11.0)
+    step(build_st, m, 0.1)
+    expect(build_is_done(build_st, a))
+    expect_eq(build_test_st.wood, 50)
+    expect(build_destroy(build_st, a))
+    drain_actions()
+    expect_eq(build_state(build_st, a), 3)
+    expect_eq(build_test_st.wood, 60)                   # 20 percent of 50
+    step(build_st, m, 0.1)
+    expect_eq(build_at(build_st, 0, 0), -1)
+    expect(not build_destroy(build_st, a))
+    let other = build_place(build_st, BK_HUT, 0, 1, 1, 0)       # the ground is someone's again
+    expect(other >= 0)
+    expect(build_rebuild(build_st, a))
+    drain_actions()
+    expect_eq(build_state(build_st, a), 3)              # cells taken: stays a ruin
+    build_cancel(build_st, other)
+    drain_actions()
+    step(build_st, m, 0.1)
+    build_test_st.wood = 10
+    build_rebuild(build_st, a)
+    drain_actions()
+    expect_eq(build_state(build_st, a), 3)              # cannot pay
+    build_test_st.wood = 100
+    build_rebuild(build_st, a)
+    drain_actions()
+    expect_eq(build_state(build_st, a), 0)              # placed again, paid again
+    expect_eq(build_test_st.wood, 50)
+    expect_eq(build_progress(build_st, a), 0.0)
+    step(build_st, m, 0.1)
+    expect_eq(build_at(build_st, 0, 0), a)
+    expect(count_of(build_st, BUILD_F_REBUILT) >= 1)
+  }
+
+  test "work without a worker, and taking a site off the table" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let a = build_place(build_st, BK_DOCK, 0, 8, 0, 0)
+    expect(build_work(build_st, a, 1.5))
+    expect_eq(build_progress(build_st, a), 0.5)
+    expect(build_assign(build_st, a, 3))
+    expect(build_remove(build_st, a))
+    expect(not build_alive(build_st, a))
+    expect_eq(build_site_of(build_st, 3), -1)
+    expect_eq(build_at(build_st, 8, 0), -1)
+    expect(not build_work(build_st, a, 1.0))
+  }
+
+  test "the save: what stood, how far along, what was a ruin" (build_st: mut BuildState, m: mut BuildStepsMachine, build_test_st: mut BuildTestState) {
+    fresh(build_st, build_test_st)
+    let done = build_place_done(build_st, BK_HUT, 2, 0, 0, 0)
+    step(build_st, m, 0.1)
+    let part = build_place(build_st, BK_FARM, 2, 2, 0, 1)
+    build_work(build_st, part, 3.0)
+    let ruin = build_place_done(build_st, BK_DOCK, 2, 8, 0, 0)
+    step(build_st, m, 0.1)
+    build_destroy(build_st, ruin)
+    drain_actions()
+    step(build_st, m, 0.1)
+    expect(done >= 0)
+    q_drain(build_facts(build_st))
+    let s = build_system()
+    let text = save_encode(s.save())
+    fresh(build_st, build_test_st)
+    expect_eq(build_sites(build_st), 0)
+    s.load(save_decode(text), s.version)
+    drain_actions()
+    step(build_st, m, 0.1)
+    expect_eq(build_sites(build_st), 3)
+    let a = build_by_uid(build_st, 1)
+    let b = build_by_uid(build_st, 2)
+    let c = build_by_uid(build_st, 3)
+    expect_eq(build_state(build_st, a), 2)
+    expect_eq(build_state(build_st, b), 0)
+    expect_eq(build_progress(build_st, b), 0.5)
+    expect_eq(build_width(build_st, b), 2)              # still turned
+    expect_eq(build_state(build_st, c), 3)
+    expect_eq(build_at(build_st, 0, 0), a)
+    expect_eq(build_at(build_st, 8, 0), -1)             # the ruin holds nothing
+    expect_eq(count_of(build_st, BUILD_F_COMPLETED), 0)  # loading says nothing
+    let n = build_place_done(build_st, BK_HUT, 2, 5, 5, 0)
+    expect_eq(build_uid(build_st, n), 4)                # the next uid goes on
+  }
+}

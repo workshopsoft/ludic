@@ -1,0 +1,78 @@
+# defs.ludic - what can be built and where: one row a kind of structure, and the names of the
+# game's terrain tags. Both are open registries the game fills; a save holds their indexes, so a
+# game that saves appends.
+export const BUILD_WORKERS_MAX: int = 16       # the most workers any one site can take
+
+# a tag is a word the game's world puts on a cell (buildable, shore, road, creep); the world answers
+# with a mask of them (bit i is tag i)
+export property BuildTag {
+  key: string = ""
+}
+export open registry BuildTags of BuildTag as BTAG
+
+# a kind of structure. Its placement rules are all here: which tags every cell of the footprint must
+# carry and must not, what it must stand next to, what it must keep away from, what the owner must
+# already have, how many of it an owner may have
+export property BuildKind {
+  key: string = ""
+  @Range(1, 64) w: int = 1                          # footprint in cells, before it is rotated
+  @Range(1, 64) h: int = 1
+  rotates: bool = true                              # false: only rotation 0
+  @Ref(Resources) cost_res: []int = null            # what placing it costs, side by side with cost_n
+  cost_n: []int = null
+  @Range(0, 100000) @Unit("s") work: float = 10.0   # seconds of one worker's effort (0: built at once)
+  @Range(1, 16) workers: int = 4                    # at most this many at once
+  @Range(0, 4) pace_exp: float = 1.0                # n workers work n ^ this fast: 1 is linear, less gives diminishing returns
+  @Range(0, 100) @Unit("%") refund_placed: int = 100    # of the cost, back when cancelled before any work
+  @Range(0, 100) @Unit("%") refund_building: int = 75   # ... once work has started
+  @Range(0, 100) @Unit("%") refund_destroyed: int = 0   # ... when a finished one is destroyed
+  @Ref(BuildTags) need: []int = null                # tags every cell must carry
+  @Ref(BuildTags) forbid: []int = null              # tags no cell may carry
+  @Ref(BuildKinds) near: []int = null               # must stand within near_dist cells of a finished one of these, the owner's
+  @Range(0, 64) near_dist: int = 1
+  @Ref(BuildKinds) apart: []int = null              # none of these (anyone's) within apart_dist cells
+  @Range(0, 64) apart_dist: int = 0
+  @Ref(BuildKinds) needs: []int = null              # the owner must have a finished one of each
+  @Range(0, 100000) limit: int = 0                  # most an owner may have (0: no limit)
+}
+export open registry BuildKinds of BuildKind as BK
+
+# why a placement is refused (0 is fine)
+export const BUILD_OK: int = 0
+export const BUILD_E_KIND: int = 1        # no such kind
+export const BUILD_E_BOUNDS: int = 2      # off the grid
+export const BUILD_E_BLOCKED: int = 3     # a structure or something the world says is there
+export const BUILD_E_TERRAIN: int = 4     # a cell lacks a tag it needs
+export const BUILD_E_FORBIDDEN: int = 5   # a cell has a tag it must not
+export const BUILD_E_LIMIT: int = 6
+export const BUILD_E_NEEDS: int = 7       # the owner lacks a finished structure it requires
+export const BUILD_E_ADJACENT: int = 8    # not next to what it must be next to
+export const BUILD_E_SPACING: int = 9     # too close to what it must keep away from
+export const BUILD_E_COST: int = 10       # the bank cannot pay
+
+export const BUILD_F_PLACED: int = 0      # a site was placed (and paid for)
+export const BUILD_F_REJECTED: int = 1    # a placement was refused; `reason` says why
+export const BUILD_F_STARTED: int = 2     # the first worker began
+export const BUILD_F_COMPLETED: int = 3
+export const BUILD_F_CANCELLED: int = 4   # taken back before it was finished (`n` percent of its cost went back)
+export const BUILD_F_DESTROYED: int = 5   # a finished one, or one under construction, was destroyed
+export const BUILD_F_REBUILT: int = 6     # a ruin was placed again
+export const BUILD_F_RELEASED: int = 7    # a worker is free (`reason`: BUILD_R_*)
+
+export const BUILD_R_DONE: int = 0        # the site is finished or gone
+export const BUILD_R_LOST: int = 1        # the worker is gone
+export const BUILD_R_ASKED: int = 2       # the game took it off
+
+export property BuildFact {
+  what: int = 0
+  site: int = -1            # the site's handle
+  uid: int = 0
+  kind: int = 0
+  owner: int = 0
+  cx: int = 0
+  cz: int = 0
+  rot: int = 0
+  worker: int = -1
+  reason: int = 0
+  n: int = 0
+}

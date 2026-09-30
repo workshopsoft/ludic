@@ -1,0 +1,100 @@
+# state.ludic - the grid, the sites on it, and the facts
+export property BuildSite {
+  uid: int = 0                # stable across a save
+  kind: int = 0
+  owner: int = 0
+  cx: int = 0                 # the footprint's corner nearest (0, 0), after rotation
+  cz: int = 0
+  rot: int = 0                # 0, 1, 2, 3: quarter turns
+  state: SiteState = SiteState.Placed      # the machine's (BuildSteps)
+  progress: float = 0.0       # seconds of one worker's effort so far
+  wk: []int = null            # the workers, `workers` of them first
+  workers: int = 0
+  held: bool = false          # its cells are in the grid
+  busy: bool = false          # sensed this frame: someone is working it
+  complete: bool = false      # sensed this frame: the work is done
+  quiet: bool = false         # came out of a save: its next change is not news
+}
+
+export state BuildState {
+  sites: Table<BuildSite> = bd__sites_new()
+  by_worker: IntMap = imap_new()            # a worker's id to the site's handle
+  occ: []int = new []int                    # cell -> the occupying site's handle + 1 (0 free)
+  gw: int = 0
+  gh: int = 0
+  cell: float = 1.0
+  ox: float = 0.0
+  oz: float = 0.0
+  next_uid: int = 1
+  why: int = 0                              # why the last placement was refused
+  scratch: BuildSite = new BuildSite        # what a refusal's fact is read from
+  facts: Queue<BuildFact> = bd__facts_new()
+}
+
+function bd__sites_new() -> Table<BuildSite> { return table_new(0, 0) }
+function bd__facts_new() -> Queue<BuildFact> { return queue_new("build.facts") }
+
+export function build_facts(build_st: BuildState) -> Queue<BuildFact> { return build_st.facts }
+
+# the grid: `w` x `h` cells of `cell` metres, its corner at (ox, oz). Empties it
+@alloc_ok("when the game sets its grid: the cells")
+export function build_grid(build_st: mut BuildState, w: int, h: int, cell: float, ox: float, oz: float) -> void {
+  build_st.gw = w
+  build_st.gh = h
+  build_st.cell = cell
+  build_st.ox = ox
+  build_st.oz = oz
+  build_st.occ = new []int
+  for i in 0 .. w * h { push(build_st.occ, 0) }
+  for i in 0 .. tb_len(build_st.sites) { tb_rec(build_st.sites, i).held = false }
+}
+
+function bd__say(b: BuildState, what: int, s: BuildSite, h: int, worker: int, reason: int, n: int) -> void {
+  var f = q_rec(b.facts)
+  if f == null {
+    @alloc_ok("past the ring: more facts in a frame than its records, then kept in it")
+    f = new BuildFact
+    q_ring_add(b.facts, f)
+  }
+  f.what = what
+  f.site = h
+  f.uid = s.uid
+  f.kind = s.kind
+  f.owner = s.owner
+  f.cx = s.cx
+  f.cz = s.cz
+  f.rot = s.rot
+  f.worker = worker
+  f.reason = reason
+  f.n = n
+  q_push(b.facts, f)
+}
+
+# the footprint after a rotation: a quarter turn swaps width and height
+function bd__fw(kind: int, rot: int) -> int {
+  if rot % 2 == 1 { return BuildKinds[kind].h }
+  return BuildKinds[kind].w
+}
+function bd__fh(kind: int, rot: int) -> int {
+  if rot % 2 == 1 { return BuildKinds[kind].w }
+  return BuildKinds[kind].h
+}
+
+function bd__site(b: BuildState, h: int) -> BuildSite {
+  let r = tb_row(b.sites, h)
+  if r < 0 { return null }
+  return tb_rec(b.sites, r)
+}
+
+# the cells a site holds (or frees)
+function bd__occupy(b: mut BuildState, s: BuildSite, v: int) -> void {
+  let fw = bd__fw(s.kind, s.rot)
+  let fh = bd__fh(s.kind, s.rot)
+  for dz in 0 .. fh {
+    for dx in 0 .. fw {
+      let x = s.cx + dx
+      let z = s.cz + dz
+      if x >= 0 and z >= 0 and x < b.gw and z < b.gh { b.occ[z * b.gw + x] = v }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+# ludic.build - placing structures on a grid (footprints, rotation, placement rules as data),
+# paying for them through a port, and building them with workers: construction as a machine in a
+# data table. Uses ludic.base and nothing else. See README.md.
+package "ludic.build"
+version "0.1.0"
+kind source
