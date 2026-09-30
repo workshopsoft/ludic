@@ -1,10 +1,10 @@
 /* PhoneStatus.lss */
-.status { height: 26px; padding: 0 14px; gap: 8px; align-items: center; background: var(--ph-ink, #0b0e13); color: var(--ph-text, #eef2f7) }
+.status { height: 30px; padding: 0 22px; gap: 8px; align-items: center; background: transparent; color: var(--ph-text, #eef2f7) }
 .clock { font-size: 13px }
 .grow { flex-grow: 1 }
-.unread { padding: 0 6px; font-size: 11px; background: var(--ph-accent, #4ea1ff); color: var(--ph-ink, #0b0e13) }
+.unread { padding: 0 6px; font-size: 11px; border-radius: 8px; background: var(--ph-accent, #E8B04A); color: var(--ph-ink, #0b0e13) }
 .bars { gap: 2px; align-items: end; height: 14px }
-.bar { width: 4px; background: var(--ph-line, #2c3542) }
+.bar { width: 3px; border-radius: 1px; background: var(--ph-line, #2c3542) }
 .bar.on { background: var(--ph-text, #eef2f7) }
 .b0 { height: 4px }
 .b1 { height: 7px }

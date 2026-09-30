@@ -2,7 +2,14 @@
    (<PhoneScreen class="mine"/> and `.mine { --ph-accent: #6cf }` in its own sheet). The components read them with a
    fallback, so a story of one component looks right with nothing set. */
 :root {
-  --ph-accent: #4ea1ff;
+  --ph-accent: #E8B04A;
+  --ph-accent2: #7FB2D9;
+  --ph-wall-top: #1b2440;
+  --ph-wall-bot: #0a0d16;
+  --ph-radius: 28px;
+  --ph-tile-radius: 14px;
+  --ph-t0: #E8B04A; --ph-t1: #7FB2D9; --ph-t2: #6FCF97; --ph-t3: #E06C75;
+  --ph-t4: #B48EAD; --ph-t5: #56B6C2; --ph-t6: #D19A66; --ph-t7: #8A9BF0;
   --ph-ink: #0b0e13;
   --ph-panel: #151a22;
   --ph-card: #1e2530;
