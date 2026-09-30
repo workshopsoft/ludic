@@ -1,0 +1,193 @@
+# respawn_test.ludic - a death waits its rule's delay and puts the subject at the point the rule names
+# (nearest of a kind, home, start, its own checkpoint), a place the world calls unsafe is passed over, the
+# cost is flat plus a share, capped, free at first and never more than the subject has, the untouchable
+# window counts down, a locked point is offered only once opened, and the save reads back
+import "ludic.respawn"
+import "ludic.base"
+program RespawnTest {
+  numbers float
+  state RespawnTestState {
+    funds: float = 500.0
+    unsafe_x: float = 99999.0
+    frame: int = 0
+  }
+  function fake_funds(respawn_test_st: RespawnTestState, who: int) -> float { return respawn_test_st.funds }
+  function fake_safe(respawn_test_st: RespawnTestState, x: float, y: float, z: float) -> bool { return x != respawn_test_st.unsafe_x }
+  bind RespawnWorld { funds: fn fake_funds, safe: fn fake_safe }
+
+  def RespawnRules wasted { mode: "nearest", kind: "hospital", cost: 100.0, cost_pct: 0.1, cost_max: 120.0, free: 1, lose: 0.25, delay: 2.0, invuln: 4.0 }
+  def RespawnRules busted { mode: "nearest", kind: "hospital", cost: 50.0, delay: 1.0, invuln: 1.0 }
+  def RespawnRules fell { mode: "checkpoint", delay: 0.0, invuln: 0.0 }
+  def RespawnRules slept { mode: "home", delay: 0.0 }
+  def RespawnRules reset { mode: "start", delay: 0.0, invuln: 0.0 }
+
+  function pass_time(respawn_st: mut RespawnState, points: RespawnPoints, respawn_test_st: mut RespawnTestState, secs: float) -> void {
+    var t = 0.0
+    while t < secs - 0.001 {
+      respawn_test_st.frame += 1
+      respawn_tick(respawn_st, points, tick_new(0.5, respawn_test_st.frame, 12.0))
+      t += 0.5
+    }
+  }
+  function last_respawn(respawn_st: mut RespawnState) -> RespawnFact {
+    let fs = q_drain(respawn_facts(respawn_st))
+    var out: RespawnFact = null
+    for i in 0 .. len(fs) { if fs[i].what == RESPAWN_RESPAWNED { out = fs[i] } }
+    return out
+  }
+
+  test "a death waits its delay, then the nearest hospital, untouchable for a while" (respawn_st: mut RespawnState, points: mut RespawnPoints, respawn_test_st: mut RespawnTestState) {
+    expect(respawn_points_load(points, "town"))
+    respawn_reset(respawn_st)
+    expect(respawn_died(respawn_st, 1, "busted", 150.0, 0.0, 3.0) == true)
+    expect(respawn_died(respawn_st, 1, "busted", 0.0, 0.0, 0.0) == false)
+    expect(respawn_dead(respawn_st, 1))
+    expect(not respawn_can_be_hurt(respawn_st, 1))
+    pass_time(respawn_st, points, respawn_test_st, 0.5)
+    expect(respawn_dead(respawn_st, 1))
+    pass_time(respawn_st, points, respawn_test_st, 1.0)
+    expect(respawn_alive(respawn_st, 1))
+    let f = last_respawn(respawn_st)
+    expect(f != null)
+    expect_eq(f.point, respawn_points_find(points, "clinic"))
+    expect(f.x == 10.0)
+    expect(f.charged == 50.0)
+    expect(respawn_invulnerable(respawn_st, 1))
+    expect(not respawn_can_be_hurt(respawn_st, 1))
+    pass_time(respawn_st, points, respawn_test_st, 1.5)
+    expect(not respawn_invulnerable(respawn_st, 1))
+    expect(respawn_can_be_hurt(respawn_st, 1))
+    let fs = q_drain(respawn_facts(respawn_st))
+    var ended = 0
+    for i in 0 .. len(fs) { if fs[i].what == RESPAWN_INVULN_END { ended += 1 } }
+    expect_eq(ended, 1)
+  }
+
+  test "the cost: free the first time, then flat plus a share, capped, never more than it has" (respawn_st: mut RespawnState, points: mut RespawnPoints, respawn_test_st: mut RespawnTestState) {
+    expect(respawn_points_load(points, "town"))
+    respawn_reset(respawn_st)
+    respawn_died(respawn_st, 1, "wasted", 0.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 2.0)
+    var f = last_respawn(respawn_st)
+    expect(f.charged == 0.0)
+    expect(f.lose == 0.25)
+    expect(f.invuln == 4.0)
+    pass_time(respawn_st, points, respawn_test_st, 4.0)
+    respawn_died(respawn_st, 1, "wasted", 0.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 2.0)
+    f = last_respawn(respawn_st)
+    expect(f.charged == 120.0)
+    respawn_test_st.funds = 30.0
+    pass_time(respawn_st, points, respawn_test_st, 4.0)
+    respawn_died(respawn_st, 1, "wasted", 0.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 2.0)
+    f = last_respawn(respawn_st)
+    expect(f.charged == 30.0)
+    expect_eq(respawn_deaths(respawn_st, 1), 3)
+    respawn_test_st.funds = 500.0
+  }
+
+  test "a checkpoint is made by passing it, and a fall puts the subject back there" (respawn_st: mut RespawnState, points: mut RespawnPoints, respawn_test_st: mut RespawnTestState) {
+    expect(respawn_points_load(points, "town"))
+    respawn_reset(respawn_st)
+    expect_eq(respawn_visit(respawn_st, points, 1, 50.0, 0.0), 0)
+    expect_eq(respawn_visit(respawn_st, points, 1, 104.0, 3.0), 1)
+    expect(respawn_checkpoint_key(respawn_st, 1) == "cp1")
+    expect_eq(respawn_visit(respawn_st, points, 1, 104.0, 3.0), 0)
+    expect_eq(respawn_visit(respawn_st, points, 1, 197.0, 0.0), 1)
+    expect(respawn_checkpoint_key(respawn_st, 1) == "cp2")
+    respawn_died(respawn_st, 1, "fell", 0.0, -50.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 0.5)
+    let f = last_respawn(respawn_st)
+    expect(f.x == 200.0)
+    expect_eq(f.point, respawn_points_find(points, "cp2"))
+    expect(not respawn_invulnerable(respawn_st, 1))
+    expect(respawn_checkpoint(respawn_st, points, 1, "nope") == false)
+  }
+
+  test "a subject with no checkpoint falls back to the nearest point; home and start by their own kind" (respawn_st: mut RespawnState, points: mut RespawnPoints, respawn_test_st: mut RespawnTestState) {
+    expect(respawn_points_load(points, "town"))
+    respawn_reset(respawn_st)
+    respawn_died(respawn_st, 1, "fell", 190.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 0.5)
+    expect(last_respawn(respawn_st).x == 200.0)
+    respawn_died(respawn_st, 2, "slept", 190.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 0.5)
+    expect(last_respawn(respawn_st).x == -4.0)
+    respawn_died(respawn_st, 3, "reset", 190.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 0.5)
+    let f = last_respawn(respawn_st)
+    expect(f.x == 0.0)
+    expect(f.yaw == 180.0)
+  }
+
+  test "an unsafe place is passed over for the next nearest; a locked one is offered once opened" (respawn_st: mut RespawnState, points: mut RespawnPoints, respawn_test_st: mut RespawnTestState) {
+    expect(respawn_points_load(points, "town"))
+    respawn_reset(respawn_st)
+    respawn_test_st.unsafe_x = 10.0
+    respawn_died(respawn_st, 1, "busted", 200.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 1.0)
+    expect(last_respawn(respawn_st).x == 10.0)   # the clinic burns, but it is the only hospital open: the first try stands
+    respawn_died(respawn_st, 4, "fell", 12.0, 0.0, 5.0)   # any kind, no checkpoint: the clinic is passed over for the next nearest
+    pass_time(respawn_st, points, respawn_test_st, 0.5)
+    expect(last_respawn(respawn_st).x == 0.0)
+    respawn_test_st.unsafe_x = 99999.0
+    respawn_died(respawn_st, 2, "busted", 205.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 1.0)
+    expect(last_respawn(respawn_st).x == 10.0)      # vip is locked
+    expect(respawn_unlock(respawn_st, points, 3, "vip"))
+    expect(not respawn_unlock(respawn_st, points, 3, "vip"))
+    expect(not respawn_unlock(respawn_st, points, 3, "clinic"))
+    respawn_died(respawn_st, 3, "busted", 205.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 1.0)
+    expect(last_respawn(respawn_st).x == 210.0)
+    respawn_died(respawn_st, 2, "busted", 205.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 1.0)
+    expect(last_respawn(respawn_st).x == 10.0)
+  }
+
+  test "no point at all puts the subject back where it fell; respawn_now skips the wait" (respawn_st: mut RespawnState, points: mut RespawnPoints, respawn_test_st: mut RespawnTestState) {
+    respawn_reset(respawn_st)
+    respawn_died(respawn_st, 1, "busted", 7.0, 1.0, 9.0)
+    expect(respawn_wait_left(respawn_st, 1) == 1.0)
+    expect(respawn_now(respawn_st, points, 1))
+    expect(not respawn_now(respawn_st, points, 1))
+    let fs = q_drain(respawn_facts(respawn_st))
+    var nowhere = 0
+    var f: RespawnFact = null
+    for i in 0 .. len(fs) {
+      if fs[i].what == RESPAWN_NOWHERE { nowhere += 1 }
+      if fs[i].what == RESPAWN_RESPAWNED { f = fs[i] }
+    }
+    expect_eq(nowhere, 1)
+    expect_eq(f.point, -1)
+    expect(f.x == 7.0 and f.z == 9.0)
+  }
+
+  test "the save reads back deaths, checkpoint, the opened points and a death still waiting" (respawn_st: mut RespawnState, points: mut RespawnPoints, respawn_test_st: mut RespawnTestState) {
+    expect(respawn_points_load(points, "town"))
+    respawn_reset(respawn_st)
+    respawn_visit(respawn_st, points, 1, 100.0, 0.0)
+    respawn_unlock(respawn_st, points, 1, "vip")
+    respawn_died(respawn_st, 1, "busted", 205.0, 0.0, 0.0)
+    respawn_died(respawn_st, 2, "busted", 1.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 1.0)
+    let v = respawn_save(respawn_st)
+    respawn_reset(respawn_st)
+    expect_eq(respawn_deaths(respawn_st, 1), 0)
+    respawn_load(respawn_st, v, 1)
+    expect_eq(respawn_deaths(respawn_st, 1), 1)
+    expect(respawn_checkpoint_key(respawn_st, 1) == "cp1")
+    expect(respawn_alive(respawn_st, 1))
+    q_clear(respawn_facts(respawn_st))
+    respawn_died(respawn_st, 1, "busted", 205.0, 0.0, 0.0)
+    pass_time(respawn_st, points, respawn_test_st, 1.0)
+    expect(last_respawn(respawn_st).x == 210.0)
+  }
+
+  test "the system is declared with its own key" {
+    let s = respawn_system()
+    expect(s.key == "respawn")
+    expect_eq(s.phase, PH_SIMULATE)
+  }
+}

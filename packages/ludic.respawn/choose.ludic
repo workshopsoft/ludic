@@ -1,0 +1,69 @@
+# choose.ludic - which point a death goes to: by the rule's mode, the nearest first, and a point the
+# world calls unsafe passed over for the next nearest
+
+const RSP_TRIES: int = 8
+
+function rsp_kind_ok(p: RespawnPoint, kind: string) -> bool { return kind == "" or p.kind == kind }
+
+# the nearest open point of `kind` to (x, z) not already tried, or -1
+function rsp_nearest(respawn_st: mut RespawnState, points: RespawnPoints, r: RespawnRow, kind: string, x: float, z: float) -> int {
+  var best = -1
+  var bd = 0.0
+  for i in 0 .. len(points.rows) {
+    let p = points.rows[i]
+    if not rsp_kind_ok(p, kind) or not rsp_open(r, p) { continue }
+    if respawn_st.rsp_tried[i] != 0 { continue }
+    let d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z)
+    if best < 0 or d < bd {
+      best = i
+      bd = d
+    }
+  }
+  return best
+}
+
+function rsp_first(respawn_st: mut RespawnState, points: RespawnPoints, r: RespawnRow, kind: string) -> int {
+  for i in 0 .. len(points.rows) {
+    let p = points.rows[i]
+    if rsp_kind_ok(p, kind) and rsp_open(r, p) and respawn_st.rsp_tried[i] == 0 { return i }
+  }
+  return -1
+}
+
+# one candidate by the rule's mode; a checkpoint the subject has not made falls back to the nearest
+function rsp_candidate(respawn_st: mut RespawnState, points: RespawnPoints, r: RespawnRow, rule: RespawnRule, x: float, z: float) -> int {
+  if rule.mode == "checkpoint" and r.checkpoint != "" {
+    let i = rsp_point_of(points, r.checkpoint)
+    if i >= 0 and respawn_st.rsp_tried[i] == 0 { return i }
+  }
+  if rule.mode == "start" {
+    let s = rsp_first(respawn_st, points, r, "start")
+    if s >= 0 { return s }
+    return rsp_first(respawn_st, points, r, "")
+  }
+  if rule.mode == "home" {
+    let h = rsp_nearest(respawn_st, points, r, "home", x, z)
+    if h >= 0 { return h }
+  }
+  var kind = rule.kind
+  if rule.mode == "checkpoint" or rule.mode == "home" { kind = "" }
+  return rsp_nearest(respawn_st, points, r, kind, x, z)
+}
+
+# the point a subject dying at (x, z) goes to under `rule`: the first candidate whose place is safe,
+# else (every try unsafe) the first tried; -1 when the map has no point for it
+function rsp_choose(respawn_st: mut RespawnState, points: RespawnPoints, r: RespawnRow, rule: RespawnRule, x: float, z: float) -> int {
+  let n = len(points.rows)
+  while len(respawn_st.rsp_tried) < n { push(respawn_st.rsp_tried, 0) }
+  for i in 0 .. n { respawn_st.rsp_tried[i] = 0 }
+  var first = -1
+  for k in 0 .. RSP_TRIES {
+    let c = rsp_candidate(respawn_st, points, r, rule, x, z)
+    if c < 0 { break }
+    if first < 0 { first = c }
+    let p = points.rows[c]
+    if RespawnWorld.safe(p.x, p.y, p.z) { return c }
+    respawn_st.rsp_tried[c] = 1
+  }
+  return first
+}

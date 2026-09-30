@@ -1,0 +1,64 @@
+# system.ludic - respawn as a system: PH_SIMULATE, and its own save section: a subject's deaths, its
+# checkpoint, the points opened for it, and a death still waiting (put back on the first tick)
+export function respawn_save(respawn_st: RespawnState) -> Val {
+  let v = Value.object()
+  let l = Value.list()
+  for i in 0 .. tb_len(respawn_st.rsp_tab) {
+    let r = respawn_st.rsp_tab.rec[i]
+    let o = Value.object()
+    sv_put_int(o, "who", r.who)
+    sv_put_int(o, "deaths", r.deaths)
+    sv_put_str(o, "checkpoint", r.checkpoint)
+    sv_put_float(o, "invuln", r.invuln)
+    sv_put_bool(o, "dead", r.phase == RespawnPhase.Dead)
+    if r.phase == RespawnPhase.Dead {
+      var cause = ""
+      if r.rule >= 0 and r.rule < RSPR_COUNT { cause = RespawnRules[r.rule].key }
+      sv_put_str(o, "cause", cause)
+      sv_put_float(o, "x", r.dx)
+      sv_put_float(o, "y", r.dy)
+      sv_put_float(o, "z", r.dz)
+    }
+    let u = Value.list()
+    for k in 0 .. len(r.unlocked) { Value.add(u, Value.str(r.unlocked[k])) }
+    Value.put(o, "unlocked", u)
+    Value.add(l, o)
+  }
+  Value.put(v, "subjects", l)
+  return v
+}
+
+export function respawn_load(respawn_st: mut RespawnState, v: Val, version: int) -> void {
+  respawn_reset(respawn_st)
+  if v == null or Value.kind(v) != 6 or Value.has(v, "subjects") == 0 { return }
+  let l = Value.get(v, "subjects")
+  for i in 0 .. Value.count(l) {
+    let o = Value.at(l, i)
+    let r = rsp_row(respawn_st, sv_int(o, "who", 0))
+    r.deaths = sv_int(o, "deaths", 0)
+    r.checkpoint = sv_str(o, "checkpoint", "")
+    r.invuln = sv_float(o, "invuln", 0.0)
+    if Value.has(o, "unlocked") != 0 {
+      let u = Value.get(o, "unlocked")
+      for k in 0 .. Value.count(u) { push(r.unlocked, intern(Value.as_str(Value.at(u, k)))) }
+    }
+    if sv_bool(o, "dead", false) {
+      r.phase = RespawnPhase.Dead
+      r.rule = rsp_rule_of(sv_str(o, "cause", ""))
+      r.dx = sv_float(o, "x", 0.0)
+      r.dy = sv_float(o, "y", 0.0)
+      r.dz = sv_float(o, "z", 0.0)
+      r.wait = 0.0
+    }
+  }
+}
+
+export function respawn_system() -> System {
+  let s = system_new("respawn", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn respawn_reset
+  s.tick = fn respawn_tick
+  s.save = fn respawn_save
+  s.load = fn respawn_load
+  return s
+}

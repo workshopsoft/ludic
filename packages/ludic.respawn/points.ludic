@@ -1,0 +1,10 @@
+export property RespawnPoint {
+  key: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") y: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0
+  @OneOf("checkpoint", "hospital", "home", "start") kind: string = "checkpoint"
+}
+@PerMap @ByKey
+export registry RespawnPoints of RespawnPoint from "respawn.lres"

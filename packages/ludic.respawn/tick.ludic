@@ -1,0 +1,19 @@
+# tick.ludic - the wait of the dead, and the untouchable window running out
+export function respawn_tick(respawn_st: mut RespawnState, points: RespawnPoints, t: Tick) -> void {
+  let n = tb_len(respawn_st.rsp_tab)
+  for i in 0 .. n {
+    let r = respawn_st.rsp_tab.rec[i]
+    if r.phase == RespawnPhase.Dead {
+      r.wait -= t.dt
+      if r.wait <= 0.0 { rsp_put_back(respawn_st, points, r) }
+      continue
+    }
+    if r.invuln > 0.0 {
+      r.invuln -= t.dt
+      if r.invuln <= 0.0 {
+        r.invuln = 0.0
+        rsp_fact(respawn_st, RESPAWN_INVULN_END, r.who)
+      }
+    }
+  }
+}

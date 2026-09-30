@@ -1,0 +1,44 @@
+# rows.ludic - a subject's row, made the first time it is named
+
+@alloc_ok("a subject's first row, made once and kept")
+function rsp_make(respawn_st: mut RespawnState, who: int) -> RespawnRow {
+  let r = new RespawnRow
+  r.who = who
+  r.unlocked = new []string
+  let h = tb_add(respawn_st.rsp_tab, r)
+  imap_put(respawn_st.rsp_ids, who, h)
+  return r
+}
+
+function rsp_find(respawn_st: RespawnState, who: int) -> RespawnRow {
+  let row = tb_row(respawn_st.rsp_tab, imap_get(respawn_st.rsp_ids, who, -1))
+  if row < 0 { return null }
+  return respawn_st.rsp_tab.rec[row]
+}
+
+function rsp_row(respawn_st: mut RespawnState, who: int) -> RespawnRow {
+  let r = rsp_find(respawn_st, who)
+  if r != null { return r }
+  return rsp_make(respawn_st, who)
+}
+
+# the rule for a cause of death: its index, or -1 (the built-in rule: nearest of any kind, free)
+function rsp_rule_of(cause: string) -> int {
+  for i in 0 .. RSPR_COUNT { if RespawnRules[i].key == cause { return i } }
+  return -1
+}
+
+function rsp_has_key(keys: []string, key: string) -> bool {
+  for i in 0 .. len(keys) { if keys[i] == key { return true } }
+  return false
+}
+
+# whether the subject may be sent to this point: not locked, or opened for it
+function rsp_open(r: RespawnRow, p: RespawnPoint) -> bool {
+  if not p.locked { return true }
+  return rsp_has_key(r.unlocked, p.key)
+}
+
+function rsp_point_of(points: RespawnPoints, key: string) -> int {
+  return respawn_points_find(points, key)
+}

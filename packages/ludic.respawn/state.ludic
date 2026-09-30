@@ -1,0 +1,85 @@
+# state.ludic - the port, the facts, and what is held for each subject
+
+# what respawning asks the world. Unbound: a subject is rich enough for anything and every place is safe
+export port RespawnWorld {
+  funds: fn(int) -> float = fn rsp_rich                      # (who): what it could be made to pay
+  safe: fn(float, float, float) -> bool = fn rsp_safe       # (x, y, z): nothing in the way, nothing burning
+}
+function rsp_rich(who: int) -> float { return 1000000000.0 }
+function rsp_safe(x: float, y: float, z: float) -> bool { return true }
+
+export enum RespawnPhase { Alive, Dead }
+
+export const RESPAWN_DIED: int = 0         # who died (who, rule, x, y, z, deaths)
+export const RESPAWN_RESPAWNED: int = 1    # put back (who, rule, point, x, y, z, yaw, charged, lose, invuln)
+export const RESPAWN_INVULN_END: int = 2   # the untouchable window closed (who)
+export const RESPAWN_CHECKPOINT: int = 3   # a checkpoint was made (who, point)
+export const RESPAWN_UNLOCKED: int = 4     # a locked point was opened for a subject (who, point)
+export const RESPAWN_NOWHERE: int = 5      # no point to go to: put back where it fell (who)
+
+export property RespawnFact {
+  what: int = 0
+  who: int = 0
+  rule: int = -1
+  point: int = -1           # the point's index in RespawnPoints (this map's rows)
+  deaths: int = 0
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  yaw: float = 0.0
+  charged: float = 0.0      # what the game should take from the subject
+  lose: float = 0.0         # the share of what it carries the game should take
+  invuln: float = 0.0
+}
+
+export property RespawnRow {
+  who: int = 0
+  phase: RespawnPhase = RespawnPhase.Alive
+  deaths: int = 0
+  wait: float = 0.0          # seconds until it is put back
+  rule: int = -1
+  dx: float = 0.0            # where it fell
+  dy: float = 0.0
+  dz: float = 0.0
+  invuln: float = 0.0        # seconds of untouchable left
+  checkpoint: string = ""    # the key of its checkpoint
+  unlocked: []string = null  # the keys of locked points opened for it
+}
+
+export state RespawnState {
+  rsp_tab: Table<RespawnRow> = rsp_tab__new()
+  rsp_ids: IntMap = imap_new()
+  rsp_tried: []int = new []int         # scratch: the points already passed over while one is chosen
+  rsp_builtin: RespawnRule = new RespawnRule   # the rule for a cause no row names: the record's defaults
+  rsp_facts: Queue<RespawnFact> = rsp_facts__new()
+}
+function rsp_tab__new() -> Table<RespawnRow> {
+  let t: Table<RespawnRow> = table_new(0, 0)
+  return t
+}
+function rsp_facts__new() -> Queue<RespawnFact> { return queue_new("respawn.facts") }
+
+export function respawn_facts(respawn_st: RespawnState) -> Queue<RespawnFact> { return respawn_st.rsp_facts }
+
+function rsp_fact(respawn_st: mut RespawnState, what: int, who: int) -> RespawnFact {
+  var f = q_rec(respawn_st.rsp_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new RespawnFact
+    q_ring_add(respawn_st.rsp_facts, f)
+  }
+  f.what = what
+  f.who = who
+  f.rule = -1
+  f.point = -1
+  f.deaths = 0
+  f.x = 0.0
+  f.y = 0.0
+  f.z = 0.0
+  f.yaw = 0.0
+  f.charged = 0.0
+  f.lose = 0.0
+  f.invuln = 0.0
+  q_push(respawn_st.rsp_facts, f)
+  return f
+}

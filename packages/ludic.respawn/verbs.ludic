@@ -1,0 +1,194 @@
+# verbs.ludic - the only ways a subject's death and checkpoint change from outside
+
+# the rule a row dies under
+function rsp_rule(respawn_st: RespawnState, r: RespawnRow) -> RespawnRule {
+  if r.rule < 0 or r.rule >= RSPR_COUNT { return respawn_st.rsp_builtin }
+  return RespawnRules[r.rule]
+}
+
+# `who` died of `cause` at (x, y, z): false if already dead. Put back after the rule's delay
+export function respawn_died(respawn_st: mut RespawnState, who: int, cause: string, x: float, y: float, z: float) -> bool {
+  let r = rsp_row(respawn_st, who)
+  if r.phase == RespawnPhase.Dead { return false }
+  r.phase = RespawnPhase.Dead
+  r.deaths += 1
+  r.rule = rsp_rule_of(cause)
+  r.invuln = 0.0
+  r.dx = x
+  r.dy = y
+  r.dz = z
+  r.wait = rsp_rule(respawn_st, r).delay
+  let f = rsp_fact(respawn_st, RESPAWN_DIED, who)
+  f.rule = r.rule
+  f.deaths = r.deaths
+  f.x = x
+  f.y = y
+  f.z = z
+  return true
+}
+
+# what a death under `rule` takes: nothing for the first `free`, else the flat cost plus the share of
+# what the subject has, at most cost_max, never more than it has
+function rsp_charge(r: RespawnRow, rule: RespawnRule) -> float {
+  if r.deaths <= rule.free { return 0.0 }
+  let funds = Math.max(RespawnWorld.funds(r.who), 0.0)
+  var c = rule.cost + rule.cost_pct * funds
+  if rule.cost_max > 0.0 and c > rule.cost_max { c = rule.cost_max }
+  if c > funds { c = funds }
+  return c
+}
+
+function rsp_put_back(respawn_st: mut RespawnState, points: RespawnPoints, r: RespawnRow) -> void {
+  let rule = rsp_rule(respawn_st, r)
+  let p = rsp_choose(respawn_st, points, r, rule, r.dx, r.dz)
+  r.phase = RespawnPhase.Alive
+  r.invuln = rule.invuln
+  r.wait = 0.0
+  if p < 0 { rsp_fact(respawn_st, RESPAWN_NOWHERE, r.who) }
+  let f = rsp_fact(respawn_st, RESPAWN_RESPAWNED, r.who)
+  f.rule = r.rule
+  f.point = p
+  f.deaths = r.deaths
+  f.charged = rsp_charge(r, rule)
+  f.lose = rule.lose
+  f.invuln = rule.invuln
+  if p < 0 {
+    f.x = r.dx
+    f.y = r.dy
+    f.z = r.dz
+  } else {
+    f.x = points.rows[p].x
+    f.y = points.rows[p].y
+    f.z = points.rows[p].z
+    f.yaw = points.rows[p].yaw
+  }
+}
+
+# skip the wait: a dead subject is put back now (the "respawn" button)
+export function respawn_now(respawn_st: mut RespawnState, points: RespawnPoints, who: int) -> bool {
+  let r = rsp_find(respawn_st, who)
+  if r == null or r.phase != RespawnPhase.Dead { return false }
+  rsp_put_back(respawn_st, points, r)
+  return true
+}
+
+# made alive with no respawn (a revive, a cheat, a scripted scene): no fact, no cost, no window
+export function respawn_revive(respawn_st: mut RespawnState, who: int) -> void {
+  let r = rsp_find(respawn_st, who)
+  if r == null { return }
+  r.phase = RespawnPhase.Alive
+  r.wait = 0.0
+}
+
+# the subject's checkpoint is this point (a known, open one): false if there is no such point
+export function respawn_checkpoint(respawn_st: mut RespawnState, points: RespawnPoints, who: int, key: string) -> bool {
+  let i = rsp_point_of(points, key)
+  if i < 0 { return false }
+  let r = rsp_row(respawn_st, who)
+  if not rsp_open(r, points.rows[i]) { return false }
+  if r.checkpoint == key { return true }
+  r.checkpoint = key
+  let f = rsp_fact(respawn_st, RESPAWN_CHECKPOINT, who)
+  f.point = i
+  f.x = points.rows[i].x
+  f.y = points.rows[i].y
+  f.z = points.rows[i].z
+  return true
+}
+
+# the subject is at (x, z): any checkpoint whose reach covers it becomes its own; how many were made
+export function respawn_visit(respawn_st: mut RespawnState, points: RespawnPoints, who: int, x: float, z: float) -> int {
+  var made = 0
+  for i in 0 .. len(points.rows) {
+    let p = points.rows[i]
+    if p.reach <= 0.0 or p.kind != "checkpoint" { continue }
+    if (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) > p.reach * p.reach { continue }
+    let r = rsp_row(respawn_st, who)
+    if r.checkpoint == p.key or not rsp_open(r, p) { continue }
+    if respawn_checkpoint(respawn_st, points, who, p.key) { made += 1 }
+  }
+  return made
+}
+
+export function respawn_clear_checkpoint(respawn_st: mut RespawnState, who: int) -> void {
+  let r = rsp_find(respawn_st, who)
+  if r != null { r.checkpoint = "" }
+}
+
+# a locked point opened for this subject: false if there is no such point or it was not locked
+export function respawn_unlock(respawn_st: mut RespawnState, points: RespawnPoints, who: int, key: string) -> bool {
+  let i = rsp_point_of(points, key)
+  if i < 0 or not points.rows[i].locked { return false }
+  let r = rsp_row(respawn_st, who)
+  if rsp_has_key(r.unlocked, key) { return false }
+  push(r.unlocked, intern(key))
+  let f = rsp_fact(respawn_st, RESPAWN_UNLOCKED, who)
+  f.point = i
+  return true
+}
+
+export function respawn_forget(respawn_st: mut RespawnState, who: int) -> void {
+  let h = imap_get(respawn_st.rsp_ids, who, -1)
+  if h < 0 { return }
+  imap_del(respawn_st.rsp_ids, who)
+  tb_remove(respawn_st.rsp_tab, h)
+}
+
+export function respawn_reset(respawn_st: mut RespawnState) -> void {
+  tb_clear(respawn_st.rsp_tab)
+  imap_clear(respawn_st.rsp_ids)
+  q_clear(respawn_st.rsp_facts)
+}
+
+# the questions
+export function respawn_alive(respawn_st: RespawnState, who: int) -> bool {
+  let r = rsp_find(respawn_st, who)
+  return r == null or r.phase == RespawnPhase.Alive
+}
+export function respawn_dead(respawn_st: RespawnState, who: int) -> bool { return not respawn_alive(respawn_st, who) }
+export function respawn_invulnerable(respawn_st: RespawnState, who: int) -> bool {
+  let r = rsp_find(respawn_st, who)
+  return r != null and r.phase == RespawnPhase.Alive and r.invuln > 0.0
+}
+export function respawn_invuln_left(respawn_st: RespawnState, who: int) -> float {
+  let r = rsp_find(respawn_st, who)
+  if r == null or r.phase != RespawnPhase.Alive { return 0.0 }
+  return r.invuln
+}
+# the game's damage check: only a living, exposed subject can be hurt
+export function respawn_can_be_hurt(respawn_st: RespawnState, who: int) -> bool {
+  let r = rsp_find(respawn_st, who)
+  if r == null { return true }
+  return r.phase == RespawnPhase.Alive and r.invuln <= 0.0
+}
+export function respawn_wait_left(respawn_st: RespawnState, who: int) -> float {
+  let r = rsp_find(respawn_st, who)
+  if r == null or r.phase != RespawnPhase.Dead { return 0.0 }
+  return Math.max(r.wait, 0.0)
+}
+export function respawn_deaths(respawn_st: RespawnState, who: int) -> int {
+  let r = rsp_find(respawn_st, who)
+  if r == null { return 0 }
+  return r.deaths
+}
+export function respawn_checkpoint_key(respawn_st: RespawnState, who: int) -> string {
+  let r = rsp_find(respawn_st, who)
+  if r == null { return "" }
+  return r.checkpoint
+}
+
+# the index of the nearest open (for nobody: unlocked) point of `kind` ("" any) to (x, z), or -1
+export function respawn_nearest_point(points: RespawnPoints, kind: string, x: float, z: float) -> int {
+  var best = -1
+  var bd = 0.0
+  for i in 0 .. len(points.rows) {
+    let p = points.rows[i]
+    if p.locked or (kind != "" and p.kind != kind) { continue }
+    let d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z)
+    if best < 0 or d < bd {
+      best = i
+      bd = d
+    }
+  }
+  return best
+}

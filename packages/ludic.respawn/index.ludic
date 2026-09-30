@@ -1,0 +1,13 @@
+# ludic.respawn - death to respawn as rules: the points a map holds (a @PerMap table the editor
+# places), a rule per cause of death (where, what it costs, how long to wait, how long after you are
+# untouchable), a subject's own checkpoint, and a fact for every step
+module ludic_respawn uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "state.ludic"
+import "rows.ludic"
+import "choose.ludic"
+import "verbs.ludic"
+import "tick.ludic"
+import "system.ludic"

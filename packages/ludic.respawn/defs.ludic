@@ -1,0 +1,40 @@
+# defs.ludic - the points of a map and the rules a game fills
+
+# a place to come back to, written per map (maps/<map>/respawn.lres). `kind` says what it is, `reach`
+# how close a subject must pass to make it their checkpoint (0: only by respawn_checkpoint), and a
+# `locked` one is not offered until respawn_unlock has opened it for that subject
+export property RespawnPoint {
+  key: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") y: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0
+  @OneOf("checkpoint", "hospital", "home", "start") kind: string = "checkpoint"
+  @Unit("m") @Range(0, 500) reach: float = 0.0
+  locked: bool = false
+}
+
+@PerMap @ByKey
+export registry RespawnPoints of RespawnPoint from "respawn.lres"
+
+# what a death means, by its cause (the word the game passes to respawn_died: "wasted", "busted",
+# "fell"). `mode` says where: the subject's last `checkpoint`, the `nearest` point of `kind` ("" any),
+# the nearest `home`, or the map's `start`. `cost` is taken flat, plus `cost_pct` of what the subject
+# has, at most `cost_max` (0: no most); the first `free` deaths cost nothing; a subject who has less
+# pays all it has and respawns anyway. `lose` is a share (0..1) of what it carries the game takes.
+# After `delay` seconds it is put back, untouchable for `invuln`
+export property RespawnRule {
+  key: string = ""
+  @OneOf("checkpoint", "nearest", "home", "start") mode: string = "nearest"
+  kind: string = ""
+  @Range(0, 1000000) cost: float = 0.0
+  @Range(0, 1) cost_pct: float = 0.0
+  @Range(0, 1000000) cost_max: float = 0.0
+  @Range(0, 100) free: int = 0
+  @Range(0, 1) lose: float = 0.0
+  @Unit("s") @Range(0, 120) delay: float = 3.0
+  @Unit("s") @Range(0, 120) invuln: float = 3.0
+}
+
+@AppendOnly @ByKey
+export open registry RespawnRules of RespawnRule as RSPR

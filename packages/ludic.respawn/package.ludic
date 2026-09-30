@@ -1,0 +1,6 @@
+# ludic.respawn - death to respawn as rules: points a map holds as data, what a death costs, the
+# invulnerable window after, checkpoint or nearest. Uses ludic.base and nothing else.
+package "ludic.respawn"
+version "0.1.0"
+kind source
+maps "tests/maps"

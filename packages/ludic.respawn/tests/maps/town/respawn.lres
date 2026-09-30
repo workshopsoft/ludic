@@ -1,0 +1,7 @@
+# the test town: a clinic, a bed, the start, two checkpoints, and a hospital that opens with a key
+start { x: 0.0, z: 0.0, kind: "start", yaw: 180.0 }
+clinic { x: 10.0, z: 5.0, kind: "hospital" }
+bed { x: -4.0, z: 8.0, kind: "home", yaw: 90.0 }
+cp1 { x: 100.0, z: 0.0, kind: "checkpoint", reach: 10.0 }
+cp2 { x: 200.0, z: 0.0, kind: "checkpoint", reach: 10.0 }
+vip { x: 210.0, z: 0.0, kind: "hospital", locked: true }
