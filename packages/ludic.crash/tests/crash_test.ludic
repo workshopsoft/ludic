@@ -249,4 +249,34 @@ program CrashTest {
       expect(len(r.frames) >= 2)
     }
   }
+
+  test "a crowd of children crashing at once all keep their signal and their record" (crash_st: mut CrashState, crash_test_st: mut CrashTestState) {
+    let kinds = [0, 1, 2, 4]
+    let codes = [139, 134, 133, 139]
+    let hs = words(16)
+    let ks = words(16)
+    for n in 0 .. 16 {
+      let kind = kinds[n % 4]
+      let d = dir() + "/crowd" + Text.from_int(n)
+      if Fs.is_dir(d) {
+        let old = Fs.list(d)
+        for i in 0 .. len(old) { Fs.remove(Path.join(d, Path.base(old[i]))) }
+      }
+      Fs.mkdir(d)
+      hs[n] = Process.spawn(arg(0), ["child: crash on purpose", d, Text.from_int(kind)])
+      ks[n] = n % 4
+    }
+    for n in 0 .. 16 {
+      var code = Process.poll(hs[n])
+      while code == -1 { code = Process.poll(hs[n]) }
+      Process.free(hs[n])
+      expect_eq(code, codes[ks[n]])
+      let c = new CrashConfig
+      c.dir = dir() + "/crowd" + Text.from_int(n)
+      crash_reset(crash_st)
+      crash_config(crash_st, c)
+      expect_eq(crash_start(crash_st), 1)
+      expect(crash_record(crash_st, 0).complete)
+    }
+  }
 }

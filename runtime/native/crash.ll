@@ -33,7 +33,7 @@
 ; frames ("via": "scan"); a missing one is a frame whose call was not a BL/BLR.
 ;
 ; A fault INSIDE the handler meets the default action at once (SA_RESETHAND | SA_NODEFER), and a
-; handler that hangs is ended by SIGALRM after 4 seconds (alarm), so a crash never turns into a
+; handler that hangs is ended after 5 seconds by a timer (alarm, cancelled as soon as the record is written) that re-raises the ORIGINAL signal, so the exit status is the crash's, so a crash never turns into a
 ; frozen process.
 ;
 ; THE RECORD is JSON lines, written to <dir>/crash-<unix time>-<pid>.lcr; see
@@ -84,6 +84,9 @@ declare ptr @_dyld_get_image_name(i32)
 ; the loaded images: base, size of __TEXT, LC_UUID, path, flags (1 main executable,
 ; 2 system library, 4 a frame landed in it, 8 has a uuid)
 @C_in = internal global i32 0
+@C_lo = internal global i64 -1
+@C_hi = internal global i64 0
+@C_sig = internal global i32 0
 @C_ib = internal global [1024 x i64] zeroinitializer
 @C_isz = internal global [1024 x i64] zeroinitializer
 @C_iu = internal global [16384 x i8] zeroinitializer
@@ -516,6 +519,15 @@ store:
   store i64 %tszf, ptr %zp
   %fp = getelementptr i32, ptr @C_if, i32 %n
   store i32 %flags, ptr %fp
+  %enda = add i64 %b, %tszf
+  %lo0 = load i64, ptr @C_lo
+  %lolt = icmp ult i64 %b, %lo0
+  %lo1 = select i1 %lolt, i64 %b, i64 %lo0
+  store i64 %lo1, ptr @C_lo
+  %hi0 = load i64, ptr @C_hi
+  %hihi = icmp ugt i64 %enda, %hi0
+  %hi1 = select i1 %hihi, i64 %enda, i64 %hi0
+  store i64 %hi1, ptr @C_hi
   %n1 = add i32 %n, 1
   store atomic i32 %n1, ptr @C_in release, align 4
   br label %out
@@ -526,10 +538,17 @@ out:
 ; the image holding pc, or -1
 define internal i32 @cr_find(i64 %pc) {
 entry:
+  %lo = load i64, ptr @C_lo
+  %hi = load i64, ptr @C_hi
+  %below = icmp ult i64 %pc, %lo
+  %above = icmp uge i64 %pc, %hi
+  %out = or i1 %below, %above
+  br i1 %out, label %none, label %go
+go:
   %n = load atomic i32, ptr @C_in acquire, align 4
   br label %loop
 loop:
-  %i = phi i32 [ 0, %entry ], [ %i2, %next ]
+  %i = phi i32 [ 0, %go ], [ %i2, %next ]
   %more = icmp slt i32 %i, %n
   br i1 %more, label %chk, label %none
 chk:
@@ -637,7 +656,7 @@ scan0:
   %inside = icmp uge i64 %sp, %lo
   %from0 = select i1 %inside, i64 %sp, i64 %lo
   %from = and i64 %from0, -8
-  %cap = add i64 %from, 1048576
+  %cap = add i64 %from, 262144
   %stop = call i64 @cr_umin(i64 %hi, i64 %cap)
   %okrange = icmp ult i64 %from, %stop
   br i1 %okrange, label %loop, label %done
@@ -705,10 +724,28 @@ other:
   ret ptr @k15
 }
 
+; the safety: a handler still running 5 s after the crash ends the process with the ORIGINAL signal
+define void @lu_crash_alarm(i32 %s) {
+entry:
+  %sa = alloca [16 x i8], align 8
+  %sig = load i32, ptr @C_sig
+  store ptr null, ptr %sa
+  %mp = getelementptr i8, ptr %sa, i64 8
+  store i32 0, ptr %mp
+  %fp = getelementptr i8, ptr %sa, i64 12
+  store i32 0, ptr %fp
+  %r = call i32 @sigaction(i32 %sig, ptr %sa, ptr null)
+  %q = call i32 @raise(i32 %sig)
+  %ec = add i32 %sig, 128
+  call void @_exit(i32 %ec)
+  unreachable
+}
+
 define void @lu_crash_handler(i32 %sig, ptr %info, ptr %uc) {
 entry:
   %ts = alloca [2 x i64], align 8
   %tid = alloca i64, align 8
+  %asa = alloca [16 x i8], align 8
   %cx = cmpxchg ptr @C_busy, i32 0, i32 1 seq_cst seq_cst
   %won = extractvalue { i32, i1 } %cx, 1
   br i1 %won, label %go, label %lose
@@ -721,7 +758,7 @@ wait:
   %w = phi i32 [ 0, %lose ], [ %w2, %wait ]
   %nr = call i32 @nanosleep(ptr %ts, ptr null)
   %w2 = add i32 %w, 1
-  %wm = icmp slt i32 %w2, 3000
+  %wm = icmp slt i32 %w2, 1000
   br i1 %wm, label %wait, label %givenup
 givenup:
   %ec = add i32 %sig, 128
@@ -729,7 +766,14 @@ givenup:
   unreachable
 go:
   ; a handler that hangs (a lock it needed was held by the crash) is ended by SIGALRM
-  %al = call i32 @alarm(i32 4)
+  store i32 %sig, ptr @C_sig
+  store ptr @lu_crash_alarm, ptr %asa
+  %asm = getelementptr i8, ptr %asa, i64 8
+  store i32 0, ptr %asm
+  %asf = getelementptr i8, ptr %asa, i64 12
+  store i32 1, ptr %asf
+  %asr = call i32 @sigaction(i32 14, ptr %asa, ptr null)
+  %al = call i32 @alarm(i32 5)
   %pid = call i32 @getpid()
   %now = call i64 @time(ptr null)
   %pl = call i32 @cr_copy(ptr @C_full, ptr @C_path, i32 1024)
@@ -915,6 +959,9 @@ idone:
   %cl = call i32 @close(i32 %fd)
   br label %reraise
 reraise:
+  ; the work is done: the safety timer must not run on into the OS's own crash handling
+  ; (Crash Reporter can take long under load), or SIGALRM would end the process instead
+  %al0 = call i32 @alarm(i32 0)
   ; the disposition is the default already (SA_RESETHAND): this ends the process the way
   ; the crash would have, whether the fault repeats or the signal was sent
   %rr = call i32 @raise(i32 %sig)

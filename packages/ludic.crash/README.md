@@ -188,7 +188,9 @@ says it too:
   with `SA_RESETHAND | SA_NODEFER`: the default action is back the moment the handler is entered, so a
   fault inside it kills the process at once, and after the record the signal is raised again so the OS
   reports the crash as it would have (Crash Reporter, the parent's `128 + signal`). A handler that
-  hangs is ended by `SIGALRM` after four seconds.
+  hangs is ended after five seconds by a timer that re-raises the original signal; the timer is
+  cancelled as soon as the record is written, so the OS's own crash handling (which can be slow on a
+  busy machine) is never cut short.
 - It allocates nothing and takes no lock. Everything it needs - the path prefix, the strings, the
   table of loaded images (base, size, `LC_UUID`, path) - is made before the crash, by
   `crash_start` and by dyld's add-image callback. It calls `open`, `write`, `close`, `getpid`, `time`,
