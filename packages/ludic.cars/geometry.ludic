@@ -1,0 +1,106 @@
+# geometry.ludic - a model's wheels and axles: how many, which are in front, which are driven, how long
+# the wheelbase is. Read from the model's axles list; nothing is made.
+
+export function car_axle_count(model: int) -> int {
+  let m = CarModels[model]
+  if m.axles == null { return 0 }
+  return len(m.axles)
+}
+
+# wheels an axle carries: two across, or one on the centre line when its track is 0
+export function car_axle_wheels(model: int, a: int) -> int {
+  let m = CarModels[model]
+  if m.axles == null or a < 0 or a >= len(m.axles) { return 0 }
+  if m.axles[a].track > 0.0 { return 2 }
+  return 1
+}
+
+export function car_wheel_count(model: int) -> int {
+  var n = 0
+  for a in 0 .. car_axle_count(model) { n += car_axle_wheels(model, a) }
+  return n
+}
+
+# the index of an axle's first wheel in a car's wheel list (its second, if it has one, follows)
+export function car_wheel_first(model: int, a: int) -> int {
+  var n = 0
+  for i in 0 .. a { n += car_axle_wheels(model, i) }
+  return n
+}
+
+function cr_mid_z(m: CarModel) -> float {
+  if m.axles == null or len(m.axles) == 0 { return 0.0 }
+  var lo = m.axles[0].z
+  var hi = m.axles[0].z
+  for i in 1 .. len(m.axles) {
+    if m.axles[i].z < lo { lo = m.axles[i].z }
+    if m.axles[i].z > hi { hi = m.axles[i].z }
+  }
+  return (lo + hi) * 0.5
+}
+
+# an axle ahead of the middle of the axles is a front axle (a single axle counts as the front)
+export function car_axle_front(model: int, a: int) -> bool {
+  let m = CarModels[model]
+  if m.axles == null or a < 0 or a >= len(m.axles) { return false }
+  if len(m.axles) == 1 { return true }
+  return m.axles[a].z > cr_mid_z(m)
+}
+
+# whether the drivetrain drives an axle
+export function car_axle_driven(model: int, a: int) -> bool {
+  let m = CarModels[model]
+  if m.drivetrain == CAR_AWD { return true }
+  let front = car_axle_front(model, a)
+  if m.drivetrain == CAR_FWD { return front }
+  return not front
+}
+
+export function car_wheelbase(model: int) -> float {
+  let m = CarModels[model]
+  if m.axles == null or len(m.axles) < 2 { return m.length * 0.6 }
+  var lo = m.axles[0].z
+  var hi = m.axles[0].z
+  for i in 1 .. len(m.axles) {
+    if m.axles[i].z < lo { lo = m.axles[i].z }
+    if m.axles[i].z > hi { hi = m.axles[i].z }
+  }
+  return hi - lo
+}
+
+# the axle whose wheels steer furthest, for the steering angle (a bike's front, a truck's first)
+export function car_steer_axle(model: int) -> int {
+  let m = CarModels[model]
+  if m.axles == null { return -1 }
+  var best = -1
+  var amt = 0.0
+  for i in 0 .. len(m.axles) {
+    if Math.abs(m.axles[i].steer) > amt {
+      amt = Math.abs(m.axles[i].steer)
+      best = i
+    }
+  }
+  return best
+}
+
+# the lateral size of the car's track: what a wheel's anchor is at, for a model with no axles (a planar car)
+export function car_radius_of(model: int) -> float {
+  let m = CarModels[model]
+  if m.axles == null or len(m.axles) == 0 { return 0.33 }
+  return m.axles[0].radius
+}
+
+# the radius of the driven wheels, averaged
+export function car_driven_radius(model: int) -> float {
+  let m = CarModels[model]
+  var sum = 0.0
+  var n = 0
+  for a in 0 .. car_axle_count(model) {
+    if car_axle_driven(model, a) {
+      sum += m.axles[a].radius
+      n += 1
+    }
+  }
+  if n == 0 { return car_radius_of(model) }
+  return sum / float(n)
+}

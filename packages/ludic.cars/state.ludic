@@ -1,0 +1,371 @@
+# state.ludic - the cars (a row each), what a wheel is doing, the facts, and the owned cars. `phase` of a
+# Car is the door machine's (@Machine(Car.phase)) and `status` of an OwnedCar the ownership machine's:
+# nothing else writes either.
+
+# a car at the door: free (unlocked and nobody in it), locked, somebody getting in, driven, the driver
+# getting out, the driver being dragged out by a thief, and wrecked
+export enum CarPhase { Free, Locked, Entering, Driven, Exiting, Jacked, Wrecked }
+
+# a car that belongs to somebody: in a garage slot, on its way, out in the world, destroyed, being replaced
+# under insurance, in the impound
+export enum CarStatus { Garaged, Delivering, Out, Destroyed, Claiming, Impounded }
+
+export const CAR_SIM_BODY: int = 0         # a body in the game's physics, raycast wheels
+export const CAR_SIM_PLANAR: int = 1       # the package's own planar model of the same tyres, engine and gearbox
+export const CAR_SIM_LANE: int = 2         # a lane follower: no forces, the lane's line and a speed
+export const CAR_SIM_REMOTE: int = 3       # simulated on another machine: snapshots, interpolated
+
+export const CAR_MAX_SEATS: int = 8
+export const CAR_NET_RING: int = 8         # snapshots a remote car keeps
+export const CAR_NET_FIELDS: int = 11      # t, x, y, z, yaw, pitch, roll, speed, steer, flags, rpm
+
+# lights, as bits of Car.lights
+export const CAR_LIGHT_LOW: int = 1
+export const CAR_LIGHT_HIGH: int = 2
+export const CAR_LIGHT_BRAKE: int = 4      # on while the brake is held: worked out, not set
+export const CAR_LIGHT_REVERSE: int = 8    # on in reverse: worked out
+export const CAR_LIGHT_SIREN: int = 16
+export const CAR_LIGHT_INTERIOR: int = 32
+
+# the indicators, Car.indicator
+export const CAR_IND_OFF: int = 0
+export const CAR_IND_LEFT: int = -1
+export const CAR_IND_RIGHT: int = 1
+export const CAR_IND_HAZARD: int = 2
+
+# what happened: the facts a game draws, sounds and scores from
+export const CAR_MADE: int = 0             # a car exists (model)
+export const CAR_GONE: int = 1
+export const CAR_ENTERED: int = 2          # actor is in a seat (v: the seat)
+export const CAR_EXITED: int = 3           # actor stepped out (x, y, z: where)
+export const CAR_CARJACK: int = 4          # a thief began dragging the driver out (actor: the thief, w: the driver)
+export const CAR_EJECTED: int = 5          # an actor was thrown or dragged out (w: why)
+export const CAR_LOCKED: int = 6
+export const CAR_UNLOCKED: int = 7
+export const CAR_BROKEN_INTO: int = 8      # a locked car was forced (actor)
+export const CAR_SHIFT: int = 9            # a gear change (v: from, w: to)
+export const CAR_ENGINE_ON: int = 10
+export const CAR_ENGINE_OFF: int = 11
+export const CAR_STALLED: int = 12         # out of fuel
+export const CAR_HORN: int = 13
+export const CAR_INDICATOR: int = 14       # (v: the new state)
+export const CAR_LIGHTS: int = 15          # (v: the bits)
+export const CAR_DAMAGE: int = 16          # body health lost (v: amount, w: what is left)
+export const CAR_DEFORM: int = 17          # a dent: (x, y, z) the model-space point, v its depth in metres, w the direction as a yaw
+export const CAR_TYRE_POP: int = 18        # (v: the wheel)
+export const CAR_SMOKE: int = 19           # the engine's smoke level (v: 0 none, 1 light, 2 heavy, 3 fire)
+export const CAR_WRECKED: int = 20
+export const CAR_REPAIRED: int = 21
+export const CAR_LOD: int = 22             # the simulation level changed (v: CAR_SIM_*)
+export const CAR_SKID: int = 23            # a wheel slides hard (v: the wheel, w: how hard)
+export const CAR_AIRBORNE: int = 24
+export const CAR_LANDED: int = 25          # (v: the speed it came down at)
+export const CAR_NITRO: int = 26           # (v: 1 lit, 0 out)
+export const CAR_REFUSED: int = 27         # an action was turned down (v: CAR_NO_*)
+export const CAR_OWN_STATUS: int = 28      # an owned car's status changed (oid, v: CarStatus)
+export const CAR_DELIVERED: int = 29       # a called car arrived
+export const CAR_CLAIM_PAID: int = 30      # insurance replaced a destroyed car
+export const CAR_IMPOUNDED: int = 31
+export const CAR_RELEASED: int = 32        # out of the impound
+export const CAR_SNAP_REFUSED: int = 33    # a snapshot that could not be true
+
+# why an action was refused
+export const CAR_NO_SUCH: int = 1
+export const CAR_NO_SEAT: int = 2          # the seat is taken or there is none
+export const CAR_NO_LOCKED: int = 3
+export const CAR_NO_FAR: int = 4           # too far from the door
+export const CAR_NO_FAST: int = 5          # moving too fast to get out
+export const CAR_NO_WRECK: int = 6
+export const CAR_NO_MONEY: int = 7
+export const CAR_NO_ROOM: int = 8          # no free garage slot
+export const CAR_NO_INSURANCE: int = 9
+export const CAR_NO_BUSY: int = 10         # the car is mid-transition (getting in, being jacked)
+export const CAR_NO_ACTOR: int = 11
+export const CAR_NO_STATE: int = 12        # not in a status that allows it
+export const CAR_NO_MODEL: int = 13
+
+export property CarFact {
+  what: int = 0
+  nid: int = -1
+  oid: int = -1
+  actor: int = -1
+  model: int = 0
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  v: float = 0.0
+  w: float = 0.0
+}
+
+# one wheel, read by a game that draws it (spin, steer, how far its suspension is out) or hears it (slip)
+export property CarWheel {
+  spin: float = 0.0          # rad/s
+  roll: float = 0.0          # radians turned: what a model's wheel node is rotated by
+  steer: float = 0.0         # radians, right positive
+  ext: float = 0.0           # the suspension's reach, 0 fully compressed .. travel
+  contact: bool = false
+  load: float = 0.0          # N on it
+  slip_r: float = 0.0        # slip ratio
+  slip_a: float = 0.0        # slip angle, radians
+  grip: float = 1.0          # what the surface and tyre give, the last step
+  popped: bool = false
+  hx: float = 0.0            # where it touches
+  hy: float = 0.0
+  hz: float = 0.0
+  fx: float = 0.0            # the force it gave the car, along and across
+  fy: float = 0.0
+  axle: int = 0
+  side: int = 0              # 0 left, 1 right (a bike's one wheel is 0)
+  ax: float = 0.0            # the suspension mount, in the world
+  ay: float = 0.0
+  az: float = 0.0
+  nx: float = 0.0            # the surface normal under it
+  ny: float = 1.0
+  nz: float = 0.0
+  comp: float = 0.0          # how far the spring is compressed, m
+  fs: float = 0.0            # the spring and damper's force, N
+  cx: float = 0.0            # the contact's velocity across and along, scratch
+}
+
+# one car. `phase` is the door machine's: nothing else writes it
+export property Car {
+  phase: CarPhase = CarPhase.Free
+  last_phase: int = 0
+  nid: int = -1
+  model: int = 0
+  owner: int = -1                  # the player it belongs to (-1 nobody's: traffic, a rental)
+  oid: int = -1                    # its OwnedCar's id, -1 when it is nobody's
+  sim: int = 1                     # CAR_SIM_*
+  body: bool = false               # the game's physics holds a body for it
+  auth: int = 0                    # the machine that simulates it
+  x: float = 0.0                   # the model's origin
+  y: float = 0.0
+  z: float = 0.0
+  fx: float = 0.0                  # forward
+  fy: float = 0.0
+  fz: float = 1.0
+  ux: float = 0.0                  # up
+  uy: float = 1.0
+  uz: float = 0.0
+  vx: float = 0.0                  # its velocity
+  vy: float = 0.0
+  vz: float = 0.0
+  yaw: float = 0.0                 # atan2(fx, fz)
+  speed: float = 0.0               # along forward, m/s, negative backing up
+  side_speed: float = 0.0          # across it, m/s, positive to the right
+  yaw_rate: float = 0.0            # rad/s about up, positive turning left
+  lean: float = 0.0                # a two-wheeler's lean, radians, positive to the right
+  pfx: float = 0.0                 # the basis at the last read, for the rates
+  pfy: float = 0.0
+  pfz: float = 1.0
+  pux: float = 0.0
+  puy: float = 1.0
+  puz: float = 0.0
+  have_prev: bool = false
+  wx: float = 0.0                  # the body's angular velocity (x, y, z), estimated
+  wy: float = 0.0
+  wz: float = 0.0
+  # what the driver asks
+  in_throttle: float = 0.0
+  in_brake: float = 0.0
+  in_steer: float = 0.0            # right positive
+  in_hand: float = 0.0
+  in_nitro: bool = false
+  in_horn: bool = false
+  # the drivetrain
+  gear: int = 1                    # -1 reverse, 0 neutral, 1 .. n
+  shift_t: float = 0.0             # seconds of the torque cut left
+  shift_to: int = 1
+  rpm: float = 0.0
+  engine_on: bool = false
+  spool: float = 0.0               # the turbo, 0..1
+  nitro_left: float = 0.0          # seconds of burn in the tank
+  nitro_on: bool = false
+  steer_angle: float = 0.0         # radians at the front wheels' full share, right positive
+  throttle: float = 0.0            # what the engine was given after the assists
+  braking: float = 0.0
+  tq_front: float = 0.0           # N.m at each driven front wheel, this step
+  tq_rear: float = 0.0
+  brake_front: float = 0.0         # N at each front wheel, this step (the handbrake apart)
+  brake_rear: float = 0.0
+  brake_hand: float = 0.0          # N at each wheel the handbrake holds
+  rpm_w: float = 0.0               # the engine speed the wheels give, through the gear
+  iref_front: float = 0.0          # the engine's inertia as each driven front / rear wheel feels it, kg.m2
+  iref_rear: float = 0.0
+  fuel_out: bool = false
+  # the assists in force (the model's, with the settings' blend and the driver's own)
+  a_traction: float = 0.0
+  a_stability: float = 0.0
+  a_drift: float = 0.0
+  a_abs: float = 0.0
+  arcade: float = 0.0
+  wheels: []CarWheel = null
+  nwheels: int = 0
+  # health
+  health: float = 0.0
+  engine_hp: float = 0.0
+  fuel: float = 0.0
+  smoke: int = 0
+  odometer: float = 0.0            # metres driven
+  airborne: bool = false
+  skid_t: float = 0.0
+  acc: float = 0.0                 # the forward acceleration the planar model found
+  fly_t: float = 0.0               # seconds with no wheel down
+  # small things
+  horn: bool = false
+  lights: int = 0
+  indicator: int = 0
+  # seats
+  occupant: []int = null           # per seat: the actor in it, -1 empty
+  nseats: int = 0
+  drv_seat: int = 0                # the index of the driver's seat in occupant
+  want: int = -1                   # the machine's payloads: who is getting in, which seat, who is dragging
+  want_seat: int = 0
+  jacker: int = -1
+  door_t: float = 0.0
+  jack_t: float = 0.0
+  exit_t: float = 0.0
+  instant: bool = false            # getting in takes no time (an AI driver placed in it)
+  # paint
+  primary: int = 0
+  secondary: int = 0
+  pearl: int = 0
+  livery: int = -1
+  plate: string = ""
+  parts: []int = null
+  stats: CarStats = null
+  # a lane follower
+  ai: bool = false                 # the package drives it along the lane CarRoad gives
+  ai_pace: float = 1.0             # the share of the limit it cruises at
+  ai_speed: float = 0.0            # the speed it wants now
+  # the party
+  snap_t: float = 0.0
+  snap_seq: int = 0
+  ring: floats = null
+  ring_n: int = 0
+  ring_head: int = 0
+  net_ok: bool = false
+  net_mask: int = 0               # the tyres a snapshot said are flat
+  # the level of detail
+  lod_t: float = 0.0
+  ent: int = -1
+  tab: Table<Car> = null
+}
+
+# a car somebody owns: what it is and looks like, where it is (a slot, the world, the impound) and its state
+export property OwnedCar {
+  status: CarStatus = CarStatus.Garaged
+  last_status: int = 0
+  oid: int = 0                     # its id, unique across the game
+  owner: int = 0
+  model: int = 0
+  nid: int = -1                    # the live car, -1 when it is in a slot
+  slot: int = -1                   # its garage place
+  primary: int = 0
+  secondary: int = 0
+  pearl: int = 0
+  livery: int = -1
+  plate: string = ""
+  parts: []int = null
+  health: float = -1.0             # kept while it is away, -1 full
+  fuel: float = -1.0
+  insured: bool = false
+  claims: int = 0
+  timer: float = 0.0               # seconds to a delivery or a claim's settlement
+  spawn: bool = false              # the machine's asks the tick to make the car
+  unspawn: bool = false            # ... to take it away
+  dx: float = 0.0                  # where a called car is to appear
+  dz: float = 0.0
+  dyaw: float = 0.0
+  fee: int = 0                     # what the machine's enter charged, for the fact
+  paid: bool = false
+  restore: int = -1                # a load's status for the machine to put it in
+}
+
+export action CarEnterIn { @Target who: int = -1, actor: int = -1, seat: int = 0, instant: bool = false }
+export action CarExitIn { @Target who: int = -1 }
+export action CarLockIn { @Target who: int = -1 }
+export action CarUnlockIn { @Target who: int = -1 }
+export action CarJackIn { @Target who: int = -1, actor: int = -1 }
+export action CarWreckIn { @Target who: int = -1 }
+export action CarRepairIn { @Target who: int = -1 }
+export action CarStoreIn { @Target who: int = -1, slot: int = -1 }
+export action CarCallIn { @Target who: int = -1, x: float = 0.0, z: float = 0.0, yaw: float = 0.0 }
+export action CarRetrieveIn { @Target who: int = -1, x: float = 0.0, z: float = 0.0, yaw: float = 0.0 }
+export action CarDestroyedIn { @Target who: int = -1 }
+export action CarClaimIn { @Target who: int = -1 }
+export action CarImpoundIn { @Target who: int = -1 }
+export action CarReleaseIn { @Target who: int = -1 }
+export action CarRestoreIn { @Target who: int = -1, status: int = 0 }
+
+# one more than the largest garage slot list: slots a player owns are pairs in these lists
+export state CarsState {
+  cr_cars: Table<Car> = cr_cars__new()
+  cr_nids: IntMap = imap_new()
+  cr_owned: Table<OwnedCar> = cr_owned__new()
+  cr_oids: IntMap = imap_new()
+  cr_slot_owner: []int = new []int
+  cr_slot_place: []int = new []int
+  cr_dice: Rng = rng_new(1)
+  cr_time: float = 0.0
+  cr_acc: float = 0.0
+  cr_ids: int = 0
+  cr_oid_next: int = 1
+  cr_q: Queue<CarFact> = cr_q__new()
+  cr_pose: CarPose = new CarPose
+  cr_hit: CarHit = new CarHit
+  cr_cfg: CarSettings = new CarSettings
+  cr_sx: float = 0.0
+  cr_sz: float = 0.0
+  cr_tmp: floats = floats(48)      # scratch: a function that answers with several numbers
+  cr_net_clock: float = 0.0        # the local clock the snapshots are timed against
+  cr_net_off: float = 0.0          # how far the senders' clock runs ahead of it
+  cr_net_have: bool = false
+  cr_steps: int = 0
+}
+function cr_cars__new() -> Table<Car> {
+  let t: Table<Car> = table_new(0, 0)
+  return t
+}
+function cr_owned__new() -> Table<OwnedCar> {
+  let t: Table<OwnedCar> = table_new(0, 0)
+  return t
+}
+function cr_q__new() -> Queue<CarFact> { return queue_new("cars.facts") }
+
+export function cars_facts(cars_st: CarsState) -> Queue<CarFact> { return cars_st.cr_q }
+
+# a fact, from anywhere (the machines' functions only read the state, and a queue is not the state)
+function cr_fact(cars_st: CarsState, what: int, c: Car) -> CarFact {
+  var f = q_rec(cars_st.cr_q)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new CarFact
+    q_ring_add(cars_st.cr_q, f)
+  }
+  f.what = what
+  f.nid = -1
+  f.oid = -1
+  f.actor = -1
+  f.model = 0
+  f.x = 0.0
+  f.y = 0.0
+  f.z = 0.0
+  f.v = 0.0
+  f.w = 0.0
+  if c != null {
+    f.nid = c.nid
+    f.oid = c.oid
+    f.model = c.model
+    f.x = c.x
+    f.y = c.y
+    f.z = c.z
+  }
+  q_push(cars_st.cr_q, f)
+  return f
+}
+
+export function cars_config(cars_st: CarsState) -> CarSettings {
+  if CSET_COUNT > 0 { return CarSettingsRows[0] }
+  return cars_st.cr_cfg
+}

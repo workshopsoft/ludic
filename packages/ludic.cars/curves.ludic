@@ -1,0 +1,70 @@
+# curves.ludic - a curve is a list of CarPoints, read linearly between them and held flat past the ends. The
+# same reader serves an engine's torque, a tyre's grip and a steering lock by speed.
+
+# the value of `pts` at x (0 for no curve); allocates nothing
+export function car_curve(pts: []CarPoint, x: float) -> float {
+  if pts == null { return 0.0 }
+  let n = len(pts)
+  if n == 0 { return 0.0 }
+  if x <= pts[0].x { return pts[0].y }
+  if x >= pts[n - 1].x { return pts[n - 1].y }
+  for i in 1 .. n {
+    if x <= pts[i].x {
+      let a = pts[i - 1]
+      let b = pts[i]
+      let span = b.x - a.x
+      if span <= 0.0 { return b.y }
+      return a.y + (b.y - a.y) * (x - a.x) / span
+    }
+  }
+  return pts[n - 1].y
+}
+
+# the slope of the curve at x: what a tyre's stiffness is
+export function car_curve_slope(pts: []CarPoint, x: float) -> float {
+  if pts == null { return 0.0 }
+  let n = len(pts)
+  if n < 2 { return 0.0 }
+  if x < pts[0].x or x >= pts[n - 1].x { return 0.0 }
+  for i in 1 .. n {
+    if x <= pts[i].x {
+      let span = pts[i].x - pts[i - 1].x
+      if span <= 0.0 { return 0.0 }
+      return (pts[i].y - pts[i - 1].y) / span
+    }
+  }
+  return 0.0
+}
+
+# the largest y on the curve (an engine's peak torque)
+export function car_curve_peak(pts: []CarPoint) -> float {
+  if pts == null { return 0.0 }
+  var best = 0.0
+  for i in 0 .. len(pts) { if pts[i].y > best { best = pts[i].y } }
+  return best
+}
+
+# the x at which a curve first reaches its peak (the slip at which a tyre grips most)
+export function car_curve_peak_at(pts: []CarPoint) -> float {
+  if pts == null or len(pts) == 0 { return 0.0 }
+  var best = pts[0].y
+  var at = pts[0].x
+  for i in 1 .. len(pts) {
+    if pts[i].y > best {
+      best = pts[i].y
+      at = pts[i].x
+    }
+  }
+  return at
+}
+
+# the most power a torque curve makes, in watts: torque (N.m) times rpm times 2 pi / 60
+export function car_curve_power(pts: []CarPoint) -> float {
+  if pts == null { return 0.0 }
+  var best = 0.0
+  for i in 0 .. len(pts) {
+    let p = pts[i].y * pts[i].x * 0.10471976
+    if p > best { best = p }
+  }
+  return best
+}

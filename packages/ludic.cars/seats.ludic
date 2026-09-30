@@ -1,0 +1,40 @@
+# seats.ludic - a model's seats from CarSeats rows: how many, the driver's, each one's place
+
+export function car_seat_count(model: int) -> int {
+  var n = 0
+  for i in 0 .. CSEAT_COUNT { if CarSeats[i].car == model { n += 1 } }
+  if n == 0 { return 1 }
+  if n > CAR_MAX_SEATS { return CAR_MAX_SEATS }
+  return n
+}
+
+# the nth seat row of a model, or null (a model with no rows has one unnamed driver's seat)
+export function car_seat_row(model: int, nth: int) -> CarSeat {
+  var n = 0
+  for i in 0 .. CSEAT_COUNT {
+    if CarSeats[i].car != model { continue }
+    if n == nth { return CarSeats[i] }
+    n += 1
+  }
+  return null
+}
+
+# the index of the driver's seat in the model's own list (0 when none is marked)
+export function car_driver_seat(model: int) -> int {
+  var n = 0
+  for i in 0 .. CSEAT_COUNT {
+    if CarSeats[i].car != model { continue }
+    if CarSeats[i].driver { return n }
+    n += 1
+  }
+  return 0
+}
+
+# the socket row (door, wheel ...) of a model by kind and index, or -1
+export function car_socket_of(model: int, kind: int, index: int) -> int {
+  for i in 0 .. CSOCK_COUNT {
+    let k = CarSockets[i]
+    if k.car == model and k.kind == kind and k.index == index { return i }
+  }
+  return -1
+}

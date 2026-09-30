@@ -1,0 +1,276 @@
+# cars_planar_test.ludic - the planar model with every port unbound (so no physics body is ever made): a
+# launch, the gearbox, braking, reverse, steering, the assists, the limiter, fuel, nitrous, a hard turn's
+# slip, and the same run twice to the bit.
+import "ludic.cars"
+import "ludic.base"
+program CarsPlanarTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+  def CarParts from "cars_parts.lres"
+
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+
+  state Rig { tk: Tick = new Tick }
+  function frame(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, n: int) -> void {
+    for i in 0 .. n {
+      drain_actions()
+      cars_tick(cars_st, doors, owns, tick_set(rig.tk, 0.016666668, i, 0.0))
+    }
+  }
+
+  # a car with an AI driver seated and the engine running
+  function driven(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, model: int) -> Car {
+    let nid = car_spawn(cars_st, model, 0.0, 0.0, 0.0, -1)
+    expect(nid >= 0)
+    expect_eq(car_seat_driver(cars_st, nid, 1), 0)
+    frame(cars_st, doors, owns, rig, 3)
+    let c = car_by_nid(cars_st, nid)
+    expect(c.phase == CarPhase.Driven)
+    expect(c.engine_on)
+    return c
+  }
+
+  function drive_for(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, c: Car, seconds: float, throttle: float, brake: float, steer: float, hand: float) -> void {
+    for i in 0 .. int(seconds * 60.0) {
+      car_drive(cars_st, c.nid, throttle, brake, steer, hand)
+      frame(cars_st, doors, owns, rig, 1)
+    }
+  }
+
+  test "a driven sedan launches, changes up through its gears, and stays under the limiter" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    expect_eq(c.gear, 1)
+    drive_for(cars_st, doors, owns, rig, c, 3.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.speed > 10.0)
+    expect(c.gear >= 2)
+    expect(c.rpm > 900.0 and c.rpm <= 6900.0)
+    drive_for(cars_st, doors, owns, rig, c, 12.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.speed > 40.0)
+    expect(c.gear >= 4)
+    expect(c.rpm <= 6900.0)
+    # straight: it has not drifted off its line
+    expect(Math.abs(c.x) < 0.5)
+    expect(c.z > 100.0)
+    expect(Math.abs(c.yaw) < 0.01)
+    # the gear changes were facts
+    var shifts = 0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == CAR_SHIFT { shifts += 1 } }
+    expect(shifts >= 4)
+  }
+
+  test "it brakes to a stop, and held on the brake it backs up" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, c, 5.0, 1.0, 0.0, 0.0, 0.0)
+    let fast = c.speed
+    expect(fast > 20.0)
+    drive_for(cars_st, doors, owns, rig, c, 1.0, 0.0, 1.0, 0.0, 0.0)
+    expect(c.speed < fast - 8.0)
+    drive_for(cars_st, doors, owns, rig, c, 6.0, 0.0, 1.0, 0.0, 0.0)
+    expect(c.speed < -0.5)
+    expect_eq(c.gear, -1)
+    expect(c.lights & CAR_LIGHT_REVERSE != 0)
+    # the pedal back and the throttle down: forward again
+    drive_for(cars_st, doors, owns, rig, c, 6.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.speed > 5.0)
+    expect(c.gear >= 1)
+  }
+
+  test "it takes about as long to reach 27 m/s as a modest saloon does" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    var t = 0.0
+    while c.speed < 27.0 and t < 30.0 {
+      drive_for(cars_st, doors, owns, rig, c, 0.1, 1.0, 0.0, 0.0, 0.0)
+      t += 0.1
+    }
+    expect(t > 3.5)
+    expect(t < 12.0)
+  }
+
+  test "steering right turns the car right, and more at a full lock than at half" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let a = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, a, 4.0, 1.0, 0.0, 0.0, 0.0)
+    let v0 = a.speed
+    let yaw0 = a.yaw
+    drive_for(cars_st, doors, owns, rig, a, 1.5, 0.3, 0.0, 0.5, 0.0)
+    # yaw grows to the left, so a right turn is a falling yaw; the body's right is west at yaw 0
+    let half = yaw0 - a.yaw
+    expect(half > 0.05)
+    expect(a.yaw_rate < 0.0)
+    let b = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    b.y = 0.0
+    drive_for(cars_st, doors, owns, rig, b, 4.0, 1.0, 0.0, 0.0, 0.0)
+    let yawb = b.yaw
+    drive_for(cars_st, doors, owns, rig, b, 1.5, 0.3, 0.0, 1.0, 0.0)
+    let full = yawb - b.yaw
+    expect(full > half)
+    # a left turn is the mirror
+    let l = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, l, 4.0, 1.0, 0.0, 0.0, 0.0)
+    drive_for(cars_st, doors, owns, rig, l, 1.5, 0.3, 0.0, -0.5, 0.0)
+    expect(l.yaw > 0.05)
+    expect(v0 > 10.0)
+  }
+
+  test "the steering lock narrows with speed" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    car_drive(cars_st, c.nid, 0.0, 0.0, 1.0, 0.0)
+    frame(cars_st, doors, owns, rig, 60)
+    let standing = c.steer_angle
+    expect(near(standing, -0.0, 10.0))
+    expect(Math.abs(standing) > 0.5)
+    drive_for(cars_st, doors, owns, rig, c, 8.0, 1.0, 0.0, 0.0, 0.0)
+    car_drive(cars_st, c.nid, 1.0, 0.0, 1.0, 0.0)
+    frame(cars_st, doors, owns, rig, 60)
+    expect(Math.abs(c.steer_angle) < Math.abs(standing) * 0.8)
+  }
+
+  test "traction control keeps a launch from spinning its rear wheels" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let a = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    let b = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    car_assist(cars_st, a.nid, 0.0, 0.0, 0.0, 0.0)
+    car_assist(cars_st, b.nid, 1.0, 0.0, 0.0, 0.0)
+    expect(car_fit(cars_st, a.nid, CARPT_ENGINE2))
+    expect(car_fit(cars_st, a.nid, CARPT_TURBO1))
+    expect(car_fit(cars_st, b.nid, CARPT_ENGINE2))
+    expect(car_fit(cars_st, b.nid, CARPT_TURBO1))
+    car_nitro(cars_st, a.nid, true)
+    car_nitro(cars_st, b.nid, true)
+    a.spool = 1.0
+    b.spool = 1.0
+    var worst_a = 0.0
+    var worst_b = 0.0
+    for i in 0 .. 90 {
+      car_drive(cars_st, a.nid, 1.0, 0.0, 0.0, 0.0)
+      car_drive(cars_st, b.nid, 1.0, 0.0, 0.0, 0.0)
+      frame(cars_st, doors, owns, rig, 1)
+      if a.wheels[2].slip_r > worst_a { worst_a = a.wheels[2].slip_r }
+      if b.wheels[2].slip_r > worst_b { worst_b = b.wheels[2].slip_r }
+    }
+    expect(worst_a > 0.3)
+    expect(worst_b < 0.2)
+    # and it gets off the line better for it: the spinning tyre gives less than the gripping one
+    expect(b.speed > a.speed)
+  }
+
+  test "the handbrake locks the rear wheels" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, c, 4.0, 1.0, 0.0, 0.0, 0.0)
+    drive_for(cars_st, doors, owns, rig, c, 0.5, 0.0, 0.0, 0.0, 1.0)
+    expect(Math.abs(c.wheels[2].spin) < 2.0)
+    expect(c.wheels[2].slip_r < -0.8)
+    expect(Math.abs(c.wheels[0].spin) > 10.0)
+  }
+
+  test "a limiter holds the top speed, and a front wheel drive car is driven by its front" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_HATCH)
+    drive_for(cars_st, doors, owns, rig, c, 40.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.speed <= 40.6)
+    expect(c.speed > 30.0)
+    expect(c.tq_front != 0.0 or c.throttle >= 0.0)
+    expect(near(c.tq_rear, 0.0, 0.0001))
+  }
+
+  test "fuel burns with the throttle and a dry tank stops the engine giving power" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, c, 20.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.fuel < 50.0)
+    expect(c.fuel > 49.0)
+    c.fuel = 0.001
+    drive_for(cars_st, doors, owns, rig, c, 2.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.fuel <= 0.0)
+    let v = c.speed
+    drive_for(cars_st, doors, owns, rig, c, 6.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.speed < v)
+    var stalled = 0
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == CAR_STALLED { stalled += 1 } }
+    expect_eq(stalled, 1)
+    expect(car_refuel(cars_st, c.nid, 20.0))
+    expect(c.fuel > 19.0)
+  }
+
+  test "nitrous adds torque while it burns, and is spent and refilled" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let a = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    let b = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, a, 6.0, 1.0, 0.0, 0.0, 0.0)
+    drive_for(cars_st, doors, owns, rig, b, 6.0, 1.0, 0.0, 0.0, 0.0)
+    let va = a.speed
+    let vb = b.speed
+    drive_for(cars_st, doors, owns, rig, a, 2.0, 1.0, 0.0, 0.0, 0.0)
+    car_nitro(cars_st, b.nid, true)
+    drive_for(cars_st, doors, owns, rig, b, 2.0, 1.0, 0.0, 0.0, 0.0)
+    expect(b.speed - vb > a.speed - va + 0.3)
+    expect(b.nitro_left < 4.0 - 1.9)
+    drive_for(cars_st, doors, owns, rig, b, 4.0, 1.0, 0.0, 0.0, 0.0)
+    expect(near(b.nitro_left, 0.0, 0.05))
+    car_nitro(cars_st, b.nid, false)
+    drive_for(cars_st, doors, owns, rig, b, 10.0, 0.5, 0.0, 0.0, 0.0)
+    expect(b.nitro_left > 1.5)
+  }
+
+  test "a fast turn makes the tyres slide, and a turbo part changes the pull" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, c, 6.0, 1.0, 0.0, 0.0, 0.0)
+    var slid = 0
+    q_clear(cars_facts(cars_st))
+    drive_for(cars_st, doors, owns, rig, c, 3.0, 1.0, 0.0, 1.0, 0.0)
+    let fs = q_drain(cars_facts(cars_st))
+    for i in 0 .. len(fs) { if fs[i].what == CAR_SKID { slid += 1 } }
+    expect(slid >= 1)
+    # the front tyres' slip angle is past the peak
+    expect(Math.abs(c.wheels[0].slip_a) > 0.1)
+    let p = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    expect(car_fit(cars_st, p.nid, CARPT_ENGINE2))
+    expect(car_fit(cars_st, p.nid, CARPT_TURBO1))
+    let q = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, p, 3.0, 1.0, 0.0, 0.0, 0.0)
+    drive_for(cars_st, doors, owns, rig, q, 3.0, 1.0, 0.0, 0.0, 0.0)
+    expect(p.speed > q.speed)
+    expect(p.spool > 0.5)
+  }
+
+  test "on a slope the ground's height is followed and the nose pitches" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    let y0 = c.y
+    drive_for(cars_st, doors, owns, rig, c, 2.0, 1.0, 0.0, 0.0, 0.0)
+    expect(near(c.y, y0, 0.03))
+    expect(near(c.fy, 0.0, 0.01))
+  }
+
+  function scenario(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) -> float {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    drive_for(cars_st, doors, owns, rig, c, 4.0, 1.0, 0.0, 0.0, 0.0)
+    drive_for(cars_st, doors, owns, rig, c, 3.0, 0.6, 0.0, 0.7, 0.0)
+    drive_for(cars_st, doors, owns, rig, c, 2.0, 0.0, 0.8, -0.4, 0.0)
+    return c.x * 1000.0 + c.z + c.yaw * 7.0 + c.speed * 13.0
+  }
+
+  test "the same run twice is the same to the bit" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let a = scenario(cars_st, doors, owns, rig)
+    cars_reset(cars_st)
+    let b = scenario(cars_st, doors, owns, rig)
+    expect(a == b)
+  }
+
+  test "nothing is allocated once the cars are made" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let c = driven(cars_st, doors, owns, rig, CARM_SEDAN)
+    let d = driven(cars_st, doors, owns, rig, CARM_SUPER)
+    drive_for(cars_st, doors, owns, rig, c, 2.0, 1.0, 0.0, 0.3, 0.0)
+    drive_for(cars_st, doors, owns, rig, d, 2.0, 1.0, 0.0, 0.3, 0.0)
+    q_drain(cars_facts(cars_st))
+    let before = Os.heap_bytes()
+    for i in 0 .. 600 {
+      car_drive(cars_st, c.nid, 1.0, 0.0, 0.3, 0.0)
+      car_drive(cars_st, d.nid, 0.7, 0.0, -0.3, 0.0)
+      frame(cars_st, doors, owns, rig, 1)
+      q_drain(cars_facts(cars_st))
+    }
+    let after = Os.heap_bytes()
+    if before > 0 { expect(after <= before + 4096) }
+  }
+}

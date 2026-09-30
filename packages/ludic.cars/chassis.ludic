@@ -1,0 +1,374 @@
+# chassis.ludic - the raycast-wheel model over the game's physics body. Each wheel casts a ray down its
+# suspension; what it finds is a spring and a damper on the body and a tyre under the stick's steering, the
+# engine's torque and the brakes. Forces go to the body through CarBody.push at the points they act, so the
+# body pitches, rolls and heaves as a body does; the body's own box and mass are the game's physics.
+# Nothing is allocated: the pose, the hit and the scratch are kept in the state.
+
+# the body's pose read into the car, and its rates from the change of its basis since the last read
+function cr_adopt(c: Car, p: CarPose, dt: float) -> void {
+  var fx = p.fx
+  var fy = p.fy
+  var fz = p.fz
+  var fl = Math.sqrt(fx * fx + fy * fy + fz * fz)
+  if fl < 0.0001 { fl = 1.0 }
+  fx = fx / fl
+  fy = fy / fl
+  fz = fz / fl
+  var ux = p.ux
+  var uy = p.uy
+  var uz = p.uz
+  let dd = ux * fx + uy * fy + uz * fz
+  ux = ux - fx * dd
+  uy = uy - fy * dd
+  uz = uz - fz * dd
+  var ul = Math.sqrt(ux * ux + uy * uy + uz * uz)
+  if ul < 0.0001 { ul = 1.0 }
+  ux = ux / ul
+  uy = uy / ul
+  uz = uz / ul
+  let rx = fy * uz - fz * uy
+  let ry = fz * ux - fx * uz
+  let rz = fx * uy - fy * ux
+  if c.have_prev and dt > 0.0 {
+    let prx = c.pfy * c.puz - c.pfz * c.puy
+    let pry = c.pfz * c.pux - c.pfx * c.puz
+    let prz = c.pfx * c.puy - c.pfy * c.pux
+    let dfx = fx - c.pfx
+    let dfy = fy - c.pfy
+    let dfz = fz - c.pfz
+    let dux = ux - c.pux
+    let duy = uy - c.puy
+    let duz = uz - c.puz
+    let drx = rx - prx
+    let dry = ry - pry
+    let drz = rz - prz
+    let k = 0.5 / dt
+    c.wx = (fy * dfz - fz * dfy + uy * duz - uz * duy + ry * drz - rz * dry) * k
+    c.wy = (fz * dfx - fx * dfz + uz * dux - ux * duz + rz * drx - rx * drz) * k
+    c.wz = (fx * dfy - fy * dfx + ux * duy - uy * dux + rx * dry - ry * drx) * k
+  }
+  c.pfx = fx
+  c.pfy = fy
+  c.pfz = fz
+  c.pux = ux
+  c.puy = uy
+  c.puz = uz
+  c.have_prev = true
+  c.x = p.x
+  c.y = p.y
+  c.z = p.z
+  c.fx = fx
+  c.fy = fy
+  c.fz = fz
+  c.ux = ux
+  c.uy = uy
+  c.uz = uz
+  c.vx = p.vx
+  c.vy = p.vy
+  c.vz = p.vz
+  c.yaw = Math.atan2(fx, fz)
+  c.speed = p.vx * fx + p.vy * fy + p.vz * fz
+  c.side_speed = p.vx * rx + p.vy * ry + p.vz * rz
+  c.yaw_rate = c.wx * ux + c.wy * uy + c.wz * uz
+  c.lean = Math.atan2(-ry, uy)
+}
+
+# the height of the middle of the body above the model's origin: where the physics body's centre is
+export function car_body_centre(model: int) -> float {
+  let m = CarModels[model]
+  return m.ground_clear + m.height * 0.5
+}
+
+# where the model's origin sits at rest, above the ground: the wheel's centre is a radius up, the spring has
+# sagged under the car's weight, and the suspension's top is `y` above the origin
+export function car_rest_height(model: int, s: CarStats) -> float {
+  let m = CarModels[model]
+  let n = car_wheel_count(model)
+  if n == 0 or m.axles == null { return 0.0 }
+  let share = s.mass * 9.81 / float(n)
+  var sum = 0.0
+  var cnt = 0
+  for a in 0 .. len(m.axles) {
+    let ax = m.axles[a]
+    let k = Math.max(1.0, ax.spring * s.spring)
+    let sag = Math.min(ax.travel, share / k)
+    let d = ax.travel - sag
+    sum += (ax.radius + d - ax.y) * float(car_axle_wheels(model, a))
+    cnt += car_axle_wheels(model, a)
+  }
+  return sum / float(Math.max(1, cnt))
+}
+
+# the suspension: every wheel's ray, spring and damper; the anti-roll bars; the force each gives the body
+function cr_wheels_suspend(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  let m = CarModels[c.model]
+  let s = c.stats
+  let cy = car_body_centre(c.model)
+  let h = cars_st.cr_hit
+  let rx = c.fy * c.uz - c.fz * c.uy
+  let ry = c.fz * c.ux - c.fx * c.uz
+  let rz = c.fx * c.uy - c.fy * c.ux
+  let cx = c.x + c.ux * cy
+  let cyy = c.y + c.uy * cy
+  let cz = c.z + c.uz * cy
+  for i in 0 .. c.nwheels {
+    let w = c.wheels[i]
+    let ax = m.axles[w.axle]
+    var sx = 0.0
+    if ax.track > 0.0 {
+      if w.side == 0 { sx = -ax.track } else { sx = ax.track }
+    }
+    w.ax = c.x + rx * sx + c.ux * ax.y + c.fx * ax.z
+    w.ay = c.y + ry * sx + c.uy * ax.y + c.fy * ax.z
+    w.az = c.z + rz * sx + c.uz * ax.y + c.fz * ax.z
+    let reach = ax.travel + ax.radius
+    if CarWorld.cast(w.ax, w.ay, w.az, -c.ux, -c.uy, -c.uz, reach, h) {
+      let d = h.dist - ax.radius
+      w.contact = true
+      w.ext = Math.clamp(d, 0.0, ax.travel)
+      w.comp = ax.travel - w.ext + Math.max(0.0, -d)
+      w.hx = w.ax - c.ux * h.dist
+      w.hy = w.ay - c.uy * h.dist
+      w.hz = w.az - c.uz * h.dist
+      var nl = Math.sqrt(h.nx * h.nx + h.ny * h.ny + h.nz * h.nz)
+      if nl < 0.0001 { nl = 1.0 }
+      w.nx = h.nx / nl
+      w.ny = h.ny / nl
+      w.nz = h.nz / nl
+      if w.nx * c.ux + w.ny * c.uy + w.nz * c.uz < 0.25 {
+        w.nx = c.ux
+        w.ny = c.uy
+        w.nz = c.uz
+      }
+      # the anchor's speed into the ground, along the suspension: the body's and its turning's
+      let qx = w.ax - cx
+      let qy = w.ay - cyy
+      let qz = w.az - cz
+      let vax = c.vx + c.wy * qz - c.wz * qy
+      let vay = c.vy + c.wz * qx - c.wx * qz
+      let vaz = c.vz + c.wx * qy - c.wy * qx
+      let vd = -(vax * c.ux + vay * c.uy + vaz * c.uz)
+      let k = ax.spring * s.spring
+      var damp = ax.damper * s.damper
+      if vd < 0.0 { damp = ax.rebound * s.damper }
+      var f = k * w.comp + damp * vd
+      if d < 0.0 { f = f + 6.0 * k * (-d) }
+      w.fs = Math.max(0.0, f)
+      w.grip = h.grip
+      cars_st.cr_tmp[8 + i] = h.grip
+    } else {
+      w.contact = false
+      w.ext = Math.min(ax.travel, w.ext + 2.0 * dt)
+      w.comp = 0.0
+      w.fs = 0.0
+    }
+  }
+  # anti-roll bars: the wheel that is more compressed is pushed up, the other down
+  for a in 0 .. len(m.axles) {
+    if car_axle_wheels(c.model, a) != 2 { continue }
+    let ax = m.axles[a]
+    if ax.bar <= 0.0 { continue }
+    let i0 = car_wheel_first(c.model, a)
+    let l = c.wheels[i0]
+    let r = c.wheels[i0 + 1]
+    if not l.contact and not r.contact { continue }
+    let f = ax.bar * s.bar * (l.comp - r.comp)
+    l.fs = Math.max(0.0, l.fs + f)
+    r.fs = Math.max(0.0, r.fs - f)
+  }
+}
+
+# the tyres: each wheel in contact gives a force along and across its heading at the point it touches; every
+# force is pushed at its point, and summed for the torque a centre of mass that is not the body's asks for
+function cr_wheels_grip(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  let m = CarModels[c.model]
+  let s = c.stats
+  let cy = car_body_centre(c.model)
+  let rx = c.fy * c.uz - c.fz * c.uy
+  let ry = c.fz * c.ux - c.fx * c.uz
+  let rz = c.fx * c.uy - c.fy * c.ux
+  let cx = c.x + c.ux * cy
+  let cyy = c.y + c.uy * cy
+  let cz = c.z + c.uz * cy
+  let mw = s.mass / float(Math.max(1, c.nwheels))
+  var tx = 0.0
+  var ty = 0.0
+  var tz = 0.0
+  var any = false
+  for i in 0 .. c.nwheels {
+    let w = c.wheels[i]
+    let ax = m.axles[w.axle]
+    let front = car_axle_front(c.model, w.axle)
+    var td = c.tq_rear
+    if front { td = c.tq_front }
+    if not car_axle_driven(c.model, w.axle) { td = 0.0 }
+    var fb = c.brake_rear
+    if front { fb = c.brake_front }
+    if ax.handbrake { fb = fb + c.brake_hand }
+    w.steer = c.steer_angle * ax.steer
+    var iref = c.iref_rear
+    if front { iref = c.iref_front }
+    if not car_axle_driven(c.model, w.axle) { iref = 0.0 }
+    if not w.contact {
+      # in the air the wheel only turns: driven and braked against nothing
+      cr_tyre(cars_st, c, w, ax, CarTyres[ax.tyre], 0.0, 1.0, 0.0, 0.0, td, fb, iref, dt, mw, 1.0)
+      w.spin = cars_st.cr_tmp[2]
+      w.roll += w.spin * dt
+      w.fx = 0.0
+      w.fy = 0.0
+      w.slip_r = 0.0
+      w.slip_a = 0.0
+      continue
+    }
+    any = true
+    # the wheel's heading on the surface: the car's forward turned by the steer, made tangent
+    let cs = Math.cos(w.steer)
+    let sn = Math.sin(w.steer)
+    var a0x = c.fx * cs + rx * sn
+    var a0y = c.fy * cs + ry * sn
+    var a0z = c.fz * cs + rz * sn
+    let dn = a0x * w.nx + a0y * w.ny + a0z * w.nz
+    a0x = a0x - w.nx * dn
+    a0y = a0y - w.ny * dn
+    a0z = a0z - w.nz * dn
+    var al = Math.sqrt(a0x * a0x + a0y * a0y + a0z * a0z)
+    if al < 0.0001 { al = 1.0 }
+    a0x = a0x / al
+    a0y = a0y / al
+    a0z = a0z / al
+    # across: a x n
+    let bx = a0y * w.nz - a0z * w.ny
+    let by = a0z * w.nx - a0x * w.nz
+    let bz = a0x * w.ny - a0y * w.nx
+    # the contact's velocity
+    let qx = w.hx - cx
+    let qy = w.hy - cyy
+    let qz = w.hz - cz
+    let vqx = c.vx + c.wy * qz - c.wz * qy
+    let vqy = c.vy + c.wz * qx - c.wx * qz
+    let vqz = c.vz + c.wx * qy - c.wy * qx
+    let vlong = vqx * a0x + vqy * a0y + vqz * a0z
+    let vlat = vqx * bx + vqy * by + vqz * bz
+    var surf = 1.0
+    surf = cars_st.cr_tmp[8 + i]
+    cr_tyre(cars_st, c, w, ax, CarTyres[ax.tyre], w.fs, surf, vlong, vlat, td, fb, iref, dt, mw, cr_lat_mult(c, front))
+    let t = cars_st.cr_tmp
+    w.spin = t[2]
+    w.roll += w.spin * dt
+    w.fx = t[0]
+    w.fy = t[1]
+    w.slip_r = t[3]
+    w.slip_a = t[4]
+    w.load = w.fs
+    let fx = a0x * t[0] + bx * t[1] + w.nx * w.fs
+    let fy = a0y * t[0] + by * t[1] + w.ny * w.fs
+    let fz = a0z * t[0] + bz * t[1] + w.nz * w.fs
+    # the tyre's force acts where the tyre touches; the spring's where it is mounted
+    CarBody.push(c.nid, a0x * t[0] + bx * t[1], a0y * t[0] + by * t[1], a0z * t[0] + bz * t[1], w.hx, w.hy, w.hz)
+    CarBody.push(c.nid, w.nx * w.fs, w.ny * w.fs, w.nz * w.fs, w.ax, w.ay, w.az)
+    tx += fx
+    ty += fy
+    tz += fz
+  }
+  c.airborne = not any
+  # the air: drag against the motion and downforce pressing the car down, at the body's middle
+  let v2 = c.vx * c.vx + c.vy * c.vy + c.vz * c.vz
+  let vl = Math.sqrt(v2)
+  if vl > 0.01 {
+    let dragf = m.drag * s.drag * vl
+    CarBody.push(c.nid, -c.vx * dragf, -c.vy * dragf, -c.vz * dragf, cx, cyy, cz)
+    tx += -c.vx * dragf
+    ty += -c.vy * dragf
+    tz += -c.vz * dragf
+  }
+  if m.downforce > 0.0 and any {
+    let df = m.downforce * c.speed * c.speed
+    CarBody.push(c.nid, -c.ux * df, -c.uy * df, -c.uz * df, cx + c.fx * (m.down_front - 0.5) * car_wheelbase(c.model), cyy + c.fy * (m.down_front - 0.5) * car_wheelbase(c.model), cz + c.fz * (m.down_front - 0.5) * car_wheelbase(c.model))
+    tx += -c.ux * df
+    ty += -c.uy * df
+    tz += -c.uz * df
+  }
+  # a centre of mass that is not the body's middle: the torque its offset makes of the forces
+  var dy = m.com_y
+  if dy <= 0.0 { dy = cy }
+  let ex = rx * m.com_x + c.ux * (dy - cy) + c.fx * m.com_z
+  let ey = ry * m.com_x + c.uy * (dy - cy) + c.fy * m.com_z
+  let ez = rz * m.com_x + c.uz * (dy - cy) + c.fz * m.com_z
+  if any and (m.com_x != 0.0 or m.com_z != 0.0 or dy != cy) {
+    # the forces above were summed with gravity left out; the correction is -e x F
+    CarBody.torque(c.nid, -(ey * tz - ez * ty), -(ez * tx - ex * tz), -(ex * ty - ey * tx))
+  }
+  if any { cr_assist_torques(cars_st, c, dt) }
+}
+
+# the yaw torque (N.m about the car's up) the assists ask for: the arcade's steadier yaw, stability
+# control, a drift assist's alignment
+function cr_yaw_assist(c: Car) -> float {
+  let m = CarModels[c.model]
+  let s = c.stats
+  let l = car_wheelbase(c.model)
+  let iyaw = s.mass * (m.length * m.length + m.width * m.width) / 12.0 * m.yaw_inertia
+  var mu = 0.0
+  let va = Math.abs(c.speed)
+  if va > 1.0 {
+    mu += -c.arcade * 2.0 * iyaw * c.yaw_rate * Math.clamp(va / 10.0, 0.0, 1.0)
+  }
+  if c.a_stability > 0.0 and va > 3.0 {
+    let ax = car_steer_axle(c.model)
+    var st = 0.0
+    if ax >= 0 { st = c.steer_angle * m.axles[ax].steer }
+    let target = -c.speed * Math.tan(st) / Math.max(l, 0.5)
+    mu += Math.clamp(c.a_stability * iyaw * 4.0 * (target - c.yaw_rate), -c.a_stability * iyaw * 6.0, c.a_stability * iyaw * 6.0)
+  }
+  if c.a_drift > 0.0 and va > 4.0 {
+    let beta = Math.atan2(c.side_speed, va)
+    mu += -c.a_drift * iyaw * 1.2 * beta
+  }
+  return mu
+}
+
+# torques about the car's own axes: the yaw assists, and a two-wheeler's balance
+function cr_assist_torques(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  let m = CarModels[c.model]
+  let s = c.stats
+  let l = car_wheelbase(c.model)
+  let mu = cr_yaw_assist(c)
+  if mu != 0.0 { CarBody.torque(c.nid, c.ux * mu, c.uy * mu, c.uz * mu) }
+  if m.balance > 0.0 {
+    let ax = car_steer_axle(c.model)
+    var st = 0.0
+    if ax >= 0 { st = c.steer_angle * m.axles[ax].steer }
+    let target = Math.atan2(c.speed * c.speed * Math.tan(st) / (Math.max(l, 0.5) * 9.81), 1.0)
+    let roll_rate = c.wx * c.fx + c.wy * c.fy + c.wz * c.fz
+    let cy = car_body_centre(c.model)
+    let iroll = s.mass * (cy * cy + 0.15)
+    let mf = m.balance * iroll * (40.0 * (target - c.lean) - 8.0 * roll_rate)
+    CarBody.torque(c.nid, c.fx * mf, c.fy * mf, c.fz * mf)
+  }
+}
+
+# one fixed step of a body car: read it, work out the drivetrain and the steering, apply every force
+function cr_body_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  if not CarBody.read(c.nid, cars_st.cr_pose) {
+    c.body = false
+    return
+  }
+  cr_adopt(c, cars_st.cr_pose, dt)
+  cr_assists(cars_st, c)
+  cr_steer_step(c, dt)
+  cr_powertrain(cars_st, c, dt, cr_mean_spin(c, true), cr_mean_spin(c, false))
+  let was_air = c.airborne
+  cr_wheels_suspend(cars_st, c, dt)
+  cr_wheels_grip(cars_st, c, dt)
+  cr_skid_run(cars_st, c, dt)
+  if was_air != c.airborne {
+    if c.airborne {
+      c.fly_t = 0.0
+    } else if c.fly_t > 0.25 {
+      let f = cr_fact(cars_st, CAR_LANDED, c)
+      f.v = Math.abs(c.vy)
+    }
+  }
+  if c.airborne { c.fly_t += dt }
+  c.odometer += Math.abs(c.speed) * dt
+}

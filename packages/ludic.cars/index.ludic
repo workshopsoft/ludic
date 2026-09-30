@@ -1,0 +1,27 @@
+# ludic.cars - wheeled vehicles: handling as data (CarModels, CarTyres, CarParts, CarLiveries, CarClasses), a
+# raycast-wheel model over the game's physics body with a planar model and a lane follower behind it,
+# entering, leaving and carjacking as a machine, ownership with garages, insurance and the impound, and
+# snapshots for a party. The world, the body, the road, the people and the money are ports
+module ludic_cars uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "curves.ludic"
+import "stats.ludic"
+import "state.ludic"
+import "ports.ludic"
+import "geometry.ludic"
+import "engine.ludic"
+import "tyres.ludic"
+import "steering.ludic"
+import "chassis.ludic"
+import "planar.ludic"
+import "lane.ludic"
+import "seats.ludic"
+import "cars.ludic"
+import "door.ludic"
+import "damage.ludic"
+import "garage.ludic"
+import "net.ludic"
+import "sim.ludic"
+import "system.ludic"

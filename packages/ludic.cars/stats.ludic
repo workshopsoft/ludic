@@ -1,0 +1,113 @@
+# stats.ludic - a car's numbers after its tuning: the model's, changed by the parts fitted (one of each slot).
+# A multiplier multiplies, a mass and an armour add. `car_stats_into` fills a record the caller keeps, so a
+# refit allocates nothing.
+export property CarStats {
+  mass: float = 0.0
+  torque: float = 1.0
+  brakes: float = 1.0
+  shift: float = 1.0
+  gearing: float = 1.0
+  spring: float = 1.0
+  damper: float = 1.0
+  bar: float = 1.0
+  grip: float = 1.0
+  drag: float = 1.0
+  top_speed: float = 0.0          # m/s, 0 none
+  health: float = 0.0
+  armour: float = 0.0
+  boost: float = 0.0
+  spool: float = 1.0
+}
+
+function car_model_ok(m: int) -> bool { return m >= 0 and m < CARM_COUNT }
+function car_part_ok(p: int) -> bool { return p >= 0 and p < CARPT_COUNT }
+
+# the stats of `model` with the parts `parts` (a CAR_SLOTS-long list of CarParts rows, -1 for stock)
+export function car_stats_into(model: int, parts: []int, s: CarStats) -> void {
+  let m = CarModels[model]
+  s.mass = m.mass
+  s.torque = 1.0
+  s.brakes = 1.0
+  s.shift = 1.0
+  s.gearing = 1.0
+  s.spring = 1.0
+  s.damper = 1.0
+  s.bar = 1.0
+  s.grip = 1.0
+  s.drag = 1.0
+  s.health = m.health
+  s.armour = m.armour
+  s.boost = 0.0
+  s.spool = 1.0
+  var top_mult = 1.0
+  var hp_mult = 1.0
+  if parts != null {
+    for k in 0 .. len(parts) {
+      let p = parts[k]
+      if not car_part_ok(p) { continue }
+      let part = CarParts[p]
+      s.torque = s.torque * part.torque
+      s.mass += part.mass
+      s.brakes = s.brakes * part.brakes
+      s.shift = s.shift * part.shift
+      s.gearing = s.gearing * part.gearing
+      s.spring = s.spring * part.spring
+      s.damper = s.damper * part.damper
+      s.bar = s.bar * part.bar
+      s.grip = s.grip * part.grip
+      s.drag = s.drag * part.drag
+      top_mult = top_mult * part.top_speed
+      hp_mult = hp_mult * part.health
+      s.armour += part.armour
+      s.boost += part.boost
+      if part.spool > s.spool { s.spool = part.spool }
+    }
+  }
+  if s.mass < 1.0 { s.mass = 1.0 }
+  s.health = s.health * hp_mult
+  if s.armour > 0.95 { s.armour = 0.95 }
+  s.top_speed = m.top_speed * top_mult
+}
+
+# a fresh list of no parts fitted
+@alloc_ok("a car's list of fitted parts, made with the car")
+export function car_no_parts() -> []int {
+  let l = new []int
+  for i in 0 .. CAR_SLOTS { push(l, -1) }
+  return l
+}
+
+# the gear ratio to the wheels (gear 1 .. n, -1 the reverse), 0 for neutral or no such gear
+export function car_ratio(model: int, s: CarStats, gear: int) -> float {
+  let m = CarModels[model]
+  if gear == 0 { return 0.0 }
+  if gear < 0 { return m.reverse * m.final_drive * s.gearing }
+  if m.gears == null or gear > len(m.gears) { return 0.0 }
+  return m.gears[gear - 1] * m.final_drive * s.gearing
+}
+
+export function car_gear_count(model: int) -> int {
+  let m = CarModels[model]
+  if m.gears == null { return 0 }
+  return len(m.gears)
+}
+
+# the engine's torque at an rpm, after tuning and with the turbo at `spool` (0..1) and nitrous at `nitro` (0 or 1)
+export function car_engine_torque(model: int, s: CarStats, rpm: float, spool: float, nitro: float) -> float {
+  let m = CarModels[model]
+  var t = car_curve(m.torque, rpm) * s.torque
+  t = t * (1.0 + s.boost * spool + m.nitro * nitro)
+  return t
+}
+
+# the speed (m/s) the driven wheels of radius r turn the car at, in `gear`, at `rpm`
+export function car_speed_at(model: int, s: CarStats, gear: int, rpm: float, r: float) -> float {
+  let ratio = car_ratio(model, s, gear)
+  if ratio <= 0.0 { return 0.0 }
+  return rpm * 0.10471976 / ratio * r
+}
+
+# the peak power in watts, after tuning (what a class list or a race class is ranked by)
+export function car_power(model: int, s: CarStats) -> float {
+  return car_curve_power(CarModels[model].torque) * s.torque
+}

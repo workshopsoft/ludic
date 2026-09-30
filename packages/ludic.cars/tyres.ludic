@@ -1,0 +1,126 @@
+# tyres.ludic - a tyre's force from its slip. Normalised curves from the compound (the same tyre serves any
+# car), the load and the surface scaling the grip, the friction circle keeping the two forces inside it, and
+# the wheel's spin stepped implicitly so a stiff tyre at a crawl cannot ring. It answers into the state's
+# scratch: [0] longitudinal force, [1] lateral force, [2] the wheel's spin after the step, [3] slip ratio,
+# [4] slip angle (radians)
+
+# the share of the grip a slip ratio gives (a compound with no curve gets a generic one: peak at 0.12)
+function cr_lon(tyre: CarTyre, k: float) -> float {
+  let a = Math.abs(k)
+  if tyre.lon != null and len(tyre.lon) > 1 { return car_curve(tyre.lon, a) }
+  if a < 0.12 { return a / 0.12 }
+  return 1.0 - 0.18 * Math.min(1.0, (a - 0.12) / 0.6)
+}
+
+# ... and a slip angle in degrees (generic: peak at 8 degrees, 80% by 30)
+function cr_lat(tyre: CarTyre, deg: float) -> float {
+  let a = Math.abs(deg)
+  if tyre.lat != null and len(tyre.lat) > 1 { return car_curve(tyre.lat, a) }
+  if a < 8.0 { return a / 8.0 }
+  return 1.0 - 0.2 * Math.min(1.0, (a - 8.0) / 22.0)
+}
+
+function cr_lon_peak(tyre: CarTyre) -> float {
+  if tyre.lon != null and len(tyre.lon) > 1 { return Math.max(0.03, car_curve_peak_at(tyre.lon)) }
+  return 0.12
+}
+
+# `td` the drive torque at the wheel (N.m), `fb` the brakes' force at the contact (N, always against the
+# spin), `iref` the engine's inertia as the wheel feels it through the gear, `mw` the mass the wheel carries,
+# `lat_mult` a scale on the lateral grip (a drift, an arcade's forgiveness).
+# The longitudinal force is solved as the tyre does it: if the torque asked of the ground is within what the
+# tyre can grip, the wheel follows the ground at the slip that gives exactly that force; beyond it the wheel
+# spins up or locks, stepped against its inertia, and the tyre gives what its curve gives at the slip it has.
+# Traction control and anti-lock are limits on the torque asked: they keep it near the peak
+function cr_tyre(cars_st: mut CarsState, c: Car, w: CarWheel, ax: CarAxle, tyre: CarTyre, load: float, surf: float, vlong: float, vlat: float, td: float, fb: float, iref: float, dt: float, mw: float, lat_mult: float) -> void {
+  let r = ax.radius
+  let iw = Math.max(0.05, ax.wheel_inertia) + iref
+  let t = cars_st.cr_tmp
+  var mu = tyre.mu * c.stats.grip * (1.0 + 0.35 * c.arcade)
+  mu = mu * Math.max(0.05, 1.0 - (1.0 - surf) * tyre.surface_sens)
+  mu = mu * Math.clamp(1.0 - tyre.load_sens * (load / tyre.load_ref - 1.0), 0.4, 1.25)
+  if w.popped { mu = mu * 0.3 }
+  let fmax = mu * Math.max(load, 0.0)
+  w.grip = mu
+  let pk = cr_lon_peak(tyre)
+  let fpk = fmax * Math.max(0.01, cr_lon(tyre, pk))
+  var tdd = td
+  if c.a_traction > 0.0 and td != 0.0 {
+    let lim = fpk * r * (0.98 + 1.5 * (1.0 - c.a_traction))
+    tdd = Math.clamp(td, -lim, lim)
+  }
+  var fbb = fb
+  if c.a_abs > 0.0 and fb > 0.0 { fbb = Math.min(fb, fpk * (0.98 + 1.5 * (1.0 - c.a_abs))) }
+  let va = Math.abs(vlong)
+  var dirw = cr_sign(w.spin)
+  if Math.abs(w.spin) < 0.05 { dirw = cr_sign(vlong) }
+  let tn = tdd - dirw * fbb * r
+  let fn = tn / r
+  let vref = Math.max(va, 1.0)
+  var fx = 0.0
+  var wn = w.spin
+  if Math.abs(fn) <= fpk {
+    fx = fn
+    let k = cr_sign(fn) * pk * Math.abs(fn) / Math.max(fpk, 1.0)
+    wn = (vlong + k * vref) / r
+    if fbb > 0.0 and dirw != 0.0 and wn * dirw < 0.0 { wn = 0.0 }
+  } else {
+    let kk = (w.spin * r - vlong) / vref
+    var mag = cr_lon(tyre, kk) * fmax
+    var sg = cr_sign(kk)
+    if Math.abs(kk) < 0.002 {
+      sg = cr_sign(fn)
+      mag = cr_lon(tyre, 0.002) * fmax
+    }
+    fx = sg * mag
+    wn = w.spin + (tn - fx * r) * dt / iw
+    if fbb > 0.0 and dirw != 0.0 and wn * dirw < 0.0 { wn = 0.0 }
+  }
+  # held at a standstill: a stick, as the lateral force has
+  if fbb > 0.0 and va < 1.0 {
+    let hold = 1.0 - va
+    let stick = -Math.clamp(vlong * mw / dt * 0.5, -fbb, fbb)
+    fx = fx + (stick - fx) * hold
+  }
+  let kappa = (wn * r - vlong) / vref
+  # the lateral force: the slip angle's curve at speed, a stick at a crawl
+  let alpha = Math.atan2(Math.abs(vlat), Math.max(va, 0.5))
+  var fy = -cr_sign(vlat) * cr_lat(tyre, alpha * 57.29578) * fmax * lat_mult
+  let stick = -Math.clamp(vlat * mw / dt * 0.5, -fmax, fmax)
+  let blend = Math.clamp((va - 0.5) / 3.0, 0.0, 1.0)
+  fy = stick + (fy - stick) * blend
+  # rolling resistance
+  let roll = tyre.rolling * CarModels[c.model].roll_res * Math.max(load, 0.0) * Math.clamp(va, 0.0, 1.0)
+  if w.popped { fx = fx - cr_sign(vlong) * roll * 6.0 } else { fx = fx - cr_sign(vlong) * roll }
+  # the friction circle
+  let nx = fx / Math.max(fmax, 1.0)
+  let ny = fy / Math.max(fmax, 1.0)
+  let mag = Math.sqrt(nx * nx + ny * ny)
+  if mag > 1.0 {
+    fx = fx / mag
+    fy = fy / mag
+  }
+  t[0] = fx
+  t[1] = fy
+  t[2] = wn
+  t[3] = kappa
+  t[4] = cr_sign(vlat) * alpha
+}
+
+# ---- the tyre's numbers as a game or a test asks them (the same curves and load rule the wheels use)
+
+# the share of the grip a slip ratio gives, and a slip angle in degrees
+export function car_tyre_long(tyre: int, slip: float) -> float { return cr_lon(CarTyres[tyre], slip) }
+export function car_tyre_lat(tyre: int, degrees: float) -> float { return cr_lat(CarTyres[tyre], degrees) }
+# the slip ratio the tyre grips most at
+export function car_tyre_peak(tyre: int) -> float { return cr_lon_peak(CarTyres[tyre]) }
+
+# the friction coefficient at a load (N) on a surface (0..1 grip) with a tuning multiplier: what the wheel's
+# force is a share of
+export function car_tyre_mu(tyre: int, load: float, grip_mult: float, surface: float) -> float {
+  let t = CarTyres[tyre]
+  var mu = t.mu * grip_mult
+  mu = mu * Math.max(0.05, 1.0 - (1.0 - surface) * t.surface_sens)
+  mu = mu * Math.clamp(1.0 - t.load_sens * (load / t.load_ref - 1.0), 0.4, 1.25)
+  return mu
+}

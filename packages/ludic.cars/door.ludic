@@ -1,0 +1,416 @@
+# door.ludic - getting in and out, and being dragged out, as a machine whose graph is a table (steps.lres): a
+# car is Free, Locked, Entering, Driven, Exiting, Jacked or Wrecked, and an action moves it. Passengers take
+# their seats directly; the driver's seat is the machine's, because it is the one a thief can take. What is
+# SEEN - getting in, sitting, stepping out, being dragged - is the game's animation graph (ludic.anim), asked
+# for by state name through CarAnim; the package places nobody's bones.
+
+export property CarStep {
+  from: CarPhase = CarPhase.Free
+  to: CarPhase = CarPhase.Free
+  on: string = ""
+  guard: fn(Row<Car>, CarsState) -> bool = null
+  enter: fn(Row<Car>, CarsState) -> void = null
+}
+
+@Machine(Car.phase) export open registry CarSteps of CarStep as CSTEP from "steps.lres"
+
+# what an action carries to the row before the machine looks: who is getting in, where, how fast
+reducer Car in CarsState.cr_cars on CarEnterIn(r: mut Row<Car>, a: CarEnterIn) {
+  r.rec.want = a.actor
+  r.rec.want_seat = a.seat
+  r.rec.instant = a.instant
+}
+
+reducer Car in CarsState.cr_cars on CarJackIn(r: mut Row<Car>, a: CarJackIn) {
+  r.rec.jacker = a.actor
+}
+
+# ---- points on the car, in the world
+
+function cr_wx(c: Car, lx: float, ly: float, lz: float) -> float {
+  let rx = c.fy * c.uz - c.fz * c.uy
+  return c.x + rx * lx + c.ux * ly + c.fx * lz
+}
+function cr_wy(c: Car, lx: float, ly: float, lz: float) -> float {
+  let ry = c.fz * c.ux - c.fx * c.uz
+  return c.y + ry * lx + c.uy * ly + c.fy * lz
+}
+function cr_wz(c: Car, lx: float, ly: float, lz: float) -> float {
+  let rz = c.fx * c.uy - c.fy * c.ux
+  return c.z + rz * lx + c.uz * ly + c.fz * lz
+}
+
+# a seat's own place in the model (a model with no rows seats its driver in the middle)
+function cr_seat_x(c: Car, seat: int) -> float {
+  let s = car_seat_row(c.model, seat)
+  if s == null { return 0.0 }
+  return s.x
+}
+function cr_seat_y(c: Car, seat: int) -> float {
+  let s = car_seat_row(c.model, seat)
+  if s == null { return 0.7 }
+  return s.y
+}
+function cr_seat_z(c: Car, seat: int) -> float {
+  let s = car_seat_row(c.model, seat)
+  if s == null { return 0.0 }
+  return s.z
+}
+
+# the door a seat is reached by, in the model: its socket's place, else the seat's side of the body
+function cr_door_x(c: Car, seat: int) -> float {
+  let s = car_seat_row(c.model, seat)
+  if s != null and s.door >= 0 {
+    let k = car_socket_of(c.model, CAR_SOCK_DOOR, s.door)
+    if k >= 0 { return CarSockets[k].x }
+  }
+  let m = CarModels[c.model]
+  if cr_seat_x(c, seat) < 0.0 { return -m.width * 0.5 }
+  return m.width * 0.5
+}
+function cr_door_y(c: Car, seat: int) -> float {
+  let s = car_seat_row(c.model, seat)
+  if s != null and s.door >= 0 {
+    let k = car_socket_of(c.model, CAR_SOCK_DOOR, s.door)
+    if k >= 0 { return CarSockets[k].y }
+  }
+  return 0.6
+}
+function cr_door_z(c: Car, seat: int) -> float {
+  let s = car_seat_row(c.model, seat)
+  if s != null and s.door >= 0 {
+    let k = car_socket_of(c.model, CAR_SOCK_DOOR, s.door)
+    if k >= 0 { return CarSockets[k].z }
+  }
+  return cr_seat_z(c, seat)
+}
+
+# the actor is near enough the seat's door
+function cr_near_door(s: CarsState, c: Car, seat: int, actor: int) -> bool {
+  return CarRider.reach(actor, cr_wx(c, cr_door_x(c, seat), cr_door_y(c, seat), cr_door_z(c, seat)), cr_wy(c, cr_door_x(c, seat), cr_door_y(c, seat), cr_door_z(c, seat)), cr_wz(c, cr_door_x(c, seat), cr_door_y(c, seat), cr_door_z(c, seat)), cars_config(s).reach)
+}
+
+# ---- sitting and stepping out
+
+function cr_anim_state(c: Car, seat: int, which: int) -> string {
+  let s = car_seat_row(c.model, seat)
+  if s == null { return "" }
+  if which == 0 { return s.state_sit }
+  if which == 1 { return s.state_enter }
+  if which == 2 { return s.state_leave }
+  return s.state_jacked
+}
+
+function cr_ask(actor: int, state: string) -> void {
+  if state != "" { CarAnim.rider_request(actor, state) }
+}
+
+# the actor is in the seat: placed there through the rider port, the graph asked to sit it
+function cr_seat_in(s: CarsState, c: Car, seat: int, actor: int) -> void {
+  c.occupant[seat] = actor
+  CarRider.board(actor, c.nid, seat, cr_wx(c, cr_seat_x(c, seat), cr_seat_y(c, seat), cr_seat_z(c, seat)), cr_wy(c, cr_seat_x(c, seat), cr_seat_y(c, seat), cr_seat_z(c, seat)), cr_wz(c, cr_seat_x(c, seat), cr_seat_y(c, seat), cr_seat_z(c, seat)), c.yaw)
+  cr_ask(actor, cr_anim_state(c, seat, 0))
+  let f = cr_fact(s, CAR_ENTERED, c)
+  f.actor = actor
+  f.v = float(seat)
+}
+
+# out beside the door: the rider's own safe spot near the place one step out from it, else that place
+function cr_step_out(s: CarsState, c: Car, seat: int, actor: int, what: int, why: int) -> void {
+  let sr = car_seat_row(c.model, seat)
+  var out = 1.2
+  if sr != null { out = sr.exit_side }
+  var side = 1.0
+  if cr_seat_x(c, seat) < 0.0 { side = -1.0 }
+  let lx = cr_door_x(c, seat) + side * out
+  let tx = cr_wx(c, lx, 0.0, cr_door_z(c, seat))
+  let tz = cr_wz(c, lx, 0.0, cr_door_z(c, seat))
+  var ox = tx
+  var oz = tz
+  if CarRider.safe_spot(actor, tx, tz, c.y) {
+    ox = CarRider.safe_x()
+    oz = CarRider.safe_z()
+  }
+  let oy = CarWorld.ground(ox, oz)
+  c.occupant[seat] = -1
+  CarRider.alight(actor, ox, oy, oz, c.yaw)
+  cr_ask(actor, cr_anim_state(c, seat, 2))
+  let f = cr_fact(s, what, c)
+  f.actor = actor
+  f.x = ox
+  f.y = oy
+  f.z = oz
+  f.v = float(seat)
+  f.w = float(why)
+}
+
+# everybody out (a wreck, a removal): thrown clear beside their doors
+function cr_eject_all(s: CarsState, c: Car, why: int) -> void {
+  if c.occupant == null { return }
+  for i in 0 .. c.nseats {
+    if c.occupant[i] >= 0 { cr_step_out(s, c, i, c.occupant[i], CAR_EJECTED, why) }
+  }
+}
+
+# ---- the machine's guards
+
+function cr_seat_ok(c: Car, seat: int) -> bool { return seat >= 0 and seat < c.nseats }
+
+function cr_g_seat_free(r: Row<Car>, s: CarsState) -> bool {
+  if not cr_seat_ok(r.rec, r.rec.want_seat) { return false }
+  if r.rec.want < 0 { return false }
+  return r.rec.occupant[r.rec.want_seat] < 0
+}
+
+function cr_g_owner_seat(r: Row<Car>, s: CarsState) -> bool {
+  if not cr_g_seat_free(r, s) { return false }
+  return r.rec.owner >= 0 and r.rec.owner == r.rec.want
+}
+
+function cr_g_empty(r: Row<Car>, s: CarsState) -> bool {
+  var n = 0
+  for i in 0 .. r.rec.nseats { if r.rec.occupant[i] >= 0 { n += 1 } }
+  return n == 0
+}
+
+function cr_g_break_in(r: Row<Car>, s: CarsState) -> bool {
+  return r.rec.jacker >= 0 and r.rec.occupant[r.rec.drv_seat] < 0
+}
+
+function cr_g_jackable(r: Row<Car>, s: CarsState) -> bool {
+  let d = r.rec.occupant[r.rec.drv_seat]
+  return d >= 0 and r.rec.jacker >= 0 and d != r.rec.jacker
+}
+
+function cr_g_entered(r: Row<Car>, s: CarsState) -> bool { return r.rec.door_t <= 0.0 }
+function cr_g_dragged(r: Row<Car>, s: CarsState) -> bool { return r.rec.jack_t <= 0.0 }
+
+# the driver floors it before he is out: the thief is shaken off
+function cr_g_escaped(r: Row<Car>, s: CarsState) -> bool {
+  return r.rec.jack_t > 0.0 and r.rec.in_throttle > 0.6 and r.rec.gear > 0
+}
+
+function cr_g_can_exit(r: Row<Car>, s: CarsState) -> bool {
+  return Math.abs(r.rec.speed) <= cars_config(s).exit_speed
+}
+
+function cr_g_left(r: Row<Car>, s: CarsState) -> bool { return r.rec.exit_t <= 0.0 }
+
+# ---- the enters
+
+function cr_e_locked(r: mut Row<Car>, s: CarsState) -> void { cr_fact(s, CAR_LOCKED, r.rec) }
+function cr_e_unlocked(r: mut Row<Car>, s: CarsState) -> void { cr_fact(s, CAR_UNLOCKED, r.rec) }
+
+# the actor begins to get in: the seat is theirs from now, the door takes its time
+function cr_e_board(r: mut Row<Car>, s: CarsState) -> void {
+  r.rec.occupant[r.rec.want_seat] = r.rec.want
+  r.rec.door_t = 0.0
+  if not r.rec.instant { r.rec.door_t = cars_config(s).door_time }
+  r.rec.instant = false
+  cr_ask(r.rec.want, cr_anim_state(r.rec, r.rec.want_seat, 1))
+  r.rec.jacker = -1
+}
+
+function cr_e_break_in(r: mut Row<Car>, s: CarsState) -> void {
+  r.rec.want = r.rec.jacker
+  r.rec.want_seat = r.rec.drv_seat
+  r.rec.occupant[r.rec.drv_seat] = r.rec.want
+  r.rec.door_t = cars_config(s).jack_time
+  let f = cr_fact(s, CAR_BROKEN_INTO, r.rec)
+  f.actor = r.rec.want
+  cr_ask(r.rec.want, cr_anim_state(r.rec, r.rec.drv_seat, 1))
+  r.rec.jacker = -1
+}
+
+# seated: the engine runs, the rider is placed and sits
+function cr_e_seated(r: mut Row<Car>, s: CarsState) -> void {
+  cr_seat_in(s, r.rec, r.rec.want_seat, r.rec.want)
+  r.rec.want = -1
+  r.rec.in_throttle = 0.0
+  r.rec.in_brake = 0.0
+  r.rec.in_steer = 0.0
+  r.rec.in_hand = 0.0
+  if r.rec.engine_hp > 0.0 and (CarModels[r.rec.model].tank <= 0.0 or r.rec.fuel > 0.0) and not r.rec.engine_on {
+    r.rec.engine_on = true
+    cr_fact(s, CAR_ENGINE_ON, r.rec)
+  }
+}
+
+function cr_e_jack(r: mut Row<Car>, s: CarsState) -> void {
+  r.rec.jack_t = cars_config(s).jack_time
+  let d = r.rec.occupant[r.rec.drv_seat]
+  let f = cr_fact(s, CAR_CARJACK, r.rec)
+  f.actor = r.rec.jacker
+  f.w = float(d)
+  cr_ask(d, cr_anim_state(r.rec, r.rec.drv_seat, 3))
+  cr_ask(r.rec.jacker, cr_anim_state(r.rec, r.rec.drv_seat, 1))
+}
+
+# the driver is out, the thief gets in
+function cr_e_dragged(r: mut Row<Car>, s: CarsState) -> void {
+  let d = r.rec.occupant[r.rec.drv_seat]
+  if d >= 0 { cr_step_out(s, r.rec, r.rec.drv_seat, d, CAR_EJECTED, 1) }
+  r.rec.want = r.rec.jacker
+  r.rec.want_seat = r.rec.drv_seat
+  r.rec.occupant[r.rec.drv_seat] = r.rec.want
+  r.rec.door_t = cars_config(s).door_time * 0.5
+  r.rec.jacker = -1
+  r.rec.jack_t = 0.0
+  r.rec.in_throttle = 0.0
+  r.rec.in_brake = 0.0
+  r.rec.in_steer = 0.0
+  r.rec.in_hand = 0.0
+}
+
+function cr_e_escaped(r: mut Row<Car>, s: CarsState) -> void {
+  let f = cr_fact(s, CAR_REFUSED, r.rec)
+  f.v = float(CAR_NO_BUSY)
+  f.actor = r.rec.jacker
+  r.rec.jacker = -1
+  r.rec.jack_t = 0.0
+}
+
+function cr_e_exit(r: mut Row<Car>, s: CarsState) -> void {
+  let d = r.rec.occupant[r.rec.drv_seat]
+  r.rec.exit_t = cars_config(s).door_time
+  if d >= 0 { cr_step_out(s, r.rec, r.rec.drv_seat, d, CAR_EXITED, 0) }
+  r.rec.in_throttle = 0.0
+  r.rec.in_brake = 0.0
+  r.rec.in_steer = 0.0
+  r.rec.in_hand = 0.0
+  r.rec.in_nitro = false
+  if r.rec.engine_on {
+    r.rec.engine_on = false
+    cr_fact(s, CAR_ENGINE_OFF, r.rec)
+  }
+}
+
+function cr_e_wreck(r: mut Row<Car>, s: CarsState) -> void {
+  cr_eject_all(s, r.rec, 2)
+  r.rec.want = -1
+  r.rec.jacker = -1
+  r.rec.in_throttle = 0.0
+  r.rec.in_brake = 0.0
+  r.rec.in_steer = 0.0
+  if r.rec.engine_on {
+    r.rec.engine_on = false
+    cr_fact(s, CAR_ENGINE_OFF, r.rec)
+  }
+  r.rec.health = 0.0
+  cr_fact(s, CAR_WRECKED, r.rec)
+}
+
+function cr_e_repair(r: mut Row<Car>, s: CarsState) -> void {
+  r.rec.health = r.rec.stats.health
+  r.rec.engine_hp = CarModels[r.rec.model].engine_health
+  r.rec.smoke = 0
+  cr_fact(s, CAR_REPAIRED, r.rec)
+}
+
+# ---- the verbs: each checks what a person could see for themselves, says why not as a fact, and asks the machine
+
+# `actor` gets into `seat` (an index of the model's seats): the driver's through the machine, the others at once.
+# Returns 0, or why not (CAR_NO_*)
+export function car_enter(cars_st: mut CarsState, nid: int, actor: int, seat: int) -> int {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return CAR_NO_SUCH }
+  if actor < 0 { return cr_refuse(cars_st, c, CAR_NO_ACTOR, actor) }
+  if c.phase == CarPhase.Wrecked { return cr_refuse(cars_st, c, CAR_NO_WRECK, actor) }
+  if not cr_seat_ok(c, seat) or c.occupant[seat] >= 0 { return cr_refuse(cars_st, c, CAR_NO_SEAT, actor) }
+  if not cr_near_door(cars_st, c, seat, actor) { return cr_refuse(cars_st, c, CAR_NO_FAR, actor) }
+  if c.phase == CarPhase.Locked and c.owner != actor { return cr_refuse(cars_st, c, CAR_NO_LOCKED, actor) }
+  if seat == c.drv_seat {
+    if c.phase != CarPhase.Free and c.phase != CarPhase.Locked { return cr_refuse(cars_st, c, CAR_NO_BUSY, actor) }
+    dispatch CarEnterIn { who: c.ent, actor: actor, seat: seat, instant: false }
+    return 0
+  }
+  cr_seat_in(cars_st, c, seat, actor)
+  return 0
+}
+
+# an AI driver placed at the wheel with no door to open (traffic, a chase): in next tick
+export function car_seat_driver(cars_st: mut CarsState, nid: int, actor: int) -> int {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return CAR_NO_SUCH }
+  if c.phase != CarPhase.Free and c.phase != CarPhase.Locked { return cr_refuse(cars_st, c, CAR_NO_BUSY, actor) }
+  if c.occupant[c.drv_seat] >= 0 { return cr_refuse(cars_st, c, CAR_NO_SEAT, actor) }
+  if c.phase == CarPhase.Locked {
+    c.jacker = -1
+    dispatch CarUnlockIn { who: c.ent }
+  }
+  dispatch CarEnterIn { who: c.ent, actor: actor, seat: c.drv_seat, instant: true }
+  return 0
+}
+
+# the actor gets out of whatever seat they are in
+export function car_exit(cars_st: mut CarsState, nid: int, actor: int) -> int {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return CAR_NO_SUCH }
+  var seat = -1
+  for i in 0 .. c.nseats { if c.occupant[i] == actor { seat = i } }
+  if seat < 0 { return cr_refuse(cars_st, c, CAR_NO_SEAT, actor) }
+  if seat == c.drv_seat {
+    if c.phase == CarPhase.Jacked or c.phase == CarPhase.Entering or c.phase == CarPhase.Exiting { return cr_refuse(cars_st, c, CAR_NO_BUSY, actor) }
+    if Math.abs(c.speed) > cars_config(cars_st).exit_speed { return cr_refuse(cars_st, c, CAR_NO_FAST, actor) }
+    dispatch CarExitIn { who: c.ent }
+    return 0
+  }
+  if Math.abs(c.speed) > cars_config(cars_st).exit_speed { return cr_refuse(cars_st, c, CAR_NO_FAST, actor) }
+  cr_step_out(cars_st, c, seat, actor, CAR_EXITED, 0)
+  return 0
+}
+
+# a thief takes the car: a driven one by dragging the driver out (the driver can escape by flooring it), a
+# locked empty one by breaking in. Returns 0, or why not
+export function car_carjack(cars_st: mut CarsState, nid: int, actor: int) -> int {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return CAR_NO_SUCH }
+  if actor < 0 { return cr_refuse(cars_st, c, CAR_NO_ACTOR, actor) }
+  if c.phase == CarPhase.Wrecked { return cr_refuse(cars_st, c, CAR_NO_WRECK, actor) }
+  for i in 0 .. c.nseats { if c.occupant[i] == actor { return cr_refuse(cars_st, c, CAR_NO_SEAT, actor) } }
+  if not cr_near_door(cars_st, c, c.drv_seat, actor) { return cr_refuse(cars_st, c, CAR_NO_FAR, actor) }
+  if c.phase == CarPhase.Driven or c.phase == CarPhase.Locked {
+    dispatch CarJackIn { who: c.ent, actor: actor }
+    return 0
+  }
+  return cr_refuse(cars_st, c, CAR_NO_BUSY, actor)
+}
+
+export function car_lock(cars_st: mut CarsState, nid: int, on: bool) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  if on { dispatch CarLockIn { who: c.ent } } else { dispatch CarUnlockIn { who: c.ent } }
+  return true
+}
+
+# how many of a car's seats are taken
+export function car_occupants(c: Car) -> int {
+  var n = 0
+  for i in 0 .. c.nseats { if c.occupant[i] >= 0 { n += 1 } }
+  return n
+}
+
+# the seat an actor is in, -1 when none
+export function car_seat_of(c: Car, actor: int) -> int {
+  for i in 0 .. c.nseats { if c.occupant[i] == actor { return i } }
+  return -1
+}
+
+# door timers, the animation parameters and the facts of a phase that changed
+function cr_door_run(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  if c.phase == CarPhase.Entering { c.door_t = c.door_t - dt }
+  if c.phase == CarPhase.Jacked { c.jack_t = c.jack_t - dt }
+  if c.phase == CarPhase.Exiting { c.exit_t = c.exit_t - dt }
+}
+
+function cr_door_phase(cars_st: mut CarsState, c: Car) -> void {
+  if c.phase == c.last_phase { return }
+  c.last_phase = c.phase
+  var open = 0.0
+  if c.phase == CarPhase.Entering or c.phase == CarPhase.Exiting or c.phase == CarPhase.Jacked { open = 1.0 }
+  CarAnim.car_param(c.nid, cars_config(cars_st).param_door, open)
+  if c.phase == CarPhase.Wrecked and c.oid >= 0 {
+    let h = imap_get(cars_st.cr_oids, c.oid, -1)
+    if h >= 0 { dispatch CarDestroyedIn { who: h } }
+  }
+}

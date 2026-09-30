@@ -1,0 +1,154 @@
+# cars_math_test.ludic - curves, gearing, tyres, tuning and the data's own shape: no physics and no ports.
+import "ludic.cars"
+import "ludic.base"
+program CarsMathTest {
+  numbers float
+  def CarTyres from "cars_tyres.lres"
+  def CarClasses from "cars_classes.lres"
+  def CarModels from "cars_models.lres"
+  def CarSeats from "cars_seats.lres"
+  def CarSockets from "cars_sockets.lres"
+  def CarParts from "cars_parts.lres"
+  def CarLiveries from "cars_liveries.lres"
+
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+
+  test "a curve is read linearly between its points and held past the ends" () {
+    let pts = CarModels[CARM_SEDAN].torque
+    expect(near(car_curve(pts, 1000.0), 180.0, 0.001))
+    expect(near(car_curve(pts, 1750.0), 220.0, 0.001))
+    expect(near(car_curve(pts, 500.0), 180.0, 0.001))
+    expect(near(car_curve(pts, 9000.0), 200.0, 0.001))
+    expect(near(car_curve_peak(pts), 300.0, 0.001))
+    expect(near(car_curve_peak_at(pts), 4000.0, 0.001))
+    expect(near(car_curve_slope(pts, 1750.0), 80.0 / 1500.0, 0.0001))
+    expect(near(car_curve(null, 5.0), 0.0, 0.0001))
+  }
+
+  test "the peak power is torque times rpm times 2 pi over 60" () {
+    let s = new CarStats
+    car_stats_into(CARM_SEDAN, car_no_parts(), s)
+    # 280 N.m at 5500 rpm is 161.3 kW and the curve's best; 240 at 6500 is 163.4 kW
+    expect(near(car_power(CARM_SEDAN, s), 240.0 * 6500.0 * 0.10471976, 50.0))
+  }
+
+  test "gearing: a gear's ratio to the wheel, and the speed it gives at an rpm" () {
+    let s = new CarStats
+    car_stats_into(CARM_SEDAN, car_no_parts(), s)
+    expect_eq(car_gear_count(CARM_SEDAN), 6)
+    expect(near(car_ratio(CARM_SEDAN, s, 1), 3.6 * 4.1, 0.001))
+    expect(near(car_ratio(CARM_SEDAN, s, -1), 3.3 * 4.1, 0.001))
+    expect(near(car_ratio(CARM_SEDAN, s, 0), 0.0, 0.001))
+    expect(near(car_ratio(CARM_SEDAN, s, 9), 0.0, 0.001))
+    # 6000 rpm in third on a 0.33 m wheel: 628.3 rad/s / (1.6 * 4.1) * 0.33 = 31.6 m/s
+    expect(near(car_speed_at(CARM_SEDAN, s, 3, 6000.0, 0.33), 6000.0 * 0.10471976 / (1.6 * 4.1) * 0.33, 0.01))
+    expect(car_speed_at(CARM_SEDAN, s, 6, 6500.0, 0.33) > car_speed_at(CARM_SEDAN, s, 5, 6500.0, 0.33))
+    # the engine's torque follows the curve, with a turbo and nitrous adding to it
+    expect(near(car_engine_torque(CARM_SEDAN, s, 4000.0, 0.0, 0.0), 300.0, 0.01))
+    expect(near(car_engine_torque(CARM_SEDAN, s, 4000.0, 0.0, 1.0), 450.0, 0.01))
+  }
+
+  test "a tyre's normalised grip peaks at its slip and gives less beyond it" () {
+    expect(near(car_tyre_long(CART_ROAD, 0.12), 1.0, 0.001))
+    expect(near(car_tyre_long(CART_ROAD, 0.06), 0.5, 0.001))
+    expect(car_tyre_long(CART_ROAD, 0.6) < 0.85)
+    expect(car_tyre_long(CART_ROAD, 1.5) >= 0.69)
+    expect(near(car_tyre_lat(CART_ROAD, 8.0), 1.0, 0.001))
+    expect(near(car_tyre_lat(CART_ROAD, -4.0), 0.5, 0.001))
+    expect(car_tyre_lat(CART_ROAD, 30.0) < 0.8)
+    expect(near(car_tyre_peak(CART_ROAD), 0.12, 0.001))
+    expect(near(car_tyre_peak(CART_SLICK), 0.1, 0.001))
+  }
+
+  test "grip falls with load per newton, and with a loose surface more for a slick" () {
+    let light = car_tyre_mu(CART_ROAD, 2000.0, 1.0, 1.0)
+    let rated = car_tyre_mu(CART_ROAD, 4000.0, 1.0, 1.0)
+    let heavy = car_tyre_mu(CART_ROAD, 8000.0, 1.0, 1.0)
+    expect(near(rated, 1.1, 0.001))
+    expect(light > rated)
+    expect(heavy < rated)
+    # the force still rises with load
+    expect(heavy * 8000.0 > rated * 4000.0)
+    let road_gravel = car_tyre_mu(CART_ROAD, 4000.0, 1.0, 0.5)
+    let slick_gravel = car_tyre_mu(CART_SLICK, 5000.0, 1.0, 0.5)
+    expect(road_gravel / 1.1 > slick_gravel / 1.6)
+    expect(near(car_tyre_mu(CART_ROAD, 4000.0, 1.15, 1.0), 1.1 * 1.15, 0.001))
+  }
+
+  test "tuning: parts multiply and add, one of a slot, and come off again" () {
+    let parts = car_no_parts()
+    let s = new CarStats
+    car_stats_into(CARM_SEDAN, parts, s)
+    expect(near(s.mass, 1400.0, 0.001))
+    expect(near(s.torque, 1.0, 0.0001))
+    parts[CAR_SLOT_ENGINE] = CARPT_ENGINE2
+    parts[CAR_SLOT_ARMOUR] = CARPT_PLATE1
+    parts[CAR_SLOT_TURBO] = CARPT_TURBO1
+    parts[CAR_SLOT_TRANSMISSION] = CARPT_GEARS1
+    parts[CAR_SLOT_BRAKES] = CARPT_BRAKES1
+    car_stats_into(CARM_SEDAN, parts, s)
+    expect(near(s.torque, 1.25, 0.0001))
+    expect(near(s.mass, 1400.0 + 20.0 + 90.0 + 25.0, 0.001))
+    expect(near(s.armour, 0.4, 0.0001))
+    expect(near(s.health, 1200.0, 0.001))
+    expect(near(s.boost, 0.35, 0.0001))
+    expect(near(s.spool, 1.5, 0.0001))
+    expect(near(s.shift, 0.5, 0.0001))
+    expect(near(s.gearing, 1.1, 0.0001))
+    expect(near(s.brakes, 1.2, 0.0001))
+    # shorter gearing pulls harder in first
+    expect(car_ratio(CARM_SEDAN, s, 1) > 3.6 * 4.1)
+    # the turbo and the engine together in the torque
+    expect(near(car_engine_torque(CARM_SEDAN, s, 4000.0, 1.0, 0.0), 300.0 * 1.25 * 1.35, 0.01))
+    expect(car_power(CARM_SEDAN, s) > 1.2 * car_curve_power(CarModels[CARM_SEDAN].torque))
+    # armour is capped and the limiter is scaled
+    parts[CAR_SLOT_ARMOUR] = CARPT_PLATE2
+    car_stats_into(CARM_SEDAN, parts, s)
+    expect(near(s.armour, 0.7, 0.0001))
+    expect(near(s.health, 1500.0, 0.001))
+    parts[CAR_SLOT_ENGINE] = -1
+    car_stats_into(CARM_SEDAN, parts, s)
+    expect(near(s.torque, 1.0, 0.0001))
+    let hatch = new CarStats
+    parts[CAR_SLOT_ENGINE] = CARPT_ENGINE2
+    car_stats_into(CARM_HATCH, parts, hatch)
+    expect(near(hatch.top_speed, 42.0, 0.001))
+  }
+
+  test "the data is what was written: classes, models, seats and sockets, wheels and axles" () {
+    expect_eq(CARC_COUNT, 9)
+    expect_eq(CARM_COUNT, 5)
+    expect_eq(CarModels[CARM_BIKE].cls, CARC_MOTORCYCLE)
+    expect_eq(CarClasses[CARC_MOTORCYCLE].kind, CAR_KIND_BIKE)
+    expect_eq(car_wheel_count(CARM_SEDAN), 4)
+    expect_eq(car_wheel_count(CARM_BIKE), 2)
+    expect_eq(car_wheel_count(CARM_BUS), 6)
+    expect_eq(car_axle_wheels(CARM_BIKE, 0), 1)
+    expect_eq(car_wheel_first(CARM_BUS, 2), 4)
+    expect(car_axle_front(CARM_SEDAN, 0))
+    expect(not car_axle_front(CARM_SEDAN, 1))
+    expect(car_axle_front(CARM_BUS, 0))
+    expect(not car_axle_front(CARM_BUS, 2))
+    expect(car_axle_driven(CARM_SEDAN, 1))
+    expect(not car_axle_driven(CARM_SEDAN, 0))
+    expect(car_axle_driven(CARM_HATCH, 0))
+    expect(car_axle_driven(CARM_SUPER, 0) and car_axle_driven(CARM_SUPER, 1))
+    expect(near(car_wheelbase(CARM_SEDAN), 2.6, 0.001))
+    expect_eq(car_steer_axle(CARM_SEDAN), 0)
+    expect_eq(car_seat_count(CARM_SEDAN), 3)
+    expect_eq(car_seat_count(CARM_HATCH), 1)
+    expect_eq(car_driver_seat(CARM_SEDAN), 0)
+    expect_eq(car_socket_of(CARM_SEDAN, CAR_SOCK_DOOR, 1), CSOCK_DOOR_RIGHT)
+    expect_eq(car_socket_of(CARM_SEDAN, CAR_SOCK_DOOR, 7), -1)
+    expect(CarSeats[CSEAT_SEDAN_DRIVER].state_enter == "enter_left")
+    expect(CarLiveries[CLIV_STRIPES].car == CARM_SEDAN)
+  }
+
+  test "a car at rest sits at the height its springs sag to" () {
+    let s = new CarStats
+    car_stats_into(CARM_SEDAN, car_no_parts(), s)
+    # 3433 N a wheel on 35000 N/m: 0.098 m of sag, 0.152 of reach; origin 0.33 + 0.152 - 0.48
+    expect(near(car_rest_height(CARM_SEDAN, s), 0.33 + (0.25 - 1400.0 * 9.81 / 4.0 / 35000.0) - 0.48, 0.002))
+    expect(car_rest_height(CARM_BUS, s) < 1.0)
+  }
+}

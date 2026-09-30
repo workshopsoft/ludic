@@ -1,0 +1,288 @@
+# defs.ludic - what a game fills: CarModels (the handling, all of it), CarTyres (grip curves), CarClasses,
+# CarParts (tuning as stat modifiers), CarLiveries (paint), CarSeats and CarSockets (places in the model),
+# CarSettings (the simulation's own numbers). Metres, kilograms, seconds, newtons; angles in degrees where
+# a field says so. Coordinates: x east, y up, z south; yaw 0 faces +z and the forward of a yaw is
+# (sin yaw, cos yaw); the right of a heading is (-h.z, h.x) - the conventions of ludic.roads and ludic.melee.
+# A model's own space: x to the right of the car, y up from the ground it stands on, z forward.
+
+export const CAR_FWD: int = 0          # front wheels driven
+export const CAR_RWD: int = 1          # rear wheels driven
+export const CAR_AWD: int = 2          # all, `front_share` of the torque to the front
+
+# what a class of car is in the world
+export const CAR_KIND_CAR: int = 0     # upright on its wheels: cars, trucks, buses
+export const CAR_KIND_BIKE: int = 1    # two wheels, held up by its balance: motorcycles, bicycles
+
+# the slots a part fits (a car carries at most one of each)
+export const CAR_SLOT_ENGINE: int = 0
+export const CAR_SLOT_BRAKES: int = 1
+export const CAR_SLOT_TRANSMISSION: int = 2
+export const CAR_SLOT_SUSPENSION: int = 3
+export const CAR_SLOT_TURBO: int = 4
+export const CAR_SLOT_ARMOUR: int = 5
+export const CAR_SLOT_TYRES: int = 6
+export const CAR_SLOTS: int = 7
+
+# who simulates a car in a party
+export const CAR_AUTH_HOST: int = 0     # the host runs every car; a guest sends its driver's input
+export const CAR_AUTH_OWNER: int = 1    # the driver's machine runs its own car and sends its state
+
+# what a socket (a named node of the model) is for
+export const CAR_SOCK_WHEEL: int = 0   # index = axle * 2 + side (side 0 left, 1 right)
+export const CAR_SOCK_DOOR: int = 1    # index = the door's number (a seat names it)
+export const CAR_SOCK_EXHAUST: int = 2
+export const CAR_SOCK_LIGHT: int = 3
+export const CAR_SOCK_FUEL: int = 4
+export const CAR_SOCK_TRUNK: int = 5
+
+# a point of a curve: x along it, y the value there (linear between points, held past the ends)
+export property CarPoint {
+  x: float = 0.0
+  y: float = 0.0
+}
+
+# an axle: one or two wheels across the car at `z`, with their suspension and what they do
+export property CarAxle {
+  @Unit("m") @Range(-10, 10) z: float = 0.0          # forward of the model's origin (negative: behind it)
+  @Unit("m") @Range(0, 2) track: float = 0.8         # half the distance between its wheels (0: one wheel on the centre line, a bike's)
+  @Unit("m") @Range(0, 5) y: float = 0.55            # the top of the suspension above the ground the model stands on
+  @Unit("m") @Range(0.05, 2) radius: float = 0.33
+  @Unit("m") @Range(0.01, 1) width: float = 0.22
+  @Unit("m") @Range(0.02, 1) travel: float = 0.25    # how far the wheel reaches below full compression
+  @Range(0, 10000000) spring: float = 32000.0        # N per metre of compression
+  @Range(0, 10000000) damper: float = 2600.0         # N.s per metre: bump, the wheel coming up
+  @Range(0, 10000000) rebound: float = 3400.0        # N.s per metre: the wheel dropping
+  @Range(0, 10000000) bar: float = 0.0               # anti-roll bar: N per metre of the two wheels' difference
+  @Range(-2, 2) steer: float = 0.0                   # share of the steering angle (1 front, negative steers against)
+  handbrake: bool = false                            # the handbrake holds it
+  @Ref(CarTyres) tyre: int = 0                       # its tyre compound
+  @Range(0, 100) wheel_inertia: float = 1.1          # kg.m2 of a wheel and its tyre
+}
+
+# a tyre compound: the grip a slip makes. Both curves are NORMALISED (1 is the most a tyre gives: mu times
+# the load), so the same curve serves any car: slip ratio (spin against ground speed) for the long one,
+# slip angle in degrees for the lateral one; both may go past 1 of slip and fall (a slide gives less)
+export property CarTyre {
+  key: string = ""
+  @Range(0.05, 5) mu: float = 1.1                    # the friction coefficient at the load it is rated for
+  lon: []CarPoint = null                            # slip ratio (0 .. 1+) -> share of the grip
+  lat: []CarPoint = null                             # slip angle (deg) -> share of the grip
+  @Unit("N") @Range(100, 100000) load_ref: float = 4000.0   # the load mu is rated at
+  @Range(0, 1) load_sens: float = 0.12               # mu lost per load_ref of extra load (a loaded tyre grips less per newton)
+  @Range(0, 1) surface_sens: float = 1.0             # how much a loose surface costs it (a road tyre 1, a rally tyre less)
+  @Range(0, 1) rolling: float = 0.012                # rolling resistance, share of the load
+  @Range(0, 1) wear_rate: float = 0.0                # grip lost a second of full slip (0: no wear)
+}
+
+@ByKey
+export open registry CarTyres of CarTyre as CART
+
+# a class of car: what it is, and what a game charges for it
+export property CarClass {
+  key: string = ""
+  @Text name: Key = null
+  @OneOf(CAR_KIND_CAR, CAR_KIND_BIKE) kind: int = 0
+  @Range(0, 100) rank: int = 0                       # an order for a garage list or a race class
+  @Range(0, 2) insurance: float = 0.1                # a claim costs this share of the model's price
+  @Range(0, 2) impound: float = 0.02                 # getting it out of the impound: this share of the price
+  @Unit("s") @Range(0, 3600) claim_time: float = 120.0    # a claim is settled after this long
+  @Unit("s") @Range(0, 3600) deliver_time: float = 30.0   # a called car arrives after this long
+}
+
+@ByKey
+export open registry CarClasses of CarClass as CARC
+
+# a model of car: everything its handling is
+export property CarModel {
+  key: string = ""
+  @Text name: Key = null
+  @Ref(CarClasses) cls: int = 0
+  @Asset("gltf") model: string = ""
+  @Node(model) body_node: string = ""
+  @Range(0, 1000000) price: int = 0                  # the game's money: claims and fees are shares of it
+  # body
+  @Unit("kg") @Range(1, 100000) mass: float = 1400.0
+  @Unit("m") @Range(0.2, 30) length: float = 4.4
+  @Unit("m") @Range(0.1, 5) width: float = 1.8
+  @Unit("m") @Range(0.1, 5) height: float = 1.4
+  @Unit("m") @Range(0, 2) ground_clear: float = 0.18 # the floor of the body above the ground
+  @Unit("m") @Range(-2, 2) com_x: float = 0.0        # the centre of mass from the model's origin: right
+  @Unit("m") @Range(-0.5, 3) com_y: float = 0.0      # up (0: the body's own middle)
+  @Unit("m") @Range(-5, 5) com_z: float = 0.0        # forward
+  @Range(0.2, 3) yaw_inertia: float = 1.0            # the planar model's yaw inertia, times that of a box
+  # drivetrain and engine
+  @OneOf(CAR_FWD, CAR_RWD, CAR_AWD) drivetrain: int = CAR_RWD
+  @Range(0, 1) front_share: float = 0.4              # AWD: the front's share of the torque
+  torque: []CarPoint = null                          # engine speed (rpm) -> torque (N.m) at full throttle
+  @Range(100, 20000) idle: float = 900.0             # rpm
+  @Range(1000, 30000) redline: float = 6500.0        # the most power; the gearbox changes up near it
+  @Range(1000, 30000) limiter: float = 6900.0        # the engine is cut here
+  @Range(0, 2000) engine_brake: float = 60.0         # N.m at the redline when the foot is off
+  @Range(500, 10000) launch_rpm: float = 2400.0      # the clutch slips an engine up to this speed from a stand
+  @Range(0.01, 10) engine_inertia: float = 0.28      # kg.m2
+  # gearbox: ratios from first, the reverse, the final drive
+  gears: []float = null
+  @Range(0, 20) reverse: float = 3.3
+  @Range(0.5, 20) final_drive: float = 3.7
+  @Range(0.3, 1) efficiency: float = 0.88
+  @Unit("s") @Range(0, 3) shift_time: float = 0.22   # torque is cut this long while a gear changes
+  auto: bool = true
+  @Range(0.3, 1) up_at: float = 0.93                 # share of the redline a gearbox changes up at
+  @Range(0.1, 0.9) down_at: float = 0.45             # ... and down at, in the gear it would drop to
+  # brakes
+  @Unit("N") @Range(0, 1000000) brakes: float = 14000.0   # the force all four give at a full pedal
+  @Range(0, 1) brake_front: float = 0.62             # the front's share of it
+  @Unit("N") @Range(0, 1000000) handbrake: float = 7000.0 # the handbrake's axles, at a full pull
+  # steering
+  @Unit("deg") @Range(1, 90) steer_lock: float = 34.0
+  steer_curve: []CarPoint = null                     # speed (m/s) -> the share of the lock a full stick gives
+  @Range(0.5, 40) steer_rate: float = 4.5            # full locks a second (how fast the wheel turns)
+  # the wheels
+  axles: []CarAxle = null
+  # air
+  @Range(0, 100) drag: float = 0.42                  # N per (m/s)2 against the motion
+  @Range(0, 100) downforce: float = 0.0              # N per (m/s)2 pressing it down
+  @Range(0, 1) down_front: float = 0.45              # the front's share of the downforce
+  @Range(0, 1) roll_res: float = 1.0                 # the tyres' rolling resistance, times this
+  @Unit("m/s") @Range(0, 500) top_speed: float = 0.0 # a limiter (0: what the engine and air give)
+  # nitrous
+  @Range(0, 5) nitro: float = 0.0                    # extra torque while it burns, as a share (0.5: half as much again)
+  @Unit("s") @Range(0, 120) nitro_time: float = 0.0  # a full tank's burn (0: none fitted)
+  @Unit("s") @Range(0, 600) nitro_recharge: float = 0.0   # to refill while not burning (0: never)
+  # health and fuel
+  @Range(1, 1000000) health: float = 1000.0
+  @Range(1, 1000000) engine_health: float = 400.0
+  @Range(0, 1) armour: float = 0.0                   # the share of a blow turned aside
+  @Unit("m/s") @Range(0, 100) crash_speed: float = 6.0   # a hit below this speed does nothing
+  @Range(0, 1000) tank: float = 0.0                  # litres (0: no fuel is used)
+  @Range(0, 10) burn: float = 0.004                  # litres a second at a full throttle
+  # handling as a blend: 0 a simulation, 1 an arcade (extra grip, a steadier yaw, a forgiving stick)
+  @Range(0, 1) arcade: float = 0.35
+  @Range(0, 1) assist_traction: float = 0.0          # how hard the traction control holds a spinning wheel
+  @Range(0, 1) assist_stability: float = 0.0         # how hard stability control corrects a slide
+  @Range(0, 1) assist_drift: float = 0.0             # how much a slide is held once it starts
+  @Range(0, 1) assist_abs: float = 0.0               # how hard the anti-lock holds a locking wheel
+  @Range(0, 10) balance: float = 0.0                 # a two-wheeler's hold on upright (0 for a car)
+}
+
+@ByKey
+export open registry CarModels of CarModel as CARM
+
+# a place in a model: a named node of its glTF. Wheels, doors, exhausts, lights. `open` and `close` are the
+# clips a door plays on the model's own animation (played through the animation graph, never by a script)
+export property CarSocket {
+  key: string = ""
+  @Ref(CarModels) car: int = 0
+  @OneOf(CAR_SOCK_WHEEL, CAR_SOCK_DOOR, CAR_SOCK_EXHAUST, CAR_SOCK_LIGHT, CAR_SOCK_FUEL, CAR_SOCK_TRUNK) kind: int = 0
+  index: int = 0
+  @Node(car) node: string = ""
+  @Clip(car) clip_open: string = ""
+  @Clip(car) clip_close: string = ""
+  @Unit("m") x: float = 0.0
+  @Unit("m") y: float = 0.0
+  @Unit("m") z: float = 0.0
+}
+
+@ByKey
+export open registry CarSockets of CarSocket as CSOCK
+
+# a seat: where its sitter sits in the model's space, which door it uses, and the animation graph's states
+# for getting in, sitting, getting out and being dragged out. The graph (ludic.anim AnimSets) is the game's;
+# the package asks it for these states by name and never moves a bone itself
+export property CarSeat {
+  key: string = ""
+  @Ref(CarModels) car: int = 0
+  driver: bool = false                               # the seat the car is driven from (one per model)
+  @Unit("m") x: float = 0.0
+  @Unit("m") y: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0                      # the way the sitter faces, from the model's forward
+  door: int = -1                                     # the CarSockets door (index) it is reached by
+  exposed: bool = false                              # a sitter on a bike can be shot and thrown
+  state_sit: string = ""                                   # graph state: sitting (the rider's own rig)
+  state_enter: string = ""                                 # graph state: getting in
+  state_leave: string = ""                                 # graph state: getting out
+  state_jacked: string = ""                                # graph state: dragged out by a thief
+  @Clip(car) clip_door: string = ""                 # the model's own clip while the sitter gets in
+  @Unit("m") @Range(0, 5) exit_side: float = 1.2     # where it steps off: this far out from the seat (towards the door's side)
+}
+
+@ByKey
+export open registry CarSeats of CarSeat as CSEAT
+
+# a part: a level of a slot that changes the car's numbers. A multiplier is 1.0 for no change; an add is 0.0
+export property CarPart {
+  key: string = ""
+  @Text name: Key = null
+  @OneOf(CAR_SLOT_ENGINE, CAR_SLOT_BRAKES, CAR_SLOT_TRANSMISSION, CAR_SLOT_SUSPENSION, CAR_SLOT_TURBO, CAR_SLOT_ARMOUR, CAR_SLOT_TYRES) slot: int = 0
+  @Range(0, 10) level: int = 1
+  @Range(0, 1000000) price: int = 0
+  @Range(0, 10) torque: float = 1.0                  # engine torque
+  @Unit("kg") @Range(-1000, 1000) mass: float = 0.0  # added weight
+  @Range(0, 10) brakes: float = 1.0
+  @Range(0, 10) shift: float = 1.0                   # the shift time (under 1: quicker)
+  @Range(0, 10) gearing: float = 1.0                 # the final drive (over 1: shorter gearing, more pull, less top speed)
+  @Range(0, 10) spring: float = 1.0
+  @Range(0, 10) damper: float = 1.0
+  @Range(0, 10) bar: float = 1.0
+  @Range(0, 10) grip: float = 1.0                    # the tyres' mu
+  @Range(0, 10) drag: float = 1.0
+  @Range(0, 10) top_speed: float = 1.0               # the limiter
+  @Range(0, 10) health: float = 1.0                  # body health
+  @Range(0, 1) armour: float = 0.0                   # added to the share of a blow turned aside
+  @Range(0, 10) boost: float = 0.0                   # a turbo: extra torque share at full spool
+  @Unit("s") @Range(0, 10) spool: float = 1.0        # ... and how long it takes to come on
+}
+
+@ByKey
+export open registry CarParts of CarPart as CARPT
+
+# paint: a livery a car can wear. `car` -1 fits every model
+export property CarLivery {
+  key: string = ""
+  @Text name: Key = null
+  @Ref(CarModels) car: int = -1
+  @Color primary: int = 0xc8c8c8
+  @Color secondary: int = 0x202020
+  @Color pearl: int = 0xffffff
+  @Range(0, 1) metallic: float = 0.3
+  @Asset("png") texture: string = ""
+  @Asset("png") decal: string = ""
+  @Range(0, 1000000) price: int = 0
+}
+
+@ByKey
+export open registry CarLiveries of CarLivery as CLIV
+
+# the simulation's own numbers. The first row is the one in use (a game with none gets these defaults)
+export property CarSettings {
+  key: string = ""
+  @Unit("s") @Range(0.002, 0.1) step: float = 0.016666668     # the fixed step of the simulation
+  @Range(1, 8) max_steps: int = 4                              # a slow frame catches up this far
+  @Unit("m") @Range(0, 100000) body_dist: float = 150.0        # within this of a viewer a car is a physics body
+  @Unit("m") @Range(0, 100000) planar_dist: float = 400.0      # within this, a planar model; past it, a lane follower
+  @Unit("m") @Range(0, 1000) lod_margin: float = 25.0          # a car changes level only this far past the line
+  @Range(0, 1) sim_blend: float = 0.0                          # added to every car's arcade blend (0 leaves the models' own)
+  @Unit("m/s2") @Range(0, 100) gravity: float = 9.81
+  @Unit("s") @Range(0, 30) door_time: float = 0.9              # getting in or out
+  @Unit("s") @Range(0, 30) jack_time: float = 2.2              # dragging a driver out
+  @Unit("m/s") @Range(0, 100) exit_speed: float = 4.0          # too fast to get out above this
+  @Unit("m") @Range(0, 100) reach: float = 3.0                 # how close a person must be to a door
+  @Range(1, 120) snap_hz: int = 15                             # snapshots a second a car sends
+  @Unit("s") @Range(0, 2) interp_delay: float = 0.12           # a guest shows a car this far in the past
+  @OneOf(CAR_AUTH_) authority: int = 0                              # 0 the host simulates every car, 1 the driver's machine simulates its own
+  @Unit("m/s") @Range(0, 500) max_speed_check: float = 120.0   # a snapshot faster than this is refused
+  impound_place: int = -1                                      # the game's place for impounded cars
+  @Range(0, 1000) min_tank: float = 0.0
+  # names the game's animation graphs use (the package sets them, the graph reads them)
+  param_speed: string = "car_speed"
+  param_steer: string = "car_steer"
+  param_throttle: string = "car_throttle"
+  param_gear: string = "car_gear"
+  param_rpm: string = "car_rpm"
+  param_door: string = "car_door"
+  param_seat: string = "seat_state"
+}
+
+@ByKey
+export open registry CarSettingsRows of CarSettings as CSET

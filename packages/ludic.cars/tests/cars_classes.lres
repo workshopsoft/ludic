@@ -1,0 +1,10 @@
+# cars_classes.lres - the classes a game lists, as data: each a kind, a rank and what a claim and the impound cost
+compact    { kind: CAR_KIND_CAR, rank: 1, insurance: 0.1, impound: 0.02, claim_time: 60.0, deliver_time: 20.0 }
+sport      { kind: CAR_KIND_CAR, rank: 4, insurance: 0.12, impound: 0.03, claim_time: 90.0, deliver_time: 30.0 }
+super      { kind: CAR_KIND_CAR, rank: 6, insurance: 0.2, impound: 0.05, claim_time: 120.0, deliver_time: 45.0 }
+muscle     { kind: CAR_KIND_CAR, rank: 5 }
+suv        { kind: CAR_KIND_CAR, rank: 3 }
+truck      { kind: CAR_KIND_CAR, rank: 2 }
+motorcycle { kind: CAR_KIND_BIKE, rank: 3, insurance: 0.08, claim_time: 45.0, deliver_time: 15.0 }
+bicycle    { kind: CAR_KIND_BIKE, rank: 0 }
+bus        { kind: CAR_KIND_CAR, rank: 2, insurance: 0.05 }

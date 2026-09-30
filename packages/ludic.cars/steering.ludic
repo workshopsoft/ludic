@@ -1,0 +1,66 @@
+# steering.ludic - the stick becomes the front wheels' angle: a lock that narrows with speed (the model's
+# curve), turned at a rate, and softened by the arcade blend
+
+# the angle (radians) the stick asks for at this speed
+function cr_steer_target(c: Car) -> float {
+  let m = CarModels[c.model]
+  let lock = m.steer_lock * 0.017453292
+  var share = 1.0
+  if m.steer_curve != null and len(m.steer_curve) > 1 { share = car_curve(m.steer_curve, Math.abs(c.speed)) }
+  # an arcade car eases its stick off at speed a little more than a simulation's would
+  share = share * (1.0 - 0.25 * c.arcade * Math.clamp(Math.abs(c.speed) / 40.0, 0.0, 1.0))
+  return Math.clamp(c.in_steer, -1.0, 1.0) * lock * share
+}
+
+function cr_steer_step(c: Car, dt: float) -> void {
+  let m = CarModels[c.model]
+  let lock = m.steer_lock * 0.017453292
+  var target = cr_steer_target(c)
+  if c.phase != CarPhase.Driven and c.phase != CarPhase.Jacked { target = 0.0 }
+  var rate = m.steer_rate * lock * dt
+  if Math.abs(target) < Math.abs(c.steer_angle) { rate = rate * 1.6 }
+  let d = target - c.steer_angle
+  if d > rate { c.steer_angle = c.steer_angle + rate } else if d < -rate { c.steer_angle = c.steer_angle - rate } else { c.steer_angle = target }
+}
+
+# the lateral grip multiplier for an end of the car: an arcade's forgiveness, and a drift assist that lets the
+# rear let go while the handbrake is held or the car is already across its line
+function cr_lat_mult(c: Car, front: bool) -> float {
+  var k = 1.0 + 0.3 * c.arcade
+  if not front and c.a_drift > 0.0 {
+    let beta = Math.atan2(Math.abs(c.side_speed), Math.max(Math.abs(c.speed), 1.0))
+    if c.in_hand > 0.5 or beta > 0.2 { k = k * (1.0 - 0.4 * c.a_drift) }
+  }
+  return k
+}
+
+# the assists in force: the model's, raised by the settings' blend and the arcade
+function cr_assists(cars_st: CarsState, c: Car) -> void {
+  let m = CarModels[c.model]
+  let cfg = cars_config(cars_st)
+  c.arcade = Math.clamp(m.arcade + cfg.sim_blend, 0.0, 1.0)
+  c.a_traction = Math.max(c.a_traction, 0.0)
+}
+
+# a wheel sliding hard is a fact (every third of a second at most), for the game's tyre smoke and squeal
+function cr_skid_run(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  c.skid_t = c.skid_t - dt
+  if c.skid_t > 0.0 or Math.abs(c.speed) < 3.0 { return }
+  var worst = 0.0
+  var at = -1
+  for i in 0 .. c.nwheels {
+    let w = c.wheels[i]
+    if not w.contact { continue }
+    let slip = Math.max(Math.abs(w.slip_r) * 2.0, Math.abs(w.slip_a) * 3.5)
+    if slip > worst {
+      worst = slip
+      at = i
+    }
+  }
+  if worst > 1.0 {
+    c.skid_t = 0.35
+    let f = cr_fact(cars_st, CAR_SKID, c)
+    f.v = float(at)
+    f.w = worst
+  }
+}

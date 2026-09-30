@@ -1,0 +1,8 @@
+# ludic.cars - wheeled vehicles as data and a simulation behind ports: cars, trucks, buses, motorcycles
+# and bicycles from CarModels rows (engine curve, gears, brakes, steering, axles, tyres, aero), tuning
+# parts, paint, classes; a raycast-wheel model over the game's physics body, a planar model and a lane
+# follower at a distance; entering, leaving and carjacking as a machine; ownership, garages, insurance
+# and the impound; snapshots for a party. Uses ludic.base and nothing else.
+package "ludic.cars"
+version "0.1.0"
+kind source

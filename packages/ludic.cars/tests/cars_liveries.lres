@@ -1,0 +1,3 @@
+# cars_liveries.lres - paint: one for any model, one only for the sedan
+plain   { car: -1, primary: 0x808080, secondary: 0x101010, pearl: 0xffffff, price: 0 }
+stripes { car: CARM_SEDAN, primary: 0xc01818, secondary: 0xf0f0f0, pearl: 0xffd0d0, metallic: 0.6, price: 900 }

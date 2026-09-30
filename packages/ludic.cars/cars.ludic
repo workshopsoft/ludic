@@ -1,0 +1,319 @@
+# cars.ludic - making a car and taking it away, finding one, and the driver's controls. A car is a row of
+# the state's table: a handle, found by its id (nid) through a map. Made once, with its wheels, seats, stats
+# and snapshot ring, and kept: nothing is made per frame.
+
+export function car_by_nid(cars_st: CarsState, nid: int) -> Car {
+  let tb = cars_st.cr_cars
+  let h = imap_get(cars_st.cr_nids, nid, -1)
+  let r = tb_row(tb, h)
+  if r < 0 { return null }
+  let c = tb_rec(tb, r)
+  if c.nid != nid { return null }
+  return c
+}
+
+export function car_count(cars_st: CarsState) -> int { return tb_len(cars_st.cr_cars) }
+export function car_at(cars_st: CarsState, i: int) -> Car { return tb_rec(cars_st.cr_cars, i) }
+export function car_handle(cars_st: CarsState, nid: int) -> int { return imap_get(cars_st.cr_nids, nid, -1) }
+
+function cr_refuse(cars_st: CarsState, c: Car, why: int, actor: int) -> int {
+  let f = cr_fact(cars_st, CAR_REFUSED, c)
+  f.v = float(why)
+  f.actor = actor
+  return why
+}
+
+# who simulates a car: the host, or (owner authority) its driver's machine
+export function car_authority(cars_st: CarsState, c: Car) -> int {
+  if cars_config(cars_st).authority == CAR_AUTH_OWNER {
+    let d = cr_driver_of(c)
+    if d >= 0 and CarWorld.is_player(d) { return d }
+    if c.owner >= 0 { return c.owner }
+  }
+  return CarWorld.host()
+}
+
+# the actor in the driver's seat, -1 when none
+function cr_driver_of(c: Car) -> int {
+  if c.occupant == null or c.nseats == 0 { return -1 }
+  return c.occupant[c.drv_seat]
+}
+
+export function car_driver(c: Car) -> int { return cr_driver_of(c) }
+
+# the car's own state from a model at a place, standing still on the ground. Returns its id, -1 for no such
+# model or no wheels
+@alloc_ok("a car made: an event, not a frame")
+export function car_spawn(cars_st: mut CarsState, model: int, x: float, z: float, yaw: float, owner: int) -> int {
+  if model < 0 or model >= CARM_COUNT { return -1 }
+  let m = CarModels[model]
+  let nw = car_wheel_count(model)
+  if nw == 0 or nw > 30 { return -1 }
+  let c = new Car
+  c.nid = CarWorld.next_id()
+  c.model = model
+  c.owner = owner
+  c.stats = new CarStats
+  c.parts = car_no_parts()
+  car_stats_into(model, c.parts, c.stats)
+  c.wheels = new []CarWheel
+  for a in 0 .. car_axle_count(model) {
+    for k in 0 .. car_axle_wheels(model, a) {
+      let w = new CarWheel
+      w.axle = a
+      w.side = k
+      w.ext = m.axles[a].travel * 0.65
+      push(c.wheels, w)
+    }
+  }
+  c.nwheels = nw
+  c.nseats = car_seat_count(model)
+  c.occupant = new []int
+  for i in 0 .. c.nseats { push(c.occupant, -1) }
+  c.drv_seat = car_driver_seat(model)
+  if c.drv_seat >= c.nseats { c.drv_seat = 0 }
+  c.ring = floats(CAR_NET_RING * CAR_NET_FIELDS)
+  c.health = c.stats.health
+  c.engine_hp = m.engine_health
+  c.fuel = m.tank
+  c.nitro_left = m.nitro_time
+  c.primary = 0xc8c8c8
+  c.secondary = 0x202020
+  c.pearl = 0xffffff
+  c.plate = ""
+  c.ai_pace = 0.9
+  c.gear = 1
+  c.shift_to = 1
+  c.yaw = yaw
+  c.x = x
+  c.z = z
+  c.fx = Math.sin(yaw)
+  c.fy = 0.0
+  c.fz = Math.cos(yaw)
+  c.ux = 0.0
+  c.uy = 1.0
+  c.uz = 0.0
+  c.y = CarWorld.ground(x, z) + car_rest_height(model, c.stats) + 0.02
+  c.sim = CAR_SIM_PLANAR
+  c.auth = car_authority(cars_st, c)
+  if c.auth != CarWorld.me() { c.sim = CAR_SIM_REMOTE }
+  cr_assists(cars_st, c)
+  c.a_traction = m.assist_traction
+  c.a_stability = m.assist_stability
+  c.a_drift = m.assist_drift
+  c.a_abs = m.assist_abs
+  c.ent = tb_add(cars_st.cr_cars, c)
+  c.tab = cars_st.cr_cars
+  imap_put(cars_st.cr_nids, c.nid, c.ent)
+  cr_fact(cars_st, CAR_MADE, c)
+  CarWorld.made(c.nid, model)
+  return c.nid
+}
+
+# a car taken out of the world: everybody in it is put out beside it, its body let go
+export function car_remove(cars_st: mut CarsState, nid: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  cr_eject_all(cars_st, c, 0)
+  if c.body { CarBody.drop(c.nid) }
+  c.body = false
+  cr_fact(cars_st, CAR_GONE, c)
+  CarWorld.gone(c.nid)
+  imap_del(cars_st.cr_nids, c.nid)
+  tb_remove(cars_st.cr_cars, c.ent)
+  c.ent = -1
+  return true
+}
+
+# the nearest car to a point within `reach`, to get into (a wrecked one is not offered); -1 none
+export function car_nearest(cars_st: CarsState, x: float, z: float, reach: float) -> int {
+  var best = -1
+  var bd = reach
+  let tb = cars_st.cr_cars
+  for i in 0 .. tb_len(tb) {
+    let c = tb_rec(tb, i)
+    if c.phase == CarPhase.Wrecked { continue }
+    let dx = c.x - x
+    let dz = c.z - z
+    let d = Math.sqrt(dx * dx + dz * dz)
+    if d < bd {
+      bd = d
+      best = c.nid
+    }
+  }
+  return best
+}
+
+# ---- the driver's controls. These only write what a person's hands do; the simulation reads them a step at a time
+
+export function car_drive(cars_st: CarsState, nid: int, throttle: float, brake: float, steer: float, hand: float) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  c.in_throttle = Math.clamp(throttle, 0.0, 1.0)
+  c.in_brake = Math.clamp(brake, 0.0, 1.0)
+  c.in_steer = Math.clamp(steer, -1.0, 1.0)
+  c.in_hand = Math.clamp(hand, 0.0, 1.0)
+  return true
+}
+
+export function car_nitro(cars_st: CarsState, nid: int, on: bool) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  c.in_nitro = on
+  return true
+}
+
+# engine on or off (a wrecked or empty-tanked car will not start)
+export function car_engine(cars_st: mut CarsState, nid: int, on: bool) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  if on == c.engine_on { return true }
+  if on and (c.engine_hp <= 0.0 or c.phase == CarPhase.Wrecked or (CarModels[c.model].tank > 0.0 and c.fuel <= 0.0)) { return false }
+  c.engine_on = on
+  if on { cr_fact(cars_st, CAR_ENGINE_ON, c) } else { cr_fact(cars_st, CAR_ENGINE_OFF, c) }
+  return true
+}
+
+# a manual change of gear: up or down one (auto boxes take it too, and change back when they like)
+export function car_shift(cars_st: mut CarsState, nid: int, dir: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null or c.shift_t > 0.0 { return false }
+  let n = car_gear_count(c.model)
+  var to = c.gear + dir
+  if to > n { to = n }
+  if to < -1 { to = -1 }
+  if to == c.gear { return false }
+  cr_shift_to(cars_st, c, to)
+  return true
+}
+
+export function car_horn(cars_st: mut CarsState, nid: int, on: bool) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  if on and not c.horn { cr_fact(cars_st, CAR_HORN, c) }
+  c.horn = on
+  return true
+}
+
+export function car_lights(cars_st: mut CarsState, nid: int, bits: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  let keep = c.lights & (CAR_LIGHT_BRAKE | CAR_LIGHT_REVERSE)
+  let want = bits & ~(CAR_LIGHT_BRAKE | CAR_LIGHT_REVERSE)
+  if (c.lights & ~keep) != want {
+    c.lights = keep | want
+    let f = cr_fact(cars_st, CAR_LIGHTS, c)
+    f.v = float(c.lights)
+  }
+  return true
+}
+
+export function car_indicator(cars_st: mut CarsState, nid: int, state: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  if c.indicator != state {
+    c.indicator = state
+    let f = cr_fact(cars_st, CAR_INDICATOR, c)
+    f.v = float(state)
+  }
+  return true
+}
+
+# the assist levels in force for this car, over the model's (0..1 each)
+export function car_assist(cars_st: CarsState, nid: int, traction: float, stability: float, drift: float, abs: float) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  c.a_traction = Math.clamp(traction, 0.0, 1.0)
+  c.a_stability = Math.clamp(stability, 0.0, 1.0)
+  c.a_drift = Math.clamp(drift, 0.0, 1.0)
+  c.a_abs = Math.clamp(abs, 0.0, 1.0)
+  return true
+}
+
+# the stick's follower: a lane-following car (the package drives it along the road the port gives)
+export function car_follow_lane(cars_st: CarsState, nid: int, on: bool, pace: float) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  c.ai = on
+  c.ai_pace = Math.clamp(pace, 0.1, 2.0)
+  return true
+}
+
+# put a car on the ground somewhere, at rest (a teleport: the body, if it has one, is made again)
+export function car_place(cars_st: mut CarsState, nid: int, x: float, z: float, yaw: float) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  c.x = x
+  c.z = z
+  c.yaw = yaw
+  c.fx = Math.sin(yaw)
+  c.fy = 0.0
+  c.fz = Math.cos(yaw)
+  c.ux = 0.0
+  c.uy = 1.0
+  c.uz = 0.0
+  c.y = CarWorld.ground(x, z) + car_rest_height(c.model, c.stats) + 0.02
+  c.vx = 0.0
+  c.vy = 0.0
+  c.vz = 0.0
+  c.speed = 0.0
+  c.side_speed = 0.0
+  c.yaw_rate = 0.0
+  c.have_prev = false
+  c.net_ok = false
+  if c.body {
+    CarBody.drop(c.nid)
+    c.body = false
+  }
+  for i in 0 .. c.nwheels { c.wheels[i].spin = 0.0 }
+  return true
+}
+
+# paint and plate
+export function car_paint(cars_st: CarsState, nid: int, primary: int, secondary: int, pearl: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  c.primary = primary
+  c.secondary = secondary
+  c.pearl = pearl
+  return true
+}
+
+# a livery row worn: its colours, unless it is for another model (false)
+export function car_livery(cars_st: CarsState, nid: int, livery: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null or livery < 0 or livery >= CLIV_COUNT { return false }
+  let l = CarLiveries[livery]
+  if l.car >= 0 and l.car != c.model { return false }
+  c.livery = livery
+  c.primary = l.primary
+  c.secondary = l.secondary
+  c.pearl = l.pearl
+  return true
+}
+
+export function car_plate(cars_st: CarsState, nid: int, plate: string) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  c.plate = plate
+  return true
+}
+
+# fit a part (its slot's place; replaces what was there) or take the slot's part off (-1 for a slot)
+export function car_fit(cars_st: CarsState, nid: int, part: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null or part < 0 or part >= CARPT_COUNT { return false }
+  let slot = CarParts[part].slot
+  if slot < 0 or slot >= CAR_SLOTS { return false }
+  c.parts[slot] = part
+  car_stats_into(c.model, c.parts, c.stats)
+  return true
+}
+
+export function car_unfit(cars_st: CarsState, nid: int, slot: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null or slot < 0 or slot >= CAR_SLOTS { return false }
+  c.parts[slot] = -1
+  car_stats_into(c.model, c.parts, c.stats)
+  return true
+}

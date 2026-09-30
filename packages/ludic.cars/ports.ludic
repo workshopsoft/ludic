@@ -1,0 +1,158 @@
+# ports.ludic - what the cars ask the world and where their bodies go. Every port is defaulted: unbound, the
+# world is flat ground with full grip where every car is a planar model in plain sight, nobody is a
+# player, everything is free and there is no body, road or money - a car still drives and its owner's
+# rows still move.
+
+# what a wheel's ray found: how far along it, the surface's normal and its grip (1 tarmac, less for loose
+# ground), and the body it touched (the game's number, -1 none)
+export property CarHit {
+  dist: float = 0.0
+  nx: float = 0.0
+  ny: float = 1.0
+  nz: float = 0.0
+  grip: float = 1.0
+  body: int = -1
+}
+
+# a car's body as the game's physics has it: where its origin is, which way it faces, how fast it goes
+export property CarPose {
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  fx: float = 0.0
+  fy: float = 0.0
+  fz: float = 1.0
+  ux: float = 0.0
+  uy: float = 1.0
+  uz: float = 0.0
+  vx: float = 0.0
+  vy: float = 0.0
+  vz: float = 0.0
+}
+
+# the world a car drives on
+export port CarWorld {
+  cast: fn(float, float, float, float, float, float, float, CarHit) -> bool = fn cr__cast    # (ox, oy, oz, dx, dy, dz, length, hit): a ray down through a wheel's mount
+  ground: fn(float, float) -> float = fn cr__flat                # (x, z): the height of the ground (a planar or lane-following car's)
+  grip: fn(float, float) -> float = fn cr__one                   # (x, z): the surface's grip there, 0..1
+  focus: fn(float, float) -> float = fn cr__near                 # (x, z): the distance to the nearest viewer (level of detail)
+  me: fn() -> int = fn cr__zero_i                                  # this machine's player
+  host: fn() -> int = fn cr__zero_i                                # the party's host
+  is_player: fn(int) -> bool = fn cr__yes1                       # (actor): a person (its cars are never simplified)
+  next_id: fn() -> int = fn cr__next_id                          # an id for a new car, agreed across machines
+  made: fn(int, int) -> void = fn cr__nothing2                   # (nid, model): a new car: draw it
+  gone: fn(int) -> void = fn cr__nothing1                        # (nid): it is taken away
+  spawn_point: fn(float, float, float) -> bool = fn cr__no_spawn # (x, z, radius): somewhere a car can be put near
+  spawn_x: fn() -> float = fn cr__zero
+  spawn_z: fn() -> float = fn cr__zero
+  spawn_yaw: fn() -> float = fn cr__zero
+}
+
+# the body in the game's physics. Unbound, `make` refuses and a car is a planar model. A body's origin is
+# the model's origin, its forward local +z and its up local +y; the game makes a box of the model's
+# dimensions (ground_clear, length, width, height) about it
+export port CarBody {
+  make: fn(int, int, float, float, float, float, float, float, float) -> bool = fn cr__no_body   # (nid, model, x, y, z, yaw, vx, vy, vz)
+  drop: fn(int) -> void = fn cr__nothing1                        # (nid): out of the world
+  read: fn(int, CarPose) -> bool = fn cr__no_read                # (nid, pose): where it is now
+  push: fn(int, float, float, float, float, float, float) -> void = fn cr__no_push    # (nid, fx, fy, fz, px, py, pz): a force at a world point over the next step
+  torque: fn(int, float, float, float) -> void = fn cr__no_torque                      # (nid, tx, ty, tz): a twist over the next step
+  step: fn(float) -> void = fn cr__nothing_f                     # (dt): the game steps its physics (unbound: the game does it itself, once a step)
+}
+
+# a lane to follow: ludic.roads, through the game. aim is asked where a car is; its answer is read back
+export port CarRoad {
+  aim: fn(int, float, float, float, float) -> bool = fn cr__no_aim    # (nid, x, z, yaw, look): the lane point `look` metres ahead
+  tx: fn() -> float = fn cr__zero
+  tz: fn() -> float = fn cr__zero
+  tyaw: fn() -> float = fn cr__zero                               # the lane's heading there
+  limit: fn() -> float = fn cr__zero                              # the limit there, m/s (0: none)
+  ahead: fn(int, float, float, float, float) -> float = fn cr__clear  # (nid, x, z, yaw, look): the distance to what is in the way, negative for nothing
+}
+
+# the people in the seats: the game's walking bodies
+export port CarRider {
+  board: fn(int, int, int, float, float, float, float) -> void = fn cr__nothing_board    # (actor, nid, seat, x, y, z, yaw): the actor sits there
+  alight: fn(int, float, float, float, float) -> void = fn cr__nothing_alight            # (actor, x, y, z, yaw): it stands there
+  safe_spot: fn(int, float, float, float) -> bool = fn cr__safe                          # (actor, x, z, from_y): a spot it can stand on near (x, z)
+  safe_x: fn() -> float = fn cr__safe_x
+  safe_z: fn() -> float = fn cr__safe_z
+  reach: fn(int, float, float, float, float) -> bool = fn cr__yes5                       # (actor, x, y, z, r): the actor is within r of the point
+}
+
+# the animation graph (ludic.anim AnimSets, through the game): parameters set and states asked for by name,
+# the car's own graph by its id and a person's by theirs. The package never plays a clip or moves a bone
+export port CarAnim {
+  car_param: fn(int, string, float) -> void = fn cr__no_param
+  car_request: fn(int, string) -> void = fn cr__no_request
+  rider_param: fn(int, string, float) -> void = fn cr__no_param
+  rider_request: fn(int, string) -> void = fn cr__no_request
+}
+
+# money, for a claim, a fee, a delivery: whatever the game's wallet is
+export port CarBank {
+  can_pay: fn(int, int) -> bool = fn cr__yes_pay      # (pid, amount)
+  pay: fn(int, int) -> bool = fn cr__yes_pay          # (pid, amount): taken, false if it could not be
+  refund: fn(int, int) -> void = fn cr__no_refund     # (pid, amount)
+}
+
+# garage places and the impound, by the game's number for a place (a property's slot, a lot). The package
+# keeps who uses which; the game says where it is and whether it is free
+export port CarPlaces {
+  free: fn(int) -> bool = fn cr__yes1i                # (place): nothing stands in it
+  x: fn(int) -> float = fn cr__zero1
+  y: fn(int) -> float = fn cr__zero1
+  z: fn(int) -> float = fn cr__zero1
+  yaw: fn(int) -> float = fn cr__zero1
+}
+
+function cr__flat(x: float, z: float) -> float { return 0.0 }
+function cr__one(x: float, z: float) -> float { return 1.0 }
+function cr__near(x: float, z: float) -> float { return 0.0 }
+function cr__zero() -> float { return 0.0 }
+function cr__zero1(a: int) -> float { return 0.0 }
+function cr__yes1(a: int) -> bool { return true }
+function cr__yes1i(a: int) -> bool { return true }
+function cr__yes5(a: int, x: float, y: float, z: float, r: float) -> bool { return true }
+function cr__yes_pay(a: int, b: int) -> bool { return true }
+function cr__no_refund(a: int, b: int) -> void { }
+function cr__zero_i() -> int { return 0 }
+function cr__nothing1(a: int) -> void { }
+function cr__nothing2(a: int, b: int) -> void { }
+function cr__nothing_f(dt: float) -> void { }
+function cr__no_spawn(x: float, z: float, r: float) -> bool { return false }
+function cr__no_body(nid: int, model: int, x: float, y: float, z: float, yaw: float, vx: float, vy: float, vz: float) -> bool { return false }
+function cr__no_read(nid: int, p: CarPose) -> bool { return false }
+function cr__no_push(nid: int, fx: float, fy: float, fz: float, px: float, py: float, pz: float) -> void { }
+function cr__no_torque(nid: int, tx: float, ty: float, tz: float) -> void { }
+function cr__no_aim(nid: int, x: float, z: float, yaw: float, look: float) -> bool { return false }
+function cr__clear(nid: int, x: float, z: float, yaw: float, look: float) -> float { return -1.0 }
+function cr__nothing_board(actor: int, nid: int, seat: int, x: float, y: float, z: float, yaw: float) -> void { }
+function cr__nothing_alight(actor: int, x: float, y: float, z: float, yaw: float) -> void { }
+function cr__no_param(id: int, name: string, v: float) -> void { }
+function cr__no_request(id: int, name: string) -> void { }
+function cr__safe(cars_st: mut CarsState, actor: int, x: float, z: float, from_y: float) -> bool {
+  cars_st.cr_sx = x
+  cars_st.cr_sz = z
+  return true
+}
+function cr__safe_x(cars_st: CarsState) -> float { return cars_st.cr_sx }
+function cr__safe_z(cars_st: CarsState) -> float { return cars_st.cr_sz }
+function cr__next_id(cars_st: mut CarsState) -> int {
+  cars_st.cr_ids += 1
+  return cars_st.cr_ids
+}
+# no geometry: a ray down meets the ground at the height the world's ground says
+function cr__cast(ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, len: float, h: CarHit) -> bool {
+  if dy >= -0.0001 { return false }
+  let gy = CarWorld.ground(ox, oz)
+  let t = (gy - oy) / dy
+  if t < 0.0 or t > len { return false }
+  h.dist = t
+  h.nx = 0.0
+  h.ny = 1.0
+  h.nz = 0.0
+  h.grip = CarWorld.grip(ox + dx * t, oz + dz * t)
+  h.body = -1
+  return true
+}

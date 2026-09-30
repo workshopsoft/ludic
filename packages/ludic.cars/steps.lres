@@ -1,0 +1,21 @@
+# steps.lres - a car's door machine: a row a transition. `on` is the action that asks for it, "" for a
+# transition the tick asks (a door that has finished, a driver dragged out). The first row whose guard
+# passes is taken. A Wrecked car moves on only by a repair.
+lock          { from: CarPhase.Free,     to: CarPhase.Locked,   on: "CarLockIn",   guard: fn cr_g_empty,      enter: fn cr_e_locked }
+unlock        { from: CarPhase.Locked,   to: CarPhase.Free,     on: "CarUnlockIn",                            enter: fn cr_e_unlocked }
+board         { from: CarPhase.Free,     to: CarPhase.Entering, on: "CarEnterIn",  guard: fn cr_g_seat_free,  enter: fn cr_e_board }
+board_owner   { from: CarPhase.Locked,   to: CarPhase.Entering, on: "CarEnterIn",  guard: fn cr_g_owner_seat, enter: fn cr_e_board }
+break_in      { from: CarPhase.Locked,   to: CarPhase.Entering, on: "CarJackIn",   guard: fn cr_g_break_in,   enter: fn cr_e_break_in }
+seated        { from: CarPhase.Entering, to: CarPhase.Driven,                      guard: fn cr_g_entered,    enter: fn cr_e_seated }
+jack          { from: CarPhase.Driven,   to: CarPhase.Jacked,   on: "CarJackIn",   guard: fn cr_g_jackable,   enter: fn cr_e_jack }
+escaped       { from: CarPhase.Jacked,   to: CarPhase.Driven,                      guard: fn cr_g_escaped,    enter: fn cr_e_escaped }
+dragged       { from: CarPhase.Jacked,   to: CarPhase.Entering,                    guard: fn cr_g_dragged,    enter: fn cr_e_dragged }
+exit          { from: CarPhase.Driven,   to: CarPhase.Exiting,  on: "CarExitIn",   guard: fn cr_g_can_exit,   enter: fn cr_e_exit }
+left          { from: CarPhase.Exiting,  to: CarPhase.Free,                        guard: fn cr_g_left }
+wreck_free    { from: CarPhase.Free,     to: CarPhase.Wrecked,  on: "CarWreckIn",                            enter: fn cr_e_wreck }
+wreck_locked  { from: CarPhase.Locked,   to: CarPhase.Wrecked,  on: "CarWreckIn",                            enter: fn cr_e_wreck }
+wreck_enter   { from: CarPhase.Entering, to: CarPhase.Wrecked,  on: "CarWreckIn",                            enter: fn cr_e_wreck }
+wreck_driven  { from: CarPhase.Driven,   to: CarPhase.Wrecked,  on: "CarWreckIn",                            enter: fn cr_e_wreck }
+wreck_exit    { from: CarPhase.Exiting,  to: CarPhase.Wrecked,  on: "CarWreckIn",                            enter: fn cr_e_wreck }
+wreck_jacked  { from: CarPhase.Jacked,   to: CarPhase.Wrecked,  on: "CarWreckIn",                            enter: fn cr_e_wreck }
+repair        { from: CarPhase.Wrecked,  to: CarPhase.Free,     on: "CarRepairIn",                           enter: fn cr_e_repair }

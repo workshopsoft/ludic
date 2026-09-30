@@ -1,0 +1,132 @@
+# damage.ludic - body health, the engine, tyres and their facts. The package does not see collisions: the game
+# tells it a blow (from its physics contacts, a bullet, an explosion) and it works out what that costs. A dent
+# is a fact - where on the model, how deep, from which way - for the game to show on the mesh; the package
+# keeps no vertices.
+
+# a blow: `speed` the change of speed it made (m/s), (nx, ny, nz) the direction it pushed the car in, (px, py,
+# pz) where in the world it struck. Below the model's crash_speed it does nothing. Returns the health it took
+export function car_hit(cars_st: mut CarsState, nid: int, speed: float, nx: float, ny: float, nz: float, px: float, py: float, pz: float) -> float {
+  let c = car_by_nid(cars_st, nid)
+  if c == null or c.phase == CarPhase.Wrecked { return 0.0 }
+  let m = CarModels[c.model]
+  let over = speed - m.crash_speed
+  if over <= 0.0 { return 0.0 }
+  let dmg = over * over * 2.0 * (1.0 - c.stats.armour)
+  let rx = c.fy * c.uz - c.fz * c.uy
+  let ry = c.fz * c.ux - c.fx * c.uz
+  let rz = c.fx * c.uy - c.fy * c.ux
+  let dx = px - c.x
+  let dy = py - c.y
+  let dz = pz - c.z
+  let lx = dx * rx + dy * ry + dz * rz
+  let ly = dx * c.ux + dy * c.uy + dz * c.uz
+  let lz = dx * c.fx + dy * c.fy + dz * c.fz
+  cr_hurt(cars_st, c, dmg, lx, ly, lz, nx * rx + ny * ry + nz * rz, nx * c.fx + ny * c.fy + nz * c.fz)
+  return dmg
+}
+
+# damage done straight to a car (a bullet, a fire): `amount` of health, and a tyre if the shot was at one
+export function car_damage(cars_st: mut CarsState, nid: int, amount: float, wheel: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null or c.phase == CarPhase.Wrecked { return false }
+  let a = amount * (1.0 - c.stats.armour)
+  if wheel >= 0 and wheel < c.nwheels { car_pop_tyre(cars_st, nid, wheel) }
+  cr_hurt(cars_st, c, a, 0.0, 0.0, 0.0, 0.0, 0.0)
+  return true
+}
+
+# the cost of a blow at a point of the model (lx right, ly up, lz forward), pushed from (dr, df) in it
+function cr_hurt(cars_st: mut CarsState, c: Car, dmg: float, lx: float, ly: float, lz: float, dr: float, df: float) -> void {
+  let m = CarModels[c.model]
+  if dmg <= 0.0 { return }
+  c.health = c.health - dmg
+  let f = cr_fact(cars_st, CAR_DAMAGE, c)
+  f.v = dmg
+  f.w = Math.max(0.0, c.health)
+  if lx != 0.0 or ly != 0.0 or lz != 0.0 {
+    let d = cr_fact(cars_st, CAR_DEFORM, c)
+    d.x = lx
+    d.y = ly
+    d.z = lz
+    d.v = Math.min(0.6, dmg / Math.max(1.0, c.stats.health) * 1.5 + 0.02)
+    d.w = Math.atan2(dr, df)
+  }
+  # the engine takes a share of a blow to the front, tyres go from hard ones
+  if lz > m.length * 0.2 or (lx == 0.0 and lz == 0.0) { c.engine_hp = Math.max(0.0, c.engine_hp - dmg * 0.45) } else { c.engine_hp = Math.max(0.0, c.engine_hp - dmg * 0.08) }
+  if dmg > 60.0 and (lx != 0.0 or lz != 0.0) {
+    var best = -1
+    var bd = 1000000.0
+    for i in 0 .. c.nwheels {
+      let w = c.wheels[i]
+      if w.popped { continue }
+      let ax = m.axles[w.axle]
+      var sx = 0.0
+      if ax.track > 0.0 {
+        if w.side == 0 { sx = -ax.track } else { sx = ax.track }
+      }
+      let d2 = (sx - lx) * (sx - lx) + (ax.z - lz) * (ax.z - lz)
+      if d2 < bd {
+        bd = d2
+        best = i
+      }
+    }
+    if best >= 0 and rng_float(cars_st.cr_dice) < Math.min(0.85, dmg / 500.0) { car_pop_tyre(cars_st, c.nid, best) }
+  }
+  if c.health <= 0.0 { dispatch CarWreckIn { who: c.ent } }
+}
+
+# a tyre shot or blown out: it grips a third as well and drags
+export function car_pop_tyre(cars_st: mut CarsState, nid: int, wheel: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null or wheel < 0 or wheel >= c.nwheels or c.wheels[wheel].popped { return false }
+  c.wheels[wheel].popped = true
+  let f = cr_fact(cars_st, CAR_TYRE_POP, c)
+  f.v = float(wheel)
+  return true
+}
+
+# mended: health, engine and tyres (a wrecked car goes through the machine's repair)
+export function car_repair(cars_st: mut CarsState, nid: int) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  for i in 0 .. c.nwheels { c.wheels[i].popped = false }
+  if c.phase == CarPhase.Wrecked {
+    dispatch CarRepairIn { who: c.ent }
+    return true
+  }
+  c.health = c.stats.health
+  c.engine_hp = CarModels[c.model].engine_health
+  c.smoke = 0
+  cr_fact(cars_st, CAR_REPAIRED, c)
+  return true
+}
+
+# fuel: litres into the tank (up to the model's)
+export function car_refuel(cars_st: CarsState, nid: int, litres: float) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  let m = CarModels[c.model]
+  if m.tank <= 0.0 { return false }
+  c.fuel = Math.min(m.tank, c.fuel + litres)
+  if c.fuel > 0.0 { c.fuel_out = false }
+  return true
+}
+
+export function car_tyres_popped(c: Car) -> int {
+  var n = 0
+  for i in 0 .. c.nwheels { if c.wheels[i].popped { n += 1 } }
+  return n
+}
+
+# the smoke the engine's health gives: 0 none, 1 light, 2 heavy, 3 afire; a fact when it changes
+function cr_smoke_run(cars_st: mut CarsState, c: Car) -> void {
+  let m = CarModels[c.model]
+  let f = c.engine_hp / Math.max(1.0, m.engine_health)
+  var level = 0
+  if c.phase == CarPhase.Wrecked { level = 3 } else if f <= 0.0 { level = 3 } else if f < 0.25 { level = 2 } else if f < 0.5 { level = 1 }
+  if level != c.smoke {
+    c.smoke = level
+    let e = cr_fact(cars_st, CAR_SMOKE, c)
+    e.v = float(level)
+  }
+}

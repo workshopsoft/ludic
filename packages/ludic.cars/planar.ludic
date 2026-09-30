@@ -1,0 +1,208 @@
+# planar.ludic - the same drivetrain and tyres with no body: a single-track model on the ground. The wheels of
+# an end are one tyre carrying the end's share of the weight (with the load shifting under acceleration), so
+# a car far from anyone drives as it does near them, for a fraction of the cost, and a car with no physics
+# body at all (the port unbound) still drives. Forward and right are the body's axes; a turn to the left is
+# a positive yaw rate.
+
+# the mean z of the axles of an end, and how many wheels it has (scratch [0], [1]; driven wheels [2], [3])
+function cr_end(cars_st: mut CarsState, c: Car, front: bool, at: int) -> void {
+  let m = CarModels[c.model]
+  var z = 0.0
+  var n = 0
+  var na = 0
+  for a in 0 .. len(m.axles) {
+    if car_axle_front(c.model, a) != front { continue }
+    z += m.axles[a].z
+    na += 1
+    n += car_axle_wheels(c.model, a)
+  }
+  if na == 0 {
+    cars_st.cr_tmp[at] = 0.0
+    cars_st.cr_tmp[at + 1] = 0.0
+    return
+  }
+  cars_st.cr_tmp[at] = z / float(na)
+  cars_st.cr_tmp[at + 1] = float(n)
+}
+
+# the first axle of an end (its tyre and radius stand for the end), -1 when there is none
+function cr_end_axle(c: Car, front: bool) -> int {
+  let m = CarModels[c.model]
+  for a in 0 .. len(m.axles) {
+    if car_axle_front(c.model, a) == front { return a }
+  }
+  return -1
+}
+
+# one end's tyre: its force on the body in body axes into the scratch (x: [20] forward, [21] right) and the
+# yaw torque share into [22], for `n` wheels, each carrying `load`
+function cr_end_force(cars_st: mut CarsState, c: Car, front: bool, n: int, load: float, vx: float, vr_end: float, dt: float, mw: float) -> void {
+  let m = CarModels[c.model]
+  let ai = cr_end_axle(c, front)
+  if ai < 0 or n == 0 {
+    cars_st.cr_tmp[20] = 0.0
+    cars_st.cr_tmp[21] = 0.0
+    return
+  }
+  let ax = m.axles[ai]
+  let w = c.wheels[car_wheel_first(c.model, ai)]
+  var td = c.tq_rear
+  if front { td = c.tq_front }
+  if not car_axle_driven(c.model, ai) { td = 0.0 }
+  var fb = c.brake_rear
+  if front { fb = c.brake_front }
+  if ax.handbrake { fb = fb + c.brake_hand }
+  var iref = c.iref_rear
+  if front { iref = c.iref_front }
+  if not car_axle_driven(c.model, ai) { iref = 0.0 }
+  let d = c.steer_angle * ax.steer
+  let cs = Math.cos(d)
+  let sn = Math.sin(d)
+  let vlong = vx * cs + vr_end * sn
+  let vlat = -vx * sn + vr_end * cs
+  cr_tyre(cars_st, c, w, ax, CarTyres[ax.tyre], load, CarWorld.grip(c.x, c.z), vlong, vlat, td, fb, iref, dt, mw, cr_lat_mult(c, front))
+  let t = cars_st.cr_tmp
+  let fx = t[0] * float(n)
+  let fy = t[1] * float(n)
+  w.spin = t[2]
+  w.slip_r = t[3]
+  w.slip_a = t[4]
+  w.fx = t[0]
+  w.fy = t[1]
+  w.load = load
+  w.steer = d
+  t[20] = fx * cs - fy * sn
+  t[21] = fx * sn + fy * cs
+}
+
+function cr_planar_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  let m = CarModels[c.model]
+  let s = c.stats
+  cr_assists(cars_st, c)
+  cr_steer_step(c, dt)
+  let rd = car_driven_radius(c.model)
+  let t = cars_st.cr_tmp
+  cr_end(cars_st, c, true, 10)
+  cr_end(cars_st, c, false, 12)
+  let zf = t[10]
+  let nf = int(t[11])
+  let zr = t[12]
+  let nr = int(t[13])
+  var l = zf - zr
+  if nf == 0 or nr == 0 { l = Math.max(0.5, m.length * 0.6) }
+  l = Math.max(l, 0.5)
+  var a = zf - m.com_z
+  var b = m.com_z - zr
+  if nf == 0 or nr == 0 {
+    a = l * 0.5
+    b = l * 0.5
+  }
+  # the drivetrain reads the wheels' spin (the representative wheel of each end)
+  var sf = 0.0
+  var sr = 0.0
+  let af = cr_end_axle(c, true)
+  let ar = cr_end_axle(c, false)
+  if af >= 0 { sf = c.wheels[car_wheel_first(c.model, af)].spin }
+  if ar >= 0 { sr = c.wheels[car_wheel_first(c.model, ar)].spin }
+  cr_powertrain(cars_st, c, dt, sf, sr)
+  # the weight on each end, with the load a push forward moves to the rear, and the downforce
+  let g = cars_config(cars_st).gravity
+  let weight = s.mass * g
+  var h = m.com_y
+  if h <= 0.0 { h = car_body_centre(c.model) }
+  let df = m.downforce * c.speed * c.speed
+  var load_f = weight * b / l + df * m.down_front - s.mass * c.acc * h / l
+  var load_r = weight * a / l + df * (1.0 - m.down_front) + s.mass * c.acc * h / l
+  load_f = Math.max(load_f, weight * 0.05)
+  load_r = Math.max(load_r, weight * 0.05)
+  let vx = c.speed
+  let vr = c.side_speed
+  let w_yaw = c.yaw_rate
+  let mw = s.mass / float(Math.max(1, c.nwheels))
+  var fxb = 0.0
+  var frb = 0.0
+  var mz = 0.0
+  if nf > 0 {
+    cr_end_force(cars_st, c, true, nf, load_f / float(nf), vx, vr - w_yaw * a, dt, mw)
+    fxb += t[20]
+    frb += t[21]
+    mz += -a * t[21]
+  }
+  if nr > 0 {
+    cr_end_force(cars_st, c, false, nr, load_r / float(nr), vx, vr + w_yaw * b, dt, mw)
+    fxb += t[20]
+    frb += t[21]
+    mz += b * t[21]
+  }
+  # the air, the slope under it, and the assists' yaw
+  let vl = Math.sqrt(vx * vx + vr * vr)
+  fxb += -m.drag * s.drag * vl * vx
+  frb += -m.drag * s.drag * vl * vr
+  fxb += -s.mass * g * c.fy
+  let iyaw = Math.max(1.0, s.mass * (m.length * m.length + m.width * m.width) / 12.0 * m.yaw_inertia)
+  mz += cr_yaw_assist(c)
+  let nvx = vx + (fxb / s.mass - w_yaw * vr) * dt
+  let nvr = vr + (frb / s.mass + w_yaw * vx) * dt
+  let nw = w_yaw + mz / iyaw * dt
+  c.acc = (nvx - vx) / dt
+  # the wheels of each end turn as the representative does
+  for i in 0 .. c.nwheels {
+    let wh = c.wheels[i]
+    let front = car_axle_front(c.model, wh.axle)
+    let rep = cr_end_axle(c, front)
+    if rep >= 0 {
+      let src = c.wheels[car_wheel_first(c.model, rep)]
+      wh.spin = src.spin
+      wh.slip_r = src.slip_r
+      wh.slip_a = src.slip_a
+      wh.fx = src.fx
+      wh.fy = src.fy
+      wh.load = src.load
+    }
+    wh.steer = c.steer_angle * m.axles[wh.axle].steer
+    wh.roll += wh.spin * dt
+    wh.contact = true
+    wh.ext = m.axles[wh.axle].travel * 0.65
+  }
+  # where it goes: the body axes turned to the world, then the ground under it
+  let ox = c.x
+  let oy = c.y
+  let oz = c.z
+  let yaw = c.yaw + nw * dt
+  let sy = Math.sin(yaw)
+  let cyw = Math.cos(yaw)
+  let wvx = nvx * sy - nvr * cyw
+  let wvz = nvx * cyw + nvr * sy
+  c.x = ox + wvx * dt
+  c.z = oz + wvz * dt
+  c.yaw = yaw
+  let gf = CarWorld.ground(c.x + sy * zf, c.z + cyw * zf)
+  let gr = CarWorld.ground(c.x + sy * zr, c.z + cyw * zr)
+  let rest = car_rest_height(c.model, s)
+  c.y = (gf + gr) * 0.5 + rest
+  let pitch = Math.atan2(gf - gr, l)
+  let cp = Math.cos(pitch)
+  let sp = Math.sin(pitch)
+  c.fx = sy * cp
+  c.fy = sp
+  c.fz = cyw * cp
+  # up: right x forward, right being horizontal
+  let rx = -cyw
+  let rz = sy
+  c.ux = -rz * c.fy
+  c.uy = rz * c.fx - rx * c.fz
+  c.uz = rx * c.fy
+  c.vx = wvx
+  c.vz = wvz
+  c.vy = (c.y - oy) / dt
+  c.speed = nvx
+  c.side_speed = nvr
+  c.yaw_rate = nw
+  c.lean = 0.0
+  c.wx = 0.0
+  c.wy = nw
+  c.wz = 0.0
+  c.airborne = false
+  c.odometer += Math.abs(nvx) * dt
+  cr_skid_run(cars_st, c, dt)
+}

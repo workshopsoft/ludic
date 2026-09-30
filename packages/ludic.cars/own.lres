@@ -1,0 +1,17 @@
+# own.lres - an owned car's status machine: a row a transition. `on` is the action that asks for it, "" for one
+# the tick asks (a delivery that has arrived, a claim that has been settled).
+retrieve    { from: CarStatus.Garaged,   to: CarStatus.Out,        on: "CarRetrieveIn", guard: fn cr_og_slot,      enter: fn cr_oe_retrieve }
+call        { from: CarStatus.Garaged,   to: CarStatus.Delivering, on: "CarCallIn",     guard: fn cr_og_slot,      enter: fn cr_oe_call }
+delivered   { from: CarStatus.Delivering, to: CarStatus.Out,                            guard: fn cr_og_delivered, enter: fn cr_oe_delivered }
+store       { from: CarStatus.Out,       to: CarStatus.Garaged,    on: "CarStoreIn",    guard: fn cr_og_slot,      enter: fn cr_oe_store }
+destroyed   { from: CarStatus.Out,       to: CarStatus.Destroyed,  on: "CarDestroyedIn",                           enter: fn cr_oe_destroyed }
+claim       { from: CarStatus.Destroyed, to: CarStatus.Claiming,   on: "CarClaimIn",    guard: fn cr_og_claim,     enter: fn cr_oe_claim }
+settled     { from: CarStatus.Claiming,  to: CarStatus.Garaged,                         guard: fn cr_og_settled,   enter: fn cr_oe_settled }
+impound     { from: CarStatus.Out,       to: CarStatus.Impounded,  on: "CarImpoundIn",                             enter: fn cr_oe_impound }
+release     { from: CarStatus.Impounded, to: CarStatus.Out,        on: "CarReleaseIn",  guard: fn cr_og_release,   enter: fn cr_oe_release }
+# a load puts a saved row back in the status it was in
+restore_delivering { from: CarStatus.Garaged, to: CarStatus.Delivering, on: "CarRestoreIn", guard: fn cr_og_restore1, enter: fn cr_oe_restored }
+restore_out        { from: CarStatus.Garaged, to: CarStatus.Out,        on: "CarRestoreIn", guard: fn cr_og_restore2, enter: fn cr_oe_restored }
+restore_destroyed  { from: CarStatus.Garaged, to: CarStatus.Destroyed,  on: "CarRestoreIn", guard: fn cr_og_restore3, enter: fn cr_oe_restored }
+restore_claiming   { from: CarStatus.Garaged, to: CarStatus.Claiming,   on: "CarRestoreIn", guard: fn cr_og_restore4, enter: fn cr_oe_restored }
+restore_impounded  { from: CarStatus.Garaged, to: CarStatus.Impounded,  on: "CarRestoreIn", guard: fn cr_og_restore5, enter: fn cr_oe_restored }

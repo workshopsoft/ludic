@@ -1,0 +1,168 @@
+# system.ludic - cars as a system: PH_SIMULATE, and their own save section. What is saved is what a player
+# owns - their cars' models (by key), status, paint, parts, damage and fuel, where an out car stood - and the
+# garage slots and the counters. Live cars the game made itself (traffic) are not saved: the world makes them again.
+
+let CR_PKEYS: []string = ["engine", "brakes", "transmission", "suspension", "turbo", "armour", "tyres"]
+
+@alloc_ok("a new game or a load: the tables made again")
+export function cars_reset(cars_st: mut CarsState) -> void {
+  let tb = cars_st.cr_cars
+  for i in 0 .. tb_len(tb) {
+    let c = tb_rec(tb, i)
+    if c.body { CarBody.drop(c.nid) }
+    c.body = false
+    CarWorld.gone(c.nid)
+    c.ent = -1
+  }
+  cars_st.cr_cars = cr_cars__new()
+  cars_st.cr_nids = imap_new()
+  cars_st.cr_owned = cr_owned__new()
+  cars_st.cr_oids = imap_new()
+  cars_st.cr_slot_owner = new []int
+  cars_st.cr_slot_place = new []int
+  rng_seed(cars_st.cr_dice, 1)
+  cars_st.cr_time = 0.0
+  cars_st.cr_acc = 0.0
+  cars_st.cr_oid_next = 1
+  cars_st.cr_net_have = false
+  cars_st.cr_net_off = 0.0
+  cars_st.cr_net_clock = 0.0
+  q_clear(cars_facts(cars_st))
+}
+
+export function cars_seed(cars_st: mut CarsState, seed: int) -> void { rng_seed(cars_st.cr_dice, seed) }
+
+@alloc_ok("a save: a tree written from the state")
+export function cars_save(cars_st: CarsState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "dice", cars_st.cr_dice.s)
+  sv_put_int(v, "oid", cars_st.cr_oid_next)
+  let slots = Value.list()
+  for i in 0 .. len(cars_st.cr_slot_place) {
+    if cars_st.cr_slot_place[i] < 0 { continue }
+    let o = Value.object()
+    sv_put_int(o, "owner", cars_st.cr_slot_owner[i])
+    sv_put_int(o, "place", cars_st.cr_slot_place[i])
+    Value.add(slots, o)
+  }
+  Value.put(v, "slots", slots)
+  let l = Value.list()
+  let tb = cars_st.cr_owned
+  for i in 0 .. tb_len(tb) {
+    let r = tb_rec(tb, i)
+    let o = Value.object()
+    sv_put_int(o, "oid", r.oid)
+    sv_put_int(o, "owner", r.owner)
+    sv_put_str(o, "model", CarModels[r.model].key)
+    sv_put_int(o, "status", int(r.status))
+    sv_put_int(o, "slot", r.slot)
+    sv_put_int(o, "primary", r.primary)
+    sv_put_int(o, "secondary", r.secondary)
+    sv_put_int(o, "pearl", r.pearl)
+    if r.livery >= 0 { sv_put_str(o, "livery", CarLiveries[r.livery].key) }
+    sv_put_str(o, "plate", r.plate)
+    sv_put_bool(o, "insured", r.insured)
+    sv_put_int(o, "claims", r.claims)
+    sv_put_float(o, "timer", r.timer)
+    sv_put_float(o, "health", r.health)
+    sv_put_float(o, "fuel", r.fuel)
+    var x = r.dx
+    var z = r.dz
+    var yaw = r.dyaw
+    var health = r.health
+    var fuel = r.fuel
+    let c = car_by_nid(cars_st, r.nid)
+    if c != null {
+      x = c.x
+      z = c.z
+      yaw = c.yaw
+      health = c.health
+      fuel = c.fuel
+      sv_put_float(o, "health", health)
+      sv_put_float(o, "fuel", fuel)
+      sv_put_str(o, "plate", c.plate)
+      sv_put_int(o, "primary", c.primary)
+      sv_put_int(o, "secondary", c.secondary)
+      sv_put_int(o, "pearl", c.pearl)
+    }
+    sv_put_float(o, "x", x)
+    sv_put_float(o, "z", z)
+    sv_put_float(o, "yaw", yaw)
+    let ps = Value.object()
+    for k in 0 .. CAR_SLOTS {
+      let src = r.parts
+      var p = src[k]
+      if c != null { p = c.parts[k] }
+      if p >= 0 { sv_put_str(ps, CR_PKEYS[k], CarParts[p].key) }
+    }
+    Value.put(o, "parts", ps)
+    Value.add(l, o)
+  }
+  Value.put(v, "owned", l)
+  return v
+}
+
+@alloc_ok("a load: rows read back")
+export function cars_load(cars_st: mut CarsState, v: Val, version: int) -> void {
+  cars_reset(cars_st)
+  cars_st.cr_dice.s = sv_int(v, "dice", cars_st.cr_dice.s)
+  cars_st.cr_oid_next = sv_int(v, "oid", 1)
+  if Value.has(v, "slots") != 0 {
+    let sl = Value.get(v, "slots")
+    for i in 0 .. Value.count(sl) {
+      let o = Value.at(sl, i)
+      push(cars_st.cr_slot_owner, sv_int(o, "owner", -1))
+      push(cars_st.cr_slot_place, sv_int(o, "place", -1))
+    }
+  }
+  if Value.has(v, "owned") == 0 { return }
+  let l = Value.get(v, "owned")
+  for i in 0 .. Value.count(l) {
+    let s = Value.at(l, i)
+    let model = carmodels_find(sv_str(s, "model", ""))
+    if model < 0 { continue }
+    let o = new OwnedCar
+    o.oid = sv_int(s, "oid", 0)
+    o.owner = sv_int(s, "owner", 0)
+    o.model = model
+    o.slot = sv_int(s, "slot", -1)
+    o.primary = sv_int(s, "primary", 0xc8c8c8)
+    o.secondary = sv_int(s, "secondary", 0x202020)
+    o.pearl = sv_int(s, "pearl", 0xffffff)
+    o.livery = carliveries_find(sv_str(s, "livery", ""))
+    o.plate = sv_str(s, "plate", "")
+    o.insured = sv_bool(s, "insured", false)
+    o.claims = sv_int(s, "claims", 0)
+    o.timer = sv_float(s, "timer", 0.0)
+    o.health = sv_float(s, "health", -1.0)
+    o.fuel = sv_float(s, "fuel", -1.0)
+    o.dx = sv_float(s, "x", 0.0)
+    o.dz = sv_float(s, "z", 0.0)
+    o.dyaw = sv_float(s, "yaw", 0.0)
+    o.parts = car_no_parts()
+    if Value.has(s, "parts") != 0 {
+      let ps = Value.get(s, "parts")
+      for k in 0 .. CAR_SLOTS {
+        let pk = sv_str(ps, CR_PKEYS[k], "")
+        if pk != "" { o.parts[k] = carparts_find(pk) }
+      }
+    }
+    # a row is made in its saved status: the machine's field is set by the row's own `new`, never by an assignment
+    let h = tb_add(cars_st.cr_owned, o)
+    imap_put(cars_st.cr_oids, o.oid, h)
+    let st = sv_int(s, "status", 0)
+    if st > 0 and st <= 5 { dispatch CarRestoreIn { who: h, status: st } }
+  }
+  if cars_st.cr_oid_next < 1 { cars_st.cr_oid_next = 1 }
+  drain_actions()
+}
+
+export function cars_system() -> System {
+  let s = system_new("cars", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn cars_reset
+  s.tick = fn cars_tick
+  s.save = fn cars_save
+  s.load = fn cars_load
+  return s
+}

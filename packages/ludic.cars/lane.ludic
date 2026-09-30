@@ -1,0 +1,176 @@
+# lane.ludic - a car that follows a lane: the road is asked (CarRoad.aim) for the point a little ahead, and
+# the speed it may go (the limit, the corner, what is in the way). The plan is one answer for every level of
+# detail: a body or planar car is steered and pedalled by it through the same inputs a person uses, and a
+# car far away is moved along the line with no forces at all (the kinematic level).
+
+# the most a car can accelerate at a speed: the tyres' grip, or the engine's power at the wheels
+function cr_max_accel(c: Car, v: float) -> float {
+  let m = CarModels[c.model]
+  let s = c.stats
+  let ai = Math.max(0, cr_end_axle(c, true))
+  var mu = 1.0
+  if m.axles != null and len(m.axles) > 0 { mu = CarTyres[m.axles[ai].tyre].mu * s.grip }
+  let by_grip = mu * 9.81 * 0.85
+  let by_power = car_power(c.model, s) * m.efficiency * 0.8 / (s.mass * Math.max(v, 4.0))
+  return Math.min(by_grip, by_power)
+}
+
+function cr_max_brake(c: Car) -> float {
+  let m = CarModels[c.model]
+  let s = c.stats
+  return Math.min(m.brakes * s.brakes / s.mass, 9.0)
+}
+
+# the plan from where the car is: the speed it wants into cr_tmp[30], the curvature it needs (right
+# positive) into [31]; false when there is no lane
+function cr_ai_plan(cars_st: mut CarsState, c: Car) -> bool {
+  let m = CarModels[c.model]
+  let t = cars_st.cr_tmp
+  let look = Math.max(6.0, Math.abs(c.speed) * 0.9)
+  if not CarRoad.aim(c.nid, c.x, c.z, c.yaw, look) {
+    t[30] = 0.0
+    t[31] = 0.0
+    return false
+  }
+  let dx = CarRoad.tx() - c.x
+  let dz = CarRoad.tz() - c.z
+  let hx = Math.sin(c.yaw)
+  let hz = Math.cos(c.yaw)
+  let fwd = dx * hx + dz * hz
+  let right = dx * (-hz) + dz * hx
+  let ld = Math.max(1.0, Math.sqrt(dx * dx + dz * dz))
+  let alpha = Math.atan2(right, fwd)
+  let curv = 2.0 * Math.sin(alpha) / ld
+  t[31] = curv
+  var limit = CarRoad.limit()
+  if limit <= 0.0 { limit = 13.0 }
+  var want = limit * c.ai_pace
+  let ac = Math.abs(curv)
+  if ac > 0.002 { want = Math.min(want, Math.sqrt(5.5 / ac)) }
+  if m.top_speed > 0.0 { want = Math.min(want, c.stats.top_speed) }
+  let gap = CarRoad.ahead(c.nid, c.x, c.z, c.yaw, 12.0 + Math.abs(c.speed) * 1.5)
+  if gap >= 0.0 { want = Math.min(want, Math.max(0.0, (gap - 5.0) * 0.8)) }
+  t[30] = want
+  c.ai_speed = want
+  return true
+}
+
+# a body or planar car driven by the plan: the stick and the pedals a person would use
+function cr_ai_drive(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  let m = CarModels[c.model]
+  if not cr_ai_plan(cars_st, c) {
+    c.in_throttle = 0.0
+    c.in_brake = 0.4
+    c.in_steer = 0.0
+    return
+  }
+  let t = cars_st.cr_tmp
+  let l = Math.max(0.5, car_wheelbase(c.model))
+  let need = Math.atan2(l * t[31], 1.0)
+  let lock = m.steer_lock * 0.017453292
+  var share = 1.0
+  if m.steer_curve != null and len(m.steer_curve) > 1 { share = Math.max(0.1, car_curve(m.steer_curve, Math.abs(c.speed))) }
+  c.in_steer = Math.clamp(need / (lock * share), -1.0, 1.0)
+  let err = t[30] - c.speed
+  c.in_throttle = Math.clamp(err * 0.5, 0.0, 1.0)
+  c.in_brake = Math.clamp(-err * 0.4, 0.0, 1.0)
+  if t[30] <= 0.01 and Math.abs(c.speed) < 0.5 { c.in_hand = 1.0 } else { c.in_hand = 0.0 }
+}
+
+# the ground under the car's two ends: its height, pitch and the basis that goes with its yaw
+function cr_ground_basis(c: Car, zf: float, zr: float) -> void {
+  let sy = Math.sin(c.yaw)
+  let cyw = Math.cos(c.yaw)
+  let gf = CarWorld.ground(c.x + sy * zf, c.z + cyw * zf)
+  let gr = CarWorld.ground(c.x + sy * zr, c.z + cyw * zr)
+  var l = zf - zr
+  if l < 0.5 { l = 0.5 }
+  c.y = (gf + gr) * 0.5 + car_rest_height(c.model, c.stats)
+  let pitch = Math.atan2(gf - gr, l)
+  let cp = Math.cos(pitch)
+  c.fx = sy * cp
+  c.fy = Math.sin(pitch)
+  c.fz = cyw * cp
+  let rx = -cyw
+  let rz = sy
+  c.ux = -rz * c.fy
+  c.uy = rz * c.fx - rx * c.fz
+  c.uz = rx * c.fy
+}
+
+# the lowest gear that keeps the engine under 80% of its redline at this speed (what a far car's gauge reads)
+function cr_gear_for(c: Car) -> int {
+  let n = car_gear_count(c.model)
+  if n == 0 { return 1 }
+  let m = CarModels[c.model]
+  let w = Math.abs(c.speed) / Math.max(0.05, car_driven_radius(c.model))
+  for g in 1 .. n + 1 {
+    if w * 9.5492966 * car_ratio(c.model, c.stats, g) < m.redline * 0.8 { return g }
+  }
+  return n
+}
+
+# the lane follower: no forces. The speed moves to the plan's within what the car can do; the heading follows
+# the curvature the lane needs, bounded by what the steering can turn
+function cr_lane_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  let m = CarModels[c.model]
+  cr_assists(cars_st, c)
+  let moving = cr_ai_plan(cars_st, c)
+  let t = cars_st.cr_tmp
+  var want = 0.0
+  if moving and c.engine_on and (c.phase == CarPhase.Driven or c.ai) { want = t[30] }
+  let up = cr_max_accel(c, Math.abs(c.speed)) * dt
+  let down = cr_max_brake(c) * dt
+  var d = want - c.speed
+  if d > up { d = up } else if d < -down { d = -down }
+  c.speed = c.speed + d
+  if c.speed < 0.0 { c.speed = 0.0 }
+  let l = Math.max(0.5, car_wheelbase(c.model))
+  let lock = m.steer_lock * 0.017453292
+  let kmax = Math.tan(lock) / l
+  let curv = Math.clamp(t[31], -kmax, kmax)
+  if moving {
+    c.yaw = c.yaw - c.speed * curv * dt
+    c.steer_angle = Math.atan2(l * curv, 1.0)
+  } else {
+    c.steer_angle = 0.0
+  }
+  let ox = c.x
+  let oy = c.y
+  let oz = c.z
+  c.x = c.x + Math.sin(c.yaw) * c.speed * dt
+  c.z = c.z + Math.cos(c.yaw) * c.speed * dt
+  var zf = l * 0.5
+  var zr = -l * 0.5
+  let af = cr_end_axle(c, true)
+  let ar = cr_end_axle(c, false)
+  if af >= 0 and ar >= 0 {
+    zf = m.axles[af].z
+    zr = m.axles[ar].z
+  }
+  cr_ground_basis(c, zf, zr)
+  c.vx = (c.x - ox) / dt
+  c.vy = (c.y - oy) / dt
+  c.vz = (c.z - oz) / dt
+  c.side_speed = 0.0
+  c.yaw_rate = -c.speed * curv
+  c.acc = d / dt
+  c.odometer += c.speed * dt
+  c.airborne = false
+  let rd = car_driven_radius(c.model)
+  for i in 0 .. c.nwheels {
+    let wh = c.wheels[i]
+    wh.spin = c.speed / Math.max(0.05, m.axles[wh.axle].radius)
+    wh.roll += wh.spin * dt
+    wh.steer = c.steer_angle * m.axles[wh.axle].steer
+    wh.contact = true
+    wh.slip_r = 0.0
+    wh.slip_a = 0.0
+    wh.ext = m.axles[wh.axle].travel * 0.65
+  }
+  if c.engine_on {
+    c.gear = cr_gear_for(c)
+    let rpm_t = c.speed / Math.max(0.05, rd) * 9.5492966 * car_ratio(c.model, c.stats, c.gear)
+    c.rpm = Math.max(m.idle, Math.min(m.redline, rpm_t))
+  } else { c.rpm = 0.0 }
+}

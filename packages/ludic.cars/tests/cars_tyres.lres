@@ -1,0 +1,11 @@
+# cars_tyres.lres - compounds: a road tyre, a slick that grips more on tarmac and far less off it
+road {
+  mu: 1.1, load_ref: 4000.0, load_sens: 0.12, surface_sens: 0.8, rolling: 0.012
+  lon: [{ x: 0.0, y: 0.0 }, { x: 0.12, y: 1.0 }, { x: 0.4, y: 0.85 }, { x: 1.0, y: 0.7 }]
+  lat: [{ x: 0.0, y: 0.0 }, { x: 8.0, y: 1.0 }, { x: 20.0, y: 0.85 }, { x: 40.0, y: 0.7 }]
+}
+slick {
+  mu: 1.6, load_ref: 5000.0, load_sens: 0.1, surface_sens: 1.0, rolling: 0.01
+  lon: [{ x: 0.0, y: 0.0 }, { x: 0.1, y: 1.0 }, { x: 0.4, y: 0.8 }, { x: 1.0, y: 0.6 }]
+  lat: [{ x: 0.0, y: 0.0 }, { x: 6.0, y: 1.0 }, { x: 15.0, y: 0.8 }, { x: 40.0, y: 0.6 }]
+}

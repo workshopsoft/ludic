@@ -1,0 +1,6 @@
+# cars_sockets.lres - named places in the models: a door and a wheel of the sedan
+door_left  { car: CARM_SEDAN, kind: CAR_SOCK_DOOR, index: 0, node: "door_l", x: -0.92, y: 0.6, z: 0.25 }
+door_right { car: CARM_SEDAN, kind: CAR_SOCK_DOOR, index: 1, node: "door_r", x: 0.92, y: 0.6, z: 0.25 }
+door_rear  { car: CARM_SEDAN, kind: CAR_SOCK_DOOR, index: 2, node: "door_rr", x: 0.92, y: 0.6, z: -0.7 }
+wheel_fl   { car: CARM_SEDAN, kind: CAR_SOCK_WHEEL, index: 0, node: "wheel_fl" }
+wheel_fr   { car: CARM_SEDAN, kind: CAR_SOCK_WHEEL, index: 1, node: "wheel_fr" }

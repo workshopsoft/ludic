@@ -1,0 +1,145 @@
+# sim.ludic - the steps and the levels of detail. A car is simulated as a body near a viewer (the game's
+# physics, raycast wheels), as a planar model further out, and as a lane follower far away; a person's car is
+# always the best it can be. The switch has a margin so a car on the line does not flip; the body is made at
+# the pose the planar model left it in and let go when the car leaves. All of it on a fixed step.
+
+function cr_driver_is_player(c: Car) -> bool {
+  let d = cr_driver_of(c)
+  return d >= 0 and CarWorld.is_player(d)
+}
+
+# the level a car should be at, from where it is
+function cr_lod_want(cars_st: CarsState, c: Car) -> int {
+  let cfg = cars_config(cars_st)
+  if c.auth != CarWorld.me() { return CAR_SIM_REMOTE }
+  if cr_driver_is_player(c) or c.phase == CarPhase.Entering or c.phase == CarPhase.Jacked or c.phase == CarPhase.Exiting { return CAR_SIM_BODY }
+  let d = CarWorld.focus(c.x, c.z)
+  var near = cfg.body_dist
+  var mid = cfg.planar_dist
+  if c.sim == CAR_SIM_BODY { near = near + cfg.lod_margin }
+  if c.sim == CAR_SIM_BODY or c.sim == CAR_SIM_PLANAR { mid = mid + cfg.lod_margin }
+  if d < near { return CAR_SIM_BODY }
+  if d < mid { return CAR_SIM_PLANAR }
+  return CAR_SIM_LANE
+}
+
+function cr_go_sim(cars_st: mut CarsState, c: Car, to: int) -> void {
+  let from = c.sim
+  if from == to { return }
+  var level = to
+  if to == CAR_SIM_BODY {
+    let r = Math.sqrt(c.vx * c.vx + c.vz * c.vz)
+    if CarBody.make(c.nid, c.model, c.x, c.y, c.z, c.yaw, c.vx, c.vy, c.vz) {
+      c.body = true
+      c.have_prev = false
+      c.lod_t = 0.0
+      for i in 0 .. c.nwheels { c.wheels[i].ext = CarModels[c.model].axles[c.wheels[i].axle].travel * 0.65 }
+    } else {
+      # no physics to make a body in: a planar car stays one, for a while before it asks again
+      c.body = false
+      level = CAR_SIM_PLANAR
+      c.lod_t = 2.0
+    }
+  } else if from == CAR_SIM_BODY {
+    CarBody.drop(c.nid)
+    c.body = false
+  }
+  if from == CAR_SIM_REMOTE { c.have_prev = false }
+  if level == from { return }
+  c.sim = level
+  let f = cr_fact(cars_st, CAR_LOD, c)
+  f.v = float(level)
+}
+
+function cr_lod_run(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  c.lod_t = c.lod_t - dt
+  let want = cr_lod_want(cars_st, c)
+  if want == c.sim { return }
+  if want == CAR_SIM_BODY and c.lod_t > 0.0 { return }
+  cr_go_sim(cars_st, c, want)
+}
+
+# the pedals, lights and what a far car's gauge reads, as they follow from the car's state
+function cr_upkeep(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  if c.ai and c.engine_on == false and c.phase == CarPhase.Driven { }
+  var lights = c.lights & ~(CAR_LIGHT_BRAKE | CAR_LIGHT_REVERSE)
+  if c.braking > 0.1 { lights = lights | CAR_LIGHT_BRAKE }
+  if c.gear < 0 and c.engine_on { lights = lights | CAR_LIGHT_REVERSE }
+  c.lights = lights
+  if c.in_horn != c.horn and c.sim != CAR_SIM_REMOTE { car_horn(cars_st, c.nid, c.in_horn) }
+  cr_smoke_run(cars_st, c)
+}
+
+# what the animation graphs are told of a car: speed, the wheel's angle, the throttle, the gear and the engine
+function cr_anim_run(cars_st: CarsState, c: Car) -> void {
+  let cfg = cars_config(cars_st)
+  CarAnim.car_param(c.nid, cfg.param_speed, c.speed)
+  CarAnim.car_param(c.nid, cfg.param_steer, c.steer_angle)
+  CarAnim.car_param(c.nid, cfg.param_rpm, c.rpm)
+  CarAnim.car_param(c.nid, cfg.param_gear, float(c.gear))
+  let d = cr_driver_of(c)
+  if d >= 0 and c.phase == CarPhase.Driven {
+    let lock = CarModels[c.model].steer_lock * 0.017453292
+    CarAnim.rider_param(d, cfg.param_steer, c.steer_angle / Math.max(0.01, lock))
+    CarAnim.rider_param(d, cfg.param_speed, c.speed)
+    CarAnim.rider_param(d, cfg.param_throttle, c.throttle)
+  }
+}
+
+# one fixed step of every car
+export function cars_step(cars_st: mut CarsState, dt: float) -> void {
+  let tb = cars_st.cr_cars
+  for i in 0 .. tb_len(tb) {
+    let c = tb_rec(tb, i)
+    if c.sim == CAR_SIM_REMOTE { continue }
+    if c.ai and c.phase != CarPhase.Wrecked {
+      if c.sim != CAR_SIM_LANE { cr_ai_drive(cars_st, c, dt) }
+    }
+    if c.sim == CAR_SIM_BODY and c.body {
+      cr_body_step(cars_st, c, dt)
+      if not c.body { c.sim = CAR_SIM_PLANAR }
+    } else if c.sim == CAR_SIM_LANE {
+      cr_lane_step(cars_st, c, dt)
+    } else {
+      cr_planar_step(cars_st, c, dt)
+    }
+  }
+  CarBody.step(dt)
+  cars_st.cr_steps += 1
+}
+
+# a frame: the machines, the levels of detail, however many whole steps the time holds, and the rest
+export function cars_tick(cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, t: Tick) -> void {
+  let cfg = cars_config(cars_st)
+  cars_st.cr_time += t.dt
+  cars_st.cr_net_clock += t.dt
+  cars_st.cr_net_off = cars_st.cr_net_off - 0.001 * t.dt
+  let tb = cars_st.cr_cars
+  for i in 0 .. tb_len(tb) { cr_door_run(cars_st, tb_rec(tb, i), t.dt) }
+  car_steps_tick(doors, cars_st)
+  var i = 0
+  while i < tb_len(tb) {
+    let c = tb_rec(tb, i)
+    cr_door_phase(cars_st, c)
+    cr_lod_run(cars_st, c, t.dt)
+    cr_upkeep(cars_st, c, t.dt)
+    if c.sim == CAR_SIM_REMOTE { cr_remote_run(cars_st, c, t.dt) }
+    i += 1
+  }
+  let ot = cars_st.cr_owned
+  for k in 0 .. tb_len(ot) { cr_own_run(cars_st, tb_rec(ot, k), t.dt) }
+  car_own_steps_tick(owns, cars_st)
+  for k in 0 .. tb_len(ot) { cr_own_facts(cars_st, tb_rec(ot, k)) }
+  cars_st.cr_acc += t.dt
+  var n = 0
+  while cars_st.cr_acc + cfg.step * 0.001 >= cfg.step and n < cfg.max_steps {
+    cars_step(cars_st, cfg.step)
+    cars_st.cr_acc -= cfg.step
+    n += 1
+  }
+  if cars_st.cr_acc > cfg.step or cars_st.cr_acc < 0.0 { cars_st.cr_acc = 0.0 }
+  for k in 0 .. tb_len(tb) {
+    let c = tb_rec(tb, k)
+    if c.sim != CAR_SIM_LANE { cr_anim_run(cars_st, c) }
+  }
+}

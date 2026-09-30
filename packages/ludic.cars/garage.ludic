@@ -1,0 +1,452 @@
+# garage.ludic - the cars a player owns and where they are: in a garage slot, on their way (a called car), out
+# in the world, destroyed, being replaced under insurance, or in the impound. The status is a machine whose
+# graph is a table (own.lres); the money is the game's wallet through CarBank and the places are the game's
+# through CarPlaces - a property's garage slot, a lot - which the package knows only as numbers. The machine
+# asks the tick, by flags, to make or take away the live car: what it changes outside its own row is the
+# tick's, never a transition's.
+
+export property CarOwnStep {
+  from: CarStatus = CarStatus.Garaged
+  to: CarStatus = CarStatus.Garaged
+  on: string = ""
+  guard: fn(Row<OwnedCar>, CarsState) -> bool = null
+  enter: fn(Row<OwnedCar>, CarsState) -> void = null
+}
+
+@Machine(OwnedCar.status) export open registry CarOwnSteps of CarOwnStep as COWN from "own.lres"
+
+# what an action carries to the row: where a car is to appear, which slot it goes into
+reducer OwnedCar in CarsState.cr_owned on CarCallIn(r: mut Row<OwnedCar>, a: CarCallIn) {
+  r.rec.dx = a.x
+  r.rec.dz = a.z
+  r.rec.dyaw = a.yaw
+}
+reducer OwnedCar in CarsState.cr_owned on CarRetrieveIn(r: mut Row<OwnedCar>, a: CarRetrieveIn) {
+  r.rec.dx = a.x
+  r.rec.dz = a.z
+  r.rec.dyaw = a.yaw
+}
+reducer OwnedCar in CarsState.cr_owned on CarStoreIn(r: mut Row<OwnedCar>, a: CarStoreIn) {
+  r.rec.slot = a.slot
+}
+
+# ---- what a car costs
+
+function cr_class_of(model: int) -> CarClass {
+  let k = CarModels[model].cls
+  if k < 0 or k >= CARC_COUNT { return null }
+  return CarClasses[k]
+}
+
+# a claim: the model's price times its class's insurance; the impound's fee: its class's share
+export function car_claim_fee(model: int) -> int {
+  let k = cr_class_of(model)
+  if k == null { return 0 }
+  return int(float(CarModels[model].price) * k.insurance)
+}
+export function car_impound_fee(model: int) -> int {
+  let k = cr_class_of(model)
+  if k == null { return 0 }
+  return int(float(CarModels[model].price) * k.impound)
+}
+export function car_deliver_time(model: int) -> float {
+  let k = cr_class_of(model)
+  if k == null { return 30.0 }
+  return k.deliver_time
+}
+export function car_claim_time(model: int) -> float {
+  let k = cr_class_of(model)
+  if k == null { return 120.0 }
+  return k.claim_time
+}
+
+reducer OwnedCar in CarsState.cr_owned on CarRestoreIn(r: mut Row<OwnedCar>, a: CarRestoreIn) {
+  r.rec.restore = a.status
+}
+
+# ---- the machine's guards and enters
+
+function cr_og_slot(r: Row<OwnedCar>, s: CarsState) -> bool { return r.rec.slot >= 0 }
+function cr_og_delivered(r: Row<OwnedCar>, s: CarsState) -> bool { return r.rec.timer <= 0.0 }
+function cr_og_settled(r: Row<OwnedCar>, s: CarsState) -> bool { return r.rec.timer <= 0.0 }
+function cr_og_claim(r: Row<OwnedCar>, s: CarsState) -> bool {
+  if not r.rec.insured { return false }
+  return CarBank.can_pay(r.rec.owner, car_claim_fee(r.rec.model))
+}
+function cr_og_release(r: Row<OwnedCar>, s: CarsState) -> bool {
+  return CarBank.can_pay(r.rec.owner, car_impound_fee(r.rec.model))
+}
+
+# a load puts a row in the status it was saved in: the machine is the only thing that may
+function cr_og_restore1(r: Row<OwnedCar>, s: CarsState) -> bool { return r.rec.restore == 1 }
+function cr_og_restore2(r: Row<OwnedCar>, s: CarsState) -> bool { return r.rec.restore == 2 }
+function cr_og_restore3(r: Row<OwnedCar>, s: CarsState) -> bool { return r.rec.restore == 3 }
+function cr_og_restore4(r: Row<OwnedCar>, s: CarsState) -> bool { return r.rec.restore == 4 }
+function cr_og_restore5(r: Row<OwnedCar>, s: CarsState) -> bool { return r.rec.restore == 5 }
+function cr_oe_restored(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.last_status = r.rec.restore
+  if r.rec.restore == 2 { r.rec.spawn = true }
+  if r.rec.restore != 1 and r.rec.restore != 4 { r.rec.timer = 0.0 }
+  r.rec.restore = -1
+}
+
+# out of the slot at the place the action carried: the tick makes the car
+function cr_oe_retrieve(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.spawn = true
+  r.rec.slot = -1
+}
+function cr_oe_call(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.timer = car_deliver_time(r.rec.model)
+}
+function cr_oe_delivered(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.spawn = true
+  r.rec.slot = -1
+}
+# back in a slot (the verb chose it): the live car is taken away
+function cr_oe_store(r: mut Row<OwnedCar>, s: CarsState) -> void { r.rec.unspawn = true }
+function cr_oe_destroyed(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.nid = -1
+  r.rec.health = 0.0
+}
+function cr_oe_claim(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.fee = car_claim_fee(r.rec.model)
+  CarBank.pay(r.rec.owner, r.rec.fee)
+  r.rec.timer = car_claim_time(r.rec.model)
+}
+# settled: a whole car in a slot again
+function cr_oe_settled(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.health = -1.0
+  r.rec.fuel = -1.0
+  r.rec.claims += 1
+  r.rec.nid = -1
+  for i in 0 .. len(r.rec.parts) { r.rec.parts[i] = -1 }
+  r.rec.slot = car_slot_free(s, r.rec.owner)
+  r.rec.paid = true
+}
+function cr_oe_impound(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.unspawn = true
+  r.rec.slot = -1
+}
+function cr_oe_release(r: mut Row<OwnedCar>, s: CarsState) -> void {
+  r.rec.fee = car_impound_fee(r.rec.model)
+  CarBank.pay(r.rec.owner, r.rec.fee)
+  r.rec.spawn = true
+  r.rec.paid = true
+}
+
+# ---- slots
+
+# a place in the game's world that is this player's to keep a car in
+export function car_slot_add(cars_st: mut CarsState, pid: int, place: int) -> int {
+  for i in 0 .. len(cars_st.cr_slot_place) {
+    if cars_st.cr_slot_place[i] == place { return -1 }
+  }
+  push(cars_st.cr_slot_owner, pid)
+  push(cars_st.cr_slot_place, place)
+  return len(cars_st.cr_slot_place) - 1
+}
+
+export function car_slot_remove(cars_st: mut CarsState, place: int) -> bool {
+  for i in 0 .. len(cars_st.cr_slot_place) {
+    if cars_st.cr_slot_place[i] == place {
+      cars_st.cr_slot_place[i] = -1
+      cars_st.cr_slot_owner[i] = -1
+      return true
+    }
+  }
+  return false
+}
+
+export function car_slot_count(cars_st: CarsState, pid: int) -> int {
+  var n = 0
+  for i in 0 .. len(cars_st.cr_slot_place) {
+    if cars_st.cr_slot_owner[i] == pid and cars_st.cr_slot_place[i] >= 0 { n += 1 }
+  }
+  return n
+}
+
+# the owned car (its oid) kept in a place, -1 for none
+export function car_slot_car(cars_st: CarsState, place: int) -> int {
+  let tb = cars_st.cr_owned
+  for i in 0 .. tb_len(tb) {
+    let o = tb_rec(tb, i)
+    if o.slot == place and (o.status == CarStatus.Garaged) { return o.oid }
+  }
+  return -1
+}
+
+# the first place of a player's with nothing in it (the game's own say-so as well), -1 when full
+export function car_slot_free(cars_st: CarsState, pid: int) -> int {
+  for i in 0 .. len(cars_st.cr_slot_place) {
+    if cars_st.cr_slot_owner[i] != pid or cars_st.cr_slot_place[i] < 0 { continue }
+    let p = cars_st.cr_slot_place[i]
+    if car_slot_car(cars_st, p) < 0 and CarPlaces.free(p) { return p }
+  }
+  return -1
+}
+
+# ---- owned cars
+
+function cr_owned_row(cars_st: CarsState, oid: int) -> OwnedCar {
+  let h = imap_get(cars_st.cr_oids, oid, -1)
+  let r = tb_row(cars_st.cr_owned, h)
+  if r < 0 { return null }
+  return tb_rec(cars_st.cr_owned, r)
+}
+
+function cr_owned_handle(cars_st: CarsState, oid: int) -> int { return imap_get(cars_st.cr_oids, oid, -1) }
+
+export function car_own_count(cars_st: CarsState, pid: int) -> int {
+  var n = 0
+  let tb = cars_st.cr_owned
+  for i in 0 .. tb_len(tb) { if tb_rec(tb, i).owner == pid { n += 1 } }
+  return n
+}
+
+# the nth owned car of a player (its oid), -1 past them
+export function car_own_nth(cars_st: CarsState, pid: int, nth: int) -> int {
+  var n = 0
+  let tb = cars_st.cr_owned
+  for i in 0 .. tb_len(tb) {
+    let o = tb_rec(tb, i)
+    if o.owner != pid { continue }
+    if n == nth { return o.oid }
+    n += 1
+  }
+  return -1
+}
+
+export function car_own_row(cars_st: CarsState, oid: int) -> OwnedCar { return cr_owned_row(cars_st, oid) }
+export function car_own_status(cars_st: CarsState, oid: int) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return -1 }
+  return o.status
+}
+# the live car of an owned one, -1 when it is in a slot, the impound or destroyed
+export function car_own_car(cars_st: CarsState, oid: int) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return -1 }
+  return o.nid
+}
+
+# a player comes to own a model: it is put in a free slot of theirs (oid; -1 for no such model, -2 for no room)
+@alloc_ok("a car bought: an event, not a frame")
+export function car_own_add(cars_st: mut CarsState, pid: int, model: int, insured: bool) -> int {
+  if model < 0 or model >= CARM_COUNT { return -1 }
+  let slot = car_slot_free(cars_st, pid)
+  if slot < 0 { return -2 }
+  let o = new OwnedCar
+  o.oid = cars_st.cr_oid_next
+  cars_st.cr_oid_next += 1
+  o.owner = pid
+  o.model = model
+  o.slot = slot
+  o.insured = insured
+  o.primary = 0xc8c8c8
+  o.secondary = 0x202020
+  o.pearl = 0xffffff
+  o.parts = car_no_parts()
+  let h = tb_add(cars_st.cr_owned, o)
+  imap_put(cars_st.cr_oids, o.oid, h)
+  return o.oid
+}
+
+# sold or scrapped: the row and any live car of it go
+export function car_own_remove(cars_st: mut CarsState, oid: int) -> bool {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return false }
+  if o.nid >= 0 { car_remove(cars_st, o.nid) }
+  let h = cr_owned_handle(cars_st, oid)
+  imap_del(cars_st.cr_oids, oid)
+  tb_remove(cars_st.cr_owned, h)
+  return true
+}
+
+# the paint and plate of an owned car (and of its live car, if it is out)
+export function car_own_paint(cars_st: CarsState, oid: int, primary: int, secondary: int, pearl: int) -> bool {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return false }
+  o.primary = primary
+  o.secondary = secondary
+  o.pearl = pearl
+  if o.nid >= 0 { car_paint(cars_st, o.nid, primary, secondary, pearl) }
+  return true
+}
+
+export function car_own_fit(cars_st: CarsState, oid: int, part: int) -> bool {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null or part < 0 or part >= CARPT_COUNT { return false }
+  o.parts[CarParts[part].slot] = part
+  if o.nid >= 0 { car_fit(cars_st, o.nid, part) }
+  return true
+}
+
+# insured or not: a policy costs a quarter of a claim, taken from the owner
+export function car_insure(cars_st: CarsState, oid: int, on: bool) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return CAR_NO_SUCH }
+  if on and not o.insured {
+    let fee = car_claim_fee(o.model) / 4
+    if not CarBank.pay(o.owner, fee) { return CAR_NO_MONEY }
+  }
+  o.insured = on
+  return 0
+}
+
+function cr_own_refuse(cars_st: CarsState, o: OwnedCar, why: int) -> int {
+  let f = cr_fact(cars_st, CAR_REFUSED, null)
+  f.oid = o.oid
+  f.actor = o.owner
+  f.v = float(why)
+  return why
+}
+
+# out of its slot, standing at the slot's own place (or where the caller says when x, z are given)
+export function car_retrieve(cars_st: mut CarsState, oid: int) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return CAR_NO_SUCH }
+  if o.status != CarStatus.Garaged or o.slot < 0 { return cr_own_refuse(cars_st, o, CAR_NO_STATE) }
+  dispatch CarRetrieveIn { who: cr_owned_handle(cars_st, oid), x: CarPlaces.x(o.slot), z: CarPlaces.z(o.slot), yaw: CarPlaces.yaw(o.slot) }
+  return 0
+}
+
+# call it: it arrives at (x, z) - somewhere near it the game can put a car - after its class's delivery time
+export function car_call(cars_st: mut CarsState, oid: int, x: float, z: float, yaw: float) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return CAR_NO_SUCH }
+  if o.status != CarStatus.Garaged or o.slot < 0 { return cr_own_refuse(cars_st, o, CAR_NO_STATE) }
+  var px = x
+  var pz = z
+  if CarWorld.spawn_point(x, z, 60.0) {
+    px = CarWorld.spawn_x()
+    pz = CarWorld.spawn_z()
+  }
+  dispatch CarCallIn { who: cr_owned_handle(cars_st, oid), x: px, z: pz, yaw: yaw }
+  return 0
+}
+
+# back into a free slot of its owner's (empty, out in the world)
+export function car_store(cars_st: mut CarsState, oid: int) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return CAR_NO_SUCH }
+  if o.status != CarStatus.Out { return cr_own_refuse(cars_st, o, CAR_NO_STATE) }
+  let c = car_by_nid(cars_st, o.nid)
+  if c != null and car_occupants(c) > 0 { return cr_own_refuse(cars_st, o, CAR_NO_BUSY) }
+  let slot = car_slot_free(cars_st, o.owner)
+  if slot < 0 { return cr_own_refuse(cars_st, o, CAR_NO_ROOM) }
+  dispatch CarStoreIn { who: cr_owned_handle(cars_st, oid), slot: slot }
+  return 0
+}
+
+# a destroyed car, claimed: insured, the fee paid, settled after the class's time
+export function car_claim(cars_st: mut CarsState, oid: int) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return CAR_NO_SUCH }
+  if o.status != CarStatus.Destroyed { return cr_own_refuse(cars_st, o, CAR_NO_STATE) }
+  if not o.insured { return cr_own_refuse(cars_st, o, CAR_NO_INSURANCE) }
+  if not CarBank.can_pay(o.owner, car_claim_fee(o.model)) { return cr_own_refuse(cars_st, o, CAR_NO_MONEY) }
+  if car_slot_free(cars_st, o.owner) < 0 { return cr_own_refuse(cars_st, o, CAR_NO_ROOM) }
+  dispatch CarClaimIn { who: cr_owned_handle(cars_st, oid) }
+  return 0
+}
+
+# taken to the impound (the game's police, a towing, an abandoned car)
+export function car_impound(cars_st: mut CarsState, oid: int) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return CAR_NO_SUCH }
+  if o.status != CarStatus.Out { return cr_own_refuse(cars_st, o, CAR_NO_STATE) }
+  dispatch CarImpoundIn { who: cr_owned_handle(cars_st, oid) }
+  return 0
+}
+
+# out of the impound for the fee: it stands at the impound's own place
+export function car_release(cars_st: mut CarsState, oid: int) -> int {
+  let o = cr_owned_row(cars_st, oid)
+  if o == null { return CAR_NO_SUCH }
+  if o.status != CarStatus.Impounded { return cr_own_refuse(cars_st, o, CAR_NO_STATE) }
+  if not CarBank.can_pay(o.owner, car_impound_fee(o.model)) { return cr_own_refuse(cars_st, o, CAR_NO_MONEY) }
+  let place = cars_config(cars_st).impound_place
+  o.dx = CarPlaces.x(place)
+  o.dz = CarPlaces.z(place)
+  o.dyaw = CarPlaces.yaw(place)
+  dispatch CarReleaseIn { who: cr_owned_handle(cars_st, oid) }
+  return 0
+}
+
+# ---- the tick: timers, cars made and taken away as the machine asked, and a fact for each new status
+
+@alloc_ok("a live car made for an owned one: an event")
+function cr_own_spawn(cars_st: mut CarsState, o: OwnedCar) -> void {
+  let nid = car_spawn(cars_st, o.model, o.dx, o.dz, o.dyaw, o.owner)
+  o.spawn = false
+  if nid < 0 { return }
+  let c = car_by_nid(cars_st, nid)
+  o.nid = nid
+  c.oid = o.oid
+  c.primary = o.primary
+  c.secondary = o.secondary
+  c.pearl = o.pearl
+  c.livery = o.livery
+  c.plate = o.plate
+  for i in 0 .. CAR_SLOTS { c.parts[i] = o.parts[i] }
+  car_stats_into(c.model, c.parts, c.stats)
+  c.health = c.stats.health
+  c.engine_hp = CarModels[c.model].engine_health
+  c.fuel = CarModels[c.model].tank
+  if o.health >= 0.0 { c.health = Math.min(c.stats.health, o.health) }
+  if o.fuel >= 0.0 { c.fuel = o.fuel }
+  c.nitro_left = CarModels[c.model].nitro_time
+  let f = cr_fact(cars_st, CAR_DELIVERED, c)
+  f.oid = o.oid
+  f.actor = o.owner
+}
+
+function cr_own_unspawn(cars_st: mut CarsState, o: OwnedCar) -> void {
+  o.unspawn = false
+  let c = car_by_nid(cars_st, o.nid)
+  if c != null {
+    o.health = c.health
+    o.fuel = c.fuel
+    o.primary = c.primary
+    o.secondary = c.secondary
+    o.pearl = c.pearl
+    o.plate = c.plate
+    for i in 0 .. CAR_SLOTS { o.parts[i] = c.parts[i] }
+    car_remove(cars_st, o.nid)
+  }
+  o.nid = -1
+}
+
+function cr_own_run(cars_st: mut CarsState, o: OwnedCar, dt: float) -> void {
+  if o.status == CarStatus.Delivering or o.status == CarStatus.Claiming { o.timer = o.timer - dt }
+  if o.spawn { cr_own_spawn(cars_st, o) }
+  if o.unspawn { cr_own_unspawn(cars_st, o) }
+}
+
+function cr_own_facts(cars_st: mut CarsState, o: OwnedCar) -> void {
+  if o.status == o.last_status { return }
+  let was = o.last_status
+  o.last_status = o.status
+  let f = cr_fact(cars_st, CAR_OWN_STATUS, null)
+  f.oid = o.oid
+  f.actor = o.owner
+  f.v = float(o.status)
+  f.w = float(was)
+  if o.status == CarStatus.Claiming {
+    let p = cr_fact(cars_st, CAR_CLAIM_PAID, null)
+    p.oid = o.oid
+    p.actor = o.owner
+    p.v = float(o.fee)
+  }
+  if o.status == CarStatus.Impounded {
+    let p = cr_fact(cars_st, CAR_IMPOUNDED, null)
+    p.oid = o.oid
+    p.actor = o.owner
+  }
+  if was == int(CarStatus.Impounded) and o.status == CarStatus.Out {
+    let p = cr_fact(cars_st, CAR_RELEASED, null)
+    p.oid = o.oid
+    p.actor = o.owner
+    p.v = float(o.fee)
+  }
+}
