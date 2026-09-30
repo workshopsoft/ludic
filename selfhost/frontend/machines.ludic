@@ -1,0 +1,431 @@
+# machines.ludic — 27.1: a state machine as data. A record's enum field is the state, and a registry
+# marked @Machine(Record.field) is its transitions table, one row a transition:
+#
+#   enum Mood { Calm, Wary, Fled }
+#   property Deer { mood: Mood = Mood.Calm, fear: int = 0 }          # the start is the default
+#   state Herd { deer: Table<Deer> = null }
+#   property DeerStep {
+#     from: Mood = Mood.Calm
+#     to: Mood = Mood.Calm
+#     on: string = ""                                                  # an action, or "" for the tick
+#     guard: fn(Row<Deer>, Herd) -> bool = null
+#     enter: fn(Row<Deer>, Herd) -> void = null
+#   }
+#   @Machine(Deer.mood) registry DeerSteps of DeerStep from "deer_steps.lres"
+#
+# The compiler writes the machine from the table: a row reducer on each action an `on` names (the
+# row's current state, the first transition from it whose guard passes, the field set, `enter` run)
+# and, when a row leaves on a guard alone, `<registry>_tick(m: mut <Registry>Machine, s: mut State,
+# reads...)`, which asks those guards of every row of the table. The table is the whole machine: the
+# field is written by nothing else (check_stmt.ludic), and the graph is checked here - every state
+# reached from the start, every state with a way out, every `on` an action that names a row, no
+# self-transition without a guard, no second way out on one trigger behind an unguarded first.
+var g_mc_reg: []pointer = new []pointer        # per machine: its registry, the record and field
+var g_mc_rec: []pointer = new []pointer
+var g_mc_field: []pointer = new []pointer
+var g_mc_file: []pointer = new []pointer       # where @Machine was written
+var g_mc_line: []int = new []int
+var g_mc_enum: []pointer = new []pointer       # ... worked out when the program is read
+var g_mc_state: []pointer = new []pointer      # the state holding Table<Record>, and the field
+var g_mc_path: []pointer = new []pointer
+var g_mc_start: []pointer = new []pointer      # the start: the field's default
+var g_mc_tick: []pointer = new []pointer       # the tick's name, or null (no guard-only transition)
+var g_mc_acts: []pointer = new []pointer       # the actions its `on`s name, ",A,B,"
+var g_mc_gen: []Node = new []Node              # every function the machines wrote: the field is theirs
+var g_mc_fns: []pointer = new []pointer        # every guard and enter a machine names
+var g_mc_pend_rec: pointer = null              # @Machine(Rec.field) read, for the registry after it
+var g_mc_pend_field: pointer = null
+var g_mc_pend_line: int = 0
+var g_mc_gen_reg: pointer = null               # the machine whose reducers are being written
+# one machine's transitions, while it is checked and written
+var g_mt_key: []pointer = new []pointer
+var g_mt_from: []pointer = new []pointer
+var g_mt_to: []pointer = new []pointer
+var g_mt_on: []pointer = new []pointer
+var g_mt_guard: []pointer = new []pointer
+var g_mt_enter: []pointer = new []pointer
+var g_mt_file: []pointer = new []pointer
+var g_mt_line: []int = new []int
+var g_mt_col: []int = new []int
+
+# @Machine(Record.field), before a registry
+function mc_parse_attr() -> void {
+  eat_op("(")
+  let rec = eat_id()
+  if not is_op(".") { perr("@Machine names the record's field that holds the state: @Machine(WildAnimal.state)") }
+  pi += 1
+  let field = eat_id()
+  eat_op(")")
+  g_mc_pend_rec = rec
+  g_mc_pend_field = field
+  g_mc_pend_line = toks[pi - 1].line
+  at_decl_with("Machine", `["{rec}.{field}"]`)
+}
+# after a declaration's attributes: @Machine is a registry's
+function mc_attr_placed() -> void {
+  if g_mc_pend_rec == null { return }
+  if is_id("registry") or (is_id("open") and (toks[pi + 1].text == "registry")) { return }
+  perr(`@Machine({g_mc_pend_rec}.{g_mc_pend_field}) marks the registry of a machine's transitions: @Machine({g_mc_pend_rec}.{g_mc_pend_field}) registry Steps of Step from "steps.lres"`)
+}
+# the registry just declared is a machine's
+function mc_take(v: Node, pm: bool) -> void {
+  if g_mc_pend_rec == null { return }
+  if pm { perr(`registry {v.s}: a machine's transitions are the program's, compiled in - a @PerMap registry is read when a map loads`) }
+  push(g_mc_reg, v.s)
+  push(g_mc_rec, g_mc_pend_rec)
+  push(g_mc_field, g_mc_pend_field)
+  push(g_mc_file, g_parse_file)
+  push(g_mc_line, g_mc_pend_line)
+  push(g_mc_enum, null)
+  push(g_mc_state, null)
+  push(g_mc_path, null)
+  push(g_mc_start, null)
+  push(g_mc_tick, null)
+  push(g_mc_acts, ",")
+  g_mc_pend_rec = null
+  g_mc_pend_field = null
+}
+function mc_find_reg(name: pointer) -> int {
+  var i = 0
+  while i < len(g_mc_reg) {
+    if (g_mc_reg[i] == name) { return i }
+    i += 1
+  }
+  return -1
+}
+# the machine whose state is Record.field, or -1
+function mc_of_field(rec: pointer, field: pointer) -> int {
+  var i = 0
+  while i < len(g_mc_rec) {
+    if (g_mc_rec[i] == rec) and (g_mc_field[i] == field) { return i }
+    i += 1
+  }
+  return -1
+}
+function mc_is_fn(name: pointer) -> bool {
+  var i = 0
+  while i < len(g_mc_fns) {
+    if (g_mc_fns[i] == name) { return true }
+    i += 1
+  }
+  return false
+}
+function mc_is_gen(d: Node) -> bool {
+  if d == null { return false }
+  var i = 0
+  while i < len(g_mc_gen) {
+    if g_mc_gen[i] == d { return true }
+    i += 1
+  }
+  return false
+}
+function mc_err(m: int, msg: pointer) -> void {
+  perr_at(g_mc_file[m], g_mc_line[m], 0, `@Machine({g_mc_rec[m]}.{g_mc_field[m]}) registry {g_mc_reg[m]}: {msg}`)
+}
+function mc_row_err(m: int, t: int, msg: pointer) -> void {
+  perr_at(g_mt_file[t], g_mt_line[t], g_mt_col[t], `{g_mc_reg[m]} {g_mt_key[t]}: {msg}`)
+}
+function mc_enum_decl(name: pointer) -> Node {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_ENUM and (d.s == name) { return d }
+    i += 1
+  }
+  return null
+}
+function mc_fn_decl(name: pointer) -> Node {
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_FN and (d.s == name) { return d }
+    i += 1
+  }
+  return null
+}
+function mc_field(comp: Node, name: pointer) -> Node {
+  if comp == null { return null }
+  var i = 0
+  while i < len(comp.kids) {
+    if comp.kids[i].kind == N_FIELD and (comp.kids[i].s == name) { return comp.kids[i] }
+    i += 1
+  }
+  return null
+}
+function mc_has_variant(en: Node, v: pointer) -> bool {
+  var i = 0
+  while i < len(en.kids) {
+    if (en.kids[i].s == v) { return true }
+    i += 1
+  }
+  return false
+}
+# `Mood.Calm` -> "Calm", when it names a variant of the enum; else null
+function mc_variant(e: Node, en: Node) -> pointer {
+  if e == null or e.kind != E_MEMBER or e.a == null or e.a.kind != E_ID or not (e.a.s == en.s) { return null }
+  if not mc_has_variant(en, e.s) { return null }
+  return e.s
+}
+# an entry's value for a field: what it writes, else the record's default
+function mc_value(rec: Node, comp: Node, name: pointer) -> Node {
+  var i = 0
+  while i < len(rec.kids) {
+    let k = rec.kids[i]
+    if k.kind == E_FINIT and (k.s == name) { return k.a }
+    i += 1
+  }
+  let f = mc_field(comp, name)
+  if f == null { return null }
+  return f.a
+}
+
+# ---- when the program is read ----------------------------------------------------------------------
+# each machine resolved, its table checked, and its reducers and tick written
+function machines_finish() -> void {
+  var m = 0
+  while m < len(g_mc_reg) {
+    mc_resolve(m)
+    m += 1
+  }
+  diag_stop_if_errors()
+  m = 0
+  while m < len(g_mc_reg) {
+    mc_rows(m)
+    mc_graph(m)
+    diag_stop_if_errors()
+    mc_write(m)
+    m += 1
+  }
+  m = 0
+  while m < len(g_mc_reg) {
+    mc_check_fns(m)
+    m += 1
+  }
+  diag_stop_if_errors()
+}
+# the record, its enum field and start, the transitions' record, and the one table of the record
+function mc_resolve(m: int) -> void {
+  let rec = g_mc_rec[m]
+  let field = g_mc_field[m]
+  let r = reg_find(g_mc_reg[m])
+  let d = rr_decl(rec)
+  if d == null {
+    mc_err(m, `{rec} is not a record - @Machine names a property's enum field: @Machine(Deer.mood)`)
+    return
+  }
+  if d.uns == 2 or d.uns == 3 {
+    mc_err(m, `{rec} is a state or an action - a machine's state is a field of the records held in a Table<{rec}>, one machine per row`)
+    return
+  }
+  let f = mc_field(d, field)
+  if f == null {
+    mc_err(m, `{rec} has no field {field}`)
+    return
+  }
+  let en = mc_enum_decl(f.ty)
+  if en == null or enum_is_tagged(en) {
+    mc_err(m, `{rec}.{field} is {rr_ty_text(f.ty)} - a machine's state is a plain enum, its variants the states ({field}: Mood = Mood.Calm)`)
+    return
+  }
+  g_mc_enum[m] = en.s
+  let st = mc_variant(f.a, en)
+  if st == null {
+    mc_err(m, `{rec}.{field} has no start - its default is the state a row starts in ({field}: {en.s} = {en.s}.{en.kids[0].s})`)
+    return
+  }
+  g_mc_start[m] = st
+  if rr_is_column(rec, field) { mc_err(m, `{rec}.{field} is @Column - a machine writes its state on the row's record, and a column mirroring it would go stale`) }
+  mc_resolve_table(m, rec)
+  mc_resolve_shape(m, find_comp(g_rg_type[r]), en.s, rec)
+  if g_mc_state[m] != null {
+    let sd = rr_decl(g_mc_state[m])
+    if sd != null and not (rr_mod(sd.file) == rr_mod(g_mc_file[m])) {
+      mc_err(m, `{g_mc_state[m]} is {rr_mod_name(sd.file)}'s, and this machine is in {rr_mod_name(g_mc_file[m])} - a table's rows are reduced only by the module that owns its state`)
+    }
+  }
+}
+# the one state field of type Table<Record>
+function mc_resolve_table(m: int, rec: pointer) -> void {
+  var n = 0
+  var where: pointer = ""
+  var i = 0
+  while i < len(prog) {
+    let d = prog[i]
+    if d.kind == N_COMP and d.uns == 2 {
+      var k = 0
+      while k < len(d.kids) {
+        let f = d.kids[k]
+        if f.kind == N_FIELD and (f.ty == `Table${rec}`) {
+          if n == 0 {
+            g_mc_state[m] = d.s
+            g_mc_path[m] = f.s
+          }
+          if n > 0 { where = where + ", " }
+          where = where + `{d.s}.{f.s}`
+          n += 1
+        }
+        k += 1
+      }
+    }
+    i += 1
+  }
+  if n == 0 { mc_err(m, `no state holds a Table<{rec}> - a machine runs on the rows of one (state Herd {{ deer: Table<{rec}> = null }})`) }
+  if n > 1 { mc_err(m, `{n} states' fields hold a Table<{rec}> ({where}) - a machine runs on one table`) }
+}
+# the transitions' record: from and to of the enum, on a string, guard and enter on the row
+function mc_resolve_shape(m: int, comp: Node, en: pointer, rec: pointer) -> void {
+  let shape = `from: {en}, to: {en}, on: string, guard: fn(Row<{rec}>, ...) -> bool, enter: fn(Row<{rec}>, ...) -> void`
+  let r = reg_find(g_mc_reg[m])
+  if comp == null {
+    mc_err(m, `its record {g_rg_type[r]} is not a property - a transition is ({shape})`)
+    return
+  }
+  let fr = mc_field(comp, "from")
+  let to = mc_field(comp, "to")
+  let on = mc_field(comp, "on")
+  if fr == null or to == null or on == null or not (fr.ty == en) or not (to.ty == en) or not (on.ty == "string") {
+    mc_err(m, `{comp.s} is not a transition - its fields are ({shape})`)
+    return
+  }
+  mc_shape_fn(m, comp, "guard", "bool", rec, shape)
+  mc_shape_fn(m, comp, "enter", "void", rec, shape)
+}
+function mc_shape_fn(m: int, comp: Node, name: pointer, ret: pointer, rec: pointer, shape: pointer) -> void {
+  let f = mc_field(comp, name)
+  if f == null { return }                        # no guards (or no enters) in this machine
+  if not str_starts(f.ty, "fn(") or not (fn_ty_ret(f.ty) == ret) {
+    mc_err(m, `{comp.s}.{name} is {f.ty} - a transition is ({shape})`)
+    return
+  }
+  let ps = fn_ty_params(f.ty)
+  if len(ps) == 0 or not (ps[0] == `Row${rec}`) {
+    mc_err(m, `{comp.s}.{name} takes the row first: fn(Row<{rec}>, ...) -> {ret}`)
+    return
+  }
+  var i = 1
+  while i < len(ps) {
+    if not is_state_ty(ps[i]) { mc_err(m, `{comp.s}.{name}: after the row it takes the states it reads, and {rr_ty_text(ps[i])} is not a state`) }
+    i += 1
+  }
+}
+
+# ---- the table's rows --------------------------------------------------------------------------------
+function mc_rows(m: int) -> void {
+  g_mt_key = new []pointer
+  g_mt_from = new []pointer
+  g_mt_to = new []pointer
+  g_mt_on = new []pointer
+  g_mt_guard = new []pointer
+  g_mt_enter = new []pointer
+  g_mt_file = new []pointer
+  g_mt_line = new []int
+  g_mt_col = new []int
+  let r = reg_find(g_mc_reg[m])
+  let comp = find_comp(g_rg_type[r])
+  let en = mc_enum_decl(g_mc_enum[m])
+  let order = reg_order(r)
+  var o = 0
+  while o < len(order) {
+    let d = order[o]
+    let rec = g_df_rec[d]
+    push(g_mt_key, g_df_key[d])
+    push(g_mt_file, rec.file)
+    push(g_mt_line, g_df_kline[d])
+    push(g_mt_col, g_df_kcol[d])
+    let t = len(g_mt_key) - 1
+    push(g_mt_from, mc_variant(mc_value(rec, comp, "from"), en))
+    push(g_mt_to, mc_variant(mc_value(rec, comp, "to"), en))
+    push(g_mt_on, mc_on(m, t, mc_value(rec, comp, "on")))
+    push(g_mt_guard, mc_fn_of(m, t, mc_value(rec, comp, "guard"), "guard"))
+    push(g_mt_enter, mc_fn_of(m, t, mc_value(rec, comp, "enter"), "enter"))
+    if g_mt_from[t] == null { mc_row_err(m, t, `from is not a state of {en.s} - write one of its variants (from: {en.s}.{en.kids[0].s})`) }
+    if g_mt_to[t] == null { mc_row_err(m, t, `to is not a state of {en.s} - write one of its variants (to: {en.s}.{en.kids[0].s})`) }
+    o += 1
+  }
+}
+# `on`: "" for the tick, else an action that names a row
+function mc_on(m: int, t: int, e: Node) -> pointer {
+  if e == null { return "" }
+  if e.kind != E_STR {
+    mc_row_err(m, t, "on is an action's name as a string (on: \"Spook\"), or \"\" for a transition the tick asks")
+    return ""
+  }
+  if len(e.s) == 0 { return "" }
+  if act_index(e.s) < 0 {
+    mc_row_err(m, t, `on: "{e.s}" names no action - declare it (action {e.s} {{ @Target who: int = -1 }}), or leave on "" for the tick`)
+    return e.s
+  }
+  if rr_target(e.s) == null { mc_row_err(m, t, `on: "{e.s}" names no row - mark the field of {e.s} that holds the row's handle @Target (@Target who: int = -1)`) }
+  return e.s
+}
+# a guard's or an enter's function, named with `fn name` (null: none)
+function mc_fn_of(m: int, t: int, e: Node, what: pointer) -> pointer {
+  if e == null or e.kind == E_NULL { return null }
+  if e.kind != E_FNREF {
+    mc_row_err(m, t, `{what} names a function of {g_mc_rec[m]}'s module: {what}: fn deer_{what}`)
+    return null
+  }
+  let f = mc_fn_decl(e.s)
+  if f == null {
+    mc_row_err(m, t, `{what}: fn {e.s} - there is no function {e.s}`)
+    return null
+  }
+  if not mc_is_fn(e.s) { push(g_mc_fns, e.s) }
+  return e.s
+}
+
+# ---- the graph -----------------------------------------------------------------------------------------
+function mc_graph(m: int) -> void {
+  let en = mc_enum_decl(g_mc_enum[m])
+  var t = 0
+  while t < len(g_mt_key) {
+    if g_mt_from[t] != null and rr_same(g_mt_from[t], g_mt_to[t]) and g_mt_guard[t] == null {
+      mc_row_err(m, t, `a transition from {g_mt_from[t]} to itself with no guard would be taken every time - give it a guard, or remove it`)
+    }
+    var u = 0
+    while u < t {
+      if g_mt_from[u] != null and rr_same(g_mt_from[u], g_mt_from[t]) and (g_mt_on[u] == g_mt_on[t]) and g_mt_guard[u] == null {
+        mc_row_err(m, t, `{g_mt_key[u]} and {g_mt_key[t]} both leave {g_mt_from[t]} {mc_trigger(g_mt_on[t])}, and {g_mt_key[u]} has no guard - {g_mt_key[t]} could never be taken; give {g_mt_key[u]} a guard`)
+      }
+      u += 1
+    }
+    t += 1
+  }
+  # reached from the start, and a way out of each
+  let reached = new []pointer
+  push(reached, g_mc_start[m])
+  var i = 0
+  while i < len(reached) {
+    t = 0
+    while t < len(g_mt_key) {
+      if g_mt_from[t] != null and g_mt_to[t] != null and (g_mt_from[t] == reached[i]) and not mc_in(reached, g_mt_to[t]) { push(reached, g_mt_to[t]) }
+      t += 1
+    }
+    i += 1
+  }
+  i = 0
+  while i < len(en.kids) {
+    let v = en.kids[i].s
+    if not mc_in(reached, v) { mc_err(m, `{en.s}.{v} is never reached from the start, {en.s}.{g_mc_start[m]} - no transition leads to it; add one, or remove the state`) }
+    var out = false
+    t = 0
+    while t < len(g_mt_key) {
+      if g_mt_from[t] != null and (g_mt_from[t] == v) { out = true }
+      t += 1
+    }
+    if not out { mc_err(m, `{en.s}.{v} has no way out - no transition leaves it; add one (from: {en.s}.{v})`) }
+    i += 1
+  }
+}
+function mc_trigger(on: pointer) -> pointer {
+  if len(on) == 0 { return "on the tick" }
+  return `on {on}`
+}
+function mc_in(xs: []pointer, s: pointer) -> bool {
+  var i = 0
+  while i < len(xs) {
+    if (xs[i] == s) { return true }
+    i += 1
+  }
+  return false
+}

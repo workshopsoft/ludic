@@ -9,7 +9,7 @@ tip: An explicit state machine over an int var — dispatches on the store's val
 order: 6
 ---
 
-A <code>machine</code> turns an integer store into an explicit state machine, replacing brittle `if phase == N` chains. It reads the store — a named program-scope `var` is the modern choice — and dispatches to the matching `state` block; inside a state, `become Name` transitions to another state of the same machine. States number themselves by declaration order (the first is `0`, the next `1`, and so on), so you never write magic constants, though `state Name = expr` is accepted when a state needs a specific value. Because `become` compiles to a single store back into the `var`, the whole machine lowers to plain branches with no dispatch table. Place a `machine` inside a handler so it runs each frame.
+A <code>machine</code> turns an integer store into an explicit state machine, replacing brittle `if phase == N` chains. It reads the store — a named program-scope `var` is the modern choice — and dispatches to the matching `state` block; inside a state, `become Name` transitions to another state of the same machine. States number themselves by declaration order (the first is `0`, the next `1`, and so on), so you never write magic constants, though `state Name = expr` is accepted when a state needs a specific value. Because `become` compiles to a single store back into the `var`, the whole machine lowers to plain branches with no dispatch table. Place a `machine` inside a handler so it runs each frame. A machine that is data - a table of transitions over an enum field of a table's rows, which the studio edits as a graph - is a <code>@Machine</code> registry instead, and its field is refused to a <code>machine</code> block.
 
 ```ludic
 program TurnOrder {

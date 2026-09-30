@@ -1,0 +1,226 @@
+# machines_write.ludic — 27.1: what the compiler writes for a @Machine, and the checks on the
+# functions its rows name. For each action an `on` names, a row reducer in the registry's file:
+#
+#   reducer Deer in Herd.deer on Spook(r: mut Row<Deer>, ludic_mc0: Herd, a: Spook) {
+#     let cur = r.rec.mood
+#     var took = false
+#     if not took and cur == Mood.Calm and deer_near(r, ludic_mc0) {
+#       took = true
+#       r.rec.mood = Mood.Wary
+#       deer_look(r, ludic_mc0)
+#     }
+#     ...
+#   }
+#
+# and, when a row leaves on a guard alone, a state keeping the tick's row view and the tick, which
+# takes each row of the table through the same first match (one transition a row a tick):
+#
+#   state DeerStepsMachine { row: Row<Deer> = new Row<Deer> }
+#   function deer_steps_tick(ludic_m: mut DeerStepsMachine, ludic_s: mut Herd, reads...) -> void
+#
+# A guard and an enter take the row first and the states they read after it (the record's field
+# types say which); they are their record's module's, and they keep a row reducer's rules - the row
+# reaches `r.rec` and `r.h`, is handed only to a @RowVerb or another of the machine's functions, and a
+# @Column field is not written. A guard asks and writes nothing through its row.
+
+# the states the guard and enter read, after the row, each once, in the order the record gives them
+function mc_reads(comp: Node) -> []pointer {
+  let out = new []pointer
+  mc_reads_of(out, mc_field(comp, "guard"))
+  mc_reads_of(out, mc_field(comp, "enter"))
+  return out
+}
+function mc_reads_of(out: []pointer, f: Node) -> void {
+  if f == null { return }
+  let ps = fn_ty_params(f.ty)
+  var i = 1
+  while i < len(ps) {
+    if not mc_in(out, ps[i]) { push(out, ps[i]) }
+    i += 1
+  }
+}
+function mc_idx(xs: []pointer, s: pointer) -> int {
+  var i = 0
+  while i < len(xs) {
+    if (xs[i] == s) { return i }
+    i += 1
+  }
+  return -1
+}
+# a call's arguments: the row, then each state the field's type names
+function mc_args(f: Node, reads: []pointer, table_st: pointer) -> pointer {
+  var out: pointer = "r"
+  if f == null { return out }
+  let ps = fn_ty_params(f.ty)
+  var i = 1
+  while i < len(ps) {
+    if table_st != null and (ps[i] == table_st) { out = out + ", ludic_s" } else { out = out + `, ludic_mc{itoa(mc_idx(reads, ps[i]))}` }
+    i += 1
+  }
+  return out
+}
+# the first match from the row's current state among the transitions on one trigger
+function mc_steps_src(m: int, trig: pointer, reads: []pointer, table_st: pointer, ind: pointer) -> pointer {
+  let r = reg_find(g_mc_reg[m])
+  let comp = find_comp(g_rg_type[r])
+  let en = g_mc_enum[m]
+  let gargs = mc_args(mc_field(comp, "guard"), reads, table_st)
+  let eargs = mc_args(mc_field(comp, "enter"), reads, table_st)
+  var src = `{ind}let cur = r.rec.{g_mc_field[m]}\n{ind}var took = false\n`
+  var t = 0
+  while t < len(g_mt_key) {
+    if (g_mt_on[t] == trig) {
+      var cond = `not took and cur == {en}.{g_mt_from[t]}`
+      if g_mt_guard[t] != null { cond = cond + ` and {g_mt_guard[t]}({gargs})` }
+      src = src + `{ind}if {cond} {{\n{ind}  took = true\n{ind}  r.rec.{g_mc_field[m]} = {en}.{g_mt_to[t]}\n`
+      if g_mt_enter[t] != null { src = src + `{ind}  {g_mt_enter[t]}({eargs})\n` }
+      src = src + `{ind}}}\n`
+    }
+    t += 1
+  }
+  return src
+}
+function mc_write(m: int) -> void {
+  let r = reg_find(g_mc_reg[m])
+  let v = g_rg_var[r]
+  let comp = find_comp(g_rg_type[r])
+  let reads = mc_reads(comp)
+  let rec = g_mc_rec[m]
+  let st = g_mc_state[m]
+  var params: pointer = ""
+  var j = 0
+  while j < len(reads) {
+    params = params + `, ludic_mc{itoa(j)}: {reads[j]}`
+    j += 1
+  }
+  # a row reducer per action, in the order the table first names them
+  var t = 0
+  var any_tick = false
+  while t < len(g_mt_key) {
+    let a = g_mt_on[t]
+    if len(a) == 0 { any_tick = true }
+    if len(a) > 0 and not has_sub(g_mc_acts[m], `,{a},`) {
+      g_mc_acts[m] = g_mc_acts[m] + a + ","
+      let src = `reducer {rec} in {st}.{g_mc_path[m]} on {a}(r: mut Row<{rec}>{params}, a: {a}) {{\n{mc_steps_src(m, a, reads, null, "  ")}}}\n`
+      g_mc_gen_reg = g_mc_reg[m]
+      mc_parse_gen(src, v, 1)
+      g_mc_gen_reg = null
+    }
+    t += 1
+  }
+  if not any_tick { return }
+  # the tick: every row of the table through the guard-only transitions
+  let tick = `{pm_snake(g_mc_reg[m])}_tick`
+  g_mc_tick[m] = tick
+  var tparams: pointer = ""
+  j = 0
+  while j < len(reads) {
+    if not (reads[j] == st) { tparams = tparams + `, ludic_mc{itoa(j)}: {reads[j]}` }
+    j += 1
+  }
+  var src = `state {g_mc_reg[m]}Machine {{ row: Row<{rec}> = new Row<{rec}> }}\n`
+  src = src + `function {tick}(ludic_m: mut {g_mc_reg[m]}Machine, ludic_s: mut {st}{tparams}) -> void {{\n`
+  src = src + `  let tb = ludic_s.{g_mc_path[m]}\n  if tb == null {{ return }}\n  let r = ludic_m.row\n  r.tb = tb\n  var row = 0\n  while row < tb_len(tb) {{\n`
+  src = src + "    r.row = row\n    r.h = tb_handle(tb, row)\n    r.rec = tb_rec(tb, row)\n"
+  src = src + mc_steps_src(m, "", reads, st, "    ")
+  src = src + "    row += 1\n  }\n}\n"
+  mc_parse_gen(src, v, v.vis)
+}
+# written into the registry's file, as its module's; every function it makes is the machine's
+function mc_parse_gen(src: pointer, v: Node, vis: int) -> void {
+  let at = len(prog)
+  vw_parse(src, v.file, v.line, vis)
+  var k = at
+  while k < len(prog) {
+    if prog[k].kind == N_FN { push(g_mc_gen, prog[k]) }
+    k += 1
+  }
+}
+
+# ---- the functions a machine's rows name ------------------------------------------------------------
+function mc_check_fns(m: int) -> void {
+  let r = reg_find(g_mc_reg[m])
+  let comp = find_comp(g_rg_type[r])
+  let rd = rr_decl(g_mc_rec[m])
+  let order = reg_order(r)
+  var o = 0
+  let seen = new []pointer
+  while o < len(order) {
+    let rec = g_df_rec[order[o]]
+    mc_check_fn(m, mc_value(rec, comp, "guard"), true, rd, seen)
+    mc_check_fn(m, mc_value(rec, comp, "enter"), false, rd, seen)
+    o += 1
+  }
+}
+function mc_check_fn(m: int, e: Node, guard: bool, rd: Node, seen: []pointer) -> void {
+  if e == null or e.kind != E_FNREF or mc_in(seen, e.s) { return }
+  push(seen, e.s)
+  let f = mc_fn_decl(e.s)
+  if f == null { return }
+  var what = "enter"
+  if guard { what = "guard" }
+  let who = `{g_mc_reg[m]}'s {what} {f.s}`
+  var first: Node = null
+  var k = 0
+  while k < len(f.kids) {
+    if f.kids[k].kind == N_PARAM and first == null { first = f.kids[k] }
+    k += 1
+  }
+  if first == null or not (first.ty == `Row${g_mc_rec[m]}`) {
+    perr_at(f.file, f.line, f.col, `{who} takes the row first - ({"r"}: Row<{g_mc_rec[m]}>, reads...)`)
+    return
+  }
+  if rd != null and not (rr_mod(rd.file) == rr_mod(f.file)) {
+    perr_at(f.file, f.line, f.col, `{who} is declared in {rr_mod_name(f.file)}, and {g_mc_rec[m]} is {rr_mod_name(rd.file)}'s: a row changes only through its record's own module's functions`)
+  }
+  mc_walk(f.a, m, who, first.s, guard, f)
+}
+function mc_walk_err(n: Node, at: Node, msg: pointer) -> void {
+  var w = n
+  if w == null or w.file == null or w.line == 0 { w = at }
+  perr_at(w.file, w.line, w.col, msg)
+}
+# a row reducer's rules, and a guard writes nothing through its row
+function mc_walk(n: Node, m: int, who: pointer, r: pointer, guard: bool, f: Node) -> void {
+  if n == null { return }
+  let rec = g_mc_rec[m]
+  if n.kind == E_MEMBER and n.a != null and n.a.kind == E_ID and (n.a.s == r) {
+    if not ((n.s == "rec") or (n.s == "h")) { mc_walk_err(n, f, `{who}: {r}.{n.s} - a machine's function reaches its row's record and handle ({r}.rec, {r}.h) and no further; its table is written by {rec}'s @RowVerbs`) }
+    return
+  }
+  if n.kind == S_ASSIGN and n.a != null {
+    let root = ck_chain_root(n.a)
+    if guard and root != null and (root.s == r) { mc_walk_err(n, f, `{who} asks and changes nothing: it writes through {r} - a change belongs in the transition's enter`) }
+    let t = n.a
+    if t.kind == E_MEMBER and t.a != null and t.a.kind == E_MEMBER and (t.a.s == "rec") and t.a.a != null and t.a.a.kind == E_ID and (t.a.a.s == r) and rr_is_column(rec, t.s) {
+      mc_walk_err(n, f, `{who}: {rec}.{t.s} is mirrored by a column of the table (@Column) - write it through a @RowVerb, which keeps the column and its indexes with it`)
+    }
+  }
+  if n.kind == E_CALL {
+    mc_walk(n.a, m, who, r, guard, f)
+    var k = 0
+    while k < len(n.kids) {
+      var x = n.kids[k]
+      if x != null and x.kind == E_FINIT { x = x.a }
+      if x != null and x.kind == E_ID and (x.s == r) {
+        if guard and n.a != null and n.a.kind == E_ID and rr_is_verb(n.a.s) { mc_walk_err(n, f, `{who} asks and changes nothing: it hands {r} to the verb {n.a.s}`) }
+        if not (n.a != null and n.a.kind == E_ID and (rr_is_verb(n.a.s) or mc_is_fn(n.a.s))) {
+          var name: pointer = "a method"
+          if n.a != null and n.a.kind == E_ID { name = n.a.s }
+          mc_walk_err(n, f, `{who}: {name} is handed the row, and is not a @RowVerb - only the verbs of {rec}'s own module take a row`)
+        }
+      } else { mc_walk(n.kids[k], m, who, r, guard, f) }
+      k += 1
+    }
+    return
+  }
+  if n.kind == E_ID and (n.s == r) { mc_walk_err(n, f, `{who}: {r} goes no further than its record, its handle and {rec}'s @RowVerbs - it is the machine's view, not stored, copied or handed on`) }
+  mc_walk(n.a, m, who, r, guard, f)
+  mc_walk(n.b, m, who, r, guard, f)
+  mc_walk(n.c, m, who, r, guard, f)
+  var j = 0
+  while j < len(n.kids) {
+    mc_walk(n.kids[j], m, who, r, guard, f)
+    j += 1
+  }
+}

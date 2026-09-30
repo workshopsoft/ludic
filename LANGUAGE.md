@@ -443,6 +443,78 @@ program Herds {
 - **Dice** a row reducer rolls come from the row's own `Rng` or its owner's, never `Random.*`: it
   runs in the drain, outside its owner's tick, and the world's stream is co-op's shared order.
 
+**A machine as data** (27.1). A row's state - an animal idling, fleeing, drinking - is an enum field
+of its record, and the machine that moves it is a registry marked `@Machine(Record.field)`: one row
+a transition, which the compiler turns into the reducers and the tick. The table is the whole
+machine, and a studio edits it as a graph.
+
+```ludic
+import "ludic.base"
+program Moods {
+  enum Mood { Calm, Wary, Fled }
+  property Deer {
+    mood: Mood = Mood.Calm              # the start: the field's default
+    fear: int = 0
+  }
+  state Herd { deer: Table<Deer> = null }
+  action Spook { @Target who: int = -1 }
+  property DeerStep {
+    from: Mood = Mood.Calm
+    to: Mood = Mood.Calm
+    on: string = ""                     # an action's name, or "" for a transition the tick asks
+    guard: fn(Row<Deer>, Herd) -> bool = null
+    enter: fn(Row<Deer>, Herd) -> void = null
+  }
+  @Machine(Deer.mood) registry DeerSteps of DeerStep
+  def DeerSteps startled { from: Mood.Calm, to: Mood.Wary, on: "Spook", enter: fn deer_startle }
+  def DeerSteps bolts { from: Mood.Wary, to: Mood.Fled, on: "Spook", guard: fn deer_afraid }
+  def DeerSteps settles { from: Mood.Wary, to: Mood.Calm, guard: fn deer_settled }
+  def DeerSteps home { from: Mood.Fled, to: Mood.Calm }
+
+  function deer_afraid(r: Row<Deer>, h: Herd) -> bool { return r.rec.fear > 1 }
+  function deer_settled(r: Row<Deer>, h: Herd) -> bool { return r.rec.fear == 0 }
+  function deer_startle(r: mut Row<Deer>, h: Herd) -> void { r.rec.fear += 1 }
+  entry (h: mut Herd, m: mut DeerStepsMachine) {
+    h.deer = table_new(0, 0)
+    dispatch Spook { who: tb_add(h.deer, new Deer) }
+    drain_actions()
+    deer_steps_tick(m, h)
+  }
+}
+```
+
+- **The registry's record** has `from` and `to` (variants of the field's enum), `on: string` (an
+  action's name, `""` for a transition the tick asks), and may have `guard: fn(Row<Record>, reads...)
+  -> bool` and `enter: fn(Row<Record>, reads...) -> void`, each taking the row first and then the
+  states it reads. Its rows may live in an `.lres` (`from "deer_steps.lres"`), where a value is
+  written as in code: `bolts { from: Mood.Wary, to: Mood.Fled, on: "Spook", guard: fn deer_afraid }`.
+  The states are the enum's variants; the record is held in one state's `Table<Record>`, and the
+  registry is that state's module's.
+- **What the compiler writes.** For each action an `on` names (it must have a `@Target`), a row
+  reducer: the row's current state, the first transition from it on that action - in the table's
+  order - whose guard passes (no guard passes always), the field set, then `enter`. When a row
+  leaves a state on a guard alone, `state DeerStepsMachine` (the tick's kept row view) and
+  `deer_steps_tick(m: mut DeerStepsMachine, s: mut Herd, reads...)`, which takes every row of the
+  table through the same first match, one transition a row a tick; the program calls it from its
+  system. A program's own row reducer on the same action runs before the machine's, so an enter
+  that needs the action's payload finds it on the row. Nothing is allocated: the row views are kept.
+- **The table is the whole machine.** Its field is written by nothing else - an assignment or a
+  `machine` block's `become` anywhere else is refused: `this assignment: Deer.mood is the machine
+  DeerSteps's (@Machine(Deer.mood)) - it changes only by a transition in its table`. A new row takes
+  its state in its `new` (a save's load does too). A guard and an enter are functions of the
+  record's module and keep a row reducer's rules - the row reaches `r.rec` and `r.h`, goes only to a
+  `@RowVerb` or another of the machine's functions, and a `@Column` field is not written; a guard
+  asks and writes nothing through its row.
+- **The graph is checked**, each an error at its row: a state never reached from the start; a state
+  with no way out; an `on` naming no action, or an action naming no row; a transition from a state
+  to itself with no guard; and two ways out of one state on one trigger behind an unguarded first
+  (`settles and stays both leave Wary on Spook, and settles has no guard - stays could never be
+  taken`).
+- `ludic schema`'s code section lists each machine (`machines`: `registry`, `record`, `field`,
+  `enum`, `table`, `start`, `states`, `actions`, `tick`, `module`, `at`), and `ludic deps` names its
+  reducers `reducer Deer in Herd.deer on Spook (machine DeerSteps)`. The `machine` block stays for
+  a machine that is only code.
+
 `ludic deps` reports the widest function - the most states any function or entry point of the
 program's own takes - and `--check` holds it as a ratchet like its other numbers
 (`widest_function 12` in the baseline file). A function value's states are supplied where it is called, so a
@@ -2293,7 +2365,9 @@ if hero.mode == HeroState.Rolling { … }                    # readable wherever
 ```
 
 A machine's store is a state's field (`machine hero.mode`), a local, or a register index; a
-`become` writes it, so the function needs its state `mut`. A state that names no variant of the
+`become` writes it, so the function needs its state `mut`. (A machine that is data - a table of transitions the
+studio edits, over a field of a table's rows - is a `@Machine` registry: "A machine as data", above;
+its field is refused to a `machine` block.) A state that names no variant of the
 store's enum is a compile error. A bare (payload-free) enum is an `int`-sized type wherever a type
 is written — a `var`, a parameter, a field, a return.
 

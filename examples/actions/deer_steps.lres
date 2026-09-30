@@ -1,0 +1,6 @@
+# deer_steps.lres - Machines' DeerSteps: how a deer's mood changes (examples/actions/machine.ludic)
+startled { from: Mood.Calm, to: Mood.Wary, on: "Spook", enter: fn deer_startle }
+bolts { from: Mood.Wary, to: Mood.Fled, on: "Spook", guard: fn deer_afraid, enter: fn deer_bolt }
+uneasy { from: Mood.Wary, to: Mood.Wary, on: "Spook", guard: fn deer_calm_enough, enter: fn deer_startle }
+settles { from: Mood.Wary, to: Mood.Calm, guard: fn deer_settled }
+home { from: Mood.Fled, to: Mood.Calm, guard: fn deer_away, enter: fn deer_rest }

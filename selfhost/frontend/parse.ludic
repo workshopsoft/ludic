@@ -1071,6 +1071,7 @@ function parse_one_decl_in() -> void {
     else if a == "Namespace" { eat_op("("); ns_name = eat_id(); eat_op(")") }   # @Namespace(Name) package Foo.* namespace (#62)
     else if a == "deterministic" { is_det = true }
     else if a == "RowVerb" { is_rowverb = true }
+    else if a == "Machine" { mc_parse_attr() }       # @Machine(Record.field) - 27.1, machines.ludic
     else if (a == "AppendOnly") or (a == "ByKey") { at_decl(a) }   # a registry's, for editors (attrs.ludic)
     else if a == "PerMap" {                        # a map-scoped registry (permap.ludic)
       at_decl(a)
@@ -1103,6 +1104,7 @@ function parse_one_decl_in() -> void {
     }
     skipnl()
   }
+  mc_attr_placed()                              # @Machine is a registry's (machines.ludic)
   if is_id("friend") and (toks[pi + 1].text == "module") {
     mod_parse_friend()                            # frontend/modules.ludic
     return

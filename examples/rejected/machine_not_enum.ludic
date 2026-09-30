@@ -1,0 +1,10 @@
+# 27.1: a machine's state is a plain enum field with a start
+import "ludic.base"
+program MachineNotEnum {
+  property Deer { mood: int = 0 }
+  state Herd { deer: Table<Deer> = null }
+  property DeerStep { from: int = 0, to: int = 0, on: string = "" }
+  @Machine(Deer.mood) registry DeerSteps of DeerStep
+  def DeerSteps a { from: 0, to: 1 }
+  entry { print(1) }
+}

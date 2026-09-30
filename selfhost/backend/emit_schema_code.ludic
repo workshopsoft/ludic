@@ -7,6 +7,8 @@
 #   row_reducers  record, table (State.path), state, action, target (its @Target field), predicted,
 #              net, module, at                     row_verbs  name, record, module, at (27.3)
 #   actions also carry their target: the @Target field, or null
+#   machines   registry, record, field, enum, table (State.path), start, states (the enum's
+#              variants), actions (those its rows' `on` name), tick (or null), module, at (27.1)
 #   events     name, module, at, cancellable, net (@ToServer / @ToClients), emits (sites) and
 #              listeners (the @On handlers: handler, module, at)
 #   ports      name, module, at, bound, members (name, type, default as written, required)
@@ -74,6 +76,8 @@ function sc_code(b: Buf) -> void {
   cx_row_reducers(b)
   buf_puts(b, "\n    ],\n    \"row_verbs\": [")
   cx_row_verbs(b)
+  buf_puts(b, "\n    ],\n    \"machines\": [")
+  cx_machines(b)
   buf_puts(b, "\n    ],\n    \"dispatch\": [")
   cx_dispatch(b)
   buf_puts(b, "\n    ],\n    \"events\": [")
@@ -317,6 +321,60 @@ function cx_row_reducers(b: Buf) -> void {
     buf_puts(b, "}")
     i += 1
   }
+}
+# 27.1: each @Machine registry: the field it drives, its table, and what the compiler wrote for it
+function cx_machines(b: Buf) -> void {
+  let keys = new []pointer
+  var i = 0
+  while i < len(g_mc_reg) {
+    let v = g_rg_var[reg_find(g_mc_reg[i])]
+    if cx_written(v) { push(keys, sc_key(g_mc_reg[i], v.file, v.line)) } else { push(keys, null) }
+    i += 1
+  }
+  let xs = cx_order(keys)
+  i = 0
+  while i < len(xs) {
+    let m = xs[i]
+    let v = g_rg_var[reg_find(g_mc_reg[m])]
+    sc_sep(b, i == 0, "      ")
+    buf_puts(b, "{\"registry\": ")
+    jq_put(b, g_mc_reg[m])
+    buf_puts(b, ", \"record\": ")
+    jq_put(b, g_mc_rec[m])
+    buf_puts(b, ", \"field\": ")
+    jq_put(b, g_mc_field[m])
+    buf_puts(b, ", \"enum\": ")
+    sc_str(b, g_mc_enum[m])
+    buf_puts(b, ", \"table\": ")
+    if g_mc_state[m] == null { buf_puts(b, "null") } else { jq_put(b, `{g_mc_state[m]}.{g_mc_path[m]}`) }
+    buf_puts(b, ", \"start\": ")
+    sc_str(b, g_mc_start[m])
+    buf_puts(b, ", \"states\": ")
+    cx_mc_states(b, g_mc_enum[m])
+    buf_puts(b, ", \"actions\": ")
+    cx_list(b, g_mc_acts[m])
+    buf_puts(b, ", \"tick\": ")
+    sc_str(b, g_mc_tick[m])
+    buf_puts(b, ", ")
+    cx_module(b, v.file)
+    buf_puts(b, ", ")
+    cx_at(b, v)
+    buf_puts(b, "}")
+    i += 1
+  }
+}
+function cx_mc_states(b: Buf, en: pointer) -> void {
+  buf_puts(b, "[")
+  if en != null {
+    let d = mc_enum_decl(en)
+    var i = 0
+    while d != null and i < len(d.kids) {
+      if i > 0 { buf_puts(b, ", ") }
+      jq_put(b, d.kids[i].s)
+      i += 1
+    }
+  }
+  buf_puts(b, "]")
 }
 function cx_row_verbs(b: Buf) -> void {
   let keys = new []pointer
