@@ -1,0 +1,13 @@
+ada { part: "first", name: "Ada" }
+bo { part: "first", name: "Bo" }
+cy { part: "first", name: "Cy" }
+dee { part: "first", name: "Dee" }
+eli { part: "first", name: "Eli" }
+fay { part: "first", name: "Fay" }
+gus { part: "first", name: "Gus" }
+hal { part: "first", name: "Hal", weight: 2 }
+lane { part: "last", name: "Lane" }
+moss { part: "last", name: "Moss" }
+north { part: "last", name: "North", weight: 3 }
+pike { part: "last", name: "Pike" }
+reed { part: "last", name: "Reed" }

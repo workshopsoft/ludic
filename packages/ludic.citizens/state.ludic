@@ -1,0 +1,271 @@
+# state.ludic - the population as columns (one list per field, a citizen is an index), the places the city
+# gave, the flat copies of the data the decision reads, the wheel that wakes a citizen when their episode ends,
+# the citizens simulated closely, and the facts. Every list is sized when the city is built or the population
+# made and kept; a tick allocates nothing.
+
+export const CZ_WHEEL: int = 2048           # buckets of a minute: any episode is under a day
+export const CZ_MAXLEG: int = 12            # legs of a trip for a citizen on real paths
+export const CZ_HABIT_SLOTS: int = 8        # slots of the day (three hours each) a citizen remembers what they did in
+export const CZ_LOG_INTS: int = 8           # a correction: seq, time, kind, citizen, a, b, c, d
+export const CZ_CACHE: int = 131072         # the trip cache (a power of two)
+
+export state CitizensState {
+  cz_ready: bool = false                    # the city is indexed
+  cz_clock: int = 0                         # game seconds the simulation has reached
+  cz_clock_frac: float = 0.0
+  cz_proc_min: int = 0                      # every minute up to this one has been processed
+  cz_day_seen: int = 0                      # the day whose start hook has run
+  cz_seed_set: bool = false                 # the game set the seed in code: the settings row's does not win
+  cz_seed_val: int = 1
+  cz_host: bool = true                       # this machine is the authority: what changes the world is logged for clients
+  cz_scan_t: float = 0.0
+  cz_nextid: int = 0
+  # the settings, copied once
+  cz_world_seed: int = 1
+  cz_occupancy: float = 0.9
+  cz_walk_speed: float = 1.3
+  cz_walk_detour: float = 1.25
+  cz_est_speed: float = 6.0
+  cz_margin: int = 600
+  cz_bucket: int = 120
+  cz_scan_every: float = 0.5
+  cz_r_near: float = 60.0
+  cz_r_mid: float = 250.0
+  cz_max_mid: int = 1024
+  cz_wd0: int = 0
+  cz_pay_days: int = 1
+  cz_closed: bool = true
+  cz_jobsearch: int = 20
+  cz_move10k: int = 6
+  cz_car_km: int = 1
+  cz_nfriends: int = 2
+  cz_idle_score: float = 0.25
+  # the data, flat
+  cz_na: int = 0
+  cz_nn: int = 0
+  cz_nr: int = 0
+  cz_np: int = 0                             # places
+  cz_act_work: int = -1
+  cz_act_idle: int = -1
+  cz_money_need: int = -1
+  ca_where: []int = new []int                # 0 home, 1 work, 2 friend, 3 tags
+  ca_mask: []int = new []int
+  ca_eff: []int = new []int                  # per activity, per need: tenths of a point an hour
+  ca_dmin: []int = new []int                 # seconds
+  ca_dmax: []int = new []int
+  ca_cost: []int = new []int
+  ca_pay: []float = new []float
+  ca_hfrom: []float = new []float
+  ca_hto: []float = new []float
+  ca_strict: []int = new []int
+  ca_days: []int = new []int
+  ca_slow: []float = new []float
+  ca_weight: []float = new []float
+  ca_oblig: []int = new []int
+  ca_job: []int = new []int
+  ca_out: []int = new []int
+  ca_primary: []int = new []int              # the need it relieves most
+  cn_decay: []int = new []int                # tenths of a point an hour
+  cn_start: []int = new []int                # tenths
+  cn_warn: []float = new []float
+  cn_crit: []float = new []float
+  cn_weight: []float = new []float
+  cn_money: []int = new []int
+  cn_travel: []int = new []int
+  cr_cum: []int = new []int                  # archetype weights, cumulative
+  cr_mask: []int = new []int
+  cr_emp: []int = new []int
+  cr_nw: []float = new []float               # per archetype, per need
+  cr_sh0: []int = new []int                  # an archetype's shifts: cr_sh*[cr_sh0[a] .. cr_sh0[a + 1])
+  cr_shfrom: []int = new []int               # seconds after midnight
+  cr_shlen: []int = new []int
+  cr_shw: []int = new []int
+  cr_shdays: []int = new []int
+  pt_from: []float = new []float
+  pt_to: []float = new []float
+  pt_rev: []float = new []float
+  # places, from the city
+  pl_id: []int = new []int
+  pl_x: []float = new []float
+  pl_z: []float = new []float
+  pl_tags: []int = new []int
+  pl_homes: []int = new []int
+  pl_jobs: []int = new []int
+  pl_price: []int = new []int
+  pl_free: []int = new []int                 # jobs not taken
+  pl_room: []int = new []int                 # homes not taken
+  pl_occ_head: []int = new []int             # the citizens at a place: a list through cz_onext / cz_oprev
+  pl_occ: []int = new []int
+  pl_cash: []int = new []int
+  pl_factor: []int = new []int               # thousandths of a wage the workplace can pay today
+  pl_staff: []int = new []int
+  pl_payroll: []int = new []int              # what a day of its people's shifts costs, at full wages
+  pl_hours: []int = new []int                # seconds of shifts a day its people work
+  pl_visits: []int = new []int
+  pl_takings: []int = new []int
+  pl_idmap: IntMap = imap_new()              # stable id -> place
+  pl_hash: int = 0                           # what the city looked like when the population was made
+  # indexes over the places
+  ix_act_start: []int = new []int            # the places an activity can happen at
+  ix_act: []int = new []int
+  ix_wp_start: []int = new []int             # the workplaces each archetype can hold a job at
+  ix_wp: []int = new []int
+  ix_home: []int = new []int                 # places that house people
+  ix_g_minx: float = 0.0
+  ix_g_minz: float = 0.0
+  ix_g_cell: float = 100.0
+  ix_g_w: int = 1
+  ix_g_h: int = 1
+  ix_g_start: []int = new []int
+  ix_g_place: []int = new []int
+  # the citizens, a column each
+  cz_n: int = 0
+  cz_seed: []int = new []int
+  cz_arch: []int = new []int
+  cz_home: []int = new []int
+  cz_work: []int = new []int
+  cz_wage: []int = new []int                 # money an hour
+  cz_shift: []int = new []int                # the index of their shift among the archetype's, -1 none
+  cz_money: []int = new []int
+  cz_flags: []int = new []int
+  cz_friend: []int = new []int               # CZ_MAXFRIENDS a citizen
+  cz_trait: []int = new []int                # routine | social << 8 | thrift << 16
+  cz_need: []int = new []int                 # CZ_NEED_MAX tenths a citizen
+  cz_phase: []int = new []int                # CZ_DOING or CZ_TRAVELLING
+  cz_act: []int = new []int                  # what they are doing (or the next, while travelling)
+  cz_at: []int = new []int                   # where they are (or are going)
+  cz_from: []int = new []int                 # where a trip began
+  cz_ep_start: []int = new []int
+  cz_ep_end: []int = new []int
+  cz_ep: []int = new []int                   # episodes lived: the salt of every choice
+  cz_next_dur: []int = new []int             # the length of the activity after the trip
+  cz_mode: []int = new []int
+  cz_trip_cost: []int = new []int
+  cz_trip_dep: []int = new []int             # when a transit trip's plan leaves (the bucket after the trip began)
+  cz_plan_day: []int = new []int             # the day their plan was made for
+  cz_sh0: []int = new []int                  # today's shift: game seconds, 0 none
+  cz_sh1: []int = new []int
+  cz_owed: []int = new []int                 # wages earned, not yet paid
+  cz_upkeep_day: []int = new []int           # the day upkeep was taken up to
+  cz_car_at: []int = new []int               # where their car is parked
+  cz_habit: []int = new []int                # two a citizen: four slots of a byte each
+  cz_fear: []int = new []int                 # afraid until this game second
+  cz_force_act: []int = new []int
+  cz_force_place: []int = new []int
+  cz_force_dur: []int = new []int
+  cz_lod: []int = new []int
+  cz_slot: []int = new []int                 # their place in the close-simulation slots, -1
+  cz_body: []int = new []int                 # the kind of body the game has for them, -1 none
+  cz_bsum: []int = new []int                 # what they were when the population was made: a save keeps only those that differ
+  # the wheel and the lists
+  wh_head: []int = new []int
+  wh_next: []int = new []int
+  wh_prev: []int = new []int
+  wh_in: []int = new []int
+  cz_onext: []int = new []int
+  cz_oprev: []int = new []int
+  cz_inocc: []int = new []int
+  tr_head: int = -1                          # the citizens travelling
+  tr_next: []int = new []int
+  tr_prev: []int = new []int
+  tr_in: []int = new []int
+  # citizens simulated closely
+  md_n: int = 0
+  md_id: []int = new []int
+  md_ep: []int = new []int                   # the episode the legs belong to
+  md_miss: []int = new []int                 # scans since they were last near a player
+  md_lod: []int = new []int
+  md_nleg: []int = new []int
+  md_body: []int = new []int                 # the body kind last asked for, -1 none
+  md_bep: []int = new []int
+  ml_kind: []int = new []int
+  ml_t0: []int = new []int
+  ml_t1: []int = new []int
+  ml_line: []int = new []int
+  ml_run: []int = new []int
+  ml_x0: []float = new []float
+  ml_z0: []float = new []float
+  ml_x1: []float = new []float
+  ml_z1: []float = new []float
+  cz_px: []float = new []float               # where a closely simulated citizen is, as of the last tick
+  cz_pz: []float = new []float
+  pose_x: float = 0.0
+  pose_z: float = 0.0
+  pose_gx: float = 0.0
+  pose_gz: float = 0.0
+  pose_leg: int = -1
+  pose_t_end: int = 0
+  # the trip cache
+  tc_a: []int = new []int
+  tc_b: []int = new []int
+  tc_c: []int = new []int
+  tc_secs: []int = new []int
+  tc_cost: []int = new []int
+  # the shift asked about
+  sw0: int = 0
+  sw1: int = 0
+  # the last activity weighed
+  ev_place: int = -1
+  ev_dur: int = 0
+  ev_ts: int = 0
+  ev_cost: int = 0
+  # the last trip weighed
+  trip_secs: int = 0
+  trip_cost: int = 0
+  trip_mode: int = 0
+  trip_wait: int = 0
+  # what happened, counted
+  st_act: []int = new []int                  # per activity: begun
+  st_mode: []int = new []int                 # per mode: trips begun
+  st_wages: int = 0
+  st_spent: int = 0
+  st_upkeep: int = 0
+  st_steps: int = 0                          # episodes ended
+  st_plans: int = 0                          # transit plans asked for (cache misses)
+  st_hired: int = 0
+  st_fired: int = 0
+  st_moved: int = 0
+  st_leak: int = 0                           # what left the workplaces' tills as owners' profit
+  # corrections a host sends
+  lg_seq: int = 0
+  lg_buf: []int = new []int                  # a ring of CZ_LOG_INTS ints an entry
+  lg_cap: int = 4096
+  lg_n: int = 0
+  lg_late: int = 0
+  lg_applying: bool = false
+  lg_pending: []int = new []int              # a client's corrections not yet due
+  cz_warmup: int = 14400                     # seconds simulated from the made population before a loaded save's moment
+  cz_save_money: bool = true
+  # the last save's verdict
+  sv_status: int = 0
+  cz_facts: Queue<CitizenFact> = cz_facts__new()
+  scratch: []int = new []int
+  scratch2: []int = new []int
+}
+function cz_facts__new() -> Queue<CitizenFact> { return queue_new("citizens.facts") }
+
+export const CZ_MAXFRIENDS: int = 4
+
+export function citizens_facts(cz: CitizensState) -> Queue<CitizenFact> { return cz.cz_facts }
+
+function cz_say(cz: mut CitizensState, what: int, id: int, a: int, b: int, c: int, t: int) -> void {
+  var f = q_rec(cz.cz_facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new CitizenFact
+    q_ring_add(cz.cz_facts, f)
+  }
+  f.what = what
+  f.id = id
+  f.a = a
+  f.b = b
+  f.c = c
+  f.t = t
+  q_push(cz.cz_facts, f)
+}
+
+function cz_ints(n: int, v: int) -> []int {
+  let out = new []int
+  for i in 0 .. n { push(out, v) }
+  return out
+}

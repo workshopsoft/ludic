@@ -1,0 +1,499 @@
+# build.ludic - the city's buildings become places and their indexes, and the population is made from them:
+# citizens housed by the homes' capacity, given a kind, a nature, a wage, savings, a car, friends and a job
+# near enough, all from seeds - the same city and seed make the same people on every machine, with the same
+# stable ids, names, homes and workplaces.
+
+function cz_place_cell(cz: CitizensState, x: float, z: float) -> int {
+  var cx = int(Math.floor((x - cz.ix_g_minx) / cz.ix_g_cell))
+  var cz2 = int(Math.floor((z - cz.ix_g_minz) / cz.ix_g_cell))
+  cx = Math.clamp(cx, 0, cz.ix_g_w - 1)
+  cz2 = Math.clamp(cz2, 0, cz.ix_g_h - 1)
+  return cz2 * cz.ix_g_w + cx
+}
+
+function cz_clear_places(cz: mut CitizensState) -> void {
+  List.clear(cz.pl_id)
+  List.clear(cz.pl_x)
+  List.clear(cz.pl_z)
+  List.clear(cz.pl_tags)
+  List.clear(cz.pl_homes)
+  List.clear(cz.pl_jobs)
+  List.clear(cz.pl_price)
+  List.clear(cz.pl_free)
+  List.clear(cz.pl_room)
+  List.clear(cz.pl_occ_head)
+  List.clear(cz.pl_occ)
+  List.clear(cz.pl_cash)
+  List.clear(cz.pl_factor)
+  List.clear(cz.pl_staff)
+  List.clear(cz.pl_payroll)
+  List.clear(cz.pl_hours)
+  List.clear(cz.pl_visits)
+  List.clear(cz.pl_takings)
+  List.clear(cz.ix_act_start)
+  List.clear(cz.ix_act)
+  List.clear(cz.ix_wp_start)
+  List.clear(cz.ix_wp)
+  List.clear(cz.ix_home)
+  List.clear(cz.ix_g_start)
+  List.clear(cz.ix_g_place)
+  imap_clear(cz.pl_idmap)
+}
+
+# read the city through its port into places and their indexes; nothing of the population is touched
+function cz_index_places(cz: mut CitizensState) -> void {
+  cz_clear_places(cz)
+  let n = CitizensCity.count()
+  cz.cz_np = n
+  var h = 17
+  for p in 0 .. n {
+    push(cz.pl_id, CitizensCity.id(p))
+    push(cz.pl_x, CitizensCity.x(p))
+    push(cz.pl_z, CitizensCity.z(p))
+    push(cz.pl_tags, CitizensCity.tags(p))
+    let homes = Math.max(CitizensCity.homes(p), 0)
+    let jobs = Math.max(CitizensCity.jobs(p), 0)
+    push(cz.pl_homes, homes)
+    push(cz.pl_jobs, jobs)
+    push(cz.pl_price, CitizensCity.price(p))
+    push(cz.pl_free, jobs)
+    push(cz.pl_room, homes)
+    push(cz.pl_occ_head, -1)
+    push(cz.pl_occ, 0)
+    push(cz.pl_cash, 0)
+    push(cz.pl_factor, 1000)
+    push(cz.pl_staff, 0)
+    push(cz.pl_payroll, 0)
+    push(cz.pl_hours, 0)
+    push(cz.pl_visits, 0)
+    push(cz.pl_takings, 0)
+    imap_put(cz.pl_idmap, cz.pl_id[p], p)
+    h = cz_mix(h, cz.pl_id[p] * 31 + homes * 7 + jobs)
+    if homes > 0 { push(cz.ix_home, p) }
+  }
+  cz.pl_hash = h
+  # the places an activity can happen at, and the workplaces of each archetype
+  for a in 0 .. cz.cz_na {
+    push(cz.ix_act_start, len(cz.ix_act))
+    if cz.ca_mask[a] == 0 { continue }
+    for p in 0 .. n { if (cz.pl_tags[p] & cz.ca_mask[a]) != 0 { push(cz.ix_act, p) } }
+  }
+  push(cz.ix_act_start, len(cz.ix_act))
+  for r in 0 .. cz.cz_nr {
+    push(cz.ix_wp_start, len(cz.ix_wp))
+    if cz.cr_mask[r] == 0 { continue }
+    for p in 0 .. n { if (cz.pl_tags[p] & cz.cr_mask[r]) != 0 and cz.pl_jobs[p] > 0 { push(cz.ix_wp, p) } }
+  }
+  push(cz.ix_wp_start, len(cz.ix_wp))
+  # a grid over the places, for finding who is near a player
+  cz.ix_g_cell = 100.0
+  var minx = 0.0
+  var minz = 0.0
+  var maxx = 0.0
+  var maxz = 0.0
+  for p in 0 .. n {
+    if p == 0 or cz.pl_x[p] < minx { minx = cz.pl_x[p] }
+    if p == 0 or cz.pl_z[p] < minz { minz = cz.pl_z[p] }
+    if p == 0 or cz.pl_x[p] > maxx { maxx = cz.pl_x[p] }
+    if p == 0 or cz.pl_z[p] > maxz { maxz = cz.pl_z[p] }
+  }
+  cz.ix_g_minx = minx
+  cz.ix_g_minz = minz
+  cz.ix_g_w = Math.clamp(int((maxx - minx) / cz.ix_g_cell) + 1, 1, 1024)
+  cz.ix_g_h = Math.clamp(int((maxz - minz) / cz.ix_g_cell) + 1, 1, 1024)
+  let cells = cz.ix_g_w * cz.ix_g_h
+  let count = new []int
+  for c in 0 .. cells + 1 { push(count, 0) }
+  for p in 0 .. n { count[cz_place_cell(cz, cz.pl_x[p], cz.pl_z[p]) + 1] += 1 }
+  for c in 0 .. cells { count[c + 1] += count[c] }
+  for c in 0 .. cells + 1 { push(cz.ix_g_start, count[c]) }
+  for p in 0 .. n { push(cz.ix_g_place, 0) }
+  let fill = new []int
+  for c in 0 .. cells { push(fill, count[c]) }
+  for p in 0 .. n {
+    let c = cz_place_cell(cz, cz.pl_x[p], cz.pl_z[p])
+    cz.ix_g_place[fill[c]] = p
+    fill[c] += 1
+  }
+}
+
+# index the city through its port. Call it when the city is first known and whenever it is authored anew
+# (citizens_city_changed keeps the people); the population is made by citizens_generate
+export function citizens_build(cz: mut CitizensState) -> void {
+  cz_init_data(cz)
+  cz_index_places(cz)
+  cz_cache_init(cz)
+  cz_mid_init(cz)
+  cz.cz_ready = true
+}
+
+function cz_clear_pop(cz: mut CitizensState) -> void {
+  cz.cz_n = 0
+  cz.cz_nextid = 0
+  List.clear(cz.cz_seed)
+  List.clear(cz.cz_arch)
+  List.clear(cz.cz_home)
+  List.clear(cz.cz_work)
+  List.clear(cz.cz_wage)
+  List.clear(cz.cz_shift)
+  List.clear(cz.cz_money)
+  List.clear(cz.cz_flags)
+  List.clear(cz.cz_friend)
+  List.clear(cz.cz_trait)
+  List.clear(cz.cz_need)
+  List.clear(cz.cz_phase)
+  List.clear(cz.cz_act)
+  List.clear(cz.cz_at)
+  List.clear(cz.cz_from)
+  List.clear(cz.cz_ep_start)
+  List.clear(cz.cz_ep_end)
+  List.clear(cz.cz_ep)
+  List.clear(cz.cz_next_dur)
+  List.clear(cz.cz_mode)
+  List.clear(cz.cz_trip_cost)
+  List.clear(cz.cz_trip_dep)
+  List.clear(cz.cz_plan_day)
+  List.clear(cz.cz_sh0)
+  List.clear(cz.cz_sh1)
+  List.clear(cz.cz_owed)
+  List.clear(cz.cz_upkeep_day)
+  List.clear(cz.cz_car_at)
+  List.clear(cz.cz_habit)
+  List.clear(cz.cz_fear)
+  List.clear(cz.cz_force_act)
+  List.clear(cz.cz_force_place)
+  List.clear(cz.cz_force_dur)
+  List.clear(cz.cz_lod)
+  List.clear(cz.cz_slot)
+  List.clear(cz.cz_body)
+  List.clear(cz.cz_bsum)
+  List.clear(cz.wh_next)
+  List.clear(cz.wh_prev)
+  List.clear(cz.wh_in)
+  List.clear(cz.cz_onext)
+  List.clear(cz.cz_oprev)
+  List.clear(cz.cz_inocc)
+  List.clear(cz.tr_next)
+  List.clear(cz.tr_prev)
+  List.clear(cz.tr_in)
+  List.clear(cz.cz_px)
+  List.clear(cz.cz_pz)
+  cz.tr_head = -1
+  List.clear(cz.wh_head)
+  for b in 0 .. CZ_WHEEL { push(cz.wh_head, -1) }
+  for p in 0 .. cz.cz_np {
+    cz.pl_occ_head[p] = -1
+    cz.pl_occ[p] = 0
+    cz.pl_room[p] = cz.pl_homes[p]
+    cz.pl_free[p] = cz.pl_jobs[p]
+    cz.pl_staff[p] = 0
+    cz.pl_payroll[p] = 0
+    cz.pl_hours[p] = 0
+    cz.pl_cash[p] = 0
+    cz.pl_factor[p] = 1000
+  }
+}
+
+# an archetype by weight
+function cz_pick_arch(cz: CitizensState, h: int) -> int {
+  let total = cz.cr_cum[cz.cz_nr - 1]
+  let r = cz_pick(h, total)
+  for a in 0 .. cz.cz_nr { if r < cz.cr_cum[a] { return a } }
+  return cz.cz_nr - 1
+}
+
+function cz_trait_of(cz: CitizensState, i: int, k: int) -> int { return (cz.cz_trait[i] >> (k * 8)) & 255 }
+
+# a shift of the archetype by weight, -1 when it has none
+function cz_pick_shift(cz: CitizensState, arch: int, h: int) -> int {
+  let s0 = cz.cr_sh0[arch]
+  let s1 = cz.cr_sh0[arch + 1]
+  if s1 == s0 { return -1 }
+  var total = 0
+  for s in s0 .. s1 { total += cz.cr_shw[s] }
+  let r = cz_pick(h, total)
+  var acc = 0
+  for s in s0 .. s1 {
+    acc += cz.cr_shw[s]
+    if r < acc { return s - s0 }
+  }
+  return s1 - s0 - 1
+}
+
+function cz_shift_hours(cz: CitizensState, i: int) -> int {
+  if cz.cz_shift[i] < 0 { return 0 }
+  return cz.cr_shlen[cz.cr_sh0[cz.cz_arch[i]] + cz.cz_shift[i]]
+}
+
+# what a day of this citizen's shift costs the workplace at full wage, money
+function cz_day_cost(cz: CitizensState, i: int) -> int {
+  return cz.cz_wage[i] * cz_shift_hours(cz, i) / 3600
+}
+
+function cz_take_job(cz: mut CitizensState, i: int, p: int) -> void {
+  cz.cz_work[i] = p
+  cz.pl_free[p] -= 1
+  cz.pl_staff[p] += 1
+  cz.pl_payroll[p] += cz_day_cost(cz, i)
+  cz.pl_hours[p] += cz_shift_hours(cz, i)
+}
+
+function cz_leave_job(cz: mut CitizensState, i: int) -> void {
+  let p = cz.cz_work[i]
+  if p < 0 { return }
+  cz.pl_free[p] += 1
+  cz.pl_staff[p] -= 1
+  cz.pl_payroll[p] -= cz_day_cost(cz, i)
+  cz.pl_hours[p] -= cz_shift_hours(cz, i)
+  cz.cz_work[i] = -1
+}
+
+# the nearest of a few workplaces with a free job among those the archetype can hold, -1 when none is free
+function cz_find_job(cz: CitizensState, i: int, salt: int) -> int {
+  let a = cz.cz_arch[i]
+  let s0 = cz.ix_wp_start[a]
+  let cnt = cz.ix_wp_start[a + 1] - s0
+  if cnt == 0 { return -1 }
+  let home = cz.cz_home[i]
+  var best = -1
+  var best_d = 1000000000.0
+  for j in 0 .. 6 {
+    let p = cz.ix_wp[s0 + cz_pick(cz_mix3(cz.cz_seed[i], 100 + j, salt), cnt)]
+    if cz.pl_free[p] <= 0 { continue }
+    let d = cz_dist(cz.pl_x[home], cz.pl_z[home], cz.pl_x[p], cz.pl_z[p])
+    if d < best_d {
+      best_d = d
+      best = p
+    }
+  }
+  if best >= 0 { return best }
+  let start = cz_pick(cz_mix3(cz.cz_seed[i], 99, salt), cnt)
+  for j in 0 .. Math.min(cnt, 48) {
+    let p = cz.ix_wp[s0 + (start + j) % cnt]
+    if cz.pl_free[p] > 0 { return p }
+  }
+  return -1
+}
+
+function cz_find_home(cz: CitizensState, h: int) -> int {
+  let cnt = len(cz.ix_home)
+  if cnt == 0 { return -1 }
+  let start = cz_pick(h, cnt)
+  for j in 0 .. Math.min(cnt, 64) {
+    let p = cz.ix_home[(start + j) % cnt]
+    if cz.pl_room[p] > 0 { return p }
+  }
+  return -1
+}
+
+# one citizen, every column; the episode they begin in is at home, idle, ending within the hour
+function cz_add_citizen(cz: mut CitizensState, home: int, t0: int) -> int {
+  let i = cz.cz_n
+  cz.cz_n += 1
+  let seed = cz_mix(cz.cz_world_seed, i * 2 + 1)
+  let arch = cz_pick_arch(cz, cz_mix(seed, 1))
+  push(cz.cz_seed, seed)
+  push(cz.cz_arch, arch)
+  push(cz.cz_home, home)
+  push(cz.cz_work, -1)
+  let r = CitizenArchetypes[arch]
+  push(cz.cz_wage, r.wage_lo + cz_pick(cz_mix(seed, 2), r.wage_hi - r.wage_lo + 1))
+  push(cz.cz_shift, cz_pick_shift(cz, arch, cz_mix(seed, 3)))
+  push(cz.cz_money, r.money_lo + cz_pick(cz_mix(seed, 4), r.money_hi - r.money_lo + 1))
+  var fl = 0
+  if cz_pick(cz_mix(seed, 5), 100) < r.car_chance { fl = CZ_FL_CAR }
+  push(cz.cz_flags, fl)
+  for f in 0 .. CZ_MAXFRIENDS { push(cz.cz_friend, -1) }
+  let ro = Math.clamp(r.routine + cz_pick(cz_mix(seed, 6), 41) - 20, 0, 100)
+  let so = Math.clamp(r.social + cz_pick(cz_mix(seed, 7), 41) - 20, 0, 100)
+  let th = Math.clamp(r.thrift + cz_pick(cz_mix(seed, 8), 41) - 20, 0, 100)
+  push(cz.cz_trait, ro | (so << 8) | (th << 16))
+  for k in 0 .. CZ_NEED_MAX {
+    var v = 0
+    if k < cz.cz_nn and cz.cn_money[k] == 0 {
+      v = cz.cn_start[k] + cz_pick(cz_mix3(seed, 9, k), 301) - 150
+      v = Math.clamp(v, 100, 1000)
+    }
+    push(cz.cz_need, v)
+  }
+  push(cz.cz_phase, CZ_DOING)
+  var idle = cz.cz_act_idle
+  if idle < 0 { idle = 0 }
+  push(cz.cz_act, idle)
+  push(cz.cz_at, home)
+  push(cz.cz_from, home)
+  push(cz.cz_ep_start, t0)
+  push(cz.cz_ep_end, t0 + 1 + cz_pick(cz_mix(seed, 10), 3600))
+  push(cz.cz_ep, 0)
+  push(cz.cz_next_dur, 0)
+  push(cz.cz_mode, CZ_MODE_WALK)
+  push(cz.cz_trip_cost, 0)
+  push(cz.cz_trip_dep, 0)
+  push(cz.cz_plan_day, -1)
+  push(cz.cz_sh0, 0)
+  push(cz.cz_sh1, 0)
+  push(cz.cz_owed, 0)
+  push(cz.cz_upkeep_day, cz_fdiv(t0, CZ_DAY))
+  push(cz.cz_car_at, home)
+  push(cz.cz_habit, 0)
+  push(cz.cz_habit, 0)
+  push(cz.cz_fear, 0)
+  push(cz.cz_force_act, -1)
+  push(cz.cz_force_place, -1)
+  push(cz.cz_force_dur, 0)
+  push(cz.cz_lod, CZ_LOD_FAR)
+  push(cz.cz_slot, -1)
+  push(cz.cz_body, -1)
+  push(cz.cz_bsum, 0)
+  push(cz.wh_next, -1)
+  push(cz.wh_prev, -1)
+  push(cz.wh_in, 0)
+  push(cz.cz_onext, -1)
+  push(cz.cz_oprev, -1)
+  push(cz.cz_inocc, 0)
+  push(cz.tr_next, -1)
+  push(cz.tr_prev, -1)
+  push(cz.tr_in, 0)
+  push(cz.cz_px, 0.0)
+  push(cz.cz_pz, 0.0)
+  cz.pl_room[home] -= 1
+  return i
+}
+
+function cz_assign_friends(cz: mut CitizensState, i: int) -> void {
+  let n = cz.cz_n
+  if n < 2 { return }
+  let seed = cz.cz_seed[i]
+  for f in 0 .. cz.cz_nfriends {
+    var j = -1
+    if f == 0 and i + 1 < n and cz.cz_home[i + 1] == cz.cz_home[i] and (i % 2) == 0 { j = i + 1 }
+    if f == 0 and i > 0 and cz.cz_home[i - 1] == cz.cz_home[i] and (i % 2) == 1 { j = i - 1 }
+    if j < 0 {
+      let span = 1 + cz_pick(cz_mix3(seed, 20, f), 150)
+      j = (i + span) % n
+      if cz_pick(cz_mix3(seed, 21, f), 2) == 0 { j = ((i - span) % n + n) % n }
+    }
+    if j == i { j = (i + 1) % n }
+    cz.cz_friend[i * CZ_MAXFRIENDS + f] = j
+  }
+}
+
+# the people of the city, made from its homes: each building houses about `occupancy` of its capacity, more
+# of the buildings' fractions rounding up by a seed. Kinds, natures, wages, savings, cars, friends and jobs
+# follow from the seed and the citizen's number. The clock is set to `start` (game seconds)
+export function citizens_generate(cz: mut CitizensState, start: int) -> int {
+  if not cz.cz_ready { citizens_build(cz) }
+  cz_clear_pop(cz)
+  cz.cz_clock = start
+  cz.cz_clock_frac = 0.0
+  cz.cz_proc_min = cz_fdiv(start, 60) - 1
+  cz.cz_day_seen = cz_fdiv(start, CZ_DAY)
+  if cz.cz_nr == 0 { return 0 }
+  var total = 0
+  for p in 0 .. cz.cz_np {
+    if cz.pl_homes[p] <= 0 { continue }
+    let exact = float(cz.pl_homes[p]) * cz.cz_occupancy
+    var k = int(Math.floor(exact))
+    let frac = exact - float(k)
+    if cz_unit(cz_mix(cz.cz_world_seed, cz.pl_id[p] * 3 + 11)) < frac { k += 1 }
+    total += Math.min(k, cz.pl_homes[p])
+  }
+  for p in 0 .. cz.cz_np {
+    if cz.pl_homes[p] <= 0 { continue }
+    let exact = float(cz.pl_homes[p]) * cz.cz_occupancy
+    var k = int(Math.floor(exact))
+    let frac = exact - float(k)
+    if cz_unit(cz_mix(cz.cz_world_seed, cz.pl_id[p] * 3 + 11)) < frac { k += 1 }
+    k = Math.min(k, cz.pl_homes[p])
+    for h in 0 .. k { cz_add_citizen(cz, p, start) }
+  }
+  for i in 0 .. cz.cz_n { cz_assign_friends(cz, i) }
+  # jobs: who is employed by chance, then the nearest free workplace among a few
+  for i in 0 .. cz.cz_n {
+    let a = cz.cz_arch[i]
+    if cz.cr_mask[a] == 0 or cz.cz_shift[i] < 0 { continue }
+    if cz_pick(cz_mix(cz.cz_seed[i], 30), 100) >= cz.cr_emp[a] { continue }
+    let p = cz_find_job(cz, i, 0)
+    if p >= 0 { cz_take_job(cz, i, p) }
+  }
+  for i in 0 .. cz.cz_n {
+    cz.cz_bsum[i] = cz_persist_sum(cz, i)
+    cz_link_occ(cz, i)
+    cz_wheel_add(cz, i)
+  }
+  cz_seed_cash(cz)
+  return cz.cz_n
+}
+
+# the world seed, set in code (it wins over the settings row); the same city and seed make the same people
+export function citizens_config_seed(cz: mut CitizensState, seed: int) -> void {
+  cz.cz_seed_set = true
+  cz.cz_seed_val = seed
+  cz.cz_world_seed = seed
+}
+
+# the city was authored anew (a building added, moved, removed, given more homes or jobs): the places are read
+# again and the people keep their lives. Buildings are matched by their stable ids; a citizen whose home is gone
+# is rehoused and one whose workplace is gone or full loses the job (CZ_F_EVICTED), someone elsewhere goes home,
+# a till follows its building
+export function citizens_city_changed(cz: mut CitizensState) -> void {
+  if not cz.cz_ready {
+    citizens_build(cz)
+    return
+  }
+  let old_n = cz.cz_np
+  let old_ids = new []int
+  let old_cash = new []int
+  for p in 0 .. old_n {
+    push(old_ids, cz.pl_id[p])
+    push(old_cash, cz.pl_cash[p])
+  }
+  cz_index_places(cz)
+  cz_mid_init(cz)
+  let remap = new []int
+  for o in 0 .. old_n { push(remap, imap_get(cz.pl_idmap, old_ids[o], -1)) }
+  for b in 0 .. CZ_WHEEL { cz.wh_head[b] = -1 }
+  cz.tr_head = -1
+  for p in 0 .. cz.cz_np { cz.pl_cash[p] = 0 }
+  for o in 0 .. old_n { if remap[o] >= 0 { cz.pl_cash[remap[o]] = old_cash[o] } }
+  let now = cz.cz_clock
+  for i in 0 .. cz.cz_n {
+    cz.wh_in[i] = 0
+    cz.cz_inocc[i] = 0
+    cz.tr_in[i] = 0
+    let oh = cz.cz_home[i]
+    var h = -1
+    if oh >= 0 and oh < old_n { h = remap[oh] }
+    if h >= 0 and cz.pl_room[h] <= 0 { h = -1 }
+    if h < 0 {
+      h = cz_find_home(cz, cz_mix(cz.cz_seed[i], 300))
+      if h < 0 and cz.cz_np > 0 { h = 0 }
+      cz_say(cz, CZ_F_EVICTED, i, 0, 0, 0, now)
+    }
+    cz.cz_home[i] = h
+    cz.pl_room[h] -= 1
+    let ow = cz.cz_work[i]
+    var w = -1
+    if ow >= 0 and ow < old_n { w = remap[ow] }
+    cz.cz_work[i] = -1
+    if w >= 0 and cz.pl_free[w] > 0 {
+      cz_take_job(cz, i, w)
+    } else if ow >= 0 {
+      cz_say(cz, CZ_F_EVICTED, i, 1, 0, 0, now)
+    }
+    var at = cz.cz_at[i]
+    at = cz_remap_place(remap, old_n, at, h)
+    cz.cz_at[i] = at
+    cz.cz_from[i] = cz_remap_place(remap, old_n, cz.cz_from[i], h)
+    cz.cz_car_at[i] = cz_remap_place(remap, old_n, cz.cz_car_at[i], h)
+    if cz.cz_phase[i] == CZ_DOING { cz_link_occ(cz, i) } else { cz_link_trav(cz, i) }
+    cz_wheel_add(cz, i)
+  }
+  for p in 0 .. cz.cz_np { if cz.pl_payroll[p] > 0 and cz.pl_cash[p] == 0 { cz.pl_cash[p] = 3 * cz.pl_payroll[p] } }
+}
+
+function cz_remap_place(remap: []int, n: int, p: int, fallback: int) -> int {
+  if p < 0 or p >= n { return fallback }
+  if remap[p] < 0 { return fallback }
+  return remap[p]
+}

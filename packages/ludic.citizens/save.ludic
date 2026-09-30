@@ -1,0 +1,155 @@
+# save.ludic - the section "citizens": seeds and deltas. The people are made from the city and the seed, so
+# a save keeps only what makes them differ from that - a new job, a move, a car sold, a friend made - plus
+# what they hold (savings, wages owed, who is afraid), the tills and the counts. Where they are and what they
+# were doing is not kept: a load makes the people again, runs the simulation on for a warm-up (four hours by
+# default) and lands at the saved moment with everyone somewhere plausible. A city that changed since the save
+# makes a fresh population instead, and says so (citizens_load_status).
+
+export const CZ_SAVE_OK: int = 1
+export const CZ_SAVE_CITY_CHANGED: int = 2      # the city is not the one the save was made in: a fresh population
+export const CZ_SAVE_SIZE_CHANGED: int = 3      # the same city made a different number of people (the data changed)
+
+function cz_persist_sum(cz: CitizensState, i: int) -> int {
+  var h = cz_mix(cz.cz_home[i], cz.cz_work[i] + 7)
+  h = cz_mix(h, cz.cz_shift[i] * 1000 + cz.cz_wage[i])
+  h = cz_mix(h, cz.cz_flags[i] & CZ_FL_CAR)
+  for f in 0 .. CZ_MAXFRIENDS { h = cz_mix(h, cz.cz_friend[i * CZ_MAXFRIENDS + f]) }
+  return h
+}
+
+export function citizens_config_warmup(cz: mut CitizensState, secs: int) -> void { cz.cz_warmup = Math.max(secs, 0) }
+export function citizens_config_save_money(cz: mut CitizensState, on: bool) -> void { cz.cz_save_money = on }
+export function citizens_load_status(cz: CitizensState) -> int { return cz.sv_status }
+
+export function citizens_save(cz: CitizensState) -> Val {
+  let v = Value.object()
+  sv_put_int(v, "seed", cz.cz_world_seed)
+  sv_put_int(v, "n", cz.cz_n)
+  sv_put_int(v, "city", cz.pl_hash)
+  sv_put_int(v, "clock", cz.cz_clock)
+  let d = new []int
+  for i in 0 .. cz.cz_n {
+    if cz_persist_sum(cz, i) == cz.cz_bsum[i] { continue }
+    push(d, i)
+    push(d, cz.pl_id[cz.cz_home[i]])
+    if cz.cz_work[i] < 0 { push(d, -1) } else { push(d, cz.pl_id[cz.cz_work[i]]) }
+    push(d, cz.cz_shift[i])
+    push(d, cz.cz_wage[i])
+    push(d, cz.cz_flags[i] & CZ_FL_CAR)
+    for f in 0 .. CZ_MAXFRIENDS { push(d, cz.cz_friend[i * CZ_MAXFRIENDS + f]) }
+  }
+  sv_put_ints(v, "deltas", d)
+  if cz.cz_save_money {
+    sv_put_ints(v, "money", cz.cz_money)
+    let o = new []int
+    let f = new []int
+    for i in 0 .. cz.cz_n {
+      if cz.cz_owed[i] != 0 {
+        push(o, i)
+        push(o, cz.cz_owed[i])
+      }
+      if cz.cz_fear[i] > cz.cz_clock {
+        push(f, i)
+        push(f, cz.cz_fear[i])
+      }
+    }
+    sv_put_ints(v, "owed", o)
+    sv_put_ints(v, "fear", f)
+  }
+  sv_put_ints(v, "cash", cz.pl_cash)
+  let s = new []int
+  push(s, cz.st_wages)
+  push(s, cz.st_spent)
+  push(s, cz.st_upkeep)
+  push(s, cz.st_steps)
+  push(s, cz.st_plans)
+  push(s, cz.st_hired)
+  push(s, cz.st_fired)
+  push(s, cz.st_moved)
+  push(s, cz.st_leak)
+  sv_put_ints(v, "stats", s)
+  return v
+}
+
+export function citizens_load(cz: mut CitizensState, v: Val, version: int) -> void {
+  if not cz.cz_ready { citizens_build(cz) }
+  let clock = sv_int(v, "clock", 0)
+  cz.cz_world_seed = sv_int(v, "seed", cz.cz_world_seed)
+  citizens_generate(cz, clock - cz.cz_warmup)
+  cz.sv_status = CZ_SAVE_OK
+  if sv_int(v, "city", 0) != cz.pl_hash {
+    cz.sv_status = CZ_SAVE_CITY_CHANGED
+    citizens_advance(cz, clock)
+    return
+  }
+  if sv_int(v, "n", -1) != cz.cz_n {
+    cz.sv_status = CZ_SAVE_SIZE_CHANGED
+    citizens_advance(cz, clock)
+    return
+  }
+  cz.lg_applying = true
+  let d = sv_ints(v, "deltas")
+  let w = 6 + CZ_MAXFRIENDS
+  var k = 0
+  while k + w <= len(d) {
+    let i = d[k]
+    let home = imap_get(cz.pl_idmap, d[k + 1], -1)
+    let work = imap_get(cz.pl_idmap, d[k + 2], -1)
+    if i >= 0 and i < cz.cz_n {
+      if home >= 0 and home != cz.cz_home[i] {
+        cz.pl_room[cz.cz_home[i]] += 1
+        cz.pl_room[home] -= 1
+        cz.cz_home[i] = home
+        cz.cz_car_at[i] = home
+        cz.cz_at[i] = home
+        cz.cz_from[i] = home
+      }
+      if work != cz.cz_work[i] or d[k + 3] != cz.cz_shift[i] or d[k + 4] != cz.cz_wage[i] {
+        cz_leave_job(cz, i)
+        cz.cz_shift[i] = d[k + 3]
+        cz.cz_wage[i] = d[k + 4]
+        if work >= 0 { cz_take_job(cz, i, work) }
+      }
+      if d[k + 5] != 0 { cz.cz_flags[i] = cz.cz_flags[i] | CZ_FL_CAR } else { cz.cz_flags[i] = cz.cz_flags[i] & ~CZ_FL_CAR }
+      for f in 0 .. CZ_MAXFRIENDS { cz.cz_friend[i * CZ_MAXFRIENDS + f] = d[k + 6 + f] }
+    }
+    k += w
+  }
+  cz.lg_applying = false
+  citizens_advance(cz, clock)
+  let m = sv_ints(v, "money")
+  if len(m) == cz.cz_n {
+    for i in 0 .. cz.cz_n {
+      cz.cz_money[i] = m[i]
+      cz.cz_owed[i] = 0
+    }
+    let o = sv_ints(v, "owed")
+    var j = 0
+    while j + 1 < len(o) {
+      if o[j] >= 0 and o[j] < cz.cz_n { cz.cz_owed[o[j]] = o[j + 1] }
+      j += 2
+    }
+    let f = sv_ints(v, "fear")
+    j = 0
+    while j + 1 < len(f) {
+      if f[j] >= 0 and f[j] < cz.cz_n { cz.cz_fear[f[j]] = f[j + 1] }
+      j += 2
+    }
+  }
+  let c = sv_ints(v, "cash")
+  if len(c) == cz.cz_np {
+    for p in 0 .. cz.cz_np { cz.pl_cash[p] = c[p] }
+  }
+  let s = sv_ints(v, "stats")
+  if len(s) >= 9 {
+    cz.st_wages = s[0]
+    cz.st_spent = s[1]
+    cz.st_upkeep = s[2]
+    cz.st_steps = s[3]
+    cz.st_plans = s[4]
+    cz.st_hired = s[5]
+    cz.st_fired = s[6]
+    cz.st_moved = s[7]
+    cz.st_leak = s[8]
+  }
+}

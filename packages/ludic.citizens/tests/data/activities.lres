@@ -1,0 +1,104 @@
+work {
+  where: "work"
+  obligation: true
+  needs_job: true
+  dur_min: 240
+  dur_max: 720
+  effects: [{ need: "fun", per_hour: -1.0 }, { need: "social", per_hour: 2.0 }]
+  anim: "work_desk"
+  clip: "type_keys"
+}
+overtime {
+  where: "work"
+  needs_job: true
+  pay: 1.5
+  dur_min: 60
+  dur_max: 180
+  hours_from: 17.0
+  hours_to: 22.0
+  effects: [{ need: "fun", per_hour: -2.0 }]
+  anim: "work_desk"
+}
+sleep {
+  where: "home"
+  dur_min: 240
+  dur_max: 600
+  hours_from: 21.0
+  hours_to: 10.0
+  slow: 0.4
+  effects: [{ need: "energy", per_hour: 8.0 }]
+  anim: "sleep_bed"
+}
+eat_home {
+  where: "home"
+  dur_min: 20
+  dur_max: 45
+  cost: 4
+  effects: [{ need: "hunger", per_hour: 90.0 }]
+  anim: "eat_table"
+  prop: "plate"
+}
+eat_out {
+  where: "tags"
+  tags: ["restaurant"]
+  dur_min: 40
+  dur_max: 80
+  cost: 14
+  effects: [{ need: "hunger", per_hour: 70.0 }, { need: "fun", per_hour: 6.0 }, { need: "social", per_hour: 4.0 }]
+  anim: "eat_sit"
+}
+shower {
+  where: "home"
+  dur_min: 10
+  dur_max: 25
+  effects: [{ need: "hygiene", per_hour: 130.0 }]
+  anim: "shower"
+}
+shop {
+  where: "tags"
+  tags: ["shop"]
+  dur_min: 20
+  dur_max: 50
+  cost: 15
+  effects: [{ need: "chores", per_hour: 90.0 }, { need: "fun", per_hour: 3.0 }]
+  anim: "browse"
+}
+bar {
+  where: "tags"
+  tags: ["bar"]
+  dur_min: 60
+  dur_max: 180
+  cost: 16
+  hours_from: 17.0
+  hours_to: 26.0
+  effects: [{ need: "fun", per_hour: 25.0 }, { need: "social", per_hour: 22.0 }, { need: "hunger", per_hour: 6.0 }]
+  anim: "drink_stand"
+}
+park {
+  where: "tags"
+  tags: ["park"]
+  dur_min: 30
+  dur_max: 120
+  outdoor: true
+  hours_from: 8.0
+  hours_to: 20.0
+  effects: [{ need: "fun", per_hour: 14.0 }, { need: "social", per_hour: 5.0 }]
+  anim: "sit_bench"
+}
+visit {
+  where: "friend"
+  dur_min: 60
+  dur_max: 180
+  hours_from: 10.0
+  hours_to: 22.0
+  effects: [{ need: "social", per_hour: 30.0 }, { need: "fun", per_hour: 8.0 }]
+  anim: "chat_sit"
+}
+idle {
+  where: "home"
+  idle: true
+  dur_min: 15
+  dur_max: 60
+  effects: [{ need: "fun", per_hour: 2.0 }]
+  anim: "idle_stand"
+}

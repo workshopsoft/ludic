@@ -1,0 +1,389 @@
+# lod.ludic - how closely each citizen is simulated. FAR is the event chain of sim.ludic and costs nothing
+# between events. Near a player the citizen takes a slot: MID walks real legs (a trip's planner legs, or one
+# straight leg), their position at any time a pure function of the legs, and their episodes end at the
+# second, not the minute; NEAR is handed to the game's bodies through CitizensBody (a pedestrian, a driver,
+# a person at a building) which then owns the position, and is handed back - with where the body got to -
+# when the player leaves. The far state is the truth throughout: promotion only adds detail (the planner's
+# legs for a trip the far state only timed), so following someone across the boundaries shows the same
+# person at the same place and time. Finding who is near a player costs the places in range and the people
+# now travelling, not the population.
+
+const CZ_MISS: int = 3                # scans a citizen may be out of range before they are let go
+
+function cz_mid_init(cz: mut CitizensState) -> void {
+  let n = cz.cz_max_mid
+  if len(cz.md_id) == n { return }
+  List.clear(cz.md_id)
+  List.clear(cz.md_ep)
+  List.clear(cz.md_miss)
+  List.clear(cz.md_lod)
+  List.clear(cz.md_nleg)
+  List.clear(cz.md_body)
+  List.clear(cz.md_bep)
+  List.clear(cz.ml_kind)
+  List.clear(cz.ml_t0)
+  List.clear(cz.ml_t1)
+  List.clear(cz.ml_line)
+  List.clear(cz.ml_run)
+  List.clear(cz.ml_x0)
+  List.clear(cz.ml_z0)
+  List.clear(cz.ml_x1)
+  List.clear(cz.ml_z1)
+  for s in 0 .. n + 1 {
+    push(cz.md_id, -1)
+    push(cz.md_ep, -1)
+    push(cz.md_miss, 0)
+    push(cz.md_lod, CZ_LOD_FAR)
+    push(cz.md_nleg, 0)
+    push(cz.md_body, -1)
+    push(cz.md_bep, -1)
+    for k in 0 .. CZ_MAXLEG {
+      push(cz.ml_kind, 0)
+      push(cz.ml_t0, 0)
+      push(cz.ml_t1, 0)
+      push(cz.ml_line, -1)
+      push(cz.ml_run, 0)
+      push(cz.ml_x0, 0.0)
+      push(cz.ml_z0, 0.0)
+      push(cz.ml_x1, 0.0)
+      push(cz.ml_z1, 0.0)
+    }
+  }
+  cz.md_n = 0
+}
+
+function cz_leg_put(cz: mut CitizensState, slot: int, kind: int, t0: int, t1: int, x0: float, z0: float, x1: float, z1: float, line: int, run: int) -> void {
+  let k = cz.md_nleg[slot]
+  if k >= CZ_MAXLEG { return }
+  let at = slot * CZ_MAXLEG + k
+  cz.ml_kind[at] = kind
+  cz.ml_t0[at] = t0
+  cz.ml_t1[at] = t1
+  cz.ml_x0[at] = x0
+  cz.ml_z0[at] = z0
+  cz.ml_x1[at] = x1
+  cz.ml_z1[at] = z1
+  cz.ml_line[at] = line
+  cz.ml_run[at] = run
+  cz.md_nleg[slot] = k + 1
+}
+
+# citizen i's trip as legs in a slot: one straight leg on foot, by car or taxi (a taxi's wait first), and for
+# public transport the planner's legs from the moment the trip's plan leaves (a wait at the start for the bucket)
+function cz_make_legs(cz: mut CitizensState, i: int, slot: int) -> void {
+  cz.md_nleg[slot] = 0
+  cz.md_ep[slot] = cz.cz_ep[i]
+  let f = cz.cz_from[i]
+  let p = cz.cz_at[i]
+  let x0 = cz.pl_x[f]
+  let z0 = cz.pl_z[f]
+  let x1 = cz.pl_x[p]
+  let z1 = cz.pl_z[p]
+  let t0 = cz.cz_ep_start[i]
+  let t1 = cz.cz_ep_end[i]
+  let mode = cz.cz_mode[i]
+  if mode == CZ_MODE_CAR {
+    cz_leg_put(cz, slot, CZ_LEG_DRIVE, t0, t1, x0, z0, x1, z1, -1, 0)
+    return
+  }
+  if mode == CZ_MODE_TAXI {
+    let w = Math.min((t1 - t0) / 4, 240)
+    cz_leg_put(cz, slot, CZ_LEG_WAIT, t0, t0 + w, x0, z0, x0, z0, -1, 0)
+    cz_leg_put(cz, slot, CZ_LEG_TAXI, t0 + w, t1, x0, z0, x1, z1, -1, 0)
+    return
+  }
+  if mode == CZ_MODE_TRANSIT {
+    let dep = cz.cz_trip_dep[i]
+    if dep > t0 { cz_leg_put(cz, slot, CZ_LEG_WAIT, t0, dep, x0, z0, x0, z0, -1, 0) }
+    let n = CitizensTransit.plan(x0, z0, x1, z1, dep)
+    if n > 0 {
+      for k in 0 .. n {
+        let kind = CitizensTransit.leg_i(k, CZ_LI_KIND)
+        var a = CitizensTransit.leg_i(k, CZ_LI_T0)
+        var b = CitizensTransit.leg_i(k, CZ_LI_T1)
+        if k == n - 1 { b = t1 }
+        if cz.md_nleg[slot] >= CZ_MAXLEG - 1 and k < n - 1 { continue }
+        cz_leg_put(cz, slot, kind, a, b, CitizensTransit.leg_f(k, CZ_LF_X0), CitizensTransit.leg_f(k, CZ_LF_Z0), CitizensTransit.leg_f(k, CZ_LF_X1), CitizensTransit.leg_f(k, CZ_LF_Z1), CitizensTransit.leg_i(k, CZ_LI_LINE), CitizensTransit.leg_i(k, CZ_LI_RUN))
+      }
+      return
+    }
+  }
+  cz_leg_put(cz, slot, CZ_LEG_WALK, t0, t1, x0, z0, x1, z1, -1, 0)
+}
+
+# where citizen i is at game second t, into pose_x / pose_z, with the end of what they are doing now (pose_gx /
+# pose_gz, pose_t_end) and pose_leg (the kind of leg, or -1 at a place)
+function cz_pose(cz: mut CitizensState, i: int, t: int) -> void {
+  if cz.cz_phase[i] == CZ_DOING {
+    let p = cz.cz_at[i]
+    cz.pose_x = cz.pl_x[p]
+    cz.pose_z = cz.pl_z[p]
+    cz.pose_gx = cz.pose_x
+    cz.pose_gz = cz.pose_z
+    cz.pose_leg = -1
+    cz.pose_t_end = cz.cz_ep_end[i]
+    return
+  }
+  var slot = cz.cz_slot[i]
+  if slot < 0 or cz.md_ep[slot] != cz.cz_ep[i] {
+    if slot < 0 { slot = cz.cz_max_mid }
+    cz_make_legs(cz, i, slot)
+  }
+  let n = cz.md_nleg[slot]
+  var k = 0
+  for j in 0 .. n {
+    k = j
+    if t < cz.ml_t1[slot * CZ_MAXLEG + j] { break }
+  }
+  let at = slot * CZ_MAXLEG + k
+  let span = cz.ml_t1[at] - cz.ml_t0[at]
+  var f = 1.0
+  if span > 0 { f = float(t - cz.ml_t0[at]) / float(span) }
+  if f < 0.0 { f = 0.0 }
+  if f > 1.0 { f = 1.0 }
+  cz.pose_x = cz.ml_x0[at] + (cz.ml_x1[at] - cz.ml_x0[at]) * f
+  cz.pose_z = cz.ml_z0[at] + (cz.ml_z1[at] - cz.ml_z0[at]) * f
+  if cz.ml_kind[at] == CZ_LEG_RIDE and cz.ml_line[at] >= 0 {
+    if CitizensTransit.ride_pose(cz.ml_line[at], cz.ml_run[at], t) {
+      cz.pose_x = CitizensTransit.pose_x()
+      cz.pose_z = CitizensTransit.pose_z()
+    }
+  }
+  cz.pose_gx = cz.ml_x1[at]
+  cz.pose_gz = cz.ml_z1[at]
+  cz.pose_leg = cz.ml_kind[at]
+  cz.pose_t_end = cz.ml_t1[at]
+}
+
+function cz_leg_index(cz: CitizensState, slot: int, t: int) -> int {
+  let n = cz.md_nleg[slot]
+  var k = 0
+  for j in 0 .. n {
+    k = j
+    if t < cz.ml_t1[slot * CZ_MAXLEG + j] { break }
+  }
+  return k
+}
+
+function cz_alloc_slot(cz: mut CitizensState) -> int {
+  for s in 0 .. cz.cz_max_mid { if cz.md_id[s] < 0 { return s } }
+  return -1
+}
+
+function cz_promote(cz: mut CitizensState, i: int, lod: int, now: int) -> void {
+  let s = cz_alloc_slot(cz)
+  if s < 0 { return }
+  cz.md_id[s] = i
+  cz.md_ep[s] = -1
+  cz.md_miss[s] = 0
+  cz.md_lod[s] = lod
+  cz.md_nleg[s] = 0
+  cz.md_body[s] = -1
+  cz.md_bep[s] = -1
+  cz.cz_slot[i] = s
+  cz.cz_lod[i] = lod
+  cz.md_n += 1
+  cz_say(cz, CZ_F_PROMOTED, i, lod, 0, 0, now)
+}
+
+# the body is taken back and what it did is written into the citizen: where it had got to moves a walk's arrival
+function cz_take_back(cz: mut CitizensState, i: int, slot: int, now: int) -> void {
+  let had = cz.md_body[slot]
+  cz.md_body[slot] = -1
+  cz.cz_body[i] = -1
+  cz.md_bep[slot] = -1
+  if had < 0 { return }
+  if not CitizensBody.release(i) { return }
+  let fear = CitizensBody.back_fear()
+  if fear > 0 { cz.cz_fear[i] = Math.max(cz.cz_fear[i], now + fear * 60) }
+  if cz.cz_phase[i] == CZ_TRAVELLING and cz.cz_mode[i] == CZ_MODE_WALK and had == CZ_BODY_PEDESTRIAN {
+    let p = cz.cz_at[i]
+    var rest = 0
+    if not CitizensBody.back_arrived() {
+      let d = cz_dist(CitizensBody.back_x(), CitizensBody.back_z(), cz.pl_x[p], cz.pl_z[p]) * cz.cz_walk_detour
+      rest = int(d / cz.cz_walk_speed) + 1
+    }
+    let target = Math.max(now + rest, cz.cz_ep_start[i] + 1)
+    let diff = target - cz.cz_ep_end[i]
+    if diff > 15 or diff < -15 { cz_shift_end(cz, i, target, now) }
+  }
+}
+
+function cz_demote(cz: mut CitizensState, slot: int, now: int) -> void {
+  let i = cz.md_id[slot]
+  if i < 0 { return }
+  cz_take_back(cz, i, slot, now)
+  cz.cz_slot[i] = -1
+  cz.cz_lod[i] = CZ_LOD_FAR
+  cz.md_id[slot] = -1
+  cz.md_n -= 1
+  cz_say(cz, CZ_F_DEMOTED, i, CZ_LOD_FAR, 0, 0, now)
+}
+
+# a citizen has been seen in range at `lod` this scan
+function cz_want(cz: mut CitizensState, i: int, lod: int, now: int) -> void {
+  let s = cz.cz_slot[i]
+  if s < 0 {
+    cz_promote(cz, i, lod, now)
+    return
+  }
+  cz.md_miss[s] = 0
+  if lod > cz.md_lod[s] {
+    cz.md_lod[s] = lod
+    cz.cz_lod[i] = lod
+  }
+}
+
+# how far a traveller is from their start, on the far state's own terms: a straight line over the trip's time
+function cz_trip_frac(cz: CitizensState, i: int, now: int) -> float {
+  let span = cz.cz_ep_end[i] - cz.cz_ep_start[i]
+  if span <= 0 { return 1.0 }
+  var f = float(now - cz.cz_ep_start[i]) / float(span)
+  if f < 0.0 { f = 0.0 }
+  if f > 1.0 { f = 1.0 }
+  return f
+}
+
+# look for who is near each player: the places in range (and who is at them) and everyone on a trip
+function cz_scan(cz: mut CitizensState, now: int) -> void {
+  cz_mid_init(cz)
+  let nv = CitizensWorld.viewers()
+  let rm = cz.cz_r_mid
+  let rn = cz.cz_r_near
+  for s in 0 .. cz.cz_max_mid { if cz.md_id[s] >= 0 { cz.md_miss[s] += 1 } }
+  for v in 0 .. nv {
+    let vx = CitizensWorld.viewer_x(v)
+    let vz = CitizensWorld.viewer_z(v)
+    let cx0 = int(Math.floor((vx - rm - cz.ix_g_minx) / cz.ix_g_cell))
+    let cx1 = int(Math.floor((vx + rm - cz.ix_g_minx) / cz.ix_g_cell))
+    let cz0 = int(Math.floor((vz - rm - cz.ix_g_minz) / cz.ix_g_cell))
+    let cz1 = int(Math.floor((vz + rm - cz.ix_g_minz) / cz.ix_g_cell))
+    for gz in Math.max(cz0, 0) .. Math.min(cz1, cz.ix_g_h - 1) + 1 {
+      for gx in Math.max(cx0, 0) .. Math.min(cx1, cz.ix_g_w - 1) + 1 {
+        let c = gz * cz.ix_g_w + gx
+        for q in cz.ix_g_start[c] .. cz.ix_g_start[c + 1] {
+          let p = cz.ix_g_place[q]
+          if cz.pl_occ_head[p] < 0 { continue }
+          let d = cz_dist(vx, vz, cz.pl_x[p], cz.pl_z[p])
+          if d > rm { continue }
+          var i = cz.pl_occ_head[p]
+          while i >= 0 {
+            var lod = CZ_LOD_MID
+            var near = rn
+            if cz.cz_slot[i] >= 0 and cz.md_lod[cz.cz_slot[i]] == CZ_LOD_NEAR { near = rn * 1.3 }
+            if d <= near { lod = CZ_LOD_NEAR }
+            cz_want(cz, i, lod, now)
+            i = cz.cz_onext[i]
+          }
+        }
+      }
+    }
+    var i = cz.tr_head
+    while i >= 0 {
+      let f = cz_trip_frac(cz, i, now)
+      let a = cz.cz_from[i]
+      let b = cz.cz_at[i]
+      let x = cz.pl_x[a] + (cz.pl_x[b] - cz.pl_x[a]) * f
+      let z = cz.pl_z[a] + (cz.pl_z[b] - cz.pl_z[a]) * f
+      let d = cz_dist(vx, vz, x, z)
+      var reach = rm
+      if cz.cz_mode[i] == CZ_MODE_TRANSIT or cz.cz_mode[i] == CZ_MODE_CAR { reach = rm * 3.0 }
+      if d <= reach {
+        var lod = CZ_LOD_MID
+        var near = rn
+        if cz.cz_slot[i] >= 0 and cz.md_lod[cz.cz_slot[i]] == CZ_LOD_NEAR { near = rn * 1.3 }
+        if d <= near { lod = CZ_LOD_NEAR }
+        cz_want(cz, i, lod, now)
+      }
+      i = cz.tr_next[i]
+    }
+  }
+  for s in 0 .. cz.cz_max_mid {
+    if cz.md_id[s] >= 0 and cz.md_miss[s] >= CZ_MISS { cz_demote(cz, s, now) }
+  }
+}
+
+# inside a transit vehicle: no body of their own, and nothing they can see out in the street
+function cz_is_riding(cz: CitizensState, i: int) -> bool {
+  if cz.cz_phase[i] != CZ_TRAVELLING or cz.cz_mode[i] != CZ_MODE_TRANSIT { return false }
+  let s = cz.cz_slot[i]
+  if s < 0 or cz.md_ep[s] != cz.cz_ep[i] { return false }
+  return cz.ml_kind[s * CZ_MAXLEG + cz_leg_index(cz, s, cz.cz_clock)] == CZ_LEG_RIDE
+}
+
+function cz_body_kind(cz: CitizensState, i: int, slot: int, now: int) -> int {
+  if cz.cz_phase[i] == CZ_DOING { return CZ_BODY_AT_PLACE }
+  let m = cz.cz_mode[i]
+  if m == CZ_MODE_CAR or m == CZ_MODE_TAXI { return CZ_BODY_VEHICLE }
+  if m == CZ_MODE_TRANSIT and cz.pose_leg == CZ_LEG_RIDE { return CZ_BODY_RIDER }
+  return CZ_BODY_PEDESTRIAN
+}
+
+# each tick: the closely simulated are advanced to the second, their poses worked out, and the NEAR ones
+# handed to, or told the next leg of, the game's bodies
+function cz_mid_tick(cz: mut CitizensState, now: int) -> void {
+  for s in 0 .. cz.cz_max_mid {
+    let i = cz.md_id[s]
+    if i < 0 { continue }
+    cz_advance_one(cz, i, now)
+    cz_pose(cz, i, now)
+    let lod = cz.md_lod[s]
+    if lod == CZ_LOD_NEAR {
+      cz_body_tick(cz, i, s, now)
+    } else if cz.md_body[s] >= 0 {
+      cz_take_back(cz, i, s, now)
+    }
+    if cz.md_body[s] < 0 {
+      cz.cz_px[i] = cz.pose_x
+      cz.cz_pz[i] = cz.pose_z
+    }
+  }
+}
+
+function cz_body_tick(cz: mut CitizensState, i: int, s: int, now: int) -> void {
+  let what = cz_body_kind(cz, i, s, now)
+  var key = cz.cz_ep[i] * 32
+  if cz.cz_phase[i] == CZ_TRAVELLING { key += cz_leg_index(cz, cz.cz_slot[i], now) + 1 }
+  if cz.md_bep[s] == key and cz.md_body[s] == what { return }
+  cz.md_bep[s] = key
+  var act = -1
+  var left = 0
+  if cz.cz_phase[i] == CZ_DOING {
+    act = cz.cz_act[i]
+    left = cz.cz_ep_end[i] - now
+  }
+  let has_goal = cz.cz_phase[i] == CZ_TRAVELLING
+  if what == CZ_BODY_RIDER {
+    if cz.md_body[s] >= 0 { cz_take_back(cz, i, s, now) }
+    cz.cz_body[i] = -1
+    return
+  }
+  if cz.md_body[s] == what {
+    CitizensBody.leg(i, what, act, has_goal, cz.pose_gx, cz.pose_gz, left)
+    return
+  }
+  if cz.md_body[s] >= 0 { cz_take_back(cz, i, s, now) }
+  cz_pose(cz, i, now)
+  if CitizensBody.embody(i, what, cz.cz_arch[i], act, cz.cz_px[i], cz.cz_pz[i], cz.pose_gx, cz.pose_gz, left) {
+    cz.md_body[s] = what
+    cz.cz_body[i] = what
+  }
+}
+
+# the game's body of citizen i is at (x, z)
+export function citizens_body_at(cz: mut CitizensState, i: int, x: float, z: float) -> void {
+  if i < 0 or i >= cz.cz_n { return }
+  cz.cz_px[i] = x
+  cz.cz_pz[i] = z
+}
+
+# the game lost citizen i's body (it was destroyed): the citizen goes on as they were, simulated by the schedule
+export function citizens_body_lost(cz: mut CitizensState, i: int) -> void {
+  if i < 0 or i >= cz.cz_n { return }
+  let s = cz.cz_slot[i]
+  if s >= 0 {
+    cz.md_body[s] = -1
+    cz.md_bep[s] = -1
+  }
+  cz.cz_body[i] = -1
+}

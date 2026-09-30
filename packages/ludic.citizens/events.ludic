@@ -1,0 +1,226 @@
+# events.ludic - what happens to citizens that the simulation did not decide: hired, fired, moved, told by a
+# mission what to do, held in conversation, paid or fined, frightened by a crime, caught in an accident,
+# befriended. Each is a verb, changes the state through the same lossless columns the simulation uses, says
+# what happened as a fact, and - on the host - is logged as a correction a client applies, since these are
+# the only things a client cannot work out for itself.
+
+export const CZ_EV_HIRE: int = 1
+export const CZ_EV_FIRE: int = 2
+export const CZ_EV_MOVE: int = 3
+export const CZ_EV_FORCE: int = 4
+export const CZ_EV_UNFORCE: int = 5
+export const CZ_EV_HOLD: int = 6
+export const CZ_EV_GIVE: int = 7
+export const CZ_EV_FEAR: int = 8
+export const CZ_EV_FRIEND: int = 9
+export const CZ_EV_SHIFT: int = 10
+export const CZ_EV_REPLAN: int = 11
+export const CZ_EV_CAR: int = 12
+
+# say a correction on the host: (time, kind, citizen, a, b, c)
+function cz_log(cz: mut CitizensState, t: int, kind: int, id: int, a: int, b: int) -> void {
+  cz_log3(cz, t, kind, id, a, b, 0)
+}
+
+function cz_log3(cz: mut CitizensState, t: int, kind: int, id: int, a: int, b: int, c: int) -> void {
+  if not cz.cz_host or cz.lg_applying { return }
+  cz.lg_seq += 1
+  if len(cz.lg_buf) == 0 {
+    for k in 0 .. cz.lg_cap * CZ_LOG_INTS { push(cz.lg_buf, 0) }
+  }
+  let slot = (cz.lg_seq - 1) % cz.lg_cap
+  let at = slot * CZ_LOG_INTS
+  cz.lg_buf[at] = cz.lg_seq
+  cz.lg_buf[at + 1] = t
+  cz.lg_buf[at + 2] = kind
+  cz.lg_buf[at + 3] = id
+  cz.lg_buf[at + 4] = a
+  cz.lg_buf[at + 5] = b
+  cz.lg_buf[at + 6] = c
+  cz.lg_buf[at + 7] = 0
+  cz.lg_n = Math.min(cz.lg_n + 1, cz.lg_cap)
+}
+
+# the citizen's episode is cut short at `now`: what they did so far counts, and they decide again
+function cz_interrupt(cz: mut CitizensState, i: int, now: int) -> void {
+  cz_advance_one(cz, i, now)
+  if cz.cz_phase[i] != CZ_DOING { return }
+  cz_wheel_del(cz, i)
+  cz.cz_ep_end[i] = Math.max(now, cz.cz_ep_start[i])
+  cz_step(cz, i)
+  cz_wheel_add(cz, i)
+}
+
+# a citizen's episode now ends at `target` (a body fell behind, a conversation held them)
+function cz_shift_end(cz: mut CitizensState, i: int, target: int, now: int) -> void {
+  cz_wheel_del(cz, i)
+  cz.cz_ep_end[i] = Math.max(target, Math.max(cz.cz_ep_start[i] + 1, now))
+  cz_wheel_add(cz, i)
+  cz_log(cz, now, CZ_EV_SHIFT, i, cz.cz_ep_end[i], 0)
+}
+
+function cz_ok(cz: CitizensState, i: int) -> bool { return i >= 0 and i < cz.cz_n }
+
+# `place` takes citizen i on: false when it has no free job, or their kind has no shift to work
+export function citizens_hire(cz: mut CitizensState, i: int, place: int) -> bool {
+  if not cz_ok(cz, i) or place < 0 or place >= cz.cz_np or cz.pl_free[place] <= 0 { return false }
+  let a = cz.cz_arch[i]
+  if cz.cr_sh0[a + 1] == cz.cr_sh0[a] { return false }
+  cz_advance_one(cz, i, cz.cz_clock)
+  if cz.cz_work[i] >= 0 { cz_leave_job(cz, i) }
+  if cz.cz_shift[i] < 0 { cz.cz_shift[i] = cz_pick_shift(cz, a, cz_mix(cz.cz_seed[i], 3)) }
+  cz_take_job(cz, i, place)
+  cz.st_hired += 1
+  cz_say(cz, CZ_F_HIRED, i, place, 0, 0, cz.cz_clock)
+  cz_log(cz, cz.cz_clock, CZ_EV_HIRE, i, place, 0)
+  return true
+}
+
+# citizen i loses their job (their shifts stop; wages owed are still theirs)
+export function citizens_fire(cz: mut CitizensState, i: int) -> bool {
+  if not cz_ok(cz, i) or cz.cz_work[i] < 0 { return false }
+  cz_advance_one(cz, i, cz.cz_clock)
+  let p = cz.cz_work[i]
+  cz_leave_job(cz, i)
+  cz.cz_sh0[i] = 0
+  cz.cz_sh1[i] = 0
+  cz.st_fired += 1
+  cz_say(cz, CZ_F_FIRED, i, p, 0, 0, cz.cz_clock)
+  cz_log(cz, cz.cz_clock, CZ_EV_FIRE, i, p, 0)
+  return true
+}
+
+# citizen i moves house to `home` (a place with room)
+export function citizens_move(cz: mut CitizensState, i: int, home: int) -> bool {
+  if not cz_ok(cz, i) or home < 0 or home >= cz.cz_np or cz.pl_room[home] <= 0 or cz.cz_home[i] == home { return false }
+  cz_advance_one(cz, i, cz.cz_clock)
+  cz_move_home(cz, i, home, cz.cz_clock)
+  return true
+}
+
+# a mission: citizen i does `act` at `place` (-1: their home) for `dur` seconds, now. Someone at a place stops what
+# they are doing; someone on the way does it on arriving. It ends by itself (CZ_F_FORCE_DONE); then they decide again
+export function citizens_force(cz: mut CitizensState, i: int, act: int, place: int, dur: int) -> bool {
+  if not cz_ok(cz, i) or act < -1 or act >= cz.cz_na { return false }
+  cz_advance_one(cz, i, cz.cz_clock)
+  cz.cz_flags[i] = cz.cz_flags[i] | CZ_FL_FORCED
+  cz.cz_force_act[i] = act
+  cz.cz_force_place[i] = place
+  cz.cz_force_dur[i] = Math.max(dur, 60)
+  cz_log3(cz, cz.cz_clock, CZ_EV_FORCE, i, act, place, dur)
+  cz_interrupt(cz, i, cz.cz_clock)
+  return true
+}
+
+# let the forced activity end on its own terms
+export function citizens_unforce(cz: mut CitizensState, i: int) -> void {
+  if not cz_ok(cz, i) { return }
+  cz.cz_flags[i] = cz.cz_flags[i] & ~CZ_FL_FORCED
+  cz.cz_force_act[i] = -1
+  cz_log(cz, cz.cz_clock, CZ_EV_UNFORCE, i, 0, 0)
+}
+
+# hold citizen i where they are for `secs` more (a conversation): what they are doing ends later
+export function citizens_hold(cz: mut CitizensState, i: int, secs: int) -> void {
+  if not cz_ok(cz, i) or secs == 0 { return }
+  cz_advance_one(cz, i, cz.cz_clock)
+  cz_shift_end(cz, i, cz.cz_ep_end[i] + secs, cz.cz_clock)
+}
+
+# money to (or from: a fine) citizen i
+export function citizens_give(cz: mut CitizensState, i: int, amount: int) -> void {
+  if not cz_ok(cz, i) { return }
+  cz.cz_money[i] += amount
+  cz_log(cz, cz.cz_clock, CZ_EV_GIVE, i, amount, 0)
+}
+
+# they decide again, now (their world changed under them)
+export function citizens_replan(cz: mut CitizensState, i: int) -> void {
+  if not cz_ok(cz, i) { return }
+  cz_interrupt(cz, i, cz.cz_clock)
+  cz_log(cz, cz.cz_clock, CZ_EV_REPLAN, i, 0, 0)
+}
+
+export function citizens_set_car(cz: mut CitizensState, i: int, has: bool) -> void {
+  if not cz_ok(cz, i) { return }
+  if has { cz.cz_flags[i] = cz.cz_flags[i] | CZ_FL_CAR } else { cz.cz_flags[i] = cz.cz_flags[i] & ~CZ_FL_CAR }
+  var hv = 0
+  if has { hv = 1 }
+  cz_log(cz, cz.cz_clock, CZ_EV_CAR, i, hv, 0)
+  if has { cz.cz_car_at[i] = cz.cz_home[i] }
+}
+
+# citizen i and `other` become friends (into i's first free slot, else the last)
+export function citizens_befriend(cz: mut CitizensState, i: int, other: int) -> bool {
+  if not cz_ok(cz, i) or not cz_ok(cz, other) or i == other { return false }
+  var slot = cz.cz_nfriends - 1
+  for f in 0 .. cz.cz_nfriends {
+    if cz.cz_friend[i * CZ_MAXFRIENDS + f] == other { return false }
+  }
+  for f in 0 .. cz.cz_nfriends {
+    if slot == cz.cz_nfriends - 1 and cz.cz_friend[i * CZ_MAXFRIENDS + f] < 0 { slot = f }
+  }
+  if slot < 0 { return false }
+  cz.cz_friend[i * CZ_MAXFRIENDS + slot] = other
+  cz_say(cz, CZ_F_FRIENDS, i, other, 0, 0, cz.cz_clock)
+  cz_log3(cz, cz.cz_clock, CZ_EV_FRIEND, i, slot, other, 0)
+  return true
+}
+
+# a frightened citizen goes home and stays in for a while
+function cz_frighten(cz: mut CitizensState, i: int, now: int, severity: int) -> void {
+  let until = now + 300 + severity * 120
+  cz.cz_fear[i] = Math.max(cz.cz_fear[i], until)
+  cz.cz_flags[i] = cz.cz_flags[i] | CZ_FL_AFRAID
+  cz_log3(cz, now, CZ_EV_FEAR, i, until, 0, 0)
+  if (cz.cz_flags[i] & CZ_FL_FORCED) == 0 { cz_interrupt(cz, i, now) }
+}
+
+# a crime of `severity` (1 .. 5) at (x, z): every citizen within `radius` who is out in the street - simulated
+# closely, so near a player, and not riding - saw it (CZ_F_WITNESSED: route it to ludic.wanted) and goes
+# home afraid. How many. The crowd's own pedestrians report through the crowd's witness facts
+export function citizens_witness(cz: mut CitizensState, x: float, z: float, radius: float, kind: int, severity: int) -> int {
+  var n = 0
+  for s in 0 .. cz.cz_max_mid {
+    let i = cz.md_id[s]
+    if i < 0 { continue }
+    if cz_is_riding(cz, i) { continue }
+    if cz_dist(cz.cz_px[i], cz.cz_pz[i], x, z) > radius { continue }
+    if cz.cz_phase[i] == CZ_DOING {
+      let a = cz.cz_act[i]
+      if a < 0 or cz.ca_out[a] == 0 { continue }
+    }
+    n += 1
+    cz_say(cz, CZ_F_WITNESSED, i, kind, severity, 0, cz.cz_clock)
+    cz_frighten(cz, i, cz.cz_clock, severity)
+  }
+  return n
+}
+
+# a traffic accident at (x, z): citizens within `radius` on foot are caught up (CZ_F_ACCIDENT) and held for two
+# minutes; how many
+export function citizens_accident(cz: mut CitizensState, x: float, z: float, radius: float, kind: int, severity: int) -> int {
+  var n = 0
+  for s in 0 .. cz.cz_max_mid {
+    let i = cz.md_id[s]
+    if i < 0 { continue }
+    if cz_dist(cz.cz_px[i], cz.cz_pz[i], x, z) > radius { continue }
+    if cz.cz_phase[i] != CZ_TRAVELLING or cz.cz_mode[i] == CZ_MODE_TRANSIT { continue }
+    n += 1
+    cz_say(cz, CZ_F_ACCIDENT, i, kind, severity, 0, cz.cz_clock)
+    cz_shift_end(cz, i, cz.cz_ep_end[i] + 120, cz.cz_clock)
+  }
+  return n
+}
+
+# every step of citizen i is a fact (a follower's target, a mission's subject)
+export function citizens_watch(cz: mut CitizensState, i: int, on: bool) -> void {
+  if not cz_ok(cz, i) { return }
+  if on { cz.cz_flags[i] = cz.cz_flags[i] | CZ_FL_WATCHED } else { cz.cz_flags[i] = cz.cz_flags[i] & ~CZ_FL_WATCHED }
+}
+
+# a till set to `n` (a robbery, a grant, a test): the next morning's wage share is worked out from it
+export function citizens_place_set_cash(cz: mut CitizensState, p: int, n: int) -> void {
+  if p < 0 or p >= cz.cz_np { return }
+  cz.pl_cash[p] = n
+}

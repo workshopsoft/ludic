@@ -1,0 +1,8 @@
+# bars fall by the hour; money is a pressure, not a bar
+hunger { decay: 6.0, start: 70.0, warn: 40.0, crit: 15.0 }
+energy { decay: 3.0, start: 75.0, warn: 55.0, crit: 20.0, travel: -1.0 }
+hygiene { decay: 2.0, start: 75.0, warn: 35.0, crit: 10.0, weight: 0.8 }
+fun { decay: 3.0, start: 60.0, warn: 40.0, crit: 10.0, weight: 0.9, travel: 0.0 }
+social { decay: 2.0, start: 60.0, warn: 35.0, crit: 10.0, weight: 0.8 }
+chores { decay: 1.5, start: 70.0, warn: 35.0, crit: 10.0, weight: 0.7 }
+money { kind: "money", weight: 1.0 }

@@ -1,0 +1,206 @@
+# data.ludic - the registries copied into flat lists the decision reads without a pointer chase, once, when the
+# city is indexed. Needs are at most CZ_NEED_MAX; a bar is kept in tenths of a point.
+
+function cz_tag_bit(key: string) -> int {
+  let i = placetags_find(key)
+  if i < 0 or i > 30 { return 0 }
+  return 1 << i
+}
+
+function cz_read_settings(cz: mut CitizensState) -> void {
+  cz.cz_world_seed = 1
+  cz.cz_occupancy = 0.9
+  cz.cz_walk_speed = 1.3
+  cz.cz_walk_detour = 1.25
+  cz.cz_est_speed = 6.0
+  cz.cz_margin = 600
+  cz.cz_bucket = 120
+  cz.cz_scan_every = 0.5
+  cz.cz_r_near = 60.0
+  cz.cz_r_mid = 250.0
+  cz.cz_max_mid = 1024
+  cz.cz_wd0 = 0
+  cz.cz_pay_days = 1
+  cz.cz_closed = true
+  cz.cz_jobsearch = 20
+  cz.cz_move10k = 6
+  cz.cz_car_km = 1
+  cz.cz_nfriends = 2
+  cz.cz_idle_score = 0.25
+  if CSET_COUNT == 0 {
+    if cz.cz_seed_set { cz.cz_world_seed = cz.cz_seed_val }
+    return
+  }
+  let r = CitizenSettings[0]
+  cz.cz_world_seed = r.world_seed
+  cz.cz_occupancy = r.occupancy
+  cz.cz_walk_speed = r.walk_speed
+  cz.cz_walk_detour = r.walk_detour
+  cz.cz_est_speed = r.est_speed
+  cz.cz_margin = r.commute_margin
+  cz.cz_bucket = r.transit_bucket
+  cz.cz_scan_every = r.scan_interval
+  cz.cz_r_near = r.r_near
+  cz.cz_r_mid = Math.max(r.r_mid, r.r_near)
+  cz.cz_max_mid = r.max_mid
+  cz.cz_wd0 = r.day_start_weekday
+  cz.cz_pay_days = Math.max(r.pay_days, 1)
+  cz.cz_closed = r.closed_loop
+  cz.cz_jobsearch = r.job_search
+  cz.cz_move10k = r.move_per_10k
+  cz.cz_car_km = r.car_cost_per_km
+  cz.cz_nfriends = Math.clamp(r.friends, 0, CZ_MAXFRIENDS)
+  cz.cz_idle_score = r.idle_score
+  if cz.cz_seed_set { cz.cz_world_seed = cz.cz_seed_val }
+}
+
+function cz_clear_data(cz: mut CitizensState) -> void {
+  List.clear(cz.ca_where)
+  List.clear(cz.ca_mask)
+  List.clear(cz.ca_eff)
+  List.clear(cz.ca_dmin)
+  List.clear(cz.ca_dmax)
+  List.clear(cz.ca_cost)
+  List.clear(cz.ca_pay)
+  List.clear(cz.ca_hfrom)
+  List.clear(cz.ca_hto)
+  List.clear(cz.ca_strict)
+  List.clear(cz.ca_days)
+  List.clear(cz.ca_slow)
+  List.clear(cz.ca_weight)
+  List.clear(cz.ca_oblig)
+  List.clear(cz.ca_job)
+  List.clear(cz.ca_out)
+  List.clear(cz.ca_primary)
+  List.clear(cz.cn_decay)
+  List.clear(cz.cn_start)
+  List.clear(cz.cn_warn)
+  List.clear(cz.cn_crit)
+  List.clear(cz.cn_weight)
+  List.clear(cz.cn_money)
+  List.clear(cz.cn_travel)
+  List.clear(cz.cr_cum)
+  List.clear(cz.cr_mask)
+  List.clear(cz.cr_emp)
+  List.clear(cz.cr_nw)
+  List.clear(cz.cr_sh0)
+  List.clear(cz.cr_shfrom)
+  List.clear(cz.cr_shlen)
+  List.clear(cz.cr_shw)
+  List.clear(cz.cr_shdays)
+  List.clear(cz.pt_from)
+  List.clear(cz.pt_to)
+  List.clear(cz.pt_rev)
+}
+
+function cz_init_data(cz: mut CitizensState) -> void {
+  cz_read_settings(cz)
+  cz_clear_data(cz)
+  cz.cz_nn = Math.min(NEED_COUNT, CZ_NEED_MAX)
+  cz.cz_na = ACT_COUNT
+  cz.cz_nr = ARCH_COUNT
+  cz.cz_money_need = -1
+  for k in 0 .. cz.cz_nn {
+    let d = NeedDefs[k]
+    push(cz.cn_decay, int(d.decay * 10.0 + 0.5))
+    push(cz.cn_start, int(d.start * 10.0 + 0.5))
+    push(cz.cn_warn, d.warn)
+    push(cz.cn_crit, d.crit)
+    push(cz.cn_weight, d.weight)
+    var money = 0
+    if d.kind == "money" {
+      money = 1
+      if cz.cz_money_need < 0 { cz.cz_money_need = k }
+    }
+    push(cz.cn_money, money)
+    push(cz.cn_travel, int(d.travel * 10.0 + (0.5 * float(Math.sign(d.travel)))))
+  }
+  for t in 0 .. PTAG_COUNT {
+    push(cz.pt_from, PlaceTags[t].open_from)
+    push(cz.pt_to, PlaceTags[t].open_to)
+    push(cz.pt_rev, PlaceTags[t].revenue_per_job_hour)
+  }
+  cz.cz_act_work = -1
+  cz.cz_act_idle = -1
+  for a in 0 .. cz.cz_na {
+    let r = Activities[a]
+    var w = 3
+    if r.where == "home" { w = 0 }
+    if r.where == "work" { w = 1 }
+    if r.where == "friend" { w = 2 }
+    push(cz.ca_where, w)
+    var mask = 0
+    for i in 0 .. len(r.tags) { mask = mask | cz_tag_bit(r.tags[i]) }
+    push(cz.ca_mask, mask)
+    var best = -1
+    var best_e = 0
+    for k in 0 .. CZ_NEED_MAX { push(cz.ca_eff, 0) }
+    for i in 0 .. len(r.effects) {
+      let k = needdefs_find(r.effects[i].need)
+      if k < 0 or k >= cz.cz_nn { continue }
+      let e = int(r.effects[i].per_hour * 10.0 + (0.5 * float(Math.sign(r.effects[i].per_hour))))
+      cz.ca_eff[a * CZ_NEED_MAX + k] += e
+      if e > best_e and cz.cn_money[k] == 0 {
+        best_e = e
+        best = k
+      }
+    }
+    push(cz.ca_primary, best)
+    push(cz.ca_dmin, r.dur_min * 60)
+    push(cz.ca_dmax, Math.max(r.dur_max, r.dur_min) * 60)
+    push(cz.ca_cost, r.cost)
+    push(cz.ca_pay, r.pay)
+    push(cz.ca_hfrom, r.hours_from)
+    push(cz.ca_hto, r.hours_to)
+    var s = 0
+    if r.strict { s = 1 }
+    push(cz.ca_strict, s)
+    push(cz.ca_days, r.weekdays)
+    push(cz.ca_slow, r.slow)
+    push(cz.ca_weight, r.weight)
+    var ob = 0
+    if r.obligation {
+      ob = 1
+      if cz.cz_act_work < 0 { cz.cz_act_work = a }
+    }
+    push(cz.ca_oblig, ob)
+    var nj = 0
+    if r.needs_job or r.where == "work" { nj = 1 }
+    push(cz.ca_job, nj)
+    var o = 0
+    if r.outdoor { o = 1 }
+    push(cz.ca_out, o)
+    if r.idle and cz.cz_act_idle < 0 { cz.cz_act_idle = a }
+  }
+  var total = 0
+  for a in 0 .. cz.cz_nr {
+    let r = CitizenArchetypes[a]
+    total += r.weight
+    push(cz.cr_cum, total)
+    var mask = 0
+    for i in 0 .. len(r.work_tags) { mask = mask | cz_tag_bit(r.work_tags[i]) }
+    push(cz.cr_mask, mask)
+    push(cz.cr_emp, r.employment)
+    for k in 0 .. CZ_NEED_MAX { push(cz.cr_nw, 1.0) }
+    for i in 0 .. len(r.need_weights) {
+      let k = needdefs_find(r.need_weights[i].need)
+      if k >= 0 and k < cz.cz_nn { cz.cr_nw[a * CZ_NEED_MAX + k] = r.need_weights[i].weight }
+    }
+    push(cz.cr_sh0, len(cz.cr_shfrom))
+    for i in 0 .. len(r.shifts) {
+      push(cz.cr_shfrom, int(r.shifts[i].from * 3600.0 + 0.5))
+      push(cz.cr_shlen, int(r.shifts[i].hours * 3600.0 + 0.5))
+      push(cz.cr_shw, r.shifts[i].weight)
+      push(cz.cr_shdays, r.shifts[i].days)
+    }
+  }
+  push(cz.cr_sh0, len(cz.cr_shfrom))
+  if len(cz.st_act) != cz.cz_na {
+    List.clear(cz.st_act)
+    for a in 0 .. cz.cz_na { push(cz.st_act, 0) }
+  }
+  if len(cz.st_mode) != CZ_MODES {
+    List.clear(cz.st_mode)
+    for m in 0 .. CZ_MODES { push(cz.st_mode, 0) }
+  }
+}

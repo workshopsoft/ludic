@@ -1,0 +1,18 @@
+default {
+  world_seed: 7
+  occupancy: 0.8
+  walk_speed: 1.3
+  est_speed: 6.0
+  commute_margin: 600
+  transit_bucket: 120
+  r_near: 60.0
+  r_mid: 250.0
+  max_mid: 256
+  job_search: 30
+  move_per_10k: 10
+  anim_walk: "walk_loop"
+  anim_wait: "wait_stand"
+  anim_ride: "ride_stand"
+  anim_drive: "drive"
+  anim_taxi: "sit_back"
+}

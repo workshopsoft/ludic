@@ -1,0 +1,35 @@
+# hash.ludic - every choice a citizen makes is a pure function of integers: no stream of dice to keep in step.
+# The same seed, the same citizen, the same episode, the same answer on every machine.
+
+function cz_mix(a: int, b: int) -> int {
+  var h = a * 0x9E3779B1 + b * 0x85EBCA6B + 0x27D4EB2F
+  h = h ^ ((h >> 15) & 0x1FFFF)
+  h = h * 0x2C1B3C6D
+  h = h ^ ((h >> 12) & 0xFFFFF)
+  h = h * 0x297A2D39
+  h = h ^ ((h >> 15) & 0x1FFFF)
+  return h & 0x7FFFFFFF
+}
+
+function cz_mix3(a: int, b: int, c: int) -> int { return cz_mix(cz_mix(a, b), c) }
+
+# [0, 1) in steps of 1/65536
+function cz_unit(h: int) -> float { return float((h >> 3) & 0xFFFF) / 65536.0 }
+
+# a whole number in [0, n)
+function cz_pick(h: int, n: int) -> int {
+  if n <= 1 { return 0 }
+  return (h >> 2) % n
+}
+
+function cz_fdiv(a: int, b: int) -> int {
+  var q = a / b
+  if a % b != 0 and ((a < 0) != (b < 0)) { q -= 1 }
+  return q
+}
+
+function cz_dist(ax: float, az: float, bx: float, bz: float) -> float {
+  let dx = bx - ax
+  let dz = bz - az
+  return Math.sqrt(dx * dx + dz * dz)
+}

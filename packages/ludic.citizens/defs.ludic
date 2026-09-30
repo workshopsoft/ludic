@@ -1,0 +1,224 @@
+# defs.ludic - what a game fills, as data. Needs, the tags a place can carry, what a citizen can do, the kinds
+# of citizen, the names they are given, and the few numbers of the simulation. Hours are hours of the day
+# (a window may wrap past midnight: from 22 to 6); money is whole units; a bar is 0 .. 100, full is satisfied.
+
+# a need: a bar that falls by the hour and is refilled by doing things. `money` is not a bar: its pull is how
+# thin the citizen's savings are (see CitizenArchetype.comfort)
+export property NeedDef {
+  key: string = ""
+  @Unit("1/h") @Range(0, 50) decay: float = 4.0     # points a bar falls an hour
+  @Range(0, 100) start: float = 75.0                # where a new citizen's bar is, on average
+  @Range(0, 100) warn: float = 40.0                 # below this the need begins to pull
+  @Range(0, 100) crit: float = 15.0                 # below this it overrides nearly everything
+  @Range(0, 5) weight: float = 1.0                  # how hard it pulls, before the kind of citizen's own weight
+  @OneOf("bar", "money") kind: string = "bar"
+  @Unit("1/h") travel: float = 0.0                  # extra points an hour while travelling (negative: walking tires)
+}
+
+@AppendOnly @ByKey
+export open registry NeedDefs of NeedDef as NEED
+
+# a tag a city's buildings carry ("bar", "office", "shop", "park", "clinic"): what a place is, for the
+# activities that need one. The city (an authored model in another package) says which tags a building has
+# through the CitizensCity port, as a bit per row of this registry in order
+export property PlaceTag {
+  key: string = ""
+  @Unit("h") @Range(0, 30) open_from: float = 0.0    # the place is open from this hour ...
+  @Unit("h") @Range(0, 30) open_to: float = 24.0     # ... until this one (past midnight when it is the smaller)
+  revenue_per_job_hour: float = 0.0                  # what the world outside pays a workplace of this tag for each hour its people work
+}
+
+@AppendOnly @ByKey
+export open registry PlaceTags of PlaceTag as PTAG
+
+export property ActivityNeed {
+  @Ref(NeedDefs) need: string = ""
+  @Unit("1/h") per_hour: float = 0.0                 # points an hour of the activity gives (positive) or takes
+}
+
+# something a citizen does. Where it happens is the citizen's own `home`, their `work`, a `friend`'s home, or
+# any place carrying one of `tags`. It is chosen by how much it would relieve what the citizen needs, at this
+# hour, for this money, this far away, by this person's nature - except an `obligation` (work), which is
+# scheduled by the citizen's shift. `anim` and `clip` are DATA for whoever embodies the citizen: the state of
+# an animation graph and a clip key (from the artist's clips); nothing here or in the code poses anyone
+export property Activity {
+  key: string = ""
+  @OneOf("home", "work", "friend", "tags") where: string = "tags"
+  @Ref(PlaceTags) tags: []string = new []string
+  effects: []ActivityNeed = new []ActivityNeed
+  @Unit("min") @Range(1, 1440) dur_min: int = 30
+  @Unit("min") @Range(1, 1440) dur_max: int = 90
+  cost: int = 0                                      # money spent at the place each time
+  @Range(0, 5) pay: float = 0.0                      # wage earned an hour, as a multiple of the citizen's own (overtime 1.5); at `work`
+  @Unit("h") @Range(0, 30) hours_from: float = 0.0   # the hours it is done in; outside them its pull is a tenth ...
+  @Unit("h") @Range(0, 30) hours_to: float = 24.0
+  strict: bool = false                               # ... or, when strict, nil
+  weekdays: int = 127                                # bit d set: done on weekday d
+  @Range(0, 5) slow: float = 1.0                     # every need's decay while doing it (sleep: 0.3)
+  @Range(0, 5) weight: float = 1.0                   # how much the activity is wanted to begin with
+  obligation: bool = false                           # work: the citizen's shift decides, not the pull
+  needs_job: bool = false
+  outdoor: bool = false                              # bad weather counts against it
+  idle: bool = false                                 # what a citizen does when nothing pulls (the first idle row)
+  anim: string = ""                                  # animation graph state while doing it
+  clip: string = ""                                  # clip key hint
+  prop: string = ""                                  # a prop key the embodied citizen holds, if any
+}
+
+@AppendOnly @ByKey
+export open registry Activities of Activity as ACT
+
+# a shift: the hour it starts, how many hours it lasts, its odds among the archetype's shifts, and on which
+# weekdays (bit d set: weekday d) it is worked
+export property CitizenShift {
+  @Unit("h") @Range(0, 24) from: float = 9.0
+  @Unit("h") @Range(1, 16) hours: float = 8.0
+  @Range(1, 100) weight: int = 1
+  days: int = 31
+}
+
+export property ArchNeedWeight {
+  @Ref(NeedDefs) need: string = ""
+  @Range(0, 5) weight: float = 1.0
+}
+
+# a kind of citizen: what work they do and earn, what they start with, how much each need matters to them,
+# what they are like (0 .. 100: how much they keep to habit, how much they seek company, how careful they are
+# with money) and how they prefer to get about
+export property CitizenArchetype {
+  key: string = ""
+  @Range(1, 1000) weight: int = 10                   # odds among the archetypes when the population is made
+  @Ref(PlaceTags) work_tags: []string = new []string # the workplaces they can hold a job in; none: they do not work (the retired, children)
+  @Range(0, 100) employment: int = 90                # percent that have a job when the city has one for them
+  wage_lo: int = 12                                  # money an hour
+  wage_hi: int = 20
+  shifts: []CitizenShift = new []CitizenShift
+  money_lo: int = 200                                # savings a citizen starts with
+  money_hi: int = 1500
+  comfort: int = 500                                 # savings at which money stops worrying them
+  upkeep: int = 30                                   # rent and bills a day
+  need_weights: []ArchNeedWeight = new []ArchNeedWeight
+  @Range(0, 100) routine: int = 50
+  @Range(0, 100) social: int = 50
+  @Range(0, 100) thrift: int = 50
+  @Range(0, 100) car_chance: int = 30                # percent that own a car
+  @Range(0, 5) pref_walk: float = 1.0                # how willing they are, by mode: the cost of a trip is divided by it
+  @Range(0, 5) pref_transit: float = 1.0
+  @Range(0, 5) pref_car: float = 1.0
+  @Range(0, 5) pref_taxi: float = 0.4
+  @Unit("m") walk_max: float = 1200.0                # they will not walk further than this when there is another way
+  value_of_time: float = 8.0                         # money an hour of a trip is worth to them
+  look: string = ""                                  # a key for whoever gives them a body (a model set, a wardrobe)
+}
+
+@AppendOnly @ByKey
+export open registry CitizenArchetypes of CitizenArchetype as ARCH
+
+# the names a citizen is given: a key for the game's text (or the plain name), by part, with odds
+export property CitizenName {
+  key: string = ""
+  @OneOf("first", "last") part: string = "first"
+  name: string = ""
+  @Range(1, 100) weight: int = 1
+}
+
+@AppendOnly @ByKey
+export open registry CitizenNames of CitizenName as CNAME
+
+# the numbers of the simulation, one row of the open registry `CitizenSettings` (`def CitizenSettings from
+# "citizens.lres"`); the first row is used
+export property CitizenSetting {
+  key: string = ""
+  world_seed: int = 1
+  @Range(0, 1) occupancy: float = 0.9                # residents per home a building can house
+  @Unit("m/s") @Range(0.3, 4) walk_speed: float = 1.3
+  @Range(1, 2) walk_detour: float = 1.25             # street distance over straight distance, for walking
+  @Unit("m/s") est_speed: float = 6.0                # rough speed for weighing a trip before it is planned (the decision)
+  @Unit("s") @Range(0, 3600) commute_margin: int = 600
+  @Unit("s") @Range(0, 3600) transit_bucket: int = 120   # a transit trip leaves on the next multiple of this, so plans are shared
+  @Unit("s") @Range(0.05, 10) scan_interval: float = 0.5
+  @Unit("m") @Range(5, 500) r_near: float = 60.0     # within this of a player a citizen is handed to the game's bodies
+  @Unit("m") @Range(20, 2000) r_mid: float = 250.0   # within this, they walk real paths
+  @Range(8, 8192) max_mid: int = 1024
+  @Range(0, 6) day_start_weekday: int = 0            # the weekday of day 1 (0 .. 6)
+  @Range(1, 31) pay_days: int = 1                    # wages are paid every this many days
+  closed_loop: bool = true                           # a workplace pays what its takings and the world's money allow
+  @Range(0, 100) job_search: int = 20                # percent of the jobless that find a job a day, when there is one
+  @Range(0, 10000) move_per_10k: int = 6             # chance in ten thousand a day that a citizen moves house
+  car_cost_per_km: int = 1
+  @Range(0, 8) friends: int = 2
+  @Range(0, 1) idle_score: float = 0.25              # below this nothing pulls and the citizen idles
+  anim_walk: string = ""                             # animation graph states for a citizen between places
+  anim_wait: string = ""
+  anim_ride: string = ""
+  anim_drive: string = ""
+  anim_taxi: string = ""
+}
+
+@ByKey
+export open registry CitizenSettings of CitizenSetting as CSET
+
+export const CZ_DAY: int = 86400
+export const CZ_NEED_MAX: int = 8              # needs a game may declare
+export const CZ_NO_PLACE: int = -1
+
+# what a citizen is doing
+export const CZ_DOING: int = 0                 # an activity at a place
+export const CZ_TRAVELLING: int = 1
+
+# how a trip is made
+export const CZ_MODE_WALK: int = 0
+export const CZ_MODE_TRANSIT: int = 1
+export const CZ_MODE_CAR: int = 2
+export const CZ_MODE_TAXI: int = 3
+export const CZ_MODES: int = 4
+
+# how much of a citizen is simulated
+export const CZ_LOD_FAR: int = 0               # an event: at a place until a time, or travelling until one
+export const CZ_LOD_MID: int = 1               # on real paths: positions along legs
+export const CZ_LOD_NEAR: int = 2              # handed to the game's bodies
+
+# what a body is, when one is handed over
+export const CZ_BODY_AT_PLACE: int = 0         # a person at a building: an NPC doing the activity
+export const CZ_BODY_PEDESTRIAN: int = 1
+export const CZ_BODY_VEHICLE: int = 2          # their own car, or a taxi
+export const CZ_BODY_RIDER: int = 3            # inside a transit vehicle: no body of their own
+
+export const CZ_LEG_WALK: int = 0
+export const CZ_LEG_WAIT: int = 1
+export const CZ_LEG_RIDE: int = 2
+export const CZ_LEG_DRIVE: int = 3
+export const CZ_LEG_TAXI: int = 4
+
+# flags of a citizen
+export const CZ_FL_CAR: int = 1                # owns a car
+export const CZ_FL_WATCHED: int = 2            # every step is a fact
+export const CZ_FL_FORCED: int = 4             # a mission has told them what to do
+export const CZ_FL_AFRAID: int = 8
+
+# facts
+export const CZ_F_ARRIVED: int = 0             # a watched or embodied citizen came to a place (id, place, activity)
+export const CZ_F_DEPARTED: int = 1            # ... left for another (id, from, to, mode)
+export const CZ_F_STARTED: int = 2             # ... began an activity (id, place, activity)
+export const CZ_F_HIRED: int = 3               # (id, workplace)
+export const CZ_F_FIRED: int = 4               # (id, workplace)
+export const CZ_F_MOVED: int = 5               # moved house (id, new home)
+export const CZ_F_PAID: int = 6                # wages paid (id, amount)
+export const CZ_F_WITNESSED: int = 7           # saw a crime (id, kind, severity): the game routes it to ludic.wanted
+export const CZ_F_ACCIDENT: int = 8            # saw an accident (id, kind, severity)
+export const CZ_F_FRIENDS: int = 9             # a friendship began (id, other)
+export const CZ_F_PROMOTED: int = 10           # simulated more closely (id, lod)
+export const CZ_F_DEMOTED: int = 11            # simulated less closely (id, lod)
+export const CZ_F_BROKE: int = 12              # a workplace could not pay in full (place, percent paid)
+export const CZ_F_CRITICAL: int = 13           # a watched citizen's need fell below its crit (id, need)
+export const CZ_F_FORCE_DONE: int = 14         # a forced activity ended (id, place, activity)
+export const CZ_F_EVICTED: int = 15            # the city lost their home or workplace (id, what: 0 home, 1 work)
+
+export property CitizenFact {
+  what: int = 0
+  id: int = -1
+  a: int = 0
+  b: int = 0
+  c: int = 0
+  t: int = 0            # game second
+}

@@ -1,0 +1,63 @@
+# system.ludic - citizens as a system: PH_SIMULATE. The clock is the world's (CitizensWorld.now) or this
+# package's own, run on the game hours each tick gives. A tick applies the host's corrections that are due,
+# steps every citizen whose episode ended in a minute the clock has passed (far LOD: the cost is the events,
+# not the population), looks for who is near a player a few times a second, and advances the closely
+# simulated to the second and hands the near ones to the game's bodies.
+
+function cz_now(cz: mut CitizensState, t: Tick) -> int {
+  let w = CitizensWorld.now()
+  if w >= 0 {
+    cz.cz_clock = Math.max(w, cz.cz_clock)
+    return cz.cz_clock
+  }
+  cz.cz_clock_frac += t.hours * 3600.0
+  let whole = int(Math.floor(cz.cz_clock_frac))
+  cz.cz_clock += whole
+  cz.cz_clock_frac -= float(whole)
+  return cz.cz_clock
+}
+
+export function citizens_tick(cz: mut CitizensState, t: Tick) -> void {
+  if cz.cz_n == 0 { return }
+  let now = cz_now(cz, t)
+  cz_apply_due(cz, now)
+  cz_run_wheel(cz, now)
+  cz.cz_scan_t += t.dt
+  if cz.cz_scan_t >= cz.cz_scan_every {
+    cz.cz_scan_t = 0.0
+    cz_scan(cz, now)
+  }
+  cz_mid_tick(cz, now)
+}
+
+# run the simulation on to game second `to` at once (a warm-up, a test, a host catching up); far citizens only
+export function citizens_advance(cz: mut CitizensState, to: int) -> void {
+  if to <= cz.cz_clock { return }
+  cz.cz_clock = to
+  cz_apply_due(cz, to)
+  cz_run_wheel(cz, to)
+}
+
+export function citizens_set_time(cz: mut CitizensState, t: int) -> void {
+  cz.cz_clock = t
+  cz.cz_clock_frac = 0.0
+}
+
+export function citizens_reset(cz: mut CitizensState) -> void {
+  for s in 0 .. len(cz.md_id) { if cz.md_id[s] >= 0 { cz_demote(cz, s, cz.cz_clock) } }
+  cz_clear_pop(cz)
+  cz.lg_seq = 0
+  cz.lg_n = 0
+  List.clear(cz.lg_pending)
+  q_clear(cz.cz_facts)
+}
+
+export function citizens_system() -> System {
+  let s = system_new("citizens", PH_SIMULATE)
+  s.version = 1
+  s.reset = fn citizens_reset
+  s.tick = fn citizens_tick
+  s.save = fn citizens_save
+  s.load = fn citizens_load
+  return s
+}

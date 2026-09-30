@@ -1,0 +1,106 @@
+# ports.ludic - everything citizens ask the world. Every member has a default, so a package that binds
+# nothing is a city with no buildings: nobody is made. The city (ludic.city or any other model of buildings),
+# the transport (ludic.transit), the cars, the weather, the crowd and the clock are the game's to bind.
+
+# the authored city, as buildings. A building is its row here (a dense index, stable while the city is);
+# `id` is its stable id, which is what a save keeps
+export port CitizensCity {
+  count: fn() -> int = fn cz_no_count
+  id: fn(int) -> int = fn cz_same_int
+  x: fn(int) -> float = fn cz_zero_f
+  z: fn(int) -> float = fn cz_zero_f
+  tags: fn(int) -> int = fn cz_zero_i                 # a bit per row of PlaceTags
+  homes: fn(int) -> int = fn cz_zero_i                # residents the building can house
+  jobs: fn(int) -> int = fn cz_zero_i                 # jobs it offers
+  price: fn(int) -> int = fn cz_permille              # a multiplier on what is spent there, in thousandths
+  district: fn(int) -> int = fn cz_zero_i
+}
+
+# the world's clock and the people it should be simulated near. `now` is game seconds since day 1 00:00
+# (-1: run on the game hours each tick gives); viewers are the players, where they are
+export port CitizensWorld {
+  now: fn() -> int = fn cz_no_clock
+  weekday: fn(int) -> int = fn cz_weekday_of_day      # the weekday of a day; unbound: the settings' start weekday, counting on
+  viewers: fn() -> int = fn cz_zero
+  viewer_x: fn(int) -> float = fn cz_zero_f
+  viewer_z: fn(int) -> float = fn cz_zero_f
+}
+
+# how to get about on public transport (ludic.transit's planner behind it). `eta` is the seconds from `depart`
+# to arriving, all in (walking, waiting, riding), or -1; `fare` is the fare of that last answer. For a citizen
+# on real paths, `plan` answers the legs (-1: none) and `leg_i` / `leg_f` read them; `ride_pose` puts the
+# vehicle a ride leg is in, at a time, into `pose_x` / `pose_z`. Taxis are the same: a time and a fare
+export port CitizensTransit {
+  eta: fn(float, float, float, float, int) -> int = fn cz_no_eta
+  fare: fn() -> int = fn cz_zero
+  plan: fn(float, float, float, float, int) -> int = fn cz_no_plan
+  leg_i: fn(int, int) -> int = fn cz_leg_i_none       # (leg, CZ_LI_*)
+  leg_f: fn(int, int) -> float = fn cz_leg_f_none     # (leg, CZ_LF_*)
+  ride_pose: fn(int, int, int) -> bool = fn cz_no_pose    # (line, run, time)
+  pose_x: fn() -> float = fn cz_zero_f0
+  pose_z: fn() -> float = fn cz_zero_f0
+  taxi_eta: fn(float, float, float, float, int) -> int = fn cz_no_eta
+  taxi_fare: fn(float, float, float, float) -> int = fn cz_zero_fare
+}
+
+export const CZ_LI_KIND: int = 0        # CZ_LEG_WALK, _WAIT, _RIDE
+export const CZ_LI_T0: int = 1          # game seconds the leg begins and ends
+export const CZ_LI_T1: int = 2
+export const CZ_LI_LINE: int = 3        # a ride leg's line and its run, for ride_pose
+export const CZ_LI_RUN: int = 4
+export const CZ_LF_X0: int = 0
+export const CZ_LF_Z0: int = 1
+export const CZ_LF_X1: int = 2
+export const CZ_LF_Z1: int = 3
+
+# their own car (ludic.cars / ludic.roads behind it): the seconds to drive from A to B leaving at a time, or -1
+export port CitizensCars {
+  eta: fn(float, float, float, float, int) -> int = fn cz_no_eta
+  park_secs: fn() -> int = fn cz_park_secs            # finding a place to leave it, and walking on
+}
+
+# the weather, 0 (fair) .. 100 (miserable): walking and waiting outdoors cost more
+export port CitizensWeather {
+  bad: fn() -> int = fn cz_zero
+}
+
+# what is handed to the game's bodies (ludic.crowd's pedestrians, ludic.cars' vehicles, an NPC at a building).
+# `embody` asks for a body: (citizen, CZ_BODY_*, archetype, activity or -1 between places, x, z, goal x, goal z,
+# seconds of the activity left); true when the game made one, and from then on the body owns its position and
+# walks or drives its leg itself. When the citizen's leg or activity changes, `leg` says what the body does next:
+# (citizen, CZ_BODY_*, activity, has a goal, goal x, goal z, seconds of the activity left). `release` takes the
+# body back when the citizen goes out of range or becomes something else: true when there was one, and then
+# `back_*` hold where it was, whether it had arrived, the seconds of a standing act it had left and its fear
+# (0 .. 100), for the citizen to go on from - a body that fell behind or ran ahead moves the citizen's arrival.
+# The game reports a body position each tick with citizens_body_at, and one it lost (killed) with citizens_body_lost
+export port CitizensBody {
+  embody: fn(int, int, int, int, float, float, float, float, int) -> bool = fn cz_refuse
+  leg: fn(int, int, int, bool, float, float, int) -> void = fn cz_no_leg
+  release: fn(int) -> bool = fn cz_no_release
+  back_x: fn() -> float = fn cz_zero_f0
+  back_z: fn() -> float = fn cz_zero_f0
+  back_arrived: fn() -> bool = fn cz_no
+  back_left: fn() -> int = fn cz_zero
+  back_fear: fn() -> int = fn cz_zero
+}
+
+function cz_no_count() -> int { return 0 }
+function cz_same_int(i: int) -> int { return i }
+function cz_zero_f(i: int) -> float { return 0.0 }
+function cz_zero_f0() -> float { return 0.0 }
+function cz_zero_i(i: int) -> int { return 0 }
+function cz_permille(i: int) -> int { return 1000 }
+function cz_no_clock() -> int { return -1 }
+function cz_weekday_of_day(day: int) -> int { return -1 }
+function cz_zero() -> int { return 0 }
+function cz_no_eta(x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return -1 }
+function cz_no_plan(x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return -1 }
+function cz_leg_i_none(leg: int, field: int) -> int { return 0 }
+function cz_leg_f_none(leg: int, field: int) -> float { return 0.0 }
+function cz_no_pose(line: int, run: int, t: int) -> bool { return false }
+function cz_zero_fare(x0: float, z0: float, x1: float, z1: float) -> int { return 0 }
+function cz_park_secs() -> int { return 120 }
+function cz_refuse(id: int, what: int, arch: int, act: int, x: float, z: float, gx: float, gz: float, left: int) -> bool { return false }
+function cz_no_leg(id: int, what: int, act: int, has_goal: bool, gx: float, gz: float, left: int) -> void { }
+function cz_no_release(id: int) -> bool { return false }
+function cz_no() -> bool { return false }

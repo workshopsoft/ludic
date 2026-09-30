@@ -1,0 +1,755 @@
+# citizens_test.ludic - the population made from a city's ports (deterministic, housed by capacity, employed
+# near home), a day of far-LOD life (shifts kept, needs pulling, money conserved), a citizen advanced alone
+# equal to the wheel's, the decision (needs, money, hours, the shift), the trip (walk, transit, car, taxi,
+# weather), the economy loop, close simulation and the bodies, events, what a host sends a client, and the save
+import "ludic.citizens"
+import "ludic.base"
+program CitizensTest {
+  numbers float
+  def NeedDefs from "data/needs.lres"
+  def PlaceTags from "data/tags.lres"
+  def Activities from "data/activities.lres"
+  def CitizenArchetypes from "data/archetypes.lres"
+  def CitizenNames from "data/names.lres"
+  def CitizenSettings from "data/settings.lres"
+
+  const TAG_OFFICE: int = 1
+  const TAG_SHOP: int = 2
+  const TAG_RESTAURANT: int = 4
+  const TAG_BAR: int = 8
+  const TAG_PARK: int = 16
+  const TAG_FACTORY: int = 32
+
+  state CzTestState {
+    nb: int = 0
+    bx: []float = new []float
+    bz: []float = new []float
+    bid: []int = new []int
+    next_id: int = 1000
+    btag: []int = new []int
+    bhome: []int = new []int
+    bjob: []int = new []int
+    weather: int = 0
+    nview: int = 0
+    vx: float = 0.0
+    vz: float = 0.0
+    transit: bool = true
+    embodied: int = 0
+    released: int = 0
+    legs_told: int = 0
+    last_what: int = -1
+    last_arch: int = -1
+    last_act: int = -2
+    body_live: []int = new []int
+    refuse: bool = false
+    back_x: float = 0.0
+    back_z: float = 0.0
+    back_arrived: bool = false
+    plans: int = 0
+    seed: int = 7
+    pc: int = -1
+    pq: int = -1
+    px0: float = 0.0
+    pz0: float = 0.0
+    px1: float = 0.0
+    pz1: float = 0.0
+    pdep: int = 0
+    peta: int = 0
+  }
+
+  function ts_count(ts: CzTestState) -> int { return ts.nb }
+  function ts_id(ts: CzTestState, p: int) -> int { return ts.bid[p] }
+  function ts_x(ts: CzTestState, p: int) -> float { return ts.bx[p] }
+  function ts_z(ts: CzTestState, p: int) -> float { return ts.bz[p] }
+  function ts_tags(ts: CzTestState, p: int) -> int { return ts.btag[p] }
+  function ts_homes(ts: CzTestState, p: int) -> int { return ts.bhome[p] }
+  function ts_jobs(ts: CzTestState, p: int) -> int { return ts.bjob[p] }
+  function ts_weather(ts: CzTestState) -> int { return ts.weather }
+  function ts_viewers(ts: CzTestState) -> int { return ts.nview }
+  function ts_vx(ts: CzTestState, k: int) -> float { return ts.vx }
+  function ts_vz(ts: CzTestState, k: int) -> float { return ts.vz }
+
+  function d_of(x0: float, z0: float, x1: float, z1: float) -> float {
+    let dx = x1 - x0
+    let dz = z1 - z0
+    return Math.sqrt(dx * dx + dz * dz)
+  }
+  function ts_eta(ts: mut CzTestState, x0: float, z0: float, x1: float, z1: float, depart: int) -> int {
+    if not ts.transit { return -1 }
+    ts.plans += 1
+    return 180 + int(d_of(x0, z0, x1, z1) / 9.0)
+  }
+  function ts_fare() -> int { return 2 }
+  # the planner's three legs: walk to the stop, ride, walk on; the plan asked for is kept to answer the legs from
+  function ts_plan(ts: mut CzTestState, x0: float, z0: float, x1: float, z1: float, depart: int) -> int {
+    if not ts.transit { return -1 }
+    ts.px0 = x0
+    ts.pz0 = z0
+    ts.px1 = x1
+    ts.pz1 = z1
+    ts.pdep = depart
+    ts.peta = 180 + int(d_of(x0, z0, x1, z1) / 9.0)
+    return 3
+  }
+  function ts_leg_i(ts: CzTestState, leg: int, field: int) -> int {
+    if field == CZ_LI_KIND {
+      if leg == 1 { return CZ_LEG_RIDE }
+      return CZ_LEG_WALK
+    }
+    if field == CZ_LI_T0 {
+      if leg == 0 { return ts.pdep }
+      if leg == 1 { return ts.pdep + 60 }
+      return ts.pdep + ts.peta - 60
+    }
+    if field == CZ_LI_T1 {
+      if leg == 0 { return ts.pdep + 60 }
+      if leg == 1 { return ts.pdep + ts.peta - 60 }
+      return ts.pdep + ts.peta
+    }
+    if field == CZ_LI_LINE and leg == 1 { return 0 }
+    if field == CZ_LI_RUN and leg == 1 { return 7 }
+    return -1
+  }
+  function ts_leg_f(ts: CzTestState, leg: int, field: int) -> float {
+    var f0 = 0.0
+    var f1 = 0.05
+    if leg == 1 {
+      f0 = 0.05
+      f1 = 0.95
+    }
+    if leg == 2 {
+      f0 = 0.95
+      f1 = 1.0
+    }
+    if field == CZ_LF_X0 { return ts.px0 + (ts.px1 - ts.px0) * f0 }
+    if field == CZ_LF_Z0 { return ts.pz0 + (ts.pz1 - ts.pz0) * f0 }
+    if field == CZ_LF_X1 { return ts.px0 + (ts.px1 - ts.px0) * f1 }
+    return ts.pz0 + (ts.pz1 - ts.pz0) * f1
+  }
+  function ts_taxi_eta(x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return 240 + int(d_of(x0, z0, x1, z1) / 11.0) }
+  function ts_taxi_fare(x0: float, z0: float, x1: float, z1: float) -> int { return 6 + int(d_of(x0, z0, x1, z1) / 500.0) }
+  function ts_car_eta(x0: float, z0: float, x1: float, z1: float, depart: int) -> int { return 60 + int(d_of(x0, z0, x1, z1) * 1.3 / 11.0) }
+
+  function ts_embody(ts: mut CzTestState, id: int, what: int, arch: int, act: int, x: float, z: float, gx: float, gz: float, left: int) -> bool {
+    if ts.refuse { return false }
+    ts.embodied += 1
+    ts.last_what = what
+    ts.last_arch = arch
+    ts.last_act = act
+    ts.body_live[id % 4096] = 1
+    return true
+  }
+  function ts_leg(ts: mut CzTestState, id: int, what: int, act: int, has_goal: bool, gx: float, gz: float, left: int) -> void {
+    ts.legs_told += 1
+    ts.last_what = what
+  }
+  function ts_release(ts: mut CzTestState, id: int) -> bool {
+    if ts.body_live[id % 4096] == 0 { return false }
+    ts.body_live[id % 4096] = 0
+    ts.released += 1
+    return true
+  }
+  function ts_back_x(ts: CzTestState) -> float { return ts.back_x }
+  function ts_back_z(ts: CzTestState) -> float { return ts.back_z }
+  function ts_back_arrived(ts: CzTestState) -> bool { return ts.back_arrived }
+
+  bind CitizensCity { count: fn ts_count, id: fn ts_id, x: fn ts_x, z: fn ts_z, tags: fn ts_tags, homes: fn ts_homes, jobs: fn ts_jobs }
+  bind CitizensWeather { bad: fn ts_weather }
+  bind CitizensWorld { viewers: fn ts_viewers, viewer_x: fn ts_vx, viewer_z: fn ts_vz }
+  bind CitizensTransit { eta: fn ts_eta, fare: fn ts_fare, plan: fn ts_plan, leg_i: fn ts_leg_i, leg_f: fn ts_leg_f, taxi_eta: fn ts_taxi_eta, taxi_fare: fn ts_taxi_fare }
+  bind CitizensCars { eta: fn ts_car_eta }
+  bind CitizensBody { embody: fn ts_embody, leg: fn ts_leg, release: fn ts_release, back_x: fn ts_back_x, back_z: fn ts_back_z, back_arrived: fn ts_back_arrived }
+
+  function add_building(ts: mut CzTestState, x: float, z: float, tag: int, homes: int, jobs: int) -> void {
+    push(ts.bid, ts.next_id)
+    ts.next_id += 7
+    push(ts.bx, x)
+    push(ts.bz, z)
+    push(ts.btag, tag)
+    push(ts.bhome, homes)
+    push(ts.bjob, jobs)
+    ts.nb += 1
+  }
+
+  # a city of about `blocks` apartment blocks round a few workplaces, shops, bars and parks, scattered by a fixed hash
+  function make_city(ts: mut CzTestState, blocks: int) -> void {
+    ts.nb = 0
+    List.clear(ts.bx)
+    List.clear(ts.bid)
+    ts.next_id = 1000
+    List.clear(ts.bz)
+    List.clear(ts.btag)
+    List.clear(ts.bhome)
+    List.clear(ts.bjob)
+    for k in 0 .. 4096 { if len(ts.body_live) < 4096 { push(ts.body_live, 0) } else { ts.body_live[k] = 0 } }
+    var h = 99
+    for i in 0 .. blocks {
+      h = h * 1103515245 + 12345
+      let x = float((h >> 8) % 3000)
+      h = h * 1103515245 + 12345
+      let z = float((h >> 8) % 3000)
+      add_building(ts, x, z, 0, 40, 0)
+    }
+    for i in 0 .. Math.max(blocks / 4, 2) {
+      h = h * 1103515245 + 12345
+      let x = float((h >> 8) % 3000)
+      h = h * 1103515245 + 12345
+      let z = float((h >> 8) % 3000)
+      add_building(ts, x, z, TAG_OFFICE, 0, 120)
+    }
+    for i in 0 .. Math.max(blocks / 3, 3) {
+      h = h * 1103515245 + 12345
+      let x = float((h >> 8) % 3000)
+      h = h * 1103515245 + 12345
+      let z = float((h >> 8) % 3000)
+      add_building(ts, x, z, TAG_SHOP, 0, 14)
+    }
+    for i in 0 .. Math.max(blocks / 4, 2) {
+      h = h * 1103515245 + 12345
+      let x = float((h >> 8) % 3000)
+      h = h * 1103515245 + 12345
+      let z = float((h >> 8) % 3000)
+      add_building(ts, x, z, TAG_RESTAURANT, 0, 12)
+    }
+    for i in 0 .. Math.max(blocks / 5, 2) {
+      h = h * 1103515245 + 12345
+      let x = float((h >> 8) % 3000)
+      h = h * 1103515245 + 12345
+      let z = float((h >> 8) % 3000)
+      add_building(ts, x, z, TAG_BAR, 0, 0)
+    }
+    for i in 0 .. Math.max(blocks / 5, 2) {
+      h = h * 1103515245 + 12345
+      let x = float((h >> 8) % 3000)
+      h = h * 1103515245 + 12345
+      let z = float((h >> 8) % 3000)
+      add_building(ts, x, z, TAG_PARK, 0, 0)
+    }
+    add_building(ts, 1500.0, 1500.0, TAG_FACTORY, 0, 60)
+    add_building(ts, 900.0, 2100.0, TAG_FACTORY, 0, 60)
+  }
+
+  function fresh(cz: mut CitizensState, ts: mut CzTestState, blocks: int, start: int) -> void {
+    citizens_reset(cz)
+    citizens_config_seed(cz, 7)
+    citizens_config_host(cz, true)
+    ts.refuse = false
+    ts.weather = 0
+    ts.nview = 0
+    ts.transit = true
+    ts.plans = 0
+    ts.embodied = 0
+    ts.released = 0
+    ts.legs_told = 0
+    make_city(ts, blocks)
+    citizens_build(cz)
+    citizens_generate(cz, start)
+    q_clear(citizens_facts(cz))
+  }
+
+  const DAY: int = 86400
+  const H: int = 3600
+
+  function count_facts(cz: mut CitizensState, what: int) -> int {
+    let fs = q_drain(citizens_facts(cz))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  # the first citizen at or after `from` of an archetype (-1: any), who is doing something (not on a trip), and
+  # at home when `at_home`, employed when `job`
+  function find_doing(cz: CitizensState, from: int, arch: int, at_home: bool, job: bool) -> int {
+    for i in from .. citizens_count(cz) {
+      if arch >= 0 and citizens_archetype(cz, i) != arch { continue }
+      if not citizens_doing(cz, i) { continue }
+      if at_home and citizens_place(cz, i) != citizens_home(cz, i) { continue }
+      if job and citizens_work(cz, i) < 0 { continue }
+      return i
+    }
+    return -1
+  }
+
+  function set_field(cz: mut CitizensState, i: int, at: int, v: int) -> void {
+    let buf = new []int
+    citizens_export(cz, i, buf)
+    buf[at] = v
+    if buf[6] == CZ_DOING { buf[10] = citizens_now(cz) }        # what they did so far is not counted again
+    expect(citizens_import(cz, i, buf))
+  }
+  function set_need(cz: mut CitizensState, i: int, k: int, v10: int) -> void { set_field(cz, i, 24 + k, v10) }
+  function set_money(cz: mut CitizensState, i: int, m: int) -> void { set_field(cz, i, 4, m) }
+  function calm(cz: mut CitizensState, i: int) -> void {
+    let buf = new []int
+    citizens_export(cz, i, buf)
+    for k in 0 .. CZ_NEED_MAX { buf[24 + k] = 1000 }
+    if buf[6] == CZ_DOING { buf[10] = citizens_now(cz) }
+    expect(citizens_import(cz, i, buf))
+  }
+
+  function dist_p(ts: CzTestState, p: int, q: int) -> float { return d_of(ts.bx[p], ts.bz[p], ts.bx[q], ts.bz[q]) }
+
+  # a building carrying `tag` between lo and hi metres from place p, or -1
+  function building_at(ts: CzTestState, p: int, tag: int, lo: float, hi: float) -> int {
+    for q in 0 .. ts.nb {
+      if (ts.btag[q] & tag) == 0 { continue }
+      let d = dist_p(ts, p, q)
+      if d >= lo and d <= hi { return q }
+    }
+    return -1
+  }
+
+  function all_digests(cz: CitizensState, out: []int, n: int) -> void {
+    List.clear(out)
+    for i in 0 .. n { push(out, citizens_digest_of(cz, i * (citizens_count(cz) / n))) }
+  }
+
+  test "the people are made from the city: housed by the homes' capacity, in homes with room, with stable ids" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    expect_eq(citizens_count(cz), 640)                    # 20 blocks of 40 homes at 80 percent
+    var blocks = 0
+    for p in 0 .. citizens_places(cz) {
+      if ts.bhome[p] > 0 {
+        blocks += 1
+        expect_eq(citizens_place_room(cz, p), 8)
+      }
+    }
+    expect_eq(blocks, 20)
+    for i in 0 .. citizens_count(cz) {
+      expect(ts.bhome[citizens_home(cz, i)] > 0)
+      expect_eq(citizens_home_id(cz, i), ts.bid[citizens_home(cz, i)])
+    }
+    expect(citizens_archetype(cz, 0) >= 0 and citizens_archetype(cz, 0) < ARCH_COUNT)
+  }
+
+  test "the same city and seed make the same people, another seed others" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    let d1 = citizens_digest(cz)
+    let n1 = citizens_name(cz, 17)
+    let h1 = citizens_home_id(cz, 99)
+    let w1 = citizens_work_id(cz, 99)
+    let m1 = citizens_money(cz, 250)
+    fresh(cz, ts, 20, 0)
+    expect_eq(citizens_digest(cz), d1)
+    expect(citizens_name(cz, 17) == n1)
+    expect_eq(citizens_home_id(cz, 99), h1)
+    expect_eq(citizens_work_id(cz, 99), w1)
+    expect_eq(citizens_money(cz, 250), m1)
+    citizens_reset(cz)
+    make_city(ts, 20)
+    citizens_config_seed(cz, 8)
+    citizens_build(cz)
+    citizens_generate(cz, 0)
+    expect(citizens_digest(cz) != d1)
+    expect(citizens_money(cz, 250) != m1 or citizens_home_id(cz, 99) != h1)
+  }
+
+  test "a person keeps their name: first and last from the registry, the same each time" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    var distinct = 0
+    var last_row = -1
+    for i in 0 .. 60 {
+      let f = citizens_first_name(cz, i)
+      let l = citizens_last_name(cz, i)
+      expect(f >= 0 and l >= 0)
+      expect(CitizenNames[f].part == "first" and CitizenNames[l].part == "last")
+      expect(citizens_name(cz, i) == CitizenNames[f].name + " " + CitizenNames[l].name)
+      if f != last_row { distinct += 1 }
+      last_row = f
+    }
+    expect(distinct > 10)
+  }
+
+  test "jobs are taken within capacity, by kind of workplace, near home" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    var jobs_total = 0
+    for p in 0 .. citizens_places(cz) {
+      expect_eq(citizens_place_staff(cz, p) + citizens_place_free_jobs(cz, p), ts.bjob[p])
+      expect(citizens_place_free_jobs(cz, p) >= 0)
+      jobs_total += ts.bjob[p]
+    }
+    expect(citizens_employed(cz) > 400)
+    var commute = 0.0
+    var random_commute = 0.0
+    var n = 0
+    for i in 0 .. citizens_count(cz) {
+      let w = citizens_work(cz, i)
+      if w < 0 { continue }
+      let a = citizens_archetype(cz, i)
+      if a == 0 { expect((ts.btag[w] & TAG_OFFICE) != 0) }
+      if a == 1 { expect((ts.btag[w] & (TAG_SHOP | TAG_RESTAURANT)) != 0) }
+      if a == 2 { expect((ts.btag[w] & TAG_FACTORY) != 0) }
+      expect(a != 3)                                          # the retired have no work
+      if a == 0 {
+        commute += dist_p(ts, citizens_home(cz, i), w)
+        var sum = 0.0
+        var c = 0
+        for q in 0 .. ts.nb { if (ts.btag[q] & TAG_OFFICE) != 0 { sum += dist_p(ts, citizens_home(cz, i), q); c += 1 } }
+        random_commute += sum / float(c)
+        n += 1
+      }
+    }
+    expect(n > 100)
+    expect(commute < random_commute * 0.75)
+  }
+
+  test "a workday: the day shift is at work at eleven and gone at three in the morning; no office on a Saturday" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 3 * H)
+    for i in 0 .. citizens_count(cz) {
+      if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { expect(not (citizens_doing(cz, i) and citizens_activity(cz, i) == ACT_WORK)) }
+    }
+    citizens_advance(cz, 11 * H)
+    var workers = 0
+    for i in 0 .. citizens_count(cz) {
+      if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 {
+        workers += 1
+        expect(citizens_doing(cz, i) and citizens_activity(cz, i) == ACT_WORK and citizens_place(cz, i) == citizens_work(cz, i))
+      }
+    }
+    expect(workers > 200)
+    citizens_advance(cz, 5 * DAY + 11 * H)            # day 6 is a Saturday: weekday 5
+    for i in 0 .. citizens_count(cz) {
+      if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { expect(not (citizens_doing(cz, i) and citizens_activity(cz, i) == ACT_WORK)) }
+    }
+  }
+
+  test "the night shift is at work at two in the morning" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, DAY + 2 * H)
+    var n = 0
+    for i in 0 .. citizens_count(cz) {
+      if citizens_archetype(cz, i) == 2 and citizens_work(cz, i) >= 0 {
+        n += 1
+        expect(citizens_doing(cz, i) and citizens_activity(cz, i) == ACT_WORK and citizens_place(cz, i) == citizens_work(cz, i))
+      }
+    }
+    expect(n > 10)
+  }
+
+  test "money is conserved: what the citizens hold changes only by wages, spending and upkeep" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    let start = citizens_money_total(cz)
+    citizens_advance(cz, 4 * DAY)
+    expect(citizens_stat_wages(cz) > 0)
+    expect(citizens_stat_spent(cz) > 0)
+    expect(citizens_stat_upkeep(cz) > 0)
+    expect_eq(citizens_money_total(cz), start + citizens_stat_wages(cz) - citizens_stat_spent(cz) - citizens_stat_upkeep(cz))
+    # the wage is earned by the hour: the day shift's day of work paid
+    var day_wages = 0
+    for i in 0 .. citizens_count(cz) {
+      if citizens_archetype(cz, i) == 0 and citizens_work(cz, i) >= 0 { day_wages += citizens_wage(cz, i) * 8 }
+    }
+    expect(citizens_stat_wages(cz) > day_wages * 3)
+  }
+
+  test "the bars stay between empty and full, and a day has a shape: sleep at night, work, leisure in the evening" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 3 * DAY)
+    for i in 0 .. citizens_count(cz) {
+      for k in 0 .. citizens_need_count(cz) {
+        if k == 6 { continue }
+        let v = citizens_need(cz, i, k)
+        expect(v >= 0.0 and v <= 100.0)
+      }
+    }
+    citizens_advance(cz, 3 * DAY + 4 * H)
+    expect(citizens_count_doing(cz, ACT_SLEEP) > citizens_count(cz) / 2)
+    citizens_advance(cz, 3 * DAY + 19 * H)
+    expect(citizens_count_doing(cz, ACT_BAR) + citizens_count_doing(cz, ACT_EAT_OUT) + citizens_count_doing(cz, ACT_VISIT) > 30)
+  }
+
+  test "the bars of a place open when they say, and no bar is drunk at in the morning" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    for h in 6 .. 17 {
+      citizens_advance(cz, h * H)
+      expect_eq(citizens_count_doing(cz, ACT_BAR), 0)
+    }
+    citizens_advance(cz, 19 * H)
+    expect(citizens_count_doing(cz, ACT_BAR) > 0)
+  }
+
+  test "fair or foul: nobody goes to the park in a storm" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    ts.weather = 90
+    citizens_advance(cz, 2 * DAY)
+    expect_eq(citizens_stat_activity(cz, ACT_PARK), 0)
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 2 * DAY)
+    expect(citizens_stat_activity(cz, ACT_PARK) > 10)
+  }
+
+  test "the same day however the clock is stepped: at once, by the minute, by the second, in uneven steps" (cz: mut CitizensState, ts: mut CzTestState) {
+    let end = DAY + 7 * H + 123
+    fresh(cz, ts, 12, 0)
+    citizens_advance(cz, end)
+    let d_once = citizens_digest(cz)
+    let steps_once = citizens_stat_steps(cz)
+    fresh(cz, ts, 12, 0)
+    var t = 0
+    while t < end {
+      t += 60
+      citizens_advance(cz, Math.min(t, end))
+    }
+    expect_eq(citizens_digest(cz), d_once)
+    fresh(cz, ts, 12, 0)
+    var f = 0
+    while citizens_now(cz) < end {
+      f += 1
+      citizens_tick(cz, tick_new(0.016, f, 1.0 / 3600.0))
+    }
+    citizens_advance(cz, end)
+    expect_eq(citizens_digest(cz), d_once)
+    fresh(cz, ts, 12, 0)
+    t = 0
+    var k = 1
+    while t < end {
+      t += 37 + (k * 911) % 1700
+      k += 1
+      citizens_advance(cz, Math.min(t, end))
+    }
+    expect_eq(citizens_digest(cz), d_once)
+    expect(steps_once > 1000)
+  }
+
+  test "a citizen advanced alone to a moment is what the wheel makes of them" (cz: mut CitizensState, ts: mut CzTestState) {
+    let t0 = DAY + 13 * H + 1234
+    fresh(cz, ts, 12, 0)
+    citizens_advance(cz, t0)
+    let a = new []int
+    for j in 0 .. 60 {
+      let i = j * 6
+      citizens_sync(cz, i, t0)
+      push(a, citizens_digest_of(cz, i))
+    }
+    fresh(cz, ts, 12, 0)
+    citizens_set_time(cz, t0)
+    for j in 0 .. 60 {
+      let i = j * 6
+      citizens_sync(cz, i, t0)
+      expect_eq(citizens_digest_of(cz, i), a[j])
+    }
+  }
+
+  test "a hungry citizen eats, one who has everything idles, and what they can afford matters" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 12 * H)
+    let c = find_doing(cz, 0, ARCH_RETIRED, false, false)
+    expect(c >= 0)
+    calm(cz, c)
+    set_money(cz, c, 2000)
+    citizens_replan(cz, c)
+    expect_eq(citizens_activity(cz, c), ACT_IDLE)
+    set_need(cz, c, 0, 50)                                   # hunger at five
+    set_money(cz, c, 2000)
+    citizens_replan(cz, c)
+    expect(citizens_activity(cz, c) == ACT_EAT_HOME or citizens_activity(cz, c) == ACT_EAT_OUT)
+    # with five coins only the cheaper meal is possible
+    let d = find_doing(cz, c + 1, ARCH_RETIRED, false, false)
+    calm(cz, d)
+    set_need(cz, d, 0, 50)
+    set_money(cz, d, 5)
+    citizens_replan(cz, d)
+    expect_eq(citizens_activity(cz, d), ACT_EAT_HOME)
+    # and with nothing, nothing costly
+    let e = find_doing(cz, d + 1, ARCH_RETIRED, false, false)
+    calm(cz, e)
+    set_need(cz, e, 0, 50)
+    set_money(cz, e, 1)
+    citizens_replan(cz, e)
+    expect(Activities[Math.max(citizens_activity(cz, e), 0)].cost <= 1)
+  }
+
+  test "money pressure sends a worker to overtime; savings let them go home" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 17 * H + 1800)
+    let c = find_doing(cz, 0, 0, false, true)
+    expect(c >= 0)
+    calm(cz, c)
+    set_money(cz, c, -100)
+    citizens_replan(cz, c)
+    expect_eq(citizens_activity(cz, c), ACT_OVERTIME)
+    expect_eq(citizens_place(cz, c), citizens_work(cz, c))
+    let d = find_doing(cz, c + 1, 0, false, true)
+    calm(cz, d)
+    set_money(cz, d, 5000)
+    citizens_replan(cz, d)
+    expect(citizens_activity(cz, d) != ACT_OVERTIME)
+  }
+
+  test "the shift is kept: nothing is begun that would make them late, and they set out in time" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, DAY + 6 * H + 1800)                   # Tuesday, half past six
+    let c = find_doing(cz, 0, 0, false, true)
+    expect(c >= 0)
+    calm(cz, c)
+    set_need(cz, c, 1, 50)                                     # exhausted: sleep is wanted badly
+    set_money(cz, c, 500)
+    citizens_replan(cz, c)
+    let start = citizens_shift_start(cz, c)
+    expect_eq(start, DAY + 9 * H)
+    expect(citizens_until(cz, c) <= start - 600)
+    # at five to nine they are at work or on the way there
+    citizens_advance(cz, DAY + 8 * H + 3300)
+    citizens_sync(cz, c, DAY + 8 * H + 3300)
+    expect_eq(citizens_activity(cz, c), ACT_WORK)
+    expect_eq(citizens_place(cz, c), citizens_work(cz, c))
+    citizens_advance(cz, DAY + 9 * H + 600)
+    citizens_sync(cz, c, DAY + 9 * H + 600)
+    expect(citizens_doing(cz, c) and citizens_activity(cz, c) == ACT_WORK)
+    expect(citizens_until(cz, c) >= DAY + 17 * H)
+  }
+
+  # a citizen of the archetype at home, and a building carrying `tag` between lo and hi metres from their home (ts.pc, ts.pq)
+  function find_trip(cz: CitizensState, ts: mut CzTestState, from: int, arch: int, tag: int, lo: float, hi: float) -> bool {
+    var c = from
+    while c < citizens_count(cz) {
+      c = find_doing(cz, c, arch, true, false)
+      if c < 0 { return false }
+      let q = building_at(ts, citizens_home(cz, c), tag, lo, hi)
+      if q >= 0 {
+        ts.pc = c
+        ts.pq = q
+        return true
+      }
+      c += 1
+    }
+    return false
+  }
+
+  function trip_of(cz: mut CitizensState, ts: CzTestState, c: int, act: int, dest: int) -> int {
+    expect(citizens_force(cz, c, act, dest, 900))
+    expect(not citizens_doing(cz, c))
+    return citizens_mode(cz, c)
+  }
+
+  test "a short trip is on foot" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 4 * H)
+    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_PARK, 50.0, 350.0) or find_trip(cz, ts, 0, ARCH_RETIRED, TAG_SHOP, 50.0, 350.0))
+    expect_eq(trip_of(cz, ts, ts.pc, ACT_PARK, ts.pq), CZ_MODE_WALK)
+  }
+
+  test "a long trip without a car is public transport, leaving on the bucket, taking the planner's time" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 4 * H)
+    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
+    let c = ts.pc
+    let q = ts.pq
+    citizens_set_car(cz, c, false)
+    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_TRANSIT)
+    let eta = 180 + int(dist_p(ts, citizens_home(cz, c), q) / 9.0)
+    let total = citizens_until(cz, c) - citizens_since(cz, c)
+    expect(total >= eta and total < eta + 120)
+    expect_eq((citizens_until(cz, c) - eta) % 120, 0)           # it left on a multiple of the bucket
+    expect_eq(citizens_place(cz, c), q)
+  }
+
+  test "their own car is taken when it is at hand, and stays where they left it" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 4 * H)
+    ts.transit = false
+    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 1800.0, 4000.0))
+    let c = ts.pc
+    let q = ts.pq
+    citizens_set_car(cz, c, true)
+    expect_eq(citizens_car_at(cz, c), citizens_home(cz, c))
+    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_CAR)
+    citizens_advance(cz, citizens_until(cz, c) + 1)
+    citizens_sync(cz, c, citizens_until(cz, c) + 1)
+    expect_eq(citizens_car_at(cz, c), q)
+    expect_eq(citizens_place(cz, c), q)
+  }
+
+  test "with no car and no line, a far trip is a taxi when it can be paid, else a long walk" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 4 * H)
+    ts.transit = false
+    expect(find_trip(cz, ts, 0, ARCH_RETIRED, TAG_OFFICE, 2400.0, 4500.0))
+    let c = ts.pc
+    let q = ts.pq
+    citizens_set_car(cz, c, false)
+    set_money(cz, c, 1000)
+    expect_eq(trip_of(cz, ts, c, ACT_PARK, q), CZ_MODE_TAXI)
+    expect(find_trip(cz, ts, c + 1, ARCH_RETIRED, TAG_OFFICE, 2400.0, 4500.0))
+    let d = ts.pc
+    citizens_set_car(cz, d, false)
+    set_money(cz, d, 3)
+    expect_eq(trip_of(cz, ts, d, ACT_PARK, ts.pq), CZ_MODE_WALK)
+  }
+
+  test "weather turns a walkable trip to public transport" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 4 * H)
+    expect(find_trip(cz, ts, 0, 0, TAG_OFFICE, 600.0, 800.0) or find_trip(cz, ts, 0, 0, TAG_SHOP, 600.0, 800.0) or find_trip(cz, ts, 0, 0, TAG_RESTAURANT, 600.0, 800.0) or find_trip(cz, ts, 0, 0, TAG_PARK, 600.0, 800.0))
+    let c = ts.pc
+    let q = ts.pq
+    citizens_set_car(cz, c, false)
+    ts.weather = 0
+    let fair = trip_of(cz, ts, c, ACT_PARK, q)
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 4 * H)
+    citizens_set_car(cz, c, false)
+    ts.weather = 100
+    let foul = trip_of(cz, ts, c, ACT_PARK, q)
+    expect_eq(fair, CZ_MODE_WALK)
+    expect_eq(foul, CZ_MODE_TRANSIT)
+  }
+
+  test "the economy loop: shops take what is spent, a workplace's till pays the wages, a poor till pays less" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 23 * H)
+    var takings = 0
+    for p in 0 .. citizens_places(cz) { takings += citizens_place_takings(cz, p) }
+    expect(takings > 0)
+    # the one office has its till emptied, another not
+    var broke = -1
+    var rich = -1
+    for p in 0 .. citizens_places(cz) {
+      if (ts.btag[p] & TAG_OFFICE) != 0 and citizens_place_staff(cz, p) > 10 {
+        if broke < 0 { broke = p } else { if rich < 0 { rich = p } }
+      }
+    }
+    expect(broke >= 0 and rich >= 0)
+    citizens_place_set_cash(cz, broke, -100000)
+    let rich_before = citizens_place_cash(cz, rich)
+    q_clear(citizens_facts(cz))
+    citizens_advance(cz, DAY + H)                              # the morning of day two: the shares are worked out
+    expect_eq(citizens_place_wage_factor(cz, broke), 0)
+    expect_eq(citizens_place_wage_factor(cz, rich), 1000)
+    expect(count_facts(cz, CZ_F_BROKE) >= 1)
+    let broke_cash = citizens_place_cash(cz, broke)
+    let rich_cash = citizens_place_cash(cz, rich)
+    citizens_advance(cz, DAY + 20 * H)
+    expect(citizens_place_cash(cz, broke) >= broke_cash)       # it paid nothing while it had nothing
+    expect(citizens_place_cash(cz, rich) < rich_cash)          # the other paid its people
+  }
+
+  test "a wage follows the hours: one citizen's shift pays their hourly wage for its length" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    let c = find_doing(cz, 0, 0, false, true)
+    expect(c >= 0)
+    let wage = citizens_wage(cz, c)
+    citizens_advance(cz, 11 * H)
+    citizens_sync(cz, c, 11 * H)
+    expect_eq(citizens_activity(cz, c), ACT_WORK)
+    let before = citizens_money(cz, c)
+    # the shift ends at five; by six they have been paid, and what they spent on the way is what differs
+    citizens_advance(cz, 18 * H)
+    citizens_sync(cz, c, 18 * H)
+    let gained = citizens_money(cz, c) - before
+    expect(gained > wage * 4 - 200 and gained < wage * 8 + 100)
+  }
+
+  test "the far simulation does nothing per frame: a tick with no event steps nobody" (cz: mut CitizensState, ts: mut CzTestState) {
+    fresh(cz, ts, 20, 0)
+    citizens_advance(cz, 11 * H + 30)
+    let steps = citizens_stat_steps(cz)
+    var f = 0
+    for k in 0 .. 50 {
+      f += 1
+      citizens_tick(cz, tick_new(0.016, f, 0.0))
+    }
+    expect_eq(citizens_stat_steps(cz), steps)
+  }
+}

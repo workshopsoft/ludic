@@ -1,0 +1,253 @@
+# queries.ludic - asking about a citizen: who they are, what they are doing, where they are, what they have,
+# and finding them. A question with a time advances that citizen alone to it (no further than the clock: the
+# past is not kept and the future is not known), so it is exact whatever the wheel has reached.
+
+export function citizens_count(cz: CitizensState) -> int { return cz.cz_n }
+export function citizens_places(cz: CitizensState) -> int { return cz.cz_np }
+export function citizens_now(cz: CitizensState) -> int { return cz.cz_clock }
+
+# ---- who ----
+export function citizens_archetype(cz: CitizensState, i: int) -> int { return cz.cz_arch[i] }
+export function citizens_seed(cz: CitizensState, i: int) -> int { return cz.cz_seed[i] }
+export function citizens_home(cz: CitizensState, i: int) -> int { return cz.cz_home[i] }
+export function citizens_work(cz: CitizensState, i: int) -> int { return cz.cz_work[i] }
+export function citizens_home_id(cz: CitizensState, i: int) -> int { return cz.pl_id[cz.cz_home[i]] }
+export function citizens_work_id(cz: CitizensState, i: int) -> int {
+  if cz.cz_work[i] < 0 { return -1 }
+  return cz.pl_id[cz.cz_work[i]]
+}
+export function citizens_wage(cz: CitizensState, i: int) -> int { return cz.cz_wage[i] }
+export function citizens_car_at(cz: CitizensState, i: int) -> int { return cz.cz_car_at[i] }
+export function citizens_has_car(cz: CitizensState, i: int) -> bool { return (cz.cz_flags[i] & CZ_FL_CAR) != 0 }
+export function citizens_routine(cz: CitizensState, i: int) -> int { return cz_trait_of(cz, i, 0) }
+export function citizens_social(cz: CitizensState, i: int) -> int { return cz_trait_of(cz, i, 1) }
+export function citizens_thrift(cz: CitizensState, i: int) -> int { return cz_trait_of(cz, i, 2) }
+export function citizens_friend(cz: CitizensState, i: int, f: int) -> int { return cz.cz_friend[i * CZ_MAXFRIENDS + f] }
+export function citizens_friend_count(cz: CitizensState) -> int { return cz.cz_nfriends }
+
+# the row of CitizenNames this citizen was given as a first or a last name (by weight, from the seed), or -1
+function cz_name_row(cz: CitizensState, i: int, part: string, salt: int) -> int {
+  var total = 0
+  for r in 0 .. CNAME_COUNT { if CitizenNames[r].part == part { total += CitizenNames[r].weight } }
+  if total == 0 { return -1 }
+  var pick = cz_pick(cz_mix(cz.cz_seed[i], salt), total)
+  for r in 0 .. CNAME_COUNT {
+    if CitizenNames[r].part != part { continue }
+    if pick < CitizenNames[r].weight { return r }
+    pick -= CitizenNames[r].weight
+  }
+  return -1
+}
+export function citizens_first_name(cz: CitizensState, i: int) -> int { return cz_name_row(cz, i, "first", 201) }
+export function citizens_last_name(cz: CitizensState, i: int) -> int { return cz_name_row(cz, i, "last", 202) }
+export function citizens_name(cz: CitizensState, i: int) -> string {
+  let f = cz_name_row(cz, i, "first", 201)
+  let l = cz_name_row(cz, i, "last", 202)
+  var s = ""
+  if f >= 0 { s = CitizenNames[f].name }
+  if l >= 0 { s = s + " " + CitizenNames[l].name }
+  return s
+}
+
+# ---- what and where ----
+# citizen i as of game second t (the clock at most): advanced alone to it
+export function citizens_sync(cz: mut CitizensState, i: int, t: int) -> void {
+  if i < 0 or i >= cz.cz_n { return }
+  cz_advance_one(cz, i, Math.min(t, cz.cz_clock))
+}
+export function citizens_doing(cz: CitizensState, i: int) -> bool { return cz.cz_phase[i] == CZ_DOING }
+export function citizens_activity(cz: CitizensState, i: int) -> int { return cz.cz_act[i] }
+# the place they are at, or going to
+export function citizens_place(cz: CitizensState, i: int) -> int { return cz.cz_at[i] }
+export function citizens_from(cz: CitizensState, i: int) -> int { return cz.cz_from[i] }
+export function citizens_until(cz: CitizensState, i: int) -> int { return cz.cz_ep_end[i] }
+export function citizens_since(cz: CitizensState, i: int) -> int { return cz.cz_ep_start[i] }
+export function citizens_mode(cz: CitizensState, i: int) -> int { return cz.cz_mode[i] }
+export function citizens_lod(cz: CitizensState, i: int) -> int { return cz.cz_lod[i] }
+export function citizens_body(cz: CitizensState, i: int) -> int { return cz.cz_body[i] }
+export function citizens_shift_start(cz: CitizensState, i: int) -> int { return cz.cz_sh0[i] }
+export function citizens_shift_end(cz: CitizensState, i: int) -> int { return cz.cz_sh1[i] }
+export function citizens_forced(cz: CitizensState, i: int) -> bool { return (cz.cz_flags[i] & CZ_FL_FORCED) != 0 }
+export function citizens_afraid(cz: CitizensState, i: int) -> bool { return cz.cz_fear[i] > cz.cz_clock }
+
+# where citizen i is now, as metres: for a closely simulated citizen the last tick's (the body's, when they have
+# one), else worked out from their state (a traveller's from their trip's legs)
+export function citizens_x(cz: mut CitizensState, i: int) -> float {
+  if cz.cz_slot[i] >= 0 { return cz.cz_px[i] }
+  cz_pose(cz, i, cz.cz_clock)
+  return cz.pose_x
+}
+export function citizens_z(cz: mut CitizensState, i: int) -> float {
+  if cz.cz_slot[i] >= 0 { return cz.cz_pz[i] }
+  cz_pose(cz, i, cz.cz_clock)
+  return cz.pose_z
+}
+# the end of what they are doing now: the leg's end point (pose_gx / pose_gz) and the second it ends
+export function citizens_goal_x(cz: mut CitizensState, i: int) -> float {
+  cz_pose(cz, i, cz.cz_clock)
+  return cz.pose_gx
+}
+export function citizens_goal_z(cz: mut CitizensState, i: int) -> float {
+  cz_pose(cz, i, cz.cz_clock)
+  return cz.pose_gz
+}
+export function citizens_leg_ends(cz: mut CitizensState, i: int) -> int {
+  cz_pose(cz, i, cz.cz_clock)
+  return cz.pose_t_end
+}
+# the kind of leg they are on (CZ_LEG_*), or -1 at a place
+export function citizens_leg(cz: mut CitizensState, i: int) -> int {
+  cz_pose(cz, i, cz.cz_clock)
+  return cz.pose_leg
+}
+
+# the animation graph state for what they are doing now, as data: the activity's own, or the settings' for each
+# way of travelling; "" when nothing names one. The clip key and the held prop likewise
+export function citizens_anim(cz: mut CitizensState, i: int) -> string {
+  if cz.cz_phase[i] == CZ_DOING {
+    if cz.cz_act[i] < 0 { return "" }
+    return Activities[cz.cz_act[i]].anim
+  }
+  if CSET_COUNT == 0 { return "" }
+  let m = cz.cz_mode[i]
+  let s = CitizenSettings[0]
+  if m == CZ_MODE_CAR { return s.anim_drive }
+  if m == CZ_MODE_TAXI { return s.anim_taxi }
+  cz_pose(cz, i, cz.cz_clock)
+  if m == CZ_MODE_TRANSIT and cz.pose_leg == CZ_LEG_RIDE { return s.anim_ride }
+  if cz.pose_leg == CZ_LEG_WAIT { return s.anim_wait }
+  return s.anim_walk
+}
+export function citizens_clip(cz: CitizensState, i: int) -> string {
+  if cz.cz_phase[i] != CZ_DOING or cz.cz_act[i] < 0 { return "" }
+  return Activities[cz.cz_act[i]].clip
+}
+export function citizens_prop(cz: CitizensState, i: int) -> string {
+  if cz.cz_phase[i] != CZ_DOING or cz.cz_act[i] < 0 { return "" }
+  return Activities[cz.cz_act[i]].prop
+}
+
+# ---- what they have ----
+export function citizens_money(cz: CitizensState, i: int) -> int { return cz.cz_money[i] }
+export function citizens_owed(cz: CitizensState, i: int) -> int { return cz.cz_owed[i] }
+# a bar as of now, 0 .. 100: the bar at the start of their episode, carried to the clock
+export function citizens_need(cz: CitizensState, i: int, k: int) -> float {
+  var v = cz.cz_need[i * CZ_NEED_MAX + k]
+  if cz.cn_money[k] != 0 { return 100.0 * (1.0 - cz_pressure(cz, i)) }
+  let dur = Math.min(cz.cz_clock, cz.cz_ep_end[i]) - cz.cz_ep_start[i]
+  if dur > 0 {
+    var act = -1
+    if cz.cz_phase[i] == CZ_DOING { act = cz.cz_act[i] }
+    var eff = cz.cn_travel[k]
+    var slow = 1.0
+    if act >= 0 {
+      eff = cz.ca_eff[act * CZ_NEED_MAX + k]
+      slow = cz.ca_slow[act]
+    }
+    v = Math.clamp(v + ((eff - int(float(cz.cn_decay[k]) * slow)) * dur) / 3600, 0, 1000)
+  }
+  return float(v) / 10.0
+}
+export function citizens_pressure(cz: CitizensState, i: int) -> float { return cz_pressure(cz, i) }
+export function citizens_need_count(cz: CitizensState) -> int { return cz.cz_nn }
+
+# ---- finding people ----
+# the citizens at place p into `out` (cleared first), how many (up to the list's kept size)
+export function citizens_at_place(cz: CitizensState, p: int, out: []int) -> int {
+  List.clear(out)
+  var i = cz.pl_occ_head[p]
+  while i >= 0 {
+    kept_push(out, i)
+    i = cz.cz_onext[i]
+  }
+  return len(out)
+}
+
+# the citizens within r of (x, z): at the places in range, and on a trip whose straight line puts them there
+export function citizens_near(cz: CitizensState, x: float, z: float, r: float, out: []int) -> int {
+  List.clear(out)
+  let cx0 = int(Math.floor((x - r - cz.ix_g_minx) / cz.ix_g_cell))
+  let cx1 = int(Math.floor((x + r - cz.ix_g_minx) / cz.ix_g_cell))
+  let cz0 = int(Math.floor((z - r - cz.ix_g_minz) / cz.ix_g_cell))
+  let cz1 = int(Math.floor((z + r - cz.ix_g_minz) / cz.ix_g_cell))
+  for gz in Math.max(cz0, 0) .. Math.min(cz1, cz.ix_g_h - 1) + 1 {
+    for gx in Math.max(cx0, 0) .. Math.min(cx1, cz.ix_g_w - 1) + 1 {
+      let c = gz * cz.ix_g_w + gx
+      for q in cz.ix_g_start[c] .. cz.ix_g_start[c + 1] {
+        let p = cz.ix_g_place[q]
+        if cz_dist(x, z, cz.pl_x[p], cz.pl_z[p]) > r { continue }
+        var i = cz.pl_occ_head[p]
+        while i >= 0 {
+          kept_push(out, i)
+          i = cz.cz_onext[i]
+        }
+      }
+    }
+  }
+  var i = cz.tr_head
+  while i >= 0 {
+    let f = cz_trip_frac(cz, i, cz.cz_clock)
+    let a = cz.cz_from[i]
+    let b = cz.cz_at[i]
+    if cz_dist(x, z, cz.pl_x[a] + (cz.pl_x[b] - cz.pl_x[a]) * f, cz.pl_z[a] + (cz.pl_z[b] - cz.pl_z[a]) * f) <= r { kept_push(out, i) }
+    i = cz.tr_next[i]
+  }
+  return len(out)
+}
+
+# ---- places ----
+export function citizens_place_id(cz: CitizensState, p: int) -> int { return cz.pl_id[p] }
+export function citizens_place_of_id(cz: CitizensState, id: int) -> int { return imap_get(cz.pl_idmap, id, -1) }
+export function citizens_place_x(cz: CitizensState, p: int) -> float { return cz.pl_x[p] }
+export function citizens_place_z(cz: CitizensState, p: int) -> float { return cz.pl_z[p] }
+export function citizens_occupancy(cz: CitizensState, p: int) -> int { return cz.pl_occ[p] }
+export function citizens_place_cash(cz: CitizensState, p: int) -> int { return cz.pl_cash[p] }
+export function citizens_place_takings(cz: CitizensState, p: int) -> int { return cz.pl_takings[p] }
+export function citizens_place_visits(cz: CitizensState, p: int) -> int { return cz.pl_visits[p] }
+export function citizens_place_staff(cz: CitizensState, p: int) -> int { return cz.pl_staff[p] }
+export function citizens_place_free_jobs(cz: CitizensState, p: int) -> int { return cz.pl_free[p] }
+export function citizens_place_room(cz: CitizensState, p: int) -> int { return cz.pl_room[p] }
+export function citizens_place_payroll(cz: CitizensState, p: int) -> int { return cz.pl_payroll[p] }
+# the share of a full wage the workplace pays today, 0 .. 1000
+export function citizens_place_wage_factor(cz: CitizensState, p: int) -> int { return cz.pl_factor[p] }
+
+# ---- the economy, counted ----
+export function citizens_stat_wages(cz: CitizensState) -> int { return cz.st_wages }
+export function citizens_stat_spent(cz: CitizensState) -> int { return cz.st_spent }
+export function citizens_stat_upkeep(cz: CitizensState) -> int { return cz.st_upkeep }
+export function citizens_stat_leak(cz: CitizensState) -> int { return cz.st_leak }
+export function citizens_stat_steps(cz: CitizensState) -> int { return cz.st_steps }
+export function citizens_stat_plans(cz: CitizensState) -> int { return cz.st_plans }
+export function citizens_stat_hired(cz: CitizensState) -> int { return cz.st_hired }
+export function citizens_stat_fired(cz: CitizensState) -> int { return cz.st_fired }
+export function citizens_stat_moved(cz: CitizensState) -> int { return cz.st_moved }
+export function citizens_stat_activity(cz: CitizensState, a: int) -> int { return cz.st_act[a] }
+export function citizens_stat_mode(cz: CitizensState, m: int) -> int { return cz.st_mode[m] }
+export function citizens_mid_count(cz: CitizensState) -> int { return cz.md_n }
+
+# all the money the citizens hold (a walk over the population: for a report, not a frame)
+export function citizens_money_total(cz: CitizensState) -> int {
+  var t = 0
+  for i in 0 .. cz.cz_n { t += cz.cz_money[i] }
+  return t
+}
+export function citizens_unemployed(cz: CitizensState) -> int {
+  var n = 0
+  for i in 0 .. cz.cz_n {
+    if cz.cz_work[i] < 0 and cz.cr_mask[cz.cz_arch[i]] != 0 { n += 1 }
+  }
+  return n
+}
+export function citizens_employed(cz: CitizensState) -> int {
+  var n = 0
+  for i in 0 .. cz.cz_n { if cz.cz_work[i] >= 0 { n += 1 } }
+  return n
+}
+# how many are doing activity a at this moment (-1: travelling)
+export function citizens_count_doing(cz: CitizensState, a: int) -> int {
+  var n = 0
+  for i in 0 .. cz.cz_n {
+    if a < 0 { if cz.cz_phase[i] == CZ_TRAVELLING { n += 1 } } else { if cz.cz_phase[i] == CZ_DOING and cz.cz_act[i] == a { n += 1 } }
+  }
+  return n
+}

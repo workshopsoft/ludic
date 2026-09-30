@@ -1,0 +1,325 @@
+# plan.ludic - what a citizen does next. A day's plan is its obligations (a shift on a workday, found on the
+# first decision of the day, with the job search and the odd move of house that day brings); the rest is
+# decided when it is needed, by utility: each activity is scored for how much it would relieve what this
+# citizen needs (a bar weighted by how low it is, their own weights, money pressure), at this hour, for this
+# money, this far away, by their nature (habit, company, thrift, routine's noise), and the best goes. The
+# shift is kept: nothing is begun that would make them late, and at the leave-by time they go to work. A
+# forced activity, fear, and nothing worth doing (they idle at home) are the other outcomes. Everything here
+# is integers and IEEE +, -, *, / on floats from hashes of the seed: the same on every machine.
+
+# the weekday (0 .. 6) of a day given as its index, day 1 being index 0; the game's port may know better
+function cz_weekday_of(cz: CitizensState, day: int) -> int {
+  let w = CitizensWorld.weekday(day + 1)
+  if w >= 0 { return w % 7 }
+  return ((day + cz.cz_wd0) % 7 + 7) % 7
+}
+
+function cz_in_window(hour: float, from: float, to: float) -> bool {
+  if to - from >= 24.0 or from == to { return true }
+  if from < to { return hour >= from and hour < to }
+  return hour >= from or hour < to
+}
+
+# is any of the place's tags (among `mask`) open at this hour of the day
+function cz_open_at(cz: CitizensState, p: int, mask: int, hour: float) -> bool {
+  let m = cz.pl_tags[p] & mask
+  if m == 0 { return true }
+  for b in 0 .. PTAG_COUNT {
+    if (m & (1 << b)) != 0 {
+      let h = hour
+      if cz_in_window(h, cz.pt_from[b], cz.pt_to[b]) { return true }
+      if cz.pt_to[b] > 24.0 and cz_in_window(h + 24.0, cz.pt_from[b], cz.pt_to[b]) { return true }
+    }
+  }
+  return false
+}
+
+# the day's plan for citizen i: work is found or lost, a move may happen, today's shift is fixed
+# the shift citizen i is on or has next: its start and end into sw0 / sw1 (game seconds); false when they have
+# none in the next few days. A night shift that began yesterday and is still going counts
+function cz_shift_window(cz: mut CitizensState, i: int, T: int) -> bool {
+  cz.sw0 = 0
+  cz.sw1 = 0
+  if cz.cz_work[i] < 0 or cz.cz_shift[i] < 0 { return false }
+  let a = cz.cz_arch[i]
+  let s = cz.cr_sh0[a] + cz.cz_shift[i]
+  let day0 = cz_fdiv(T, CZ_DAY) - 1
+  for d in day0 .. day0 + 6 {
+    if ((cz.cr_shdays[s] >> cz_weekday_of(cz, d)) & 1) != 0 {
+      let s0 = d * CZ_DAY + cz.cr_shfrom[s]
+      let s1 = s0 + cz.cr_shlen[s]
+      if s1 > T {
+        cz.sw0 = s0
+        cz.sw1 = s1
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function cz_new_plan(cz: mut CitizensState, i: int, day: int, T: int) -> void {
+  cz.cz_plan_day[i] = day
+  let a = cz.cz_arch[i]
+  let seed = cz.cz_seed[i]
+  # a job, for someone who works and has none
+  if cz.cz_work[i] < 0 and cz.cr_mask[a] != 0 and cz.cz_shift[i] >= 0 and cz.cz_jobsearch > 0 {
+    if cz_pick(cz_mix3(seed, 40, day), 100) < cz.cz_jobsearch {
+      let p = cz_find_job(cz, i, day)
+      if p >= 0 {
+        cz_take_job(cz, i, p)
+        cz.st_hired += 1
+        cz_say(cz, CZ_F_HIRED, i, p, 0, 0, T)
+        cz_log(cz, T, CZ_EV_HIRE, i, p, 0)
+      }
+    }
+  }
+  # the odd move of house
+  if cz.cz_move10k > 0 and cz_pick(cz_mix3(seed, 41, day), 10000) < cz.cz_move10k {
+    let h = cz_find_home(cz, cz_mix3(seed, 42, day))
+    if h >= 0 and h != cz.cz_home[i] { cz_move_home(cz, i, h, T) }
+  }
+}
+
+function cz_move_home(cz: mut CitizensState, i: int, h: int, T: int) -> void {
+  let old = cz.cz_home[i]
+  cz.pl_room[old] += 1
+  cz.pl_room[h] -= 1
+  cz.cz_home[i] = h
+  if cz.cz_car_at[i] == old { cz.cz_car_at[i] = h }
+  cz.st_moved += 1
+  cz_say(cz, CZ_F_MOVED, i, h, old, 0, T)
+  cz_log(cz, T, CZ_EV_MOVE, i, h, 0)
+  # the new commute changes nothing of today's shift's place, only how long it takes
+}
+
+# a need's pull on this citizen: low is urgent, a full bar pulls a little
+function cz_urgency(cz: CitizensState, i: int, k: int) -> float {
+  let a = cz.cz_arch[i]
+  let nw = cz.cr_nw[a * CZ_NEED_MAX + k]
+  if cz.cn_money[k] != 0 {
+    let p = cz_pressure(cz, i)
+    return (0.1 + p * p * 3.0) * nw * cz.cn_weight[k]
+  }
+  let v = float(cz.cz_need[i * CZ_NEED_MAX + k]) / 10.0
+  let def = (100.0 - v) / 100.0
+  var u = 0.1 + def * def * 2.5 * cz.cn_weight[k]
+  if v < cz.cn_crit[k] { u += 2.0 }
+  if v > cz.cn_warn[k] { u = u * 0.15 }
+  return u * nw
+}
+
+# how long the activity would take this citizen: until the need it is for is full, within its limits, varied a little
+function cz_duration(cz: CitizensState, i: int, a: int, h: int) -> int {
+  let k = cz.ca_primary[a]
+  var d = 0
+  if k >= 0 and cz.ca_eff[a * CZ_NEED_MAX + k] > 0 {
+    let deficit = 1000 - cz.cz_need[i * CZ_NEED_MAX + k]
+    var rate = cz.ca_eff[a * CZ_NEED_MAX + k]
+    let dec = int(float(cz.cn_decay[k]) * cz.ca_slow[a])
+    if rate - dec > rate / 4 { rate = rate - dec }
+    d = deficit * 3600 / Math.max(rate, 1)
+    d = d * (900 + cz_pick(h, 201)) / 1000
+  } else {
+    d = cz.ca_dmin[a] + cz_pick(h, cz.ca_dmax[a] - cz.ca_dmin[a] + 1)
+  }
+  return Math.clamp(d, cz.ca_dmin[a], cz.ca_dmax[a])
+}
+
+# a place for activity a among those carrying its tags: of a few drawn by the citizen's seed that are open, the nearest
+function cz_choose_place(cz: CitizensState, i: int, a: int, T: int, cur: int, hour: float) -> int {
+  let s0 = cz.ix_act_start[a]
+  let cnt = cz.ix_act_start[a + 1] - s0
+  if cnt == 0 { return -1 }
+  var best = -1
+  var best_d = 1000000000.0
+  for j in 0 .. 3 {
+    let p = cz.ix_act[s0 + cz_pick(cz_mix3(cz.cz_seed[i], cz.cz_ep[i] * 7 + j, 50 + a), cnt)]
+    let arrive = hour + float(cz_est_secs(cz, cur, p)) / 3600.0
+    if not cz_open_at(cz, p, cz.ca_mask[a], arrive) { continue }
+    let d = cz_dist(cz.pl_x[cur], cz.pl_z[cur], cz.pl_x[p], cz.pl_z[p])
+    if d < best_d {
+      best_d = d
+      best = p
+    }
+  }
+  return best
+}
+
+# activity a for citizen i at T from place `cur`, with a shift at `deadline` (0 none): its score, or -1000 when it
+# cannot be done; the place, length, trip estimate and cost of it are left in ev_*
+function cz_eval(cz: mut CitizensState, i: int, a: int, T: int, hour: float, wd: int, cur: int, deadline: int) -> float {
+  let off = -1000.0
+  if cz.ca_oblig[a] != 0 { return off }
+  if ((cz.ca_days[a] >> wd) & 1) == 0 { return off }
+  let work = cz.cz_work[i]
+  if cz.ca_job[a] != 0 and work < 0 { return off }
+  let inwin = cz_in_window(hour, cz.ca_hfrom[a], cz.ca_hto[a])
+  if not inwin and cz.ca_strict[a] != 0 { return off }
+  var afraid = false
+  if cz.cz_fear[i] > T { afraid = true }
+  var p = -1
+  let w = cz.ca_where[a]
+  if w == 0 { p = cz.cz_home[i] }
+  if w == 1 { p = work }
+  if w == 2 {
+    if cz.cz_nfriends == 0 { return off }
+    let f = cz.cz_friend[i * CZ_MAXFRIENDS + cz_pick(cz_mix3(cz.cz_seed[i], cz.cz_ep[i], 40 + a), cz.cz_nfriends)]
+    if f < 0 { return off }
+    p = cz.cz_home[f]
+  }
+  if w == 3 {
+    if afraid or cz.ca_out[a] != 0 and CitizensWeather.bad() > 70 { return off }
+    p = cz_choose_place(cz, i, a, T, cur, hour)
+  }
+  if p < 0 { return off }
+  var ts = 0
+  if p != cur { ts = cz_est_secs(cz, cur, p) }
+  let h = cz_mix3(cz.cz_seed[i], cz.cz_ep[i], 60 + a)
+  var dur = cz_duration(cz, i, a, h)
+  if deadline > 0 {
+    let back = cz_est_secs(cz, p, work)
+    let avail = deadline - cz.cz_margin - back - (T + ts)
+    if avail < cz.ca_dmin[a] { return off }
+    if dur > avail { dur = avail }
+  }
+  var cost = cz.ca_cost[a]
+  if w == 3 { cost = cost * cz.pl_price[p] / 1000 }
+  if cost > cz.cz_money[i] and cost > 0 { return off }
+  let arch = CitizenArchetypes[cz.cz_arch[i]]
+  let dur_h = float(dur) / 3600.0
+  # what it would relieve
+  var s = 0.0
+  for k in 0 .. cz.cz_nn {
+    let e = cz.ca_eff[a * CZ_NEED_MAX + k]
+    if e <= 0 { continue }
+    if cz.cn_money[k] != 0 { continue }
+    let v = float(cz.cz_need[i * CZ_NEED_MAX + k]) / 10.0
+    var relief = float(e) / 10.0 * dur_h
+    if relief > 100.0 - v { relief = 100.0 - v }
+    s += cz_urgency(cz, i, k) * relief / 100.0 * 4.0
+  }
+  if cz.cz_money_need >= 0 and cz.ca_pay[a] > 0.0 and work >= 0 {
+    let income = float(cz.cz_wage[i]) * cz.ca_pay[a] * dur_h * float(cz.pl_factor[work]) / 1000.0
+    var rel = income / Math.max(float(arch.comfort) * 0.3, 1.0)
+    if rel > 1.0 { rel = 1.0 }
+    s += cz_urgency(cz, i, cz.cz_money_need) * rel * 4.0
+  }
+  # what it costs
+  if cost > 0 {
+    let thrift = float(cz_trait_of(cz, i, 2)) / 100.0
+    let pressure = cz_pressure(cz, i)
+    s -= float(cost) / Math.max(float(arch.comfort) * 0.1, 1.0) * (0.4 + thrift * 1.2) * (1.0 + pressure * 2.0)
+  }
+  if not inwin { s = s * 0.1 }
+  s -= float(ts) / 3600.0 * 1.6
+  if cz.ca_out[a] != 0 { s -= float(CitizensWeather.bad()) / 100.0 }
+  if afraid and w != 0 { s = s * 0.2 }
+  s = s * cz.ca_weight[a]
+  # nature: habit, whim and company change how much it is wanted, never whether anything is
+  let ro = float(cz_trait_of(cz, i, 0)) / 100.0
+  if s > 0.0 {
+    var m = 1.0 + (cz_unit(cz_mix3(cz.cz_seed[i], cz.cz_ep[i], 80 + a)) - 0.5) * (1.4 - ro)
+    if cz_habit_get(cz, i, cz_habit_slot(T)) == a { m += ro * 0.4 }
+    if w == 2 { m += (float(cz_trait_of(cz, i, 1)) / 100.0 - 0.5) * 0.5 }
+    s = s * m
+  }
+  cz.ev_place = p
+  cz.ev_dur = dur
+  cz.ev_ts = ts
+  cz.ev_cost = cost
+  return s
+}
+
+# leave place `cur` at T for `place`, to do `act` for `dur` seconds there: a trip unless it is the same place
+function cz_go(cz: mut CitizensState, i: int, T: int, act: int, place: int, dur: int) -> void {
+  let from = cz.cz_at[i]
+  if place == from or place < 0 {
+    cz_begin(cz, i, T, act, from, dur)
+    return
+  }
+  cz_plan_trip(cz, i, from, place, T)
+  if cz.trip_cost > 0 {
+    cz.cz_money[i] -= cz.trip_cost
+    cz.st_spent += cz.trip_cost
+  }
+  cz.cz_phase[i] = CZ_TRAVELLING
+  cz.cz_act[i] = act
+  cz.cz_from[i] = from
+  cz.cz_at[i] = place
+  cz.cz_mode[i] = cz.trip_mode
+  cz.cz_trip_cost[i] = cz.trip_cost
+  cz.cz_trip_dep[i] = T + cz.trip_wait
+  cz.cz_next_dur[i] = dur
+  cz.cz_ep_start[i] = T
+  cz.cz_ep_end[i] = T + cz.trip_secs
+  cz.st_mode[cz.trip_mode] += 1
+  cz_link_trav(cz, i)
+  cz_wheel_add(cz, i)
+  if cz_watched(cz, i) { cz_say(cz, CZ_F_DEPARTED, i, from, place, cz.trip_mode, T) }
+}
+
+# the citizen is at a place at T with nothing scheduled: decide
+function cz_decide(cz: mut CitizensState, i: int, T: int) -> void {
+  cz_settle_money(cz, i, T)
+  let day = cz_fdiv(T, CZ_DAY)
+  if cz.cz_plan_day[i] != day { cz_new_plan(cz, i, day, T) }
+  let cur = cz.cz_at[i]
+  let home = cz.cz_home[i]
+  let hour = float(T - day * CZ_DAY) / 3600.0
+  # a mission's word
+  if (cz.cz_flags[i] & CZ_FL_FORCED) != 0 {
+    var fp = cz.cz_force_place[i]
+    if fp < 0 { fp = home }
+    cz_go(cz, i, T, cz.cz_force_act[i], fp, cz.cz_force_dur[i])
+    return
+  }
+  # the shift: pending, and when they must set out for it
+  let work = cz.cz_work[i]
+  var deadline = 0
+  cz.cz_sh0[i] = 0
+  cz.cz_sh1[i] = 0
+  if cz_shift_window(cz, i, T) and cz.sw0 - T < 2 * CZ_DAY {
+    cz.cz_sh0[i] = cz.sw0
+    cz.cz_sh1[i] = cz.sw1
+    deadline = cz.sw0
+    let leave_by = deadline - cz_est_secs(cz, cur, work) - cz.cz_margin
+    if T >= leave_by and cz.cz_act_work >= 0 {
+      cz_go(cz, i, T, cz.cz_act_work, work, 0)
+      return
+    }
+  }
+  # afraid: home, and stay
+  if cz.cz_fear[i] > T and cur != home {
+    var idle = cz.cz_act_idle
+    if idle < 0 { idle = 0 }
+    cz_go(cz, i, T, idle, home, Math.min(cz.cz_fear[i] - T, 3600))
+    return
+  }
+  let wd = cz_weekday_of(cz, day)
+  var best = cz.cz_idle_score
+  var best_a = -1
+  var best_place = -1
+  var best_dur = 0
+  for a in 0 .. cz.cz_na {
+    if a == cz.cz_act_idle { continue }
+    let s = cz_eval(cz, i, a, T, hour, wd, cur, deadline)
+    if s > best {
+      best = s
+      best_a = a
+      best_place = cz.ev_place
+      best_dur = cz.ev_dur
+    }
+  }
+  if best_a >= 0 {
+    cz_go(cz, i, T, best_a, best_place, best_dur)
+    return
+  }
+  # nothing pulls: idle at home, until the shift is near if there is one
+  var d = 2400 + cz_pick(cz_mix3(cz.cz_seed[i], cz.cz_ep[i], 90), 5400)
+  if deadline > 0 {
+    let leave_by = deadline - cz_est_secs(cz, home, work) - cz.cz_margin
+    d = Math.clamp(leave_by - T - cz_est_secs(cz, cur, home), 120, d)
+  }
+  cz_go(cz, i, T, cz.cz_act_idle, home, d)
+}

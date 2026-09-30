@@ -1,0 +1,66 @@
+# econ.ludic - the economy loop. Workplaces pay wages per shift worked (a citizen accrues them, payday pays
+# them); citizens spend at shops and leisure (prices are data, scaled by the place's own); every citizen pays
+# upkeep (rent, bills) by the day; a workplace's till is what its customers spent and what the world outside
+# pays for its people's hours, and each morning it says how much of a full wage it can pay today. A need
+# pushes the choice (low money: overtime, skipped leisure; see plan.ludic), and what is chosen moves money.
+
+function cz_seed_cash(cz: mut CitizensState) -> void {
+  for p in 0 .. cz.cz_np { cz.pl_cash[p] = 3 * cz.pl_payroll[p] }
+}
+
+# savings after today's upkeep, and wages paid when it is payday
+function cz_settle_money(cz: mut CitizensState, i: int, T: int) -> void {
+  let day = cz_fdiv(T, CZ_DAY)
+  if cz.cz_upkeep_day[i] < day {
+    let u = CitizenArchetypes[cz.cz_arch[i]].upkeep * (day - cz.cz_upkeep_day[i])
+    cz.cz_money[i] -= u
+    cz.st_upkeep += u
+    cz.cz_upkeep_day[i] = day
+  }
+  if cz.cz_owed[i] > 0 and day % cz.cz_pay_days == 0 {
+    cz.cz_money[i] += cz.cz_owed[i]
+    cz.st_wages += cz.cz_owed[i]
+    if cz_watched(cz, i) { cz_say(cz, CZ_F_PAID, i, cz.cz_owed[i], 0, 0, T) }
+    cz.cz_owed[i] = 0
+  }
+}
+
+# how thin a citizen's savings are to them: 0 (at ease) .. 1
+function cz_pressure(cz: CitizensState, i: int) -> float {
+  let comfort = CitizenArchetypes[cz.cz_arch[i]].comfort
+  if comfort <= 0 { return 0.0 }
+  let p = 1.0 - float(cz.cz_money[i]) / float(comfort)
+  if p < 0.0 { return 0.0 }
+  if p > 1.0 { return 1.0 }
+  return p
+}
+
+# the morning of `day`: each workplace's takings and the world's payment for its hours go in the till, and
+# the share of a full wage it can pay today is worked out from it
+function cz_new_day_hook(cz: mut CitizensState, day: int) -> void {
+  for p in 0 .. cz.cz_np {
+    cz.pl_visits[p] = 0
+    cz.pl_takings[p] = 0
+    if cz.pl_staff[p] <= 0 {
+      cz.pl_factor[p] = 1000
+      continue
+    }
+    var ext = 0.0
+    var tags = cz.pl_tags[p]
+    for b in 0 .. PTAG_COUNT {
+      if (tags & (1 << b)) != 0 { ext += cz.pt_rev[b] * float(cz.pl_hours[p]) / 3600.0 }
+    }
+    cz.pl_cash[p] += int(ext)
+    let due = cz.pl_payroll[p]
+    var f = 1000
+    if cz.cz_closed and due > 0 {
+      if cz.pl_cash[p] <= 0 { f = 0 } else { f = Math.min(cz.pl_cash[p] * 1000 / due, 1000) }
+    }
+    cz.pl_factor[p] = f
+    if f < 1000 { cz_say(cz, CZ_F_BROKE, -1, p, f / 10, 0, day * CZ_DAY) }
+    if due > 0 and cz.pl_cash[p] > 3 * due {
+      cz.st_leak += cz.pl_cash[p] - 3 * due
+      cz.pl_cash[p] = 3 * due
+    }
+  }
+}

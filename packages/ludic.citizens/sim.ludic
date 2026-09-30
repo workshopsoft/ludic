@@ -1,0 +1,225 @@
+# sim.ludic - the event-driven simulation. A citizen is always in one episode: doing an activity at a place
+# until a time, or travelling to a place until a time. Nothing runs per frame for them. A wheel of one-minute
+# buckets holds each citizen at the minute their episode ends; a tick processes the buckets the clock passed,
+# and every episode ended in one is stepped - the trip's arrival begins the activity, an activity's end
+# settles its needs and money and decides the next. A citizen can also be advanced alone to any moment up to
+# the clock (a query, a forced activity), identically: the wheel is bookkeeping, not the truth.
+
+function cz_link_occ(cz: mut CitizensState, i: int) -> void {
+  let p = cz.cz_at[i]
+  if p < 0 or cz.cz_inocc[i] != 0 { return }
+  cz.cz_inocc[i] = 1
+  cz.cz_oprev[i] = -1
+  cz.cz_onext[i] = cz.pl_occ_head[p]
+  if cz.pl_occ_head[p] >= 0 { cz.cz_oprev[cz.pl_occ_head[p]] = i }
+  cz.pl_occ_head[p] = i
+  cz.pl_occ[p] += 1
+}
+
+function cz_unlink_occ(cz: mut CitizensState, i: int) -> void {
+  if cz.cz_inocc[i] == 0 { return }
+  let p = cz.cz_at[i]
+  let n = cz.cz_onext[i]
+  let pr = cz.cz_oprev[i]
+  if pr >= 0 { cz.cz_onext[pr] = n } else { cz.pl_occ_head[p] = n }
+  if n >= 0 { cz.cz_oprev[n] = pr }
+  cz.cz_inocc[i] = 0
+  cz.pl_occ[p] -= 1
+}
+
+function cz_link_trav(cz: mut CitizensState, i: int) -> void {
+  if cz.tr_in[i] != 0 { return }
+  cz.tr_in[i] = 1
+  cz.tr_prev[i] = -1
+  cz.tr_next[i] = cz.tr_head
+  if cz.tr_head >= 0 { cz.tr_prev[cz.tr_head] = i }
+  cz.tr_head = i
+}
+
+function cz_unlink_trav(cz: mut CitizensState, i: int) -> void {
+  if cz.tr_in[i] == 0 { return }
+  let n = cz.tr_next[i]
+  let pr = cz.tr_prev[i]
+  if pr >= 0 { cz.tr_next[pr] = n } else { cz.tr_head = n }
+  if n >= 0 { cz.tr_prev[n] = pr }
+  cz.tr_in[i] = 0
+}
+
+function cz_bucket_of(t: int) -> int { return cz_fdiv(t, 60) & (CZ_WHEEL - 1) }
+
+function cz_wheel_add(cz: mut CitizensState, i: int) -> void {
+  if cz.wh_in[i] != 0 { return }
+  let b = cz_bucket_of(cz.cz_ep_end[i])
+  cz.wh_in[i] = 1
+  cz.wh_prev[i] = -1
+  cz.wh_next[i] = cz.wh_head[b]
+  if cz.wh_head[b] >= 0 { cz.wh_prev[cz.wh_head[b]] = i }
+  cz.wh_head[b] = i
+}
+
+# off the wheel (call before changing the episode's end)
+function cz_wheel_del(cz: mut CitizensState, i: int) -> void {
+  if cz.wh_in[i] == 0 { return }
+  let b = cz_bucket_of(cz.cz_ep_end[i])
+  let n = cz.wh_next[i]
+  let pr = cz.wh_prev[i]
+  if pr >= 0 { cz.wh_next[pr] = n } else { cz.wh_head[b] = n }
+  if n >= 0 { cz.wh_prev[n] = pr }
+  cz.wh_in[i] = 0
+}
+
+function cz_watched(cz: CitizensState, i: int) -> bool {
+  return (cz.cz_flags[i] & CZ_FL_WATCHED) != 0 or cz.cz_lod[i] != CZ_LOD_FAR
+}
+
+# the needs after `dur` seconds of an activity (act -1: travelling, the trip's own effect on the bars)
+function cz_apply_needs(cz: mut CitizensState, i: int, dur: int, act: int) -> void {
+  if dur <= 0 { return }
+  let base = i * CZ_NEED_MAX
+  var slow = 1.0
+  if act >= 0 { slow = cz.ca_slow[act] }
+  for k in 0 .. cz.cz_nn {
+    if cz.cn_money[k] != 0 { continue }
+    var eff = cz.cn_travel[k]
+    if act >= 0 { eff = cz.ca_eff[act * CZ_NEED_MAX + k] }
+    let dec = int(float(cz.cn_decay[k]) * slow)
+    let delta = ((eff - dec) * dur) / 3600
+    if delta == 0 { continue }
+    let before = cz.cz_need[base + k]
+    let v = Math.clamp(before + delta, 0, 1000)
+    cz.cz_need[base + k] = v
+    if v < int(cz.cn_crit[k] * 10.0) and before >= int(cz.cn_crit[k] * 10.0) and cz_watched(cz, i) {
+      cz_say(cz, CZ_F_CRITICAL, i, k, 0, 0, cz.cz_ep_end[i])
+    }
+  }
+}
+
+function cz_habit_slot(t: int) -> int { return (cz_fdiv(t, 60) % 1440) / 180 }
+
+function cz_habit_get(cz: CitizensState, i: int, slot: int) -> int {
+  return ((cz.cz_habit[i * 2 + slot / 4] >> ((slot % 4) * 8)) & 255) - 1
+}
+
+function cz_habit_set(cz: mut CitizensState, i: int, slot: int, act: int) -> void {
+  let k = i * 2 + slot / 4
+  let sh = (slot % 4) * 8
+  cz.cz_habit[k] = (cz.cz_habit[k] & ~(255 << sh)) | (((act + 1) & 255) << sh)
+}
+
+# begin an activity at a place at game second T, for `dur` seconds (work runs to the end of the shift)
+function cz_begin(cz: mut CitizensState, i: int, T: int, act: int, place: int, dur: int) -> void {
+  var d = dur
+  if act >= 0 and cz.ca_oblig[act] != 0 and cz_shift_window(cz, i, T) and cz.sw0 - T < CZ_DAY { d = Math.max(cz.sw1 - T, 60) }
+  d = Math.max(d, 60)
+  cz.cz_phase[i] = CZ_DOING
+  cz.cz_act[i] = act
+  cz.cz_at[i] = place
+  cz.cz_ep_start[i] = T
+  cz.cz_ep_end[i] = T + d
+  if act >= 0 and cz.ca_cost[act] > 0 and place >= 0 {
+    var cost = cz.ca_cost[act]
+    if cz.ca_where[act] == 3 { cost = cost * cz.pl_price[place] / 1000 }
+    if cost > 0 {
+      cz.cz_money[i] -= cost
+      cz.st_spent += cost
+      cz.pl_takings[place] += cost
+      cz.pl_cash[place] += cost
+    }
+  }
+  if place >= 0 { cz.pl_visits[place] += 1 }
+  if act >= 0 { cz.st_act[act] += 1 }
+  cz_link_occ(cz, i)
+  cz_wheel_add(cz, i)
+  if act >= 0 { cz_habit_set(cz, i, cz_habit_slot(T), act) }
+  if cz_watched(cz, i) { cz_say(cz, CZ_F_STARTED, i, place, act, 0, T) }
+}
+
+# the activity ended at T: needs, wages, forced work done
+function cz_finish(cz: mut CitizensState, i: int, T: int) -> void {
+  let act = cz.cz_act[i]
+  let dur = T - cz.cz_ep_start[i]
+  cz_unlink_occ(cz, i)
+  cz_apply_needs(cz, i, dur, act)
+  if act >= 0 and (cz.ca_pay[act] > 0.0 or cz.ca_oblig[act] != 0) {
+    let p = cz.cz_work[i]
+    if p >= 0 and cz.cz_at[i] == p {
+      var mult = 1.0
+      if cz.ca_oblig[act] == 0 { mult = cz.ca_pay[act] }
+      var amount = int(float(cz.cz_wage[i] * dur) * mult / 3600.0)
+      amount = amount * cz.pl_factor[p] / 1000
+      cz.cz_owed[i] += amount
+      cz.pl_cash[p] -= amount
+    }
+  }
+  if (cz.cz_flags[i] & CZ_FL_FORCED) != 0 and cz.cz_force_act[i] == act {
+    cz.cz_flags[i] = cz.cz_flags[i] & ~CZ_FL_FORCED
+    cz.cz_force_act[i] = -1
+    cz.cz_force_place[i] = -1
+    cz_say(cz, CZ_F_FORCE_DONE, i, cz.cz_at[i], act, 0, T)
+  }
+  cz.cz_ep[i] += 1
+}
+
+# the trip ended at T: the bars took the walk, the car is where they left it, the activity begins
+function cz_arrive(cz: mut CitizensState, i: int, T: int) -> void {
+  cz_apply_needs(cz, i, T - cz.cz_ep_start[i], -1)
+  cz_unlink_trav(cz, i)
+  if cz.cz_mode[i] == CZ_MODE_CAR { cz.cz_car_at[i] = cz.cz_at[i] }
+  if cz_watched(cz, i) { cz_say(cz, CZ_F_ARRIVED, i, cz.cz_at[i], cz.cz_act[i], 0, T) }
+  cz.cz_ep[i] += 1
+  cz_begin(cz, i, T, cz.cz_act[i], cz.cz_at[i], cz.cz_next_dur[i])
+}
+
+# the end of citizen i's episode, at cz_ep_end[i]
+function cz_step(cz: mut CitizensState, i: int) -> void {
+  let T = cz.cz_ep_end[i]
+  cz.st_steps += 1
+  if cz.cz_phase[i] == CZ_TRAVELLING {
+    cz_arrive(cz, i, T)
+  } else {
+    cz_finish(cz, i, T)
+    cz_decide(cz, i, T)
+  }
+}
+
+# citizen i, advanced alone through every episode that ended at or before game second t
+function cz_advance_one(cz: mut CitizensState, i: int, t: int) -> void {
+  if cz.cz_ep_end[i] > t { return }
+  cz_wheel_del(cz, i)
+  var guard = 0
+  while cz.cz_ep_end[i] <= t and guard < 64 {
+    cz_step(cz, i)
+    guard += 1
+  }
+  cz_wheel_add(cz, i)
+}
+
+# process every minute bucket the clock has passed: each citizen in it is stepped through the episodes that ended
+# before the minute's end. Their order inside a bucket does not matter: a citizen reads nothing of another's
+function cz_run_wheel(cz: mut CitizensState, now: int) -> void {
+  let upto = cz_fdiv(now, 60) - 1      # minutes wholly behind the clock
+  while cz.cz_proc_min < upto {
+    let m = cz.cz_proc_min + 1
+    cz.cz_proc_min = m
+    let day = cz_fdiv(m * 60, CZ_DAY)
+    if day > cz.cz_day_seen and (m * 60) % CZ_DAY < 60 {
+      cz.cz_day_seen = day
+      cz_new_day_hook(cz, day)
+    }
+    let b = m & (CZ_WHEEL - 1)
+    var i = cz.wh_head[b]
+    cz.wh_head[b] = -1
+    let limit = (m + 1) * 60
+    while i >= 0 {
+      let nxt = cz.wh_next[i]
+      cz.wh_in[i] = 0
+      var guard = 0
+      while cz.cz_ep_end[i] < limit and guard < 64 {
+        cz_step(cz, i)
+        guard += 1
+      }
+      cz_wheel_add(cz, i)
+      i = nxt
+    }
+  }
+}

@@ -1,0 +1,215 @@
+# sync.ludic - a host and its clients. Every machine runs the same far simulation from the same seeds, so
+# nothing about a citizen's day is sent. What a client cannot work out is what the world did to them: a
+# hire, a mission, a fright, a body that fell behind. The host logs each (events.ludic) as a few integers; a
+# client applies them at their moment (lazily advancing that citizen to it first), or when its own clock
+# gets there. A digest says whether two machines still agree, and one citizen's whole state can be sent to
+# put a drifted one right.
+
+export function citizens_config_host(cz: mut CitizensState, host: bool) -> void { cz.cz_host = host }
+export function citizens_is_host(cz: CitizensState) -> bool { return cz.cz_host }
+export function citizens_log_seq(cz: CitizensState) -> int { return cz.lg_seq }
+
+# the corrections after number `seq` into `out` (cleared first), CZ_LOG_INTS ints each: seq, game second, kind,
+# citizen, a, b, c, 0. How many entries; fewer than asked for when the ring no longer holds them (the client
+# asks for a fresh copy of what it lacks: citizens_export)
+export function citizens_log_since(cz: CitizensState, seq: int, out: []int) -> int {
+  List.clear(out)
+  if cz.lg_seq == 0 { return 0 }
+  var first = Math.max(seq + 1, cz.lg_seq - cz.lg_n + 1)
+  var n = 0
+  for s in first .. cz.lg_seq + 1 {
+    let at = ((s - 1) % cz.lg_cap) * CZ_LOG_INTS
+    for k in 0 .. CZ_LOG_INTS { kept_push(out, cz.lg_buf[at + k]) }
+    n += 1
+  }
+  return n
+}
+
+# has the log lost entries a client had not yet read
+export function citizens_log_lost(cz: CitizensState, seq: int) -> bool { return seq + 1 < cz.lg_seq - cz.lg_n + 1 }
+
+function cz_apply_event(cz: mut CitizensState, t: int, kind: int, id: int, a: int, b: int, c: int) -> void {
+  if id < 0 or id >= cz.cz_n { return }
+  cz.lg_applying = true
+  cz_advance_one(cz, id, Math.min(t, cz.cz_clock))
+  let now = cz.cz_clock
+  if kind == CZ_EV_HIRE {
+    if a >= 0 and a < cz.cz_np {
+      if cz.cz_work[id] >= 0 { cz_leave_job(cz, id) }
+      if cz.cz_shift[id] < 0 { cz.cz_shift[id] = cz_pick_shift(cz, cz.cz_arch[id], cz_mix(cz.cz_seed[id], 3)) }
+      cz_take_job(cz, id, a)
+    }
+  }
+  if kind == CZ_EV_FIRE { cz_leave_job(cz, id) }
+  if kind == CZ_EV_MOVE {
+    if a >= 0 and a < cz.cz_np and a != cz.cz_home[id] { cz_move_home(cz, id, a, now) }
+  }
+  if kind == CZ_EV_FORCE {
+    cz.cz_flags[id] = cz.cz_flags[id] | CZ_FL_FORCED
+    cz.cz_force_act[id] = a
+    cz.cz_force_place[id] = b
+    cz.cz_force_dur[id] = Math.max(c, 60)
+    cz_interrupt(cz, id, now)
+  }
+  if kind == CZ_EV_UNFORCE {
+    cz.cz_flags[id] = cz.cz_flags[id] & ~CZ_FL_FORCED
+    cz.cz_force_act[id] = -1
+  }
+  if kind == CZ_EV_GIVE { cz.cz_money[id] += a }
+  if kind == CZ_EV_FEAR {
+    cz.cz_fear[id] = Math.max(cz.cz_fear[id], a)
+    cz.cz_flags[id] = cz.cz_flags[id] | CZ_FL_AFRAID
+    if (cz.cz_flags[id] & CZ_FL_FORCED) == 0 { cz_interrupt(cz, id, now) }
+  }
+  if kind == CZ_EV_FRIEND and a >= 0 and a < CZ_MAXFRIENDS { cz.cz_friend[id * CZ_MAXFRIENDS + a] = b }
+  if kind == CZ_EV_SHIFT {
+    cz_wheel_del(cz, id)
+    cz.cz_ep_end[id] = Math.max(a, cz.cz_ep_start[id] + 1)
+    cz_wheel_add(cz, id)
+  }
+  if kind == CZ_EV_REPLAN { cz_interrupt(cz, id, now) }
+  if kind == CZ_EV_CAR {
+    if a != 0 {
+      cz.cz_flags[id] = cz.cz_flags[id] | CZ_FL_CAR
+      cz.cz_car_at[id] = cz.cz_home[id]
+    } else {
+      cz.cz_flags[id] = cz.cz_flags[id] & ~CZ_FL_CAR
+    }
+  }
+  cz.lg_applying = false
+}
+
+# corrections from the host, CZ_LOG_INTS ints each: one whose moment this machine has reached is applied now (after
+# advancing that citizen to it), a later one waits for the clock. How many were applied at once; one applied after
+# its moment has passed counts in citizens_late
+export function citizens_log_apply(cz: mut CitizensState, entries: []int, n: int) -> int {
+  var applied = 0
+  for e in 0 .. n {
+    let at = e * CZ_LOG_INTS
+    let t = entries[at + 1]
+    if t <= cz.cz_clock {
+      if t < cz.cz_clock - 120 { cz.lg_late += 1 }
+      cz_apply_event(cz, t, entries[at + 2], entries[at + 3], entries[at + 4], entries[at + 5], entries[at + 6])
+      applied += 1
+    } else {
+      for k in 0 .. CZ_LOG_INTS { kept_push(cz.lg_pending, entries[at + k]) }
+    }
+  }
+  return applied
+}
+
+export function citizens_late(cz: CitizensState) -> int { return cz.lg_late }
+export function citizens_pending(cz: CitizensState) -> int { return len(cz.lg_pending) / CZ_LOG_INTS }
+
+function cz_apply_due(cz: mut CitizensState, now: int) -> void {
+  let n = len(cz.lg_pending) / CZ_LOG_INTS
+  if n == 0 { return }
+  var keep = 0
+  for e in 0 .. n {
+    let at = e * CZ_LOG_INTS
+    if cz.lg_pending[at + 1] <= now {
+      cz_apply_event(cz, cz.lg_pending[at + 1], cz.lg_pending[at + 2], cz.lg_pending[at + 3], cz.lg_pending[at + 4], cz.lg_pending[at + 5], cz.lg_pending[at + 6])
+    } else {
+      for k in 0 .. CZ_LOG_INTS { cz.lg_pending[keep * CZ_LOG_INTS + k] = cz.lg_pending[at + k] }
+      keep += 1
+    }
+  }
+  while len(cz.lg_pending) > keep * CZ_LOG_INTS { List.pop(cz.lg_pending) }
+}
+
+export function citizens_digest_of(cz: CitizensState, i: int) -> int {
+  var h = cz_mix(cz.cz_ep[i], cz.cz_money[i])
+  h = cz_mix(h, cz.cz_act[i] * 64 + cz.cz_phase[i])
+  h = cz_mix(h, cz.cz_at[i] * 4 + cz.cz_mode[i])
+  h = cz_mix(h, cz.cz_ep_end[i])
+  h = cz_mix(h, cz.cz_home[i] * 31 + cz.cz_work[i])
+  for k in 0 .. cz.cz_nn { h = cz_mix(h, cz.cz_need[i * CZ_NEED_MAX + k]) }
+  return h
+}
+
+# one number for the whole population; two machines whose clocks and corrections agree give the same
+export function citizens_digest(cz: CitizensState) -> int {
+  var h = 12345
+  for i in 0 .. cz.cz_n { h = cz_mix(h, citizens_digest_of(cz, i)) }
+  return h
+}
+
+export const CZ_EXPORT_INTS: int = 36
+
+# one citizen's whole state as integers into `out` (cleared first): everything a machine needs to put a drifted
+# citizen right with citizens_import
+export function citizens_export(cz: CitizensState, i: int, out: []int) -> int {
+  List.clear(out)
+  if i < 0 or i >= cz.cz_n { return 0 }
+  kept_push(out, cz.cz_home[i])
+  kept_push(out, cz.cz_work[i])
+  kept_push(out, cz.cz_shift[i])
+  kept_push(out, cz.cz_wage[i])
+  kept_push(out, cz.cz_money[i])
+  kept_push(out, cz.cz_flags[i] & (CZ_FL_CAR | CZ_FL_AFRAID))
+  kept_push(out, cz.cz_phase[i])
+  kept_push(out, cz.cz_act[i])
+  kept_push(out, cz.cz_at[i])
+  kept_push(out, cz.cz_from[i])
+  kept_push(out, cz.cz_ep_start[i])
+  kept_push(out, cz.cz_ep_end[i])
+  kept_push(out, cz.cz_ep[i])
+  kept_push(out, cz.cz_next_dur[i])
+  kept_push(out, cz.cz_mode[i])
+  kept_push(out, cz.cz_trip_cost[i])
+  kept_push(out, cz.cz_trip_dep[i])
+  kept_push(out, cz.cz_owed[i])
+  kept_push(out, cz.cz_upkeep_day[i])
+  kept_push(out, cz.cz_car_at[i])
+  kept_push(out, cz.cz_fear[i])
+  kept_push(out, cz.cz_plan_day[i])
+  kept_push(out, cz.cz_habit[i * 2])
+  kept_push(out, cz.cz_habit[i * 2 + 1])
+  for k in 0 .. CZ_NEED_MAX { kept_push(out, cz.cz_need[i * CZ_NEED_MAX + k]) }
+  for f in 0 .. CZ_MAXFRIENDS { kept_push(out, cz.cz_friend[i * CZ_MAXFRIENDS + f]) }
+  return len(out)
+}
+
+export function citizens_import(cz: mut CitizensState, i: int, v: []int) -> bool {
+  if i < 0 or i >= cz.cz_n or len(v) < CZ_EXPORT_INTS { return false }
+  cz_wheel_del(cz, i)
+  cz_unlink_occ(cz, i)
+  cz_unlink_trav(cz, i)
+  if v[0] != cz.cz_home[i] and v[0] >= 0 and v[0] < cz.cz_np {
+    cz.pl_room[cz.cz_home[i]] += 1
+    cz.pl_room[v[0]] -= 1
+    cz.cz_home[i] = v[0]
+  }
+  if v[1] != cz.cz_work[i] {
+    cz_leave_job(cz, i)
+    cz.cz_shift[i] = v[2]
+    if v[1] >= 0 and v[1] < cz.cz_np { cz_take_job(cz, i, v[1]) }
+  }
+  cz.cz_shift[i] = v[2]
+  cz.cz_wage[i] = v[3]
+  cz.cz_money[i] = v[4]
+  cz.cz_flags[i] = (cz.cz_flags[i] & ~(CZ_FL_CAR | CZ_FL_AFRAID)) | v[5]
+  cz.cz_phase[i] = v[6]
+  cz.cz_act[i] = v[7]
+  cz.cz_at[i] = v[8]
+  cz.cz_from[i] = v[9]
+  cz.cz_ep_start[i] = v[10]
+  cz.cz_ep_end[i] = v[11]
+  cz.cz_ep[i] = v[12]
+  cz.cz_next_dur[i] = v[13]
+  cz.cz_mode[i] = v[14]
+  cz.cz_trip_cost[i] = v[15]
+  cz.cz_trip_dep[i] = v[16]
+  cz.cz_owed[i] = v[17]
+  cz.cz_upkeep_day[i] = v[18]
+  cz.cz_car_at[i] = v[19]
+  cz.cz_fear[i] = v[20]
+  cz.cz_plan_day[i] = v[21]
+  cz.cz_habit[i * 2] = v[22]
+  cz.cz_habit[i * 2 + 1] = v[23]
+  for k in 0 .. CZ_NEED_MAX { cz.cz_need[i * CZ_NEED_MAX + k] = v[24 + k] }
+  for f in 0 .. CZ_MAXFRIENDS { cz.cz_friend[i * CZ_MAXFRIENDS + f] = v[32 + f] }
+  if cz.cz_phase[i] == CZ_DOING { cz_link_occ(cz, i) } else { cz_link_trav(cz, i) }
+  cz_wheel_add(cz, i)
+  return true
+}

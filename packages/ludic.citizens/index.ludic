@@ -1,0 +1,22 @@
+# ludic.citizens - data (defs.ludic), ports, the state as columns, the places and the population built from
+# the city's ports, the economy loop, the decision, the trip, the event-driven simulation, the LODs and the
+# hand-off to bodies, what happens to them, what a host tells a client, and the save
+module ludic_citizens uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "hash.ludic"
+import "data.ludic"
+import "build.ludic"
+import "econ.ludic"
+import "travel.ludic"
+import "plan.ludic"
+import "sim.ludic"
+import "lod.ludic"
+import "events.ludic"
+import "sync.ludic"
+import "queries.ludic"
+import "save.ludic"
+import "system.ludic"

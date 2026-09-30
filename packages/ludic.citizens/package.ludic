@@ -1,0 +1,9 @@
+# ludic.citizens - a persistent life simulation for a large population: who lives where, works where, what
+# they need, what they do about it, what it costs and pays, and how they get there. Far from a player a
+# citizen is an event (at a place until a time, then travelling until another); near, they are handed to the
+# game's crowd, traffic and NPCs through ports. Every decision is a pure function of a seed and the citizen's
+# state, so any machine computes any citizen's day and only what the world changed is sent. Uses ludic.base
+# and nothing else. See README.md.
+package "ludic.citizens"
+version "0.1.0"
+kind source

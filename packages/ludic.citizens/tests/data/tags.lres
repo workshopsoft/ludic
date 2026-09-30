@@ -1,0 +1,6 @@
+office { revenue_per_job_hour: 40.0 }
+shop { open_from: 8.0, open_to: 21.0 }
+restaurant { open_from: 7.0, open_to: 23.0 }
+bar { open_from: 17.0, open_to: 26.0 }
+park { }
+factory { revenue_per_job_hour: 40.0 }
