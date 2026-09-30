@@ -24,6 +24,7 @@ export property SignalSource {
   kind: string = "value"                 # fact | value | text
   about: string = ""                     # one line for a person (the studio's picker shows it)
   unit: string = ""                      # what `value` is: "m/s", "0..1", "s" (for the picker)
+  words: string = ""                     # fact/text: where its words come from, "Registry.field" entries comma separated ("CarSeats.state_enter"); "" when none or not in a table
   arg: int = 0                           # handed back to the functions: a fact's kind, a value's selector
   count: fn() -> int = null              # fact
   read: fn(int, int, SigFact) -> bool = null

@@ -95,6 +95,7 @@ export property AnimClipInfo {
   root_turn: bool = false     # the root's yaw is extracted too
   root_bone: string = ""      # canonical name; the skeleton's root when empty
   @Unit("s") ref_time: float = 0.0    # an additive layer's reference frame
+  @Unit("s") duration: float = 0.0    # the length the clip is PLANNED to have, before it is authored (0: unknown); a studio reads it, the runtime never does
 }
 
 @ByKey

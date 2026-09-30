@@ -15,7 +15,7 @@ program SignalTest {
   }
   function toy_get(toy_st: ToyState, actor: int, arg: int) -> float { return toy_st.speed * float(arg) }
   function toy_say(toy_st: ToyState, actor: int, arg: int) -> string { return "sit" }
-  def SignalSources toy_hit { name: "toy.HIT", kind: "fact", about: "a hit", arg: 3, count: fn toy_count, read: fn toy_read }
+  def SignalSources toy_hit { name: "toy.HIT", kind: "fact", about: "a hit", words: "Toys.clip", arg: 3, count: fn toy_count, read: fn toy_read }
   def SignalSources toy_speed { name: "toy.speed", kind: "value", unit: "m/s", about: "how fast", arg: 2, get: fn toy_get }
   def SignalSources toy_pose { name: "toy.pose", kind: "text", say: fn toy_say }
   def SignalSources toy_half { name: "toy.half", kind: "value" }
@@ -27,6 +27,11 @@ program SignalTest {
     expect(sig_find("toy.none") < 0)
     expect(sig_is_fact(SIGSRC_TOY_HIT) and sig_is_value(SIGSRC_TOY_SPEED) and sig_is_text(SIGSRC_TOY_POSE))
     expect(not sig_is_fact(-1) and not sig_is_value(99))
+  }
+
+  test "a source can declare where its words come from" () {
+    expect(SignalSources[SIGSRC_TOY_HIT].words == "Toys.clip")
+    expect(SignalSources[SIGSRC_TOY_POSE].words == "")
   }
 
   test "a source missing what its kind needs, a second of a name, or a kind that is none, says so" () {

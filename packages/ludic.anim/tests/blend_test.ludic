@@ -171,6 +171,14 @@ program BlendTest {
     expect_near(pl.it_t[1], 1.0, 0.001)
   }
 
+  test "a clip row can carry the length the clip is planned to have, and the runtime ignores it" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let p = AnimClips[ACLIP_PLANNED]
+    expect_near(p.duration, 1.75, 0.0001)
+    expect_near(AnimClips[ACLIP_LATE].duration, 0.0, 0.0001)
+    # the phase comes from the duration the player hands in, never from the planned one
+    expect_near(anim_clip_time(p, 2.0, 0.5, false), 1.0, 0.0001)
+  }
+
   test "markers line two clips up: the same phase is the same foot down, however unevenly the steps fall" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
     let a = AnimClips[ACLIP_STEPA]
     let b = AnimClips[ACLIP_STEPB]

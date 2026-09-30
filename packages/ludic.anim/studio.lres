@@ -131,6 +131,7 @@ anims {
   clip_root_turn: "root_turn"
   clip_root_bone: "root_bone"
   clip_ref_time: "ref_time"
+  clip_duration: "duration"
 }
 
 # the wiring of gameplay to graphs: a row says which registered source (ludic.base's SignalSources: a fact

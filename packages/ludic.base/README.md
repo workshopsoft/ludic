@@ -214,10 +214,10 @@ state, so the queue cases are functions a test calls and the runner's cases star
 A mechanic that other packages want to listen to (an animation graph, a sound bank) declares its sources in a file of its own, as rows
 of the open registry `SignalSources`, and no listener imports the mechanic: it names a source by a stable string.
 
-- `SignalSource { name, kind, about, unit, arg, count, read, get, say }`, with `name` like `"melee.SWING"`; `kind` is
+- `SignalSource { name, kind, about, unit, arg, words, count, read, get, say }`, with `name` like `"melee.SWING"`; `kind` is
   `fact` (`count() -> int` says how many facts wait in the mechanic's queue, read not drained; `read(i, arg, out: SigFact) -> bool`
   says whether fact i is of this source's kind and fills `SigFact { actor, value, name }`), `value` (`get(actor, arg) -> float`) or `text`
-  (`say(actor, arg) -> string`). The functions take the mechanic's own state, as a system's tick does, and allocate nothing.
+  (`say(actor, arg) -> string`). `words` (optional) names where a fact's or text source's words come from, as `"Registry.field"` entries separated by commas, so a studio can check by-name bindings; it is data only and nothing at runtime reads it. The functions take the mechanic's own state, as a system's tick does, and allocate nothing.
 - `sig_find(name) -> int`, `sig_is_fact/value/text(i)`, `sig_problem(i) -> string` ("" when whole), `sig_fact_new()`.
 - The dev link lists them for a studio's picker: `signal_source at:int` answers `ok <count> "<name>" "<kind>" "<unit>" "<about>"`.
 

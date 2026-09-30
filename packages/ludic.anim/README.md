@@ -107,7 +107,7 @@ one row is a state's key (`from: "walk"`). Clip names follow the rig's prefix: `
 | `AnimBlendSpaces` | `AnimBlendSpace { key, dims, x_param, y_param, samples: [{ clip, x, y }], sync }` | a 1D or 2D space of clips |
 | `AnimSkeletons` | `AnimSkeleton { key, model, root, prefix, bones: [{ name, node }], lod: [{ dist, every, layers, events }] }` | a rig: canonical bone names over the file's nodes, the root, how far-away actors are updated |
 | `AnimMasks` | `AnimMask { key, skeleton, default, rows: [{ bone, weight, below }] }` | bones and weights; `below` takes the whole branch |
-| `AnimClips` | `AnimClipInfo { key, model, clip, events, markers, root_motion, root_axes, root_turn, root_bone, ref_time }` | what a clip says about itself, by its name without the prefix; one row serves every rig that has the clip |
+| `AnimClips` | `AnimClipInfo { key, model, clip, events, markers, root_motion, root_axes, root_turn, root_bone, ref_time, duration }` | what a clip says about itself, by its name without the prefix; one row serves every rig that has the clip. `duration` (seconds, 0 unknown) is the length the clip is planned to have before it is authored: the studio's graph simulation and problems use it for a clip not yet in its glTF. The runtime ignores it, and once the real clip exists its own length wins |
 | | `AnimEvent { name, at, until, normalized, arg, value, min_weight }` | a keyed time; `until` after `at` makes a window |
 | | `AnimMarker { name, at }` | a point of a cycle (a foot down) for sync |
 
@@ -251,7 +251,7 @@ Actors are the game's numbers, the ones given to `anim_actor_add`: the fighter, 
 A plain name two graphs share (`raise` in two layers) goes to the first; say `layer/state` to choose. A request to a state of a sub graph also asks every graph above it to be in the sub state that runs it (or the sub graph would not run), and the sub graph then starts at the requested state instead of its entry; a layer's graph runs all the time and needs nothing above it. Taken once however often it is asked, per graph. A name nothing has is ignored (`anim_request` answers false), and `anim_link_validate` reports `anim.link_unknown_state` for a `request` row whose `to` no graph, sub graph or layer of its set has by this rule (a qualified name must match exactly). Parameters and triggers were always shared by name across all of them.
 
 **Adding a source (a package, a car, anything).** A mechanic declares what it can tell in a file of its own, depending on `ludic.base` only,
-and this package imports no mechanic. `ludic.base`'s `SignalSources` is an open registry (`SignalSource { name, kind, about, unit, arg, count, read, get, say }`):
+and this package imports no mechanic. `ludic.base`'s `SignalSources` is an open registry (`SignalSource { name, kind, about, unit, arg, words, count, read, get, say }`):
 
 ```ludic
 function car__count(cars_st: CarsState) -> int { return len(car_facts(cars_st).items) }
@@ -267,6 +267,8 @@ function car__get(cars_st: CarsState, actor: int, arg: int) -> float { return ca
 def SignalSources car_crash  { name: "cars.CRASH", kind: "fact", about: "a car hit something (value: speed)", unit: "m/s", arg: CAR_CRASH, count: fn car__count, read: fn car__read }
 def SignalSources car_steer  { name: "cars.steer", kind: "value", about: "steering", unit: "-1..1", arg: 0, get: fn car__get }
 ```
+
+A fact or text source that brings a word (a fact's clip, a text source's state name) declares where the words come from in `words`: `"Registry.field"` entries, comma separated (`words: "CarSeats.state_enter"`), so a studio can check a by-name binding row against the graph's triggers or states without the game running. Leave it empty when the words are not in a table.
 
 The functions take the mechanic's own state (supplied, like a system's tick) and allocate nothing. The mechanic's README names its sources; a
 new fact kind is one `def`. A studio lists them through the dev verb `signal_source at:int` (`ok <count> "<name>" "<kind>" "<unit>" "<about>"`,

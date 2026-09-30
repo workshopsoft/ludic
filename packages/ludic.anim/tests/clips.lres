@@ -2,3 +2,4 @@
 stepa { markers: [{ name: "left", at: 0.0 }, { name: "right", at: 0.25 }] }
 stepb { markers: [{ name: "left", at: 0.0 }, { name: "right", at: 0.5 }] }
 late { markers: [{ name: "left", at: 0.1 }] }
+planned { duration: 1.75 }

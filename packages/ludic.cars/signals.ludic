@@ -63,15 +63,15 @@ function cr__sig_say(cars_st: CarsState, actor: int, arg: int) -> string {
   return cr_anim_state(c, seat, 0)
 }
 
-def SignalSources cars_boarding { name: "cars.BOARDING", kind: "fact", about: "an actor began to get in through the door (word: the seat's state_enter, value: the seat)", arg: CAR_BOARDING, count: fn cr__sig_count, read: fn cr__sig_read }
-def SignalSources cars_seated { name: "cars.SEATED", kind: "fact", about: "an actor is in a seat (word: the seat's state_sit, value: the seat)", arg: CAR_ENTERED, count: fn cr__sig_count, read: fn cr__sig_read }
-def SignalSources cars_exited { name: "cars.EXITED", kind: "fact", about: "an actor stepped out (word: the seat's state_leave, value: the seat)", arg: CAR_EXITED, count: fn cr__sig_count, read: fn cr__sig_read }
-def SignalSources cars_ejected { name: "cars.EJECTED", kind: "fact", about: "an actor was thrown or dragged out (word: the seat's state_leave, value: the seat)", arg: CAR_EJECTED, count: fn cr__sig_count, read: fn cr__sig_read }
-def SignalSources cars_dragged { name: "cars.DRAGGED", kind: "fact", about: "the driver is being dragged out by a thief (word: the seat's state_jacked, value: the seat)", arg: CAR_DRAGGED, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_boarding { name: "cars.BOARDING", kind: "fact", about: "an actor began to get in through the door (word: the seat's state_enter, value: the seat)", words: "CarSeats.state_enter", arg: CAR_BOARDING, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_seated { name: "cars.SEATED", kind: "fact", about: "an actor is in a seat (word: the seat's state_sit, value: the seat)", words: "CarSeats.state_sit", arg: CAR_ENTERED, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_exited { name: "cars.EXITED", kind: "fact", about: "an actor stepped out (word: the seat's state_leave, value: the seat)", words: "CarSeats.state_leave", arg: CAR_EXITED, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_ejected { name: "cars.EJECTED", kind: "fact", about: "an actor was thrown or dragged out (word: the seat's state_leave, value: the seat)", words: "CarSeats.state_leave", arg: CAR_EJECTED, count: fn cr__sig_count, read: fn cr__sig_read }
+def SignalSources cars_dragged { name: "cars.DRAGGED", kind: "fact", about: "the driver is being dragged out by a thief (word: the seat's state_jacked, value: the seat)", words: "CarSeats.state_jacked", arg: CAR_DRAGGED, count: fn cr__sig_count, read: fn cr__sig_read }
 def SignalSources cars_riding { name: "cars.riding", kind: "value", about: "1 while in a seat of a car (from the start of getting in)", unit: "0/1", arg: 0, get: fn cr__sig_value }
 def SignalSources cars_driver { name: "cars.driver", kind: "value", about: "1 while in the driver's seat", unit: "0/1", arg: 1, get: fn cr__sig_value }
 def SignalSources cars_passenger { name: "cars.passenger", kind: "value", about: "1 while in a seat that is not the driver's", unit: "0/1", arg: 2, get: fn cr__sig_value }
 def SignalSources cars_speed { name: "cars.speed", kind: "value", about: "the speed of the car the actor is in, along its forward (negative backing up)", unit: "m/s", arg: 3, get: fn cr__sig_value }
 def SignalSources cars_steer { name: "cars.steer", kind: "value", about: "the steering as a share of the lock, right positive, of the car the actor is in (for a steering layer)", unit: "-1..1", arg: 4, get: fn cr__sig_value }
 def SignalSources cars_door { name: "cars.door", kind: "value", about: "1 while the door works (the car is being got into, got out of or jacked), else 0", unit: "0/1", arg: 5, get: fn cr__sig_value }
-def SignalSources cars_seat_state { name: "cars.seat_state", kind: "text", about: "the state the rider's graph belongs in: the seat's state_enter while getting in, state_jacked while dragged out, else state_sit; \"\" outside a car. Bind as a request by name", arg: 0, say: fn cr__sig_say }
+def SignalSources cars_seat_state { name: "cars.seat_state", kind: "text", about: "the state the rider's graph belongs in: the seat's state_enter while getting in, state_jacked while dragged out, else state_sit; \"\" outside a car. Bind as a request by name", words: "CarSeats.state_enter,CarSeats.state_sit,CarSeats.state_jacked", arg: 0, say: fn cr__sig_say }
