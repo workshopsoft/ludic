@@ -1,0 +1,196 @@
+# host_test.ludic - host authority: a guest's verbs are asks for the host, the host's snapshot rebuilds a run on
+# a guest that answers the same questions, an older snapshot is ignored, a player's record is saved and read back
+import "ludic.missions"
+import "ludic.base"
+program HostTest {
+  import "fixture/world.ludic"
+  import "fixture/flow.ludic"
+
+  def CreationKinds street_race { node: MSN_RACE, mission: MSK_RACE, min_gates: 3, max_gates: 20, max_players: 8, max_laps: 3, max_seconds: 600.0, money: 200 }
+
+  function fresh(w: mut WorldState, m: mut MissionsState) -> void {
+    world_fresh(w)
+    missions_reset(m)
+    missions_init(m)
+  }
+
+  # what the host would send: a snapshot through text, as a wire would
+  function through_wire(v: Val) -> Val { return Json.parse(Json.encode(v)) }
+
+  function first_ask(m: MissionsState, ask: int) -> MissionFact {
+    let fs = q_drain(missions_facts(m))
+    for i in 0 .. len(fs) { if fs[i].what == MSF_ASK and fs[i].ask == ask { return fs[i] } }
+    return null
+  }
+
+  test "a guest's verbs are asks for the host" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let v = mission_find(m, "vault")
+    let id = mission_start(m, v, 0, [1, 2])
+    w.host = false
+    q_clear(missions_facts(m))
+    expect(not mission_report(m, id, 2, MRP_KILL, "guard", 3))
+    let a = first_ask(m, MSA_REPORT)
+    expect(a != null)
+    expect_eq(a.who, 2)
+    expect_eq(a.node, MRP_KILL)
+    expect_eq(a.text, "guard")
+    expect_eq(a.n, 3)
+    expect(not mission_join(m, id, 3))
+    expect_eq(mission_why(m), MSG_NOT_HOST)
+    expect_eq(first_ask(m, MSA_JOIN).who, 3)
+    mission_leave(m, id, 1)
+    expect_eq(first_ask(m, MSA_LEAVE).who, 1)
+    mission_prefer_role(m, id, 2, "vault_hacker")
+    expect_eq(first_ask(m, MSA_ROLE).text, "vault_hacker")
+    mission_retry(m, id)                                 # not failed: nothing to ask
+    expect(first_ask(m, MSA_RETRY) == null)
+    mission_abandon(m, id)
+    expect(first_ask(m, MSA_ABANDON) != null)
+    expect_eq(mission_start(m, v, 0, [5, 6]), -1)
+    expect_eq(mission_why(m), MSG_NOT_HOST)
+    expect_eq(mission_members(m, id), 2)                 # nothing above changed the host's run
+  }
+
+  test "a snapshot rebuilds the run on a guest" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let r = mission_find(m, "city_race")
+    let id = mission_launch(m, r, 4, [1, 2, 3])
+    for i in 1 .. 4 { mission_report(m, id, i, MRP_READY, "", 1) }
+    at(w, 2, 0.0, 0.0)
+    mission_tick(m, 1.0)
+    at(w, 2, 100.0, 0.0)
+    mission_tick(m, 1.0)
+    mission_report(m, id, 3, MRP_DIED, "", 1)
+    let rev = mission_rev(m, id)
+    let text = Json.encode(mission_snapshot(m, id))
+    # this machine becomes a guest: it knows nothing of the run until it is told
+    missions_reset(m)
+    w.host = false
+    expect_eq(mission_runs(m), 0)
+    let got = mission_apply(m, Json.parse(text))
+    expect_eq(got, id)
+    expect_eq(mission_phase(m, id), MSR_RUNNING)
+    expect_eq(mission_group_of(m, id), 4)
+    expect_eq(mission_members(m, id), 3)
+    expect_eq(mission_rev(m, id), rev)
+    expect_eq(mission_node_state(m, id, 0), MSS_DONE)
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    expect_eq(mission_gate(m, id, 2), 2)
+    expect(not mission_alive(m, id, 3))
+    expect(mission_alive(m, id, 1))
+    expect_eq(mission_place(m, id, 2), 1 + 0)
+    let ms = mission_markers(m, id, 2)
+    expect_eq(len(ms), 1)
+    expect(ms[0].z == 0.0 and ms[0].x == 100.0 or ms[0].z == 100.0)
+    let fs = q_drain(missions_facts(m))
+    var started = 0
+    var node_on = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == MSF_STARTED { started += 1 }
+      if fs[i].what == MSF_NODE { node_on += 1 }
+    }
+    expect_eq(started, 1)
+    expect(node_on >= 1)
+    # the guest's clocks run for drawing, and nothing decides
+    mission_tick(m, 5.0)
+    expect(mission_time(m, id) > 6.0)
+    expect_eq(mission_phase(m, id), MSR_RUNNING)
+    # the host's own runs are never overwritten by a snapshot
+    w.host = true
+    expect_eq(mission_apply(m, Json.parse(text)), -1)
+  }
+
+  test "a late snapshot does not undo a newer one, a guest sees the end" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let id = mission_launch(m, c, 0, [1])
+    let early = Json.encode(mission_snapshot(m, id))
+    at(w, 1, 10.0, 10.0)
+    mission_tick(m, 0.1)
+    mission_report(m, id, 1, MRP_COLLECT, "parcel", 2)
+    let mid = Json.encode(mission_snapshot(m, id))
+    mission_report(m, id, 1, MRP_DELIVER, "parcel", 2)
+    let late = Json.encode(mission_snapshot(m, id))
+    missions_reset(m)
+    w.host = false
+    mission_apply(m, Json.parse(early))
+    expect_eq(mission_node_state(m, id, 0), MSS_ACTIVE)
+    mission_apply(m, Json.parse(mid))
+    expect_eq(mission_node_state(m, id, 2), MSS_ACTIVE)
+    mission_apply(m, Json.parse(early))                 # arrives late
+    expect_eq(mission_node_state(m, id, 2), MSS_ACTIVE)
+    q_clear(missions_facts(m))
+    mission_apply(m, Json.parse(late))
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    let fs = q_drain(missions_facts(m))
+    var passed = 0
+    for i in 0 .. len(fs) { if fs[i].what == MSF_PASSED { passed += 1 } }
+    expect_eq(passed, 1)
+  }
+
+  test "a creation's run carries the creation to a guest that has not got it" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = creation_new("loop-7", "p", "street_race")
+    c.title = "Loop"
+    creation_add_gate(c, 0.0, 0.0, 6.0)
+    creation_add_gate(c, 50.0, 0.0, 6.0)
+    creation_add_gate(c, 50.0, 50.0, 6.0)
+    c.players = 4
+    c.min_players = 2
+    let plan = creation_compile(m, c)
+    let id = mission_launch(m, plan, 0, [1, 2])
+    let text = Json.encode(mission_snapshot(m, id))
+    missions_reset(m)
+    w.host = false
+    expect_eq(mission_find(m, "ugc:loop-7"), -1)
+    expect_eq(mission_apply(m, Json.parse(text)), id)
+    expect(mission_find(m, "ugc:loop-7") >= 0)
+    expect_eq(mission_members(m, id), 2)
+  }
+
+  test "what a player has won is saved and read back" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let id = mission_launch(m, c, 0, [1, 2])
+    at(w, 1, 10.0, 10.0)
+    mission_tick(m, 0.1)
+    mission_report(m, id, 1, MRP_COLLECT, "parcel", 2)
+    mission_report(m, id, 1, MRP_DELIVER, "parcel", 2)
+    mission_tick(m, 30.0)
+    let v = through_wire(missions_save(m))
+    let rec = through_wire(missions_progress_val(m, 1))
+    missions_reset(m)
+    expect_eq(mission_done_count(m, 1, "courier"), 0)
+    missions_load(m, v, 1)
+    expect_eq(mission_done_count(m, 1, "courier"), 1)
+    expect_eq(mission_done_count(m, 2, "courier"), 1)
+    expect(mission_cooldown_left(m, 1, c) > 25.0)          # the clock came back with it
+    expect(mission_best_time(m, 1, "courier") > 0.0)
+    # one player's record alone, with a mission the game no longer has dropped
+    missions_reset(m)
+    Value.put(rec, "retired_mission", Value.list())
+    missions_progress_load(m, 1, rec)
+    expect_eq(mission_done_count(m, 1, "courier"), 1)
+    expect_eq(mission_done_count(m, 2, "courier"), 0)
+  }
+
+  test "the system saves and loads through the base's runner" (m: mut MissionsState, w: mut WorldState, b: mut BaseState) {
+    fresh(w, m)
+    core_clear(b)
+    core_add(b, missions_system())
+    core_init_all(b)
+    let c = mission_find(m, "courier")
+    let id = mission_launch(m, c, 0, [1])
+    at(w, 1, 10.0, 10.0)
+    core_tick_all(b, tick_new(0.1, 1, 0.0))
+    mission_report(m, id, 1, MRP_COLLECT, "parcel", 2)
+    mission_report(m, id, 1, MRP_DELIVER, "parcel", 2)
+    let root = core_save_all(b)
+    let text = save_encode(root)
+    core_reset_all(b)
+    expect_eq(mission_done_count(m, 1, "courier"), 0)
+    core_load_all(b, save_decode(text))
+    expect_eq(mission_done_count(m, 1, "courier"), 1)
+  }
+}

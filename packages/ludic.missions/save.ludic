@@ -1,0 +1,46 @@
+# save.ludic - what is kept between sessions: what each player has won (so replay rules, cooldowns and
+# prerequisites hold), and the missions clock. Runs are a session's: a run is not saved. A game that
+# keeps a player's record elsewhere (a persistence service) uses missions_progress_val / _load instead.
+export function missions_reset(missions_st: mut MissionsState) -> void {
+  ms__build(missions_st)
+  missions_st.ms__runs = new []MissionRun
+  missions_st.ms__heists = new []HeistRun
+  missions_st.ms__progress = new []Progress
+  missions_st.ms__time = 0.0
+  missions_st.ms__next = 1
+  missions_st.ms__hnext = 1
+  missions_st.ms__dice = rng_new(MissionsWorld.seed())
+  # creations compiled into plans go; the written missions stay
+  let keep = new []MissionPlan
+  for i in 0 .. len(missions_st.ms__plans) { if not missions_st.ms__plans[i].custom { push(keep, missions_st.ms__plans[i]) } }
+  missions_st.ms__plans = keep
+  missions_st.ms__creations = new []Creation
+  q_clear(missions_st.ms__facts)
+}
+
+@alloc_ok("on a save: the record written out")
+export function missions_save(missions_st: MissionsState) -> Val {
+  let v = Value.object()
+  sv_put_float(v, "time", missions_st.ms__time)
+  let who = Value.object()
+  if missions_st.ms__progress != null {
+    for i in 0 .. len(missions_st.ms__progress) {
+      let p = missions_st.ms__progress[i]
+      let k = `{p.who}`
+      if Value.has(who, k) == 0 { Value.put(who, k, missions_progress_val(missions_st, p.who)) }
+    }
+  }
+  Value.put(v, "players", who)
+  return v
+}
+
+export function missions_load(missions_st: mut MissionsState, v: Val, version: int) -> void {
+  missions_reset(missions_st)
+  missions_st.ms__time = sv_float(v, "time", 0.0)
+  if Value.has(v, "players") == 0 { return }
+  let who = Value.get(v, "players")
+  if Value.kind(who) != 6 { return }
+  for i in 0 .. Value.count(who) {
+    missions_progress_load(missions_st, Text.to_int(Value.key_at(who, i)), Value.at(who, i))
+  }
+}

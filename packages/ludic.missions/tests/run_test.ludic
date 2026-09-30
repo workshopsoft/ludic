@@ -1,0 +1,128 @@
+# run_test.ludic - who is in a run: joining while it forms and while it runs, leaving and what a run
+# left short does, a leader who goes, fees, a place reported by name, giving a run up, a contact's list
+import "ludic.missions"
+import "ludic.base"
+program RunTest {
+  import "fixture/world.ludic"
+  import "fixture/flow.ludic"
+
+  function fresh(w: mut WorldState, m: mut MissionsState) -> void {
+    world_fresh(w)
+    missions_reset(m)
+    missions_init(m)
+  }
+
+  test "joining a forming run, up to the most" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let t = mission_find(m, "toll")
+    let id = mission_start(m, t, 0, [1, 2])
+    expect(mission_join(m, id, 3))
+    expect(mission_join(m, id, 3))                        # already in
+    expect(not mission_join(m, id, 4))
+    expect_eq(mission_why(m), MSG_TOO_MANY)
+    expect_eq(mission_members(m, id), 3)
+    expect_eq(len(mission_who(m, id)), 3)
+    expect_eq(mission_run_of(m, 3), id)
+  }
+
+  test "a fee is taken from each, and a player who cannot pay keeps the run from beginning" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let t = mission_find(m, "toll")
+    let id = mission_start(m, t, 0, [1, 2])
+    w.fee_ok = false
+    expect(not mission_begin(m, id))
+    expect_eq(mission_why(m), MSG_FEE)
+    expect_eq(mission_phase(m, id), MSR_FORMING)
+    w.fee_ok = true
+    expect(mission_begin(m, id))
+    expect_eq(w.charged, 50)
+    let fs = q_drain(missions_facts(m))
+    var fees = 0
+    for i in 0 .. len(fs) { if fs[i].what == MSF_FEE { fees += 1 } }
+    expect_eq(fees, 2)
+  }
+
+  test "no joining in progress when the mission says so, and a place reported by name" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let t = mission_find(m, "toll")
+    let id = mission_launch(m, t, 0, [1, 2])
+    expect(not mission_join(m, id, 3))
+    expect_eq(mission_why(m), MSG_CLOSED)
+    expect(not mission_report(m, id, 1, MRP_ARRIVED, "garage", 1))
+    expect(mission_report(m, id, 2, MRP_ARRIVED, "booth", 1))
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    expect_eq(w.money[1], 20)                            # the pot 90 shared by two, less the fee of 25
+  }
+
+  test "joining in progress takes a role with room" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let v = mission_find(m, "vault")
+    let id = mission_launch(m, v, 0, [1, 2])
+    expect(mission_join(m, id, 3))
+    expect_eq(mission_role_key(m, id, 3), "vault_gun")
+    expect(mission_join(m, id, 4))
+    expect(not mission_join(m, id, 5))                     # four is the most
+    expect_eq(mission_why(m), MSG_TOO_MANY)
+  }
+
+  test "a run left short is lost, an empty one closed, and the leader passes to the next" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let t = mission_find(m, "toll")
+    let id = mission_launch(m, t, 0, [1, 2, 3])
+    expect_eq(mission_leader(m, id), 1)
+    expect(mission_leave(m, id, 1))
+    expect_eq(mission_leader(m, id), 2)
+    expect_eq(mission_run_of(m, 1), -1)
+    expect_eq(mission_phase(m, id), MSR_RUNNING)
+    expect(mission_leave(m, id, 3))                        # one left of a least of two
+    expect_eq(mission_phase(m, id), MSR_FAILED)
+    expect_eq(mission_reason_ended(m, id), MSE_TOO_FEW)
+    expect(mission_leave(m, id, 2))
+    expect_eq(mission_phase(m, id), MSR_ENDED)
+    expect(mission_close(m, id))
+    expect_eq(mission_runs(m), 0)
+  }
+
+  test "a slot is taken again by the next to join" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let v = mission_find(m, "vault")
+    let id = mission_launch(m, v, 0, [1, 2, 3])
+    mission_leave(m, id, 3)
+    expect(mission_join(m, id, 4))
+    expect_eq(mission_members(m, id), 3)
+    expect_eq(mission_role_key(m, id, 4), "vault_gun")
+    expect_eq(mission_run_of(m, 3), -1)
+  }
+
+  test "giving a run up leaves no loss and frees the players" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let t = mission_find(m, "toll")
+    let id = mission_launch(m, t, 0, [1, 2])
+    expect(mission_abandon(m, id))
+    expect_eq(mission_phase(m, id), MSR_ENDED)
+    expect_eq(mission_reason_ended(m, id), MSE_ABANDONED)
+    expect_eq(mission_run_of(m, 1), -1)
+    expect_eq(mission_done_count(m, 1, "toll"), 0)
+    expect(not mission_abandon(m, id))
+  }
+
+  test "a contact's missions, in the table's order" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let out = new []int
+    let n = missions_of_contact(m, "dispatcher", out)
+    expect(n >= 3)
+    expect_eq(mission_plan_key(m, out[0]), "courier")
+    expect_eq(missions_of_contact(m, "nobody", out), 0)
+  }
+
+  test "the game may fail a run by its own rule" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let t = mission_find(m, "toll")
+    let id = mission_launch(m, t, 0, [1, 2])
+    expect(mission_fail(m, id))
+    expect_eq(mission_reason_ended(m, id), MSE_GAME)
+    expect(not mission_fail(m, id))
+    expect_eq(mission_node_state(m, id, 0), MSS_ACTIVE)    # the node stays as it was
+    expect(mission_report(m, id, 1, MRP_ARRIVED, "booth", 1) == false)
+  }
+}

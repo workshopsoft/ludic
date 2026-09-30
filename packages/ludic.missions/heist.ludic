@@ -1,0 +1,297 @@
+# heist.ludic - a heist: setups done in any order that their `after` allows, each a mission of its own
+# (alone or with some of the crew), alternatives in a `group` of which one is enough, then the finale
+# with the modifiers the setups earned as flags on it and the cuts the leader agreed on the board.
+
+export const HS_PLANNING: int = 0
+export const HS_FINALE: int = 1
+export const HS_DONE: int = 2
+
+# how a prep stands on the board
+export const HP_LOCKED: int = 0         # its `after` is not done
+export const HP_AVAILABLE: int = 1
+export const HP_ACTIVE: int = 2         # its setup is being played
+export const HP_DONE: int = 3
+export const HP_DECLINED: int = 4       # another of its group was done
+
+export function heist_find(key: string) -> int {
+  for i in 0 .. HEIST_COUNT { if HeistChains[i].key == key { return i } }
+  return -1
+}
+
+function ms__heist(missions_st: MissionsState, id: int) -> HeistRun {
+  if missions_st.ms__heists == null { return null }
+  for i in 0 .. len(missions_st.ms__heists) { if missions_st.ms__heists[i].id == id { return missions_st.ms__heists[i] } }
+  return null
+}
+
+function ms__hmember(h: HeistRun, who: int) -> int {
+  for i in 0 .. len(h.members) { if h.members[i] == who { return i } }
+  return -1
+}
+
+function ms__prep_of(key: string) -> int {
+  for i in 0 .. HPREP_COUNT { if HeistPreps[i].key == key { return i } }
+  return -1
+}
+
+# the crew leaves an equal share each, the rounding to the leader
+function ms__cuts_equal(h: HeistRun) -> void {
+  let n = len(h.members)
+  for i in 0 .. n { h.cuts[i] = 100 / n }
+  var sum = 0
+  for i in 0 .. n { sum += h.cuts[i] }
+  h.cuts[0] += 100 - sum
+}
+
+@alloc_ok("a heist is begun once per crew")
+export function heist_begin(missions_st: mut MissionsState, heist: string, leader: int, members: []int) -> int {
+  ms__build(missions_st)
+  missions_st.ms__why = MSG_OK
+  let hi = heist_find(heist)
+  if hi < 0 { missions_st.ms__why = MSG_UNKNOWN; return -1 }
+  let c = HeistChains[hi]
+  if len(members) < c.min_players { missions_st.ms__why = MSG_TOO_FEW; return -1 }
+  if len(members) > c.max_players { missions_st.ms__why = MSG_TOO_MANY; return -1 }
+  var has_leader = false
+  for i in 0 .. len(members) { if members[i] == leader { has_leader = true } }
+  if not has_leader { missions_st.ms__why = MSG_UNKNOWN; return -1 }
+  let h = new HeistRun
+  h.id = missions_st.ms__hnext
+  missions_st.ms__hnext += 1
+  h.heist = hi
+  h.leader = leader
+  h.members = new []int
+  h.cuts = new []int
+  h.flags = new []string
+  h.done = new []bool
+  h.run = new []int
+  # the leader first: the rounding of the cuts is theirs
+  push(h.members, leader)
+  push(h.cuts, 0)
+  for i in 0 .. len(members) { if members[i] != leader { push(h.members, members[i]); push(h.cuts, 0) } }
+  for p in 0 .. HPREP_COUNT {
+    push(h.done, false)
+    push(h.run, -1)
+  }
+  ms__cuts_equal(h)
+  push(missions_st.ms__heists, h)
+  return h.id
+}
+
+export function heist_crew(missions_st: mut MissionsState, id: int) -> []int {
+  let out = missions_st.ms__list
+  List.clear(out)
+  let h = ms__heist(missions_st, id)
+  if h == null { return out }
+  for i in 0 .. len(h.members) { kept_push(out, h.members[i]) }
+  return out
+}
+
+export function heist_phase(missions_st: MissionsState, id: int) -> int {
+  let h = ms__heist(missions_st, id)
+  if h == null { return -1 }
+  return h.phase
+}
+
+# the board: the preps (places in HeistPreps) of this heist, in table order
+export function heist_preps(missions_st: mut MissionsState, id: int) -> []int {
+  let out = missions_st.ms__list
+  List.clear(out)
+  let h = ms__heist(missions_st, id)
+  if h == null { return out }
+  let key = HeistChains[h.heist].key
+  for p in 0 .. HPREP_COUNT { if HeistPreps[p].heist == key { kept_push(out, p) } }
+  return out
+}
+
+export function heist_prep_state(missions_st: MissionsState, id: int, prep: int) -> int {
+  let h = ms__heist(missions_st, id)
+  if h == null or prep < 0 or prep >= HPREP_COUNT or HeistPreps[prep].heist != HeistChains[h.heist].key { return -1 }
+  let p = HeistPreps[prep]
+  if h.done[prep] { return HP_DONE }
+  if h.run[prep] >= 0 { return HP_ACTIVE }
+  if p.group != "" {
+    for q in 0 .. HPREP_COUNT {
+      if q != prep and HeistPreps[q].heist == p.heist and HeistPreps[q].group == p.group and h.done[q] { return HP_DECLINED }
+    }
+  }
+  if p.after != "" {
+    let a = ms__prep_of(p.after)
+    if a < 0 or not h.done[a] { return HP_LOCKED }
+  }
+  return HP_AVAILABLE
+}
+
+# every prep the finale needs is done: each one on its own, and one of each group
+export function heist_ready(missions_st: MissionsState, id: int) -> bool {
+  let h = ms__heist(missions_st, id)
+  if h == null { return false }
+  let key = HeistChains[h.heist].key
+  for p in 0 .. HPREP_COUNT {
+    let row = HeistPreps[p]
+    if row.heist != key or row.optional { continue }
+    if row.group == "" {
+      if not h.done[p] { return false }
+    } else {
+      var any = false
+      for q in 0 .. HPREP_COUNT { if HeistPreps[q].heist == key and HeistPreps[q].group == row.group and h.done[q] { any = true } }
+      if not any { return false }
+    }
+  }
+  return true
+}
+
+# the leader starts a setup, with the crew or some of it (`who`; empty: everyone); its cost is charged to the leader
+@alloc_ok("a setup's run is made once")
+export function heist_start_prep(missions_st: mut MissionsState, id: int, prep: int, who: []int) -> int {
+  ms__build(missions_st)
+  let h = ms__heist(missions_st, id)
+  missions_st.ms__why = MSG_OK
+  if h == null or heist_prep_state(missions_st, id, prep) != HP_AVAILABLE or h.phase != HS_PLANNING {
+    missions_st.ms__why = MSG_UNKNOWN
+    return -1
+  }
+  let row = HeistPreps[prep]
+  let plan = mission_find(missions_st, row.mission)
+  if plan < 0 { missions_st.ms__why = MSG_UNKNOWN; return -1 }
+  let crew = new []int
+  if len(who) == 0 {
+    for i in 0 .. len(h.members) { push(crew, h.members[i]) }
+  } else {
+    for i in 0 .. len(who) { if ms__hmember(h, who[i]) >= 0 { push(crew, who[i]) } }
+  }
+  let key = `{row.key}:{h.id}:{missions_st.ms__next}:cost`
+  if row.cost > 0 and not MissionsPay.charge(h.leader, row.cost, key) { missions_st.ms__why = MSG_FEE; return -1 }
+  let run_id = mission_launch(missions_st, plan, h.id, crew)
+  if run_id < 0 {
+    if row.cost > 0 { MissionsPay.money(h.leader, row.cost, key + ":refund") }
+    return -1
+  }
+  let run = ms__run(missions_st, run_id)
+  run.heist = h.id
+  run.prep = prep
+  h.run[prep] = run_id
+  return run_id
+}
+
+# a setup or the finale ended: the board learns
+function ms__heist_hook(missions_st: mut MissionsState, run: MissionRun, passed: bool) -> void {
+  if run.heist < 0 { return }
+  let h = ms__heist(missions_st, run.heist)
+  if h == null { return }
+  if run.prep >= 0 {
+    h.run[run.prep] = -1
+    if not passed { return }
+    h.done[run.prep] = true
+    let mod = HeistPreps[run.prep].modifier
+    if mod != "" {
+      var has = false
+      for i in 0 .. len(h.flags) { if h.flags[i] == mod { has = true } }
+      if not has { push(h.flags, mod) }
+    }
+    let f = ms__fact(missions_st, MSF_HEIST_PREP, h.id)
+    f.n = run.prep
+    f.text = HeistPreps[run.prep].key
+    if heist_ready(missions_st, h.id) { ms__fact(missions_st, MSF_HEIST_READY, h.id) }
+    return
+  }
+  if run.prep == -2 {
+    if passed {
+      h.phase = HS_DONE
+      let f = ms__fact(missions_st, MSF_HEIST_DONE, h.id)
+      f.n = 1
+    } else if run.retries_left == 0 {
+      h.phase = HS_DONE
+      let f = ms__fact(missions_st, MSF_HEIST_DONE, h.id)
+      f.n = 0
+    }
+  }
+}
+
+# --- cuts ---
+export function heist_cut(missions_st: MissionsState, id: int, who: int) -> int {
+  let h = ms__heist(missions_st, id)
+  if h == null { return 0 }
+  let i = ms__hmember(h, who)
+  if i < 0 { return 0 }
+  return h.cuts[i]
+}
+
+export function heist_cuts_total(missions_st: MissionsState, id: int) -> int {
+  let h = ms__heist(missions_st, id)
+  if h == null { return 0 }
+  var t = 0
+  for i in 0 .. len(h.cuts) { t += h.cuts[i] }
+  return t
+}
+
+# the cuts add to 100 and no one is below the heist's floor
+export function heist_cuts_ok(missions_st: MissionsState, id: int) -> bool {
+  let h = ms__heist(missions_st, id)
+  if h == null { return false }
+  let floor = HeistChains[h.heist].crew_cut_floor
+  for i in 0 .. len(h.cuts) { if h.cuts[i] < floor { return false } }
+  return heist_cuts_total(missions_st, id) == 100
+}
+
+# the leader sets one member's cut (the others stay as they are: the board shows the total)
+export function heist_set_cut(missions_st: mut MissionsState, id: int, by: int, who: int, percent: int) -> bool {
+  let h = ms__heist(missions_st, id)
+  if h == null or h.phase != HS_PLANNING or by != h.leader or percent < 0 or percent > 100 { return false }
+  let i = ms__hmember(h, who)
+  if i < 0 { return false }
+  h.cuts[i] = percent
+  return true
+}
+
+export function heist_cuts_default(missions_st: mut MissionsState, id: int) -> void {
+  let h = ms__heist(missions_st, id)
+  if h == null { return }
+  ms__cuts_equal(h)
+}
+
+# the finale: the crew, the flags the setups earned, the cuts. Refused until the board is ready and the cuts are right
+@alloc_ok("the finale's run is made once")
+export function heist_start_finale(missions_st: mut MissionsState, id: int) -> int {
+  ms__build(missions_st)
+  missions_st.ms__why = MSG_OK
+  let h = ms__heist(missions_st, id)
+  if h == null or h.phase != HS_PLANNING or not heist_ready(missions_st, id) or not heist_cuts_ok(missions_st, id) {
+    missions_st.ms__why = MSG_UNKNOWN
+    return -1
+  }
+  let plan = mission_find(missions_st, HeistChains[h.heist].finale)
+  if plan < 0 { missions_st.ms__why = MSG_UNKNOWN; return -1 }
+  let run_id = mission_start(missions_st, plan, h.id, h.members)
+  if run_id < 0 { return -1 }
+  let run = ms__run(missions_st, run_id)
+  run.heist = h.id
+  run.prep = -2
+  for i in 0 .. len(h.flags) { push(run.flags, h.flags[i]) }
+  for i in 0 .. len(h.members) {
+    let k = ms__member(run, h.members[i])
+    if k >= 0 { run.cuts[k] = h.cuts[i] }
+  }
+  if not mission_begin(missions_st, run_id) {
+    ms__close(missions_st, run)
+    return -1
+  }
+  h.phase = HS_FINALE
+  h.finale = run_id
+  let f = ms__fact(missions_st, MSF_HEIST_FINALE, h.id)
+  f.n = run_id
+  return run_id
+}
+
+export function heist_finale_run(missions_st: MissionsState, id: int) -> int {
+  let h = ms__heist(missions_st, id)
+  if h == null { return -1 }
+  return h.finale
+}
+
+export function heist_has_flag(missions_st: MissionsState, id: int, key: string) -> bool {
+  let h = ms__heist(missions_st, id)
+  if h == null { return false }
+  for i in 0 .. len(h.flags) { if h.flags[i] == key { return true } }
+  return false
+}

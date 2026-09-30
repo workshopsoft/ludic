@@ -1,0 +1,177 @@
+# graph_test.ludic - the registries gathered into plans and checked, what stops a group taking a mission,
+# and a courier job followed node by node to its pay: the pot split, the record kept, the facts said
+import "ludic.missions"
+import "ludic.base"
+program GraphTest {
+  import "fixture/world.ludic"
+
+  function fresh(w: mut WorldState, m: mut MissionsState) -> void {
+    world_fresh(w)
+    missions_reset(m)
+    missions_init(m)
+  }
+
+  function facts_of(m: MissionsState, what: int) -> int {
+    let fs = q_drain(missions_facts(m))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "the registries become plans, and a broken graph says how" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    expect_eq(missions_plans(m), 3)
+    let c = mission_find(m, "courier")
+    expect(c >= 0)
+    expect_eq(mission_nodes(m, c), 5)
+    expect_eq(len(mission_problems(m, c)), 0)
+    let b = mission_find(m, "broken")
+    let lines = mission_problems(m, b)
+    expect(len(lines) >= 3)
+    var errors = 0
+    for i in 0 .. len(lines) { if Text.starts_with(lines[i], "error:") { errors += 1 } }
+    expect(errors >= 2)
+    let ids = new []int
+    push(ids, 1)
+    expect_eq(mission_start(m, b, 1, ids), -1)
+    expect_eq(mission_why(m), MSG_GRAPH)
+    expect_eq(mission_node_find(m, c, "courier_drop"), 2)
+  }
+
+  test "what stops a group" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let p = mission_find(m, "premium")
+    let none = new []int
+    expect_eq(mission_reason(m, c, none), MSG_TOO_FEW)
+    let four = [1, 2, 3, 4]
+    expect_eq(mission_reason(m, c, four), MSG_TOO_MANY)
+    let one = [1]
+    expect_eq(mission_reason(m, c, one), MSG_OK)
+    expect_eq(mission_reason(m, p, one), MSG_RANK)
+    w.rank[1] = 3
+    expect_eq(mission_reason(m, p, one), MSG_NEEDS)
+    expect_eq(mission_player_reason(m, 2, c), MSG_OK)
+  }
+
+  test "a courier job from the depot to the pay" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let crew = [1, 2]
+    let id = mission_launch(m, c, 9, crew)
+    expect(id > 0)
+    expect_eq(mission_phase(m, id), MSR_RUNNING)
+    expect_eq(mission_run_of(m, 1), id)
+    expect_eq(mission_run_of(m, 5), -1)
+    expect_eq(mission_group_of(m, id), 9)
+    # the depot is a place: a player standing in it is enough
+    expect_eq(mission_node_state(m, id, 0), MSS_ACTIVE)
+    mission_tick(m, 0.1)
+    expect_eq(mission_node_state(m, id, 0), MSS_ACTIVE)
+    at(w, 2, 12.0, 11.0)
+    mission_tick(m, 0.1)
+    expect_eq(mission_node_state(m, id, 0), MSS_DONE)
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    # two parcels, reported one at a time
+    expect(mission_report(m, id, 1, MRP_COLLECT, "parcel", 1))
+    expect_eq(mission_node_have(m, id, 1), 1)
+    expect(not mission_report(m, id, 1, MRP_COLLECT, "barrel", 1))
+    expect(mission_report(m, id, 2, MRP_COLLECT, "parcel", 1))
+    expect_eq(mission_node_state(m, id, 2), MSS_ACTIVE)
+    expect(mission_report(m, id, 1, MRP_DELIVER, "parcel", 2))
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    # 500 among two, exactly; xp and the crate each
+    expect_eq(w.money[1], 250)
+    expect_eq(w.money[2], 250)
+    expect_eq(w.xp[1], 40)
+    expect_eq(w.items[2], 1)
+    expect_eq(mission_done_count(m, 1, "courier"), 1)
+    expect(mission_best_time(m, 1, "courier") > 0.0)
+    expect_eq(mission_run_of(m, 1), -1)
+    # the facts of a mission's life, in order
+    let fs = q_drain(missions_facts(m))
+    expect_eq(fs[0].what, MSF_STARTED)
+    var passed = 0
+    var pays = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == MSF_PASSED { passed += 1 }
+      if fs[i].what == MSF_PAY_MONEY { pays += 1 }
+    }
+    expect_eq(passed, 1)
+    expect_eq(pays, 2)
+  }
+
+  test "an odd pot is paid out exactly, the rounding to the leader" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let crew = [1, 2, 3]
+    let id = mission_launch(m, c, 0, crew)
+    at(w, 1, 10.0, 10.0)
+    mission_tick(m, 0.1)
+    mission_report(m, id, 1, MRP_COLLECT, "parcel", 2)
+    mission_report(m, id, 1, MRP_DELIVER, "parcel", 2)
+    expect_eq(w.money[1] + w.money[2] + w.money[3], 500)
+    expect_eq(w.money[2], 166)
+    expect_eq(w.money[1], 168)
+  }
+
+  test "a payment's key is the same if it is sent twice" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let crew = [1]
+    let id = mission_launch(m, c, 0, crew)
+    at(w, 1, 10.0, 10.0)
+    mission_tick(m, 0.1)
+    mission_report(m, id, 1, MRP_COLLECT, "parcel", 2)
+    mission_report(m, id, 1, MRP_DELIVER, "parcel", 2)
+    let fs = q_drain(missions_facts(m))
+    var key = ""
+    for i in 0 .. len(fs) { if fs[i].what == MSF_PAY_MONEY { key = fs[i].key } }
+    expect(len(key) > 0)
+    p_money(w, 1, 500, key)              # the game's ledger saw this key already: nothing more
+    expect_eq(w.money[1], 500)
+  }
+
+  test "replay rules: once, daily, cooldown" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let p = mission_find(m, "premium")
+    let crew = [1]
+    let id = mission_launch(m, c, 0, crew)
+    at(w, 1, 10.0, 10.0)
+    mission_tick(m, 0.1)
+    mission_report(m, id, 1, MRP_COLLECT, "parcel", 2)
+    mission_report(m, id, 1, MRP_DELIVER, "parcel", 2)
+    expect_eq(mission_player_reason(m, 1, c), MSG_COOLDOWN)
+    expect(mission_cooldown_left(m, 1, c) > 59.0)
+    mission_tick(m, 61.0)
+    expect_eq(mission_player_reason(m, 1, c), MSG_OK)
+    w.rank[1] = 3
+    expect_eq(mission_player_reason(m, 1, p), MSG_OK)
+    let again = mission_launch(m, p, 0, crew)
+    expect(again > 0)
+    expect(mission_report(m, again, 1, MRP_SIGNAL, "done_it", 1))
+    expect_eq(mission_phase(m, again), MSR_PASSED)
+    expect_eq(mission_player_reason(m, 1, p), MSG_ONCE)
+  }
+
+  test "a player is in one run at a time" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let crew = [1]
+    expect(mission_launch(m, c, 0, crew) > 0)
+    expect_eq(mission_launch(m, c, 0, crew), -1)
+    expect_eq(mission_why(m), MSG_BUSY)
+  }
+
+  test "a fee is charged, and a player who cannot pay keeps the run from beginning" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "courier")
+    let crew = [1]
+    let id = mission_start(m, c, 0, crew)
+    expect(id > 0)
+    expect_eq(mission_phase(m, id), MSR_FORMING)
+    expect(mission_begin(m, id))
+    expect_eq(w.charged, 0)
+  }
+}

@@ -1,0 +1,120 @@
+# progress.ludic - what each player has won, and so what they may take: the replay rule, the cooldown,
+# the missions they need first, their rank. The record of a player is exported and imported as a value
+# (missions_progress_val / missions_progress_load): where it is kept - a save, a persistence service -
+# is the game's.
+
+function ms__prog_find(missions_st: MissionsState, who: int, key: string) -> Progress {
+  if missions_st.ms__progress == null { return null }
+  for i in 0 .. len(missions_st.ms__progress) {
+    let p = missions_st.ms__progress[i]
+    if p.who == who and p.mission == key { return p }
+  }
+  return null
+}
+
+@alloc_ok("a player's first record of a mission, made once and kept")
+function ms__prog(missions_st: mut MissionsState, who: int, key: string) -> Progress {
+  let f = ms__prog_find(missions_st, who, key)
+  if f != null { return f }
+  let p = new Progress
+  p.who = who
+  p.mission = key
+  push(missions_st.ms__progress, p)
+  return p
+}
+
+# how many times a player has won a mission
+export function mission_done_count(missions_st: MissionsState, who: int, key: string) -> int {
+  let p = ms__prog_find(missions_st, who, key)
+  if p == null { return 0 }
+  return p.done
+}
+
+export function mission_best_time(missions_st: MissionsState, who: int, key: string) -> float {
+  let p = ms__prog_find(missions_st, who, key)
+  if p == null { return -1.0 }
+  return p.best
+}
+
+# seconds before a player may take a mission again (0: now)
+export function mission_cooldown_left(missions_st: MissionsState, who: int, plan: int) -> float {
+  if not ms__plan_ok(missions_st, plan) { return 0.0 }
+  let m = missions_st.ms__plans[plan].mission
+  if m.cooldown <= 0.0 { return 0.0 }
+  let p = ms__prog_find(missions_st, who, m.key)
+  if p == null or p.last_t < 0.0 { return 0.0 }
+  let left = m.cooldown - (missions_st.ms__time - p.last_t)
+  if left < 0.0 { return 0.0 }
+  return left
+}
+
+# the first thing that stops this player taking the mission (MSG_OK when nothing does)
+export function mission_player_reason(missions_st: MissionsState, who: int, plan: int) -> int {
+  if not ms__plan_ok(missions_st, plan) { return MSG_UNKNOWN }
+  let m = missions_st.ms__plans[plan].mission
+  if MissionsWorld.rank(who) < m.min_rank { return MSG_RANK }
+  if m.needs != null {
+    for i in 0 .. len(m.needs) { if mission_done_count(missions_st, who, m.needs[i]) == 0 { return MSG_NEEDS } }
+  }
+  let p = ms__prog_find(missions_st, who, m.key)
+  if p != null and p.done > 0 {
+    if m.replay == MSREP_ONCE { return MSG_ONCE }
+    if m.replay == MSREP_DAILY and p.last_day == MissionsWorld.day() { return MSG_DAILY }
+  }
+  if mission_cooldown_left(missions_st, who, plan) > 0.0 { return MSG_COOLDOWN }
+  if mission_run_of(missions_st, who) >= 0 { return MSG_BUSY }
+  return MSG_OK
+}
+
+# the first thing that stops this group: their number, then each of them in turn
+export function mission_reason(missions_st: MissionsState, plan: int, members: []int) -> int {
+  if not ms__plan_ok(missions_st, plan) { return MSG_UNKNOWN }
+  let pl = missions_st.ms__plans[plan]
+  if pl.problems > 0 { return MSG_GRAPH }
+  if len(members) < pl.mission.min_players { return MSG_TOO_FEW }
+  if len(members) > pl.mission.max_players or len(members) > MS_MEMBERS { return MSG_TOO_MANY }
+  for i in 0 .. len(members) {
+    let r = mission_player_reason(missions_st, members[i], plan)
+    if r != MSG_OK { return r }
+  }
+  return MSG_OK
+}
+
+# why the last verb that returns a false or -1 said no
+export function mission_why(missions_st: MissionsState) -> int { return missions_st.ms__why }
+
+# a player's record as a value: { "<mission key>": [done, tries, last_t ms, last_day, best ms] }
+@alloc_ok("on a save: a record written out")
+export function missions_progress_val(missions_st: MissionsState, who: int) -> Val {
+  let v = Value.object()
+  if missions_st.ms__progress == null { return v }
+  for i in 0 .. len(missions_st.ms__progress) {
+    let p = missions_st.ms__progress[i]
+    if p.who != who or (p.done == 0 and p.tries == 0) { continue }
+    let t = int(Math.floor(p.last_t * 1000.0 + 0.5))
+    let b = int(Math.floor(p.best * 1000.0 + 0.5))
+    sv_put_ints(v, p.mission, [p.done, p.tries, t, p.last_day, b])
+  }
+  return v
+}
+
+# a player's record read back; a mission the game no longer has is dropped
+export function missions_progress_load(missions_st: mut MissionsState, who: int, v: Val) -> void {
+  ms__build(missions_st)
+  var keep = new []Progress
+  for i in 0 .. len(missions_st.ms__progress) { if missions_st.ms__progress[i].who != who { push(keep, missions_st.ms__progress[i]) } }
+  missions_st.ms__progress = keep
+  if v == null or Value.kind(v) != 6 { return }
+  for i in 0 .. Value.count(v) {
+    let key = Value.key_at(v, i)
+    if mission_find(missions_st, key) < 0 { continue }
+    let a = sv_ints(v, key)
+    if len(a) < 5 { continue }
+    let p = ms__prog(missions_st, who, key)
+    p.done = a[0]
+    p.tries = a[1]
+    p.last_t = float(a[2]) / 1000.0
+    p.last_day = a[3]
+    p.best = float(a[4]) / 1000.0
+  }
+}

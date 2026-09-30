@@ -1,0 +1,129 @@
+# race.ludic - a race node: the gates in order, `count` laps, each racer's own place. A gate is passed when
+# the racer is within its radius on the tick (MissionsWorld.x / z), or when the game reports it (MRP_GATE).
+# The race is over when everyone has finished, or `arg` racers have (0: everyone); the node's `seconds` end
+# it too, and whoever has not finished is ranked by how far they got.
+
+function ms__race_start(run: MissionRun) -> void {
+  for i in 0 .. len(run.members) {
+    run.lap[i] = 0
+    run.gate[i] = 0
+    run.finish[i] = -1.0
+    run.place[i] = 0
+  }
+  run.finished = 0
+  run.race_t0 = run.time
+}
+
+# a racer passed their gate: the next one, the next lap, or the line
+function ms__race_advance(missions_st: mut MissionsState, run: MissionRun, node: int, mi: int) -> void {
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  let g = ms__gates(n)
+  run.race_g = g
+  var laps = n.count
+  if laps < 1 { laps = 1 }
+  run.gate[mi] += 1
+  if run.gate[mi] >= g {
+    run.gate[mi] = 0
+    run.lap[mi] += 1
+  }
+  run.rev += 1
+  if run.lap[mi] >= laps {
+    run.finished += 1
+    run.place[mi] = run.finished
+    run.finish[mi] = run.time - run.race_t0
+    let f = ms__fact(missions_st, MSF_PLACE, run.id)
+    f.plan = run.plan
+    f.node = node
+    f.who = run.members[mi].who
+    f.n = run.place[mi]
+    f.x = run.finish[mi]
+    let o = ms__fact(missions_st, MSF_MARKER_OFF, run.id)
+    o.node = node
+    o.who = run.members[mi].who
+    ms__race_over_check(missions_st, run, node)
+    return
+  }
+  let m = ms__fact(missions_st, MSF_MARKER_ON, run.id)
+  m.node = node
+  m.who = run.members[mi].who
+  m.n = MSN_RACE
+  m.x = n.gates[run.gate[mi]].x
+  m.z = n.gates[run.gate[mi]].z
+  m.radius = n.gates[run.gate[mi]].radius
+  m.text = n.blip
+  m.have = run.lap[mi]
+}
+
+function ms__race_over_check(missions_st: mut MissionsState, run: MissionRun, node: int) -> void {
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  var racing = 0
+  for i in 0 .. len(run.members) { if run.members[i].present and run.place[i] == 0 { racing += 1 } }
+  if racing == 0 or (n.arg > 0 and run.finished >= n.arg) { ms__finish(missions_st, run, node, "done") }
+}
+
+# the game's own collision passed gate `idx` for a racer: counted when it is the gate they are on
+function ms__race_gate(missions_st: mut MissionsState, run: MissionRun, node: int, mi: int, idx: int) -> bool {
+  if run.place[mi] > 0 or idx != run.gate[mi] { return false }
+  ms__race_advance(missions_st, run, node, mi)
+  return true
+}
+
+# each racer on the course against their next gate, once a tick
+function ms__race_tick(missions_st: mut MissionsState, run: MissionRun, node: int) -> void {
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  run.race_g = ms__gates(n)
+  for i in 0 .. len(run.members) {
+    if run.phase != MSR_RUNNING or run.st[node] != MSS_ACTIVE { return }
+    if not ms__live(run, i) or run.place[i] > 0 { continue }
+    let g = n.gates[run.gate[i]]
+    let dx = MissionsWorld.x(run.members[i].who) - g.x
+    let dz = MissionsWorld.z(run.members[i].who) - g.z
+    if dx * dx + dz * dz <= g.radius * g.radius { ms__race_advance(missions_st, run, node, i) }
+  }
+}
+
+# how far a racer has got, in gates
+function ms__race_progress(run: MissionRun, i: int) -> int { return run.lap[i] * run.race_g + run.gate[i] }
+
+# a racer's place, 1 first: the finishers in order of the line, then the rest by how far they have got
+export function mission_place(missions_st: MissionsState, run_id: int, who: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return 0 }
+  let mi = ms__member(run, who)
+  if mi < 0 { return 0 }
+  if run.place[mi] > 0 { return run.place[mi] }
+  var ahead = 0
+  for i in 0 .. len(run.members) {
+    if i == mi or not run.members[i].present or run.place[i] > 0 { continue }
+    let a = ms__race_progress(run, i)
+    let b = ms__race_progress(run, mi)
+    if a > b or (a == b and i < mi) { ahead += 1 }
+  }
+  return run.finished + 1 + ahead
+}
+
+# the time a racer took, or -1 while they have not finished
+export function mission_finish_time(missions_st: MissionsState, run_id: int, who: int) -> float {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return -1.0 }
+  let mi = ms__member(run, who)
+  if mi < 0 { return -1.0 }
+  return run.finish[mi]
+}
+
+export function mission_lap(missions_st: MissionsState, run_id: int, who: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return 0 }
+  let mi = ms__member(run, who)
+  if mi < 0 { return 0 }
+  return run.lap[mi]
+}
+
+# the gate a racer is heading for
+export function mission_gate(missions_st: MissionsState, run_id: int, who: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return 0 }
+  let mi = ms__member(run, who)
+  if mi < 0 { return 0 }
+  return run.gate[mi]
+}

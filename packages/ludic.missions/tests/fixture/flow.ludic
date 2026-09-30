@@ -1,0 +1,103 @@
+# flow.ludic - more missions, for the tests of the node kinds: a gauntlet with a checkpoint and a clock,
+# a convoy that must arrive together and then lose the law, a fork and its join, an adversary match, a race,
+# and a bank's heist (scout, two alternative gear setups, a decoy, and a finale with roles and a choice)
+
+  # a gauntlet: defend the asset for ten seconds; losing it or the mission's clock loses the run, and a
+  # checkpoint at the defence lets a retry begin there
+  def Missions gauntlet { kind: MSK_JOB, min_players: 1, max_players: 2, time_limit: 100.0, retries: 1, money: 10 }
+  def MissionSteps gauntlet_go { mission: "gauntlet", kind: MSN_SIGNAL, target: "gate" }
+  def MissionSteps gauntlet_hold { mission: "gauntlet", kind: MSN_DEFEND, target: "asset", seconds: 10.0, checkpoint: true }
+  def MissionSteps gauntlet_end { mission: "gauntlet", kind: MSN_PASS }
+  def MissionEdges gauntlet_e1 { mission: "gauntlet", from: "gauntlet_go", to: "gauntlet_hold" }
+  def MissionEdges gauntlet_e2 { mission: "gauntlet", from: "gauntlet_hold", to: "gauntlet_end" }
+
+  # a convoy: everyone to the lot, then lose the heat, then a clock that runs down to a win; the fail edge
+  # of the escape is a detour
+  def Missions convoy { kind: MSK_CONTACT, min_players: 2, max_players: 3, money: 300 }
+  def MissionSteps convoy_lot { mission: "convoy", kind: MSN_GOTO, who: MSW_ALL, x: 50.0, z: 50.0, radius: 10.0 }
+  def MissionSteps convoy_lose { mission: "convoy", kind: MSN_ESCAPE, seconds: 30.0 }
+  def MissionSteps convoy_wait { mission: "convoy", kind: MSN_WAIT, seconds: 5.0 }
+  def MissionSteps convoy_end { mission: "convoy", kind: MSN_PASS }
+  def MissionSteps convoy_bust { mission: "convoy", kind: MSN_FAIL }
+  def MissionEdges convoy_e1 { mission: "convoy", from: "convoy_lot", to: "convoy_lose" }
+  def MissionEdges convoy_e2 { mission: "convoy", from: "convoy_lose", to: "convoy_wait" }
+  def MissionEdges convoy_e3 { mission: "convoy", from: "convoy_wait", to: "convoy_end" }
+  def MissionEdges convoy_e4 { mission: "convoy", from: "convoy_lose", to: "convoy_bust", on: "timeout" }
+
+  # a fork: one instant node starts two parallel objectives, and the join waits for both
+  def Missions fork { kind: MSK_JOB, min_players: 1, max_players: 1 }
+  def MissionSteps fork_spawn { mission: "fork", kind: MSN_DO, target: "spawn_guards", arg: 3 }
+  def MissionSteps fork_a { mission: "fork", kind: MSN_SIGNAL, target: "a" }
+  def MissionSteps fork_b { mission: "fork", kind: MSN_SIGNAL, target: "b" }
+  def MissionSteps fork_join { mission: "fork", kind: MSN_SIGNAL, target: "both", join: 2 }
+  def MissionSteps fork_end { mission: "fork", kind: MSN_PASS }
+  def MissionEdges fork_e1 { mission: "fork", from: "fork_spawn", to: "fork_a", par: true }
+  def MissionEdges fork_e2 { mission: "fork", from: "fork_spawn", to: "fork_b", par: true }
+  def MissionEdges fork_e3 { mission: "fork", from: "fork_a", to: "fork_join" }
+  def MissionEdges fork_e4 { mission: "fork", from: "fork_b", to: "fork_join" }
+  def MissionEdges fork_e5 { mission: "fork", from: "fork_join", to: "fork_end" }
+
+  # a loop of instant nodes is called a loop
+  def Missions spin { kind: MSK_JOB }
+  def MissionSteps spin_a { mission: "spin", kind: MSN_DO, target: "x" }
+  def MissionSteps spin_b { mission: "spin", kind: MSN_DO, target: "y" }
+  def MissionEdges spin_e1 { mission: "spin", from: "spin_a", to: "spin_b" }
+  def MissionEdges spin_e2 { mission: "spin", from: "spin_b", to: "spin_a" }
+  def MissionSteps spin_c { mission: "spin", kind: MSN_SIGNAL, target: "never" }
+
+  # two teams to three points, in sixty seconds: the thousand is split by score
+  def Missions standoff { kind: MSK_ADVERSARY, min_players: 2, max_players: 6, teams: 2, money: 1000, share: MSSHARE_SCORE }
+  def MissionSteps standoff_lobby { mission: "standoff", kind: MSN_WAIT_TEAM }
+  def MissionSteps standoff_match { mission: "standoff", kind: MSN_SCORE, count: 3, seconds: 60.0 }
+  def MissionSteps standoff_end { mission: "standoff", kind: MSN_PASS }
+  def MissionEdges standoff_e1 { mission: "standoff", from: "standoff_lobby", to: "standoff_match" }
+  def MissionEdges standoff_e2 { mission: "standoff", from: "standoff_match", to: "standoff_end" }
+
+  # a race: three gates, two laps, first, second and third share the thousand 60, 30, 10
+  def Missions city_race { kind: MSK_RACE, min_players: 2, max_players: 4, money: 1000, share: MSSHARE_PLACE, payout: [60, 30, 10], wipe: false }
+  def MissionSteps city_race_grid { mission: "city_race", kind: MSN_WAIT_TEAM }
+  def MissionSteps from "race_steps.lres"          # the course is a list of records: a file
+  def MissionSteps city_race_end { mission: "city_race", kind: MSN_PASS }
+  def MissionEdges city_race_e1 { mission: "city_race", from: "city_race_grid", to: "city_race_run" }
+  def MissionEdges city_race_e2 { mission: "city_race", from: "city_race_run", to: "city_race_end" }
+
+  # a bank heist
+  def Contacts fixer { icon: "suit" }
+  def HeistChains bank { contact: "fixer", finale: "vault", min_players: 2, max_players: 4, crew_cut_floor: 10 }
+  def Missions scout_job { kind: MSK_SETUP, heist: "bank", min_players: 1, max_players: 2 }
+  def MissionSteps scout_job_look { mission: "scout_job", kind: MSN_SIGNAL, target: "seen" }
+  def MissionEdges scout_job_e1 { mission: "scout_job", from: "scout_job_look", to: "scout_job_end" }
+  def MissionSteps scout_job_end { mission: "scout_job", kind: MSN_PASS }
+  def Missions gear_job { kind: MSK_SETUP, heist: "bank", min_players: 1, max_players: 2 }
+  def MissionSteps gear_job_get { mission: "gear_job", kind: MSN_SIGNAL, target: "got" }
+  def MissionEdges gear_job_e1 { mission: "gear_job", from: "gear_job_get", to: "gear_job_end" }
+  def MissionSteps gear_job_end { mission: "gear_job", kind: MSN_PASS }
+  def HeistPreps scout { heist: "bank", mission: "scout_job", modifier: "knows_layout", cost: 50 }
+  def HeistPreps gear_a { heist: "bank", mission: "gear_job", group: "approach", modifier: "loud_kit" }
+  def HeistPreps gear_b { heist: "bank", mission: "gear_job", group: "approach", modifier: "quiet_kit", after: "scout" }
+  def HeistPreps decoy { heist: "bank", mission: "gear_job", optional: true }
+
+  def Missions vault { kind: MSK_FINALE, heist: "bank", min_players: 2, max_players: 4, money: 1000, share: MSSHARE_CUTS, leader_cut: 10, retries: 0 }
+  def MissionRoles vault_driver { mission: "vault", least: 1, most: 1, cut: 20 }
+  def MissionRoles vault_hacker { mission: "vault", least: 1, most: 1, cut: 30, leader: true }
+  def MissionRoles vault_gun { mission: "vault", least: 0, most: 2, cut: 25 }
+  def MissionSteps vault_ready { mission: "vault", kind: MSN_WAIT_TEAM }
+  def MissionSteps vault_choose { mission: "vault", kind: MSN_CHOICE }
+  def MissionSteps vault_guards { mission: "vault", kind: MSN_ELIMINATE, target: "guard", count: 3 }
+  def MissionSteps vault_hack { mission: "vault", kind: MSN_MINIGAME, target: "panel", role: "vault_hacker", arg: 2, checkpoint: true }
+  def MissionSteps vault_exit { mission: "vault", kind: MSN_ESCAPE }
+  def MissionSteps vault_end { mission: "vault", kind: MSN_PASS }
+  def MissionEdges vault_e0 { mission: "vault", from: "vault_ready", to: "vault_hack", cond: "flag:knows_layout" }
+  def MissionEdges vault_e1 { mission: "vault", from: "vault_ready", to: "vault_choose" }
+  def MissionEdges vault_e2 { mission: "vault", from: "vault_choose", to: "vault_guards", on: "loud" }
+  def MissionEdges vault_e3 { mission: "vault", from: "vault_choose", to: "vault_hack", on: "quiet" }
+  def MissionEdges vault_e4 { mission: "vault", from: "vault_hack", to: "vault_exit" }
+  def MissionEdges vault_e5 { mission: "vault", from: "vault_hack", to: "vault_guards", on: "fail" }
+  def MissionEdges vault_e6 { mission: "vault", from: "vault_guards", to: "vault_exit" }
+  def MissionEdges vault_e7 { mission: "vault", from: "vault_exit", to: "vault_end" }
+
+  # a toll: a fee at the start, no one joins once it runs, a place called by name
+  def Missions toll { kind: MSK_JOB, contact: "dispatcher", min_players: 2, max_players: 3, fee: 25, join_in_progress: false, money: 90 }
+  def MissionSteps toll_booth { mission: "toll", kind: MSN_GOTO, target: "booth" }
+  def MissionSteps toll_end { mission: "toll", kind: MSN_PASS }
+  def MissionEdges toll_e1 { mission: "toll", from: "toll_booth", to: "toll_end" }

@@ -1,0 +1,13 @@
+# system.ludic - missions as a system: it ticks the runs in PH_SIMULATE and saves what players have won.
+function ms__tick(missions_st: mut MissionsState, t: Tick) -> void { mission_tick(missions_st, t.dt) }
+
+export function missions_system() -> System {
+  let s = system_new("missions", PH_SIMULATE)
+  s.version = 1
+  s.init = fn missions_init
+  s.reset = fn missions_reset
+  s.tick = fn ms__tick
+  s.save = fn missions_save
+  s.load = fn missions_load
+  return s
+}

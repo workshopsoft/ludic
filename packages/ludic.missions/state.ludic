@@ -1,0 +1,156 @@
+# state.ludic - the compiled plans, the runs, what each player has done and the facts. A plan is a
+# mission with its nodes, edges and roles gathered (from the registries once, or from a creation); a
+# run is one instance of a plan for a lobby or a team.
+
+export const MS_MEMBERS: int = 30       # a run's most members (a node's "who did it" is a bit of an int)
+export const MS_DEPTH: int = 64         # instant nodes that may follow each other before the graph is called a loop
+
+# a run's phase
+export const MSR_FORMING: int = 0       # made, waiting for players (roles are chosen here)
+export const MSR_RUNNING: int = 1
+export const MSR_PASSED: int = 2
+export const MSR_FAILED: int = 3        # may be tried again: mission_retry
+export const MSR_ENDED: int = 4         # abandoned, or closed after the end
+
+# a node's state in a run
+export const MSS_IDLE: int = 0
+export const MSS_ACTIVE: int = 1
+export const MSS_DONE: int = 2
+export const MSS_FAILED: int = 3
+
+# why a mission will not start or a player cannot join (mission_why)
+export const MSG_OK: int = 0
+export const MSG_UNKNOWN: int = 1       # no such mission, run or node
+export const MSG_TOO_FEW: int = 2
+export const MSG_TOO_MANY: int = 3
+export const MSG_RANK: int = 4
+export const MSG_NEEDS: int = 5         # a mission not yet won
+export const MSG_ONCE: int = 6          # a once-only mission already won
+export const MSG_DAILY: int = 7
+export const MSG_COOLDOWN: int = 8
+export const MSG_BUSY: int = 9          # already in a run
+export const MSG_FEE: int = 10          # cannot pay the fee
+export const MSG_NOT_HOST: int = 11     # asked of the host instead
+export const MSG_CLOSED: int = 12       # no joining in progress, or the run is over
+export const MSG_GRAPH: int = 13        # the mission's graph is broken (mission_problems says how)
+export const MSG_ROLES: int = 14        # the roles cannot be filled by these players
+
+# why a run ended badly
+export const MSE_NONE: int = 0
+export const MSE_NODE: int = 1          # an objective failed and no edge took it on
+export const MSE_TIME: int = 2          # the mission's clock or a node's ran out
+export const MSE_WIPED: int = 3         # everyone down
+export const MSE_TOO_FEW: int = 4       # players left below the minimum
+export const MSE_GAME: int = 5          # the game said so (mission_fail)
+export const MSE_GRAPH: int = 6         # a loop of instant nodes
+export const MSE_ABANDONED: int = 7
+
+# a mission gathered: what the compiler reads out of the registries and what a creation makes
+export property MissionPlan {
+  key: string = ""
+  mission: Mission = null
+  nodes: []MissionStep = null
+  edges: []MissionEdge = null
+  roles: []MissionRole = null
+  outs: [][]int = null                  # per node, the edges (their places in `edges`) that leave it
+  start: int = -1
+  custom: bool = false                  # from a creation: not in the registries, kept by id
+  problems: int = 0                     # what mission_problems found (0: it may run)
+}
+
+export property RunMember {
+  who: int = 0
+  present: bool = true                  # false: left, and the slot waits for the next player
+  role: int = -1                        # a place in the plan's roles
+  want: int = -1                        # the role asked for
+  team: int = 0
+  alive: bool = true
+  ready: bool = false
+  score: int = 0
+  deaths: int = 0
+}
+
+export property MissionRun {
+  id: int = 0
+  nonce: int = 0                        # makes a payout's key unique to this run
+  plan: int = 0
+  group: int = 0                        # the lobby or team this run belongs to (the game's number)
+  phase: int = MSR_FORMING
+  members: []RunMember = null
+  st: []int = null                      # per node: MSS_*
+  tok: []int = null                     # arrivals so far
+  have: []int = null                    # progress a node counts
+  left: []float = null                  # seconds left of a node's time
+  seen: []int = null                    # per node a bit for each member who has done it (MSW_ALL)
+  ck_on: bool = false
+  ck_st: []int = null                   # the last checkpoint: the same four
+  ck_tok: []int = null
+  ck_have: []int = null
+  ck_left: []float = null
+  ck_seen: []int = null
+  ck_node: int = -1
+  time: float = 0.0
+  limit_left: float = 0.0
+  tries: int = 0                        # times a lost run was started again
+  retries_left: int = -1
+  reason: int = 0                       # MSE_*
+  leader: int = -1                      # a place in members
+  flags: []string = null                # modifiers a heist's preps set
+  cuts: []int = null                    # per member, a percent of the pot (MSSHARE_CUTS)
+  team_score: []int = null
+  lap: []int = null                     # a race: per member
+  gate: []int = null
+  finish: []float = null                # -1 while running
+  place: []int = null                   # 0 until finished
+  finished: int = 0
+  race_t0: float = 0.0
+  race_g: int = 1                       # gates in the lap
+  depth: int = 0
+  rev: int = 0                          # moves with every change: a host sends a snapshot when it does
+  heist: int = -1                       # the heist run it belongs to
+  prep: int = -1                        # the prep (place in HeistPreps) it is the setup for
+  paid: bool = false
+  mirror: bool = false                  # a guest's copy of the host's run
+}
+
+# what a player has done: the source of replay and cooldown rules
+export property Progress {
+  who: int = 0
+  mission: string = ""
+  done: int = 0
+  tries: int = 0
+  last_t: float = -1.0                  # the missions clock when last won
+  last_day: int = 0
+  best: float = -1.0                    # the fastest win, seconds
+}
+
+export property HeistRun {
+  id: int = 0
+  heist: int = 0
+  leader: int = 0
+  members: []int = null
+  done: []bool = null                   # per HeistPreps row (by its place in the registry)
+  run: []int = null                     # the setup run under way for a prep, else -1
+  flags: []string = null
+  cuts: []int = null                    # per member, a percent
+  finale: int = -1
+  phase: int = 0
+}
+
+export state MissionsState {
+  ms__plans: []MissionPlan = null
+  ms__built: bool = false
+  ms__runs: []MissionRun = null
+  ms__next: int = 1
+  ms__time: float = 0.0
+  ms__progress: []Progress = null
+  ms__heists: []HeistRun = null
+  ms__hnext: int = 1
+  ms__why: int = 0
+  ms__dice: Rng = null
+  ms__facts: Queue<MissionFact> = ms__facts__new()
+  ms__creations: []Creation = null
+  ms__mk: []MissionMarker = new []MissionMarker       # marker records, handed out again
+  ms__mk_out: []MissionMarker = new []MissionMarker   # mission_markers' answer
+  ms__list: []int = new []int                        # the ids of a query's answer, kept
+}

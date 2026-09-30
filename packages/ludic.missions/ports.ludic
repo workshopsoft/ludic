@@ -1,0 +1,32 @@
+# ports.ludic - what missions asks the world, and how it pays. Unbound, every member answers for a
+# world where nobody is anywhere, nobody is wanted, every condition holds and this machine runs the runs.
+export port MissionsWorld {
+  host: fn() -> bool = fn ms__yes                        # this machine decides: false, and every verb is asked of the host
+  x: fn(int) -> float = fn ms__zero_f                    # (who) where a player is
+  z: fn(int) -> float = fn ms__zero_f
+  alive: fn(int) -> bool = fn ms__yes_of                 # (who)
+  wanted: fn(int) -> int = fn ms__zero_of                # (who) the heat on a player: 0 is clear
+  check: fn(string, int) -> bool = fn ms__cond_yes       # (condition, run) an edge's `cond` that is not a flag
+  rank: fn(int) -> int = fn ms__zero_of                  # (who) standing, for min_rank
+  day: fn() -> int = fn ms__one                          # the game's day, for daily replays
+  seed: fn() -> int = fn ms__one                         # entropy for a run's payout keys: give it a real one
+}
+function ms__yes() -> bool { return true }
+function ms__yes_of(n: int) -> bool { return true }
+function ms__zero_f(n: int) -> float { return 0.0 }
+function ms__zero_of(n: int) -> int { return 0 }
+function ms__cond_yes(c: string, run: int) -> bool { return true }
+function ms__one() -> int { return 1 }
+
+# how a mission pays: through the game's own purse, standing and pack. `key` is unique to the payment
+# (a persistence service takes it as an idempotency key); unbound, nothing is paid (the facts still say so)
+export port MissionsPay {
+  charge: fn(int, int, string) -> bool = fn ms__charge_ok     # (who, money, key) a fee: false when it cannot be paid
+  money: fn(int, int, string) -> void = fn ms__pay_money      # (who, money, key)
+  xp: fn(int, int, string) -> void = fn ms__pay_xp            # (who, xp, key)
+  item: fn(int, string, int, string) -> void = fn ms__pay_item   # (who, item, count, key)
+}
+function ms__charge_ok(who: int, n: int, key: string) -> bool { return true }
+function ms__pay_money(who: int, n: int, key: string) -> void { }
+function ms__pay_xp(who: int, n: int, key: string) -> void { }
+function ms__pay_item(who: int, item: string, n: int, key: string) -> void { }

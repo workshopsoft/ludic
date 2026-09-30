@@ -1,0 +1,514 @@
+# run.ludic - an instance of a plan for a lobby or a team: made, joined and left, begun, and closed.
+# Every verb that changes a run is the host's; on a guest it becomes an ask (MSF_ASK) for the game to
+# send, and what the host decides comes back as a snapshot (mission_apply).
+
+function ms__run(missions_st: MissionsState, id: int) -> MissionRun {
+  if missions_st.ms__runs == null { return null }
+  for i in 0 .. len(missions_st.ms__runs) { if missions_st.ms__runs[i].id == id { return missions_st.ms__runs[i] } }
+  return null
+}
+
+# a member's place in the run, or -1 (one who has left is not a member)
+function ms__member(run: MissionRun, who: int) -> int {
+  for i in 0 .. len(run.members) { if run.members[i].present and run.members[i].who == who { return i } }
+  return -1
+}
+
+function ms__present(run: MissionRun) -> int {
+  var n = 0
+  for i in 0 .. len(run.members) { if run.members[i].present { n += 1 } }
+  return n
+}
+
+# alive and in the run: what a node that asks for "every member" counts
+function ms__live(run: MissionRun, i: int) -> bool { return run.members[i].present and run.members[i].alive }
+
+function ms__ints(n: int, v: int) -> []int {
+  let out = new []int
+  for i in 0 .. n { push(out, v) }
+  return out
+}
+
+function ms__floats(n: int, v: float) -> []float {
+  let out = new []float
+  for i in 0 .. n { push(out, v) }
+  return out
+}
+
+function ms__busy(run: MissionRun) -> bool {
+  return run.phase == MSR_FORMING or run.phase == MSR_RUNNING or run.phase == MSR_FAILED
+}
+
+# the run a player is in (forming, running or lost and not closed), or -1
+export function mission_run_of(missions_st: MissionsState, who: int) -> int {
+  if missions_st.ms__runs == null { return -1 }
+  for i in 0 .. len(missions_st.ms__runs) {
+    let r = missions_st.ms__runs[i]
+    if ms__busy(r) and ms__member(r, who) >= 0 { return r.id }
+  }
+  return -1
+}
+
+@alloc_ok("a member's slot, made when a player joins")
+function ms__add_member(run: MissionRun, who: int) -> int {
+  var slot = -1
+  for i in 0 .. len(run.members) { if not run.members[i].present { slot = i; break } }
+  if slot < 0 {
+    let m = new RunMember
+    push(run.members, m)
+    push(run.cuts, 0)
+    push(run.lap, 0)
+    push(run.gate, 0)
+    push(run.finish, -1.0)
+    push(run.place, 0)
+    slot = len(run.members) - 1
+  }
+  let m = run.members[slot]
+  m.who = who
+  m.present = true
+  m.role = -1
+  m.want = -1
+  m.team = 0
+  m.alive = true
+  m.ready = false
+  m.score = 0
+  m.deaths = 0
+  run.cuts[slot] = 0
+  run.lap[slot] = 0
+  run.gate[slot] = 0
+  run.finish[slot] = -1.0
+  run.place[slot] = 0
+  for n in 0 .. len(run.seen) { run.seen[n] = run.seen[n] & ~(1 << slot) }
+  return slot
+}
+
+# a run for `plan`, forming: the players in it and the lobby or team `group` it belongs to. -1 when they
+# may not take it (mission_why). A guest asks the host instead.
+@alloc_ok("a run is made once per attempt at a mission")
+export function mission_start(missions_st: mut MissionsState, plan: int, group: int, members: []int) -> int {
+  ms__build(missions_st)
+  missions_st.ms__why = MSG_OK
+  if not MissionsWorld.host() {
+    missions_st.ms__why = MSG_NOT_HOST
+    return -1
+  }
+  let r = mission_reason(missions_st, plan, members)
+  if r != MSG_OK {
+    missions_st.ms__why = r
+    return -1
+  }
+  let pl = missions_st.ms__plans[plan]
+  let n = len(pl.nodes)
+  let run = new MissionRun
+  run.id = missions_st.ms__next
+  missions_st.ms__next += 1
+  run.nonce = rng_next(missions_st.ms__dice)
+  run.plan = plan
+  run.group = group
+  run.phase = MSR_FORMING
+  run.members = new []RunMember
+  run.st = ms__ints(n, MSS_IDLE)
+  run.tok = ms__ints(n, 0)
+  run.have = ms__ints(n, 0)
+  run.left = ms__floats(n, 0.0)
+  run.seen = ms__ints(n, 0)
+  run.ck_st = ms__ints(n, 0)
+  run.ck_tok = ms__ints(n, 0)
+  run.ck_have = ms__ints(n, 0)
+  run.ck_left = ms__floats(n, 0.0)
+  run.ck_seen = ms__ints(n, 0)
+  run.limit_left = pl.mission.time_limit
+  run.retries_left = pl.mission.retries
+  run.flags = new []string
+  run.cuts = new []int
+  run.team_score = ms__ints(pl.mission.teams, 0)
+  run.lap = new []int
+  run.gate = new []int
+  run.finish = new []float
+  run.place = new []int
+  run.leader = 0
+  push(missions_st.ms__runs, run)
+  let f = ms__fact(missions_st, MSF_STARTED, run.id)
+  f.plan = plan
+  f.group = group
+  for i in 0 .. len(members) {
+    ms__add_member(run, members[i])
+    let j = ms__fact(missions_st, MSF_JOINED, run.id)
+    j.who = members[i]
+    j.plan = plan
+    j.n = -1
+  }
+  run.rev += 1
+  return run.id
+}
+
+# a player joins (before the run begins, or while it runs when the mission allows it)
+export function mission_join(missions_st: mut MissionsState, run_id: int, who: int) -> bool {
+  missions_st.ms__why = MSG_OK
+  let run = ms__run(missions_st, run_id)
+  if run == null {
+    missions_st.ms__why = MSG_UNKNOWN
+    return false
+  }
+  if not MissionsWorld.host() {
+    let a = ms__fact(missions_st, MSF_ASK, run_id)
+    a.ask = MSA_JOIN
+    a.who = who
+    missions_st.ms__why = MSG_NOT_HOST
+    return false
+  }
+  let pl = missions_st.ms__plans[run.plan]
+  if run.phase == MSR_RUNNING and not pl.mission.join_in_progress { missions_st.ms__why = MSG_CLOSED; return false }
+  if run.phase != MSR_FORMING and run.phase != MSR_RUNNING { missions_st.ms__why = MSG_CLOSED; return false }
+  if ms__member(run, who) >= 0 { return true }
+  if ms__present(run) >= pl.mission.max_players { missions_st.ms__why = MSG_TOO_MANY; return false }
+  let r = mission_player_reason(missions_st, who, run.plan)
+  if r != MSG_OK { missions_st.ms__why = r; return false }
+  let i = ms__add_member(run, who)
+  if run.phase == MSR_RUNNING {
+    if not ms__late_role(missions_st, run, i) {
+      run.members[i].present = false
+      missions_st.ms__why = MSG_ROLES
+      return false
+    }
+    if pl.mission.fee > 0 and not ms__charge(missions_st, run, who, pl.mission.fee) {
+      run.members[i].present = false
+      missions_st.ms__why = MSG_FEE
+      return false
+    }
+  }
+  let j = ms__fact(missions_st, MSF_JOINED, run.id)
+  j.who = who
+  j.plan = run.plan
+  j.team = run.members[i].team
+  j.n = run.members[i].role
+  run.rev += 1
+  return true
+}
+
+# a member joining a running run takes the role they asked for if it has room, else the first that has
+function ms__late_role(missions_st: mut MissionsState, run: MissionRun, i: int) -> bool {
+  let pl = missions_st.ms__plans[run.plan]
+  let nr = len(pl.roles)
+  if nr == 0 {
+    run.members[i].team = i % pl.mission.teams
+    return true
+  }
+  let w = run.members[i].want
+  if w >= 0 and ms__role_count(run, w) < pl.roles[w].most {
+    ms__give_role(missions_st, run, i, w)
+    return true
+  }
+  for r in 0 .. nr {
+    if ms__role_count(run, r) < pl.roles[r].most {
+      ms__give_role(missions_st, run, i, r)
+      return true
+    }
+  }
+  return false
+}
+
+# a player leaves; a run left with fewer than the mission's least is lost, an empty one closed
+export function mission_leave(missions_st: mut MissionsState, run_id: int, who: int) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return false }
+  if not MissionsWorld.host() {
+    let a = ms__fact(missions_st, MSF_ASK, run_id)
+    a.ask = MSA_LEAVE
+    a.who = who
+    return false
+  }
+  let i = ms__member(run, who)
+  if i < 0 { return false }
+  run.members[i].present = false
+  let f = ms__fact(missions_st, MSF_LEFT, run.id)
+  f.who = who
+  f.plan = run.plan
+  run.rev += 1
+  if run.leader == i {
+    run.leader = -1
+    for k in 0 .. len(run.members) { if run.members[k].present and run.leader < 0 { run.leader = k } }
+  }
+  let left = ms__present(run)
+  if left == 0 {
+    ms__close(missions_st, run)
+    return true
+  }
+  if run.phase == MSR_RUNNING and left < missions_st.ms__plans[run.plan].mission.min_players {
+    ms__lose(missions_st, run, MSE_TOO_FEW)
+  }
+  return true
+}
+
+function ms__charge(missions_st: mut MissionsState, run: MissionRun, who: int, n: int) -> bool {
+  let key = `{missions_st.ms__plans[run.plan].key}:{run.nonce}:{who}:fee:{run.tries}`
+  if not MissionsPay.charge(who, n, key) { return false }
+  let f = ms__fact(missions_st, MSF_FEE, run.id)
+  f.who = who
+  f.n = n
+  f.key = key
+  return true
+}
+
+# the run's clock starts: roles are given, fees are taken, the start node opens. False (run unchanged)
+# when the roles cannot be filled by these players or a fee cannot be paid
+export function mission_begin(missions_st: mut MissionsState, run_id: int) -> bool {
+  missions_st.ms__why = MSG_OK
+  let run = ms__run(missions_st, run_id)
+  if run == null {
+    missions_st.ms__why = MSG_UNKNOWN
+    return false
+  }
+  if not MissionsWorld.host() {
+    missions_st.ms__why = MSG_NOT_HOST
+    return false
+  }
+  if run.phase != MSR_FORMING { missions_st.ms__why = MSG_CLOSED; return false }
+  let pl = missions_st.ms__plans[run.plan]
+  if ms__present(run) < pl.mission.min_players { missions_st.ms__why = MSG_TOO_FEW; return false }
+  if not ms__assign(missions_st, run) { missions_st.ms__why = MSG_ROLES; return false }
+  if pl.mission.fee > 0 {
+    for i in 0 .. len(run.members) {
+      if not run.members[i].present { continue }
+      if not ms__charge(missions_st, run, run.members[i].who, pl.mission.fee) {
+        for k in 0 .. i {
+          if run.members[k].present { MissionsPay.money(run.members[k].who, pl.mission.fee, `{pl.key}:{run.nonce}:{run.members[k].who}:refund`) }
+        }
+        missions_st.ms__why = MSG_FEE
+        return false
+      }
+    }
+  }
+  run.phase = MSR_RUNNING
+  run.time = 0.0
+  ms__reset_nodes(run)
+  let began = ms__fact(missions_st, MSF_BEGAN, run.id)
+  began.plan = run.plan
+  run.rev += 1
+  ms__enter(missions_st, run, pl.start)
+  return true
+}
+
+# start and begin together: the usual way for a job that needs no waiting room
+export function mission_launch(missions_st: mut MissionsState, plan: int, group: int, members: []int) -> int {
+  let id = mission_start(missions_st, plan, group, members)
+  if id < 0 { return -1 }
+  if not mission_begin(missions_st, id) {
+    let run = ms__run(missions_st, id)
+    ms__close(missions_st, run)
+    return -1
+  }
+  return id
+}
+
+function ms__reset_nodes(run: MissionRun) -> void {
+  for i in 0 .. len(run.st) {
+    run.st[i] = MSS_IDLE
+    run.tok[i] = 0
+    run.have[i] = 0
+    run.left[i] = 0.0
+    run.seen[i] = 0
+  }
+  run.ck_on = false
+  run.ck_node = -1
+  run.depth = 0
+  for t in 0 .. len(run.team_score) { run.team_score[t] = 0 }
+  for i in 0 .. len(run.members) {
+    run.members[i].alive = true
+    run.members[i].ready = false
+    run.lap[i] = 0
+    run.gate[i] = 0
+    run.finish[i] = -1.0
+    run.place[i] = 0
+  }
+  run.finished = 0
+}
+
+# a run nobody needs any more is taken out of the list (its facts were said): a finished run is read
+# until it is closed
+function ms__close(missions_st: mut MissionsState, run: MissionRun) -> void {
+  if run == null { return }
+  if run.phase != MSR_ENDED {
+    run.phase = MSR_ENDED
+    let f = ms__fact(missions_st, MSF_ENDED, run.id)
+    f.plan = run.plan
+    f.reason = run.reason
+    run.rev += 1
+  }
+  for i in 0 .. len(run.st) { if run.st[i] == MSS_ACTIVE { ms__marker_fact(missions_st, run, i, false) } }
+}
+
+export function mission_close(missions_st: mut MissionsState, run_id: int) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return false }
+  ms__close(missions_st, run)
+  let keep = new []MissionRun
+  for i in 0 .. len(missions_st.ms__runs) { if missions_st.ms__runs[i].id != run_id { push(keep, missions_st.ms__runs[i]) } }
+  missions_st.ms__runs = keep
+  return true
+}
+
+# the leader (or anyone, when the game lets them) gives the run up: no loss beyond the fee, no retry
+export function mission_abandon(missions_st: mut MissionsState, run_id: int) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null or not ms__busy(run) { return false }
+  if not MissionsWorld.host() {
+    let a = ms__fact(missions_st, MSF_ASK, run_id)
+    a.ask = MSA_ABANDON
+    return false
+  }
+  run.reason = MSE_ABANDONED
+  ms__close(missions_st, run)
+  return true
+}
+
+# --- what a game asks of a run ---
+export function mission_phase(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return -1 }
+  return run.phase
+}
+
+export function mission_plan_of(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return -1 }
+  return run.plan
+}
+
+export function mission_group_of(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return -1 }
+  return run.group
+}
+
+export function mission_runs(missions_st: MissionsState) -> int {
+  if missions_st.ms__runs == null { return 0 }
+  return len(missions_st.ms__runs)
+}
+
+# the id of the i'th run
+export function mission_run_id(missions_st: MissionsState, i: int) -> int {
+  if missions_st.ms__runs == null or i < 0 or i >= len(missions_st.ms__runs) { return -1 }
+  return missions_st.ms__runs[i].id
+}
+
+export function mission_members(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return 0 }
+  return ms__present(run)
+}
+
+# the players of a run, into a list the state keeps (good until the next call)
+export function mission_who(missions_st: mut MissionsState, run_id: int) -> []int {
+  let out = missions_st.ms__list
+  List.clear(out)
+  let run = ms__run(missions_st, run_id)
+  if run == null { return out }
+  for i in 0 .. len(run.members) { if run.members[i].present { kept_push(out, run.members[i].who) } }
+  return out
+}
+
+export function mission_team_of(missions_st: MissionsState, run_id: int, who: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return -1 }
+  let i = ms__member(run, who)
+  if i < 0 { return -1 }
+  return run.members[i].team
+}
+
+export function mission_time(missions_st: MissionsState, run_id: int) -> float {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return 0.0 }
+  return run.time
+}
+
+# seconds left on the mission's clock (0 when it has none)
+export function mission_time_left(missions_st: MissionsState, run_id: int) -> float {
+  let run = ms__run(missions_st, run_id)
+  if run == null or missions_st.ms__plans[run.plan].mission.time_limit <= 0.0 { return 0.0 }
+  return run.limit_left
+}
+
+export function mission_reason_ended(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return MSE_NONE }
+  return run.reason
+}
+
+export function mission_tries(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return 0 }
+  return run.tries
+}
+
+export function mission_retries_left(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return 0 }
+  return run.retries_left
+}
+
+# a flag a heist's prep set on this run (an edge's `cond` reads it as "flag:<key>")
+export function mission_flag(missions_st: MissionsState, run_id: int, key: string) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return false }
+  return ms__has_flag(run, key)
+}
+
+function ms__has_flag(run: MissionRun, key: string) -> bool {
+  for i in 0 .. len(run.flags) { if run.flags[i] == key { return true } }
+  return false
+}
+
+@alloc_ok("a flag is set once per run")
+export function mission_set_flag(missions_st: mut MissionsState, run_id: int, key: string) -> void {
+  let run = ms__run(missions_st, run_id)
+  if run == null or ms__has_flag(run, key) { return }
+  push(run.flags, key)
+  let f = ms__fact(missions_st, MSF_FLAG, run_id)
+  f.text = key
+  run.rev += 1
+}
+
+# how a node stands in a run (MSS_*) and what it has counted
+export function mission_node_state(missions_st: MissionsState, run_id: int, node: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null or node < 0 or node >= len(run.st) { return -1 }
+  return run.st[node]
+}
+
+export function mission_node_have(missions_st: MissionsState, run_id: int, node: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null or node < 0 or node >= len(run.have) { return 0 }
+  return run.have[node]
+}
+
+# the open objectives of a run (node places), into a list the state keeps
+export function mission_active(missions_st: mut MissionsState, run_id: int) -> []int {
+  let out = missions_st.ms__list
+  List.clear(out)
+  let run = ms__run(missions_st, run_id)
+  if run == null { return out }
+  for i in 0 .. len(run.st) { if run.st[i] == MSS_ACTIVE { kept_push(out, i) } }
+  return out
+}
+
+export function mission_team_score(missions_st: MissionsState, run_id: int, team: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null or team < 0 or team >= len(run.team_score) { return 0 }
+  return run.team_score[team]
+}
+
+export function mission_player_score(missions_st: MissionsState, run_id: int, who: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return 0 }
+  let i = ms__member(run, who)
+  if i < 0 { return 0 }
+  return run.members[i].score
+}
+
+export function mission_alive(missions_st: MissionsState, run_id: int, who: int) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return false }
+  let i = ms__member(run, who)
+  return i >= 0 and run.members[i].alive
+}

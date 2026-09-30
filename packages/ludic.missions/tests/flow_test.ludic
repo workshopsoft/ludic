@@ -1,0 +1,247 @@
+# flow_test.ludic - the node kinds and what they do: timers, a lost defence and a retry from the
+# checkpoint, everyone at a place, the heat, a fork and its join, a loop of instant nodes, a team score, and
+# a race by its gates and places
+import "ludic.missions"
+import "ludic.base"
+program FlowTest {
+  import "fixture/world.ludic"
+  import "fixture/flow.ludic"
+
+  function fresh(w: mut WorldState, m: mut MissionsState) -> void {
+    world_fresh(w)
+    missions_reset(m)
+    missions_init(m)
+  }
+
+  function count_of(m: MissionsState, what: int) -> int {
+    let fs = q_drain(missions_facts(m))
+    var n = 0
+    for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+    return n
+  }
+
+  test "every fixture mission is a graph a run can follow" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    for i in 0 .. missions_plans(m) {
+      if mission_plan_key(m, i) == "broken" or mission_plan_key(m, i) == "spin" { continue }
+      let lines = mission_problems(m, i)
+      for k in 0 .. len(lines) { expect(not Text.starts_with(lines[k], "error:")) }
+    }
+    let spin = mission_find(m, "spin")
+    expect(len(mission_problems(m, spin)) > 0)
+  }
+
+  test "a lost defence, then a retry from the checkpoint" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let g = mission_find(m, "gauntlet")
+    let crew = [1]
+    let id = mission_launch(m, g, 0, crew)
+    expect(mission_report(m, id, 1, MRP_SIGNAL, "gate", 1))
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    mission_tick(m, 4.0)
+    expect(mission_report(m, id, 1, MRP_LOST, "asset", 1))
+    expect_eq(mission_phase(m, id), MSR_FAILED)
+    expect_eq(mission_reason_ended(m, id), MSE_NODE)
+    expect_eq(mission_retries_left(m, id), 1)
+    # what had been done stays done at the checkpoint: the defence starts again at ten seconds
+    expect(mission_retry(m, id))
+    expect_eq(mission_phase(m, id), MSR_RUNNING)
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    expect_eq(mission_node_state(m, id, 0), MSS_DONE)       # the gate was done before the checkpoint: it stays done
+    expect_eq(mission_tries(m, id), 1)
+    mission_tick(m, 10.5)
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    expect(not mission_retry(m, id))
+  }
+
+  test "the mission's clock, and no retry once they are spent" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let g = mission_find(m, "gauntlet")
+    let crew = [1]
+    let id = mission_launch(m, g, 0, crew)
+    mission_tick(m, 60.0)
+    expect(mission_time_left(m, id) > 39.0 and mission_time_left(m, id) < 41.0)
+    mission_tick(m, 41.0)
+    expect_eq(mission_phase(m, id), MSR_FAILED)
+    expect_eq(mission_reason_ended(m, id), MSE_TIME)
+    expect(mission_retry(m, id))
+    mission_tick(m, 101.0)
+    expect_eq(mission_phase(m, id), MSR_FAILED)
+    expect_eq(mission_retries_left(m, id), 0)
+    expect(not mission_retry(m, id))
+    expect_eq(count_of(m, MSF_RETRY), 1)
+  }
+
+  test "everyone to the lot, then clear of the law, then a clock" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "convoy")
+    let crew = [1, 2]
+    let id = mission_launch(m, c, 0, crew)
+    at(w, 1, 50.0, 50.0)
+    mission_tick(m, 0.1)
+    expect_eq(mission_node_state(m, id, 0), MSS_ACTIVE)      # one of two
+    at(w, 2, 55.0, 50.0)
+    w.heat[1] = 2
+    mission_tick(m, 0.1)
+    expect_eq(mission_node_state(m, id, 0), MSS_DONE)
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    mission_tick(m, 1.0)
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)      # still wanted
+    w.heat[1] = 0
+    mission_tick(m, 0.1)
+    expect_eq(mission_node_state(m, id, 2), MSS_ACTIVE)
+    mission_tick(m, 5.0)
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+  }
+
+  test "a node's timeout takes its fail edge, and a wipe ends the run" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "convoy")
+    let crew = [1, 2]
+    let id = mission_launch(m, c, 0, crew)
+    at(w, 1, 50.0, 50.0)
+    at(w, 2, 50.0, 50.0)
+    w.heat[2] = 3
+    mission_tick(m, 0.1)
+    mission_tick(m, 31.0)
+    expect_eq(mission_node_state(m, id, 1), MSS_FAILED)
+    expect_eq(mission_phase(m, id), MSR_FAILED)              # the edge went to a FAIL node
+    let d = mission_launch(m, mission_find(m, "gauntlet"), 0, [3])
+    mission_report(m, d, 3, MRP_DIED, "", 1)
+    expect_eq(mission_phase(m, d), MSR_FAILED)
+    expect_eq(mission_reason_ended(m, d), MSE_WIPED)
+  }
+
+  test "a fork starts two objectives and a join waits for both" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let f = mission_find(m, "fork")
+    let id = mission_launch(m, f, 0, [1])
+    expect_eq(count_of(m, MSF_DO), 1)
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    expect_eq(mission_node_state(m, id, 2), MSS_ACTIVE)
+    expect_eq(len(mission_active(m, id)), 2)
+    mission_report(m, id, 1, MRP_SIGNAL, "a", 1)
+    expect_eq(mission_node_state(m, id, 3), MSS_IDLE)        # one of two arrivals
+    mission_report(m, id, 1, MRP_SIGNAL, "b", 1)
+    expect_eq(mission_node_state(m, id, 3), MSS_ACTIVE)
+    mission_report(m, id, 1, MRP_SIGNAL, "both", 1)
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+  }
+
+  test "a loop of instant nodes loses the run and says why" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let s = mission_find(m, "spin")
+    expect(len(mission_problems(m, s)) > 0)                   # a warning: a node no edge reaches
+    let id = mission_launch(m, s, 0, [1])
+    expect(id > 0)
+    expect_eq(mission_phase(m, id), MSR_FAILED)
+    expect_eq(mission_reason_ended(m, id), MSE_GRAPH)
+  }
+
+  test "two teams score to the target, and the pot follows the points" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let s = mission_find(m, "standoff")
+    let id = mission_start(m, s, 0, [1, 2, 3, 4])
+    expect(id > 0)
+    expect(mission_begin(m, id))
+    expect_eq(mission_team_of(m, id, 1), 0)
+    expect_eq(mission_team_of(m, id, 2), 1)
+    for i in 1 .. 5 { mission_report(m, id, i, MRP_READY, "", 1) }
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    mission_report(m, id, 1, MRP_SCORE, "", 1)
+    mission_report(m, id, 3, MRP_SCORE, "", 1)
+    mission_report(m, id, 2, MRP_SCORE, "", 1)
+    expect_eq(mission_team_score(m, id, 0), 2)
+    expect_eq(mission_team_score(m, id, 1), 1)
+    expect_eq(mission_phase(m, id), MSR_RUNNING)
+    mission_report(m, id, 1, MRP_SCORE, "", 1)
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    expect_eq(w.money[1], 500)
+    expect_eq(w.money[3], 250)
+    expect_eq(w.money[2], 250)
+    expect_eq(w.money[4], 0)
+    let fs = q_drain(missions_facts(m))
+    var lead = -1
+    for i in 0 .. len(fs) { if fs[i].what == MSF_PASSED { lead = fs[i].team } }
+    expect_eq(lead, 0)
+  }
+
+  test "when the score's clock runs out the best team leads" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let s = mission_find(m, "standoff")
+    let id = mission_launch(m, s, 0, [1, 2])
+    for i in 1 .. 3 { mission_report(m, id, i, MRP_READY, "", 1) }
+    mission_report(m, id, 2, MRP_SCORE, "", 2)
+    mission_tick(m, 61.0)
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    expect_eq(w.money[2], 1000)
+  }
+
+  test "a race: gates by position, laps, places and the payout by place" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let r = mission_find(m, "city_race")
+    let id = mission_launch(m, r, 0, [1, 2, 3])
+    for i in 1 .. 4 { mission_report(m, id, i, MRP_READY, "", 1) }
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    # racer 2 drives the course twice; 1 gets one gate in; 3 never leaves the grid
+    at(w, 1, 0.0, 0.0)
+    mission_tick(m, 0.1)
+    expect_eq(mission_gate(m, id, 1), 1)
+    for lap in 0 .. 2 {
+      at(w, 2, 0.0, 0.0)
+      mission_tick(m, 1.0)
+      at(w, 2, 100.0, 0.0)
+      mission_tick(m, 1.0)
+      at(w, 2, 100.0, 100.0)
+      mission_tick(m, 1.0)
+    }
+    expect_eq(mission_place(m, id, 2), 1)
+    expect(mission_finish_time(m, id, 2) > 5.0)
+    expect_eq(mission_place(m, id, 1), 2)              # ahead of the one that did not move
+    expect_eq(mission_place(m, id, 3), 3)
+    expect_eq(mission_phase(m, id), MSR_RUNNING)
+    # the game's own collision finishes racer 1: gate by gate, reported
+    for k in 0 .. 5 { mission_report(m, id, 1, MRP_GATE, "", mission_gate(m, id, 1)) }
+    expect_eq(mission_place(m, id, 1), 2)
+    expect(mission_finish_time(m, id, 1) > 0.0)
+    mission_tick(m, 121.0)                              # the race's clock: the last is ranked by how far they got
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    expect_eq(w.money[2], 600)
+    expect_eq(w.money[1], 300)
+    expect_eq(w.money[3], 100)
+  }
+
+  test "a gate out of turn does not count" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let r = mission_find(m, "city_race")
+    let id = mission_launch(m, r, 0, [1, 2])
+    for i in 1 .. 3 { mission_report(m, id, i, MRP_READY, "", 1) }
+    expect(not mission_report(m, id, 1, MRP_GATE, "", 2))
+    expect(mission_report(m, id, 1, MRP_GATE, "", 0))
+    expect_eq(mission_gate(m, id, 1), 1)
+    expect_eq(mission_lap(m, id, 1), 0)
+  }
+
+  test "markers follow the open nodes, and a race shows each racer their own gate" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = mission_find(m, "convoy")
+    let id = mission_launch(m, c, 0, [1, 2])
+    let ms = mission_markers(m, id, 1)
+    expect_eq(len(ms), 1)
+    expect(ms[0].has_pos)
+    expect(ms[0].x == 50.0)
+    let fs = q_drain(missions_facts(m))
+    var on = 0
+    for i in 0 .. len(fs) { if fs[i].what == MSF_MARKER_ON { on += 1 } }
+    expect_eq(on, 1)
+    let r = mission_find(m, "city_race")
+    let rid = mission_launch(m, r, 0, [3, 4])
+    mission_report(m, rid, 3, MRP_READY, "", 1)
+    mission_report(m, rid, 4, MRP_READY, "", 1)
+    mission_report(m, rid, 3, MRP_GATE, "", 0)
+    let a = mission_markers(m, rid, 3)
+    expect(a[0].x == 100.0)
+    let b = mission_markers(m, rid, 4)
+    expect(b[0].x == 0.0)
+  }
+}

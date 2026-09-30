@@ -1,0 +1,25 @@
+# ludic.missions - missions as graphs of nodes (objectives) and edges (outcomes), run host-authoritatively
+# per lobby or team; what an objective means in the world is the game's, through ports and reports
+module ludic_missions uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "ports.ludic"
+import "state.ludic"
+import "facts.ludic"
+import "book.ludic"
+import "check.ludic"
+import "progress.ludic"
+import "roles.ludic"
+import "markers.ludic"
+import "graph.ludic"
+import "run.ludic"
+import "report.ludic"
+import "race.ludic"
+import "tick.ludic"
+import "end.ludic"
+import "heist.ludic"
+import "creator.ludic"
+import "snapshot.ludic"
+import "save.ludic"
+import "system.ludic"

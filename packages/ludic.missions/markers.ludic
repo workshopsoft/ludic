@@ -1,0 +1,85 @@
+# markers.ludic - where the game should point: a marker per open node that has a place, as a fact when it
+# opens or closes and as a list a HUD or a compass provider asks for (mission_markers). A race shows each
+# racer their own next gate. A node that names a `role` shows to that role's members only.
+
+export property MissionMarker {
+  node: int = -1
+  kind: int = 0                   # the node's MSN_ kind
+  who: int = -1                   # the viewer it is for (-1: everyone)
+  has_pos: bool = false           # false: no place, only `target` (an enemy group, an item the game points at)
+  x: float = 0.0
+  z: float = 0.0
+  radius: float = 0.0
+  blip: string = ""
+  target: string = ""
+}
+
+function ms__has_pos(n: MissionStep) -> bool {
+  if n.kind == MSN_GOTO or n.kind == MSN_DEFEND or n.kind == MSN_DELIVER or n.kind == MSN_RACE { return true }
+  return n.x != 0.0 or n.z != 0.0
+}
+
+# the marker facts of a node that has just opened (on) or closed
+function ms__marker_fact(missions_st: mut MissionsState, run: MissionRun, node: int, on: bool) -> void {
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  if n.hidden { return }
+  if n.kind == MSN_PASS or n.kind == MSN_FAIL or n.kind == MSN_DO or n.kind == MSN_CHOICE or n.kind == MSN_WAIT { return }
+  var what = MSF_MARKER_OFF
+  if on { what = MSF_MARKER_ON }
+  let f = ms__fact(missions_st, what, run.id)
+  f.node = node
+  f.n = n.kind
+  f.text = n.blip
+  if n.kind == MSN_RACE and ms__gates(n) > 0 {
+    f.x = n.gates[0].x
+    f.z = n.gates[0].z
+    f.radius = n.gates[0].radius
+  } else {
+    f.x = n.x
+    f.z = n.z
+    f.radius = n.radius
+  }
+  f.have = 0
+  if not ms__has_pos(n) { f.have = -1 }          # `have` -1: no place
+}
+
+@alloc_ok("a marker record made once and kept in the pool")
+function ms__mk_rec(missions_st: mut MissionsState, k: int) -> MissionMarker {
+  while len(missions_st.ms__mk) <= k { push(missions_st.ms__mk, new MissionMarker) }
+  return missions_st.ms__mk[k]
+}
+
+# the markers a player should see now, in a list the state keeps (good until the next call)
+export function mission_markers(missions_st: mut MissionsState, run_id: int, who: int) -> []MissionMarker {
+  let out = missions_st.ms__mk_out
+  List.clear(out)
+  let run = ms__run(missions_st, run_id)
+  if run == null or run.phase != MSR_RUNNING { return out }
+  let pl = missions_st.ms__plans[run.plan]
+  let me = ms__member(run, who)
+  for i in 0 .. len(pl.nodes) {
+    if run.st[i] != MSS_ACTIVE { continue }
+    let n = pl.nodes[i]
+    if n.hidden or n.kind == MSN_PASS or n.kind == MSN_FAIL or n.kind == MSN_DO or n.kind == MSN_CHOICE or n.kind == MSN_WAIT { continue }
+    if n.role != "" and (me < 0 or run.members[me].role < 0 or pl.roles[run.members[me].role].key != n.role) { continue }
+    let m = ms__mk_rec(missions_st, len(out))
+    m.node = i
+    m.kind = n.kind
+    m.who = who
+    m.has_pos = ms__has_pos(n)
+    m.x = n.x
+    m.z = n.z
+    m.radius = n.radius
+    m.blip = n.blip
+    m.target = n.target
+    if n.kind == MSN_RACE and ms__gates(n) > 0 and me >= 0 {
+      var g = run.gate[me]
+      if g >= ms__gates(n) { g = ms__gates(n) - 1 }
+      m.x = n.gates[g].x
+      m.z = n.gates[g].z
+      m.radius = n.gates[g].radius
+    }
+    kept_push(out, m)
+  }
+  return out
+}

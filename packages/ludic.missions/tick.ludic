@@ -1,0 +1,72 @@
+# tick.ludic - time, and the parts of a node that are asked of the world rather than reported: a place
+# reached, a race's gates, the heat gone, a timer run out. A guest's copy of a run only keeps its clocks
+# running (for drawing); the host decides.
+
+function ms__expire(missions_st: mut MissionsState, run: MissionRun, node: int) -> void {
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  if n.kind == MSN_DEFEND or n.kind == MSN_SURVIVE or n.kind == MSN_WAIT or n.kind == MSN_RACE {
+    ms__finish(missions_st, run, node, "done")
+  } else if n.kind == MSN_SCORE and n.arg == 0 {
+    ms__finish(missions_st, run, node, "done")
+  } else {
+    ms__finish(missions_st, run, node, "timeout")
+  }
+}
+
+function ms__tick_node(missions_st: mut MissionsState, run: MissionRun, node: int, dt: float) -> void {
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  if n.kind == MSN_GOTO and (n.x != 0.0 or n.z != 0.0) {
+    for i in 0 .. len(run.members) {
+      if run.phase != MSR_RUNNING or run.st[node] != MSS_ACTIVE { return }
+      if not ms__eligible(missions_st, run, n, i) { continue }
+      let who = run.members[i].who
+      let dx = MissionsWorld.x(who) - n.x
+      let dz = MissionsWorld.z(who) - n.z
+      if dx * dx + dz * dz <= n.radius * n.radius { ms__reached(missions_st, run, node, i) }
+    }
+  } else if n.kind == MSN_ESCAPE {
+    var any = false
+    var clear = true
+    for i in 0 .. len(run.members) {
+      if not ms__eligible(missions_st, run, n, i) { continue }
+      any = true
+      if MissionsWorld.wanted(run.members[i].who) > 0 { clear = false }
+    }
+    if any and clear { ms__finish(missions_st, run, node, "done") }
+  } else if n.kind == MSN_RACE {
+    ms__race_tick(missions_st, run, node)
+  }
+  if run.phase != MSR_RUNNING or run.st[node] != MSS_ACTIVE { return }
+  if n.seconds > 0.0 {
+    run.left[node] -= dt
+    if run.left[node] <= 0.0 { ms__expire(missions_st, run, node) }
+  }
+}
+
+export function mission_tick(missions_st: mut MissionsState, dt: float) -> void {
+  ms__build(missions_st)
+  missions_st.ms__time += dt
+  let host = MissionsWorld.host()
+  for r in 0 .. len(missions_st.ms__runs) {
+    let run = missions_st.ms__runs[r]
+    if run.phase != MSR_RUNNING { continue }
+    run.time += dt
+    if run.mirror or not host {
+      if run.limit_left > 0.0 { run.limit_left = Math.max(run.limit_left - dt, 0.0) }
+      for i in 0 .. len(run.st) { if run.st[i] == MSS_ACTIVE and run.left[i] > 0.0 { run.left[i] = Math.max(run.left[i] - dt, 0.0) } }
+      continue
+    }
+    let lim = missions_st.ms__plans[run.plan].mission.time_limit
+    if lim > 0.0 {
+      run.limit_left -= dt
+      if run.limit_left <= 0.0 {
+        ms__lose(missions_st, run, MSE_TIME)
+        continue
+      }
+    }
+    for i in 0 .. len(run.st) {
+      if run.phase != MSR_RUNNING { break }
+      if run.st[i] == MSS_ACTIVE { ms__tick_node(missions_st, run, i, dt) }
+    }
+  }
+}

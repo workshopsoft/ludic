@@ -1,0 +1,8 @@
+# race_steps.lres - the race node of the fixture's city_race: a course of three gates is a list of records
+city_race_run {
+  mission: "city_race"
+  kind: MSN_RACE
+  count: 2
+  seconds: 120.0
+  gates: [{ x: 0.0, z: 0.0, radius: 5.0 }, { x: 100.0, z: 0.0, radius: 5.0 }, { x: 100.0, z: 100.0, radius: 5.0 }]
+}

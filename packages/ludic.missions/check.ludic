@@ -1,0 +1,73 @@
+# check.ludic - is a graph one a run can follow? The same check is the studio's lint and a creation's
+# gate: every problem is a line, "error: ..." for what stops a run and "warning: ..." for what only
+# looks wrong.
+
+@alloc_ok("a check is a tool's question, not a frame's")
+function ms__check(p: MissionPlan) -> []string {
+  let out = new []string
+  let m = p.mission
+  if len(p.nodes) == 0 { push(out, `error: {m.key} has no nodes`) }
+  if m.min_players > m.max_players { push(out, `error: {m.key} wants at least {m.min_players} players and at most {m.max_players}`) }
+  if m.start != "" and p.start < 0 { push(out, `error: {m.key} starts at {m.start}, which is not one of its nodes`) }
+  var least = 0
+  for r in 0 .. len(p.roles) { least += p.roles[r].least }
+  if least > m.max_players { push(out, `error: {m.key}'s roles need {least} players and at most {m.max_players} may play`) }
+  var has_pass = false
+  var open_end = false
+  for i in 0 .. len(p.nodes) {
+    let n = p.nodes[i]
+    for j in 0 .. i { if p.nodes[j].key == n.key { push(out, `error: {m.key} has two nodes called {n.key}`) } }
+    if n.kind < 0 or n.kind >= MSN_COUNT { push(out, `error: node {n.key} has kind {n.kind}, which is not a node kind`) }
+    if n.role != "" and ms__role_at(p, n.role) < 0 { push(out, `error: node {n.key} wants role {n.role}, which {m.key} does not have`) }
+    if n.kind == MSN_PASS { has_pass = true }
+    if n.kind == MSN_RACE and ms__gates(n) < 1 { push(out, `error: race node {n.key} has no gates`) }
+    if (n.kind == MSN_DEFEND or n.kind == MSN_SURVIVE or n.kind == MSN_WAIT) and n.seconds <= 0.0 { push(out, `error: node {n.key} lasts no time`) }
+    var done_edges = 0
+    var keyed = 0
+    for k in 0 .. len(p.outs[i]) {
+      let e = p.edges[p.outs[i][k]]
+      if e.on == "done" { done_edges += 1 } else if e.on != "fail" and e.on != "timeout" { keyed += 1 }
+    }
+    if done_edges == 0 and n.kind != MSN_PASS and n.kind != MSN_FAIL and n.kind != MSN_CHOICE { open_end = true }
+    if n.kind == MSN_CHOICE and keyed < 2 { push(out, `error: choice node {n.key} has fewer than two options (edges whose on is the option's key)`) }
+    if (n.kind == MSN_PASS or n.kind == MSN_FAIL) and len(p.outs[i]) > 0 { push(out, `warning: {n.key} ends the mission and has edges that are never taken`) }
+  }
+  for e in 0 .. len(p.edges) {
+    let ed = p.edges[e]
+    if ms__node_at(p, ed.from) < 0 { push(out, `error: edge {ed.key} leaves {ed.from}, which is not a node of {m.key}`) }
+    if ms__node_at(p, ed.to) < 0 { push(out, `error: edge {ed.key} goes to {ed.to}, which is not a node of {m.key}`) }
+  }
+  if not has_pass and not open_end and len(p.nodes) > 0 { push(out, `error: {m.key} can never be won: no pass node, and every node has an edge on done`) }
+  # every node should be reachable from the start
+  if p.start >= 0 {
+    let seen = new []bool
+    for i in 0 .. len(p.nodes) { push(seen, false) }
+    let stack = new []int
+    push(stack, p.start)
+    seen[p.start] = true
+    while len(stack) > 0 {
+      let cur = List.pop(stack)
+      for k in 0 .. len(p.outs[cur]) {
+        let to = ms__node_at(p, p.edges[p.outs[cur][k]].to)
+        if to >= 0 and not seen[to] {
+          seen[to] = true
+          push(stack, to)
+        }
+      }
+    }
+    for i in 0 .. len(p.nodes) { if not seen[i] { push(out, `warning: node {p.nodes[i].key} is never reached from the start`) } }
+  }
+  return out
+}
+
+function ms__count_errors(lines: []string) -> int {
+  var n = 0
+  for i in 0 .. len(lines) { if Text.starts_with(lines[i], "error:") { n += 1 } }
+  return n
+}
+
+# the lines the check finds for a plan: what a studio shows beside the graph
+export function mission_problems(missions_st: MissionsState, plan: int) -> []string {
+  if not ms__plan_ok(missions_st, plan) { return new []string }
+  return ms__check(missions_st.ms__plans[plan])
+}

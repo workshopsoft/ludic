@@ -1,0 +1,199 @@
+# graph.ludic - following the graph. A node opens when enough arrivals (its `join`) reach it; when it
+# ends with an outcome ("done", "fail", "timeout", or a choice's key) the edges that leave it on that
+# outcome are taken: the first whose condition holds, and every `par` one beside it. A node with no
+# edge for "done" wins the mission; none for "fail" or "timeout" loses it.
+
+function ms__cond_ok(missions_st: MissionsState, run: MissionRun, cond: string) -> bool {
+  if cond == "" { return true }
+  var neg = false
+  var name = cond
+  if Text.starts_with(cond, "!") {
+    neg = true
+    name = cond[1..len(cond)]
+  }
+  var ok = false
+  if Text.starts_with(name, "flag:") { ok = ms__has_flag(run, name[5..len(name)]) } else { ok = MissionsWorld.check(name, run.id) }
+  if neg { return not ok }
+  return ok
+}
+
+# one arrival at a node: it opens once it has had `join` of them
+function ms__arrive(missions_st: mut MissionsState, run: MissionRun, node: int) -> void {
+  if run.phase != MSR_RUNNING { return }
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  run.tok[node] += 1
+  if run.tok[node] >= n.join and run.st[node] != MSS_ACTIVE { ms__enter(missions_st, run, node) }
+}
+
+function ms__eligible(missions_st: MissionsState, run: MissionRun, n: MissionStep, i: int) -> bool {
+  if not ms__live(run, i) { return false }
+  if n.role == "" { return true }
+  let r = run.members[i].role
+  return r >= 0 and missions_st.ms__plans[run.plan].roles[r].key == n.role
+}
+
+function ms__options(missions_st: MissionsState, run: MissionRun, node: int) -> string {
+  let pl = missions_st.ms__plans[run.plan]
+  var s = ""
+  for k in 0 .. len(pl.outs[node]) {
+    let on = pl.edges[pl.outs[node][k]].on
+    if on == "done" or on == "fail" or on == "timeout" { continue }
+    if s != "" { s = s + "," }
+    s = s + on
+  }
+  return s
+}
+
+function ms__enter(missions_st: mut MissionsState, run: MissionRun, node: int) -> void {
+  run.depth += 1
+  if run.depth > MS_DEPTH {
+    run.depth -= 1
+    ms__lose(missions_st, run, MSE_GRAPH)
+    return
+  }
+  let pl = missions_st.ms__plans[run.plan]
+  let n = pl.nodes[node]
+  run.tok[node] = 0
+  run.st[node] = MSS_ACTIVE
+  run.have[node] = 0
+  run.seen[node] = 0
+  run.left[node] = n.seconds
+  run.rev += 1
+  let f = ms__fact(missions_st, MSF_NODE, run.id)
+  f.plan = run.plan
+  f.node = node
+  f.need = n.count
+  f.text = n.target
+  f.n = n.kind
+  if n.kind == MSN_WAIT_TEAM { for i in 0 .. len(run.members) { run.members[i].ready = false } }
+  ms__marker_fact(missions_st, run, node, true)
+  if n.checkpoint { ms__checkpoint(missions_st, run, node) }
+  if n.kind == MSN_RACE { ms__race_start(run) }
+  if n.kind == MSN_CHOICE {
+    let c = ms__fact(missions_st, MSF_CHOICE, run.id)
+    c.node = node
+    c.text = ms__options(missions_st, run, node)
+  }
+  if n.kind == MSN_MINIGAME {
+    for i in 0 .. len(run.members) {
+      if not ms__eligible(missions_st, run, n, i) { continue }
+      let g = ms__fact(missions_st, MSF_MINIGAME, run.id)
+      g.node = node
+      g.who = run.members[i].who
+      g.text = n.target
+      g.n = n.arg
+    }
+  }
+  if n.kind == MSN_DO {
+    let d = ms__fact(missions_st, MSF_DO, run.id)
+    d.node = node
+    d.text = n.target
+    d.n = n.arg
+    ms__finish(missions_st, run, node, "done")
+  } else if n.kind == MSN_PASS {
+    ms__win(missions_st, run)
+  } else if n.kind == MSN_FAIL {
+    ms__lose(missions_st, run, MSE_NODE)
+  }
+  run.depth -= 1
+}
+
+# a node ends with an outcome: its edges are followed
+function ms__finish(missions_st: mut MissionsState, run: MissionRun, node: int, outcome: string) -> void {
+  if run.phase != MSR_RUNNING or run.st[node] != MSS_ACTIVE { return }
+  let pl = missions_st.ms__plans[run.plan]
+  let bad = outcome == "fail" or outcome == "timeout"
+  if bad { run.st[node] = MSS_FAILED } else { run.st[node] = MSS_DONE }
+  run.rev += 1
+  var what = MSF_NODE_DONE
+  if bad { what = MSF_NODE_FAILED }
+  let f = ms__fact(missions_st, what, run.id)
+  f.plan = run.plan
+  f.node = node
+  f.text = outcome
+  ms__marker_fact(missions_st, run, node, false)
+  var took = false
+  for k in 0 .. len(pl.outs[node]) {
+    if run.phase != MSR_RUNNING { return }
+    let e = pl.edges[pl.outs[node][k]]
+    if e.on != outcome or not ms__cond_ok(missions_st, run, e.cond) { continue }
+    if e.par {
+      took = true
+      ms__arrive(missions_st, run, ms__node_at(pl, e.to))
+    } else if not took {
+      took = true
+      ms__arrive(missions_st, run, ms__node_at(pl, e.to))
+    }
+  }
+  if took or run.phase != MSR_RUNNING { return }
+  if outcome == "done" {
+    ms__win(missions_st, run)
+  } else if outcome == "timeout" {
+    ms__lose(missions_st, run, MSE_TIME)
+  } else if outcome == "fail" {
+    ms__lose(missions_st, run, MSE_NODE)
+  }
+}
+
+function ms__checkpoint(missions_st: mut MissionsState, run: MissionRun, node: int) -> void {
+  for i in 0 .. len(run.st) {
+    run.ck_st[i] = run.st[i]
+    run.ck_tok[i] = run.tok[i]
+    run.ck_have[i] = run.have[i]
+    run.ck_left[i] = run.left[i]
+    run.ck_seen[i] = run.seen[i]
+  }
+  run.ck_on = true
+  run.ck_node = node
+  let f = ms__fact(missions_st, MSF_CHECKPOINT, run.id)
+  f.plan = run.plan
+  f.node = node
+}
+
+# a lost run (phase MSR_FAILED) starts again, from the last checkpoint or from the beginning, while the
+# mission has tries left. Members are back on their feet and the mission's clock starts over
+export function mission_retry(missions_st: mut MissionsState, run_id: int) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null or run.phase != MSR_FAILED or run.retries_left == 0 { return false }
+  if not MissionsWorld.host() {
+    let a = ms__fact(missions_st, MSF_ASK, run_id)
+    a.ask = MSA_RETRY
+    return false
+  }
+  let pl = missions_st.ms__plans[run.plan]
+  if run.retries_left > 0 { run.retries_left -= 1 }
+  run.tries += 1
+  run.phase = MSR_RUNNING
+  run.reason = MSE_NONE
+  run.limit_left = pl.mission.time_limit
+  run.depth = 0
+  for i in 0 .. len(run.members) {
+    run.members[i].alive = true
+    run.members[i].ready = false
+  }
+  let f = ms__fact(missions_st, MSF_RETRY, run.id)
+  f.plan = run.plan
+  f.n = run.tries
+  f.node = -1
+  run.rev += 1
+  if run.ck_on {
+    f.node = run.ck_node
+    for i in 0 .. len(run.st) {
+      run.st[i] = run.ck_st[i]
+      run.tok[i] = run.ck_tok[i]
+      run.have[i] = run.ck_have[i]
+      run.left[i] = run.ck_left[i]
+      run.seen[i] = run.ck_seen[i]
+    }
+    for i in 0 .. len(run.st) {
+      if run.st[i] == MSS_ACTIVE {
+        ms__marker_fact(missions_st, run, i, true)
+        if pl.nodes[i].kind == MSN_RACE { ms__race_start(run) }
+      }
+    }
+  } else {
+    ms__reset_nodes(run)
+    ms__enter(missions_st, run, pl.start)
+  }
+  return true
+}

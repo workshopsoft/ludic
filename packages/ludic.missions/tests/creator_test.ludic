@@ -1,0 +1,194 @@
+# creator_test.ludic - player-made missions: what a kind allows, a creation judged line by line, compiled
+# into the plan a written mission is and run (a race by its gates, a score), a value that reads back and
+# one that cannot be trusted
+import "ludic.missions"
+import "ludic.base"
+program CreatorTest {
+  import "fixture/world.ludic"
+
+  def CreationKinds street_race { node: MSN_RACE, mission: MSK_RACE, min_gates: 3, max_gates: 20, max_players: 8, max_laps: 3, max_seconds: 600.0, money: 200, xp: 10, rules: ["traffic", "weather"] }
+  def CreationKinds hill { node: MSN_SCORE, mission: MSK_ADVERSARY, max_players: 10, max_teams: 2, max_seconds: 900.0, max_score: 50, rules: ["friendly_fire"] }
+
+  function fresh(w: mut WorldState, m: mut MissionsState) -> void {
+    world_fresh(w)
+    missions_reset(m)
+    missions_init(m)
+  }
+
+  function a_race(id: string) -> Creation {
+    let c = creation_new(id, "a-player", "street_race")
+    c.title = "Harbour loop"
+    creation_add_gate(c, 0.0, 0.0, 6.0)
+    creation_add_gate(c, 80.0, 0.0, 6.0)
+    creation_add_gate(c, 80.0, 80.0, 6.0)
+    c.laps = 2
+    c.seconds = 300.0
+    c.players = 4
+    c.min_players = 2
+    creation_set_rule(c, "traffic", 0)
+    return c
+  }
+
+  function has_line(lines: []string, part: string) -> bool {
+    for i in 0 .. len(lines) { if Text.contains(lines[i], part) { return true } }
+    return false
+  }
+
+  test "a good creation has nothing said against it" {
+    let c = a_race("harbour-loop")
+    expect_eq(len(creation_problems(c)), 0)
+  }
+
+  test "every limit is a line" {
+    let c = a_race("Bad Id")
+    c.title = ""
+    c.laps = 9
+    c.seconds = 9999.0
+    c.players = 40
+    c.gates[1].radius = 900.0
+    c.gates[2].x = 500000.0
+    creation_set_rule(c, "nitro", 5)
+    let lines = creation_problems(c)
+    expect(has_line(lines, "id:"))
+    expect(has_line(lines, "title:"))
+    expect(has_line(lines, "laps:"))
+    expect(has_line(lines, "seconds:"))
+    expect(has_line(lines, "players:"))
+    expect(has_line(lines, "gate 1"))
+    expect(has_line(lines, "gate 2"))
+    expect(has_line(lines, "rule nitro"))
+    let few = a_race("two-gates")
+    few.gates = new []Gate
+    creation_add_gate(few, 0.0, 0.0, 5.0)
+    expect(has_line(creation_problems(few), "fewer than the 3"))
+    let odd = creation_new("x", "p", "no_such_kind")
+    expect(has_line(creation_problems(odd), "kind:"))
+  }
+
+  test "a creation compiles to the plan a written mission is" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = a_race("harbour-loop")
+    let plan = creation_compile(m, c)
+    expect(plan >= 0)
+    expect_eq(mission_find(m, "ugc:harbour-loop"), plan)
+    expect_eq(mission_plan_kind(m, plan), MSK_RACE)
+    expect_eq(mission_nodes(m, plan), 3)
+    expect_eq(len(mission_problems(m, plan)), 0)
+    expect_eq(creations_count(m), 1)
+    expect(creation_get(m, "harbour-loop") == c)
+    # a bad one is refused
+    let bad = a_race("bad")
+    bad.laps = 50
+    expect_eq(creation_compile(m, bad), -1)
+    expect_eq(mission_find(m, "ugc:bad"), -1)
+  }
+
+  test "a player-made race runs like any other, and the game's economy pays it" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let plan = creation_compile(m, a_race("harbour-loop"))
+    let id = mission_launch(m, plan, 0, [1, 2])
+    expect(id > 0)
+    for i in 1 .. 3 { mission_report(m, id, i, MRP_READY, "", 1) }
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)
+    for lap in 0 .. 2 {
+      at(w, 1, 0.0, 0.0)
+      mission_tick(m, 1.0)
+      at(w, 1, 80.0, 0.0)
+      mission_tick(m, 1.0)
+      at(w, 1, 80.0, 80.0)
+      mission_tick(m, 1.0)
+    }
+    expect_eq(mission_place(m, id, 1), 1)
+    mission_tick(m, 301.0)
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    expect_eq(w.money[1], 100)           # the kind's 200: first place's half
+    expect_eq(w.money[2], 60)            # second's 30 percent
+    expect_eq(w.xp[1], 10)
+    creation_played(m, "harbour-loop")
+    expect_eq(creation_get(m, "harbour-loop").plays, 1)
+  }
+
+  test "a score creation makes teams play to a target" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let c = creation_new("hill-1", "a-player", "hill")
+    c.title = "The hill"
+    c.score = 5
+    c.seconds = 120.0
+    c.teams = 2
+    c.min_players = 2
+    c.players = 4
+    creation_set_rule(c, "friendly_fire", 1)
+    expect_eq(len(creation_problems(c)), 0)
+    expect_eq(creation_rule(c, "friendly_fire", 0), 1)
+    expect_eq(creation_rule(c, "nope", 7), 7)
+    let plan = creation_compile(m, c)
+    let id = mission_launch(m, plan, 0, [1, 2])
+    for i in 1 .. 3 { mission_report(m, id, i, MRP_READY, "", 1) }
+    mission_report(m, id, 1, MRP_SCORE, "", 5)
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+    expect_eq(mission_team_score(m, id, 0), 5)
+  }
+
+  test "recompiling replaces the plan unless it is being played" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let a = a_race("harbour-loop")
+    let plan = creation_compile(m, a)
+    let b = a_race("harbour-loop")
+    b.laps = 3
+    expect_eq(creation_compile(m, b), plan)
+    expect_eq(creations_count(m), 1)
+    let id = mission_launch(m, plan, 0, [1, 2])
+    expect(id > 0)
+    expect_eq(creation_compile(m, a), -1)
+    expect_eq(mission_why(m), MSG_BUSY)
+    expect(creation_remove(m, "harbour-loop"))
+    expect_eq(mission_start(m, plan, 0, [3, 4]), -1)           # nothing can start from it now
+    expect(not creation_remove(m, "harbour-loop"))
+  }
+
+  test "a creation is a value that reads back the same" (m: mut MissionsState, w: mut WorldState) {
+    let c = a_race("harbour-loop")
+    c.text = "Two laps round the old harbour."
+    creation_add_spawn(c, 1.5, -2.25)
+    c.tags = ["night", "short"]
+    c.likes = 4
+    let text = Json.encode(creation_to_val(c))
+    let back = creation_from_val(Json.parse(text))
+    expect(back != null)
+    expect_eq(back.id, "harbour-loop")
+    expect_eq(back.title, "Harbour loop")
+    expect_eq(back.text, "Two laps round the old harbour.")
+    expect_eq(len(back.gates), 3)
+    expect(back.gates[1].x == 80.0)
+    expect(back.gates[2].radius == 6.0)
+    expect_eq(len(back.spawns), 1)
+    expect(back.spawns[0].z == -2.25)
+    expect_eq(back.laps, 2)
+    expect(back.seconds == 300.0)
+    expect_eq(creation_rule(back, "traffic", 9), 0)
+    expect_eq(len(back.tags), 2)
+    expect_eq(back.tags[1], "short")
+    expect_eq(back.likes, 4)
+    expect_eq(len(creation_problems(back)), 0)
+  }
+
+  test "a value that cannot be trusted comes out bounded, and is judged" {
+    expect(creation_from_val(Value.int(5)) == null)
+    expect(creation_from_val(null) == null)
+    let v = Value.object()
+    sv_put_str(v, "id", "x")
+    sv_put_str(v, "kind", "street_race")
+    sv_put_str(v, "title", "t")
+    let gs = new []int
+    for i in 0 .. 4000 { push(gs, 1000 * (i % 7)) }
+    sv_put_ints(v, "gates", gs)
+    let c = creation_from_val(v)
+    expect(c != null)
+    expect(len(c.gates) <= 512)
+    expect(len(creation_problems(c)) > 0)                        # more gates than a race may have, and a radius of 0
+    let w = Value.object()
+    sv_put_str(w, "kind", "street_race")
+    let d = creation_from_val(w)
+    expect(len(creation_problems(d)) > 0)                        # no id, no title
+  }
+}

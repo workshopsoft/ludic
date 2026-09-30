@@ -1,0 +1,210 @@
+# defs.ludic - what a game writes: contacts, missions, their nodes and edges (the graph), roles, heist
+# chains and their planning boards. All open, append-only and keyed, so a package or the game adds rows
+# from any module and a file can bring them (`def Missions from "missions.lres"`). A row names another
+# by its key (a string), never by its place: a studio edits the graph as two tables and a creator's
+# rows, which have no compiled constants, are the same records.
+
+# what a mission is (a game may add its own kinds from MSK_COUNT on)
+export const MSK_JOB: int = 0           # a job any player may take, from a board or a phone
+export const MSK_CONTACT: int = 1       # a mission a contact gives, often in a story order
+export const MSK_SETUP: int = 2         # a heist's preparation
+export const MSK_FINALE: int = 3        # a heist's big one
+export const MSK_RACE: int = 4
+export const MSK_ADVERSARY: int = 5     # teams against each other (a score, a hold, a survival)
+export const MSK_CUSTOM: int = 6        # made by a player (a creation compiled to a mission)
+export const MSK_COUNT: int = 7
+
+# what a node asks of the players
+export const MSN_GOTO: int = 0          # be there: (x, z, radius), or `target`: a place the game reports
+export const MSN_COLLECT: int = 1       # pick up `count` of `target`
+export const MSN_DELIVER: int = 2       # hand over `count` of `target` (at x, z if a place is given)
+export const MSN_ELIMINATE: int = 3     # put down `count` of `target` (an enemy group's word)
+export const MSN_DEFEND: int = 4        # keep `target` for `seconds`; losing it fails the node
+export const MSN_MINIGAME: int = 5      # a hack or a lockpick: `target` names it, the game reports the result
+export const MSN_SURVIVE: int = 6       # stay alive for `seconds`
+export const MSN_ESCAPE: int = 7        # lose the heat: nobody wanted (through the port)
+export const MSN_RACE: int = 8          # the gates, in order, `count` laps
+export const MSN_WAIT_TEAM: int = 9     # everyone (or `count`) is ready
+export const MSN_CHOICE: int = 10       # the team picks: the edge whose `on` is the choice's key
+export const MSN_SCORE: int = 11        # a team reaches `count` points (or the clock runs out: the best leads)
+export const MSN_WAIT: int = 12         # `seconds` pass
+export const MSN_SIGNAL: int = 13       # the game says `target` is so (anything this list lacks)
+export const MSN_DO: int = 14           # the game is asked to do `target` (spawn, cut-scene) and it is done at once
+export const MSN_PASS: int = 15         # the mission is won
+export const MSN_FAIL: int = 16         # the mission is lost
+export const MSN_COUNT: int = 17
+
+# who must do what a node asks
+export const MSW_ANY: int = 0           # anyone (the team's deeds add up)
+export const MSW_ALL: int = 1           # every member who is alive
+
+export const MSREP_ALWAYS: int = 0
+export const MSREP_ONCE: int = 1        # once ever, per player
+export const MSREP_DAILY: int = 2       # once a day (MissionsWorld.day)
+
+export const MSSHARE_EQUAL: int = 0     # the pot split evenly among those who finished
+export const MSSHARE_CUTS: int = 1      # by each member's cut (a heist: set on the planning board)
+export const MSSHARE_SCORE: int = 2     # by what each scored
+export const MSSHARE_PLACE: int = 3     # by `payout`: a percent for each place, first to last
+
+# a point a race or a route passes through
+export property Gate {
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  @Unit("m") @Range(0.5, 500) radius: float = 8.0
+}
+
+# a person who gives missions
+export property Contact {
+  key: string = ""
+  @Text title: Key = null
+  @Text @Multiline intro: Key = null
+  icon: string = ""
+  @Range(0, 1000) min_rank: int = 0       # standing before they call
+}
+@AppendOnly @ByKey
+export open registry Contacts of Contact as CONTACT
+
+# a mission: who may take it, what it pays, when it may be taken again. Its graph is MissionSteps and
+# MissionEdges rows naming it by `key`; its roles are MissionRoles rows
+export property Mission {
+  key: string = ""
+  @Text title: Key = null
+  @Text @Multiline text: Key = null
+  @OneOf(MSK_) kind: int = 0
+  contact: string = ""                    # a Contacts key ("": none)
+  heist: string = ""                      # a HeistChains key, for a setup or a finale
+  @Range(1, 30) min_players: int = 1
+  @Range(1, 30) max_players: int = 4
+  @Range(1, 8) teams: int = 1
+  @Unit("s") @Range(0, 36000) time_limit: float = 0.0     # the whole mission's clock (0: none)
+  start: string = ""                      # the node it opens on ("": the first of its nodes)
+  @Range(0, 100000000) money: int = 0     # the pot, paid when it is won
+  @Range(0, 1000000) xp: int = 0
+  item: string = ""                       # an item's key, paid through the port
+  @Range(0, 1000) item_count: int = 1
+  @Range(0, 100000000) fee: int = 0       # charged to each player at the start
+  @OneOf(MSREP_ALWAYS, MSREP_ONCE, MSREP_DAILY) replay: int = 0
+  @Unit("s") @Range(0, 864000) cooldown: float = 0.0      # seconds before a player may take it again
+  needs: []string = null                  # missions a player has won first
+  @Range(0, 1000) min_rank: int = 0
+  @Range(-1, 100) retries: int = -1       # how many times a lost run may be tried again (-1: no limit)
+  join_in_progress: bool = true
+  wipe: bool = true                       # everybody down at once loses the mission
+  @OneOf(MSSHARE_EQUAL, MSSHARE_CUTS, MSSHARE_SCORE, MSSHARE_PLACE) share: int = 0
+  payout: []int = null                    # MSSHARE_PLACE: percents, first place first
+  @Range(0, 100) leader_cut: int = 0      # a percent of the pot off the top for whoever leads (a heist)
+}
+@AppendOnly @ByKey
+export open registry Missions of Mission as MIS
+
+# a node of a mission's graph: one objective (or an instant, or an end). `ex`, `ey` are where an editor
+# draws it
+export property MissionStep {
+  key: string = ""
+  mission: string = ""                    # the Missions key it belongs to
+  @OneOf(MSN_) kind: int = 0
+  @Text title: Key = null                 # the line the player reads
+  target: string = ""                     # the game's word: a place, an item, an enemy group, a minigame
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+  @Unit("m") @Range(0, 2000) radius: float = 6.0
+  @Range(0, 100000) count: int = 1
+  @Unit("s") @Range(0, 36000) seconds: float = 0.0        # a limit (a wait, a survival: how long)
+  role: string = ""                       # only that role's deeds count ("": anyone's)
+  @OneOf(MSW_ANY, MSW_ALL) who: int = 0
+  @Range(1, 16) join: int = 1             # arrivals an edge must bring before it opens
+  checkpoint: bool = false                # a lost run may start again from here
+  hidden: bool = false                    # no marker
+  blip: string = ""                       # the game's word for the marker's look
+  arg: int = 0                            # a difficulty, a laps count: the game's
+  gates: []Gate = null                    # a race's course
+  ex: float = 0.0
+  ey: float = 0.0
+}
+@AppendOnly @ByKey
+export open registry MissionSteps of MissionStep as MSTEP
+
+# an edge: when `from` ends with the outcome `on` ("done", "fail", "timeout", or a choice's or a
+# signal's key), go to `to`. Edges are tried in table order and the first whose `cond` holds is taken;
+# `par` ones are all taken, beside it (a fork). A node with no edge for "done" wins the mission, one
+# with no edge for "fail" or "timeout" loses it
+export property MissionEdge {
+  key: string = ""
+  mission: string = ""
+  from: string = ""
+  to: string = ""
+  on: string = "done"
+  cond: string = ""                       # "flag:<key>" or "!flag:<key>": a heist's modifier; else MissionsWorld.check
+  par: bool = false
+  @Text label: Key = null
+}
+@AppendOnly @ByKey
+export open registry MissionEdges of MissionEdge as MEDGE
+
+# a part a player plays in a mission (a driver, a hacker): how many, and its weight in a cut
+export property MissionRole {
+  key: string = ""
+  mission: string = ""
+  @Text title: Key = null
+  @Range(0, 30) least: int = 0
+  @Range(1, 30) most: int = 1
+  @Range(0, 7) team: int = 0
+  @Range(0, 100) cut: int = 0             # a weight, not a percent: the cuts are shares of the sum
+  leader: bool = false
+  icon: string = ""
+}
+@AppendOnly @ByKey
+export open registry MissionRoles of MissionRole as MROLE
+
+# a heist: setups on a planning board and then the finale
+export property HeistChain {
+  key: string = ""
+  @Text title: Key = null
+  @Text @Multiline text: Key = null
+  contact: string = ""
+  finale: string = ""                     # the Missions key of the big one
+  @Range(1, 30) min_players: int = 2
+  @Range(1, 30) max_players: int = 4
+  @Range(0, 100) crew_cut_floor: int = 5  # the least percent of the take any member's cut may be set to
+}
+@AppendOnly @ByKey
+export open registry HeistChains of HeistChain as HEIST
+
+# one thing on a heist's planning board: a setup mission to do before the finale. `group` makes
+# several of them alternatives (one approach of three); `modifier` is the flag it sets on the finale
+export property HeistPrep {
+  key: string = ""
+  heist: string = ""
+  @Text title: Key = null
+  mission: string = ""                    # the Missions key of the setup
+  group: string = ""                      # "": needed on its own; else one of this group is needed
+  modifier: string = ""                   # set as a flag on the finale when this is done
+  @Range(0, 100000000) cost: int = 0      # what the leader pays for the setup
+  optional: bool = false                  # it makes the finale easier, and is not needed
+  after: string = ""                      # a HeistPreps key that must be done first
+}
+@AppendOnly @ByKey
+export open registry HeistPreps of HeistPrep as HPREP
+
+# what a player may build: a kind of creation, the node it becomes and the limits on it
+export property CreationKind {
+  key: string = ""
+  @Text title: Key = null
+  @OneOf(MSN_) node: int = 8              # the objective its course compiles to (a race, a score)
+  @OneOf(MSK_) mission: int = 6
+  @Range(0, 64) min_gates: int = 0
+  @Range(0, 512) max_gates: int = 64
+  @Range(1, 30) max_players: int = 8
+  @Range(0, 100000000) money: int = 0     # what finishing pays: the game's economy, not the creator's
+  @Range(0, 1000000) xp: int = 0
+  @Range(1, 8) max_teams: int = 1
+  @Range(0, 20) max_laps: int = 1
+  @Unit("s") @Range(0, 36000) max_seconds: float = 900.0
+  @Range(0, 5000) max_score: int = 0
+  rules: []string = null                  # the rule keys a creator may set (the game reads them)
+}
+@AppendOnly @ByKey
+export open registry CreationKinds of CreationKind as CKIND

@@ -1,0 +1,213 @@
+# snapshot.ludic - host authority on the wire. The host sends a run's snapshot whenever its `rev` moved
+# (mission_rev); a guest applies it (mission_apply) and keeps a mirror it can draw from: the same queries
+# answer on both, the same facts are said for what changed, and nothing on a guest decides anything. What a
+# guest does goes the other way as MSF_ASK facts for the game to send to the host.
+
+function ms__ms(f: float) -> int { return int(Math.floor(f * 1000.0 + 0.5)) }
+
+export function mission_rev(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return -1 }
+  return run.rev
+}
+
+# a run as a value: what a guest needs to draw it and to answer the same questions
+@alloc_ok("a snapshot is made when a run changes, to be sent")
+export function mission_snapshot(missions_st: MissionsState, run_id: int) -> Val {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return null }
+  let pl = missions_st.ms__plans[run.plan]
+  let v = Value.object()
+  sv_put_int(v, "id", run.id)
+  sv_put_str(v, "plan", pl.key)
+  sv_put_int(v, "group", run.group)
+  sv_put_int(v, "phase", run.phase)
+  sv_put_int(v, "time", ms__ms(run.time))
+  sv_put_int(v, "limit", ms__ms(run.limit_left))
+  sv_put_int(v, "tries", run.tries)
+  sv_put_int(v, "retries", run.retries_left)
+  sv_put_int(v, "reason", run.reason)
+  sv_put_int(v, "leader", run.leader)
+  sv_put_int(v, "rev", run.rev)
+  sv_put_int(v, "finished", run.finished)
+  sv_put_int(v, "race_g", run.race_g)
+  sv_put_int(v, "heist", run.heist)
+  sv_put_int(v, "prep", run.prep)
+  sv_put_int(v, "nonce", run.nonce)
+  sv_put_ints(v, "st", run.st)
+  sv_put_ints(v, "have", run.have)
+  sv_put_ints(v, "seen", run.seen)
+  let lf = new []int
+  for i in 0 .. len(run.left) { push(lf, ms__ms(run.left[i])) }
+  sv_put_ints(v, "left", lf)
+  sv_put_ints(v, "teams", run.team_score)
+  let ms = new []int
+  for i in 0 .. len(run.members) {
+    let m = run.members[i]
+    push(ms, m.who)
+    push(ms, ms__b(m.present))
+    push(ms, m.role)
+    push(ms, m.team)
+    push(ms, ms__b(m.alive))
+    push(ms, ms__b(m.ready))
+    push(ms, m.score)
+    push(ms, m.deaths)
+    push(ms, run.cuts[i])
+    push(ms, run.lap[i])
+    push(ms, run.gate[i])
+    push(ms, ms__ms(run.finish[i]))
+    push(ms, run.place[i])
+  }
+  sv_put_ints(v, "members", ms)
+  let fl = Value.list()
+  for i in 0 .. len(run.flags) { Value.add(fl, Value.str(run.flags[i])) }
+  Value.put(v, "flags", fl)
+  if pl.custom {
+    let c = creation_get(missions_st, pl.key[4..len(pl.key)])
+    if c != null { Value.put(v, "creation", creation_to_val(c)) }
+  }
+  return v
+}
+
+function ms__b(b: bool) -> int {
+  if b { return 1 }
+  return 0
+}
+
+# the host's snapshot of a run: a mirror is made or brought up to date. Returns the run's id, or -1 when
+# this machine is the host (its own runs are not overwritten) or the plan is unknown
+@alloc_ok("a mirror is made once per run a guest learns of")
+export function mission_apply(missions_st: mut MissionsState, v: Val) -> int {
+  ms__build(missions_st)
+  if MissionsWorld.host() or v == null or Value.kind(v) != 6 { return -1 }
+  let key = sv_str(v, "plan", "")
+  var plan = mission_find(missions_st, key)
+  if plan < 0 and Value.has(v, "creation") != 0 {
+    let c = creation_from_val(Value.get(v, "creation"))
+    if c != null { plan = creation_compile(missions_st, c) }
+  }
+  if plan < 0 { return -1 }
+  let pl = missions_st.ms__plans[plan]
+  let id = sv_int(v, "id", -1)
+  var run = ms__run(missions_st, id)
+  let n = len(pl.nodes)
+  var fresh = false
+  if run == null {
+    fresh = true
+    run = new MissionRun
+    run.id = id
+    run.plan = plan
+    run.mirror = true
+    run.members = new []RunMember
+    run.flags = new []string
+    run.cuts = new []int
+    run.lap = new []int
+    run.gate = new []int
+    run.finish = new []float
+    run.place = new []int
+    run.st = ms__ints(n, MSS_IDLE)
+    run.tok = ms__ints(n, 0)
+    run.have = ms__ints(n, 0)
+    run.left = ms__floats(n, 0.0)
+    run.seen = ms__ints(n, 0)
+    run.ck_st = ms__ints(n, 0)
+    run.ck_tok = ms__ints(n, 0)
+    run.ck_have = ms__ints(n, 0)
+    run.ck_left = ms__floats(n, 0.0)
+    run.ck_seen = ms__ints(n, 0)
+    run.team_score = ms__ints(pl.mission.teams, 0)
+    push(missions_st.ms__runs, run)
+    let s = ms__fact(missions_st, MSF_STARTED, id)
+    s.plan = plan
+    s.group = sv_int(v, "group", 0)
+  }
+  if not fresh and sv_int(v, "rev", 0) < run.rev { return id }      # an older snapshot arriving late
+  let was = sv_int(v, "phase", run.phase)
+  let before = run.phase
+  run.group = sv_int(v, "group", run.group)
+  run.phase = was
+  run.time = float(sv_int(v, "time", 0)) / 1000.0
+  run.limit_left = float(sv_int(v, "limit", 0)) / 1000.0
+  run.tries = sv_int(v, "tries", 0)
+  run.retries_left = sv_int(v, "retries", -1)
+  run.reason = sv_int(v, "reason", 0)
+  run.leader = sv_int(v, "leader", -1)
+  run.rev = sv_int(v, "rev", 0)
+  run.finished = sv_int(v, "finished", 0)
+  run.race_g = sv_int(v, "race_g", 1)
+  run.heist = sv_int(v, "heist", -1)
+  run.prep = sv_int(v, "prep", -1)
+  run.nonce = sv_int(v, "nonce", 0)
+  let st = sv_ints(v, "st")
+  let have = sv_ints(v, "have")
+  let seen = sv_ints(v, "seen")
+  let lf = sv_ints(v, "left")
+  for i in 0 .. n {
+    if i < len(st) and st[i] != run.st[i] {
+      var what = -1
+      if st[i] == MSS_ACTIVE { what = MSF_NODE } else if st[i] == MSS_DONE { what = MSF_NODE_DONE } else if st[i] == MSS_FAILED { what = MSF_NODE_FAILED }
+      if what >= 0 {
+        let f = ms__fact(missions_st, what, id)
+        f.plan = plan
+        f.node = i
+        f.n = pl.nodes[i].kind
+        f.need = pl.nodes[i].count
+        f.text = pl.nodes[i].target
+      }
+      run.st[i] = st[i]
+    }
+    if i < len(have) { run.have[i] = have[i] }
+    if i < len(seen) { run.seen[i] = seen[i] }
+    if i < len(lf) { run.left[i] = float(lf[i]) / 1000.0 }
+  }
+  let ts = sv_ints(v, "teams")
+  for t in 0 .. len(run.team_score) { if t < len(ts) { run.team_score[t] = ts[t] } }
+  let ms = sv_ints(v, "members")
+  let count = len(ms) / 13
+  while len(run.members) < count {
+    push(run.members, new RunMember)
+    push(run.cuts, 0)
+    push(run.lap, 0)
+    push(run.gate, 0)
+    push(run.finish, -1.0)
+    push(run.place, 0)
+  }
+  for i in 0 .. len(run.members) {
+    let m = run.members[i]
+    if i >= count {
+      m.present = false
+      continue
+    }
+    let q = i * 13
+    m.who = ms[q]
+    m.present = ms[q + 1] != 0
+    m.role = ms[q + 2]
+    m.team = ms[q + 3]
+    m.alive = ms[q + 4] != 0
+    m.ready = ms[q + 5] != 0
+    m.score = ms[q + 6]
+    m.deaths = ms[q + 7]
+    run.cuts[i] = ms[q + 8]
+    run.lap[i] = ms[q + 9]
+    run.gate[i] = ms[q + 10]
+    run.finish[i] = float(ms[q + 11]) / 1000.0
+    run.place[i] = ms[q + 12]
+  }
+  run.flags = new []string
+  if Value.has(v, "flags") != 0 {
+    let fl = Value.get(v, "flags")
+    for i in 0 .. Value.count(fl) { push(run.flags, intern(Value.as_str(Value.at(fl, i)))) }
+  }
+  if before != was {
+    var what = -1
+    if was == MSR_RUNNING { what = MSF_BEGAN } else if was == MSR_PASSED { what = MSF_PASSED } else if was == MSR_FAILED { what = MSF_FAILED } else if was == MSR_ENDED { what = MSF_ENDED }
+    if what >= 0 {
+      let f = ms__fact(missions_st, what, id)
+      f.plan = plan
+      f.reason = run.reason
+      f.x = run.time
+      f.n = run.retries_left
+    }
+  }
+  return id
+}

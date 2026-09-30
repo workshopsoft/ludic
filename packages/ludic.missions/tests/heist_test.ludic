@@ -1,0 +1,200 @@
+# heist_test.ludic - roles given by preference, a choice and a minigame, a modifier's shortcut, and a bank
+# heist from its planning board (setups, alternatives, a decoy, the leader's cuts) to a finale paid by cuts
+import "ludic.missions"
+import "ludic.base"
+program HeistTest {
+  import "fixture/world.ludic"
+  import "fixture/flow.ludic"
+
+  function fresh(w: mut WorldState, m: mut MissionsState) -> void {
+    world_fresh(w)
+    missions_reset(m)
+    missions_init(m)
+  }
+
+  function facts_text(m: MissionsState, what: int) -> string {
+    let fs = q_drain(missions_facts(m))
+    var out = ""
+    for i in 0 .. len(fs) { if fs[i].what == what { out = out + fs[i].text + ";" } }
+    return out
+  }
+
+  test "roles: the leastes first, by preference, then the rest" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let v = mission_find(m, "vault")
+    let id = mission_start(m, v, 0, [1, 2, 3, 4])
+    expect(mission_prefer_role(m, id, 3, "vault_hacker"))
+    expect(mission_prefer_role(m, id, 4, "vault_gun"))
+    expect(not mission_prefer_role(m, id, 4, "no_such_role"))
+    expect(mission_begin(m, id))
+    expect_eq(mission_role_key(m, id, 3), "vault_hacker")
+    expect_eq(mission_role_key(m, id, 1), "vault_driver")
+    expect_eq(mission_role_key(m, id, 4), "vault_gun")
+    expect_eq(mission_role_key(m, id, 2), "vault_gun")
+    expect_eq(mission_leader(m, id), 3)
+  }
+
+  test "roles that cannot be filled keep the run from beginning" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let v = mission_find(m, "vault")
+    let id = mission_start(m, v, 0, [1, 2])
+    expect(mission_begin(m, id))
+    let v2 = mission_start(m, v, 0, [5])
+    expect_eq(v2, -1)
+    expect_eq(mission_why(m), MSG_TOO_FEW)
+  }
+
+  test "a choice, a minigame for the hacker only, a failed hack and the alarm" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let v = mission_find(m, "vault")
+    let id = mission_start(m, v, 0, [1, 2, 3])
+    mission_prefer_role(m, id, 2, "vault_hacker")
+    mission_begin(m, id)
+    for i in 1 .. 4 { mission_report(m, id, i, MRP_READY, "", 1) }
+    expect_eq(mission_node_state(m, id, 1), MSS_ACTIVE)            # the choice
+    expect_eq(facts_text(m, MSF_CHOICE), "loud,quiet;")
+    expect(not mission_report(m, id, 1, MRP_CHOICE, "bogus", 1))
+    expect(mission_report(m, id, 1, MRP_CHOICE, "quiet", 1))
+    expect_eq(mission_node_state(m, id, 3), MSS_ACTIVE)            # the hack
+    let fs = q_drain(missions_facts(m))
+    var prompts = 0
+    var prompted = -1
+    for i in 0 .. len(fs) { if fs[i].what == MSF_MINIGAME { prompts += 1; prompted = fs[i].who } }
+    expect_eq(prompts, 1)
+    expect_eq(prompted, 2)
+    expect(not mission_report(m, id, 1, MRP_HACKED, "panel", 1))  # the driver's result is not the hacker's
+    expect(mission_report(m, id, 2, MRP_HACKED, "panel", 0))      # failed: the alarm, the guards
+    expect_eq(mission_node_state(m, id, 3), MSS_FAILED)
+    expect_eq(mission_node_state(m, id, 2), MSS_ACTIVE)
+    mission_report(m, id, 1, MRP_KILL, "guard", 2)
+    expect_eq(mission_node_state(m, id, 2), MSS_ACTIVE)
+    mission_report(m, id, 3, MRP_KILL, "guard", 1)
+    expect_eq(mission_node_state(m, id, 4), MSS_ACTIVE)            # the escape
+    mission_tick(m, 0.1)
+    expect_eq(mission_phase(m, id), MSR_PASSED)
+  }
+
+  test "a modifier flag takes the shortcut" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let v = mission_find(m, "vault")
+    let id = mission_start(m, v, 0, [1, 2])
+    mission_set_flag(m, id, "knows_layout")
+    expect(mission_flag(m, id, "knows_layout"))
+    mission_begin(m, id)
+    for i in 1 .. 3 { mission_report(m, id, i, MRP_READY, "", 1) }
+    expect_eq(mission_node_state(m, id, 1), MSS_IDLE)              # the choice was skipped
+    expect_eq(mission_node_state(m, id, 3), MSS_ACTIVE)            # straight to the hack
+  }
+
+  test "a condition the game answers" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    expect(w_check(w, "x", 0) == false)
+    push(w.conds, "x")
+    expect(w_check(w, "x", 0))
+  }
+
+  test "the planning board: setups, an alternative, a decoy, and the finale" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let hid = heist_begin(m, "bank", 1, [1, 2, 3])
+    expect(hid > 0)
+    expect_eq(len(heist_preps(m, hid)), 4)
+    let scout = 0
+    let gear_a = 1
+    let gear_b = 2
+    let decoy = 3
+    expect_eq(heist_prep_state(m, hid, scout), HP_AVAILABLE)
+    expect_eq(heist_prep_state(m, hid, gear_b), HP_LOCKED)         # after the scout
+    expect(not heist_ready(m, hid))
+    # the scout costs the leader fifty, and is played by two of the crew
+    let run = heist_start_prep(m, hid, scout, [2, 3])
+    expect(run > 0)
+    expect_eq(w.charged, 50)
+    expect_eq(heist_prep_state(m, hid, scout), HP_ACTIVE)
+    expect_eq(mission_members(m, run), 2)
+    expect(mission_report(m, run, 2, MRP_SIGNAL, "seen", 1))
+    expect_eq(heist_prep_state(m, hid, scout), HP_DONE)
+    expect(heist_has_flag(m, hid, "knows_layout"))
+    expect_eq(heist_prep_state(m, hid, gear_b), HP_AVAILABLE)
+    # one of the two kits is enough: doing gear_b declines gear_a
+    let g = heist_start_prep(m, hid, gear_b, [1, 2])
+    expect(g > 0)
+    expect_eq(mission_members(m, g), 2)
+    mission_report(m, g, 1, MRP_SIGNAL, "got", 1)
+    expect_eq(heist_prep_state(m, hid, gear_a), HP_DECLINED)
+    expect(heist_ready(m, hid))                                    # the decoy is optional
+    expect_eq(heist_prep_state(m, hid, decoy), HP_AVAILABLE)
+    let fs = q_drain(missions_facts(m))
+    var ready = 0
+    var preps = 0
+    for i in 0 .. len(fs) {
+      if fs[i].what == MSF_HEIST_READY { ready += 1 }
+      if fs[i].what == MSF_HEIST_PREP { preps += 1 }
+    }
+    expect_eq(ready, 1)
+    expect_eq(preps, 2)
+  }
+
+  test "the cuts: the leader's alone, never below the floor, adding to a hundred" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let hid = heist_begin(m, "bank", 1, [1, 2, 3])
+    expect_eq(heist_cut(m, hid, 1), 34)
+    expect_eq(heist_cut(m, hid, 2), 33)
+    expect(heist_cuts_ok(m, hid))
+    expect(not heist_set_cut(m, hid, 2, 2, 50))                   # not the leader
+    expect(heist_set_cut(m, hid, 1, 2, 50))
+    expect(not heist_cuts_ok(m, hid))                              # 117
+    expect(heist_set_cut(m, hid, 1, 1, 30))
+    expect(heist_set_cut(m, hid, 1, 3, 20))
+    expect(heist_cuts_ok(m, hid))
+    expect(heist_set_cut(m, hid, 1, 3, 5))
+    expect(not heist_cuts_ok(m, hid))                              # below the floor of ten, and not a hundred
+    heist_cuts_default(m, hid)
+    expect(heist_cuts_ok(m, hid))
+  }
+
+  test "the finale carries the modifiers and pays by the cuts, the leader's ten off the top" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let hid = heist_begin(m, "bank", 1, [1, 2, 3])
+    let r1 = heist_start_prep(m, hid, 0, [1, 2])
+    mission_report(m, r1, 1, MRP_SIGNAL, "seen", 1)
+    let r2 = heist_start_prep(m, hid, 1, [1, 2])
+    mission_report(m, r2, 1, MRP_SIGNAL, "got", 1)
+    expect(heist_ready(m, hid))
+    heist_set_cut(m, hid, 1, 1, 50)
+    expect_eq(heist_start_finale(m, hid), -1)                      # 117: not a hundred
+    heist_set_cut(m, hid, 1, 2, 25)
+    heist_set_cut(m, hid, 1, 3, 25)
+    let f = heist_start_finale(m, hid)
+    expect(f > 0)
+    expect_eq(heist_phase(m, hid), HS_FINALE)
+    expect(mission_flag(m, f, "knows_layout"))
+    expect(mission_flag(m, f, "loud_kit"))
+    expect_eq(mission_role_key(m, f, 1), "vault_driver")
+    expect_eq(mission_role_key(m, f, 2), "vault_hacker")
+    expect_eq(mission_leader(m, f), 2)
+    for i in 1 .. 4 { mission_report(m, f, i, MRP_READY, "", 1) }
+    expect_eq(mission_node_state(m, f, 3), MSS_ACTIVE)             # the flag took the shortcut to the hack
+    let pre = mission_payout_preview(m, f)
+    expect_eq(pre[0] + pre[1] + pre[2], 1000)
+    mission_report(m, f, 2, MRP_HACKED, "panel", 1)
+    mission_tick(m, 0.1)
+    expect_eq(mission_phase(m, f), MSR_PASSED)
+    expect_eq(heist_phase(m, hid), HS_DONE)
+    # 100 off the top to the leader (the hacker, 2); 900 in 50 / 25 / 25
+    expect_eq(w.money[1], 450 - 50)                                # less the scout's cost
+    expect_eq(w.money[2], 100 + 225)
+    expect_eq(w.money[3], 225)
+    expect_eq(w.money[1] + w.money[2] + w.money[3] + 50, 1000)
+  }
+
+  test "a setup the leader cannot pay for does not start" (m: mut MissionsState, w: mut WorldState) {
+    fresh(w, m)
+    let hid = heist_begin(m, "bank", 1, [1, 2])
+    w.fee_ok = false
+    expect_eq(heist_start_prep(m, hid, 0, [1, 2]), -1)
+    expect_eq(mission_why(m), MSG_FEE)
+    expect_eq(heist_prep_state(m, hid, 0), HP_AVAILABLE)
+    expect_eq(heist_begin(m, "bank", 9, [1, 2]), -1)               # the leader is not in the crew
+    expect_eq(heist_begin(m, "bank", 1, [1]), -1)                  # two at least
+  }
+}

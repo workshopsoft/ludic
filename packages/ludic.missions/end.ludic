@@ -1,0 +1,176 @@
+# end.ludic - a run ends: won (the pot is split and paid through the ports, what each player did is
+# recorded) or lost (it may be tried again). Every payment carries a key no other payment shares, so a
+# persistence service can take it as an idempotency key and a resent one pays once.
+
+# what each present member's part of the pot is, into `out` (a slot each), `pot` being what is shared
+function ms__split(missions_st: MissionsState, run: MissionRun, pot: int, out: []int) -> void {
+  let pl = missions_st.ms__plans[run.plan]
+  let m = pl.mission
+  List.clear(out)
+  for i in 0 .. len(run.members) { kept_push(out, 0) }
+  var lead = run.leader
+  if lead < 0 or lead >= len(run.members) or not run.members[lead].present { lead = -1 }
+  for i in 0 .. len(run.members) { if lead < 0 and run.members[i].present { lead = i } }
+  if lead < 0 { return }
+  var rest = pot
+  if m.leader_cut > 0 {
+    let lc = pot * m.leader_cut / 100
+    out[lead] += lc
+    rest = pot - lc
+  }
+  if m.share == MSSHARE_PLACE {
+    for i in 0 .. len(run.members) {
+      if not run.members[i].present { continue }
+      let pl2 = mission_place(missions_st, run.id, run.members[i].who)
+      if m.payout != null and pl2 >= 1 and pl2 <= len(m.payout) { out[i] += rest * m.payout[pl2 - 1] / 100 }
+    }
+    return
+  }
+  let w = new []int
+  var total = 0
+  for i in 0 .. len(run.members) {
+    var x = 0
+    if run.members[i].present {
+      x = 1
+      if m.share == MSSHARE_CUTS {
+        x = run.cuts[i]
+        if x == 0 and run.members[i].role >= 0 { x = pl.roles[run.members[i].role].cut }
+      } else if m.share == MSSHARE_SCORE {
+        x = run.members[i].score
+      }
+    }
+    push(w, x)
+    total += x
+  }
+  if total == 0 {
+    for i in 0 .. len(run.members) { w[i] = 0; if run.members[i].present { w[i] = 1 } }
+    total = ms__present(run)
+  }
+  var given = 0
+  for i in 0 .. len(run.members) {
+    let part = rest * w[i] / total
+    out[i] += part
+    given += part
+  }
+  out[lead] += rest - given                    # the rounding goes to the leader: the pot is paid out exactly
+}
+
+function ms__pay(missions_st: mut MissionsState, run: MissionRun) -> void {
+  if run.paid { return }
+  run.paid = true
+  let pl = missions_st.ms__plans[run.plan]
+  let m = pl.mission
+  let parts = new []int
+  ms__split(missions_st, run, m.money, parts)
+  for i in 0 .. len(run.members) {
+    if not run.members[i].present { continue }
+    let who = run.members[i].who
+    let base = `{pl.key}:{run.nonce}:{who}`
+    if parts[i] > 0 {
+      MissionsPay.money(who, parts[i], base + ":money")
+      let f = ms__fact(missions_st, MSF_PAY_MONEY, run.id)
+      f.who = who
+      f.n = parts[i]
+      f.key = base + ":money"
+    }
+    if m.xp > 0 {
+      MissionsPay.xp(who, m.xp, base + ":xp")
+      let f = ms__fact(missions_st, MSF_PAY_XP, run.id)
+      f.who = who
+      f.n = m.xp
+      f.key = base + ":xp"
+    }
+    if m.item != "" and m.item_count > 0 {
+      MissionsPay.item(who, m.item, m.item_count, base + ":item")
+      let f = ms__fact(missions_st, MSF_PAY_ITEM, run.id)
+      f.who = who
+      f.n = m.item_count
+      f.text = m.item
+      f.key = base + ":item"
+    }
+  }
+}
+
+function ms__record(missions_st: mut MissionsState, run: MissionRun, won: bool) -> void {
+  let key = missions_st.ms__plans[run.plan].key
+  for i in 0 .. len(run.members) {
+    if not run.members[i].present { continue }
+    let p = ms__prog(missions_st, run.members[i].who, key)
+    if won {
+      p.done += 1
+      p.last_t = missions_st.ms__time
+      p.last_day = MissionsWorld.day()
+      if p.best < 0.0 or run.time < p.best { p.best = run.time }
+    } else {
+      p.tries += 1
+    }
+    let f = ms__fact(missions_st, MSF_PROGRESS_SAVED, run.id)
+    f.who = run.members[i].who
+  }
+}
+
+function ms__markers_off(missions_st: mut MissionsState, run: MissionRun) -> void {
+  for i in 0 .. len(run.st) { if run.st[i] == MSS_ACTIVE { ms__marker_fact(missions_st, run, i, false) } }
+}
+
+# the leading team at the end: the one with the most points (-1 with no teams scoring)
+function ms__lead_team(run: MissionRun) -> int {
+  var best = -1
+  var at = -1
+  for t in 0 .. len(run.team_score) {
+    if run.team_score[t] > best and run.team_score[t] > 0 {
+      best = run.team_score[t]
+      at = t
+    }
+  }
+  return at
+}
+
+function ms__win(missions_st: mut MissionsState, run: MissionRun) -> void {
+  if run.phase != MSR_RUNNING { return }
+  ms__markers_off(missions_st, run)
+  run.phase = MSR_PASSED
+  run.rev += 1
+  ms__pay(missions_st, run)
+  ms__record(missions_st, run, true)
+  let f = ms__fact(missions_st, MSF_PASSED, run.id)
+  f.plan = run.plan
+  f.group = run.group
+  f.x = run.time
+  f.team = ms__lead_team(run)
+  ms__heist_hook(missions_st, run, true)
+}
+
+function ms__lose(missions_st: mut MissionsState, run: MissionRun, reason: int) -> void {
+  if run.phase != MSR_RUNNING { return }
+  ms__markers_off(missions_st, run)
+  run.phase = MSR_FAILED
+  run.reason = reason
+  run.rev += 1
+  ms__record(missions_st, run, false)
+  let f = ms__fact(missions_st, MSF_FAILED, run.id)
+  f.plan = run.plan
+  f.group = run.group
+  f.reason = reason
+  f.n = run.retries_left
+  ms__heist_hook(missions_st, run, false)
+}
+
+# the game ends a run it decided is lost (a rule of its own)
+export function mission_fail(missions_st: mut MissionsState, run_id: int) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null or run.phase != MSR_RUNNING or not MissionsWorld.host() { return false }
+  ms__lose(missions_st, run, MSE_GAME)
+  return true
+}
+
+# what each member would be paid if the run were won now (a slot each, present or not): a planning
+# board's and a score screen's preview
+export function mission_payout_preview(missions_st: mut MissionsState, run_id: int) -> []int {
+  let out = missions_st.ms__list
+  List.clear(out)
+  let run = ms__run(missions_st, run_id)
+  if run == null { return out }
+  ms__split(missions_st, run, missions_st.ms__plans[run.plan].mission.money, out)
+  return out
+}

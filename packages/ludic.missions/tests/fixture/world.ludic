@@ -1,0 +1,110 @@
+# world.ludic - what every missions test shares: a fake world the ports read, a ledger the pay port
+# writes, and a few missions as a game would write them. Imported inside each test's program block.
+  numbers float
+
+  state WorldState {
+    host: bool = true
+    xs: []float = null
+    zs: []float = null
+    down: []bool = null         # dead players
+    heat: []int = null
+    rank: []int = null
+    day: int = 1
+    money: []int = null
+    xp: []int = null
+    items: []int = null
+    paid_keys: []string = null
+    conds: []string = null      # the conditions that hold
+    fee_ok: bool = true
+    charged: int = 0
+  }
+
+  function world_fresh(w: mut WorldState) -> void {
+    w.host = true
+    w.xs = new []float
+    w.zs = new []float
+    w.down = new []bool
+    w.heat = new []int
+    w.rank = new []int
+    w.money = new []int
+    w.xp = new []int
+    w.items = new []int
+    for i in 0 .. 8 {
+      push(w.xs, 0.0)
+      push(w.zs, 0.0)
+      push(w.down, false)
+      push(w.heat, 0)
+      push(w.rank, 0)
+      push(w.money, 0)
+      push(w.xp, 0)
+      push(w.items, 0)
+    }
+    w.paid_keys = new []string
+    w.conds = new []string
+    w.day = 1
+    w.fee_ok = true
+    w.charged = 0
+  }
+
+  function at(w: mut WorldState, who: int, x: float, z: float) -> void {
+    w.xs[who] = x
+    w.zs[who] = z
+  }
+
+  function w_host(w: WorldState) -> bool { return w.host }
+  function w_x(w: WorldState, who: int) -> float { return w.xs[who] }
+  function w_z(w: WorldState, who: int) -> float { return w.zs[who] }
+  function w_alive(w: WorldState, who: int) -> bool { return not w.down[who] }
+  function w_wanted(w: WorldState, who: int) -> int { return w.heat[who] }
+  function w_rank(w: WorldState, who: int) -> int { return w.rank[who] }
+  function w_day(w: WorldState) -> int { return w.day }
+  function w_seed() -> int { return 77 }
+  function w_check(w: WorldState, cond: string, run: int) -> bool {
+    for i in 0 .. len(w.conds) { if w.conds[i] == cond { return true } }
+    return false
+  }
+  bind MissionsWorld { host: fn w_host, x: fn w_x, z: fn w_z, alive: fn w_alive, wanted: fn w_wanted, check: fn w_check, rank: fn w_rank, day: fn w_day, seed: fn w_seed }
+
+  function p_charge(w: mut WorldState, who: int, n: int, key: string) -> bool {
+    if not w.fee_ok { return false }
+    w.money[who] -= n
+    w.charged += n
+    return true
+  }
+  function p_money(w: mut WorldState, who: int, n: int, key: string) -> void {
+    for i in 0 .. len(w.paid_keys) { if w.paid_keys[i] == key { return } }
+    push(w.paid_keys, key)
+    w.money[who] += n
+  }
+  function p_xp(w: mut WorldState, who: int, n: int, key: string) -> void { w.xp[who] += n }
+  function p_item(w: mut WorldState, who: int, item: string, n: int, key: string) -> void { w.items[who] += n }
+  bind MissionsPay { charge: fn p_charge, money: fn p_money, xp: fn p_xp, item: fn p_item }
+
+  # --- the missions ---
+  const K_DEPOT: string = "depot"
+
+  def Contacts dispatcher { icon: "phone" }
+
+  # a courier job: go to the depot, collect two parcels, deliver them, done. 500 split among those who do it
+  def Missions courier { kind: MSK_JOB, contact: "dispatcher", min_players: 1, max_players: 3, money: 500, xp: 40, item: "crate", item_count: 1, replay: MSREP_ALWAYS, cooldown: 60.0, retries: 2 }
+  def MissionSteps courier_depot { mission: "courier", kind: MSN_GOTO, target: "depot", x: 10.0, z: 10.0, radius: 5.0, blip: "pin" }
+  def MissionSteps courier_collect { mission: "courier", kind: MSN_COLLECT, target: "parcel", count: 2, seconds: 120.0, checkpoint: true }
+  def MissionSteps courier_drop { mission: "courier", kind: MSN_DELIVER, target: "parcel", count: 2, x: 100.0, z: 0.0, radius: 6.0 }
+  def MissionSteps courier_end { mission: "courier", kind: MSN_PASS }
+  def MissionSteps courier_lost { mission: "courier", kind: MSN_FAIL }
+  def MissionEdges courier_e1 { mission: "courier", from: "courier_depot", to: "courier_collect" }
+  def MissionEdges courier_e2 { mission: "courier", from: "courier_collect", to: "courier_drop" }
+  def MissionEdges courier_e3 { mission: "courier", from: "courier_drop", to: "courier_end" }
+  def MissionEdges courier_e4 { mission: "courier", from: "courier_collect", to: "courier_lost", on: "timeout" }
+
+  # a mission that is once only, needs the courier, wants rank 3
+  def Missions premium { kind: MSK_CONTACT, contact: "dispatcher", min_players: 1, max_players: 1, money: 100, replay: MSREP_ONCE, needs: ["courier"], min_rank: 3 }
+  def MissionSteps premium_go { mission: "premium", kind: MSN_SIGNAL, target: "done_it" }
+  def MissionEdges premium_e1 { mission: "premium", from: "premium_go", to: "premium_end" }
+  def MissionSteps premium_end { mission: "premium", kind: MSN_PASS }
+
+  # broken: an edge to nowhere, a race with no gates, a node nobody reaches
+  def Missions broken { kind: MSK_JOB }
+  def MissionSteps broken_a { mission: "broken", kind: MSN_RACE }
+  def MissionSteps broken_b { mission: "broken", kind: MSN_SIGNAL, target: "x" }
+  def MissionEdges broken_e1 { mission: "broken", from: "broken_a", to: "nowhere" }

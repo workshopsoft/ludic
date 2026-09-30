@@ -1,0 +1,367 @@
+# creator.ludic - player-made missions as data. A `Creation` is a record a player fills in (a course, a
+# time, a score, a few rules); its `CreationKinds` row says what it may be and how much; `creation_compile`
+# turns it into the same plan a written mission is - a waiting room, the kind's node, the win - so it runs
+# through the same machinery and the same studio view. A creation is a value (creation_to_val /
+# creation_from_val) so a persistence service or a server can keep and share it; nothing in it is code,
+# and a game's economy, not the creator, decides what finishing pays.
+export property CreationRule {
+  key: string = ""
+  value: int = 0
+}
+
+export property Creation {
+  id: string = ""                   # the mission's key is "ugc:" + id
+  author: string = ""
+  kind: string = ""                 # a CreationKinds key
+  title: string = ""                # the player's own words
+  text: string = ""
+  gates: []Gate = null              # the course
+  spawns: []Gate = null             # the start grid
+  laps: int = 1
+  seconds: float = 0.0
+  score: int = 0
+  min_players: int = 1
+  players: int = 8
+  teams: int = 1
+  rules: []CreationRule = null
+  tags: []string = null
+  version: int = 1
+  plays: int = 0
+  likes: int = 0
+}
+
+export const CR_TITLE: int = 60
+export const CR_TEXT: int = 400
+export const CR_TAGS: int = 8
+export const CR_SPAN: float = 100000.0    # a gate's farthest coordinate, metres
+
+function creation__kind(key: string) -> int {
+  for i in 0 .. CKIND_COUNT { if CreationKinds[i].key == key { return i } }
+  return -1
+}
+
+# an id is a short name the game can use as a key: lower case letters, digits, '_' and '-'
+function creation__id_ok(id: string) -> bool {
+  if len(id) == 0 or len(id) > 40 { return false }
+  for i in 0 .. len(id) {
+    let c = id[i]
+    if not ((c >= 'a' and c <= 'z') or (c >= '0' and c <= '9') or c == '_' or c == '-') { return false }
+  }
+  return true
+}
+
+export function creation_new(id: string, author: string, kind: string) -> Creation {
+  let c = new Creation
+  c.id = id
+  c.author = author
+  c.kind = kind
+  c.gates = new []Gate
+  c.spawns = new []Gate
+  c.rules = new []CreationRule
+  c.tags = new []string
+  return c
+}
+
+export function creation_add_gate(c: Creation, x: float, z: float, radius: float) -> void {
+  let g = new Gate
+  g.x = x
+  g.z = z
+  g.radius = radius
+  push(c.gates, g)
+}
+
+export function creation_add_spawn(c: Creation, x: float, z: float) -> void {
+  let g = new Gate
+  g.x = x
+  g.z = z
+  push(c.spawns, g)
+}
+
+export function creation_set_rule(c: Creation, key: string, value: int) -> void {
+  for i in 0 .. len(c.rules) {
+    if c.rules[i].key == key {
+      c.rules[i].value = value
+      return
+    }
+  }
+  let r = new CreationRule
+  r.key = key
+  r.value = value
+  push(c.rules, r)
+}
+
+export function creation_rule(c: Creation, key: string, fallback: int) -> int {
+  for i in 0 .. len(c.rules) { if c.rules[i].key == key { return c.rules[i].value } }
+  return fallback
+}
+
+# every reason the creation may not be played, a line each (empty: it may)
+@alloc_ok("a creator's check: a tool's question, not a frame's")
+export function creation_problems(c: Creation) -> []string {
+  let out = new []string
+  if not creation__id_ok(c.id) { push(out, "id: lower case letters, digits, '_' and '-', 1 to 40 of them") }
+  let k = creation__kind(c.kind)
+  if k < 0 {
+    push(out, `kind: {c.kind} is not a kind of creation this game has`)
+    return out
+  }
+  let kd = CreationKinds[k]
+  if len(c.title) == 0 or len(c.title) > CR_TITLE { push(out, `title: 1 to {CR_TITLE} characters`) }
+  if len(c.text) > CR_TEXT { push(out, `text: at most {CR_TEXT} characters`) }
+  if len(c.gates) < kd.min_gates { push(out, `gates: {len(c.gates)} is fewer than the {kd.min_gates} a {kd.key} needs`) }
+  if len(c.gates) > kd.max_gates { push(out, `gates: {len(c.gates)} is more than the {kd.max_gates} a {kd.key} may have`) }
+  for i in 0 .. len(c.gates) {
+    let g = c.gates[i]
+    if Math.abs(g.x) > CR_SPAN or Math.abs(g.z) > CR_SPAN or Math.abs(g.y) > CR_SPAN { push(out, `gate {i}: out of the world`) }
+    if g.radius < 0.5 or g.radius > 500.0 { push(out, `gate {i}: radius {g.radius} is not between 0.5 and 500`) }
+  }
+  if c.laps < 1 or c.laps > kd.max_laps and kd.max_laps > 0 { push(out, `laps: 1 to {kd.max_laps}`) }
+  if c.seconds < 0.0 or c.seconds > kd.max_seconds { push(out, `seconds: 0 to {kd.max_seconds}`) }
+  if c.score < 0 or c.score > kd.max_score { push(out, `score: 0 to {kd.max_score}`) }
+  if c.players < 1 or c.players > kd.max_players { push(out, `players: 1 to {kd.max_players}`) }
+  if c.min_players < 1 or c.min_players > c.players { push(out, "min_players: 1 to players") }
+  if c.teams < 1 or c.teams > kd.max_teams { push(out, `teams: 1 to {kd.max_teams}`) }
+  if len(c.tags) > CR_TAGS { push(out, `tags: at most {CR_TAGS}`) }
+  for i in 0 .. len(c.tags) { if len(c.tags[i]) == 0 or len(c.tags[i]) > 20 { push(out, `tag {i}: 1 to 20 characters`) } }
+  for i in 0 .. len(c.rules) {
+    let r = c.rules[i]
+    var allowed = false
+    if kd.rules != null { for a in 0 .. len(kd.rules) { if kd.rules[a] == r.key { allowed = true } } }
+    if not allowed { push(out, `rule {r.key}: not one this kind has`) }
+    if Math.abs(r.value) > 1000000 { push(out, `rule {r.key}: value out of range`) }
+  }
+  return out
+}
+
+# a creation as a value, a number as thousandths so it reads back exactly
+@alloc_ok("on a save or a send: a creation written out")
+export function creation_to_val(c: Creation) -> Val {
+  let v = Value.object()
+  sv_put_str(v, "id", c.id)
+  sv_put_str(v, "author", c.author)
+  sv_put_str(v, "kind", c.kind)
+  sv_put_str(v, "title", c.title)
+  sv_put_str(v, "text", c.text)
+  let gs = new []int
+  for i in 0 .. len(c.gates) {
+    push(gs, int(Math.floor(c.gates[i].x * 1000.0 + 0.5)))
+    push(gs, int(Math.floor(c.gates[i].y * 1000.0 + 0.5)))
+    push(gs, int(Math.floor(c.gates[i].z * 1000.0 + 0.5)))
+    push(gs, int(Math.floor(c.gates[i].radius * 1000.0 + 0.5)))
+  }
+  sv_put_ints(v, "gates", gs)
+  let ss = new []int
+  for i in 0 .. len(c.spawns) {
+    push(ss, int(Math.floor(c.spawns[i].x * 1000.0 + 0.5)))
+    push(ss, int(Math.floor(c.spawns[i].z * 1000.0 + 0.5)))
+  }
+  sv_put_ints(v, "spawns", ss)
+  sv_put_int(v, "laps", c.laps)
+  sv_put_float(v, "seconds", c.seconds)
+  sv_put_int(v, "score", c.score)
+  sv_put_int(v, "min_players", c.min_players)
+  sv_put_int(v, "players", c.players)
+  sv_put_int(v, "teams", c.teams)
+  let rs = Value.object()
+  for i in 0 .. len(c.rules) { sv_put_int(rs, c.rules[i].key, c.rules[i].value) }
+  Value.put(v, "rules", rs)
+  let ts = Value.list()
+  for i in 0 .. len(c.tags) { Value.add(ts, Value.str(c.tags[i])) }
+  Value.put(v, "tags", ts)
+  sv_put_int(v, "version", c.version)
+  sv_put_int(v, "plays", c.plays)
+  sv_put_int(v, "likes", c.likes)
+  return v
+}
+
+# the other way. Whatever the value holds, what comes out is bounded (lists are cut at the largest
+# any kind allows); creation_problems is the judge of whether it may be played
+@alloc_ok("on a load or a receive: a creation read in")
+export function creation_from_val(v: Val) -> Creation {
+  if v == null or Value.kind(v) != 6 { return null }
+  let c = creation_new(sv_str(v, "id", ""), sv_str(v, "author", ""), sv_str(v, "kind", ""))
+  c.title = sv_str(v, "title", "")
+  c.text = sv_str(v, "text", "")
+  let gs = sv_ints(v, "gates")
+  var most = 512
+  var i = 0
+  while i + 3 < len(gs) and len(c.gates) < most {
+    let g = new Gate
+    g.x = float(gs[i]) / 1000.0
+    g.y = float(gs[i + 1]) / 1000.0
+    g.z = float(gs[i + 2]) / 1000.0
+    g.radius = float(gs[i + 3]) / 1000.0
+    push(c.gates, g)
+    i += 4
+  }
+  let ss = sv_ints(v, "spawns")
+  i = 0
+  while i + 1 < len(ss) and len(c.spawns) < 64 {
+    let g = new Gate
+    g.x = float(ss[i]) / 1000.0
+    g.z = float(ss[i + 1]) / 1000.0
+    push(c.spawns, g)
+    i += 2
+  }
+  c.laps = sv_int(v, "laps", 1)
+  c.seconds = sv_float(v, "seconds", 0.0)
+  c.score = sv_int(v, "score", 0)
+  c.min_players = sv_int(v, "min_players", 1)
+  c.players = sv_int(v, "players", 8)
+  c.teams = sv_int(v, "teams", 1)
+  if Value.has(v, "rules") != 0 {
+    let rs = Value.get(v, "rules")
+    if Value.kind(rs) == 6 {
+      for k in 0 .. Value.count(rs) {
+        if len(c.rules) >= 32 { break }
+        creation_set_rule(c, Value.key_at(rs, k), Value.as_int(Value.at(rs, k)))
+      }
+    }
+  }
+  if Value.has(v, "tags") != 0 {
+    let ts = Value.get(v, "tags")
+    if Value.kind(ts) == 5 {
+      for k in 0 .. Value.count(ts) {
+        if len(c.tags) >= 16 { break }
+        push(c.tags, intern(Value.as_str(Value.at(ts, k))))
+      }
+    }
+  }
+  c.version = sv_int(v, "version", 1)
+  c.plays = sv_int(v, "plays", 0)
+  c.likes = sv_int(v, "likes", 0)
+  return c
+}
+
+function creation__node(key: string, mission: string, kind: int) -> MissionStep {
+  let n = new MissionStep
+  n.key = key
+  n.mission = mission
+  n.kind = kind
+  return n
+}
+
+function creation__edge(key: string, mission: string, from: string, to: string) -> MissionEdge {
+  let e = new MissionEdge
+  e.key = key
+  e.mission = mission
+  e.from = from
+  e.to = to
+  return e
+}
+
+# the creation's plan: a waiting room, the kind's node, the win. Replaces the plan of the same creation
+# unless a run of it is under way. Returns the plan's place, or -1 (a creation_problems line, or busy)
+@alloc_ok("a creation is compiled when a player saves or picks it, not in a frame")
+export function creation_compile(missions_st: mut MissionsState, c: Creation) -> int {
+  ms__build(missions_st)
+  missions_st.ms__why = MSG_OK
+  if len(creation_problems(c)) > 0 {
+    missions_st.ms__why = MSG_GRAPH
+    return -1
+  }
+  let kd = CreationKinds[creation__kind(c.kind)]
+  let key = `ugc:{c.id}`
+  let at = mission_find(missions_st, key)
+  if at >= 0 {
+    for r in 0 .. len(missions_st.ms__runs) {
+      if missions_st.ms__runs[r].plan == at and ms__busy(missions_st.ms__runs[r]) {
+        missions_st.ms__why = MSG_BUSY
+        return -1
+      }
+    }
+  }
+  let m = new Mission
+  m.key = key
+  m.kind = kd.mission
+  m.min_players = c.min_players
+  m.max_players = c.players
+  m.teams = c.teams
+  m.money = kd.money
+  m.xp = kd.xp
+  m.retries = 0
+  m.join_in_progress = false
+  m.wipe = kd.node == MSN_SURVIVE
+  m.start = "ready"
+  if kd.node == MSN_RACE {
+    m.share = MSSHARE_PLACE
+    m.payout = [50, 30, 20]
+  }
+  let nodes = new []MissionStep
+  let ready = creation__node("ready", key, MSN_WAIT_TEAM)
+  ready.count = 0
+  push(nodes, ready)
+  let run = creation__node("run", key, kd.node)
+  run.count = c.score
+  run.seconds = c.seconds
+  run.arg = 0
+  if kd.node == MSN_RACE {
+    run.count = c.laps
+    run.gates = c.gates
+  } else if kd.node == MSN_GOTO and len(c.gates) > 0 {
+    run.x = c.gates[0].x
+    run.z = c.gates[0].z
+    run.radius = c.gates[0].radius
+  }
+  if run.count < 1 { run.count = 1 }
+  push(nodes, run)
+  push(nodes, creation__node("win", key, MSN_PASS))
+  let edges = new []MissionEdge
+  push(edges, creation__edge("go", key, "ready", "run"))
+  push(edges, creation__edge("finish", key, "run", "win"))
+  let plan = ms__make_plan(m, nodes, edges, new []MissionRole, true)
+  var slot = at
+  if at >= 0 {
+    missions_st.ms__plans[at] = plan
+  } else {
+    push(missions_st.ms__plans, plan)
+    slot = len(missions_st.ms__plans) - 1
+  }
+  var kept = false
+  for i in 0 .. len(missions_st.ms__creations) {
+    if missions_st.ms__creations[i].id == c.id {
+      missions_st.ms__creations[i] = c
+      kept = true
+    }
+  }
+  if not kept { push(missions_st.ms__creations, c) }
+  let f = ms__fact(missions_st, MSF_CREATION, -1)
+  f.text = c.id
+  f.n = slot
+  f.plan = slot
+  return slot
+}
+
+export function creations_count(missions_st: MissionsState) -> int {
+  if missions_st.ms__creations == null { return 0 }
+  return len(missions_st.ms__creations)
+}
+
+export function creation_get(missions_st: MissionsState, id: string) -> Creation {
+  if missions_st.ms__creations == null { return null }
+  for i in 0 .. len(missions_st.ms__creations) { if missions_st.ms__creations[i].id == id { return missions_st.ms__creations[i] } }
+  return null
+}
+
+# a creation was played to its end: its count moves (the game keeps its own leaderboard of who was fastest)
+export function creation_played(missions_st: mut MissionsState, id: string) -> void {
+  let c = creation_get(missions_st, id)
+  if c != null { c.plays += 1 }
+}
+
+# a creation taken out: no new run of it (an open one plays on)
+export function creation_remove(missions_st: mut MissionsState, id: string) -> bool {
+  let keep = new []Creation
+  var found = false
+  for i in 0 .. len(missions_st.ms__creations) {
+    if missions_st.ms__creations[i].id == id { found = true } else { push(keep, missions_st.ms__creations[i]) }
+  }
+  missions_st.ms__creations = keep
+  let at = mission_find(missions_st, `ugc:{id}`)
+  if at >= 0 {
+    let p = missions_st.ms__plans[at]
+    p.nodes = new []MissionStep        # the plan's place stays (runs name plans by place); nothing in it can start
+    p.problems = 1
+  }
+  return found
+}

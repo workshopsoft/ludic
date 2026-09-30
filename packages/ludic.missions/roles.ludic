@@ -1,0 +1,114 @@
+# roles.ludic - who plays which part. A player may ask for a role; `mission_assign_roles` gives each
+# role its least number first (those who asked for it, then the others in order), then fills the rest
+# by preference up to each role's most. A role marked `leader` makes its holder the leader; a run with
+# none is led by its first member.
+
+function ms__role_count(run: MissionRun, role: int) -> int {
+  var n = 0
+  for i in 0 .. len(run.members) { if run.members[i].present and run.members[i].role == role { n += 1 } }
+  return n
+}
+
+function ms__give_role(missions_st: mut MissionsState, run: MissionRun, i: int, role: int) -> void {
+  let m = run.members[i]
+  m.role = role
+  let pl = missions_st.ms__plans[run.plan]
+  m.team = pl.roles[role].team
+  let f = ms__fact(missions_st, MSF_ROLE, run.id)
+  f.who = m.who
+  f.n = role
+  f.team = m.team
+  f.text = pl.roles[role].key
+}
+
+@alloc_ok("roles are given once, when a run begins")
+function ms__assign(missions_st: mut MissionsState, run: MissionRun) -> bool {
+  let pl = missions_st.ms__plans[run.plan]
+  let nr = len(pl.roles)
+  for i in 0 .. len(run.members) { run.members[i].role = -1 }
+  if nr == 0 {
+    for i in 0 .. len(run.members) {
+      run.members[i].team = i % pl.mission.teams
+    }
+    run.leader = 0
+    return true
+  }
+  # the least of each role, those who asked for it first
+  for ph in 0 .. 2 {
+    for r in 0 .. nr {
+      for i in 0 .. len(run.members) {
+        if ms__role_count(run, r) >= pl.roles[r].least { break }
+        if run.members[i].role >= 0 { continue }
+        if ph == 0 and run.members[i].want != r { continue }
+        ms__give_role(missions_st, run, i, r)
+      }
+    }
+  }
+  for r in 0 .. nr { if ms__role_count(run, r) < pl.roles[r].least { return false } }
+  # the rest: what they asked for while it has room, else the first role with room
+  for i in 0 .. len(run.members) {
+    if run.members[i].role >= 0 { continue }
+    let w = run.members[i].want
+    if w >= 0 and ms__role_count(run, w) < pl.roles[w].most {
+      ms__give_role(missions_st, run, i, w)
+      continue
+    }
+    for r in 0 .. nr {
+      if ms__role_count(run, r) < pl.roles[r].most {
+        ms__give_role(missions_st, run, i, r)
+        break
+      }
+    }
+    if run.members[i].role < 0 { return false }
+  }
+  run.leader = 0
+  for i in 0 .. len(run.members) {
+    if pl.roles[run.members[i].role].leader {
+      run.leader = i
+      break
+    }
+  }
+  return true
+}
+
+# a player asks for a role before the run begins (by the role's key); false for one the plan lacks
+export function mission_prefer_role(missions_st: mut MissionsState, run_id: int, who: int, role_key: string) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return false }
+  if not MissionsWorld.host() {
+    let f = ms__fact(missions_st, MSF_ASK, run_id)
+    f.ask = MSA_ROLE
+    f.who = who
+    f.text = role_key
+    return false
+  }
+  let i = ms__member(run, who)
+  if i < 0 or run.phase != MSR_FORMING { return false }
+  let r = ms__role_at(missions_st.ms__plans[run.plan], role_key)
+  if r < 0 { return false }
+  run.members[i].want = r
+  run.rev += 1
+  return true
+}
+
+# the role a member holds (a place in the plan's roles, -1 none) and its key
+export function mission_role_of(missions_st: MissionsState, run_id: int, who: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return -1 }
+  let i = ms__member(run, who)
+  if i < 0 { return -1 }
+  return run.members[i].role
+}
+
+export function mission_role_key(missions_st: MissionsState, run_id: int, who: int) -> string {
+  let r = mission_role_of(missions_st, run_id, who)
+  let run = ms__run(missions_st, run_id)
+  if r < 0 or run == null { return "" }
+  return missions_st.ms__plans[run.plan].roles[r].key
+}
+
+export function mission_leader(missions_st: MissionsState, run_id: int) -> int {
+  let run = ms__run(missions_st, run_id)
+  if run == null or run.leader < 0 or run.leader >= len(run.members) { return -1 }
+  return run.members[run.leader].who
+}

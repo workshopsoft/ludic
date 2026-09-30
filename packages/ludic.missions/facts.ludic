@@ -1,0 +1,96 @@
+# facts.ludic - what happened, for the game to draw, say and pay. One record, read by `what`; a field
+# a kind does not use keeps its reset value.
+export const MSF_STARTED: int = 0         # a run was made (run, plan, group)
+export const MSF_BEGAN: int = 1           # its clock started
+export const MSF_JOINED: int = 2          # a player joined (who, team, n: their role or -1)
+export const MSF_LEFT: int = 3            # a player left (who)
+export const MSF_ROLE: int = 4            # a role was given (who, n: the role, text: its key)
+export const MSF_NODE: int = 5            # a node opened (node, text: its target, have 0, need)
+export const MSF_NODE_DONE: int = 6       # a node ended well (node, text: the outcome taken)
+export const MSF_NODE_FAILED: int = 7     # a node ended badly (node, text: the outcome: fail or timeout)
+export const MSF_PROGRESS: int = 8        # a count moved (node, have, need, who)
+export const MSF_MARKER_ON: int = 9       # show a marker (node, who: -1 everyone, x, z, radius, text: blip, n: MSN_ kind)
+export const MSF_MARKER_OFF: int = 10     # take it down (node, who)
+export const MSF_MINIGAME: int = 11       # start the minigame `text` for `who` (node, n: difficulty)
+export const MSF_DO: int = 12             # do `text` (spawn, play a scene): a MSN_DO node (node)
+export const MSF_CHOICE: int = 13         # the team is to choose (node, text: the options, comma-separated)
+export const MSF_CHECKPOINT: int = 14     # a checkpoint was reached (node)
+export const MSF_RETRY: int = 15          # the run starts again (node: where from, -1 the start, n: tries)
+export const MSF_PASSED: int = 16         # the mission was won (time in x)
+export const MSF_FAILED: int = 17         # it was lost (reason, n: tries left, -1 no limit)
+export const MSF_ENDED: int = 18          # closed or abandoned
+export const MSF_PAY_MONEY: int = 19      # (who, n: money, text: the payment's key)
+export const MSF_PAY_XP: int = 20
+export const MSF_PAY_ITEM: int = 21       # (who, n: count, text: the item, key in `key`)
+export const MSF_FEE: int = 22            # a fee was taken (who, n)
+export const MSF_TEAM_SCORE: int = 23     # (team in `team`, n: its score, who: the scorer)
+export const MSF_PLACE: int = 24          # a racer finished (who, n: the place, x: the time)
+export const MSF_PROGRESS_SAVED: int = 25 # a player's record of what they won changed (who): save it
+export const MSF_HEIST_PREP: int = 26     # a setup is done (heist run in `run`, n: the prep)
+export const MSF_HEIST_READY: int = 27    # the board is ready: the finale may start
+export const MSF_HEIST_FINALE: int = 28   # the finale run began (n: its run)
+export const MSF_HEIST_DONE: int = 29     # the heist ended (n: 1 won, 0 lost)
+export const MSF_ASK: int = 30            # a guest asked: send it to the host (ask: MSA_*, who, text, n, node)
+export const MSF_CREATION: int = 31       # a creation was compiled (text: its id, n: the plan)
+export const MSF_FLAG: int = 32           # a modifier flag was set on a run (text)
+
+# what a guest's ask was (MSF_ASK)
+export const MSA_REPORT: int = 0          # mission_report(run, who, node=what, text=target, n)
+export const MSA_JOIN: int = 1
+export const MSA_LEAVE: int = 2
+export const MSA_RETRY: int = 3
+export const MSA_ABANDON: int = 4
+export const MSA_ROLE: int = 5            # mission_prefer_role (text: the role's key)
+
+export property MissionFact {
+  what: int = 0
+  run: int = -1
+  plan: int = -1
+  node: int = -1
+  who: int = -1
+  team: int = 0
+  group: int = 0
+  have: int = 0
+  need: int = 0
+  n: int = 0
+  ask: int = 0
+  reason: int = 0
+  x: float = 0.0
+  z: float = 0.0
+  radius: float = 0.0
+  text: string = ""
+  key: string = ""
+}
+
+function ms__facts__new() -> Queue<MissionFact> { return queue_new("missions.facts") }
+
+export function missions_facts(missions_st: MissionsState) -> Queue<MissionFact> { return missions_st.ms__facts }
+
+# a fact, from the queue's own ring of records when one is free
+function ms__fact(missions_st: mut MissionsState, what: int, run: int) -> MissionFact {
+  var f = q_rec(missions_st.ms__facts)
+  if f == null {
+    @alloc_ok("past the ring: more of these in a frame than its records, then kept in it")
+    f = new MissionFact
+    q_ring_add(missions_st.ms__facts, f)
+  }
+  f.what = what
+  f.run = run
+  f.plan = -1
+  f.node = -1
+  f.who = -1
+  f.team = 0
+  f.group = 0
+  f.have = 0
+  f.need = 0
+  f.n = 0
+  f.ask = 0
+  f.reason = 0
+  f.x = 0.0
+  f.z = 0.0
+  f.radius = 0.0
+  f.text = ""
+  f.key = ""
+  q_push(missions_st.ms__facts, f)
+  return f
+}

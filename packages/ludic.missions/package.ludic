@@ -1,0 +1,7 @@
+# ludic.missions - jobs, contact missions, heists, races and adversary modes as data graphs: a mission
+# is rows of nodes and edges, a run is an instance per lobby or team with objective state, markers as
+# facts, checkpoints, roles and cuts, and player-made races and modes are the same rows. Uses
+# ludic.base and nothing else. See README.md.
+package "ludic.missions"
+version "0.1.0"
+kind source

@@ -1,0 +1,118 @@
+# book.ludic - plans: a mission with its nodes, edges and roles gathered. The registries are read once
+# (missions_init); a creation adds a plan of its own. A plan is asked by its mission's key.
+
+# a node's gates: its list is null when it has none
+function ms__gates(n: MissionStep) -> int {
+  if n.gates == null { return 0 }
+  return len(n.gates)
+}
+
+function ms__node_at(p: MissionPlan, key: string) -> int {
+  for i in 0 .. len(p.nodes) { if p.nodes[i].key == key { return i } }
+  return -1
+}
+
+function ms__role_at(p: MissionPlan, key: string) -> int {
+  for i in 0 .. len(p.roles) { if p.roles[i].key == key { return i } }
+  return -1
+}
+
+# a plan out of a mission and its three lists (the lists are kept, not copied)
+@alloc_ok("a plan is made once, when the registries are read or a creation is compiled")
+function ms__make_plan(m: Mission, nodes: []MissionStep, edges: []MissionEdge, roles: []MissionRole, custom: bool) -> MissionPlan {
+  let p = new MissionPlan
+  p.key = m.key
+  p.mission = m
+  p.nodes = nodes
+  p.edges = edges
+  p.roles = roles
+  p.custom = custom
+  p.outs = new [][]int
+  for i in 0 .. len(nodes) { push(p.outs, new []int) }
+  for e in 0 .. len(edges) {
+    let f = ms__node_at(p, edges[e].from)
+    if f >= 0 { push(p.outs[f], e) }
+  }
+  p.start = -1
+  if len(nodes) > 0 { p.start = 0 }
+  if m.start != "" { p.start = ms__node_at(p, m.start) }
+  p.problems = ms__count_errors(ms__check(p))
+  return p
+}
+
+@alloc_ok("once: the registries' rows gathered into plans")
+function ms__build(missions_st: mut MissionsState) -> void {
+  if missions_st.ms__built { return }
+  missions_st.ms__built = true
+  if missions_st.ms__plans == null { missions_st.ms__plans = new []MissionPlan }
+  if missions_st.ms__runs == null { missions_st.ms__runs = new []MissionRun }
+  if missions_st.ms__progress == null { missions_st.ms__progress = new []Progress }
+  if missions_st.ms__heists == null { missions_st.ms__heists = new []HeistRun }
+  if missions_st.ms__creations == null { missions_st.ms__creations = new []Creation }
+  if missions_st.ms__dice == null { missions_st.ms__dice = rng_new(MissionsWorld.seed()) }
+  for i in 0 .. MIS_COUNT {
+    let m = Missions[i]
+    let nodes = new []MissionStep
+    for n in 0 .. MSTEP_COUNT { if MissionSteps[n].mission == m.key { push(nodes, MissionSteps[n]) } }
+    let edges = new []MissionEdge
+    for e in 0 .. MEDGE_COUNT { if MissionEdges[e].mission == m.key { push(edges, MissionEdges[e]) } }
+    let roles = new []MissionRole
+    for r in 0 .. MROLE_COUNT { if MissionRoles[r].mission == m.key { push(roles, MissionRoles[r]) } }
+    push(missions_st.ms__plans, ms__make_plan(m, nodes, edges, roles, false))
+  }
+}
+
+# read the registries; once at start (the system's init), harmless again
+export function missions_init(missions_st: mut MissionsState) -> void { ms__build(missions_st) }
+
+export function missions_plans(missions_st: MissionsState) -> int {
+  if missions_st.ms__plans == null { return 0 }
+  return len(missions_st.ms__plans)
+}
+
+# the plan of a mission's key, or -1
+export function mission_find(missions_st: MissionsState, key: string) -> int {
+  if missions_st.ms__plans == null { return -1 }
+  for i in 0 .. len(missions_st.ms__plans) { if missions_st.ms__plans[i].key == key { return i } }
+  return -1
+}
+
+export function mission_plan_key(missions_st: MissionsState, plan: int) -> string {
+  if not ms__plan_ok(missions_st, plan) { return "" }
+  return missions_st.ms__plans[plan].key
+}
+
+function ms__plan_ok(missions_st: MissionsState, plan: int) -> bool {
+  return missions_st.ms__plans != null and plan >= 0 and plan < len(missions_st.ms__plans)
+}
+
+export function mission_plan_kind(missions_st: MissionsState, plan: int) -> int {
+  if not ms__plan_ok(missions_st, plan) { return -1 }
+  return missions_st.ms__plans[plan].mission.kind
+}
+
+export function mission_nodes(missions_st: MissionsState, plan: int) -> int {
+  if not ms__plan_ok(missions_st, plan) { return 0 }
+  return len(missions_st.ms__plans[plan].nodes)
+}
+
+# a node of a plan by its key, or -1
+export function mission_node_find(missions_st: MissionsState, plan: int, key: string) -> int {
+  if not ms__plan_ok(missions_st, plan) { return -1 }
+  return ms__node_at(missions_st.ms__plans[plan], key)
+}
+
+export function mission_node_key(missions_st: MissionsState, plan: int, node: int) -> string {
+  if not ms__plan_ok(missions_st, plan) or node < 0 or node >= len(missions_st.ms__plans[plan].nodes) { return "" }
+  return missions_st.ms__plans[plan].nodes[node].key
+}
+
+# the missions a contact gives, in table order, into `out` (cleared first)
+export function missions_of_contact(missions_st: MissionsState, contact: string, out: []int) -> int {
+  List.clear(out)
+  if missions_st.ms__plans == null { return 0 }
+  for i in 0 .. len(missions_st.ms__plans) {
+    if missions_st.ms__plans[i].mission.contact == contact { kept_push(out, i) }
+  }
+  return len(out)
+}

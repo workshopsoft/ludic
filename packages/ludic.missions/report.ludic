@@ -1,0 +1,197 @@
+# report.ludic - what the game says happened. The package never looks at the world for deeds: a pickup, a
+# kill, a delivery, a minigame's result, a death is reported with the player it was by, and the open nodes
+# that ask for it count it. (Where a player stands - a place to reach, a race's gates, being clear of the
+# law - is read through MissionsWorld on the tick.)
+export const MRP_ARRIVED: int = 0       # the player reached the place called `target`
+export const MRP_COLLECT: int = 1       # picked up `n` of `target`
+export const MRP_DELIVER: int = 2       # handed over `n` of `target`
+export const MRP_KILL: int = 3          # put down `n` of `target` (an enemy group's word)
+export const MRP_LOST: int = 4          # `target` (a thing being defended) was lost
+export const MRP_HACKED: int = 5        # a minigame `target` ended: n 1 done, 0 failed
+export const MRP_READY: int = 6         # the player is ready (a waiting room)
+export const MRP_CHOICE: int = 7        # the player chose the option `target`
+export const MRP_SIGNAL: int = 8        # the game says `target` is so
+export const MRP_SCORE: int = 9         # `n` points for the player and their team
+export const MRP_DIED: int = 10
+export const MRP_RESPAWNED: int = 11
+export const MRP_GATE: int = 12         # the player passed gate `n` of a race (the game's own collision)
+export const MRP_FAIL: int = 13         # `target` is a node's key, or "": the whole run is lost
+
+function ms__target_ok(n: MissionStep, target: string) -> bool { return n.target == "" or n.target == target }
+
+function ms__role_ok(missions_st: MissionsState, run: MissionRun, n: MissionStep, i: int) -> bool {
+  if n.role == "" { return true }
+  let r = run.members[i].role
+  return r >= 0 and missions_st.ms__plans[run.plan].roles[r].key == n.role
+}
+
+function ms__progress_fact(missions_st: mut MissionsState, run: MissionRun, node: int, who: int) -> void {
+  let f = ms__fact(missions_st, MSF_PROGRESS, run.id)
+  f.plan = run.plan
+  f.node = node
+  f.who = who
+  f.have = run.have[node]
+  f.need = missions_st.ms__plans[run.plan].nodes[node].count
+}
+
+# everyone down at once loses a mission that says so
+function ms__wipe_check(missions_st: mut MissionsState, run: MissionRun) -> void {
+  if run.phase != MSR_RUNNING or not missions_st.ms__plans[run.plan].mission.wipe { return }
+  for i in 0 .. len(run.members) { if ms__live(run, i) { return } }
+  ms__lose(missions_st, run, MSE_WIPED)
+}
+
+# ready: everyone eligible, or `count` of them
+function ms__ready_check(missions_st: mut MissionsState, run: MissionRun, node: int) -> void {
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  var have = 0
+  var all = 0
+  for i in 0 .. len(run.members) {
+    if not ms__eligible(missions_st, run, n, i) { continue }
+    all += 1
+    if run.members[i].ready { have += 1 }
+  }
+  run.have[node] = have
+  var need = all
+  if n.count > 0 and n.count < all { need = n.count }
+  if all > 0 and have >= need { ms__finish(missions_st, run, node, "done") }
+}
+
+# a goto is done by one of the team, or by every live one
+function ms__reached(missions_st: mut MissionsState, run: MissionRun, node: int, mi: int) -> void {
+  let n = missions_st.ms__plans[run.plan].nodes[node]
+  run.seen[node] = run.seen[node] | (1 << mi)
+  if n.who == MSW_ANY {
+    ms__finish(missions_st, run, node, "done")
+    return
+  }
+  for i in 0 .. len(run.members) {
+    if ms__eligible(missions_st, run, n, i) and (run.seen[node] & (1 << i)) == 0 { return }
+  }
+  ms__finish(missions_st, run, node, "done")
+}
+
+function ms__count_on(missions_st: mut MissionsState, run: MissionRun, node: int, who: int, n: int) -> void {
+  var add = n
+  if add < 1 { add = 1 }
+  run.have[node] += add
+  run.rev += 1
+  ms__progress_fact(missions_st, run, node, who)
+  if run.have[node] >= missions_st.ms__plans[run.plan].nodes[node].count {
+    ms__finish(missions_st, run, node, "done")
+  }
+}
+
+function ms__score_on(missions_st: mut MissionsState, run: MissionRun, mi: int, n: int) -> void {
+  let team = run.members[mi].team
+  if team < 0 or team >= len(run.team_score) { return }
+  run.team_score[team] += n
+  run.members[mi].score += n
+  run.rev += 1
+  let f = ms__fact(missions_st, MSF_TEAM_SCORE, run.id)
+  f.plan = run.plan
+  f.who = run.members[mi].who
+  f.team = team
+  f.n = run.team_score[team]
+  let pl = missions_st.ms__plans[run.plan]
+  for i in 0 .. len(pl.nodes) {
+    if run.st[i] != MSS_ACTIVE or pl.nodes[i].kind != MSN_SCORE { continue }
+    var best = 0
+    for t in 0 .. len(run.team_score) { if run.team_score[t] > best { best = run.team_score[t] } }
+    run.have[i] = best
+    if pl.nodes[i].count > 0 and best >= pl.nodes[i].count { ms__finish(missions_st, run, i, "done") }
+  }
+}
+
+# something happened. True when an open node counted it (or the run's own books did: a death, a score).
+# A guest's report is an ask for the host
+export function mission_report(missions_st: mut MissionsState, run_id: int, who: int, what: int, target: string, n: int) -> bool {
+  let run = ms__run(missions_st, run_id)
+  if run == null { return false }
+  if not MissionsWorld.host() {
+    let a = ms__fact(missions_st, MSF_ASK, run_id)
+    a.ask = MSA_REPORT
+    a.who = who
+    a.node = what
+    a.text = target
+    a.n = n
+    return false
+  }
+  if run.phase != MSR_RUNNING { return false }
+  let mi = ms__member(run, who)
+  if mi < 0 { return false }
+  let pl = missions_st.ms__plans[run.plan]
+  if what == MRP_DIED {
+    if not run.members[mi].alive { return false }
+    run.members[mi].alive = false
+    run.members[mi].deaths += 1
+    run.rev += 1
+    ms__wipe_check(missions_st, run)
+    return true
+  }
+  if what == MRP_RESPAWNED {
+    run.members[mi].alive = true
+    run.rev += 1
+    return true
+  }
+  if not run.members[mi].alive { return false }
+  if what == MRP_FAIL {
+    if target == "" {
+      ms__lose(missions_st, run, MSE_GAME)
+      return true
+    }
+    let k = ms__node_at(pl, target)
+    if k < 0 or run.st[k] != MSS_ACTIVE { return false }
+    ms__finish(missions_st, run, k, "fail")
+    return true
+  }
+  if what == MRP_SCORE {
+    ms__score_on(missions_st, run, mi, n)
+    return true
+  }
+  var hit = false
+  for i in 0 .. len(pl.nodes) {
+    if run.phase != MSR_RUNNING { break }
+    if run.st[i] != MSS_ACTIVE { continue }
+    let nd = pl.nodes[i]
+    if not ms__role_ok(missions_st, run, nd, mi) { continue }
+    if what == MRP_ARRIVED and nd.kind == MSN_GOTO and ms__target_ok(nd, target) {
+      ms__reached(missions_st, run, i, mi)
+      hit = true
+    } else if what == MRP_COLLECT and nd.kind == MSN_COLLECT and ms__target_ok(nd, target) {
+      ms__count_on(missions_st, run, i, who, n)
+      hit = true
+    } else if what == MRP_DELIVER and nd.kind == MSN_DELIVER and ms__target_ok(nd, target) {
+      ms__count_on(missions_st, run, i, who, n)
+      hit = true
+    } else if what == MRP_KILL and nd.kind == MSN_ELIMINATE and ms__target_ok(nd, target) {
+      ms__count_on(missions_st, run, i, who, n)
+      hit = true
+    } else if what == MRP_LOST and nd.kind == MSN_DEFEND and ms__target_ok(nd, target) {
+      ms__finish(missions_st, run, i, "fail")
+      hit = true
+    } else if what == MRP_HACKED and nd.kind == MSN_MINIGAME and ms__target_ok(nd, target) {
+      if n > 0 { ms__finish(missions_st, run, i, "done") } else { ms__finish(missions_st, run, i, "fail") }
+      hit = true
+    } else if what == MRP_READY and nd.kind == MSN_WAIT_TEAM {
+      run.members[mi].ready = true
+      ms__ready_check(missions_st, run, i)
+      hit = true
+    } else if what == MRP_CHOICE and nd.kind == MSN_CHOICE and ms__has_option(pl, i, target) {
+      ms__finish(missions_st, run, i, target)
+      hit = true
+    } else if what == MRP_SIGNAL and nd.kind == MSN_SIGNAL and nd.target == target {
+      ms__finish(missions_st, run, i, "done")
+      hit = true
+    } else if what == MRP_GATE and nd.kind == MSN_RACE {
+      hit = ms__race_gate(missions_st, run, i, mi, n) or hit
+    }
+  }
+  return hit
+}
+
+function ms__has_option(pl: MissionPlan, node: int, key: string) -> bool {
+  if key == "done" or key == "fail" or key == "timeout" { return false }
+  for k in 0 .. len(pl.outs[node]) { if pl.edges[pl.outs[node][k]].on == key { return true } }
+  return false
+}
