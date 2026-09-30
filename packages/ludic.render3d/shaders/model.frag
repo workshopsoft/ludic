@@ -1,6 +1,7 @@
 in vec3 v_wpos;
 in vec3 v_nrm;
 in vec2 v_uv;
+in vec4 v_col;
 in float v_seed;
 in vec2 v_rot;
 in float v_hull;
@@ -197,7 +198,7 @@ void main() {
   n = normalize(N + side * (fract(v_uv.x) * 2.0 - 1.0) * 0.7);
   arm = vec3(0.9, 0.7, 0.0);
 #else
-  vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv);
+  vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv) * v_col;
 #ifdef ALPHA_TEST
   // A needle sprig's alpha averages away in the mips, so a plain 0.5 test strips the
   // crown bare past 50 m. Scale the alpha back up by the mip level (Castano's alpha
