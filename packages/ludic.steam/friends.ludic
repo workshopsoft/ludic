@@ -1,0 +1,133 @@
+# friends.ludic - the friends list, avatars, rich presence and the overlay. A user is a 64-bit id (a long);
+# a name is the driver's own interned string, so asking for it every frame makes nothing.
+export function steam_friend_count(steam_st: SteamState) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.friend_count()
+}
+export function steam_friend_at(steam_st: SteamState, i: int) -> long {
+  if steam_st.ss_status != STEAM_READY { return long(0) }
+  return steam_st.ss_dr.friend_at(i)
+}
+export function steam_friend_name(steam_st: SteamState, id: long) -> string {
+  if steam_st.ss_status != STEAM_READY { return "" }
+  return steam_st.ss_dr.friend_name(id)
+}
+# PERSONA_OFFLINE .. PERSONA_SNOOZE
+export function steam_friend_state(steam_st: SteamState, id: long) -> int {
+  if steam_st.ss_status != STEAM_READY { return PERSONA_OFFLINE }
+  return steam_st.ss_dr.friend_state(id)
+}
+# the app id of the game a friend is in; 0 when none
+export function steam_friend_game(steam_st: SteamState, id: long) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.friend_game(id)
+}
+# the lobby a friend is in (their game says so), else 0
+export function steam_friend_lobby(steam_st: SteamState, id: long) -> long {
+  if steam_st.ss_status != STEAM_READY { return long(0) }
+  return steam_st.ss_dr.friend_lobby(id)
+}
+# names and avatars of people who are not friends are fetched on request: the answer is a STF_PERSONA fact
+export function steam_request_user(steam_st: SteamState, id: long) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.user_info(id)
+}
+
+# an avatar's image handle (size 0 small 32, 1 medium 64, 2 large 184); 0 while it loads (a STF_AVATAR
+# fact comes), -1 when the user has none. steam_avatar_size is width * 65536 + height.
+export function steam_avatar(steam_st: SteamState, id: long, size: int) -> int {
+  if steam_st.ss_status != STEAM_READY { return -1 }
+  return steam_st.ss_dr.avatar_request(id, size)
+}
+export function steam_avatar_size(steam_st: SteamState, handle: int) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.avatar_size(handle)
+}
+# the image as RGBA bytes into buf (width * height * 4 of them): false when it does not fit or is not there
+export function steam_avatar_rgba(steam_st: SteamState, handle: int, buf: []byte) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.avatar_rgba(handle, buf, len(buf))
+}
+
+# ---- the overlay: dialogs "friends", "community", "players", "settings", "officialgamegroup", "stats",
+# "achievements"; "steamid" ones take the user (steam_overlay_user): "chat", "jointrade", "stats", "achievements",
+# "friendadd", "friendremove", "friendrequestaccept", "friendrequestignore"
+export function steam_overlay(steam_st: SteamState, dialog: string) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.overlay(dialog)
+}
+export function steam_overlay_user(steam_st: SteamState, dialog: string, id: long) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.overlay_user(dialog, id)
+}
+export function steam_overlay_url(steam_st: SteamState, url: string) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.overlay_url(url)
+}
+# the overlay's invite dialog for the current lobby (nothing when there is none)
+export function steam_overlay_invite(steam_st: SteamState) -> void {
+  if steam_st.ss_status != STEAM_READY or steam_st.ss_lobby == long(0) { return }
+  steam_st.ss_dr.overlay_invite(steam_st.ss_lobby)
+}
+# which corner its notifications use: 0 top left, 1 top right, 2 bottom left, 3 bottom right
+export function steam_overlay_position(steam_st: SteamState, corner: int) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.overlay_pos(corner)
+}
+
+# ---- rich presence ----
+export function steam_presence_set(steam_st: SteamState, key: string, value: string) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.presence_set(key, value)
+}
+export function steam_presence_clear(steam_st: mut SteamState) -> void {
+  steam_st.ss_rp_row = -1
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.presence_clear()
+  ss_presence_connect(steam_st)
+}
+export function steam_friend_presence(steam_st: SteamState, id: long, key: string) -> string {
+  if steam_st.ss_status != STEAM_READY { return "" }
+  return steam_st.ss_dr.friend_presence(id, key)
+}
+
+# the row of SteamPresence to show: what the friends list says the player is doing. Asking for the row already
+# shown changes nothing; the connect string (what a Join Game click sends) stays across a change of row.
+export function steam_presence_show(steam_st: mut SteamState, row: int) -> bool {
+  if steam_st.ss_status != STEAM_READY or row < 0 or row >= SRP_COUNT { return false }
+  if steam_st.ss_rp_row == row { return true }
+  let d = steam_st.ss_dr
+  let r = SteamPresence[row]
+  d.presence_clear()
+  var ok = true
+  if len(r.display) > 0 { ok = d.presence_set("steam_display", r.display) and ok }
+  if len(r.status) > 0 { ok = d.presence_set("status", r.status) and ok }
+  if len(r.group) > 0 {
+    ok = d.presence_set("steam_player_group", r.group) and ok
+    if r.group_size > 0 { ok = d.presence_set("steam_player_group_size", ss_int_text(steam_st, r.group_size)) and ok }
+  }
+  if r.pairs != null {
+    for i in 0 .. len(r.pairs) { ok = d.presence_set(r.pairs[i].key, r.pairs[i].value) and ok }
+  }
+  steam_st.ss_rp_row = row
+  ss_presence_connect(steam_st)
+  return ok
+}
+
+export function steam_presence_show_key(steam_st: mut SteamState, key: string) -> bool {
+  return steam_presence_show(steam_st, steampresence_find(key))
+}
+
+function ss_presence_connect(steam_st: SteamState) -> void {
+  if len(steam_st.ss_connect) > 0 { steam_st.ss_dr.presence_set("connect", steam_st.ss_connect) }
+}
+
+function ss_int_text(steam_st: mut SteamState, n: int) -> string {
+  ss_text_ready(steam_st)
+  sb_clear(steam_st.ss_sb)
+  sb_int(steam_st.ss_sb, n)
+  return sb_intern(steam_st.ss_sb, steam_st.ss_strs)
+}
+
+# the row a key names, or -1 (the same as steampresence_find)
+export function steam_presence_row(key: string) -> int { return steampresence_find(key) }

@@ -1,0 +1,430 @@
+# stats.ludic - achievements, stats and leaderboards, driven by the rows of SteamAchievements, SteamStats and
+# SteamLeaderboards: the game says `steam_achievement_unlock(steam_st, SACH_FIRST_CATCH)` or
+# `steam_stat_add_int(steam_st, SSTAT_FISH, 1)` and the data says which Steam name that is, what caps it
+# and which achievement it unlocks. Steam keeps the truth; this keeps a per-row copy, refreshed when the
+# stats arrive, and stores what changed after a short wait (an unlock is stored at once).
+
+@alloc_ok("at start: a table per row of each registry")
+function ss_tables(steam_st: mut SteamState) -> void {
+  steam_st.ss_ach_n = SACH_COUNT
+  steam_st.ss_stat_n = SSTAT_COUNT
+  steam_st.ss_lb_n = SLB_COUNT
+  steam_st.ss_act_n = SACT_COUNT
+  steam_st.ss_ach = words(Math.max(SACH_COUNT, 1))
+  for i in 0 .. SACH_COUNT { steam_st.ss_ach[i] = -1 }
+  ss_want_table(steam_st)
+  steam_st.ss_stat_i = words(Math.max(SSTAT_COUNT, 1))
+  steam_st.ss_stat_f = floats(Math.max(SSTAT_COUNT, 1))
+  steam_st.ss_lb_h = new []long
+  for i in 0 .. SLB_COUNT { push(steam_st.ss_lb_h, long(0)) }
+  steam_st.ss_lb_find = words(Math.max(SLB_COUNT, 1))
+  steam_st.ss_lb_up = words(Math.max(SLB_COUNT, 1))
+  steam_st.ss_lb_score = words(Math.max(SLB_COUNT, 1))
+  steam_st.ss_lb_dl = words(Math.max(SLB_COUNT, 1))
+  steam_st.ss_lb_req = words(Math.max(SLB_COUNT, 1))
+  steam_st.ss_lb_from = words(Math.max(SLB_COUNT, 1))
+  steam_st.ss_lb_to = words(Math.max(SLB_COUNT, 1))
+  steam_st.ss_lb_busy = -1
+  steam_st.ss_act_down = words(Math.max(SACT_COUNT, 1))
+  steam_st.ss_act_x = floats(Math.max(SACT_COUNT, 1))
+  steam_st.ss_act_y = floats(Math.max(SACT_COUNT, 1))
+  steam_st.ss_xy = floats(2)
+}
+
+# the name Steam knows a row by
+function ss_ach_name(i: int) -> string {
+  let r = SteamAchievements[i]
+  if len(r.api_name) > 0 { return r.api_name }
+  return r.key
+}
+function ss_stat_name(i: int) -> string {
+  let r = SteamStats[i]
+  if len(r.api_name) > 0 { return r.api_name }
+  return r.key
+}
+function ss_lb_name(i: int) -> string {
+  let r = SteamLeaderboards[i]
+  if len(r.api_name) > 0 { return r.api_name }
+  return r.key
+}
+
+export function steam_stats_ready(steam_st: SteamState) -> bool { return steam_st.ss_stats_ready }
+
+# ---- achievements ----
+
+# unlock one (a row of SteamAchievements). True when this call unlocked it; false when it already was or there
+# is no such row. While Steam is not there (or the stats have not arrived) the unlock is remembered - kept in
+# the save section - and sent as soon as Steam is.
+export function steam_achievement_unlock(steam_st: mut SteamState, i: int) -> bool {
+  if i < 0 or i >= SACH_COUNT { return false }
+  if steam_st.ss_ach == null {
+    return ss_ach_remember(steam_st, i)
+  }
+  if steam_st.ss_ach[i] == 1 { return false }
+  if steam_st.ss_status != STEAM_READY or not steam_st.ss_stats_ready {
+    return ss_ach_remember(steam_st, i)
+  }
+  return ss_ach_send(steam_st, i)
+}
+
+# before there are tables (steam_start has not run): a wish kept for then
+function ss_ach_remember(steam_st: mut SteamState, i: int) -> bool {
+  if steam_st.ss_ach_want == null or len(steam_st.ss_ach_want) != SACH_COUNT { ss_want_table(steam_st) }
+  if steam_st.ss_ach_want[i] == 1 { return false }
+  steam_st.ss_ach_want[i] = 1
+  ss_ach_unlocked_fact(steam_st, i)
+  return true
+}
+
+@alloc_ok("once: the wish table, before or after steam_start")
+function ss_want_table(steam_st: mut SteamState) -> void {
+  let old = steam_st.ss_ach_want
+  steam_st.ss_ach_want = words(Math.max(SACH_COUNT, 1))
+  if old != null {
+    for i in 0 .. Math.min(len(old), SACH_COUNT) { steam_st.ss_ach_want[i] = old[i] }
+  }
+}
+
+function ss_ach_unlocked_fact(steam_st: mut SteamState, i: int) -> void {
+  let f = ss_fact(steam_st, STF_ACH_UNLOCKED)
+  f.key = i
+  q_push(steam_st.ss_facts, f)
+}
+
+function ss_ach_send(steam_st: mut SteamState, i: int) -> bool {
+  let d = steam_st.ss_dr
+  if not d.ach_set(ss_ach_name(i)) { return false }
+  steam_st.ss_ach[i] = 1
+  steam_st.ss_ach_want[i] = 0
+  steam_st.ss_store_in = 0.0
+  ss_ach_unlocked_fact(steam_st, i)
+  return true
+}
+
+export function steam_achievement_unlock_key(steam_st: mut SteamState, key: string) -> bool {
+  return steam_achievement_unlock(steam_st, steamachievements_find(key))
+}
+
+# lock one again (for testing); false when Steam is not there
+export function steam_achievement_clear(steam_st: mut SteamState, i: int) -> bool {
+  if i < 0 or i >= SACH_COUNT { return false }
+  if steam_st.ss_ach_want != null and len(steam_st.ss_ach_want) == SACH_COUNT { steam_st.ss_ach_want[i] = 0 }
+  if steam_st.ss_status != STEAM_READY or steam_st.ss_ach == null { return false }
+  if not steam_st.ss_dr.ach_clear(ss_ach_name(i)) { return false }
+  steam_st.ss_ach[i] = 0
+  steam_st.ss_store_in = 0.0
+  return true
+}
+
+# true when it is unlocked, or unlocked here and waiting to be sent
+export function steam_achievement_unlocked(steam_st: SteamState, i: int) -> bool {
+  if i < 0 or i >= SACH_COUNT { return false }
+  if steam_st.ss_ach != null and steam_st.ss_ach[i] == 1 { return true }
+  return steam_st.ss_ach_want != null and len(steam_st.ss_ach_want) == SACH_COUNT and steam_st.ss_ach_want[i] == 1
+}
+
+export function steam_achievement_count(steam_st: SteamState) -> int {
+  var n = 0
+  for i in 0 .. SACH_COUNT { if steam_achievement_unlocked(steam_st, i) { n += 1 } }
+  return n
+}
+
+# Steam's own "3 of 10" toast for a partial
+export function steam_achievement_progress(steam_st: SteamState, i: int, current: int, goal: int) -> bool {
+  if steam_st.ss_status != STEAM_READY or i < 0 or i >= SACH_COUNT { return false }
+  return steam_st.ss_dr.ach_progress(ss_ach_name(i), current, goal)
+}
+
+# ---- stats ----
+function ss_cap_int(i: int, v: int) -> int {
+  let cap = SteamStats[i].cap
+  if cap > 0 and v > cap { return cap }
+  if v < 0 { return 0 }
+  return v
+}
+
+export function steam_stat_int(steam_st: SteamState, i: int) -> int {
+  if i < 0 or i >= SSTAT_COUNT or steam_st.ss_stat_i == null { return 0 }
+  return steam_st.ss_stat_i[i]
+}
+export function steam_stat_float(steam_st: SteamState, i: int) -> float {
+  if i < 0 or i >= SSTAT_COUNT or steam_st.ss_stat_f == null { return 0.0 }
+  return steam_st.ss_stat_f[i]
+}
+
+# set a stat (held to the row's cap, and never below zero). False when Steam is not there, the stats have not
+# arrived, or the row is of the other kind.
+export function steam_stat_set_int(steam_st: mut SteamState, i: int, v: int) -> bool {
+  if i < 0 or i >= SSTAT_COUNT or SteamStats[i].kind != STAT_INT { return false }
+  if steam_st.ss_status != STEAM_READY or not steam_st.ss_stats_ready { return false }
+  let held = ss_cap_int(i, v)
+  if not steam_st.ss_dr.stat_set_int(ss_stat_name(i), held) { return false }
+  if steam_st.ss_stat_i[i] != held {
+    steam_st.ss_stat_i[i] = held
+    ss_stat_changed(steam_st, i)
+  }
+  return true
+}
+
+export function steam_stat_add_int(steam_st: mut SteamState, i: int, n: int) -> bool {
+  if i < 0 or i >= SSTAT_COUNT or steam_st.ss_stat_i == null { return false }
+  return steam_stat_set_int(steam_st, i, steam_st.ss_stat_i[i] + n)
+}
+
+export function steam_stat_set_float(steam_st: mut SteamState, i: int, v: float) -> bool {
+  if i < 0 or i >= SSTAT_COUNT or SteamStats[i].kind != STAT_FLOAT { return false }
+  if steam_st.ss_status != STEAM_READY or not steam_st.ss_stats_ready { return false }
+  var held = v
+  let cap = SteamStats[i].cap
+  if cap > 0 and held > float(cap) { held = float(cap) }
+  if held < 0.0 { held = 0.0 }
+  if not steam_st.ss_dr.stat_set_float(ss_stat_name(i), held) { return false }
+  if steam_st.ss_stat_f[i] != held {
+    steam_st.ss_stat_f[i] = held
+    ss_stat_changed(steam_st, i)
+  }
+  return true
+}
+
+export function steam_stat_add_float(steam_st: mut SteamState, i: int, x: float) -> bool {
+  if i < 0 or i >= SSTAT_COUNT or steam_st.ss_stat_f == null { return false }
+  return steam_stat_set_float(steam_st, i, steam_st.ss_stat_f[i] + x)
+}
+
+export function steam_stat_key_int(steam_st: SteamState, key: string) -> int {
+  return steam_stat_int(steam_st, steamstats_find(key))
+}
+
+# a stat moved: store it after a short wait, say so, and unlock what the data ties to it
+function ss_stat_changed(steam_st: mut SteamState, i: int) -> void {
+  let wait = ss_cfg_of(steam_st).store_after
+  if steam_st.ss_store_in < 0.0 or steam_st.ss_store_in > wait { steam_st.ss_store_in = wait }
+  let f = ss_fact(steam_st, STF_STAT_CHANGED)
+  f.key = i
+  if SteamStats[i].kind == STAT_INT { f.n = steam_st.ss_stat_i[i] } else { f.n = int(steam_st.ss_stat_f[i]) }
+  q_push(steam_st.ss_facts, f)
+  ss_stat_unlocks(steam_st, i)
+}
+
+function ss_stat_unlocks(steam_st: mut SteamState, i: int) -> void {
+  for a in 0 .. SACH_COUNT {
+    let r = SteamAchievements[a]
+    if r.stat != i or r.goal <= 0 { continue }
+    if steam_st.ss_ach[a] == 1 { continue }
+    var have = steam_st.ss_stat_i[i]
+    if SteamStats[i].kind == STAT_FLOAT { have = int(steam_st.ss_stat_f[i]) }
+    if have >= r.goal { steam_achievement_unlock(steam_st, a) }
+  }
+}
+
+# store now (the stats and achievements changed since the last time): false when Steam is not there
+export function steam_stats_store(steam_st: mut SteamState) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  steam_st.ss_store_in = -1.0
+  return steam_st.ss_dr.stats_store()
+}
+
+function ss_store_tick(steam_st: mut SteamState, dt: float) -> void {
+  if steam_st.ss_store_in < 0.0 { return }
+  steam_st.ss_store_in -= dt
+  if steam_st.ss_store_in <= 0.0 {
+    steam_st.ss_store_in = -1.0
+    steam_st.ss_dr.stats_store()
+  }
+}
+
+# reset the stats - and the achievements too when `all` - for testing. Steam forgets them at once.
+export function steam_reset(steam_st: mut SteamState, all: bool) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  if not steam_st.ss_dr.stats_reset(all) { return false }
+  for i in 0 .. SSTAT_COUNT {
+    steam_st.ss_stat_i[i] = 0
+    steam_st.ss_stat_f[i] = 0.0
+  }
+  if all {
+    for i in 0 .. SACH_COUNT {
+      steam_st.ss_ach[i] = 0
+      steam_st.ss_ach_want[i] = 0
+    }
+  }
+  steam_st.ss_store_in = -1.0
+  return true
+}
+
+# what Steam holds, read into the per-row copy; the game's waiting unlocks go out
+function ss_on_stats_received(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let code = d.fi(0)
+  if code == 1 {
+    steam_st.ss_stats_ready = true
+    for i in 0 .. SACH_COUNT { steam_st.ss_ach[i] = d.ach_get(ss_ach_name(i)) }
+    for i in 0 .. SSTAT_COUNT {
+      if SteamStats[i].kind == STAT_INT { steam_st.ss_stat_i[i] = d.stat_int(ss_stat_name(i)) }
+      else { steam_st.ss_stat_f[i] = d.stat_float(ss_stat_name(i)) }
+    }
+    for i in 0 .. SACH_COUNT {
+      if steam_st.ss_ach_want[i] == 1 and steam_st.ss_ach[i] != 1 { ss_ach_send_quiet(steam_st, i) }
+      steam_st.ss_ach_want[i] = 0
+    }
+  }
+  let f = ss_fact(steam_st, STF_STATS_RECEIVED)
+  f.n = code
+  q_push(steam_st.ss_facts, f)
+}
+
+# a waiting unlock going out: the fact was said when it was asked for
+function ss_ach_send_quiet(steam_st: mut SteamState, i: int) -> void {
+  let d = steam_st.ss_dr
+  if d.ach_set(ss_ach_name(i)) {
+    steam_st.ss_ach[i] = 1
+    steam_st.ss_store_in = 0.0
+  }
+}
+
+# ---- leaderboards ----
+
+# find a board by its row, so uploads and downloads can name it. The find is one at a time; the answer is STF_LB_FOUND.
+export function steam_lb_find(steam_st: mut SteamState, i: int) -> bool {
+  if steam_st.ss_status != STEAM_READY or i < 0 or i >= SLB_COUNT { return false }
+  if steam_st.ss_lb_h[i] != long(0) { return true }
+  if steam_st.ss_lb_find[i] != 0 { return true }
+  steam_st.ss_lb_find[i] = 2
+  ss_lb_next(steam_st)
+  return true
+}
+
+# start the next waiting find when none is out
+function ss_lb_next(steam_st: mut SteamState) -> void {
+  if steam_st.ss_lb_busy >= 0 { return }
+  for i in 0 .. SLB_COUNT {
+    if steam_st.ss_lb_find[i] == 2 {
+      let r = SteamLeaderboards[i]
+      if steam_st.ss_dr.lb_find(ss_lb_name(i), r.create, r.sort, r.display) {
+        steam_st.ss_lb_find[i] = 1
+        steam_st.ss_lb_busy = i
+        return
+      }
+      steam_st.ss_lb_find[i] = 0
+    }
+  }
+}
+
+function ss_on_lb_found(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let i = steam_st.ss_lb_busy
+  steam_st.ss_lb_busy = -1
+  if i < 0 { return }
+  steam_st.ss_lb_find[i] = 0
+  let found = d.fi(0)
+  if found == 1 { steam_st.ss_lb_h[i] = d.fl(0) }
+  let f = ss_fact(steam_st, STF_LB_FOUND)
+  f.key = i
+  f.n = found
+  q_push(steam_st.ss_facts, f)
+  if found == 1 {
+    if steam_st.ss_lb_up[i] == 1 { ss_lb_send_score(steam_st, d, i) }
+    if steam_st.ss_lb_dl[i] == 1 { ss_lb_send_download(steam_st, d, i) }
+  } else {
+    steam_st.ss_lb_up[i] = 0
+    steam_st.ss_lb_dl[i] = 0
+  }
+  ss_lb_next(steam_st)
+}
+
+# the board's handle, as the lb row's find left it; 0 before
+export function steam_lb_found(steam_st: SteamState, i: int) -> bool {
+  if steam_st.ss_lb_h == null or i < 0 or i >= SLB_COUNT { return false }
+  return steam_st.ss_lb_h[i] != long(0)
+}
+
+# post a score, finding the board first when it has not been. The answer is STF_LB_UPLOADED (m: 1 when it is the
+# player's new best).
+export function steam_lb_upload(steam_st: mut SteamState, i: int, score: int) -> bool {
+  if steam_st.ss_status != STEAM_READY or i < 0 or i >= SLB_COUNT { return false }
+  steam_st.ss_lb_score[i] = score
+  if steam_st.ss_lb_h[i] != long(0) {
+    ss_lb_send_score(steam_st, steam_st.ss_dr, i)
+    return true
+  }
+  steam_st.ss_lb_up[i] = 1
+  return steam_lb_find(steam_st, i)
+}
+
+function ss_lb_send_score(steam_st: mut SteamState, d: SteamDriver, i: int) -> void {
+  steam_st.ss_lb_up[i] = 0
+  d.lb_upload(steam_st.ss_lb_h[i], steam_st.ss_lb_score[i], SteamLeaderboards[i].method)
+}
+
+function ss_on_lb_uploaded(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let h = d.fl(0)
+  let f = ss_fact(steam_st, STF_LB_UPLOADED)
+  f.key = ss_lb_of(steam_st, h)
+  f.n = d.fi(1)
+  f.m = d.fi(2)
+  f.other = long(d.fi(3))
+  q_push(steam_st.ss_facts, f)
+}
+
+function ss_lb_of(steam_st: SteamState, h: long) -> int {
+  for i in 0 .. SLB_COUNT { if steam_st.ss_lb_h[i] == h { return i } }
+  return -1
+}
+
+# entries of a board: LB_FROM_TOP (ranks from..to), LB_AROUND_USER (from ranks above the player, to below) or
+# LB_FRIENDS. The answer is STF_LB_DOWNLOADED; then steam_lb_user / _score / _rank read them by index.
+export function steam_lb_download(steam_st: mut SteamState, i: int, request: int, from: int, to: int) -> bool {
+  if steam_st.ss_status != STEAM_READY or i < 0 or i >= SLB_COUNT { return false }
+  steam_st.ss_lb_req[i] = request
+  steam_st.ss_lb_from[i] = from
+  steam_st.ss_lb_to[i] = to
+  if steam_st.ss_lb_h[i] != long(0) {
+    ss_lb_send_download(steam_st, steam_st.ss_dr, i)
+    return true
+  }
+  steam_st.ss_lb_dl[i] = 1
+  return steam_lb_find(steam_st, i)
+}
+
+function ss_lb_send_download(steam_st: mut SteamState, d: SteamDriver, i: int) -> void {
+  steam_st.ss_lb_dl[i] = 0
+  d.lb_download(steam_st.ss_lb_h[i], steam_st.ss_lb_req[i], steam_st.ss_lb_from[i], steam_st.ss_lb_to[i])
+}
+
+function ss_on_lb_downloaded(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let f = ss_fact(steam_st, STF_LB_DOWNLOADED)
+  f.key = ss_lb_of(steam_st, d.fl(0))
+  f.n = d.fi(0)
+  q_push(steam_st.ss_facts, f)
+}
+
+export function steam_lb_count(steam_st: SteamState) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.lb_count()
+}
+export function steam_lb_user(steam_st: SteamState, k: int) -> long {
+  if steam_st.ss_status != STEAM_READY { return long(0) }
+  return steam_st.ss_dr.lb_user(k)
+}
+export function steam_lb_score(steam_st: SteamState, k: int) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.lb_score(k)
+}
+export function steam_lb_rank(steam_st: SteamState, k: int) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.lb_rank(k)
+}
+
+# a call Steam never answered: what was waiting on it is let go
+function ss_on_call_failed(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let f = ss_fact(steam_st, STF_CALL_FAILED)
+  f.n = d.fi(0)
+  q_push(steam_st.ss_facts, f)
+  if steam_st.ss_lb_busy >= 0 {
+    let i = steam_st.ss_lb_busy
+    steam_st.ss_lb_busy = -1
+    steam_st.ss_lb_find[i] = 0
+    steam_st.ss_lb_up[i] = 0
+    steam_st.ss_lb_dl[i] = 0
+    ss_lb_next(steam_st)
+  }
+  steam_st.ss_searching = false
+  if steam_st.ss_lobby_st == LOBBY_CREATING or steam_st.ss_lobby_st == LOBBY_JOINING { steam_st.ss_lobby_st = LOBBY_NONE }
+}

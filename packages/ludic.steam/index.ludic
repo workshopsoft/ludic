@@ -1,0 +1,20 @@
+# ludic.steam - the Steamworks runtime as a mechanic: a start-up state machine, the user and friends, rich
+# presence, lobbies, data-driven achievements, stats and leaderboards, cloud files, Steam Input, DLC, the
+# timeline and a ludic.net socket. It talks to Steam through a SteamDriver; ludic.steamworks is the real one.
+module ludic_steam uses ludic_base
+numbers float
+import "ludic.base"
+import "driver.ludic"
+import "defs.ludic"
+import "state.ludic"
+import "core.ludic"
+import "friends.ludic"
+import "lobby.ludic"
+import "stats.ludic"
+import "storage.ludic"
+import "input.ludic"
+import "apps.ludic"
+import "net.ludic"
+import "verbs.ludic"
+import "system.ludic"
+import "fake.ludic"

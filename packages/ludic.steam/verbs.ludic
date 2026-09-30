@@ -1,0 +1,143 @@
+# verbs.ludic - what a dev build's editor link may ask of Steam (ludic.devlink reads the DevVerbs registry;
+# nothing here runs without the link). The studio's Steam screen calls these.
+#
+#   steam_state                              ok <status> "<steam id>" "<persona>" <logged on> <app id> "<lobby id or 0>"
+#                                               <lobby members> <achievements unlocked> <achievements total>
+#   steam_unlock "<key>"                     ok <1 when this unlocked it, 0 when it already was>
+#   steam_reset [all:bool]                   ok; the stats (and the achievements, with all true) forgotten
+#   steam_lobby_create "<kind>" <max>        ok "<lobby id>" once it is made (kind: private, friends, public, invisible)
+#   steam_lobby_leave                        ok
+#   steam_stat "<key>" <value:float>         ok <the value now>
+#   steam_presence "<key>"                   ok; a row of SteamPresence shown
+# Every verb but steam_state is refused with err failed while Steam is not there.
+
+function sv_not_ready(steam_st: SteamState, c: DevCall) -> bool {
+  if steam_st.ss_status == STEAM_READY { return false }
+  c.why = "steam is not available"
+  if len(steam_st.ss_err) > 0 { c.why = "steam is not available: " + steam_st.ss_err }
+  return true
+}
+
+function steam_state_verb(steam_st: mut SteamState, c: DevCall) -> int {
+  dv_reply_int(c, steam_st.ss_status)
+  dv_reply_str(c, steam_id_text(steam_st, steam_st.ss_me))
+  dv_reply_str(c, steam_st.ss_persona)
+  dv_reply_bool(c, steam_logged_on(steam_st))
+  dv_reply_int(c, steam_st.ss_app)
+  dv_reply_str(c, steam_id_text(steam_st, steam_st.ss_lobby))
+  dv_reply_int(c, steam_lobby_member_count(steam_st))
+  dv_reply_int(c, steam_achievement_count(steam_st))
+  dv_reply_int(c, SACH_COUNT)
+  return DV_OK
+}
+def DevVerbs steam_state { args: "", run: fn steam_state_verb }
+
+# the rows whose key holds what was typed, for a "did you mean"
+function sv_near_ach(key: string) -> string {
+  for i in 0 .. SACH_COUNT { if Text.contains(SteamAchievements[i].key, key) { return SteamAchievements[i].key } }
+  if SACH_COUNT > 0 { return SteamAchievements[0].key }
+  return ""
+}
+
+function steam_unlock_verb(steam_st: mut SteamState, c: DevCall) -> int {
+  if sv_not_ready(steam_st, c) { return DV_FAILED }
+  let key = dv_str(c, 0)
+  let i = steamachievements_find(key)
+  if i < 0 {
+    c.why = "no achievement " + key + " in SteamAchievements (did you mean " + sv_near_ach(key) + "?)"
+    return DV_BAD
+  }
+  dv_reply_bool(c, steam_achievement_unlock(steam_st, i))
+  return DV_OK
+}
+def DevVerbs steam_unlock { args: "key:string", run: fn steam_unlock_verb }
+
+function steam_reset_verb(steam_st: mut SteamState, c: DevCall) -> int {
+  if sv_not_ready(steam_st, c) { return DV_FAILED }
+  var all = false
+  if dv_has(c, 0) { all = dv_bool(c, 0) }
+  if not steam_reset(steam_st, all) {
+    c.why = "steam did not reset the stats"
+    return DV_FAILED
+  }
+  return DV_OK
+}
+def DevVerbs steam_reset { args: "all:bool?", run: fn steam_reset_verb }
+
+function sv_lobby_kind(kind: string) -> int {
+  if kind == "private" { return LOBBY_PRIVATE }
+  if kind == "friends" { return LOBBY_FRIENDS }
+  if kind == "public" { return LOBBY_PUBLIC }
+  if kind == "invisible" { return LOBBY_INVISIBLE }
+  return -1
+}
+
+function steam_lobby_create_verb(steam_st: mut SteamState, c: DevCall) -> int {
+  if sv_not_ready(steam_st, c) { return DV_FAILED }
+  let kind = sv_lobby_kind(dv_str(c, 0))
+  if kind < 0 {
+    c.why = "kind is one of private, friends, public, invisible"
+    return DV_BAD
+  }
+  let most = dv_int(c, 1)
+  if most < 1 or most > 250 {
+    c.why = "max is between 1 and 250"
+    return DV_BAD
+  }
+  if not steam_lobby_create(steam_st, kind, most) {
+    c.why = "a lobby is already made or being made (steam_lobby_leave first)"
+    return DV_FAILED
+  }
+  return DV_LATER
+}
+
+function steam_lobby_create_late(steam_st: mut SteamState, c: DevCall) -> int {
+  if steam_st.ss_lobby_st == LOBBY_IN {
+    dv_reply_str(c, steam_id_text(steam_st, steam_st.ss_lobby))
+    return 1
+  }
+  if steam_st.ss_lobby_st == LOBBY_NONE {
+    c.why = "steam did not make the lobby"
+    return -1
+  }
+  return 0
+}
+def DevVerbs steam_lobby_create { args: "kind:string max:int", run: fn steam_lobby_create_verb, late: fn steam_lobby_create_late }
+
+function steam_lobby_leave_verb(steam_st: mut SteamState, c: DevCall) -> int {
+  if sv_not_ready(steam_st, c) { return DV_FAILED }
+  steam_lobby_leave(steam_st)
+  return DV_OK
+}
+def DevVerbs steam_lobby_leave { args: "", run: fn steam_lobby_leave_verb }
+
+function steam_stat_verb(steam_st: mut SteamState, c: DevCall) -> int {
+  if sv_not_ready(steam_st, c) { return DV_FAILED }
+  let i = steamstats_find(dv_str(c, 0))
+  if i < 0 {
+    c.why = "no stat " + dv_str(c, 0) + " in SteamStats"
+    return DV_BAD
+  }
+  let x = dv_float(c, 1)
+  var ok = false
+  if SteamStats[i].kind == STAT_INT { ok = steam_stat_set_int(steam_st, i, int(x)) } else { ok = steam_stat_set_float(steam_st, i, x) }
+  if not ok {
+    c.why = "the stat was not set (the stats may not have arrived yet)"
+    return DV_FAILED
+  }
+  if SteamStats[i].kind == STAT_INT { dv_reply_int(c, steam_stat_int(steam_st, i)) } else { dv_reply_float(c, steam_stat_float(steam_st, i)) }
+  return DV_OK
+}
+def DevVerbs steam_stat { args: "key:string value:float", run: fn steam_stat_verb }
+
+function steam_presence_verb(steam_st: mut SteamState, c: DevCall) -> int {
+  if sv_not_ready(steam_st, c) { return DV_FAILED }
+  let i = steampresence_find(dv_str(c, 0))
+  if i < 0 {
+    c.why = "no row " + dv_str(c, 0) + " in SteamPresence"
+    return DV_BAD
+  }
+  steam_presence_show(steam_st, i)
+  return DV_OK
+}
+def DevVerbs steam_presence { args: "key:string", run: fn steam_presence_verb }

@@ -1,0 +1,8 @@
+# ludic.steam - the Steamworks runtime API as a mechanic: start-up and its state machine, the user and
+# friends, rich presence, lobbies, achievements and stats driven by data registries, leaderboards,
+# cloud files, Steam Input, DLC, the timeline, and a ludic.net socket over Steam's relay. Uses
+# ludic.base and nothing else; the SDK itself is ludic.steamworks (or the fake, for tests).
+# See README.md.
+package "ludic.steam"
+version "0.1.0"
+kind source

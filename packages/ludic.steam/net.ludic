@@ -1,0 +1,91 @@
+# net.ludic - Steam's relay as the socket under ludic.net (a game binds the six members below into NetSocket):
+#
+#   bind NetSocket {
+#     open: fn steam_net_open, close: fn steam_net_close, send: fn steam_net_send, recv: fn steam_net_recv,
+#     from_ip: fn steam_net_from_ip, from_port: fn steam_net_from_port, port: fn steam_net_port, local_ip: fn steam_net_local_ip
+#   }
+#
+# A Steam user has no IP address, and ludic.net talks in ip and port, so each Steam user the socket hears of or
+# is told of gets a stand-in address (10.254.x.y, x.y the peer's number): steam_net_peer(steam_st, id) gives it
+# for a lobby's owner, and net_join(ip, port) dials it. A datagram is ISteamNetworkingMessages's: sent through
+# Steam's relay, so no router needs opening, and ludic.net's own acks and resends ride on it unchanged.
+# Sessions are accepted from the lobby's members and from peers the game has named, not strangers.
+export const STEAM_NET_BASE: int = 184287232     # 10.254.0.0
+
+export function steam_net_ready(steam_st: SteamState) -> bool { return steam_st.ss_net_on }
+
+# the stand-in address of a Steam user (made on first ask); 0 when Steam is not there
+@alloc_ok("one slot per peer, the first time it is heard of")
+export function steam_net_peer(steam_st: mut SteamState, id: long) -> int {
+  if steam_st.ss_status != STEAM_READY or id == long(0) { return 0 }
+  if steam_st.ss_peer_id == null { steam_st.ss_peer_id = new []long }
+  for i in 0 .. len(steam_st.ss_peer_id) { if steam_st.ss_peer_id[i] == id { return STEAM_NET_BASE + i + 1 } }
+  if len(steam_st.ss_peer_id) >= STEAM_CAP_PEERS { return 0 }
+  push(steam_st.ss_peer_id, id)
+  steam_st.ss_dr.net_allow(id)
+  return STEAM_NET_BASE + len(steam_st.ss_peer_id)
+}
+
+# the user behind a stand-in address; 0 for none
+export function steam_net_user(steam_st: SteamState, ip: int) -> long {
+  let i = ip - STEAM_NET_BASE - 1
+  if steam_st.ss_peer_id == null or i < 0 or i >= len(steam_st.ss_peer_id) { return long(0) }
+  return steam_st.ss_peer_id[i]
+}
+
+# a small number for a Steam user, 1 and up, the same for the session: a roster's pid (ludic.session)
+export function steam_pid(steam_st: mut SteamState, id: long) -> int {
+  let ip = steam_net_peer(steam_st, id)
+  if ip == 0 { return 0 }
+  return ip - STEAM_NET_BASE
+}
+
+# ---- the NetSocket members ----
+export function steam_net_open(steam_st: mut SteamState, port: int) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  let d = steam_st.ss_dr
+  d.net_start()
+  d.net_any(ss_cfg_of(steam_st).accept_any_peer)
+  steam_st.ss_net_on = true
+  steam_st.ss_net_port = port
+  if steam_st.ss_lobby != long(0) {
+    let n = d.lobby_members(steam_st.ss_lobby)
+    for i in 0 .. n { d.net_allow(d.lobby_member_at(steam_st.ss_lobby, i)) }
+  }
+  return 1
+}
+
+export function steam_net_close(steam_st: mut SteamState, h: int) -> void {
+  steam_st.ss_net_on = false
+  if steam_st.ss_peer_id == null or steam_st.ss_status != STEAM_READY { return }
+  for i in 0 .. len(steam_st.ss_peer_id) { steam_st.ss_dr.net_close(steam_st.ss_peer_id[i]) }
+}
+
+# the bytes sent, or -1
+export function steam_net_send(steam_st: mut SteamState, h: int, ip: int, port: int, b: []byte, n: int) -> int {
+  if not steam_st.ss_net_on or steam_st.ss_status != STEAM_READY or b == null or n <= 0 or n > len(b) { return -1 }
+  let to = steam_net_user(steam_st, ip)
+  if to == long(0) { return -1 }
+  if not steam_st.ss_dr.net_send(to, b, n, false) { return -1 }
+  return n
+}
+
+# the next datagram, into b: its length, or 0 when none waits
+export function steam_net_recv(steam_st: mut SteamState, h: int, b: []byte, cap: int) -> int {
+  if not steam_st.ss_net_on or steam_st.ss_status != STEAM_READY or b == null { return 0 }
+  var room = cap
+  if room > len(b) { room = len(b) }
+  if room <= 0 { return 0 }
+  let n = steam_st.ss_dr.net_recv(b, room)
+  if n <= 0 { return 0 }
+  steam_st.ss_net_from = steam_net_peer(steam_st, steam_st.ss_dr.net_from())
+  return n
+}
+
+export function steam_net_from_ip(steam_st: SteamState, h: int) -> int { return steam_st.ss_net_from }
+export function steam_net_from_port(steam_st: SteamState, h: int) -> int { return steam_st.ss_net_port }
+export function steam_net_port(steam_st: SteamState, h: int) -> int { return steam_st.ss_net_port }
+export function steam_net_local_ip(steam_st: SteamState) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return STEAM_NET_BASE
+}

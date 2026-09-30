@@ -1,0 +1,116 @@
+# storage.ludic - Steam Cloud files (ISteamRemoteStorage's file API), and the two calls that make it a
+# companion to ludic.save: the game keeps writing its save the way it does and calls steam_save_written after
+# it; before it reads it calls steam_save_before_read. Text in, text out, or a file on disk pushed and pulled.
+export function steam_cloud_enabled(steam_st: SteamState) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.rs_enabled()
+}
+
+# a text as a cloud file (replacing it); false when Steam is not there, cloud is off for the player or the game,
+# or the write failed
+@alloc_ok("a save is written on an event, not per frame: one buffer for its bytes")
+export function steam_cloud_put(steam_st: SteamState, name: string, text: string) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  let sp: string = text
+  let n = len(sp)
+  let b = buffer(Math.max(n, 1))
+  for i in 0 .. n { b[i] = sp[i] }
+  return steam_st.ss_dr.rs_write(name, b, n)
+}
+
+# a cloud file's text, or "" when there is none (steam_cloud_exists tells an empty file from that)
+@alloc_ok("a save is read on an event, not per frame: its bytes and its text")
+export function steam_cloud_get(steam_st: SteamState, name: string) -> string {
+  if steam_st.ss_status != STEAM_READY { return "" }
+  let d = steam_st.ss_dr
+  let n = d.rs_size(name)
+  if n <= 0 { return "" }
+  let b = buffer(n)
+  let got = d.rs_read(name, b, n)
+  if got <= 0 { return "" }
+  return text_of(b, got)
+}
+
+export function steam_cloud_exists(steam_st: SteamState, name: string) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.rs_exists(name)
+}
+export function steam_cloud_delete(steam_st: SteamState, name: string) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.rs_delete(name)
+}
+export function steam_cloud_count(steam_st: SteamState) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.rs_count()
+}
+export function steam_cloud_name(steam_st: SteamState, i: int) -> string {
+  if steam_st.ss_status != STEAM_READY { return "" }
+  return steam_st.ss_dr.rs_name(i)
+}
+export function steam_cloud_size(steam_st: SteamState, name: string) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.rs_size(name)
+}
+# seconds since 1970 of the cloud copy's last write
+export function steam_cloud_time(steam_st: SteamState, name: string) -> long {
+  if steam_st.ss_status != STEAM_READY { return long(0) }
+  return steam_st.ss_dr.rs_time(name)
+}
+
+# a file on disk as a cloud file
+@alloc_ok("a save is written on an event, not per frame")
+export function steam_cloud_push_file(steam_st: SteamState, path: string, name: string) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  let b = Fs.read_bytes(path)
+  if b == null { return false }
+  if not steam_st.ss_dr.rs_write(name, b, len(b)) { return false }
+  ss_write_stamp(steam_st, path, name)
+  return true
+}
+
+# the cloud copy's time, remembered beside the file (path + ".cloud"): the next pull takes the cloud's copy
+# only when it is newer than the one this machine last pushed or pulled
+function ss_write_stamp(steam_st: SteamState, path: string, name: string) -> void {
+  let t = steam_st.ss_dr.rs_time(name)
+  Fs.write_text(path + ".cloud", string(t))
+}
+
+function ss_read_stamp(path: string) -> long {
+  if not Fs.exists(path + ".cloud") { return long(-1) }
+  return steam_parse_id(Fs.read_text(path + ".cloud"))
+}
+
+# bring the cloud copy down to `path` when there is one and it is newer than what this machine last had (or there
+# is no file): CLOUD_PULLED, CLOUD_KEPT (the file on disk stands), CLOUD_NONE (nothing on the cloud and nothing on
+# disk) or CLOUD_FAILED
+@alloc_ok("a save is read on an event, not per frame")
+export function steam_cloud_pull_file(steam_st: mut SteamState, path: string, name: string) -> int {
+  if steam_st.ss_status != STEAM_READY { return CLOUD_NONE }
+  let d = steam_st.ss_dr
+  if not d.rs_exists(name) {
+    if Fs.exists(path) { return CLOUD_KEPT }
+    return CLOUD_NONE
+  }
+  let t = d.rs_time(name)
+  if Fs.exists(path) and ss_read_stamp(path) >= t { return CLOUD_KEPT }
+  let n = d.rs_size(name)
+  let b = buffer(Math.max(n, 1))
+  let got = d.rs_read(name, b, n)
+  if got < 0 { return CLOUD_FAILED }
+  if not Fs.write_bytes(path, b, got) { return CLOUD_FAILED }
+  ss_write_stamp(steam_st, path, name)
+  let f = ss_fact(steam_st, STF_CLOUD_PULLED)
+  f.text = name
+  q_push(steam_st.ss_facts, f)
+  return CLOUD_PULLED
+}
+
+# the game's save was written to `path` (ludic.save's save_write / save_write_tree): send it to the cloud
+export function steam_save_written(steam_st: SteamState, path: string, name: string) -> bool {
+  return steam_cloud_push_file(steam_st, path, name)
+}
+
+# the game is about to open `path` (ludic.save's save_open): take the cloud's copy first when it is newer
+export function steam_save_before_read(steam_st: mut SteamState, path: string, name: string) -> int {
+  return steam_cloud_pull_file(steam_st, path, name)
+}

@@ -1,0 +1,1203 @@
+# fake.ludic - a Steam in memory: a SteamDriver that keeps a world (friends, lobbies, stats, achievements,
+# leaderboards, cloud files, controllers, a relay) and answers from it, so the mechanic's tests - and a
+# game's own - run with no Steam, no SDK and no app id. The fake_* functions play the other side:
+# another player joining a lobby, a friend's Join Game click, stats arriving late, a leaderboard's entries.
+#
+#   bind SteamBackend { driver: fn steam_fake_driver }
+export const FAKE_ME: long = 76561198000000001
+export const FAKE_LEADERBOARD_BASE: long = 5000
+
+export property FkFact {
+  kind: int = 0
+  a: int = 0
+  b: int = 0
+  c: int = 0
+  d: int = 0
+  x: long = 0
+  y: long = 0
+  text: string = ""
+}
+
+export property FkFriend {
+  id: long = 0
+  name: string = ""
+  state: int = 0
+  game: int = 0
+  lobby: long = 0
+}
+
+export property FkLobby {
+  id: long = 0
+  owner: long = 0
+  limit: int = 0
+  kind: int = 0
+  joinable: bool = true
+  members: []long = new []long
+  dk: []string = new []string
+  dv: []string = new []string
+  mk: []string = new []string
+  mv: []string = new []string
+}
+
+export property FkBoard {
+  name: string = ""
+  handle: long = 0
+  sort: int = 0
+  users: []long = new []long
+  scores: []int = new []int
+}
+
+export property FkFile {
+  name: string = ""
+  data: []byte = null
+  n: int = 0
+  time: long = 0
+}
+
+export state FakeSteamState {
+  fk_init_code: int = 0                     # what init answers: STEAM_OK, or an STEAM_ERR_*
+  fk_error: string = "fake: Steam is not running"
+  fk_up: bool = false
+  fk_hold_stats: bool = false
+  fk_stats_sent: bool = false
+  fk_facts: []FkFact = new []FkFact           # a pool of fact records, reused: the first fk_used of them are waiting
+  fk_used: int = 0
+  fk_cur: FkFact = null
+  fk_at: int = 0
+  fk_friends: []FkFriend = new []FkFriend
+  fk_rp_k: []string = new []string
+  fk_rp_v: []string = new []string
+  fk_fr_k: []string = new []string          # a friend's presence: "<id>|<key>"
+  fk_fr_v: []string = new []string
+  fk_lobbies: []FkLobby = new []FkLobby
+  fk_lobby_next: long = 109775240000000000
+  fk_filter_k: []string = new []string
+  fk_filter_v: []string = new []string
+  fk_filter_slots: int = 0
+  fk_filter_limit: int = 50
+  fk_found: []long = new []long
+  fk_stat_k: []string = new []string
+  fk_stat_f: []float = new []float
+  fk_stat_isf: []bool = new []bool
+  fk_ach_k: []string = new []string
+  fk_ach_v: []int = new []int
+  fk_store_dirty: []string = new []string
+  fk_stores: int = 0
+  fk_resets: int = 0
+  fk_boards: []FkBoard = new []FkBoard
+  fk_dl_user: []long = new []long
+  fk_dl_score: []int = new []int
+  fk_dl_rank: []int = new []int
+  fk_files: []FkFile = new []FkFile
+  fk_clock: long = 1000
+  fk_cloud_off: bool = false
+  fk_dlc_ids: []int = new []int
+  fk_dlc_names: []string = new []string
+  fk_dlc_owned: []bool = new []bool
+  fk_beta: string = ""
+  fk_controllers: []long = new []long
+  fk_input_on: bool = false
+  fk_pad_set: string = ""
+  fk_pad_k: []string = new []string
+  fk_pad_x: []float = new []float
+  fk_pad_y: []float = new []float
+  fk_pad_d: []int = new []int
+  fk_auth_next: int = 1
+  fk_auth_live: int = 0
+  fk_net_started: bool = false
+  fk_net_any: bool = false
+  fk_net_allowed: []long = new []long
+  fk_net_in: []FkFile = new []FkFile
+  fk_net_in_from: []long = new []long
+  fk_net_from: long = 0
+  fk_net_sent_to: []long = new []long
+  fk_net_sent: []FkFile = new []FkFile
+  fk_net_rel: []bool = new []bool
+  fk_overlays: []string = new []string
+  fk_timeline: []string = new []string
+  fk_launch: string = ""
+  fk_persona: string = "Tester"
+  fk_logged_on: bool = true
+  fk_avatar_size: int = 0
+  fk_overlay_pos: int = -1
+  fk_gamepad_text: string = ""
+}
+
+# ---- small helpers over the parallel lists ----
+function fk_find(keys: []string, k: string) -> int {
+  for i in 0 .. len(keys) { if keys[i] == k { return i } }
+  return -1
+}
+
+function fk_push(fake_st: mut FakeSteamState, kind: int) -> FkFact {
+  var f: FkFact = null
+  if fake_st.fk_used < len(fake_st.fk_facts) {
+    f = fake_st.fk_facts[fake_st.fk_used]
+  } else {
+    f = new FkFact
+    push(fake_st.fk_facts, f)
+  }
+  fake_st.fk_used += 1
+  f.kind = kind
+  f.a = 0
+  f.b = 0
+  f.c = 0
+  f.d = 0
+  f.x = long(0)
+  f.y = long(0)
+  f.text = ""
+  return f
+}
+
+function fk_lobby(fake_st: FakeSteamState, id: long) -> FkLobby {
+  for i in 0 .. len(fake_st.fk_lobbies) { if fake_st.fk_lobbies[i].id == id { return fake_st.fk_lobbies[i] } }
+  return null
+}
+
+function fk_has_member(l: FkLobby, who: long) -> bool {
+  for i in 0 .. len(l.members) { if l.members[i] == who { return true } }
+  return false
+}
+
+function fk_member_key(who: long, key: string) -> string { return string(who) + "|" + key }
+
+function fk_file(fake_st: FakeSteamState, name: string) -> FkFile {
+  for i in 0 .. len(fake_st.fk_files) { if fake_st.fk_files[i].name == name { return fake_st.fk_files[i] } }
+  return null
+}
+
+function fk_friend(fake_st: FakeSteamState, id: long) -> FkFriend {
+  for i in 0 .. len(fake_st.fk_friends) { if fake_st.fk_friends[i].id == id { return fake_st.fk_friends[i] } }
+  return null
+}
+
+# ---- the driver's members ----
+function fk_init(fake_st: mut FakeSteamState, app: int, dev: bool) -> int {
+  if fake_st.fk_init_code != STEAM_OK { return fake_st.fk_init_code }
+  fake_st.fk_up = true
+  if not fake_st.fk_hold_stats { fk_send_stats(fake_st) }
+  return STEAM_OK
+}
+function fk_error(fake_st: FakeSteamState) -> string { return fake_st.fk_error }
+function fk_shutdown(fake_st: mut FakeSteamState) -> void { fake_st.fk_up = false }
+function fk_pump(fake_st: mut FakeSteamState) -> void { }
+
+function fk_poll(fake_st: mut FakeSteamState) -> int {
+  if fake_st.fk_at >= fake_st.fk_used {
+    fake_st.fk_used = 0
+    fake_st.fk_at = 0
+    return 0
+  }
+  fake_st.fk_cur = fake_st.fk_facts[fake_st.fk_at]
+  fake_st.fk_at += 1
+  return fake_st.fk_cur.kind
+}
+function fk_fi(fake_st: FakeSteamState, k: int) -> int {
+  if fake_st.fk_cur == null { return 0 }
+  if k == 0 { return fake_st.fk_cur.a }
+  if k == 1 { return fake_st.fk_cur.b }
+  if k == 2 { return fake_st.fk_cur.c }
+  return fake_st.fk_cur.d
+}
+function fk_fl(fake_st: FakeSteamState, k: int) -> long {
+  if fake_st.fk_cur == null { return long(0) }
+  if k == 0 { return fake_st.fk_cur.x }
+  return fake_st.fk_cur.y
+}
+function fk_ftext(fake_st: FakeSteamState) -> string {
+  if fake_st.fk_cur == null { return "" }
+  return fake_st.fk_cur.text
+}
+
+function fk_me(fake_st: FakeSteamState) -> long { return FAKE_ME }
+function fk_logged_on(fake_st: FakeSteamState) -> bool { return fake_st.fk_logged_on }
+function fk_persona(fake_st: FakeSteamState) -> string { return fake_st.fk_persona }
+function fk_app_id(fake_st: FakeSteamState) -> int { return 480 }
+function fk_language(fake_st: FakeSteamState) -> string { return "english" }
+function fk_launch_cmd(fake_st: FakeSteamState) -> string { return fake_st.fk_launch }
+function fk_launch_query(fake_st: FakeSteamState, key: string) -> string { return "" }
+function fk_on_deck(fake_st: FakeSteamState) -> bool { return false }
+function fk_overlay_on(fake_st: FakeSteamState) -> bool { return true }
+
+function fk_auth_ticket(fake_st: mut FakeSteamState, b: []byte, cap: int) -> int {
+  let n = Math.min(cap, 8)
+  for i in 0 .. n { b[i] = 160 + i }
+  fake_st.fk_auth_live = fake_st.fk_auth_next
+  fake_st.fk_auth_next += 1
+  return n
+}
+function fk_auth_handle(fake_st: FakeSteamState) -> int { return fake_st.fk_auth_live }
+function fk_auth_cancel(fake_st: mut FakeSteamState, h: int) -> void {
+  if h == fake_st.fk_auth_live { fake_st.fk_auth_live = 0 }
+}
+
+function fk_friend_count(fake_st: FakeSteamState) -> int { return len(fake_st.fk_friends) }
+function fk_friend_at(fake_st: FakeSteamState, i: int) -> long {
+  if i < 0 or i >= len(fake_st.fk_friends) { return long(0) }
+  return fake_st.fk_friends[i].id
+}
+function fk_friend_name(fake_st: FakeSteamState, id: long) -> string {
+  let f = fk_friend(fake_st, id)
+  if f == null { return "" }
+  return f.name
+}
+function fk_friend_state(fake_st: FakeSteamState, id: long) -> int {
+  let f = fk_friend(fake_st, id)
+  if f == null { return 0 }
+  return f.state
+}
+function fk_friend_game(fake_st: FakeSteamState, id: long) -> int {
+  let f = fk_friend(fake_st, id)
+  if f == null { return 0 }
+  return f.game
+}
+function fk_friend_lobby(fake_st: FakeSteamState, id: long) -> long {
+  let f = fk_friend(fake_st, id)
+  if f == null { return long(0) }
+  return f.lobby
+}
+function fk_user_info(fake_st: mut FakeSteamState, id: long) -> void {
+  let f = fk_push(fake_st, STF_PERSONA)
+  f.x = id
+  f.a = 1
+}
+function fk_avatar_request(fake_st: FakeSteamState, id: long, size: int) -> int {
+  if fk_friend(fake_st, id) == null and id != FAKE_ME { return -1 }
+  return 100 + size
+}
+function fk_avatar_size(fake_st: FakeSteamState, h: int) -> int { return 4 * 65536 + 4 }
+function fk_avatar_rgba(fake_st: FakeSteamState, h: int, b: []byte, cap: int) -> bool {
+  if cap < 64 { return false }
+  for i in 0 .. 64 { b[i] = i }
+  return true
+}
+
+function fk_presence_set(fake_st: mut FakeSteamState, k: string, v: string) -> bool {
+  let i = fk_find(fake_st.fk_rp_k, k)
+  if len(v) == 0 {
+    if i >= 0 { fake_st.fk_rp_v[i] = "" }
+    return true
+  }
+  if i < 0 {
+    push(fake_st.fk_rp_k, k)
+    push(fake_st.fk_rp_v, v)
+  } else {
+    fake_st.fk_rp_v[i] = v
+  }
+  return true
+}
+function fk_presence_clear(fake_st: mut FakeSteamState) -> void {
+  List.clear(fake_st.fk_rp_k)
+  List.clear(fake_st.fk_rp_v)
+}
+function fk_friend_presence(fake_st: FakeSteamState, id: long, k: string) -> string {
+  let i = fk_find(fake_st.fk_fr_k, fk_member_key(id, k))
+  if i < 0 { return "" }
+  return fake_st.fk_fr_v[i]
+}
+function fk_overlay(fake_st: mut FakeSteamState, what: string) -> void { push(fake_st.fk_overlays, what) }
+function fk_overlay_user(fake_st: mut FakeSteamState, what: string, id: long) -> void { push(fake_st.fk_overlays, what + ":" + string(id)) }
+function fk_overlay_invite(fake_st: mut FakeSteamState, lobby: long) -> void { push(fake_st.fk_overlays, "invite:" + string(lobby)) }
+function fk_overlay_url(fake_st: mut FakeSteamState, url: string) -> void { push(fake_st.fk_overlays, "url:" + url) }
+function fk_overlay_pos(fake_st: mut FakeSteamState, p: int) -> void { fake_st.fk_overlay_pos = p }
+function fk_invite_friend(fake_st: FakeSteamState, id: long, connect: string) -> bool { return fk_friend(fake_st, id) != null }
+
+# ---- lobbies ----
+function fk_lobby_create(fake_st: mut FakeSteamState, kind: int, most: int) -> bool {
+  let l = new FkLobby
+  l.id = fake_st.fk_lobby_next
+  fake_st.fk_lobby_next += long(1)
+  l.owner = FAKE_ME
+  l.limit = most
+  l.kind = kind
+  push(l.members, FAKE_ME)
+  push(fake_st.fk_lobbies, l)
+  let c = fk_push(fake_st, STF_LOBBY_CREATED)
+  c.a = 1
+  c.x = l.id
+  let e = fk_push(fake_st, STF_LOBBY_ENTERED)
+  e.x = l.id
+  e.a = 1
+  return true
+}
+function fk_lobby_join(fake_st: mut FakeSteamState, id: long) -> bool {
+  let l = fk_lobby(fake_st, id)
+  let e = fk_push(fake_st, STF_LOBBY_ENTERED)
+  e.x = id
+  if l == null {
+    e.a = 2
+    return true
+  }
+  if len(l.members) >= l.limit or not l.joinable {
+    e.a = 3
+    return true
+  }
+  if not fk_has_member(l, FAKE_ME) { push(l.members, FAKE_ME) }
+  e.a = 1
+  return true
+}
+function fk_lobby_leave(fake_st: mut FakeSteamState, id: long) -> void {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return }
+  let rest = new []long
+  for i in 0 .. len(l.members) { if l.members[i] != FAKE_ME { push(rest, l.members[i]) } }
+  l.members = rest
+  if l.owner == FAKE_ME and len(rest) > 0 { l.owner = rest[0] }
+}
+function fk_lobby_filter_reset(fake_st: mut FakeSteamState) -> void {
+  List.clear(fake_st.fk_filter_k)
+  List.clear(fake_st.fk_filter_v)
+  fake_st.fk_filter_slots = 0
+  fake_st.fk_filter_limit = 50
+}
+function fk_lobby_filter_text(fake_st: mut FakeSteamState, k: string, v: string, cmp: int) -> void {
+  if cmp != LOBBY_CMP_EQUAL { return }
+  push(fake_st.fk_filter_k, k)
+  push(fake_st.fk_filter_v, v)
+}
+function fk_lobby_filter_num(fake_st: mut FakeSteamState, k: string, v: int, cmp: int) -> void {
+  if cmp != LOBBY_CMP_EQUAL { return }
+  push(fake_st.fk_filter_k, k)
+  push(fake_st.fk_filter_v, string(v))
+}
+function fk_lobby_filter_near(fake_st: FakeSteamState, k: string, v: int) -> void { }
+function fk_lobby_filter_slots(fake_st: mut FakeSteamState, n: int) -> void { fake_st.fk_filter_slots = n }
+function fk_lobby_filter_distance(fake_st: FakeSteamState, n: int) -> void { }
+function fk_lobby_filter_limit(fake_st: mut FakeSteamState, n: int) -> void { fake_st.fk_filter_limit = n }
+function fk_lobby_search(fake_st: mut FakeSteamState) -> bool {
+  List.clear(fake_st.fk_found)
+  for i in 0 .. len(fake_st.fk_lobbies) {
+    let l = fake_st.fk_lobbies[i]
+    if l.kind != LOBBY_PUBLIC or len(fake_st.fk_found) >= fake_st.fk_filter_limit { continue }
+    var ok = len(l.members) > 0 and l.limit - len(l.members) >= fake_st.fk_filter_slots
+    for f in 0 .. len(fake_st.fk_filter_k) {
+      let at = fk_find(l.dk, fake_st.fk_filter_k[f])
+      if at < 0 or l.dv[at] != fake_st.fk_filter_v[f] { ok = false }
+    }
+    if ok { push(fake_st.fk_found, l.id) }
+  }
+  let f = fk_push(fake_st, STF_LOBBY_LIST)
+  f.a = len(fake_st.fk_found)
+  return true
+}
+function fk_lobby_result(fake_st: FakeSteamState, i: int) -> long {
+  if i < 0 or i >= len(fake_st.fk_found) { return long(0) }
+  return fake_st.fk_found[i]
+}
+function fk_lobby_set_data(fake_st: mut FakeSteamState, id: long, k: string, v: string) -> bool {
+  let l = fk_lobby(fake_st, id)
+  if l == null or l.owner != FAKE_ME { return false }
+  let i = fk_find(l.dk, k)
+  if i < 0 {
+    push(l.dk, k)
+    push(l.dv, v)
+  } else {
+    l.dv[i] = v
+  }
+  let f = fk_push(fake_st, STF_LOBBY_DATA)
+  f.x = id
+  f.y = id
+  f.a = 1
+  return true
+}
+function fk_lobby_data(fake_st: FakeSteamState, id: long, k: string) -> string {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return "" }
+  let i = fk_find(l.dk, k)
+  if i < 0 { return "" }
+  return l.dv[i]
+}
+function fk_lobby_set_member(fake_st: mut FakeSteamState, id: long, k: string, v: string) -> void {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return }
+  fk_member_set(l, FAKE_ME, k, v)
+  let f = fk_push(fake_st, STF_LOBBY_DATA)
+  f.x = id
+  f.y = FAKE_ME
+  f.a = 1
+}
+function fk_member_set(l: FkLobby, who: long, k: string, v: string) -> void {
+  let key = fk_member_key(who, k)
+  let i = fk_find(l.mk, key)
+  if i < 0 {
+    push(l.mk, key)
+    push(l.mv, v)
+  } else {
+    l.mv[i] = v
+  }
+}
+function fk_lobby_member_data(fake_st: FakeSteamState, id: long, who: long, k: string) -> string {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return "" }
+  let i = fk_find(l.mk, fk_member_key(who, k))
+  if i < 0 { return "" }
+  return l.mv[i]
+}
+function fk_lobby_members(fake_st: FakeSteamState, id: long) -> int {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return 0 }
+  return len(l.members)
+}
+function fk_lobby_member_at(fake_st: FakeSteamState, id: long, i: int) -> long {
+  let l = fk_lobby(fake_st, id)
+  if l == null or i < 0 or i >= len(l.members) { return long(0) }
+  return l.members[i]
+}
+function fk_lobby_owner(fake_st: FakeSteamState, id: long) -> long {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return long(0) }
+  return l.owner
+}
+function fk_lobby_limit(fake_st: FakeSteamState, id: long) -> int {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return 0 }
+  return l.limit
+}
+function fk_lobby_joinable(fake_st: mut FakeSteamState, id: long, b: bool) -> bool {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return false }
+  l.joinable = b
+  return true
+}
+function fk_lobby_type(fake_st: mut FakeSteamState, id: long, kind: int) -> bool {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return false }
+  l.kind = kind
+  return true
+}
+function fk_lobby_chat(fake_st: mut FakeSteamState, id: long, text: string) -> bool {
+  let l = fk_lobby(fake_st, id)
+  if l == null or not fk_has_member(l, FAKE_ME) { return false }
+  let f = fk_push(fake_st, STF_LOBBY_CHAT)
+  f.x = id
+  f.y = FAKE_ME
+  f.a = 1
+  f.text = text
+  return true
+}
+function fk_lobby_invite(fake_st: FakeSteamState, id: long, friend: long) -> bool {
+  return fk_lobby(fake_st, id) != null and fk_friend(fake_st, friend) != null
+}
+function fk_lobby_set_owner(fake_st: mut FakeSteamState, id: long, who: long) -> bool {
+  let l = fk_lobby(fake_st, id)
+  if l == null or l.owner != FAKE_ME or not fk_has_member(l, who) { return false }
+  l.owner = who
+  return true
+}
+
+# ---- stats, achievements, leaderboards ----
+function fk_send_stats(fake_st: mut FakeSteamState) -> void {
+  fake_st.fk_stats_sent = true
+  let f = fk_push(fake_st, STF_STATS_RECEIVED)
+  f.a = 1
+  f.x = FAKE_ME
+}
+function fk_stats_request(fake_st: mut FakeSteamState) -> bool { return true }
+function fk_stat_index(fake_st: mut FakeSteamState, k: string, is_float: bool) -> int {
+  var i = fk_find(fake_st.fk_stat_k, k)
+  if i < 0 {
+    push(fake_st.fk_stat_k, k)
+    push(fake_st.fk_stat_f, 0.0)
+    push(fake_st.fk_stat_isf, is_float)
+    i = len(fake_st.fk_stat_k) - 1
+  }
+  return i
+}
+function fk_dirty(fake_st: mut FakeSteamState, k: string) -> void {
+  if fk_find(fake_st.fk_store_dirty, k) < 0 { push(fake_st.fk_store_dirty, k) }
+}
+function fk_stat_set_int(fake_st: mut FakeSteamState, k: string, v: int) -> bool {
+  let i = fk_stat_index(fake_st, k, false)
+  fake_st.fk_stat_f[i] = float(v)
+  fk_dirty(fake_st, "s:" + k)
+  return true
+}
+function fk_stat_int(fake_st: FakeSteamState, k: string) -> int {
+  let i = fk_find(fake_st.fk_stat_k, k)
+  if i < 0 { return 0 }
+  return int(fake_st.fk_stat_f[i])
+}
+function fk_stat_set_float(fake_st: mut FakeSteamState, k: string, v: float) -> bool {
+  let i = fk_stat_index(fake_st, k, true)
+  fake_st.fk_stat_f[i] = v
+  fk_dirty(fake_st, "s:" + k)
+  return true
+}
+function fk_stat_float(fake_st: FakeSteamState, k: string) -> float {
+  let i = fk_find(fake_st.fk_stat_k, k)
+  if i < 0 { return 0.0 }
+  return fake_st.fk_stat_f[i]
+}
+function fk_ach_set(fake_st: mut FakeSteamState, k: string) -> bool {
+  let i = fk_find(fake_st.fk_ach_k, k)
+  if i < 0 {
+    push(fake_st.fk_ach_k, k)
+    push(fake_st.fk_ach_v, 1)
+  } else {
+    fake_st.fk_ach_v[i] = 1
+  }
+  fk_dirty(fake_st, "a:" + k)
+  return true
+}
+function fk_ach_clear(fake_st: mut FakeSteamState, k: string) -> bool {
+  let i = fk_find(fake_st.fk_ach_k, k)
+  if i >= 0 { fake_st.fk_ach_v[i] = 0 }
+  return true
+}
+function fk_ach_get(fake_st: FakeSteamState, k: string) -> int {
+  let i = fk_find(fake_st.fk_ach_k, k)
+  if i < 0 { return 0 }
+  return fake_st.fk_ach_v[i]
+}
+function fk_ach_progress(fake_st: mut FakeSteamState, k: string, cur: int, goal: int) -> bool {
+  let f = fk_push(fake_st, STF_ACH_STORED)
+  f.a = cur
+  f.b = goal
+  f.text = k
+  return true
+}
+function fk_stats_store(fake_st: mut FakeSteamState) -> bool {
+  fake_st.fk_stores += 1
+  for i in 0 .. len(fake_st.fk_store_dirty) {
+    let key = fake_st.fk_store_dirty[i]
+    if Text.starts_with(key, "a:") {
+      let f = fk_push(fake_st, STF_ACH_STORED)
+      f.text = Text.slice(key, 2, len(key))
+    }
+  }
+  List.clear(fake_st.fk_store_dirty)
+  let f = fk_push(fake_st, STF_STATS_STORED)
+  f.a = 1
+  return true
+}
+function fk_stats_reset(fake_st: mut FakeSteamState, all: bool) -> bool {
+  fake_st.fk_resets += 1
+  List.clear(fake_st.fk_stat_k)
+  List.clear(fake_st.fk_stat_f)
+  List.clear(fake_st.fk_stat_isf)
+  if all {
+    List.clear(fake_st.fk_ach_k)
+    List.clear(fake_st.fk_ach_v)
+  }
+  return true
+}
+function fk_lb_find(fake_st: mut FakeSteamState, name: string, create: bool, sort: int, display: int) -> bool {
+  var b: FkBoard = null
+  for i in 0 .. len(fake_st.fk_boards) { if fake_st.fk_boards[i].name == name { b = fake_st.fk_boards[i] } }
+  if b == null and create {
+    b = new FkBoard
+    b.name = name
+    b.sort = sort
+    b.handle = FAKE_LEADERBOARD_BASE + long(len(fake_st.fk_boards))
+    push(fake_st.fk_boards, b)
+  }
+  let f = fk_push(fake_st, STF_LB_FOUND)
+  if b == null { return true }
+  f.a = 1
+  f.x = b.handle
+  return true
+}
+function fk_board(fake_st: FakeSteamState, h: long) -> FkBoard {
+  for i in 0 .. len(fake_st.fk_boards) { if fake_st.fk_boards[i].handle == h { return fake_st.fk_boards[i] } }
+  return null
+}
+function fk_board_better(b: FkBoard, a: int, than: int) -> bool {
+  if b.sort == LB_SORT_ASC { return a < than }
+  return a > than
+}
+function fk_lb_upload(fake_st: mut FakeSteamState, h: long, score: int, method: int) -> bool {
+  let b = fk_board(fake_st, h)
+  let f = fk_push(fake_st, STF_LB_UPLOADED)
+  f.x = h
+  f.b = score
+  if b == null { return true }
+  f.a = 1
+  var at = -1
+  for i in 0 .. len(b.users) { if b.users[i] == FAKE_ME { at = i } }
+  if at < 0 {
+    push(b.users, FAKE_ME)
+    push(b.scores, score)
+    f.c = 1
+  } else if method == LB_UPLOAD_FORCE or fk_board_better(b, score, b.scores[at]) {
+    b.scores[at] = score
+    f.c = 1
+  }
+  var rank = 1
+  for i in 0 .. len(b.users) {
+    if b.users[i] != FAKE_ME and fk_board_better(b, b.scores[i], fk_board_score_of(b, FAKE_ME)) { rank += 1 }
+  }
+  f.d = rank
+  return true
+}
+function fk_board_score_of(b: FkBoard, who: long) -> int {
+  for i in 0 .. len(b.users) { if b.users[i] == who { return b.scores[i] } }
+  return 0
+}
+function fk_lb_download(fake_st: mut FakeSteamState, h: long, request: int, from: int, to: int) -> bool {
+  List.clear(fake_st.fk_dl_user)
+  List.clear(fake_st.fk_dl_score)
+  List.clear(fake_st.fk_dl_rank)
+  let b = fk_board(fake_st, h)
+  let f = fk_push(fake_st, STF_LB_DOWNLOADED)
+  f.x = h
+  if b == null { return true }
+  # rank order, simple selection over the board
+  let order = new []int
+  for i in 0 .. len(b.users) { push(order, i) }
+  for i in 0 .. len(order) {
+    for j in i + 1 .. len(order) {
+      if fk_board_better(b, b.scores[order[j]], b.scores[order[i]]) {
+        let t = order[i]
+        order[i] = order[j]
+        order[j] = t
+      }
+    }
+  }
+  var lo = from
+  var hi = to
+  if request == LB_AROUND_USER {
+    var mine = 0
+    for r in 0 .. len(order) { if b.users[order[r]] == FAKE_ME { mine = r + 1 } }
+    lo = mine + from
+    hi = mine + to
+  }
+  for r in 0 .. len(order) {
+    let rank = r + 1
+    if rank < lo or rank > hi { continue }
+    if request == LB_FRIENDS and b.users[order[r]] != FAKE_ME and fk_friend(fake_st, b.users[order[r]]) == null { continue }
+    push(fake_st.fk_dl_user, b.users[order[r]])
+    push(fake_st.fk_dl_score, b.scores[order[r]])
+    push(fake_st.fk_dl_rank, rank)
+  }
+  f.a = len(fake_st.fk_dl_user)
+  return true
+}
+function fk_lb_count(fake_st: FakeSteamState) -> int { return len(fake_st.fk_dl_user) }
+function fk_lb_user(fake_st: FakeSteamState, i: int) -> long {
+  if i < 0 or i >= len(fake_st.fk_dl_user) { return long(0) }
+  return fake_st.fk_dl_user[i]
+}
+function fk_lb_score(fake_st: FakeSteamState, i: int) -> int {
+  if i < 0 or i >= len(fake_st.fk_dl_score) { return 0 }
+  return fake_st.fk_dl_score[i]
+}
+function fk_lb_rank(fake_st: FakeSteamState, i: int) -> int {
+  if i < 0 or i >= len(fake_st.fk_dl_rank) { return 0 }
+  return fake_st.fk_dl_rank[i]
+}
+
+# ---- cloud files ----
+function fk_rs_enabled(fake_st: FakeSteamState) -> bool { return not fake_st.fk_cloud_off }
+function fk_rs_write(fake_st: mut FakeSteamState, name: string, b: []byte, n: int) -> bool {
+  if fake_st.fk_cloud_off { return false }
+  var f = fk_file(fake_st, name)
+  if f == null {
+    f = new FkFile
+    f.name = name
+    push(fake_st.fk_files, f)
+  }
+  f.data = buffer(Math.max(n, 1))
+  for i in 0 .. n { f.data[i] = b[i] }
+  f.n = n
+  fake_st.fk_clock += long(1)
+  f.time = fake_st.fk_clock
+  return true
+}
+function fk_rs_read(fake_st: FakeSteamState, name: string, b: []byte, cap: int) -> int {
+  let f = fk_file(fake_st, name)
+  if f == null { return -1 }
+  let n = Math.min(f.n, cap)
+  for i in 0 .. n { b[i] = f.data[i] }
+  return n
+}
+function fk_rs_size(fake_st: FakeSteamState, name: string) -> int {
+  let f = fk_file(fake_st, name)
+  if f == null { return 0 }
+  return f.n
+}
+function fk_rs_exists(fake_st: FakeSteamState, name: string) -> bool { return fk_file(fake_st, name) != null }
+function fk_rs_delete(fake_st: mut FakeSteamState, name: string) -> bool {
+  let rest = new []FkFile
+  var found = false
+  for i in 0 .. len(fake_st.fk_files) {
+    if fake_st.fk_files[i].name == name { found = true } else { push(rest, fake_st.fk_files[i]) }
+  }
+  fake_st.fk_files = rest
+  return found
+}
+function fk_rs_count(fake_st: FakeSteamState) -> int { return len(fake_st.fk_files) }
+function fk_rs_name(fake_st: FakeSteamState, i: int) -> string {
+  if i < 0 or i >= len(fake_st.fk_files) { return "" }
+  return fake_st.fk_files[i].name
+}
+function fk_rs_time(fake_st: FakeSteamState, name: string) -> long {
+  let f = fk_file(fake_st, name)
+  if f == null { return long(0) }
+  return f.time
+}
+
+# ---- Steam Input ----
+function fk_input_start(fake_st: mut FakeSteamState) -> bool {
+  fake_st.fk_input_on = true
+  return true
+}
+function fk_input_frame(fake_st: FakeSteamState) -> void { }
+function fk_input_count(fake_st: FakeSteamState) -> int { return len(fake_st.fk_controllers) }
+function fk_input_controller(fake_st: FakeSteamState, i: int) -> long {
+  if i < 0 or i >= len(fake_st.fk_controllers) { return long(0) }
+  return fake_st.fk_controllers[i]
+}
+function fk_input_activate(fake_st: mut FakeSteamState, c: long, set: string) -> bool {
+  fake_st.fk_pad_set = set
+  return true
+}
+function fk_input_digital(fake_st: FakeSteamState, c: long, action: string) -> int {
+  let i = fk_find(fake_st.fk_pad_k, action)
+  if i < 0 { return 2 }
+  return 2 + fake_st.fk_pad_d[i]
+}
+function fk_input_analog(fake_st: FakeSteamState, c: long, action: string, xy: floats) -> bool {
+  let i = fk_find(fake_st.fk_pad_k, action)
+  if i < 0 { return false }
+  xy[0] = fake_st.fk_pad_x[i]
+  xy[1] = fake_st.fk_pad_y[i]
+  return true
+}
+function fk_input_glyph(fake_st: FakeSteamState, c: long, action: string, size: int) -> string {
+  return "glyphs/" + action + "_" + string(size) + ".png"
+}
+
+# ---- apps and utilities ----
+function fk_dlc_count(fake_st: FakeSteamState) -> int { return len(fake_st.fk_dlc_ids) }
+function fk_dlc_at(fake_st: FakeSteamState, i: int) -> int {
+  if i < 0 or i >= len(fake_st.fk_dlc_ids) { return 0 }
+  return fake_st.fk_dlc_ids[i]
+}
+function fk_dlc_owned(fake_st: FakeSteamState, app: int) -> bool {
+  for i in 0 .. len(fake_st.fk_dlc_ids) { if fake_st.fk_dlc_ids[i] == app { return fake_st.fk_dlc_owned[i] } }
+  return false
+}
+function fk_dlc_name(fake_st: FakeSteamState, i: int) -> string {
+  if i < 0 or i >= len(fake_st.fk_dlc_names) { return "" }
+  return fake_st.fk_dlc_names[i]
+}
+function fk_beta(fake_st: FakeSteamState) -> string { return fake_st.fk_beta }
+function fk_gamepad_text(fake_st: mut FakeSteamState, mode: int, line: int, desc: string, most: int, existing: string) -> bool {
+  fake_st.fk_gamepad_text = existing
+  return true
+}
+function fk_tl_mode(fake_st: mut FakeSteamState, m: int) -> void { push(fake_st.fk_timeline, "mode:" + string(m)) }
+function fk_tl_marker(fake_st: mut FakeSteamState, icon: string, title: string, desc: string, prio: int, at: float) -> void { push(fake_st.fk_timeline, "marker:" + title) }
+function fk_tl_range(fake_st: mut FakeSteamState, icon: string, title: string, desc: string, prio: int, at: float, dur: float) -> void { push(fake_st.fk_timeline, "range:" + title) }
+function fk_tl_phase(fake_st: mut FakeSteamState, id: string) -> void { push(fake_st.fk_timeline, "phase:" + id) }
+function fk_tl_phase_end(fake_st: mut FakeSteamState) -> void { push(fake_st.fk_timeline, "phase_end") }
+function fk_tl_tooltip(fake_st: mut FakeSteamState, text: string) -> void { push(fake_st.fk_timeline, "tooltip:" + text) }
+
+# ---- the relay ----
+function fk_net_start(fake_st: mut FakeSteamState) -> void { fake_st.fk_net_started = true }
+function fk_net_allow(fake_st: mut FakeSteamState, id: long) -> void {
+  for i in 0 .. len(fake_st.fk_net_allowed) { if fake_st.fk_net_allowed[i] == id { return } }
+  push(fake_st.fk_net_allowed, id)
+}
+function fk_net_any(fake_st: mut FakeSteamState, on: bool) -> void { fake_st.fk_net_any = on }
+function fk_net_send(fake_st: mut FakeSteamState, to: long, b: []byte, n: int, reliable: bool) -> bool {
+  let m = new FkFile
+  m.data = buffer(Math.max(n, 1))
+  for i in 0 .. n { m.data[i] = b[i] }
+  m.n = n
+  push(fake_st.fk_net_sent_to, to)
+  push(fake_st.fk_net_sent, m)
+  push(fake_st.fk_net_rel, reliable)
+  return true
+}
+function fk_net_recv(fake_st: mut FakeSteamState, b: []byte, cap: int) -> int {
+  if len(fake_st.fk_net_in) == 0 { return -1 }
+  let m = fake_st.fk_net_in[0]
+  fake_st.fk_net_from = fake_st.fk_net_in_from[0]
+  let rest = new []FkFile
+  let rest_from = new []long
+  for i in 1 .. len(fake_st.fk_net_in) {
+    push(rest, fake_st.fk_net_in[i])
+    push(rest_from, fake_st.fk_net_in_from[i])
+  }
+  fake_st.fk_net_in = rest
+  fake_st.fk_net_in_from = rest_from
+  let n = Math.min(m.n, cap)
+  for i in 0 .. n { b[i] = m.data[i] }
+  return n
+}
+function fk_net_from(fake_st: FakeSteamState) -> long { return fake_st.fk_net_from }
+function fk_net_close(fake_st: mut FakeSteamState, id: long) -> void { }
+
+# ---- the driver ----
+export function steam_fake_driver() -> SteamDriver {
+  let d = new SteamDriver
+  d.init = fn fk_init
+  d.error = fn fk_error
+  d.shutdown = fn fk_shutdown
+  d.pump = fn fk_pump
+  d.poll = fn fk_poll
+  d.fi = fn fk_fi
+  d.fl = fn fk_fl
+  d.ftext = fn fk_ftext
+  d.me = fn fk_me
+  d.logged_on = fn fk_logged_on
+  d.persona = fn fk_persona
+  d.app_id = fn fk_app_id
+  d.language = fn fk_language
+  d.launch_cmd = fn fk_launch_cmd
+  d.launch_query = fn fk_launch_query
+  d.on_deck = fn fk_on_deck
+  d.overlay_on = fn fk_overlay_on
+  d.auth_ticket = fn fk_auth_ticket
+  d.auth_handle = fn fk_auth_handle
+  d.auth_cancel = fn fk_auth_cancel
+  d.friend_count = fn fk_friend_count
+  d.friend_at = fn fk_friend_at
+  d.friend_name = fn fk_friend_name
+  d.friend_state = fn fk_friend_state
+  d.friend_game = fn fk_friend_game
+  d.friend_lobby = fn fk_friend_lobby
+  d.user_info = fn fk_user_info
+  d.avatar_request = fn fk_avatar_request
+  d.avatar_size = fn fk_avatar_size
+  d.avatar_rgba = fn fk_avatar_rgba
+  d.presence_set = fn fk_presence_set
+  d.presence_clear = fn fk_presence_clear
+  d.friend_presence = fn fk_friend_presence
+  d.overlay = fn fk_overlay
+  d.overlay_user = fn fk_overlay_user
+  d.overlay_invite = fn fk_overlay_invite
+  d.overlay_url = fn fk_overlay_url
+  d.invite_friend = fn fk_invite_friend
+  d.lobby_create = fn fk_lobby_create
+  d.lobby_join = fn fk_lobby_join
+  d.lobby_leave = fn fk_lobby_leave
+  d.lobby_filter_reset = fn fk_lobby_filter_reset
+  d.lobby_filter_text = fn fk_lobby_filter_text
+  d.lobby_filter_num = fn fk_lobby_filter_num
+  d.lobby_filter_near = fn fk_lobby_filter_near
+  d.lobby_filter_slots = fn fk_lobby_filter_slots
+  d.lobby_filter_distance = fn fk_lobby_filter_distance
+  d.lobby_filter_limit = fn fk_lobby_filter_limit
+  d.lobby_search = fn fk_lobby_search
+  d.lobby_result = fn fk_lobby_result
+  d.lobby_set_data = fn fk_lobby_set_data
+  d.lobby_data = fn fk_lobby_data
+  d.lobby_set_member = fn fk_lobby_set_member
+  d.lobby_member_data = fn fk_lobby_member_data
+  d.lobby_members = fn fk_lobby_members
+  d.lobby_member_at = fn fk_lobby_member_at
+  d.lobby_owner = fn fk_lobby_owner
+  d.lobby_limit = fn fk_lobby_limit
+  d.lobby_joinable = fn fk_lobby_joinable
+  d.lobby_type = fn fk_lobby_type
+  d.lobby_chat = fn fk_lobby_chat
+  d.lobby_invite = fn fk_lobby_invite
+  d.lobby_set_owner = fn fk_lobby_set_owner
+  d.stats_request = fn fk_stats_request
+  d.stat_set_int = fn fk_stat_set_int
+  d.stat_int = fn fk_stat_int
+  d.stat_set_float = fn fk_stat_set_float
+  d.stat_float = fn fk_stat_float
+  d.ach_set = fn fk_ach_set
+  d.ach_clear = fn fk_ach_clear
+  d.ach_get = fn fk_ach_get
+  d.ach_progress = fn fk_ach_progress
+  d.stats_store = fn fk_stats_store
+  d.stats_reset = fn fk_stats_reset
+  d.lb_find = fn fk_lb_find
+  d.lb_upload = fn fk_lb_upload
+  d.lb_download = fn fk_lb_download
+  d.lb_count = fn fk_lb_count
+  d.lb_user = fn fk_lb_user
+  d.lb_score = fn fk_lb_score
+  d.lb_rank = fn fk_lb_rank
+  d.rs_enabled = fn fk_rs_enabled
+  d.rs_write = fn fk_rs_write
+  d.rs_read = fn fk_rs_read
+  d.rs_size = fn fk_rs_size
+  d.rs_exists = fn fk_rs_exists
+  d.rs_delete = fn fk_rs_delete
+  d.rs_count = fn fk_rs_count
+  d.rs_name = fn fk_rs_name
+  d.rs_time = fn fk_rs_time
+  d.input_start = fn fk_input_start
+  d.input_frame = fn fk_input_frame
+  d.input_count = fn fk_input_count
+  d.input_controller = fn fk_input_controller
+  d.input_activate = fn fk_input_activate
+  d.input_digital = fn fk_input_digital
+  d.input_analog = fn fk_input_analog
+  d.input_glyph = fn fk_input_glyph
+  d.dlc_count = fn fk_dlc_count
+  d.dlc_at = fn fk_dlc_at
+  d.dlc_owned = fn fk_dlc_owned
+  d.dlc_name = fn fk_dlc_name
+  d.beta = fn fk_beta
+  d.overlay_pos = fn fk_overlay_pos
+  d.gamepad_text = fn fk_gamepad_text
+  d.tl_mode = fn fk_tl_mode
+  d.tl_marker = fn fk_tl_marker
+  d.tl_range = fn fk_tl_range
+  d.tl_phase = fn fk_tl_phase
+  d.tl_phase_end = fn fk_tl_phase_end
+  d.tl_tooltip = fn fk_tl_tooltip
+  d.net_start = fn fk_net_start
+  d.net_allow = fn fk_net_allow
+  d.net_any = fn fk_net_any
+  d.net_send = fn fk_net_send
+  d.net_recv = fn fk_net_recv
+  d.net_from = fn fk_net_from
+  d.net_close = fn fk_net_close
+  return d
+}
+
+# ---- the other side: what the test plays ----
+export function fake_reset(fake_st: mut FakeSteamState) -> void {
+  let fresh = new FakeSteamState
+  fake_st.fk_init_code = 0
+  fake_st.fk_up = false
+  fake_st.fk_hold_stats = false
+  fake_st.fk_used = 0
+  fake_st.fk_at = 0
+  fake_st.fk_friends = fresh.fk_friends
+  fake_st.fk_lobbies = fresh.fk_lobbies
+  fake_st.fk_files = fresh.fk_files
+}
+
+# start fails like this (STEAM_ERR_*), with this message
+export function fake_fail_init(fake_st: mut FakeSteamState, code: int, message: string) -> void {
+  fake_st.fk_init_code = code
+  fake_st.fk_error = message
+}
+# the stats wait for fake_stats_arrive instead of coming with init
+export function fake_hold_stats(fake_st: mut FakeSteamState, hold: bool) -> void { fake_st.fk_hold_stats = hold }
+export function fake_stats_arrive(fake_st: mut FakeSteamState) -> void { fk_send_stats(fake_st) }
+export function fake_cloud_off(fake_st: mut FakeSteamState, off: bool) -> void { fake_st.fk_cloud_off = off }
+export function fake_launch(fake_st: mut FakeSteamState, cmd: string) -> void { fake_st.fk_launch = cmd }
+
+export function fake_add_friend(fake_st: mut FakeSteamState, id: long, name: string, state: int) -> void {
+  let f = new FkFriend
+  f.id = id
+  f.name = name
+  f.state = state
+  push(fake_st.fk_friends, f)
+}
+export function fake_friend_in_game(fake_st: mut FakeSteamState, id: long, app: int, lobby: long) -> void {
+  let f = fk_friend(fake_st, id)
+  if f == null { return }
+  f.game = app
+  f.lobby = lobby
+}
+export function fake_friend_presence(fake_st: mut FakeSteamState, id: long, key: string, value: string) -> void {
+  let k = fk_member_key(id, key)
+  let i = fk_find(fake_st.fk_fr_k, k)
+  if i < 0 {
+    push(fake_st.fk_fr_k, k)
+    push(fake_st.fk_fr_v, value)
+  } else {
+    fake_st.fk_fr_v[i] = value
+  }
+  let f = fk_push(fake_st, STF_PRESENCE)
+  f.x = id
+}
+export function fake_persona_changed(fake_st: mut FakeSteamState, id: long, name: string) -> void {
+  if id == FAKE_ME { fake_st.fk_persona = name }
+  let f = fk_friend(fake_st, id)
+  if f != null { f.name = name }
+  let x = fk_push(fake_st, STF_PERSONA)
+  x.x = id
+  x.a = 1
+}
+export function fake_disconnect(fake_st: mut FakeSteamState) -> void {
+  let f = fk_push(fake_st, STF_DISCONNECTED)
+  f.a = 3
+  fake_st.fk_logged_on = false
+}
+export function fake_connect(fake_st: mut FakeSteamState) -> void {
+  fake_st.fk_logged_on = true
+  fk_push(fake_st, STF_CONNECTED)
+}
+export function fake_overlay(fake_st: mut FakeSteamState, open: bool) -> void {
+  let f = fk_push(fake_st, STF_OVERLAY)
+  if open { f.a = 1 }
+}
+
+# a lobby somebody else owns, public unless made otherwise: a search may find it, a join may enter it
+export function fake_remote_lobby(fake_st: mut FakeSteamState, id: long, owner: long, limit: int) -> void {
+  let l = new FkLobby
+  l.id = id
+  l.owner = owner
+  l.limit = limit
+  l.kind = LOBBY_PUBLIC
+  push(l.members, owner)
+  push(fake_st.fk_lobbies, l)
+}
+export function fake_lobby_data(fake_st: mut FakeSteamState, id: long, key: string, value: string) -> void {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return }
+  let i = fk_find(l.dk, key)
+  if i < 0 {
+    push(l.dk, key)
+    push(l.dv, value)
+  } else {
+    l.dv[i] = value
+  }
+}
+export function fake_member_join(fake_st: mut FakeSteamState, id: long, who: long) -> void {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return }
+  if not fk_has_member(l, who) { push(l.members, who) }
+  let f = fk_push(fake_st, STF_LOBBY_MEMBER)
+  f.x = id
+  f.y = who
+  f.a = 1
+}
+export function fake_member_leave(fake_st: mut FakeSteamState, id: long, who: long, flags: int) -> void {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return }
+  let rest = new []long
+  for i in 0 .. len(l.members) { if l.members[i] != who { push(rest, l.members[i]) } }
+  l.members = rest
+  let f = fk_push(fake_st, STF_LOBBY_MEMBER)
+  f.x = id
+  f.y = who
+  f.a = flags
+}
+export function fake_member_data(fake_st: mut FakeSteamState, id: long, who: long, key: string, value: string) -> void {
+  let l = fk_lobby(fake_st, id)
+  if l == null { return }
+  fk_member_set(l, who, key, value)
+  let f = fk_push(fake_st, STF_LOBBY_DATA)
+  f.x = id
+  f.y = who
+  f.a = 1
+}
+export function fake_chat(fake_st: mut FakeSteamState, id: long, who: long, text: string) -> void {
+  let f = fk_push(fake_st, STF_LOBBY_CHAT)
+  f.x = id
+  f.y = who
+  f.a = 1
+  f.text = text
+}
+export function fake_kick_me(fake_st: mut FakeSteamState, id: long) -> void {
+  fk_lobby_leave(fake_st, id)
+  let f = fk_push(fake_st, STF_LOBBY_KICKED)
+  f.x = id
+}
+export function fake_join_request(fake_st: mut FakeSteamState, friend: long, connect: string) -> void {
+  let f = fk_push(fake_st, STF_JOIN_REQUEST)
+  f.x = friend
+  f.text = connect
+}
+export function fake_lobby_invite_accepted(fake_st: mut FakeSteamState, lobby: long, friend: long) -> void {
+  let f = fk_push(fake_st, STF_LOBBY_JOIN_REQUEST)
+  f.x = lobby
+  f.y = friend
+}
+
+export function fake_board_entry(fake_st: mut FakeSteamState, name: string, who: long, score: int, sort: int) -> void {
+  var b: FkBoard = null
+  for i in 0 .. len(fake_st.fk_boards) { if fake_st.fk_boards[i].name == name { b = fake_st.fk_boards[i] } }
+  if b == null {
+    b = new FkBoard
+    b.name = name
+    b.sort = sort
+    b.handle = FAKE_LEADERBOARD_BASE + long(len(fake_st.fk_boards))
+    push(fake_st.fk_boards, b)
+  }
+  push(b.users, who)
+  push(b.scores, score)
+}
+
+export function fake_add_dlc(fake_st: mut FakeSteamState, app: int, name: string, owned: bool) -> void {
+  push(fake_st.fk_dlc_ids, app)
+  push(fake_st.fk_dlc_names, name)
+  push(fake_st.fk_dlc_owned, owned)
+}
+export function fake_dlc_installed(fake_st: mut FakeSteamState, app: int) -> void {
+  let f = fk_push(fake_st, STF_DLC_INSTALLED)
+  f.a = app
+}
+export function fake_add_controller(fake_st: mut FakeSteamState, id: long) -> void { push(fake_st.fk_controllers, id) }
+export function fake_pad(fake_st: mut FakeSteamState, action: string, down: bool, x: float, y: float) -> void {
+  var i = fk_find(fake_st.fk_pad_k, action)
+  if i < 0 {
+    push(fake_st.fk_pad_k, action)
+    push(fake_st.fk_pad_x, 0.0)
+    push(fake_st.fk_pad_y, 0.0)
+    push(fake_st.fk_pad_d, 0)
+    i = len(fake_st.fk_pad_k) - 1
+  }
+  fake_st.fk_pad_x[i] = x
+  fake_st.fk_pad_y[i] = y
+  if down { fake_st.fk_pad_d[i] = 1 } else { fake_st.fk_pad_d[i] = 0 }
+}
+export function fake_gamepad_text(fake_st: mut FakeSteamState, submitted: bool, text: string) -> void {
+  let f = fk_push(fake_st, STF_GAMEPAD_TEXT)
+  if submitted { f.a = 1 }
+  f.text = text
+}
+
+# a session request from a user (accepted: the shim let them in), and one that failed
+export function fake_net_session_request(fake_st: mut FakeSteamState, who: long, accepted: bool) -> void {
+  let f = fk_push(fake_st, STF_NET_SESSION_REQUEST)
+  f.x = who
+  if accepted { f.a = 1 }
+}
+export function fake_net_session_failed(fake_st: mut FakeSteamState, who: long, reason: int) -> void {
+  let f = fk_push(fake_st, STF_NET_SESSION_FAILED)
+  f.x = who
+  f.a = reason
+}
+
+# a datagram arriving from a Steam user
+export function fake_net_inject(fake_st: mut FakeSteamState, from: long, b: []byte, n: int) -> void {
+  let m = new FkFile
+  m.data = buffer(Math.max(n, 1))
+  for i in 0 .. n { m.data[i] = b[i] }
+  m.n = n
+  push(fake_st.fk_net_in, m)
+  push(fake_st.fk_net_in_from, from)
+}
+export function fake_net_sent_count(fake_st: FakeSteamState) -> int { return len(fake_st.fk_net_sent) }
+export function fake_net_sent_to(fake_st: FakeSteamState, i: int) -> long { return fake_st.fk_net_sent_to[i] }
+export function fake_net_sent_len(fake_st: FakeSteamState, i: int) -> int { return fake_st.fk_net_sent[i].n }
+export function fake_net_sent_byte(fake_st: FakeSteamState, i: int, k: int) -> int { return fake_st.fk_net_sent[i].data[k] }
+export function fake_net_allowed(fake_st: FakeSteamState, id: long) -> bool {
+  for i in 0 .. len(fake_st.fk_net_allowed) { if fake_st.fk_net_allowed[i] == id { return true } }
+  return false
+}
+
+# what the game did to the fake
+export function fake_presence_value(fake_st: FakeSteamState, key: string) -> string {
+  let i = fk_find(fake_st.fk_rp_k, key)
+  if i < 0 { return "" }
+  return fake_st.fk_rp_v[i]
+}
+export function fake_presence_count(fake_st: FakeSteamState) -> int {
+  var n = 0
+  for i in 0 .. len(fake_st.fk_rp_k) { if len(fake_st.fk_rp_v[i]) > 0 { n += 1 } }
+  return n
+}
+export function fake_stores(fake_st: FakeSteamState) -> int { return fake_st.fk_stores }
+export function fake_resets(fake_st: FakeSteamState) -> int { return fake_st.fk_resets }
+export function fake_ach(fake_st: FakeSteamState, api: string) -> bool { return fk_ach_get(fake_st, api) == 1 }
+export function fake_ach_count(fake_st: FakeSteamState) -> int {
+  var n = 0
+  for i in 0 .. len(fake_st.fk_ach_v) { if fake_st.fk_ach_v[i] == 1 { n += 1 } }
+  return n
+}
+export function fake_stat(fake_st: FakeSteamState, api: string) -> float { return fk_stat_float(fake_st, api) }
+export function fake_lobby_size(fake_st: FakeSteamState, id: long) -> int { return fk_lobby_members(fake_st, id) }
+export function fake_lobby_joinable(fake_st: FakeSteamState, id: long) -> bool {
+  let l = fk_lobby(fake_st, id)
+  return l != null and l.joinable
+}
+export function fake_overlay_calls(fake_st: FakeSteamState) -> []string { return fake_st.fk_overlays }
+export function fake_timeline(fake_st: FakeSteamState) -> []string { return fake_st.fk_timeline }
+export function fake_auth_live(fake_st: FakeSteamState) -> int { return fake_st.fk_auth_live }
+export function fake_up(fake_st: FakeSteamState) -> bool { return fake_st.fk_up }
+export function fake_pad_set(fake_st: FakeSteamState) -> string { return fake_st.fk_pad_set }
+export function fake_overlay_corner(fake_st: FakeSteamState) -> int { return fake_st.fk_overlay_pos }

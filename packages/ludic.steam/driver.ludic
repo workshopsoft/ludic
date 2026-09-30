@@ -1,0 +1,216 @@
+# driver.ludic - what the mechanic asks of Steam, as a record of function values. The real one is
+# ludic.steamworks's `steamworks_driver()`; the fake one (fake.ludic) keeps a world in memory for tests;
+# this file's defaults are the third: every member answers "nothing there", so a game that never
+# binds a backend runs with every Steam call a safe no-op. A backend fills the members it has.
+#
+# Only int, long, float, bool, string and byte slices cross, as they do for any native shim.
+# A poll returns the next fact's kind and the fact's values are read with fi / fl / ftext: the kinds are
+# the STF_* constants below, numbered as the native shim numbers them.
+export const STEAM_OK: int = 0
+export const STEAM_ERR_FAILED: int = 1          # Steam answered, and said no (init's message is in `error`)
+export const STEAM_ERR_NO_CLIENT: int = 2       # the Steam client is not running
+export const STEAM_ERR_OUTDATED: int = 3        # the client is older than the SDK
+export const STEAM_ERR_RESTART: int = 4         # not started through Steam: it starts the game again, this run should quit
+export const STEAM_ERR_NO_APP: int = 5          # the game has no app id to start with (config app_id 0)
+export const STEAM_ERR_NO_BACKEND: int = 6      # nothing is bound to talk to Steam (the null driver)
+
+export port SteamBackend {
+  driver: fn() -> SteamDriver = fn steam_null_driver
+}
+
+export property SteamDriver {
+  # ---- the session
+  init: fn(int, bool) -> int = fn sd_init
+  error: fn() -> string = fn sd_str
+  shutdown: fn() -> void = fn sd_void
+  pump: fn() -> void = fn sd_void
+  poll: fn() -> int = fn sd_int
+  fi: fn(int) -> int = fn sd_int_i
+  fl: fn(int) -> long = fn sd_long_i
+  ftext: fn() -> string = fn sd_str
+  # ---- the user and the app
+  me: fn() -> long = fn sd_long
+  logged_on: fn() -> bool = fn sd_bool
+  persona: fn() -> string = fn sd_str
+  app_id: fn() -> int = fn sd_int
+  language: fn() -> string = fn sd_str
+  launch_cmd: fn() -> string = fn sd_str
+  launch_query: fn(string) -> string = fn sd_str_s
+  on_deck: fn() -> bool = fn sd_bool
+  proton: fn() -> bool = fn sd_bool
+  overlay_on: fn() -> bool = fn sd_bool
+  auth_ticket: fn([]byte, int) -> int = fn sd_int_bytes
+  auth_handle: fn() -> int = fn sd_int
+  auth_cancel: fn(int) -> void = fn sd_void_i
+  # ---- friends
+  friend_count: fn() -> int = fn sd_int
+  friend_at: fn(int) -> long = fn sd_long_i
+  friend_name: fn(long) -> string = fn sd_str_l
+  friend_state: fn(long) -> int = fn sd_int_l
+  friend_game: fn(long) -> int = fn sd_int_l
+  friend_lobby: fn(long) -> long = fn sd_long_l
+  user_info: fn(long) -> void = fn sd_void_l
+  avatar_request: fn(long, int) -> int = fn sd_int_li
+  avatar_size: fn(int) -> int = fn sd_int_i
+  avatar_rgba: fn(int, []byte, int) -> bool = fn sd_bool_bytes
+  presence_set: fn(string, string) -> bool = fn sd_bool_ss
+  presence_clear: fn() -> void = fn sd_void
+  friend_presence: fn(long, string) -> string = fn sd_str_ls
+  overlay: fn(string) -> void = fn sd_void_s
+  overlay_user: fn(string, long) -> void = fn sd_void_sl
+  overlay_invite: fn(long) -> void = fn sd_void_l
+  overlay_url: fn(string) -> void = fn sd_void_s
+  invite_friend: fn(long, string) -> bool = fn sd_bool_ls
+  # ---- lobbies
+  lobby_create: fn(int, int) -> bool = fn sd_bool_ii
+  lobby_join: fn(long) -> bool = fn sd_bool_l
+  lobby_leave: fn(long) -> void = fn sd_void_l
+  lobby_filter_reset: fn() -> void = fn sd_void
+  lobby_filter_text: fn(string, string, int) -> void = fn sd_void_ssi
+  lobby_filter_num: fn(string, int, int) -> void = fn sd_void_sii
+  lobby_filter_near: fn(string, int) -> void = fn sd_void_si
+  lobby_filter_slots: fn(int) -> void = fn sd_void_i
+  lobby_filter_distance: fn(int) -> void = fn sd_void_i
+  lobby_filter_limit: fn(int) -> void = fn sd_void_i
+  lobby_search: fn() -> bool = fn sd_bool
+  lobby_result: fn(int) -> long = fn sd_long_i
+  lobby_set_data: fn(long, string, string) -> bool = fn sd_bool_lss
+  lobby_data: fn(long, string) -> string = fn sd_str_ls
+  lobby_set_member: fn(long, string, string) -> void = fn sd_void_lss
+  lobby_member_data: fn(long, long, string) -> string = fn sd_str_lls
+  lobby_members: fn(long) -> int = fn sd_int_l
+  lobby_member_at: fn(long, int) -> long = fn sd_long_li
+  lobby_owner: fn(long) -> long = fn sd_long_l
+  lobby_limit: fn(long) -> int = fn sd_int_l
+  lobby_joinable: fn(long, bool) -> bool = fn sd_bool_lb
+  lobby_type: fn(long, int) -> bool = fn sd_bool_li
+  lobby_chat: fn(long, string) -> bool = fn sd_bool_ls
+  lobby_invite: fn(long, long) -> bool = fn sd_bool_ll
+  lobby_set_owner: fn(long, long) -> bool = fn sd_bool_ll
+  # ---- stats, achievements, leaderboards
+  stats_request: fn() -> bool = fn sd_bool
+  stat_set_int: fn(string, int) -> bool = fn sd_bool_si
+  stat_int: fn(string) -> int = fn sd_int_s
+  stat_set_float: fn(string, float) -> bool = fn sd_bool_sf
+  stat_float: fn(string) -> float = fn sd_float_s
+  ach_set: fn(string) -> bool = fn sd_bool_s
+  ach_clear: fn(string) -> bool = fn sd_bool_s
+  ach_get: fn(string) -> int = fn sd_int_minus_s
+  ach_progress: fn(string, int, int) -> bool = fn sd_bool_sii
+  stats_store: fn() -> bool = fn sd_bool
+  stats_reset: fn(bool) -> bool = fn sd_bool_b
+  lb_find: fn(string, bool, int, int) -> bool = fn sd_bool_sbii
+  lb_upload: fn(long, int, int) -> bool = fn sd_bool_lii
+  lb_download: fn(long, int, int, int) -> bool = fn sd_bool_liii
+  lb_count: fn() -> int = fn sd_int
+  lb_user: fn(int) -> long = fn sd_long_i
+  lb_score: fn(int) -> int = fn sd_int_i
+  lb_rank: fn(int) -> int = fn sd_int_i
+  # ---- cloud files
+  rs_enabled: fn() -> bool = fn sd_bool
+  rs_write: fn(string, []byte, int) -> bool = fn sd_bool_s_bytes
+  rs_read: fn(string, []byte, int) -> int = fn sd_int_s_bytes
+  rs_size: fn(string) -> int = fn sd_int_s
+  rs_exists: fn(string) -> bool = fn sd_bool_s
+  rs_delete: fn(string) -> bool = fn sd_bool_s
+  rs_count: fn() -> int = fn sd_int
+  rs_name: fn(int) -> string = fn sd_str_i
+  rs_time: fn(string) -> long = fn sd_long_s
+  # ---- Steam Input
+  input_start: fn() -> bool = fn sd_bool
+  input_frame: fn() -> void = fn sd_void
+  input_count: fn() -> int = fn sd_int
+  input_controller: fn(int) -> long = fn sd_long_i
+  input_activate: fn(long, string) -> bool = fn sd_bool_ls
+  input_digital: fn(long, string) -> int = fn sd_int_ls
+  input_analog: fn(long, string, floats) -> bool = fn sd_bool_ls_floats
+  input_glyph: fn(long, string, int) -> string = fn sd_str_lsi
+  # ---- apps and utilities
+  dlc_count: fn() -> int = fn sd_int
+  dlc_at: fn(int) -> int = fn sd_int_i
+  dlc_owned: fn(int) -> bool = fn sd_bool_i
+  dlc_name: fn(int) -> string = fn sd_str_i
+  beta: fn() -> string = fn sd_str
+  overlay_pos: fn(int) -> void = fn sd_void_i
+  gamepad_text: fn(int, int, string, int, string) -> bool = fn sd_bool_iisis
+  # ---- the timeline
+  tl_mode: fn(int) -> void = fn sd_void_i
+  tl_marker: fn(string, string, string, int, float) -> void = fn sd_void_sssif
+  tl_range: fn(string, string, string, int, float, float) -> void = fn sd_void_sssiff
+  tl_phase: fn(string) -> void = fn sd_void_s
+  tl_phase_end: fn() -> void = fn sd_void
+  tl_tooltip: fn(string) -> void = fn sd_void_s
+  # ---- Steam's relay, as datagrams between users (the ludic.net socket rides on it)
+  net_start: fn() -> void = fn sd_void
+  net_allow: fn(long) -> void = fn sd_void_l
+  net_any: fn(bool) -> void = fn sd_void_b
+  net_send: fn(long, []byte, int, bool) -> bool = fn sd_bool_l_bytes
+  net_recv: fn([]byte, int) -> int = fn sd_int_bytes
+  net_from: fn() -> long = fn sd_long
+  net_close: fn(long) -> void = fn sd_void_l
+}
+
+# the null driver: a record of the defaults above
+export function steam_null_driver() -> SteamDriver {
+  return new SteamDriver
+}
+
+# ---- the defaults: what a member answers when nothing backs it ----
+function sd_init(app: int, dev: bool) -> int { return STEAM_ERR_NO_BACKEND }
+function sd_void() -> void { }
+function sd_void_i(a: int) -> void { }
+function sd_void_b(a: bool) -> void { }
+function sd_void_l(a: long) -> void { }
+function sd_void_s(a: string) -> void { }
+function sd_void_sl(a: string, b: long) -> void { }
+function sd_void_si(a: string, b: int) -> void { }
+function sd_void_ssi(a: string, b: string, c: int) -> void { }
+function sd_void_sii(a: string, b: int, c: int) -> void { }
+function sd_void_lss(a: long, b: string, c: string) -> void { }
+function sd_void_sssif(a: string, b: string, c: string, d: int, e: float) -> void { }
+function sd_void_sssiff(a: string, b: string, c: string, d: int, e: float, f: float) -> void { }
+function sd_int() -> int { return 0 }
+function sd_int_i(a: int) -> int { return 0 }
+function sd_int_l(a: long) -> int { return 0 }
+function sd_int_s(a: string) -> int { return 0 }
+function sd_int_li(a: long, b: int) -> int { return 0 }
+function sd_int_ls(a: long, b: string) -> int { return 0 }
+function sd_int_minus_s(a: string) -> int { return -1 }
+function sd_int_bytes(a: []byte, b: int) -> int { return 0 }
+function sd_int_s_bytes(a: string, b: []byte, c: int) -> int { return -1 }
+function sd_long() -> long { return long(0) }
+function sd_long_i(a: int) -> long { return long(0) }
+function sd_long_l(a: long) -> long { return long(0) }
+function sd_long_s(a: string) -> long { return long(0) }
+function sd_long_li(a: long, b: int) -> long { return long(0) }
+function sd_float_s(a: string) -> float { return 0.0 }
+function sd_bool() -> bool { return false }
+function sd_bool_b(a: bool) -> bool { return false }
+function sd_bool_i(a: int) -> bool { return false }
+function sd_bool_l(a: long) -> bool { return false }
+function sd_bool_s(a: string) -> bool { return false }
+function sd_bool_ii(a: int, b: int) -> bool { return false }
+function sd_bool_ss(a: string, b: string) -> bool { return false }
+function sd_bool_si(a: string, b: int) -> bool { return false }
+function sd_bool_sf(a: string, b: float) -> bool { return false }
+function sd_bool_ls(a: long, b: string) -> bool { return false }
+function sd_bool_ll(a: long, b: long) -> bool { return false }
+function sd_bool_lb(a: long, b: bool) -> bool { return false }
+function sd_bool_li(a: long, b: int) -> bool { return false }
+function sd_bool_lii(a: long, b: int, c: int) -> bool { return false }
+function sd_bool_sii(a: string, b: int, c: int) -> bool { return false }
+function sd_bool_lss(a: long, b: string, c: string) -> bool { return false }
+function sd_bool_liii(a: long, b: int, c: int, d: int) -> bool { return false }
+function sd_bool_sbii(a: string, b: bool, c: int, d: int) -> bool { return false }
+function sd_bool_iisis(a: int, b: int, c: string, d: int, e: string) -> bool { return false }
+function sd_bool_bytes(a: int, b: []byte, c: int) -> bool { return false }
+function sd_bool_s_bytes(a: string, b: []byte, c: int) -> bool { return false }
+function sd_bool_l_bytes(a: long, b: []byte, c: int, d: bool) -> bool { return false }
+function sd_bool_ls_floats(a: long, b: string, c: floats) -> bool { return false }
+function sd_str() -> string { return "" }
+function sd_str_i(a: int) -> string { return "" }
+function sd_str_s(a: string) -> string { return "" }
+function sd_str_l(a: long) -> string { return "" }
+function sd_str_ls(a: long, b: string) -> string { return "" }
+function sd_str_lls(a: long, b: long, c: string) -> string { return "" }
+function sd_str_lsi(a: long, b: string, c: int) -> string { return "" }

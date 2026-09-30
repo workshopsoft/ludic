@@ -1,0 +1,182 @@
+# state.ludic - the mechanic's state, its facts and its constants
+export const STEAM_IDLE: int = 0            # steam_start has not run
+export const STEAM_READY: int = 1           # talking to Steam
+export const STEAM_UNAVAILABLE: int = 2     # it could not start (steam_why says why): every call is a safe no-op; steam_start may be tried again
+export const STEAM_RESTARTING: int = 3      # launched outside Steam: Steam starts the game again, this run should quit
+export const STEAM_STOPPED: int = 4         # steam_stop was called
+
+export const LOBBY_PRIVATE: int = 0         # invite only
+export const LOBBY_FRIENDS: int = 1         # friends of the owner can join
+export const LOBBY_PUBLIC: int = 2          # found by a search
+export const LOBBY_INVISIBLE: int = 3       # joinable, but not found by a search
+export const LOBBY_PRIVATE_UNIQUE: int = 4
+
+export const LOBBY_CMP_EQUAL_OR_LESS: int = -2
+export const LOBBY_CMP_LESS: int = -1
+export const LOBBY_CMP_EQUAL: int = 0
+export const LOBBY_CMP_GREATER: int = 1
+export const LOBBY_CMP_EQUAL_OR_GREATER: int = 2
+export const LOBBY_CMP_NOT_EQUAL: int = 3
+
+export const LOBBY_NEAR: int = 0            # the lobby search's distance filters: close, the default, far, anywhere
+export const LOBBY_DEFAULT_DISTANCE: int = 1
+export const LOBBY_FAR: int = 2
+export const LOBBY_WORLD: int = 3
+
+export const LOBBY_NONE: int = 0            # where this player stands with a lobby
+export const LOBBY_CREATING: int = 1
+export const LOBBY_JOINING: int = 2
+export const LOBBY_IN: int = 3
+
+export const PERSONA_OFFLINE: int = 0       # a friend's state
+export const PERSONA_ONLINE: int = 1
+export const PERSONA_BUSY: int = 2
+export const PERSONA_AWAY: int = 3
+export const PERSONA_SNOOZE: int = 4
+
+export const CLOUD_NONE: int = 0            # steam_cloud_pull_file: nothing on the cloud and nothing on disk
+export const CLOUD_PULLED: int = 1          # the cloud's copy was newer and is now the file
+export const CLOUD_KEPT: int = 2            # the file on disk is the one to use
+export const CLOUD_FAILED: int = -1
+
+# the kinds of fact, 1 to 29 numbered as ludic.steamworks's native shim numbers them, 100 and up the mechanic's own
+export const STF_CONNECTED: int = 1         # Steam's servers reachable again
+export const STF_DISCONNECTED: int = 2      # n: Steam's result code
+export const STF_SHUTDOWN: int = 3          # the Steam client is closing
+export const STF_PERSONA: int = 4           # id: a user whose name or state changed
+export const STF_AVATAR: int = 5            # id: a user whose avatar loaded; n: the image handle, m: its size (width * 65536 + height)
+export const STF_OVERLAY: int = 6           # n: 1 the overlay opened, 0 it closed
+export const STF_JOIN_REQUEST: int = 7      # id: the friend, text: the connect string they sent, other: the lobby in it (a Join Game click)
+export const STF_LOBBY_JOIN_REQUEST: int = 8  # id: the lobby, other: the friend who invited
+export const STF_LOBBY_CREATED: int = 9     # n: 1 made, else Steam's code; id: the lobby
+export const STF_LOBBY_ENTERED: int = 10    # id: the lobby, n: 1 in, else the refusal (2 gone, 3 full, 5 blocked...), m: locked
+export const STF_LOBBY_MEMBER: int = 11     # id: the lobby, other: the member, n: 1 joined, 2 left, 4 disconnected, 8 kicked, 16 banned
+export const STF_LOBBY_DATA: int = 12       # id: the lobby, other: a member (the lobby itself for its own data)
+export const STF_LOBBY_CHAT: int = 13       # id: the lobby, other: who said it, text
+export const STF_LOBBY_KICKED: int = 14     # id: the lobby
+export const STF_LOBBY_LIST: int = 15       # n: how many lobbies a search found (steam_lobby_found)
+export const STF_STATS_RECEIVED: int = 16   # the player's stats and achievements are loaded (n: 1)
+export const STF_STATS_STORED: int = 17     # n: 1 stored
+export const STF_ACH_STORED: int = 18       # text: the API name, n: progress, m: its goal (0 of 0: unlocked)
+export const STF_LB_FOUND: int = 19         # key: the board, n: 1 found
+export const STF_LB_UPLOADED: int = 20      # key: the board, n: the score, m: 1 when it changed the player's best, other: their rank
+export const STF_LB_DOWNLOADED: int = 21    # key: the board, n: how many entries (steam_lb_user / _score / _rank)
+export const STF_DLC_INSTALLED: int = 22    # n: the app id
+export const STF_URL_LAUNCH: int = 23       # the launch arguments changed (steam://run with new ones)
+export const STF_GAMEPAD_TEXT: int = 24     # n: 1 submitted, text
+export const STF_NET_SESSION_REQUEST: int = 25  # id: who, n: 1 accepted
+export const STF_NET_SESSION_FAILED: int = 26   # id: who, n: Steam's end reason
+export const STF_PRESENCE: int = 27         # id: a friend whose rich presence changed
+export const STF_CALL_FAILED: int = 28      # n: the callback id of a call that failed (no answer from Steam)
+export const STF_CONNECT_FAILED: int = 29   # n: Steam's code
+export const STF_READY: int = 100           # steam_start succeeded (id: this player, n: the app id)
+export const STF_UNAVAILABLE: int = 101     # steam_start failed: n is steam_why, text the message
+export const STF_ACH_UNLOCKED: int = 102    # key: the achievement (a row of SteamAchievements)
+export const STF_LOBBY_LEFT: int = 103      # id: the lobby
+export const STF_STAT_CHANGED: int = 104    # key: the stat, n: its value (a float cut to whole)
+export const STF_CLOUD_PULLED: int = 105    # text: the file name
+
+export property SteamFact {
+  what: int = 0
+  id: long = 0
+  other: long = 0
+  n: int = 0
+  m: int = 0
+  key: int = -1
+  text: string = ""
+}
+
+# how the game starts it: steam_config, then steam_start
+export property SteamConfig {
+  app_id: int = 0                           # the Steamworks app id; 0 starts nothing (unavailable)
+  dev: bool = false                         # a development run: no relaunch through Steam (steam_appid.txt is there instead)
+  auto_join: bool = true                    # a friend's Join Game click or a launch argument joins the lobby itself
+  store_after: float = 1.5                  # seconds a stat change waits for company before it is stored
+  accept_any_peer: bool = false             # the socket answers anyone, not only lobby members and registered peers
+}
+
+export const STEAM_CAP_TICKET: int = 2048
+export const STEAM_CAP_PEERS: int = 256
+
+export state SteamState {
+  ss_status: int = STEAM_IDLE
+  ss_cfg: SteamConfig = null
+  ss_dr: SteamDriver = null
+  ss_why: int = 0
+  ss_err: string = ""
+  ss_facts: Queue<SteamFact> = ss_facts__new()
+  ss_strs: StrTable = null                  # texts worth keeping once: ids, connect strings
+  ss_sb: StrBuf = null
+  # the user
+  ss_me: long = 0
+  ss_persona: string = ""
+  ss_app: int = 0
+  ss_online: bool = true
+  ss_ticket: []byte = null
+  ss_ticket_n: int = 0
+  ss_ticket_h: int = 0
+  # rich presence: the row shown, and the connect string kept across a change of row
+  ss_rp_row: int = -1
+  ss_connect: string = ""
+  # lobbies
+  ss_lobby: long = 0
+  ss_lobby_st: int = LOBBY_NONE
+  ss_lobby_want: long = 0                   # the lobby a join is waiting on
+  ss_found: int = 0
+  ss_searching: bool = false
+  # achievements and stats, by row
+  ss_stats_ready: bool = false
+  ss_ach: words = null                      # per achievement: -1 not asked, 0 locked, 1 unlocked
+  ss_ach_want: words = null                 # 1: to unlock as soon as Steam is there
+  ss_stat_i: words = null
+  ss_stat_f: floats = null
+  ss_store_in: float = -1.0                 # seconds until the dirty stats are stored; -1 nothing waits
+  ss_ach_n: int = 0
+  ss_stat_n: int = 0
+  ss_lb_n: int = 0
+  # leaderboards, by row
+  ss_lb_h: []long = null                    # the board's handle once found
+  ss_lb_find: words = null                  # 1 asked, 2 waiting its turn
+  ss_lb_busy: int = -1                      # the board a find is out for
+  ss_lb_up: words = null                    # 1: a score waits for the board
+  ss_lb_score: words = null
+  ss_lb_dl: words = null                    # 1: a download waits for the board
+  ss_lb_req: words = null
+  ss_lb_from: words = null
+  ss_lb_to: words = null
+  # steam input
+  ss_input_on: bool = false
+  ss_act_down: words = null
+  ss_act_x: floats = null
+  ss_act_y: floats = null
+  ss_xy: floats = null
+  ss_act_n: int = 0
+  # the socket
+  ss_peer_id: []long = null
+  ss_net_on: bool = false
+  ss_net_port: int = 0
+  ss_net_from: int = 0
+}
+
+function ss_facts__new() -> Queue<SteamFact> { return queue_new("steam.facts") }
+
+# a record for the next fact: one that is neither waiting nor handed out by the last drain, made
+# only when every one is
+function ss_fact(steam_st: mut SteamState, what: int) -> SteamFact {
+  var f = q_rec(steam_st.ss_facts)
+  if f == null {
+    @alloc_ok("past the ring: more facts in a frame than it holds, then kept in it")
+    f = new SteamFact
+    q_ring_add(steam_st.ss_facts, f)
+  }
+  f.what = what
+  f.id = long(0)
+  f.other = long(0)
+  f.n = 0
+  f.m = 0
+  f.key = -1
+  f.text = ""
+  return f
+}
+
+export function steam_facts(steam_st: SteamState) -> Queue<SteamFact> { return steam_st.ss_facts }

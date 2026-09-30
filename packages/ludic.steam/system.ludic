@@ -1,0 +1,37 @@
+# system.ludic - the mechanic as a System: the frame's pump in PH_SENSE, its own save section, and a reset.
+# The save section holds only what Steam has not yet been told: achievements earned while it was not there
+# (offline, or before the stats arrived), so a session with no Steam loses none of them.
+function steam_system_reset(steam_st: mut SteamState) -> void {
+  q_clear(steam_st.ss_facts)
+}
+
+function steam_system_save(steam_st: SteamState) -> Val {
+  let v = Value.object()
+  let list = Value.list()
+  if steam_st.ss_ach_want != null and len(steam_st.ss_ach_want) == SACH_COUNT {
+    for i in 0 .. SACH_COUNT {
+      if steam_st.ss_ach_want[i] == 1 { Value.add(list, Value.str(SteamAchievements[i].key)) }
+    }
+  }
+  Value.put(v, "pending", list)
+  return v
+}
+
+function steam_system_load(steam_st: mut SteamState, v: Val, version: int) -> void {
+  ss_want_table(steam_st)
+  let list = Value.get(v, "pending")
+  for k in 0 .. Value.count(list) {
+    let i = steamachievements_find(Value.as_str(Value.at(list, k)))
+    if i >= 0 { steam_st.ss_ach_want[i] = 1 }
+  }
+}
+
+export function steam_system() -> System {
+  let s = system_new("steam", PH_SENSE)
+  s.version = 1
+  s.reset = fn steam_system_reset
+  s.tick = fn steam_tick
+  s.save = fn steam_system_save
+  s.load = fn steam_system_load
+  return s
+}

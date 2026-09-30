@@ -1,0 +1,3 @@
+# the rows session_test.ludic shows: a menu, and a game state with a group and an extra pair
+menu { display: "#StatusMenu", status: "In the menu" }
+fishing { display: "#StatusFishing", status: "Fishing", group: "lake", group_size: 3, pairs: [{ key: "spot", value: "north pier" }] }

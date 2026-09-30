@@ -1,0 +1,58 @@
+# apps.ludic - what the app is (DLC, beta, language), the gamepad's text box, and the timeline
+export function steam_dlc_count(steam_st: SteamState) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.dlc_count()
+}
+export function steam_dlc_app_id(steam_st: SteamState, i: int) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.dlc_at(i)
+}
+export function steam_dlc_owned(steam_st: SteamState, app_id: int) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.dlc_owned(app_id)
+}
+export function steam_dlc_name(steam_st: SteamState, i: int) -> string {
+  if steam_st.ss_status != STEAM_READY { return "" }
+  return steam_st.ss_dr.dlc_name(i)
+}
+# the beta branch the player is on ("" for the default one)
+export function steam_beta(steam_st: SteamState) -> string {
+  if steam_st.ss_status != STEAM_READY { return "" }
+  return steam_st.ss_dr.beta()
+}
+
+# Steam's own text box for a player on a gamepad (Deck, Big Picture); the typed text is a STF_GAMEPAD_TEXT fact.
+# mode 0 normal, 1 password; line 0 single, 1 multiple
+export function steam_text_input(steam_st: SteamState, mode: int, line: int, description: string, most: int, existing: string) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.gamepad_text(mode, line, description, most, existing)
+}
+
+# ---- the timeline: markers and phases the player scrubs in Steam's game recording ----
+# game mode: 0 invalid, 1 playing, 2 staging, 3 menus, 4 loading screen
+export function steam_timeline_mode(steam_st: SteamState, mode: int) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.tl_mode(mode)
+}
+# a moment, `offset` seconds from now (negative: already happened); priority 0 none, 1 standard, 2 featured
+export function steam_timeline_marker(steam_st: SteamState, icon: string, title: string, description: string, priority: int, offset: float) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.tl_marker(icon, title, description, priority, offset)
+}
+export function steam_timeline_range(steam_st: SteamState, icon: string, title: string, description: string, priority: int, offset: float, duration: float) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.tl_range(icon, title, description, priority, offset, duration)
+}
+# a game phase (a match, a level) by id: begin one, end the current one
+export function steam_timeline_phase(steam_st: SteamState, id: string) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.tl_phase(id)
+}
+export function steam_timeline_phase_end(steam_st: SteamState) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.tl_phase_end()
+}
+export function steam_timeline_tooltip(steam_st: SteamState, text: string) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.tl_tooltip(text)
+}

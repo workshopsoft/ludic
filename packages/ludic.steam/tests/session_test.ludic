@@ -1,0 +1,384 @@
+# session_test.ludic - start-up, the user, friends, rich presence, lobbies and their search, on the fake Steam
+import "ludic.steam"
+import "ludic.base"
+program SessionTest {
+  numbers float
+
+  bind SteamBackend { driver: fn steam_fake_driver }
+
+  def SteamPresence from "session_presence.lres"
+
+  const FRIEND_A: long = 76561198000000010
+  const FRIEND_B: long = 76561198000000011
+
+  function up(steam_st: mut SteamState, fake_st: mut FakeSteamState) -> void {
+    let c = new SteamConfig
+    c.app_id = 480
+    c.dev = true
+    steam_config(steam_st, c)
+    expect_eq(steam_start(steam_st), STEAM_OK)
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    q_drain(steam_facts(steam_st))
+  }
+  function frame(steam_st: mut SteamState) -> void { steam_tick(steam_st, tick_new(0.016, 0, 0.0)) }
+  function drain(steam_st: SteamState) -> []SteamFact { return q_drain(steam_facts(steam_st)) }
+  function kinds(fs: []SteamFact) -> string {
+    var s = ""
+    for i in 0 .. len(fs) { s = s + string(fs[i].what) + "," }
+    return s
+  }
+
+  test "start goes to ready, and says who and what app" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    let c = new SteamConfig
+    c.app_id = 480
+    c.dev = true
+    steam_config(steam_st, c)
+    expect_eq(steam_start(steam_st), STEAM_OK)
+    expect(steam_ready(steam_st))
+    expect_eq(steam_status(steam_st), STEAM_READY)
+    expect(steam_id(steam_st) == FAKE_ME)
+    expect_eq(steam_persona(steam_st), "Tester")
+    expect_eq(steam_app_id(steam_st), 480)
+    expect(steam_logged_on(steam_st))
+    expect_eq(steam_language(steam_st), "english")
+    expect(not steam_on_deck(steam_st))
+    expect_eq(kinds(drain(steam_st)), "100,")
+    frame(steam_st)
+    expect_eq(kinds(drain(steam_st)), "16,")
+    expect(steam_start(steam_st) == STEAM_OK)
+  }
+
+  test "a missing Steam client is unavailable with its message, and start may be tried again" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_fail_init(fake_st, STEAM_ERR_NO_CLIENT, "no steam client")
+    let c = new SteamConfig
+    c.app_id = 480
+    steam_config(steam_st, c)
+    expect_eq(steam_start(steam_st), STEAM_ERR_NO_CLIENT)
+    expect_eq(steam_status(steam_st), STEAM_UNAVAILABLE)
+    expect_eq(steam_error(steam_st), "no steam client")
+    expect_eq(steam_friend_count(steam_st), 0)
+    let fs = drain(steam_st)
+    expect_eq(fs[0].what, STF_UNAVAILABLE)
+    expect_eq(fs[0].text, "no steam client")
+    fake_fail_init(fake_st, STEAM_OK, "")
+    expect_eq(steam_start(steam_st), STEAM_OK)
+    expect(steam_ready(steam_st))
+  }
+
+  test "launched outside Steam asks the game to quit and stays that way" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_fail_init(fake_st, STEAM_ERR_RESTART, "")
+    let c = new SteamConfig
+    c.app_id = 480
+    steam_config(steam_st, c)
+    expect_eq(steam_start(steam_st), STEAM_ERR_RESTART)
+    expect_eq(steam_status(steam_st), STEAM_RESTARTING)
+    fake_fail_init(fake_st, STEAM_OK, "")
+    expect_eq(steam_start(steam_st), STEAM_ERR_RESTART)
+  }
+
+  test "stop shuts Steam down and leaves every call a no-op" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect(fake_up(fake_st))
+    steam_stop(steam_st)
+    expect(not fake_up(fake_st))
+    expect_eq(steam_status(steam_st), STEAM_STOPPED)
+    expect(not steam_lobby_create(steam_st, LOBBY_PUBLIC, 2))
+  }
+
+  test "the connection, the persona and the overlay come as facts" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    drain(steam_st)
+    fake_disconnect(fake_st)
+    frame(steam_st)
+    expect(not steam_online(steam_st))
+    fake_connect(fake_st)
+    fake_persona_changed(fake_st, FAKE_ME, "Renamed")
+    fake_overlay(fake_st, true)
+    frame(steam_st)
+    expect(steam_online(steam_st))
+    expect_eq(steam_persona(steam_st), "Renamed")
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "2,1,4,6,")
+    expect_eq(fs[0].n, 3)
+    expect_eq(fs[3].n, 1)
+  }
+
+  test "friends are listed with name, state and the game they are in" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_add_friend(fake_st, FRIEND_A, "Ada", PERSONA_ONLINE)
+    fake_add_friend(fake_st, FRIEND_B, "Bo", PERSONA_AWAY)
+    fake_friend_in_game(fake_st, FRIEND_A, 480, long(99))
+    up(steam_st, fake_st)
+    expect_eq(steam_friend_count(steam_st), 2)
+    expect(steam_friend_at(steam_st, 1) == FRIEND_B)
+    expect_eq(steam_friend_name(steam_st, FRIEND_A), "Ada")
+    expect_eq(steam_friend_state(steam_st, FRIEND_B), PERSONA_AWAY)
+    expect_eq(steam_friend_game(steam_st, FRIEND_A), 480)
+    expect(steam_friend_lobby(steam_st, FRIEND_A) == long(99))
+    expect_eq(steam_friend_game(steam_st, FRIEND_B), 0)
+    drain(steam_st)
+    steam_request_user(steam_st, long(5))
+    frame(steam_st)
+    expect_eq(kinds(drain(steam_st)), "4,")
+  }
+
+  test "an avatar is a handle, a size and RGBA bytes" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_add_friend(fake_st, FRIEND_A, "Ada", PERSONA_ONLINE)
+    up(steam_st, fake_st)
+    let h = steam_avatar(steam_st, FRIEND_A, 1)
+    expect(h > 0)
+    expect_eq(steam_avatar_size(steam_st, h), 4 * 65536 + 4)
+    let buf = buffer(64)
+    expect(steam_avatar_rgba(steam_st, h, buf))
+    expect_eq(buf[5], 5)
+    expect(not steam_avatar_rgba(steam_st, h, buffer(8)))
+    expect_eq(steam_avatar(steam_st, long(404), 0), -1)
+  }
+
+  test "the overlay is asked for by name, and its corner" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    steam_overlay(steam_st, "friends")
+    steam_overlay_user(steam_st, "chat", FRIEND_A)
+    steam_overlay_url(steam_st, "https://example.com")
+    steam_overlay_position(steam_st, 3)
+    steam_overlay_invite(steam_st)
+    let calls = fake_overlay_calls(fake_st)
+    expect_eq(len(calls), 3)
+    expect_eq(calls[0], "friends")
+    expect_eq(calls[1], "chat:76561198000000010")
+    expect_eq(fake_overlay_corner(fake_st), 3)
+  }
+
+  test "rich presence shows a row of data, and leaves the same row alone" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect(steam_presence_show(steam_st, SRP_MENU))
+    expect_eq(fake_presence_value(fake_st, "steam_display"), "#StatusMenu")
+    expect_eq(fake_presence_value(fake_st, "status"), "In the menu")
+    expect(steam_presence_show(steam_st, SRP_FISHING))
+    expect_eq(fake_presence_value(fake_st, "steam_display"), "#StatusFishing")
+    expect_eq(fake_presence_value(fake_st, "steam_player_group"), "lake")
+    expect_eq(fake_presence_value(fake_st, "steam_player_group_size"), "3")
+    expect_eq(fake_presence_value(fake_st, "spot"), "north pier")
+    expect_eq(fake_presence_count(fake_st), 5)
+    expect(steam_presence_show_key(steam_st, "menu"))
+    expect_eq(fake_presence_value(fake_st, "spot"), "")
+    expect(not steam_presence_show(steam_st, 99))
+    expect(steam_presence_set(steam_st, "x", "y"))
+    steam_presence_clear(steam_st)
+    expect_eq(fake_presence_count(fake_st), 0)
+    expect_eq(steam_presence_row("fishing"), SRP_FISHING)
+  }
+
+  test "a friend's rich presence is read by key, and says when it changed" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_add_friend(fake_st, FRIEND_A, "Ada", PERSONA_ONLINE)
+    up(steam_st, fake_st)
+    drain(steam_st)
+    fake_friend_presence(fake_st, FRIEND_A, "status", "Fishing")
+    frame(steam_st)
+    let fs = drain(steam_st)
+    expect_eq(fs[0].what, STF_PRESENCE)
+    expect(fs[0].id == FRIEND_A)
+    expect_eq(steam_friend_presence(steam_st, FRIEND_A, "status"), "Fishing")
+  }
+
+  test "a lobby is made, entered, published to friends and left" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    drain(steam_st)
+    expect(steam_lobby_create(steam_st, LOBBY_FRIENDS, 4))
+    expect_eq(steam_lobby_state(steam_st), LOBBY_CREATING)
+    expect(not steam_lobby_create(steam_st, LOBBY_FRIENDS, 4))
+    frame(steam_st)
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "9,10,")
+    expect_eq(fs[0].n, 1)
+    expect(steam_lobby_in(steam_st))
+    let id = steam_lobby_id(steam_st)
+    expect(id == fs[0].id)
+    expect(steam_lobby_is_owner(steam_st))
+    expect_eq(steam_lobby_member_count(steam_st), 1)
+    expect(steam_lobby_member(steam_st, 0) == FAKE_ME)
+    expect_eq(steam_lobby_limit(steam_st), 4)
+    expect_eq(fake_presence_value(fake_st, "connect"), "+connect_lobby " + string(id))
+    steam_presence_show(steam_st, SRP_MENU)
+    expect_eq(fake_presence_value(fake_st, "connect"), "+connect_lobby " + string(id))
+    steam_lobby_leave(steam_st)
+    expect(not steam_lobby_in(steam_st))
+    expect_eq(fake_presence_value(fake_st, "connect"), "")
+    let gone = drain(steam_st)
+    expect_eq(kinds(gone), "103,")
+    expect(steam_lobby_id(steam_st) == long(0))
+  }
+
+  test "lobby data, member data, members coming and going, chat and joinability" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    steam_lobby_create(steam_st, LOBBY_PUBLIC, 3)
+    frame(steam_st)
+    drain(steam_st)
+    let id = steam_lobby_id(steam_st)
+    expect(steam_lobby_set(steam_st, "map", "lake"))
+    expect_eq(steam_lobby_get(steam_st, "map"), "lake")
+    steam_lobby_set_member(steam_st, "ready", "1")
+    expect_eq(steam_lobby_member_get(steam_st, FAKE_ME, "ready"), "1")
+    fake_member_join(fake_st, id, FRIEND_A)
+    fake_member_data(fake_st, id, FRIEND_A, "ready", "0")
+    fake_chat(fake_st, id, FRIEND_A, "hello there")
+    frame(steam_st)
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "12,12,11,12,13,")
+    expect_eq(fs[2].n, 1)
+    expect(fs[2].other == FRIEND_A)
+    expect_eq(fs[4].text, "hello there")
+    expect(fs[4].other == FRIEND_A)
+    expect_eq(steam_lobby_member_count(steam_st), 2)
+    expect_eq(steam_lobby_member_get(steam_st, FRIEND_A, "ready"), "0")
+    expect(fake_net_allowed(fake_st, FRIEND_A))
+    expect(steam_lobby_chat(steam_st, "hi"))
+    expect(steam_lobby_joinable(steam_st, false))
+    expect(not fake_lobby_joinable(fake_st, id))
+    expect(steam_lobby_kind(steam_st, LOBBY_INVISIBLE))
+    expect(steam_lobby_transfer(steam_st, FRIEND_A))
+    expect(not steam_lobby_is_owner(steam_st))
+    fake_member_leave(fake_st, id, FRIEND_A, 2)
+    frame(steam_st)
+    expect_eq(steam_lobby_member_count(steam_st), 1)
+  }
+
+  test "joining a lobby enters it; a full or missing one is refused and leaves nothing half done" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(777), FRIEND_A, 1)
+    up(steam_st, fake_st)
+    drain(steam_st)
+    expect(steam_lobby_join(steam_st, long(777)))
+    expect_eq(steam_lobby_state(steam_st), LOBBY_JOINING)
+    frame(steam_st)
+    var fs = drain(steam_st)
+    expect_eq(fs[0].what, STF_LOBBY_ENTERED)
+    expect(fs[0].n != 1)
+    expect_eq(steam_lobby_state(steam_st), LOBBY_NONE)
+    expect(steam_lobby_join(steam_st, long(404)))
+    frame(steam_st)
+    fs = drain(steam_st)
+    expect_eq(fs[0].n, 2)
+    fake_remote_lobby(fake_st, long(778), FRIEND_A, 4)
+    expect(steam_lobby_join(steam_st, long(778)))
+    frame(steam_st)
+    fs = drain(steam_st)
+    expect_eq(fs[0].n, 1)
+    expect(steam_lobby_in(steam_st))
+    expect(steam_lobby_id(steam_st) == long(778))
+    expect(fake_net_allowed(fake_st, FRIEND_A))
+    expect(not steam_lobby_is_owner(steam_st))
+  }
+
+  test "a friend's Join Game click joins the lobby in its connect string" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(900), FRIEND_A, 4)
+    up(steam_st, fake_st)
+    drain(steam_st)
+    fake_join_request(fake_st, FRIEND_A, "+connect_lobby 900")
+    frame(steam_st)
+    frame(steam_st)
+    let fs = drain(steam_st)
+    expect_eq(fs[0].what, STF_JOIN_REQUEST)
+    expect(fs[0].other == long(900))
+    expect_eq(fs[0].text, "+connect_lobby 900")
+    expect_eq(fs[1].what, STF_LOBBY_ENTERED)
+    expect(steam_lobby_id(steam_st) == long(900))
+  }
+
+  test "an invite into a lobby joins it, unless the game turned that off" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(901), FRIEND_A, 4)
+    up(steam_st, fake_st)
+    fake_lobby_invite_accepted(fake_st, long(901), FRIEND_A)
+    frame(steam_st)
+    expect(steam_lobby_in(steam_st))
+  }
+
+  test "with auto_join off the request is a fact and nothing more" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(902), FRIEND_A, 4)
+    let c = new SteamConfig
+    c.app_id = 480
+    c.auto_join = false
+    steam_config(steam_st, c)
+    steam_start(steam_st)
+    fake_join_request(fake_st, FRIEND_A, "+connect_lobby 902")
+    frame(steam_st)
+    expect_eq(steam_lobby_state(steam_st), LOBBY_NONE)
+    expect_eq(kinds(drain(steam_st)), "100,16,7,")
+    expect(steam_lobby_join(steam_st, long(902)))
+  }
+
+  test "a game launched by Join Game joins the lobby named on its command line" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(903), FRIEND_A, 4)
+    fake_launch(fake_st, "game -windowed +connect_lobby 903")
+    up(steam_st, fake_st)
+    expect(steam_launch_lobby(steam_st) == long(903))
+    expect(steam_lobby_in(steam_st))
+  }
+
+  test "kicked out of a lobby is a fact and the lobby is let go" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(904), FRIEND_A, 4)
+    up(steam_st, fake_st)
+    steam_lobby_join(steam_st, long(904))
+    frame(steam_st)
+    drain(steam_st)
+    fake_kick_me(fake_st, long(904))
+    frame(steam_st)
+    expect_eq(kinds(drain(steam_st)), "14,")
+    expect(not steam_lobby_in(steam_st))
+  }
+
+  test "a lobby search applies its filters and lists what it found" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(801), FRIEND_A, 4)
+    fake_remote_lobby(fake_st, long(802), FRIEND_B, 4)
+    fake_remote_lobby(fake_st, long(803), FRIEND_B, 1)
+    fake_lobby_data(fake_st, long(801), "map", "lake")
+    fake_lobby_data(fake_st, long(802), "map", "river")
+    fake_lobby_data(fake_st, long(803), "map", "lake")
+    up(steam_st, fake_st)
+    drain(steam_st)
+    steam_lobby_search_begin(steam_st)
+    steam_lobby_filter_text(steam_st, "map", "lake", LOBBY_CMP_EQUAL)
+    steam_lobby_filter_slots(steam_st, 2)
+    steam_lobby_filter_distance(steam_st, LOBBY_WORLD)
+    steam_lobby_filter_limit(steam_st, 10)
+    expect(steam_lobby_search(steam_st))
+    expect(steam_lobby_searching(steam_st))
+    expect(not steam_lobby_search(steam_st))
+    frame(steam_st)
+    let fs = drain(steam_st)
+    expect_eq(fs[0].what, STF_LOBBY_LIST)
+    expect_eq(fs[0].n, 1)
+    expect(not steam_lobby_searching(steam_st))
+    expect_eq(steam_lobby_found_count(steam_st), 1)
+    expect(steam_lobby_found(steam_st, 0) == long(801))
+    expect(steam_lobby_found(steam_st, 1) == long(0))
+    expect_eq(steam_lobby_found_data(steam_st, long(801), "map"), "lake")
+    expect_eq(steam_lobby_found_members(steam_st, long(801)), 1)
+    expect_eq(steam_lobby_found_limit(steam_st, long(801)), 4)
+  }
+
+  test "an auth ticket is bytes and hex, and is given back when asked for again" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect_eq(steam_auth_ticket(steam_st), 8)
+    expect_eq(steam_ticket_len(steam_st), 8)
+    expect_eq(steam_ticket_hex(steam_st), "a0a1a2a3a4a5a6a7")
+    expect_eq(fake_auth_live(fake_st), 1)
+    steam_auth_ticket(steam_st)
+    expect_eq(fake_auth_live(fake_st), 2)
+    steam_auth_cancel(steam_st)
+    expect_eq(fake_auth_live(fake_st), 0)
+  }
+
+  test "the pump does not grow the heap over thousands of frames of facts" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_add_friend(fake_st, FRIEND_A, "Ada", PERSONA_ONLINE)
+    up(steam_st, fake_st)
+    drain(steam_st)
+    var before = 0
+    for f in 0 .. 3000 {
+      fake_persona_changed(fake_st, FRIEND_A, "Ada")
+      fake_overlay(fake_st, f % 2 == 0)
+      frame(steam_st)
+      drain(steam_st)
+      if f == 1000 { before = Os.heap_bytes() }
+    }
+    if Os.heap_bytes() > 0 { expect(Os.heap_bytes() - before < 200000) }
+  }
+}

@@ -1,0 +1,108 @@
+# route_test.ludic - what a game writes to put Steam under ludic.net, ludic.session and ludic.save: the
+# socket binding, a lobby's members into the roster, a join through the lobby owner's stand-in address, and
+# a save pushed to and pulled from the cloud. The game is the only code that knows two mechanics.
+import "ludic.steam"
+import "ludic.net"
+import "ludic.session"
+import "ludic.save"
+import "ludic.base"
+program RouteTest {
+  numbers float
+
+  bind SteamBackend { driver: fn steam_fake_driver }
+  bind NetSocket {
+    open: fn steam_net_open, close: fn steam_net_close, send: fn steam_net_send, recv: fn steam_net_recv,
+    from_ip: fn steam_net_from_ip, from_port: fn steam_net_from_port, port: fn steam_net_port, local_ip: fn steam_net_local_ip
+  }
+  bind SessionLocal { x: fn here, y: fn here, z: fn here }
+
+  const OWNER: long = 76561198000000040
+  const GUEST: long = 76561198000000041
+
+  function here() -> float { return 0.0 }
+
+  function up(steam_st: mut SteamState) -> void {
+    let c = new SteamConfig
+    c.app_id = 480
+    c.dev = true
+    steam_config(steam_st, c)
+    expect_eq(steam_start(steam_st), STEAM_OK)
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    q_drain(steam_facts(steam_st))
+  }
+
+  # the route: a lobby member coming or going is a player in or out of the roster
+  function route_lobby_roster(steam_st: mut SteamState, session_st: mut SessionState, t: Tick) -> void {
+    let fs = q_drain(steam_facts(steam_st))
+    for i in 0 .. len(fs) {
+      if fs[i].what == STF_LOBBY_MEMBER and fs[i].other != steam_id(steam_st) {
+        let pid = steam_pid(steam_st, fs[i].other)
+        if fs[i].n == 1 { ply_join(session_st, pid) }
+        else { ply_leave(session_st, ply_slot_of(session_st, pid)) }
+      }
+    }
+  }
+
+  test "ludic.net hosts on the Steam socket" (steam_st: mut SteamState, net_st: mut NetState, fake_st: mut FakeSteamState) {
+    up(steam_st)
+    expect(net_host(net_st, 27000, 7))
+    expect(net_hosting(net_st))
+    expect(steam_net_ready(steam_st))
+  }
+
+  test "a guest dials the lobby owner's stand-in address, and its hello goes through Steam to them" (steam_st: mut SteamState, net_st: mut NetState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(321), OWNER, 4)
+    up(steam_st)
+    steam_lobby_join(steam_st, long(321))
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    let host_ip = steam_net_peer(steam_st, steam_lobby_owner(steam_st))
+    expect(host_ip != 0)
+    expect(net_join(net_st, host_ip, 27000))
+    net_begin(net_st, 0.016)
+    net_update(net_st, 0.016)
+    net_end(net_st)
+    expect(fake_net_sent_count(fake_st) > 0)
+    expect(fake_net_sent_to(fake_st, 0) == OWNER)
+    expect_eq(fake_net_sent_byte(fake_st, 0, 0), 77)
+    expect_eq(fake_net_sent_byte(fake_st, 0, 1), 76)
+  }
+
+  test "a lobby's members fill the session roster through the game's route" (steam_st: mut SteamState, session_st: mut SessionState, fake_st: mut FakeSteamState) {
+    up(steam_st)
+    steam_lobby_create(steam_st, LOBBY_FRIENDS, 4)
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    q_drain(steam_facts(steam_st))
+    let lobby = steam_lobby_id(steam_st)
+    fake_member_join(fake_st, lobby, GUEST)
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    route_lobby_roster(steam_st, session_st, tick_new(0.016, 0, 0.0))
+    expect_eq(ply_count(session_st), 2)
+    let pid = steam_pid(steam_st, GUEST)
+    expect(ply_slot_of(session_st, pid) > 0)
+    fake_member_leave(fake_st, lobby, GUEST, 2)
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    route_lobby_roster(steam_st, session_st, tick_new(0.016, 0, 0.0))
+    expect_eq(ply_count(session_st), 1)
+  }
+
+  test "a ludic.save file is pushed after it is written and pulled before it is read" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st)
+    let path = "steam_route_test_save.json"
+    Fs.remove(path)
+    Fs.remove(path + ".cloud")
+    let f = save_format("route", 1)
+    let v = Value.object()
+    Value.put(v, "version", Value.int(1))
+    Value.put(v, "day", Value.int(9))
+    expect(save_write_tree(path, "", v))
+    expect(steam_save_written(steam_st, path, "route.json"))
+    Fs.remove(path)
+    Fs.remove(path + ".cloud")
+    expect_eq(steam_save_before_read(steam_st, path, "route.json"), CLOUD_PULLED)
+    let r = save_open(path, "", f)
+    expect_eq(r.status, SAVE_OK)
+    expect_eq(Value.as_int(Value.get(r.value, "day")), 9)
+    Fs.remove(path)
+    Fs.remove(path + ".cloud")
+  }
+}

@@ -1,0 +1,65 @@
+# input.ludic - Steam Input mapped to the game's own actions: the rows of SteamActions name each action in the game's
+# action manifest, and the frame reads every one for the first controller into per-action values the game asks
+# by row (steam_action_down(steam_st, SACT_JUMP)). A game turns Steam Input on with steam_input_start and
+# answers from these instead of a device; what the player binds is Steam's overlay's.
+export function steam_input_start(steam_st: mut SteamState) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  if not steam_st.ss_dr.input_start() { return false }
+  steam_st.ss_input_on = true
+  return true
+}
+
+function ss_act_name(i: int) -> string {
+  let r = SteamActions[i]
+  if len(r.name) > 0 { return r.name }
+  return r.key
+}
+
+function ss_input_tick(steam_st: mut SteamState, d: SteamDriver) -> void {
+  if not steam_st.ss_input_on { return }
+  d.input_frame()
+  var c = long(0)
+  if d.input_count() > 0 { c = d.input_controller(0) }
+  for i in 0 .. steam_st.ss_act_n {
+    steam_st.ss_act_down[i] = 0
+    steam_st.ss_act_x[i] = 0.0
+    steam_st.ss_act_y[i] = 0.0
+    if c == long(0) { continue }
+    if SteamActions[i].kind == SIA_DIGITAL {
+      steam_st.ss_act_down[i] = d.input_digital(c, ss_act_name(i)) & 1
+    } else if d.input_analog(c, ss_act_name(i), steam_st.ss_xy) {
+      steam_st.ss_act_x[i] = steam_st.ss_xy[0]
+      steam_st.ss_act_y[i] = steam_st.ss_xy[1]
+    }
+  }
+}
+
+export function steam_input_count(steam_st: SteamState) -> int {
+  if not steam_st.ss_input_on { return 0 }
+  return steam_st.ss_dr.input_count()
+}
+
+# turn an action set on for the first controller (the set a SteamActions row names is one of these)
+export function steam_input_set(steam_st: SteamState, set: string) -> bool {
+  if not steam_st.ss_input_on or steam_st.ss_dr.input_count() == 0 { return false }
+  return steam_st.ss_dr.input_activate(steam_st.ss_dr.input_controller(0), set)
+}
+
+export function steam_action_down(steam_st: SteamState, i: int) -> bool {
+  if i < 0 or i >= steam_st.ss_act_n or steam_st.ss_act_down == null { return false }
+  return steam_st.ss_act_down[i] != 0
+}
+export function steam_action_x(steam_st: SteamState, i: int) -> float {
+  if i < 0 or i >= steam_st.ss_act_n or steam_st.ss_act_x == null { return 0.0 }
+  return steam_st.ss_act_x[i]
+}
+export function steam_action_y(steam_st: SteamState, i: int) -> float {
+  if i < 0 or i >= steam_st.ss_act_n or steam_st.ss_act_y == null { return 0.0 }
+  return steam_st.ss_act_y[i]
+}
+
+# the path of the PNG for the button that does the action (size 0 small, 1 medium, 2 large); "" when there is none
+export function steam_action_glyph(steam_st: SteamState, i: int, size: int) -> string {
+  if not steam_st.ss_input_on or i < 0 or i >= steam_st.ss_act_n or steam_st.ss_dr.input_count() == 0 { return "" }
+  return steam_st.ss_dr.input_glyph(steam_st.ss_dr.input_controller(0), ss_act_name(i), size)
+}

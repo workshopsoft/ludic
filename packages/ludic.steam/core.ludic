@@ -1,0 +1,349 @@
+# core.ludic - the start-up state machine, the frame, the user, and the text the ids need.
+#
+#   STEAM_IDLE --steam_start--> STEAM_READY
+#                          \--> STEAM_UNAVAILABLE (steam_why: a STEAM_ERR_*; tried again by another steam_start)
+#                          \--> STEAM_RESTARTING  (not launched through Steam: the game should quit)
+#   STEAM_READY --steam_stop--> STEAM_STOPPED
+#
+# Anything asked while the state is not READY is a no-op that answers "nothing": a game can call every
+# verb on a machine with no Steam, and the parts of it that are Steam's simply are not there.
+
+export function steam_config(steam_st: mut SteamState, c: SteamConfig) -> void { steam_st.ss_cfg = c }
+
+export function steam_status(steam_st: SteamState) -> int { return steam_st.ss_status }
+export function steam_ready(steam_st: SteamState) -> bool { return steam_st.ss_status == STEAM_READY }
+export function steam_why(steam_st: SteamState) -> int { return steam_st.ss_why }
+export function steam_error(steam_st: SteamState) -> string { return steam_st.ss_err }
+
+function ss_cfg_of(steam_st: mut SteamState) -> SteamConfig {
+  @alloc_ok("once: the default config when the game set none")
+  if steam_st.ss_cfg == null { steam_st.ss_cfg = new SteamConfig }
+  return steam_st.ss_cfg
+}
+
+@alloc_ok("once: the text buffer and its table")
+function ss_text_ready(steam_st: mut SteamState) -> void {
+  if steam_st.ss_sb != null { return }
+  steam_st.ss_sb = sb_new(256)
+  steam_st.ss_strs = strs_new(4096)
+}
+
+function ss_failed(steam_st: mut SteamState, code: int, msg: string) -> int {
+  steam_st.ss_status = STEAM_UNAVAILABLE
+  steam_st.ss_why = code
+  steam_st.ss_err = msg
+  let f = ss_fact(steam_st, STF_UNAVAILABLE)
+  f.n = code
+  f.text = msg
+  q_push(steam_st.ss_facts, f)
+  return code
+}
+
+# start talking to Steam: false-safe to call again after STEAM_UNAVAILABLE (the client may have started since).
+# Returns STEAM_OK or the STEAM_ERR_* it stopped at.
+@alloc_ok("at start: the driver, the buffers and a table per row")
+export function steam_start(steam_st: mut SteamState) -> int {
+  if steam_st.ss_status == STEAM_READY { return STEAM_OK }
+  if steam_st.ss_status == STEAM_RESTARTING { return STEAM_ERR_RESTART }
+  let cfg = ss_cfg_of(steam_st)
+  ss_text_ready(steam_st)
+  if cfg.app_id <= 0 { return ss_failed(steam_st, STEAM_ERR_NO_APP, "the game has no Steam app id") }
+  let d = SteamBackend.driver()
+  steam_st.ss_dr = d
+  let code = d.init(cfg.app_id, cfg.dev)
+  if code == STEAM_ERR_RESTART {
+    steam_st.ss_status = STEAM_RESTARTING
+    steam_st.ss_why = code
+    let f = ss_fact(steam_st, STF_UNAVAILABLE)
+    f.n = code
+    q_push(steam_st.ss_facts, f)
+    return code
+  }
+  if code != STEAM_OK { return ss_failed(steam_st, code, d.error()) }
+  steam_st.ss_status = STEAM_READY
+  steam_st.ss_why = STEAM_OK
+  steam_st.ss_err = ""
+  steam_st.ss_me = d.me()
+  steam_st.ss_persona = d.persona()
+  steam_st.ss_app = d.app_id()
+  steam_st.ss_online = d.logged_on()
+  if steam_st.ss_ticket == null { steam_st.ss_ticket = buffer(STEAM_CAP_TICKET) }
+  ss_tables(steam_st)
+  d.stats_request()
+  let f = ss_fact(steam_st, STF_READY)
+  f.id = steam_st.ss_me
+  f.n = steam_st.ss_app
+  q_push(steam_st.ss_facts, f)
+  if cfg.auto_join {
+    let lobby = steam_launch_lobby(steam_st)
+    if lobby != long(0) { steam_lobby_join(steam_st, lobby) }
+  }
+  return STEAM_OK
+}
+
+export function steam_stop(steam_st: mut SteamState) -> void {
+  if steam_st.ss_status == STEAM_READY {
+    let d = steam_st.ss_dr
+    if steam_st.ss_lobby != long(0) { d.lobby_leave(steam_st.ss_lobby) }
+    ss_cancel_ticket(steam_st, d)
+    d.shutdown()
+  }
+  steam_st.ss_status = STEAM_STOPPED
+  steam_st.ss_lobby = long(0)
+  steam_st.ss_lobby_st = LOBBY_NONE
+  steam_st.ss_net_on = false
+  steam_st.ss_input_on = false
+  steam_st.ss_stats_ready = false
+}
+
+# what Steam has for the game this frame, into facts; call it in a phase early in the frame (steam_system does)
+export function steam_tick(steam_st: mut SteamState, t: Tick) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  let d = steam_st.ss_dr
+  d.pump()
+  var guard = 0
+  while guard < 512 {
+    let kind = d.poll()
+    if kind == 0 { break }
+    ss_handle(steam_st, d, kind)
+    guard += 1
+  }
+  ss_store_tick(steam_st, t.dt)
+  ss_input_tick(steam_st, d)
+}
+
+# one fact from the driver: what the mechanic keeps of it, and the fact the game drains
+function ss_handle(steam_st: mut SteamState, d: SteamDriver, kind: int) -> void {
+  if kind == STF_CONNECTED {
+    steam_st.ss_online = true
+    q_push(steam_st.ss_facts, ss_fact(steam_st, STF_CONNECTED))
+  } else if kind == STF_DISCONNECTED {
+    steam_st.ss_online = false
+    let f = ss_fact(steam_st, STF_DISCONNECTED)
+    f.n = d.fi(0)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_SHUTDOWN {
+    q_push(steam_st.ss_facts, ss_fact(steam_st, STF_SHUTDOWN))
+  } else if kind == STF_PERSONA {
+    ss_on_persona(steam_st, d)
+  } else if kind == STF_AVATAR {
+    let f = ss_fact(steam_st, STF_AVATAR)
+    f.id = d.fl(0)
+    f.n = d.fi(0)
+    f.m = d.fi(1) * 65536 + d.fi(2)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_OVERLAY {
+    let f = ss_fact(steam_st, STF_OVERLAY)
+    f.n = d.fi(0)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_JOIN_REQUEST {
+    ss_on_join_request(steam_st, d)
+  } else if kind == STF_LOBBY_JOIN_REQUEST {
+    ss_on_lobby_join_request(steam_st, d)
+  } else if kind == STF_LOBBY_CREATED {
+    ss_on_lobby_created(steam_st, d)
+  } else if kind == STF_LOBBY_ENTERED {
+    ss_on_lobby_entered(steam_st, d)
+  } else if kind == STF_LOBBY_MEMBER {
+    ss_on_lobby_member(steam_st, d)
+  } else if kind == STF_LOBBY_DATA {
+    let f = ss_fact(steam_st, STF_LOBBY_DATA)
+    f.id = d.fl(0)
+    f.other = d.fl(1)
+    f.n = d.fi(0)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_LOBBY_CHAT {
+    ss_on_lobby_chat(steam_st, d)
+  } else if kind == STF_LOBBY_KICKED {
+    ss_on_lobby_gone(steam_st, d.fl(0), STF_LOBBY_KICKED)
+  } else if kind == STF_LOBBY_LIST {
+    steam_st.ss_searching = false
+    steam_st.ss_found = d.fi(0)
+    let f = ss_fact(steam_st, STF_LOBBY_LIST)
+    f.n = steam_st.ss_found
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_STATS_RECEIVED {
+    ss_on_stats_received(steam_st, d)
+  } else if kind == STF_STATS_STORED {
+    let f = ss_fact(steam_st, STF_STATS_STORED)
+    f.n = d.fi(0)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_ACH_STORED {
+    let f = ss_fact(steam_st, STF_ACH_STORED)
+    f.n = d.fi(0)
+    f.m = d.fi(1)
+    f.text = ss_copy_text(steam_st, d)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_LB_FOUND {
+    ss_on_lb_found(steam_st, d)
+  } else if kind == STF_LB_UPLOADED {
+    ss_on_lb_uploaded(steam_st, d)
+  } else if kind == STF_LB_DOWNLOADED {
+    ss_on_lb_downloaded(steam_st, d)
+  } else if kind == STF_DLC_INSTALLED {
+    let f = ss_fact(steam_st, STF_DLC_INSTALLED)
+    f.n = d.fi(0)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_URL_LAUNCH {
+    q_push(steam_st.ss_facts, ss_fact(steam_st, STF_URL_LAUNCH))
+    if ss_cfg_of(steam_st).auto_join {
+      let lobby = steam_launch_lobby(steam_st)
+      if lobby != long(0) and lobby != steam_st.ss_lobby { steam_lobby_join(steam_st, lobby) }
+    }
+  } else if kind == STF_GAMEPAD_TEXT {
+    let f = ss_fact(steam_st, STF_GAMEPAD_TEXT)
+    f.n = d.fi(0)
+    f.text = ss_copy_text(steam_st, d)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_NET_SESSION_REQUEST {
+    let f = ss_fact(steam_st, STF_NET_SESSION_REQUEST)
+    f.id = d.fl(0)
+    f.n = d.fi(0)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_NET_SESSION_FAILED {
+    let f = ss_fact(steam_st, STF_NET_SESSION_FAILED)
+    f.id = d.fl(0)
+    f.n = d.fi(0)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_PRESENCE {
+    let f = ss_fact(steam_st, STF_PRESENCE)
+    f.id = d.fl(0)
+    q_push(steam_st.ss_facts, f)
+  } else if kind == STF_CALL_FAILED {
+    ss_on_call_failed(steam_st, d)
+  } else if kind == STF_CONNECT_FAILED {
+    let f = ss_fact(steam_st, STF_CONNECT_FAILED)
+    f.n = d.fi(0)
+    q_push(steam_st.ss_facts, f)
+  }
+}
+
+# a text that is one of many (a chat line): a copy of its own, made per message, never kept in the table
+@alloc_ok("one copy per chat line or typed text: an event, not a frame")
+function ss_copy_text(steam_st: mut SteamState, d: SteamDriver) -> string {
+  let s = d.ftext()
+  if len(s) == 0 { return "" }
+  return Text.slice(s, 0, len(s))
+}
+
+# ---- the user ----
+export function steam_id(steam_st: SteamState) -> long { return steam_st.ss_me }
+export function steam_persona(steam_st: SteamState) -> string { return steam_st.ss_persona }
+export function steam_app_id(steam_st: SteamState) -> int { return steam_st.ss_app }
+export function steam_online(steam_st: SteamState) -> bool { return steam_st.ss_status == STEAM_READY and steam_st.ss_online }
+
+export function steam_logged_on(steam_st: SteamState) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.logged_on()
+}
+export function steam_language(steam_st: SteamState) -> string {
+  if steam_st.ss_status != STEAM_READY { return "" }
+  return steam_st.ss_dr.language()
+}
+export function steam_on_deck(steam_st: SteamState) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.on_deck()
+}
+export function steam_proton(steam_st: SteamState) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.proton()
+}
+export function steam_overlay_enabled(steam_st: SteamState) -> bool {
+  if steam_st.ss_status != STEAM_READY { return false }
+  return steam_st.ss_dr.overlay_on()
+}
+
+function ss_on_persona(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let id = d.fl(0)
+  if id == steam_st.ss_me { steam_st.ss_persona = d.persona() }
+  let f = ss_fact(steam_st, STF_PERSONA)
+  f.id = id
+  f.n = d.fi(0)
+  q_push(steam_st.ss_facts, f)
+}
+
+# an auth ticket for this player, written into the state's buffer: its length (0 when there is none).
+# The ticket is bytes; steam_ticket_hex is the text a server takes.
+export function steam_auth_ticket(steam_st: mut SteamState) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  let d = steam_st.ss_dr
+  ss_cancel_ticket(steam_st, d)
+  let n = d.auth_ticket(steam_st.ss_ticket, STEAM_CAP_TICKET)
+  steam_st.ss_ticket_n = n
+  steam_st.ss_ticket_h = d.auth_handle()
+  return n
+}
+
+function ss_cancel_ticket(steam_st: mut SteamState, d: SteamDriver) -> void {
+  if steam_st.ss_ticket_h != 0 { d.auth_cancel(steam_st.ss_ticket_h) }
+  steam_st.ss_ticket_h = 0
+  steam_st.ss_ticket_n = 0
+}
+
+export function steam_auth_cancel(steam_st: mut SteamState) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  ss_cancel_ticket(steam_st, steam_st.ss_dr)
+}
+
+export function steam_ticket_bytes(steam_st: SteamState) -> []byte { return steam_st.ss_ticket }
+export function steam_ticket_len(steam_st: SteamState) -> int { return steam_st.ss_ticket_n }
+
+@alloc_ok("a ticket is asked for once per connection: its hex text is one string")
+export function steam_ticket_hex(steam_st: SteamState) -> string {
+  let n = steam_st.ss_ticket_n
+  let out = bytes(n * 2 + 1)
+  for i in 0 .. n {
+    let b = steam_st.ss_ticket[i]
+    let hi = b / 16
+    let lo = b % 16
+    if hi < 10 { out[i * 2] = 48 + hi } else { out[i * 2] = 87 + hi }
+    if lo < 10 { out[i * 2 + 1] = 48 + lo } else { out[i * 2 + 1] = 87 + lo }
+  }
+  out[n * 2] = 0
+  return out
+}
+
+# ---- ids as text: a Steam id is 64 bits and the wire and the data files speak decimal ----
+function ss_digits(sb: StrBuf, id: long) -> void {
+  var n = id
+  if n < long(0) {
+    sb_byte(sb, 45)
+    n = long(0) - n
+  }
+  var div = long(1)
+  while div <= n / long(10) { div = div * long(10) }
+  while div > long(0) {
+    sb_byte(sb, 48 + int((n / div) % long(10)))
+    div = div / long(10)
+  }
+}
+
+# an id as decimal text: one string per distinct id
+export function steam_id_text(steam_st: mut SteamState, id: long) -> string {
+  ss_text_ready(steam_st)
+  sb_clear(steam_st.ss_sb)
+  ss_digits(steam_st.ss_sb, id)
+  return sb_intern(steam_st.ss_sb, steam_st.ss_strs)
+}
+
+# 0 when the text is not a number
+export function steam_parse_id(s: string) -> long {
+  let sp: string = s
+  var n = long(0)
+  var at = 0
+  while at < len(sp) and (sp[at] == 32 or sp[at] == 9) { at += 1 }
+  var neg = false
+  if at < len(sp) and sp[at] == 45 {
+    neg = true
+    at += 1
+  }
+  if at >= len(sp) { return long(0) }
+  while at < len(sp) {
+    let c = sp[at]
+    if c < 48 or c > 57 { break }
+    n = n * long(10) + long(c - 48)
+    at += 1
+  }
+  if neg { return long(0) - n }
+  return n
+}

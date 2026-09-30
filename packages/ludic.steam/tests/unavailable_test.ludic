@@ -1,0 +1,91 @@
+# unavailable_test.ludic - no backend bound: Steam cannot start, and every call is a safe no-op that answers "nothing".
+# This is what a game does on a machine with no Steam (or one built without ludic.steamworks).
+import "ludic.steam"
+import "ludic.base"
+program UnavailableTest {
+  numbers float
+
+  def SteamAchievements first_catch { api_name: "ACH_FIRST_CATCH" }
+  def SteamAchievements big_fish { }
+  def SteamStats fish_caught { kind: STAT_INT, cap: 100 }
+  def SteamLeaderboards best_fish { }
+  def SteamPresence menu { display: "#Menu" }
+
+  function drain(steam_st: SteamState) -> []SteamFact { return q_drain(steam_facts(steam_st)) }
+
+  test "a game with no app id does not start, and says why" (steam_st: mut SteamState) {
+    expect_eq(steam_start(steam_st), STEAM_ERR_NO_APP)
+    expect_eq(steam_status(steam_st), STEAM_UNAVAILABLE)
+    expect(not steam_ready(steam_st))
+    let fs = drain(steam_st)
+    expect_eq(len(fs), 1)
+    expect_eq(fs[0].what, STF_UNAVAILABLE)
+    expect_eq(fs[0].n, STEAM_ERR_NO_APP)
+  }
+
+  test "with no backend bound the null driver answers, and the state is unavailable" (steam_st: mut SteamState) {
+    let c = new SteamConfig
+    c.app_id = 480
+    steam_config(steam_st, c)
+    expect_eq(steam_start(steam_st), STEAM_ERR_NO_BACKEND)
+    expect_eq(steam_why(steam_st), STEAM_ERR_NO_BACKEND)
+    expect_eq(steam_status(steam_st), STEAM_UNAVAILABLE)
+    expect(not steam_online(steam_st))
+  }
+
+  test "every verb is a safe no-op while Steam is not there" (steam_st: mut SteamState) {
+    let c = new SteamConfig
+    c.app_id = 480
+    steam_config(steam_st, c)
+    steam_start(steam_st)
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    expect_eq(steam_friend_count(steam_st), 0)
+    expect_eq(steam_friend_name(steam_st, long(1)), "")
+    expect(not steam_lobby_create(steam_st, LOBBY_PUBLIC, 4))
+    expect(not steam_lobby_join(steam_st, long(5)))
+    expect(not steam_lobby_search(steam_st))
+    expect_eq(steam_lobby_member_count(steam_st), 0)
+    expect(not steam_presence_show(steam_st, SRP_MENU))
+    expect(not steam_presence_set(steam_st, "status", "x"))
+    expect(not steam_stat_set_int(steam_st, SSTAT_FISH_CAUGHT, 3))
+    expect(not steam_lb_upload(steam_st, SLB_BEST_FISH, 3))
+    expect(not steam_cloud_put(steam_st, "a.txt", "hello"))
+    expect_eq(steam_cloud_get(steam_st, "a.txt"), "")
+    expect_eq(steam_net_open(steam_st, 27000), 0)
+    expect_eq(steam_net_peer(steam_st, long(76561198000000002)), 0)
+    expect(not steam_input_start(steam_st))
+    expect_eq(steam_dlc_count(steam_st), 0)
+    expect(not steam_achievement_clear(steam_st, SACH_FIRST_CATCH))
+    expect_eq(steam_auth_ticket(steam_st), 0)
+    steam_overlay(steam_st, "friends")
+    steam_timeline_marker(steam_st, "", "x", "", 1, 0.0)
+    expect_eq(q_len(steam_facts(steam_st)), 1)
+  }
+
+  test "an achievement earned with no Steam is kept, and counted" (steam_st: mut SteamState) {
+    expect(steam_achievement_unlock(steam_st, SACH_FIRST_CATCH))
+    expect(not steam_achievement_unlock(steam_st, SACH_FIRST_CATCH))
+    expect(steam_achievement_unlocked(steam_st, SACH_FIRST_CATCH))
+    expect(not steam_achievement_unlocked(steam_st, SACH_BIG_FISH))
+    expect_eq(steam_achievement_count(steam_st), 1)
+    let fs = drain(steam_st)
+    expect_eq(len(fs), 1)
+    expect_eq(fs[0].what, STF_ACH_UNLOCKED)
+    expect_eq(fs[0].key, SACH_FIRST_CATCH)
+  }
+
+  test "a missing key names itself" {
+    expect_eq(steamachievements_find("nope"), -1)
+    expect_eq(steamachievements_find("big_fish"), SACH_BIG_FISH)
+  }
+
+  test "ids are text and back" (steam_st: mut SteamState) {
+    let id = long(76561198012345678)
+    expect_eq(steam_id_text(steam_st, id), "76561198012345678")
+    expect(steam_parse_id("76561198012345678") == id)
+    expect(steam_parse_id("nope") == long(0))
+    expect_eq(steam_connect_string(steam_st, long(1234)), "+connect_lobby 1234")
+    expect(steam_parse_connect("-windowed +connect_lobby 1234 -x") == long(1234))
+    expect(steam_parse_connect("-windowed") == long(0))
+  }
+}

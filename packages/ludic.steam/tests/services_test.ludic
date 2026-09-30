@@ -1,0 +1,348 @@
+# services_test.ludic - cloud files, Steam Input mapped to the game's actions, DLC and the timeline, the relay
+# socket, the dev verbs and the system, on the fake Steam
+import "ludic.steam"
+import "ludic.base"
+program ServicesTest {
+  numbers float
+
+  bind SteamBackend { driver: fn steam_fake_driver }
+
+  def SteamActions jump { name: "jump_action", set: "gameplay" }
+  def SteamActions move { kind: SIA_ANALOG }
+  def SteamAchievements hermit { api_name: "ACH_HERMIT" }
+  def SteamAchievements angler { api_name: "ACH_ANGLER" }
+  def SteamStats fish { api_name: "NumFish" }
+
+  const PEER_A: long = 76561198000000030
+  const PEER_B: long = 76561198000000031
+
+  function up(steam_st: mut SteamState, fake_st: mut FakeSteamState) -> void {
+    let c = new SteamConfig
+    c.app_id = 480
+    c.dev = true
+    steam_config(steam_st, c)
+    expect_eq(steam_start(steam_st), STEAM_OK)
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    q_drain(steam_facts(steam_st))
+  }
+  function frame(steam_st: mut SteamState) -> void { steam_tick(steam_st, tick_new(0.016, 0, 0.0)) }
+  function drain(steam_st: SteamState) -> []SteamFact { return q_drain(steam_facts(steam_st)) }
+  function kinds(fs: []SteamFact) -> string {
+    var s = ""
+    for i in 0 .. len(fs) { s = s + string(fs[i].what) + "," }
+    return s
+  }
+  function bytes_of(text: string) -> []byte {
+    let b = buffer(len(text))
+    for i in 0 .. len(text) { b[i] = text[i] }
+    return b
+  }
+
+  # ---- cloud ----
+  test "a text is a cloud file, and comes back" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect(steam_cloud_enabled(steam_st))
+    expect(steam_cloud_put(steam_st, "save1.json", "{\"day\": 3}"))
+    expect(steam_cloud_exists(steam_st, "save1.json"))
+    expect_eq(steam_cloud_get(steam_st, "save1.json"), "{\"day\": 3}")
+    expect_eq(steam_cloud_size(steam_st, "save1.json"), 10)
+    expect_eq(steam_cloud_count(steam_st), 1)
+    expect_eq(steam_cloud_name(steam_st, 0), "save1.json")
+    expect_eq(steam_cloud_get(steam_st, "none"), "")
+    expect(steam_cloud_time(steam_st, "save1.json") > long(0))
+    expect(steam_cloud_delete(steam_st, "save1.json"))
+    expect(not steam_cloud_exists(steam_st, "save1.json"))
+  }
+
+  test "cloud off for the player refuses the write" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    fake_cloud_off(fake_st, true)
+    expect(not steam_cloud_enabled(steam_st))
+    expect(not steam_cloud_put(steam_st, "a", "b"))
+  }
+
+  test "a save on disk is pushed after it is written, and pulled before it is read when the cloud is newer" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    let path = "steam_services_test_save.json"
+    Fs.remove(path)
+    Fs.remove(path + ".cloud")
+    expect_eq(steam_save_before_read(steam_st, path, "slot1"), CLOUD_NONE)
+    Fs.write_text(path, "local one")
+    expect_eq(steam_save_before_read(steam_st, path, "slot1"), CLOUD_KEPT)
+    expect(steam_save_written(steam_st, path, "slot1"))
+    expect_eq(steam_cloud_get(steam_st, "slot1"), "local one")
+    expect_eq(steam_save_before_read(steam_st, path, "slot1"), CLOUD_KEPT)
+    # another machine writes a newer one
+    expect(steam_cloud_put(steam_st, "slot1", "from another machine"))
+    expect_eq(steam_save_before_read(steam_st, path, "slot1"), CLOUD_PULLED)
+    expect_eq(Fs.read_text(path), "from another machine")
+    expect_eq(kinds(drain(steam_st)), "105,")
+    expect_eq(steam_save_before_read(steam_st, path, "slot1"), CLOUD_KEPT)
+    Fs.remove(path)
+    Fs.remove(path + ".cloud")
+    expect(not steam_cloud_push_file(steam_st, "steam_services_test_missing.json", "x"))
+  }
+
+  # ---- Steam Input ----
+  test "Steam Input answers the game's own actions, by row" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect(steam_input_start(steam_st))
+    frame(steam_st)
+    expect(not steam_action_down(steam_st, SACT_JUMP))
+    fake_add_controller(fake_st, long(1))
+    fake_pad(fake_st, "jump_action", true, 0.0, 0.0)
+    fake_pad(fake_st, "move", false, 0.5, -0.25)
+    frame(steam_st)
+    expect_eq(steam_input_count(steam_st), 1)
+    expect(steam_action_down(steam_st, SACT_JUMP))
+    expect(steam_action_x(steam_st, SACT_MOVE) == 0.5)
+    expect(steam_action_y(steam_st, SACT_MOVE) == -0.25)
+    expect(not steam_action_down(steam_st, SACT_MOVE))
+    expect(steam_input_set(steam_st, "gameplay"))
+    expect_eq(fake_pad_set(fake_st), "gameplay")
+    expect_eq(steam_action_glyph(steam_st, SACT_JUMP, 1), "glyphs/jump_action_1.png")
+    fake_pad(fake_st, "jump_action", false, 0.0, 0.0)
+    frame(steam_st)
+    expect(not steam_action_down(steam_st, SACT_JUMP))
+    expect(not steam_action_down(steam_st, 40))
+  }
+
+  test "Steam Input does nothing until it is started" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    fake_add_controller(fake_st, long(1))
+    fake_pad(fake_st, "jump_action", true, 0.0, 0.0)
+    frame(steam_st)
+    expect(not steam_action_down(steam_st, SACT_JUMP))
+    expect_eq(steam_input_count(steam_st), 0)
+    expect_eq(steam_action_glyph(steam_st, SACT_JUMP, 0), "")
+  }
+
+  # ---- app, text box, timeline ----
+  test "DLC, the beta branch, the text box and the timeline" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_add_dlc(fake_st, 1001, "Night Lake", true)
+    fake_add_dlc(fake_st, 1002, "Winter", false)
+    up(steam_st, fake_st)
+    expect_eq(steam_dlc_count(steam_st), 2)
+    expect_eq(steam_dlc_app_id(steam_st, 1), 1002)
+    expect(steam_dlc_owned(steam_st, 1001))
+    expect(not steam_dlc_owned(steam_st, 1002))
+    expect_eq(steam_dlc_name(steam_st, 0), "Night Lake")
+    expect_eq(steam_beta(steam_st), "")
+    fake_dlc_installed(fake_st, 1002)
+    expect(steam_text_input(steam_st, 0, 0, "Name your boat", 20, "Gull"))
+    fake_gamepad_text(fake_st, true, "Petrel")
+    frame(steam_st)
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "22,24,")
+    expect_eq(fs[0].n, 1002)
+    expect_eq(fs[1].n, 1)
+    expect_eq(fs[1].text, "Petrel")
+    steam_timeline_mode(steam_st, 1)
+    steam_timeline_marker(steam_st, "steam_star", "Big fish", "a 9 kg pike", 2, -1.0)
+    steam_timeline_range(steam_st, "steam_flag", "The reel", "", 1, -3.0, 3.0)
+    steam_timeline_phase(steam_st, "lake_1")
+    steam_timeline_phase_end(steam_st)
+    steam_timeline_tooltip(steam_st, "north pier")
+    let tl = fake_timeline(fake_st)
+    expect_eq(len(tl), 6)
+    expect_eq(tl[1], "marker:Big fish")
+    expect_eq(tl[3], "phase:lake_1")
+  }
+
+  # ---- the socket ----
+  test "a Steam user gets a stand-in address, the same each time, and a pid" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    let a = steam_net_peer(steam_st, PEER_A)
+    let b = steam_net_peer(steam_st, PEER_B)
+    expect(a != 0)
+    expect(a != b)
+    expect_eq(steam_net_peer(steam_st, PEER_A), a)
+    expect(steam_net_user(steam_st, b) == PEER_B)
+    expect(steam_net_user(steam_st, 12345) == long(0))
+    expect_eq(steam_pid(steam_st, PEER_A), 1)
+    expect_eq(steam_pid(steam_st, PEER_B), 2)
+    expect(fake_net_allowed(fake_st, PEER_A))
+  }
+
+  test "a datagram goes to the user behind its address, and only after the socket is open" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    let a = steam_net_peer(steam_st, PEER_A)
+    let msg = bytes_of("hello")
+    expect_eq(steam_net_send(steam_st, 1, a, 27000, msg, 5), -1)
+    expect_eq(steam_net_open(steam_st, 27000), 1)
+    expect(steam_net_ready(steam_st))
+    expect_eq(steam_net_send(steam_st, 1, a, 27000, msg, 5), 5)
+    expect_eq(steam_net_send(steam_st, 1, 999, 27000, msg, 5), -1)
+    expect_eq(steam_net_send(steam_st, 1, a, 27000, msg, 0), -1)
+    expect_eq(fake_net_sent_count(fake_st), 1)
+    expect(fake_net_sent_to(fake_st, 0) == PEER_A)
+    expect_eq(fake_net_sent_len(fake_st, 0), 5)
+    expect_eq(fake_net_sent_byte(fake_st, 0, 1), 101)
+  }
+
+  test "a datagram that arrives says which address it came from, even for a user not met before" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    steam_net_open(steam_st, 27000)
+    let buf = buffer(64)
+    expect_eq(steam_net_recv(steam_st, 1, buf, 64), 0)
+    fake_net_inject(fake_st, PEER_B, bytes_of("ping"), 4)
+    expect_eq(steam_net_recv(steam_st, 1, buf, 64), 4)
+    expect_eq(buf[0], 112)
+    expect(steam_net_user(steam_st, steam_net_from_ip(steam_st, 1)) == PEER_B)
+    expect_eq(steam_net_from_port(steam_st, 1), 27000)
+    expect_eq(steam_net_port(steam_st, 1), 27000)
+    expect(steam_net_local_ip(steam_st) != 0)
+    expect_eq(steam_net_recv(steam_st, 1, buf, 64), 0)
+    steam_net_close(steam_st, 1)
+    expect(not steam_net_ready(steam_st))
+  }
+
+  test "members of the lobby may open a session, from the moment the socket opens" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_remote_lobby(fake_st, long(600), PEER_A, 4)
+    up(steam_st, fake_st)
+    steam_lobby_join(steam_st, long(600))
+    frame(steam_st)
+    expect(fake_net_allowed(fake_st, PEER_A))
+    steam_net_open(steam_st, 1)
+    fake_member_join(fake_st, long(600), PEER_B)
+    frame(steam_st)
+    expect(fake_net_allowed(fake_st, PEER_B))
+  }
+
+  test "a stranger's session request and a failed session are facts" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect_eq(steam_net_open(steam_st, 1), 1)
+    expect_eq(steam_net_local_ip(steam_st), STEAM_NET_BASE)
+    fake_net_session_request(fake_st, PEER_A, false)
+    fake_net_session_failed(fake_st, PEER_B, 4001)
+    frame(steam_st)
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "25,26,")
+    expect(fs[0].id == PEER_A)
+    expect_eq(fs[0].n, 0)
+    expect_eq(fs[1].n, 4001)
+  }
+
+  # ---- dev verbs ----
+  function verb(name: string, args_done: DevCall) -> int {
+    let i = devverbs_find(name)
+    expect(i >= 0)
+    return DevVerbs[i].run(args_done)
+  }
+
+  test "steam_state reports the session in one line of values" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    steam_achievement_unlock(steam_st, SACH_HERMIT)
+    let c = devcall_new()
+    expect_eq(verb("steam_state", c), DV_OK)
+    expect_eq(text_of(c.out, c.out_n), " 1 \"76561198000000001\" \"Tester\" 1 480 \"0\" 0 1 2")
+  }
+
+  test "steam_state answers even when Steam is not there" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    let c = devcall_new()
+    expect_eq(verb("steam_state", c), DV_OK)
+    expect_eq(text_of(c.out, c.out_n), " 0 \"0\" \"\" 0 0 \"0\" 0 0 2")
+  }
+
+  test "steam_unlock unlocks by key, refuses an unknown one with a suggestion, and needs Steam" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    let c = devcall_new()
+    c.n = 1
+    c.s[0] = "hermit"
+    expect_eq(verb("steam_unlock", c), DV_FAILED)
+    expect(Text.contains(c.why, "not available"))
+    up(steam_st, fake_st)
+    devcall_clear(c)
+    c.n = 1
+    c.s[0] = "hermit"
+    expect_eq(verb("steam_unlock", c), DV_OK)
+    expect_eq(text_of(c.out, c.out_n), " 1")
+    expect(fake_ach(fake_st, "ACH_HERMIT"))
+    devcall_clear(c)
+    c.n = 1
+    c.s[0] = "herm"
+    expect_eq(verb("steam_unlock", c), DV_BAD)
+    expect(Text.contains(c.why, "did you mean hermit"))
+    devcall_clear(c)
+    c.n = 1
+    c.s[0] = "hermit"
+    expect_eq(verb("steam_unlock", c), DV_OK)
+    expect_eq(text_of(c.out, c.out_n), " 0")
+  }
+
+  test "steam_reset resets stats, and achievements when told" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    steam_achievement_unlock(steam_st, SACH_HERMIT)
+    let c = devcall_new()
+    expect_eq(verb("steam_reset", c), DV_OK)
+    expect(steam_achievement_unlocked(steam_st, SACH_HERMIT))
+    devcall_clear(c)
+    c.n = 1
+    c.has[0] = 1
+    c.i[0] = 1
+    expect_eq(verb("steam_reset", c), DV_OK)
+    expect(not steam_achievement_unlocked(steam_st, SACH_HERMIT))
+  }
+
+  test "steam_lobby_create starts a lobby and answers when it is in" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    let c = devcall_new()
+    c.n = 2
+    c.s[0] = "sideways"
+    c.i[1] = 4
+    expect_eq(verb("steam_lobby_create", c), DV_BAD)
+    devcall_clear(c)
+    c.n = 2
+    c.s[0] = "friends"
+    c.i[1] = 4
+    expect_eq(verb("steam_lobby_create", c), DV_LATER)
+    let i = devverbs_find("steam_lobby_create")
+    expect_eq(DevVerbs[i].late(c), 0)
+    frame(steam_st)
+    expect_eq(DevVerbs[i].late(c), 1)
+    expect(Text.contains(text_of(c.out, c.out_n), "1097752"))
+    devcall_clear(c)
+    c.n = 2
+    c.s[0] = "friends"
+    c.i[1] = 4
+    expect_eq(verb("steam_lobby_create", c), DV_FAILED)
+    devcall_clear(c)
+    expect_eq(verb("steam_lobby_leave", c), DV_OK)
+    expect(not steam_lobby_in(steam_st))
+  }
+
+  test "steam_stat sets a stat by key, steam_presence shows a row" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    let c = devcall_new()
+    c.n = 2
+    c.s[0] = "fish"
+    c.f[1] = 7.0
+    expect_eq(verb("steam_stat", c), DV_OK)
+    expect_eq(text_of(c.out, c.out_n), " 7")
+    expect_eq(steam_stat_int(steam_st, SSTAT_FISH), 7)
+    devcall_clear(c)
+    c.n = 2
+    c.s[0] = "nope"
+    expect_eq(verb("steam_stat", c), DV_BAD)
+    devcall_clear(c)
+    c.n = 1
+    c.s[0] = "menu"
+    expect_eq(verb("steam_presence", c), DV_BAD)
+  }
+
+  # ---- the system ----
+  test "the system runs the pump in the sense phase, with its own save key" (steam_st: mut SteamState, base_st: mut BaseState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    core_clear(base_st)
+    core_add(base_st, steam_system())
+    core_reset_all(base_st)
+    fake_persona_changed(fake_st, FAKE_ME, "Gull")
+    core_tick_all(base_st, tick_new(0.016, 1, 0.0))
+    expect_eq(steam_persona(steam_st), "Gull")
+    expect_eq(q_len(steam_facts(steam_st)), 1)
+    let v = core_save_all(base_st)
+    expect(Text.contains(save_encode(v), "\"steam\""))
+    let s = steam_system()
+    expect_eq(s.key, "steam")
+    expect_eq(s.phase, PH_SENSE)
+  }
+}

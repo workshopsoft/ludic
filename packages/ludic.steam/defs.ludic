@@ -1,0 +1,92 @@
+# defs.ludic - the data a game fills in, in .lres files (or `def`s), so an editor can author it:
+#
+#   def SteamAchievements from "data/steam_achievements.lres"
+#   def SteamStats        from "data/steam_stats.lres"
+#   def SteamLeaderboards from "data/steam_leaderboards.lres"
+#   def SteamPresence     from "data/steam_presence.lres"
+#   def SteamActions      from "data/steam_actions.lres"
+#
+# A row's key is how the game names it; the Steamworks name (what the partner site calls it) is a field
+# of its own, and is the key when left empty. Every registry is @ByKey: Steam keeps nothing by position.
+export const STAT_INT: int = 0
+export const STAT_FLOAT: int = 1
+
+export const LB_SORT_DESC: int = 0          # the highest score first
+export const LB_SORT_ASC: int = 1           # the lowest first (a time)
+export const LB_DISPLAY_NUMBER: int = 0
+export const LB_DISPLAY_SECONDS: int = 1
+export const LB_DISPLAY_MILLIS: int = 2
+export const LB_UPLOAD_BEST: int = 0        # keep the better of the old and the new
+export const LB_UPLOAD_FORCE: int = 1       # replace it
+export const LB_FROM_TOP: int = 0           # entries from the top of the board, `from` to `to`
+export const LB_AROUND_USER: int = 1        # `from` ranks before this player to `to` after
+export const LB_FRIENDS: int = 2            # this player's friends
+
+export const SIA_DIGITAL: int = 0
+export const SIA_ANALOG: int = 1
+
+# an achievement as the game knows it; its text is the game's own (Steam's popup uses the partner site's)
+export property SteamAchievement {
+  key: string = ""
+  api_name: string = ""                     # the partner site's API name; "" is the key
+  @Text name: Key = null                    # the game's own toast and list
+  @Text desc: Key = null
+  @Asset("png") icon: string = ""
+  hidden: bool = false                      # shown as a secret until earned
+  @Ref(SteamStats) stat: int = -1           # unlocked by itself when this stat reaches `goal`
+  @Range(0, 1000000) goal: int = 0
+}
+
+# a stat, an int or a float, kept by Steam and summed across the player's machines
+export property SteamStat {
+  key: string = ""
+  api_name: string = ""
+  @OneOf(STAT_INT, STAT_FLOAT) kind: int = STAT_INT
+  @Range(0, 1000000) cap: int = 0           # a value written or added is held to this; 0 is no cap
+}
+
+# a leaderboard; the game finds it once by name, creating it when the partner site has not
+export property SteamLeaderboard {
+  key: string = ""
+  api_name: string = ""
+  @OneOf(LB_SORT_DESC, LB_SORT_ASC) sort: int = LB_SORT_DESC
+  @OneOf(LB_DISPLAY_NUMBER, LB_DISPLAY_SECONDS, LB_DISPLAY_MILLIS) display: int = LB_DISPLAY_NUMBER
+  create: bool = false                      # make it when missing (a development board)
+  @OneOf(LB_UPLOAD_BEST, LB_UPLOAD_FORCE) method: int = LB_UPLOAD_BEST
+}
+
+export property SteamPair {
+  key: string = ""
+  value: string = ""
+}
+
+# what the friends list says about the player: a state of the game. `display` is a localisation token
+# ("#Menu") the partner site translates; `status` is the plain text under it for a game without tokens.
+export property SteamPresenceRow {
+  key: string = ""
+  display: string = ""                      # steam_display
+  @Text text: Key = null                    # the game's own words for it (shown in the game, never sent)
+  status: string = ""                       # status
+  group: string = ""                        # steam_player_group: friends in the same group are listed together
+  group_size: int = 0                       # steam_player_group_size
+  pairs: []SteamPair = null                 # any further key/value the tokens substitute
+}
+
+# a Steam Input action: the game's name for it, and the name in the game's action manifest
+export property SteamAction {
+  key: string = ""
+  name: string = ""                         # the manifest's action name; "" is the key
+  set: string = ""                          # its action set; "" is whichever set is on
+  @OneOf(SIA_DIGITAL, SIA_ANALOG) kind: int = SIA_DIGITAL
+}
+
+@ByKey
+export open registry SteamAchievements of SteamAchievement as SACH
+@ByKey
+export open registry SteamStats of SteamStat as SSTAT
+@ByKey
+export open registry SteamLeaderboards of SteamLeaderboard as SLB
+@ByKey
+export open registry SteamPresence of SteamPresenceRow as SRP
+@ByKey
+export open registry SteamActions of SteamAction as SACT

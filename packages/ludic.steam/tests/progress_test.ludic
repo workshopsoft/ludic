@@ -1,0 +1,262 @@
+# progress_test.ludic - achievements, stats and leaderboards driven by data rows, and the save section that keeps
+# what Steam has not been told
+import "ludic.steam"
+import "ludic.base"
+program ProgressTest {
+  numbers float
+
+  bind SteamBackend { driver: fn steam_fake_driver }
+
+  def SteamStats fish_caught { api_name: "NumFish", kind: STAT_INT, cap: 50 }
+  def SteamStats distance { kind: STAT_FLOAT }
+  def SteamAchievements first_catch { api_name: "ACH_FIRST_CATCH" }
+  def SteamAchievements angler { api_name: "ACH_ANGLER", stat: SSTAT_FISH_CAUGHT, goal: 10 }
+  def SteamAchievements hermit { }
+  def SteamLeaderboards best_fish { api_name: "BestFish", create: true }
+  def SteamLeaderboards fastest { api_name: "FastestTime", create: true, sort: LB_SORT_ASC, method: LB_UPLOAD_BEST }
+
+  const OTHER: long = 76561198000000020
+  const THIRD: long = 76561198000000021
+
+  function up(steam_st: mut SteamState, fake_st: mut FakeSteamState) -> void {
+    let c = new SteamConfig
+    c.app_id = 480
+    c.dev = true
+    steam_config(steam_st, c)
+    expect_eq(steam_start(steam_st), STEAM_OK)
+    steam_tick(steam_st, tick_new(0.016, 0, 0.0))
+    q_drain(steam_facts(steam_st))
+  }
+  function frame(steam_st: mut SteamState, dt: float) -> void { steam_tick(steam_st, tick_new(dt, 0, 0.0)) }
+  function drain(steam_st: SteamState) -> []SteamFact { return q_drain(steam_facts(steam_st)) }
+  function kinds(fs: []SteamFact) -> string {
+    var s = ""
+    for i in 0 .. len(fs) { s = s + string(fs[i].what) + "," }
+    return s
+  }
+
+  test "an unlock goes to Steam by its API name and is stored at once" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect(steam_stats_ready(steam_st))
+    expect(steam_achievement_unlock(steam_st, SACH_FIRST_CATCH))
+    expect(fake_ach(fake_st, "ACH_FIRST_CATCH"))
+    expect(steam_achievement_unlocked(steam_st, SACH_FIRST_CATCH))
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "102,")
+    expect_eq(fs[0].key, SACH_FIRST_CATCH)
+    expect(not steam_achievement_unlock(steam_st, SACH_FIRST_CATCH))
+    expect_eq(fake_stores(fake_st), 0)
+    frame(steam_st, 0.016)
+    expect_eq(fake_stores(fake_st), 1)
+    frame(steam_st, 0.016)
+    let stored = drain(steam_st)
+    expect_eq(kinds(stored), "18,17,")
+    expect_eq(stored[0].text, "ACH_FIRST_CATCH")
+  }
+
+  test "a row without an API name is known by its key" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect(steam_achievement_unlock_key(steam_st, "hermit"))
+    expect(fake_ach(fake_st, "hermit"))
+    expect(not steam_achievement_unlock_key(steam_st, "nope"))
+    expect_eq(steam_achievement_count(steam_st), 1)
+  }
+
+  test "a stat is held to its cap" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect(steam_stat_add_int(steam_st, SSTAT_FISH_CAUGHT, 3))
+    expect(steam_stat_add_int(steam_st, SSTAT_FISH_CAUGHT, 100))
+    expect_eq(steam_stat_int(steam_st, SSTAT_FISH_CAUGHT), 50)
+    expect(fake_stat(fake_st, "NumFish") == 50.0)
+    expect(not steam_stat_set_float(steam_st, SSTAT_FISH_CAUGHT, 1.0))
+    expect(not steam_stat_set_int(steam_st, SSTAT_DISTANCE, 1))
+    expect_eq(steam_stat_key_int(steam_st, "fish_caught"), 50)
+    expect(steam_stat_set_int(steam_st, SSTAT_FISH_CAUGHT, -4))
+    expect_eq(steam_stat_int(steam_st, SSTAT_FISH_CAUGHT), 0)
+  }
+
+  test "stat changes are stored after a wait they share" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    drain(steam_st)
+    expect(steam_stat_add_float(steam_st, SSTAT_DISTANCE, 1.5))
+    expect(steam_stat_add_float(steam_st, SSTAT_DISTANCE, 0.25))
+    expect(steam_stat_float(steam_st, SSTAT_DISTANCE) == 1.75)
+    frame(steam_st, 1.0)
+    expect_eq(fake_stores(fake_st), 0)
+    frame(steam_st, 1.0)
+    expect_eq(fake_stores(fake_st), 1)
+    frame(steam_st, 5.0)
+    expect_eq(fake_stores(fake_st), 1)
+  }
+
+  test "an achievement tied to a stat unlocks itself when the stat reaches its goal" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    drain(steam_st)
+    steam_stat_add_int(steam_st, SSTAT_FISH_CAUGHT, 9)
+    expect(not steam_achievement_unlocked(steam_st, SACH_ANGLER))
+    steam_stat_add_int(steam_st, SSTAT_FISH_CAUGHT, 1)
+    expect(steam_achievement_unlocked(steam_st, SACH_ANGLER))
+    expect(fake_ach(fake_st, "ACH_ANGLER"))
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "104,104,102,")
+  }
+
+  test "Steam's own progress popup" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    drain(steam_st)
+    expect(steam_achievement_progress(steam_st, SACH_ANGLER, 3, 10))
+    frame(steam_st, 0.016)
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "18,")
+    expect_eq(fs[0].n, 3)
+    expect_eq(fs[0].m, 10)
+  }
+
+  test "stats that have not arrived refuse writes, and an unlock waits for them" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_hold_stats(fake_st, true)
+    up(steam_st, fake_st)
+    expect(not steam_stats_ready(steam_st))
+    expect(not steam_stat_add_int(steam_st, SSTAT_FISH_CAUGHT, 1))
+    expect(steam_achievement_unlock(steam_st, SACH_FIRST_CATCH))
+    expect(steam_achievement_unlocked(steam_st, SACH_FIRST_CATCH))
+    expect(not fake_ach(fake_st, "ACH_FIRST_CATCH"))
+    fake_stats_arrive(fake_st)
+    frame(steam_st, 0.016)
+    expect(steam_stats_ready(steam_st))
+    expect(fake_ach(fake_st, "ACH_FIRST_CATCH"))
+    expect(steam_stat_add_int(steam_st, SSTAT_FISH_CAUGHT, 1))
+  }
+
+  test "what Steam already holds is read when the stats arrive" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_hold_stats(fake_st, true)
+    up(steam_st, fake_st)
+    let d = steam_fake_driver()
+    d.ach_set("ACH_ANGLER")
+    d.stat_set_int("NumFish", 12)
+    d.stat_set_float("distance", 4.5)
+    fake_stats_arrive(fake_st)
+    frame(steam_st, 0.016)
+    expect(steam_achievement_unlocked(steam_st, SACH_ANGLER))
+    expect(not steam_achievement_unlocked(steam_st, SACH_HERMIT))
+    expect_eq(steam_stat_int(steam_st, SSTAT_FISH_CAUGHT), 12)
+    expect(steam_stat_float(steam_st, SSTAT_DISTANCE) == 4.5)
+    expect(not steam_achievement_unlock(steam_st, SACH_ANGLER))
+  }
+
+  test "reset forgets the stats, and the achievements too when asked" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    steam_achievement_unlock(steam_st, SACH_HERMIT)
+    steam_stat_add_int(steam_st, SSTAT_FISH_CAUGHT, 4)
+    expect(steam_reset(steam_st, false))
+    expect_eq(steam_stat_int(steam_st, SSTAT_FISH_CAUGHT), 0)
+    expect(steam_achievement_unlocked(steam_st, SACH_HERMIT))
+    expect(steam_reset(steam_st, true))
+    expect(not steam_achievement_unlocked(steam_st, SACH_HERMIT))
+    expect_eq(fake_ach_count(fake_st), 0)
+    expect_eq(fake_resets(fake_st), 2)
+    expect(steam_achievement_unlock(steam_st, SACH_HERMIT))
+    expect(steam_achievement_clear(steam_st, SACH_HERMIT))
+    expect(not steam_achievement_unlocked(steam_st, SACH_HERMIT))
+  }
+
+  test "an unlock made before Steam started is sent when it does, and survives a save" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    expect(steam_achievement_unlock(steam_st, SACH_HERMIT))
+    let root = save_tree()
+    let sys = steam_system()
+    save_section(root, sys.key, sys.version, sys.save())
+    let text = save_encode(root)
+    expect(Text.contains(text, "hermit"))
+    # a new run reads it back, then Steam starts
+    let n = load_section(save_decode(text), "steam")
+    expect(n.found)
+    sys.load(n.data, n.version)
+    expect(steam_achievement_unlocked(steam_st, SACH_HERMIT))
+    expect_eq(steam_achievement_count(steam_st), 1)
+    up(steam_st, fake_st)
+    expect(fake_ach(fake_st, "hermit"))
+    expect(steam_achievement_unlocked(steam_st, SACH_HERMIT))
+    let after = steam_system_saved(steam_st)
+    expect(not Text.contains(after, "hermit"))
+  }
+
+  function steam_system_saved(steam_st: SteamState) -> string {
+    let root = save_tree()
+    let sys = steam_system()
+    save_section(root, sys.key, sys.version, sys.save())
+    return save_encode(root)
+  }
+
+  test "a missing section is a reset, and an unknown key in it is ignored" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    let sys = steam_system()
+    let n = load_section(save_decode("{\"steam\":{\"v\":1,\"pending\":[\"gone\",\"hermit\"]}}"), "steam")
+    sys.load(n.data, n.version)
+    expect_eq(steam_achievement_count(steam_st), 1)
+    let empty = load_section(save_decode("{}"), "steam")
+    expect(not empty.found)
+  }
+
+  test "a leaderboard is found once, a score uploaded to it, and the best of the old and new kept" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_board_entry(fake_st, "BestFish", OTHER, 40, LB_SORT_DESC)
+    fake_board_entry(fake_st, "BestFish", THIRD, 20, LB_SORT_DESC)
+    up(steam_st, fake_st)
+    expect(steam_lb_upload(steam_st, SLB_BEST_FISH, 30))
+    expect(not steam_lb_found(steam_st, SLB_BEST_FISH))
+    frame(steam_st, 0.016)
+    frame(steam_st, 0.016)
+    expect(steam_lb_found(steam_st, SLB_BEST_FISH))
+    var fs = drain(steam_st)
+    expect_eq(kinds(fs), "19,20,")
+    expect_eq(fs[0].key, SLB_BEST_FISH)
+    expect_eq(fs[1].key, SLB_BEST_FISH)
+    expect_eq(fs[1].n, 30)
+    expect_eq(fs[1].m, 1)
+    expect(fs[1].other == long(2))
+    expect(steam_lb_upload(steam_st, SLB_BEST_FISH, 10))
+    frame(steam_st, 0.016)
+    fs = drain(steam_st)
+    expect_eq(kinds(fs), "20,")
+    expect_eq(fs[0].m, 0)
+    expect(steam_lb_download(steam_st, SLB_BEST_FISH, LB_FROM_TOP, 1, 10))
+    frame(steam_st, 0.016)
+    fs = drain(steam_st)
+    expect_eq(kinds(fs), "21,")
+    expect_eq(fs[0].n, 3)
+    expect_eq(steam_lb_count(steam_st), 3)
+    expect(steam_lb_user(steam_st, 0) == OTHER)
+    expect_eq(steam_lb_score(steam_st, 0), 40)
+    expect_eq(steam_lb_rank(steam_st, 2), 3)
+    expect(steam_lb_user(steam_st, 1) == FAKE_ME)
+  }
+
+  test "a time board ranks the lowest first, and around the player" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    fake_board_entry(fake_st, "FastestTime", OTHER, 50, LB_SORT_ASC)
+    fake_board_entry(fake_st, "FastestTime", THIRD, 70, LB_SORT_ASC)
+    up(steam_st, fake_st)
+    steam_lb_upload(steam_st, SLB_FASTEST, 60)
+    frame(steam_st, 0.016)
+    frame(steam_st, 0.016)
+    drain(steam_st)
+    steam_lb_download(steam_st, SLB_FASTEST, LB_AROUND_USER, -1, 1)
+    frame(steam_st, 0.016)
+    let fs = drain(steam_st)
+    expect_eq(fs[0].n, 3)
+    expect(steam_lb_user(steam_st, 0) == OTHER)
+    expect(steam_lb_user(steam_st, 2) == THIRD)
+    steam_lb_download(steam_st, SLB_FASTEST, LB_FRIENDS, 1, 10)
+    frame(steam_st, 0.016)
+    drain(steam_st)
+    expect_eq(steam_lb_count(steam_st), 1)
+  }
+
+  test "two boards found at once are found one at a time, each to its own handle" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
+    up(steam_st, fake_st)
+    expect(steam_lb_find(steam_st, SLB_BEST_FISH))
+    expect(steam_lb_find(steam_st, SLB_FASTEST))
+    frame(steam_st, 0.016)
+    let fs = drain(steam_st)
+    expect_eq(kinds(fs), "19,19,")
+    expect_eq(fs[0].key, SLB_BEST_FISH)
+    expect_eq(fs[1].key, SLB_FASTEST)
+    expect(steam_lb_found(steam_st, SLB_FASTEST))
+  }
+}

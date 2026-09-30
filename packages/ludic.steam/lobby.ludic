@@ -1,0 +1,278 @@
+# lobby.ludic - Steam matchmaking lobbies: make one, join one, leave, search with filters, data on the
+# lobby and on each member, chat. One lobby at a time (the one this player is in); a search's results
+# are read with steam_lobby_found. The answers come as facts: STF_LOBBY_CREATED, STF_LOBBY_ENTERED,
+# STF_LOBBY_MEMBER, STF_LOBBY_DATA, STF_LOBBY_CHAT, STF_LOBBY_LIST, STF_LOBBY_LEFT.
+export function steam_lobby_id(steam_st: SteamState) -> long { return steam_st.ss_lobby }
+export function steam_lobby_state(steam_st: SteamState) -> int { return steam_st.ss_lobby_st }
+export function steam_lobby_in(steam_st: SteamState) -> bool { return steam_st.ss_lobby_st == LOBBY_IN }
+
+# make a lobby of `kind` (LOBBY_*) for up to `max` players; false when one is being made or held already
+export function steam_lobby_create(steam_st: mut SteamState, kind: int, max: int) -> bool {
+  if steam_st.ss_status != STEAM_READY or steam_st.ss_lobby_st != LOBBY_NONE { return false }
+  if not steam_st.ss_dr.lobby_create(kind, max) { return false }
+  steam_st.ss_lobby_st = LOBBY_CREATING
+  return true
+}
+
+export function steam_lobby_join(steam_st: mut SteamState, id: long) -> bool {
+  if steam_st.ss_status != STEAM_READY or id == long(0) { return false }
+  if steam_st.ss_lobby_st == LOBBY_CREATING or steam_st.ss_lobby_st == LOBBY_JOINING { return false }
+  if steam_st.ss_lobby_st == LOBBY_IN {
+    if steam_st.ss_lobby == id { return true }
+    steam_lobby_leave(steam_st)
+  }
+  if not steam_st.ss_dr.lobby_join(id) { return false }
+  steam_st.ss_lobby_st = LOBBY_JOINING
+  steam_st.ss_lobby_want = id
+  return true
+}
+
+export function steam_lobby_leave(steam_st: mut SteamState) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  let id = steam_st.ss_lobby
+  if id == long(0) { return }
+  steam_st.ss_dr.lobby_leave(id)
+  ss_on_lobby_gone(steam_st, id, STF_LOBBY_LEFT)
+  steam_st.ss_dr.presence_set("connect", "")
+  steam_st.ss_connect = ""
+}
+
+function ss_on_lobby_gone(steam_st: mut SteamState, id: long, why: int) -> void {
+  if steam_st.ss_lobby == id or steam_st.ss_lobby_want == id {
+    steam_st.ss_lobby = long(0)
+    steam_st.ss_lobby_want = long(0)
+    steam_st.ss_lobby_st = LOBBY_NONE
+  }
+  let f = ss_fact(steam_st, why)
+  f.id = id
+  q_push(steam_st.ss_facts, f)
+}
+
+function ss_on_lobby_created(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let f = ss_fact(steam_st, STF_LOBBY_CREATED)
+  f.id = d.fl(0)
+  let code = d.fi(0)
+  if code == 1 {
+    f.n = 1
+  } else {
+    f.n = code
+    if steam_st.ss_lobby_st == LOBBY_CREATING { steam_st.ss_lobby_st = LOBBY_NONE }
+  }
+  q_push(steam_st.ss_facts, f)
+}
+
+# in: the lobby is the one this player is in (a creator is entered into its own lobby too)
+function ss_on_lobby_entered(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let id = d.fl(0)
+  let response = d.fi(0)
+  let f = ss_fact(steam_st, STF_LOBBY_ENTERED)
+  f.id = id
+  f.n = response
+  f.m = d.fi(1)
+  q_push(steam_st.ss_facts, f)
+  if response == 1 {
+    steam_st.ss_lobby = id
+    steam_st.ss_lobby_want = long(0)
+    steam_st.ss_lobby_st = LOBBY_IN
+    ss_lobby_publish(steam_st, d, id)
+    let n = d.lobby_members(id)
+    for i in 0 .. n { d.net_allow(d.lobby_member_at(id, i)) }
+  } else if steam_st.ss_lobby_st == LOBBY_JOINING or steam_st.ss_lobby_st == LOBBY_CREATING {
+    steam_st.ss_lobby_st = LOBBY_NONE
+    steam_st.ss_lobby_want = long(0)
+  }
+}
+
+# what friends see of the lobby: a Join Game that launches the game with the lobby's id
+function ss_lobby_publish(steam_st: mut SteamState, d: SteamDriver, id: long) -> void {
+  steam_st.ss_connect = steam_connect_string(steam_st, id)
+  d.presence_set("connect", steam_st.ss_connect)
+}
+
+function ss_on_lobby_member(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let lobby = d.fl(0)
+  let who = d.fl(1)
+  let flags = d.fi(0)
+  let f = ss_fact(steam_st, STF_LOBBY_MEMBER)
+  f.id = lobby
+  f.other = who
+  f.n = flags
+  q_push(steam_st.ss_facts, f)
+  if flags == 1 and lobby == steam_st.ss_lobby { d.net_allow(who) }
+}
+
+function ss_on_lobby_chat(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let f = ss_fact(steam_st, STF_LOBBY_CHAT)
+  f.id = d.fl(0)
+  f.other = d.fl(1)
+  f.n = d.fi(0)
+  f.text = ss_copy_text(steam_st, d)
+  q_push(steam_st.ss_facts, f)
+}
+
+# a friend's Join Game click: their connect string (steam_parse_connect reads a lobby out of it)
+function ss_on_join_request(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let f = ss_fact(steam_st, STF_JOIN_REQUEST)
+  f.id = d.fl(0)
+  f.text = ss_copy_text(steam_st, d)
+  f.other = steam_parse_connect(f.text)
+  q_push(steam_st.ss_facts, f)
+  if ss_cfg_of(steam_st).auto_join and f.other != long(0) { steam_lobby_join(steam_st, f.other) }
+}
+
+# an invite into a lobby, accepted from the overlay or the friends list
+function ss_on_lobby_join_request(steam_st: mut SteamState, d: SteamDriver) -> void {
+  let f = ss_fact(steam_st, STF_LOBBY_JOIN_REQUEST)
+  f.id = d.fl(0)
+  f.other = d.fl(1)
+  q_push(steam_st.ss_facts, f)
+  if ss_cfg_of(steam_st).auto_join { steam_lobby_join(steam_st, f.id) }
+}
+
+# what a Join Game launches the game with: "+connect_lobby <id>"
+export function steam_connect_string(steam_st: mut SteamState, id: long) -> string {
+  ss_text_ready(steam_st)
+  sb_clear(steam_st.ss_sb)
+  sb_add(steam_st.ss_sb, "+connect_lobby ")
+  ss_digits(steam_st.ss_sb, id)
+  return sb_intern(steam_st.ss_sb, steam_st.ss_strs)
+}
+
+# the lobby id after "+connect_lobby" in a command line or a connect string; 0 when there is none
+export function steam_parse_connect(text: string) -> long {
+  let at = Text.index_of(text, "+connect_lobby")
+  if at < 0 { return long(0) }
+  return steam_parse_id(Text.slice(text, at + 14, len(text)))
+}
+
+# the lobby the game was launched to join (a Join Game click while it was not running), else 0
+export function steam_launch_lobby(steam_st: SteamState) -> long {
+  if steam_st.ss_status != STEAM_READY { return long(0) }
+  let d = steam_st.ss_dr
+  let q = d.launch_query("connect_lobby")
+  if len(q) > 0 { return steam_parse_id(q) }
+  return steam_parse_connect(d.launch_cmd())
+}
+
+# ---- who is in it ----
+export function steam_lobby_member_count(steam_st: SteamState) -> int {
+  if steam_st.ss_lobby_st != LOBBY_IN { return 0 }
+  return steam_st.ss_dr.lobby_members(steam_st.ss_lobby)
+}
+export function steam_lobby_member(steam_st: SteamState, i: int) -> long {
+  if steam_st.ss_lobby_st != LOBBY_IN { return long(0) }
+  return steam_st.ss_dr.lobby_member_at(steam_st.ss_lobby, i)
+}
+export function steam_lobby_owner(steam_st: SteamState) -> long {
+  if steam_st.ss_lobby_st != LOBBY_IN { return long(0) }
+  return steam_st.ss_dr.lobby_owner(steam_st.ss_lobby)
+}
+export function steam_lobby_is_owner(steam_st: SteamState) -> bool {
+  return steam_st.ss_lobby_st == LOBBY_IN and steam_lobby_owner(steam_st) == steam_st.ss_me
+}
+export function steam_lobby_limit(steam_st: SteamState) -> int {
+  if steam_st.ss_lobby_st != LOBBY_IN { return 0 }
+  return steam_st.ss_dr.lobby_limit(steam_st.ss_lobby)
+}
+
+# ---- data: on the lobby (its owner writes it), and on each member (each writes their own) ----
+export function steam_lobby_set(steam_st: SteamState, key: string, value: string) -> bool {
+  if steam_st.ss_lobby_st != LOBBY_IN { return false }
+  return steam_st.ss_dr.lobby_set_data(steam_st.ss_lobby, key, value)
+}
+export function steam_lobby_get(steam_st: SteamState, key: string) -> string {
+  if steam_st.ss_lobby_st != LOBBY_IN { return "" }
+  return steam_st.ss_dr.lobby_data(steam_st.ss_lobby, key)
+}
+export function steam_lobby_set_member(steam_st: SteamState, key: string, value: string) -> void {
+  if steam_st.ss_lobby_st != LOBBY_IN { return }
+  steam_st.ss_dr.lobby_set_member(steam_st.ss_lobby, key, value)
+}
+export function steam_lobby_member_get(steam_st: SteamState, who: long, key: string) -> string {
+  if steam_st.ss_lobby_st != LOBBY_IN { return "" }
+  return steam_st.ss_dr.lobby_member_data(steam_st.ss_lobby, who, key)
+}
+export function steam_lobby_joinable(steam_st: SteamState, joinable: bool) -> bool {
+  if steam_st.ss_lobby_st != LOBBY_IN { return false }
+  return steam_st.ss_dr.lobby_joinable(steam_st.ss_lobby, joinable)
+}
+export function steam_lobby_kind(steam_st: SteamState, kind: int) -> bool {
+  if steam_st.ss_lobby_st != LOBBY_IN { return false }
+  return steam_st.ss_dr.lobby_type(steam_st.ss_lobby, kind)
+}
+export function steam_lobby_chat(steam_st: SteamState, text: string) -> bool {
+  if steam_st.ss_lobby_st != LOBBY_IN { return false }
+  return steam_st.ss_dr.lobby_chat(steam_st.ss_lobby, text)
+}
+export function steam_lobby_invite(steam_st: SteamState, friend: long) -> bool {
+  if steam_st.ss_lobby_st != LOBBY_IN { return false }
+  return steam_st.ss_dr.lobby_invite(steam_st.ss_lobby, friend)
+}
+# hand the lobby to another member
+export function steam_lobby_transfer(steam_st: SteamState, to: long) -> bool {
+  if steam_st.ss_lobby_st != LOBBY_IN { return false }
+  return steam_st.ss_dr.lobby_set_owner(steam_st.ss_lobby, to)
+}
+# a friend's Join Game for this lobby, sent as a rich-presence invite
+export function steam_invite_friend(steam_st: SteamState, friend: long) -> bool {
+  if steam_st.ss_status != STEAM_READY or len(steam_st.ss_connect) == 0 { return false }
+  return steam_st.ss_dr.invite_friend(friend, steam_st.ss_connect)
+}
+
+# ---- search: steam_lobby_search_begin, the filters, steam_lobby_search; the answer is STF_LOBBY_LIST ----
+export function steam_lobby_search_begin(steam_st: SteamState) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.lobby_filter_reset()
+}
+# lobbies whose `key` compares to `value` (LOBBY_CMP_*)
+export function steam_lobby_filter_text(steam_st: SteamState, key: string, value: string, cmp: int) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.lobby_filter_text(key, value, cmp)
+}
+export function steam_lobby_filter_num(steam_st: SteamState, key: string, value: int, cmp: int) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.lobby_filter_num(key, value, cmp)
+}
+# the ones nearest `value` in `key` first
+export function steam_lobby_filter_near(steam_st: SteamState, key: string, value: int) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.lobby_filter_near(key, value)
+}
+export function steam_lobby_filter_slots(steam_st: SteamState, open_slots: int) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.lobby_filter_slots(open_slots)
+}
+export function steam_lobby_filter_distance(steam_st: SteamState, distance: int) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.lobby_filter_distance(distance)
+}
+export function steam_lobby_filter_limit(steam_st: SteamState, most: int) -> void {
+  if steam_st.ss_status != STEAM_READY { return }
+  steam_st.ss_dr.lobby_filter_limit(most)
+}
+export function steam_lobby_search(steam_st: mut SteamState) -> bool {
+  if steam_st.ss_status != STEAM_READY or steam_st.ss_searching { return false }
+  if not steam_st.ss_dr.lobby_search() { return false }
+  steam_st.ss_searching = true
+  steam_st.ss_found = 0
+  return true
+}
+export function steam_lobby_searching(steam_st: SteamState) -> bool { return steam_st.ss_searching }
+export function steam_lobby_found_count(steam_st: SteamState) -> int { return steam_st.ss_found }
+export function steam_lobby_found(steam_st: SteamState, i: int) -> long {
+  if steam_st.ss_status != STEAM_READY or i < 0 or i >= steam_st.ss_found { return long(0) }
+  return steam_st.ss_dr.lobby_result(i)
+}
+# a found lobby's data (its owner's keys): the listing a browser shows
+export function steam_lobby_found_data(steam_st: SteamState, id: long, key: string) -> string {
+  if steam_st.ss_status != STEAM_READY { return "" }
+  return steam_st.ss_dr.lobby_data(id, key)
+}
+export function steam_lobby_found_members(steam_st: SteamState, id: long) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.lobby_members(id)
+}
+export function steam_lobby_found_limit(steam_st: SteamState, id: long) -> int {
+  if steam_st.ss_status != STEAM_READY { return 0 }
+  return steam_st.ss_dr.lobby_limit(id)
+}
