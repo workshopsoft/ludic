@@ -148,7 +148,7 @@ Unbound, the game steps its physics itself once per car step.
 
 All defaulted; a game binds what it has.
 
-```ludic
+```text
 export port CarWorld {       # cast(ox, oy, oz, dx, dy, dz, length, hit), ground(x, z), grip(x, z), focus(x, z), me(), host(),
   ...                        # is_player(actor), next_id(), made(nid, model), gone(nid), spawn_point(x, z, r), spawn_x/z/yaw()
 }
