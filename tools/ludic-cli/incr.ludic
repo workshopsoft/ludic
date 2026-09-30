@@ -1,0 +1,161 @@
+# incr.ludic - `ludic build` / `ludic run` that do only the work a change needs.
+#
+# A project build keeps its work in build/.ludic-cache:
+#
+#   <name>.key      the fingerprint of everything the build read: each input file's path, size, modification
+#                   time (to the nanosecond) and inode - the project, the toolchain's packages, runtime, fonts
+#                   and assets, the compiler and this tool - and the flags. Same fingerprint and the binary
+#                   there: nothing is compiled, linked or symbolicated, and the build says so.
+#   <name>.ir       the hash of the compiler's last output. A touched file or a comment edit changes the
+#                   fingerprint but not the IR, and then the binary is kept too.
+#   <name>.natives  the native libraries the last link named (`ludic bundle` places them)
+#   objs/           one object file per IR part, named by the hash of the part and of the compile flags.
+#                   The IR is cut into parts (llvm-split) under fixed names, so a part's bytes change only
+#                   when something in it does: a data row or one function dirties one or two parts of a
+#                   dozen, and the rest are linked as they were. Objects untouched for two days go.
+#
+# The IR hash, not the file list, is the authority on whether code changed, so a fingerprint that is too
+# wide only costs the front end's few seconds. $LUDIC_NO_INCREMENTAL=1 turns all of it off.
+#
+# Progress: every phase prints a `build: ...` line (not held back by a pipe), for a terminal or for the studio's log.
+
+var g_incr: bool = false            # set by build and run (a project's own output in build/)
+var g_incr_live: bool = false       # this compile_app call is incremental
+var g_incr_t0: int = 0
+var g_incr_tok: pointer = ""
+
+function incr_on(save: bool) -> bool {
+  if host_windows() or save or not g_incr { return false }
+  return getenv_or("LUDIC_NO_INCREMENTAL", "0") != "1"
+}
+function incr_dir() -> pointer { return "build/.ludic-cache" }
+
+# milliseconds, modulo a day or so (the tool's int is 32 bits); only ever subtracted
+function incr_ms() -> int {
+  return s_to_int(capture_line("(perl -MTime::HiRes=time -e 'print int(time*1000) % 1000000000' || echo 0)"))
+}
+function incr_since() -> int {
+  var d = incr_ms() - g_incr_t0
+  if d < 0 { d += 1000000000 }
+  return d
+}
+function incr_secs(ms: int) -> pointer {
+  let t = ms / 100
+  return `{string(t / 10)}.{string(t % 10)}s`
+}
+function incr_say(msg: pointer) -> void {
+  # a child's write goes straight to the stdout this process has, unbuffered even into a pipe (the
+  # tool's own print waits for its buffer): the studio reads these lines as they happen
+  shell(`printf 'build: %s\n' {sh_single(msg)}`)
+}
+
+function incr_hash_cmd() -> pointer {
+  return "if command -v md5 >/dev/null 2>&1; then md5 -q; else md5sum | cut -d' ' -f1; fi"
+}
+function incr_hash_file(path: pointer) -> pointer {
+  return capture_line(`{incr_hash_cmd()} < {sh_single(path)}`)
+}
+
+# the directories and files a build reads: the project, the toolchain's packages and the rest it
+# splices, and the tools themselves
+function incr_roots(src: pointer) -> pointer {
+  let home = ludic_home()
+  var r = "."
+  let sd = dir_of_path(src)
+  if sd != "" { r = r + " " + sh_single(sd) }
+  let names = ["packages", "runtime", "fonts", "assets", "lib", "VERSION", `bin/{exe_name("ludicc")}`, `bin/{exe_name("ludic")}`]
+  for i in 0 .. len(names) { r = r + " " + sh_single(home + names[i]) }
+  let mods = getenv("LUDIC_MODULES")
+  if mods != null { r = r + " " + sh_single(mods) }
+  return r
+}
+
+function incr_key(src: pointer, out: pointer, mode: int, flags: pointer) -> pointer {
+  var stat = "stat -L -c '%n %s %y %i'"
+  if is_darwin() { stat = "stat -L -f '%N %z %Fm %i'" }
+  let salt = `{flags}|{string(mode)}|{src}|{out}|{getenv_or("LUDIC_OPT", "2")}|{getenv_or("LUDIC_LLVM", "")}|{getenv_or("LUDIC_CC", "")}|{getenv_or("LUDIC_SPLIT", "1")}|{getenv_or("LUDIC_PARTS", "")}`
+  let cmd = `{{ find -L {incr_roots(src)} -type f -not -path './build/*' -not -path '*/.git/*' -not -path './shots/*' -not -name .DS_Store -not -path {sh_single("./" + out)} -exec {stat} {{}} + 2>/dev/null; printf '%s\n' {sh_single(salt)}; }} | LC_ALL=C sort | {incr_hash_cmd()}`
+  return capture_line(cmd)
+}
+
+# this process's own IR, so two builds at once (the studio's and a terminal's) do not share one
+function incr_ll() -> pointer { return `{incr_dir()}/{g_incr_tok}.{string(Os.pid())}.ll` }
+function incr_file(ext: pointer) -> pointer { return `{incr_dir()}/{g_incr_tok}.{ext}` }
+
+function incr_read(ext: pointer) -> pointer {
+  let s = read_file(incr_file(ext))
+  if s == null { return "" }
+  var n = len(s)
+  while n > 0 and (s[n - 1] == 10 or s[n - 1] == 13) { n -= 1 }
+  return s[0..n]
+}
+
+function incr_natives() -> []pointer {
+  let out = new []pointer
+  let lines = split_lines(incr_read("natives"))
+  for i in 0 .. len(lines) { if lines[i] != "" { push(out, lines[i]) } }
+  return out
+}
+
+# the build finished: what a later one compares itself with
+function incr_record(key: pointer, irh: pointer) -> void {
+  write_file(incr_file("ir"), irh)
+  var nat = ""
+  for i in 0 .. len(g_built_natives) { nat = nat + g_built_natives[i] + "\n" }
+  write_file(incr_file("natives"), nat)
+  write_file(incr_file("key"), key)
+}
+
+# how many pieces the IR is cut into: one per core, fixed so a part's name stays its own
+function incr_parts() -> int {
+  let e = getenv("LUDIC_PARTS")
+  if e != null and s_to_int(e) >= 2 { return s_to_int(e) }
+  var n = s_to_int(capture_line("(sysctl -n hw.ncpu || nproc)"))
+  if n < 4 { n = 4 }
+  if n > 16 { n = 16 }
+  return n
+}
+
+# llvm-split the IR under fixed names, compile the parts no earlier build has an object for (as many at
+# once as the memory allows), and answer the object list for the link; "" when this host cannot
+# (no llvm-split, a part that failed: the caller compiles the IR whole and shows the error)
+function incr_objs(ll: pointer) -> pointer {
+  let d = getenv_or("LUDIC_LLVM", "/opt/homebrew/opt/llvm/bin")
+  if not is_exec(`"{d}/llvm-split"`) or not is_exec(`"{d}/clang"`) { return "" }
+  let n = incr_parts()
+  var jobs = split_n()
+  if jobs < 1 { jobs = 1 }
+  let dir = incr_dir()
+  # what else decides an object: the compile flags, the clang, and the compiler that wrote the IR
+  let cch = incr_hash_file(ludicc())
+  let tag = capture_line(`printf '%s' "{d}/clang {split_opt()} {n} {cch}" "$("{d}/clang" --version | head -1)" | {incr_hash_cmd()} | cut -c1-8`)
+  let list = tmp_path("objlist")
+  let sh = `set -e
+D="{d}"; DIR={sh_single(dir)}; OBJ="$DIR/objs"; PARTS="$DIR/parts.{string(Os.pid())}"; LIST={sh_single(list)}
+rm -rf "$PARTS"; mkdir -p "$PARTS" "$OBJ"; : > "$LIST"; : > "$PARTS/todo"
+"$D/llvm-split" -j {string(n)} -o "$PARTS/p" {sh_single(ll)}
+# a part is named by its text without its declare and blank lines and the file names it was cut under: every part carries one for every function of
+# the program, so a new function would change them all and none of their code
+for f in "$PARTS"/p*; do ( "$D/llvm-dis" "$f" -o - | grep -v -e '^declare ' -e '^$' -e '^; ModuleID' -e '^source_filename' | {incr_hash_cmd()} > "$f.h" ) & done; wait
+for f in "$PARTS"/p*; do
+  case "$f" in *.h) continue;; esac
+  h=$(cat "$f.h"); o="$OBJ/$h-{tag}.o"
+  echo "$o" >> "$LIST"
+  if [ -f "$o" ]; then touch "$o"; else echo "$f $o" >> "$PARTS/todo"; fi
+done
+total=$(wc -l < "$LIST" | tr -d ' '); todo=$(wc -l < "$PARTS/todo" | tr -d ' ')
+echo "build: native code: $todo of $total parts to compile, $((total - todo)) cached"
+if [ "$todo" -gt 0 ]; then
+  export D; xargs -P {string(jobs)} -L1 sh -c '"$D/clang" -x ir -O{split_opt()} -mmacosx-version-min=11.0 -Wno-override-module -Wno-missing-sysroot -c "$0" -o "$1.tmp" && mv "$1.tmp" "$1"' < "$PARTS/todo"
+fi
+rm -rf "$PARTS"
+find "$OBJ" -name '*.o' -mtime +2 -exec rm -f {{}} + 2>/dev/null || true
+find "$OBJ" -name '*.tmp' -exec rm -f {{}} + 2>/dev/null || true`
+  let script = tmp_path("incr_objs.sh")
+  write_file(script, sh + "\n")
+  if not shq(`sh {script}`) { return "" }
+  let files = split_lines(capture(`cat {sh_single(list)}`))
+  var objs = ""
+  for i in 0 .. len(files) { if files[i] != "" { objs = objs + ` "{files[i]}"` } }
+  return objs
+}

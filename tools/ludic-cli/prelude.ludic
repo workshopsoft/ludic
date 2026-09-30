@@ -105,6 +105,17 @@ function sh(cmd: pointer) -> int { return exit_code(shell(cmd)) }
 # run a command, true when it succeeded
 function shq(cmd: pointer) -> bool { return exit_code(shell(cmd)) == 0 }
 
+# one shell word, whatever it contains: 'it'\''s' for it's
+function sh_single(s: pointer) -> pointer {
+  var o = "'"
+  var i = 0
+  while i < len(s) {
+    if s[i] == 39 { o = o + "'\\''" } else { o = o + s[i..i + 1] }
+    i += 1
+  }
+  return o + "'"
+}
+
 # ---- scratch files ------------------------------------------------------------
 # Every scratch file the runner writes lives under one per-process directory
 # (`$TMPDIR/x_<pid>`), so `ludic-dev test` and an `x check-*` can run side by side without

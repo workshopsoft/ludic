@@ -43,7 +43,7 @@ machine, in git-ignored `gen/`, `lib/` and `build/` beside this file.
    executable and in the working directory, skips the relaunch through Steam, and so a build started from a
    terminal talks to the Steam client as that app. A release sets `dev = false` (the default): it never writes
    the file, and calls `SteamAPI_RestartAppIfNecessary` first, so a game started outside Steam is started
-   again by it (`STEAM_ERR_RESTART`: quit). Keep `dev` out of a release (`ludic.devlink`'s `dev_tools` is the
+   again by it (`STEAM_ERR_RESTART`: quit). Keep `dev` out of a release (`dev_mode()` from `ludic.base` is the
    usual switch).
 5. `ludic bundle` links and ships what `package.ludic` lists: both `libludicsteam` and Valve's
    `libsteam_api.dylib` (or `steam_api64.dll`) go into `Contents/Frameworks` (beside the `.exe` on Windows),

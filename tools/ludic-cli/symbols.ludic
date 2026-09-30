@@ -236,8 +236,13 @@ function sym_keep(exe: pointer, root: pointer, name: pointer, version: pointer) 
   }
   let arch = sym_macho_arch(head, sym_n)
   let dir = `{root}/{id}`
-  shell(`rm -rf {sym_sq(dir)} && mkdir -p {sym_sq(dir)}`)
   let file = `{name}.dSYM`
+  # the id is the linker's hash of this very binary: symbols kept under it are these symbols
+  if file_exists(`{sym_sq(dir)}/meta.json`) and file_exists(sym_sq(dir + "/" + file)) {
+    print(`symbols {id}  ->  {dir}/{file}  (kept from an earlier build of these bytes)`)
+    return true
+  }
+  shell(`rm -rf {sym_sq(dir)} && mkdir -p {sym_sq(dir)}`)
   if not shq(`dsymutil {sym_sq(exe)} -o {sym_sq(dir + "/" + file)} 2>/dev/null`) {
     err("ludic: dsymutil failed: the symbols were not kept (install the Xcode command line tools)\n")
     shell(`rm -rf {sym_sq(dir)}`)

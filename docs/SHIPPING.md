@@ -210,7 +210,10 @@ developer tools, so a player cannot trip them by accident:
 R3D_DEV=1 R3D_WIRE=1 ./MyGame.app/Contents/MacOS/MyGame
 ```
 
-A game that has its own switches should gate them the same way. Inside render3d,
+A game that has its own switches should gate them the same way: `dev_mode()` from
+`ludic.base` is true exactly when `R3D_DEV` is set to anything but `0`, and it is what
+`ludic.devlink` opens its editor link on by default (`DevlinkWorld.enabled`), so a
+game binds nothing to get the link in a dev run and never in a player's. Inside render3d,
 read a new switch with `r3d_env_has("R3D_FOO")` / `r3d_env("R3D_FOO")`, never
 `Os.has_env` / `Os.env`.
 

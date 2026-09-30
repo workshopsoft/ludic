@@ -415,6 +415,7 @@ function cmd_build() -> int {
   if g_check_build { return check_app(entry) }
   let out = output_path(entry)
   if g_mode == 1 { sym_win_prepare() }
+  g_incr = true
   if not compile_app(entry, out, g_mode, g_save) { return 1 }
   if g_mode == 2 {
     print(`built {out}  (headless: reads one key per frame from stdin, writes build/out.ppm)`)
@@ -433,6 +434,7 @@ function cmd_run() -> int {
   if g_argerr { return 1 }
   if entry == "" { return no_entry() }
   let out = output_path(entry)
+  g_incr = true
   if not compile_app(entry, out, g_mode, g_save) { return 1 }
   return sh(`./{exe_name(out)}`)
 }
@@ -443,6 +445,7 @@ function cmd_run_file() -> int {
   if g_argerr { return 1 }
   if entry == "" { return no_entry() }
   let out = output_path(entry)
+  g_incr = true
   if not compile_app(entry, out, g_mode, g_save) { return 1 }
   return sh(`./{exe_name(out)}`)
 }
@@ -611,16 +614,6 @@ function test_run_file(bin: pointer, only: pointer, verbose: bool) -> int {
 # under --verbose the framing has to interleave with the runner output exactly.
 function say(line: pointer) -> void { shell(`printf '%s\\n' {sh_single(line)}`) }
 
-# one shell word, whatever it contains: 'it'\''s' for it's
-function sh_single(s: pointer) -> pointer {
-  var o = "'"
-  var i = 0
-  while i < len(s) {
-    if s[i] == 39 { o = o + "'\\''" } else { o = o + s[i..i + 1] }
-    i += 1
-  }
-  return o + "'"
-}
 
 # drop the extension from a path ("tests/combat.ludic" -> "tests/combat")
 function strip_ext(p: pointer) -> pointer {

@@ -42,6 +42,27 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   var ll = `{out}.ll`
   if not save { ll = tmp_path(`{file_of_path(out)}.ll`) }
 
+  # incremental (incr.ludic): a build nothing changed for is not built, and one something changed for
+  # compiles only the parts of the program that differ. The IR sits at a build-folder path then, and
+  # the parts are named by their text without the file names, so they stay the same from build to build.
+  var key = ""
+  g_incr_live = incr_on(save) and mode == 1
+  if g_incr_live {
+    g_incr_t0 = incr_ms()
+    g_incr_tok = flat(out)
+    shell(`mkdir -p {incr_dir()}/objs`)
+    incr_say(`checking what changed since the last build of {out}`)
+    let flags = `{title_flag()}{unsafe_flag()}{release_flag()}{pbf}`
+    key = incr_key(src, out, mode, flags)
+    if key != "" and key == incr_read("key") and is_exec(out) {
+      g_built_natives = incr_natives()
+      incr_say(`{out} is up to date: nothing changed ({incr_secs(incr_since())})`)
+      return true
+    }
+    ll = incr_ll()
+    incr_say(`compiling {src} (the compiler: types, modules, data, code generation)`)
+  }
+
   # On Windows the compiler links too: ludicc knows the Windows runtime's files and
   # libraries (win32.ll, xaudio2, ...), so saying them again here would be a
   # second copy to keep in step. It writes {out}.exe.
@@ -66,18 +87,36 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   }
 
   if not shq(`{ludicc()} --windowed{title_flag()}{unsafe_flag()}{release_flag()} {src} --emit-llvm -o {ll}`) { return false }
+  var irh = ""
+  if g_incr_live {
+    irh = incr_hash_file(ll)
+    if irh != "" and irh == incr_read("ir") and is_exec(out) {
+      g_built_natives = incr_natives()
+      shell(`rm -f {ll}`)
+      incr_record(key, irh)
+      incr_say(`the generated code is the same as the last build's: {out} kept ({incr_secs(incr_since())})`)
+      return true
+    }
+  }
   # audio.ll (#22) is always linked here — unused snd_* are dead-stripped; the
   # canonical `ludicc -o` path links it only when Audio.* is used.
   let cocoa = `{home}runtime/native/cocoa.ll`
   let audio = `{home}runtime/native/audio.ll`
-  let objs = split_objs(ll, out)
+  var objs = ""
+  if g_incr_live { objs = incr_objs(ll) }
+  else { objs = split_objs(ll, out) }
   var input = ll
   if objs != "" { input = objs }
+  if g_incr_live { incr_say(`linking {out}`) }
   let linked = shq(`{cc()} -O{split_opt()} {input} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{rt_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
-  if objs != "" { shell(`rm -f {objs}`) }
+  if objs != "" and not g_incr_live { shell(`rm -f {objs}`) }
   if not linked { return false }
   g_built_natives = native_libs_of(ll)
   if not save { shell(`rm -f {ll}`) }
+  if g_incr_live {
+    incr_record(key, irh)
+    incr_say(`linked {out} ({incr_secs(incr_since())})`)
+  }
   return true
 }
 
