@@ -1352,6 +1352,7 @@ function cmd_dev_test() -> int {
   # phase 26: text keys - k"..." / kn"..." of type Key, checked against package.ludic's lang en.po
   feat_case("lang/i18n/i18n", "", "pause.resume yes no 13 12 hud.day(3) catch.count[2](trout) items.rope.name items.lamp.name steps.gather_wood.hint", "i18n.ludic (phase 26: k\"...\" and kn\"...\" of type Key, their marker byte, == on keys, a @Text Key field filled with its derived key, @TextKey's prefix)")
   i18n_check_case()
+  schema_case("lang/i18n_listen/i18n_listen", "\"unused\": []", "--emit-schema: lang.unused - a key used only inside an @On listener is used")
   feat_case("lang/i18n_nested/i18n_nested", "", "raids.camp.arrive.steps.0.text raids.camp.arrive.steps.1.text 2 raids.camp.said.1 0 raids.quiet.arrive.steps.0.text hud.day(3)", "i18n_nested.ludic (phase 26: derived keys below a row - a nested record's, a list item's, a @Text []Key filled from en.po; null is no text; trf's trailing \"\" not counted)")
   schema_case("lang/i18n/i18n", "{\"key\": \"items.rope.name\", \"kind\": \"data\", \"kinds\": [\"data\"], \"sites\": [\"examples/lang/i18n/data/i18n_items.lres:2:1\"], \"in_source\": true, \"english\": \"Rope\"", "--emit-schema: lang.keys - a derived key, its kind, its site and en.po's English")
   schema_case("lang/i18n/i18n", "\"unused\": [\"map.close\", \"ui.left_click\", \"ui.middle_click\", \"ui.press_key\", \"ui.right_click\"]", "--emit-schema: lang.unused - en.po's keys the program uses nowhere")

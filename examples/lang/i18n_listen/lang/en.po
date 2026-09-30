@@ -1,0 +1,8 @@
+# The source language of the listener keys example.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#. What is said when something is put down.
+msgid "listen.put"
+msgstr "Put down"
