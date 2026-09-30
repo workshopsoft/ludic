@@ -1,0 +1,83 @@
+# bird_pins_test.ludic - phase 27.2a: a bird aloft as it stands (the jay: comes down whenever it can;
+# the crow: never on its own). Its timer up with nobody within its land_shy it rolls a spot (x, z) and
+# its land_chance, and comes down (LAND, 30 s); else it moves its home by two rolls and circles 30 s
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program BirdPins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  function aloft(wildlife_st: mut WildlifeState, sp: int, timer: float) -> WildAnimal {
+    let a = pn_at(wildlife_st, sp, 0.0, 0.0, WILD_FLY, timer)
+    wildlife_seed(wildlife_st, 16)
+    pn_fly(wildlife_st, a)
+    return a
+  }
+
+  test "FLY before its time: circles on, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = aloft(wildlife_st, 3, 5.0)
+    expect_eq(a.state, WILD_FLY)
+    expect_near(a.timer, 4.95, 0.0001)
+    expect_eq(pn_drew(wildlife_st, 16), 0)
+  }
+
+  test "FLY, its time up, nobody near: LAND at (x + 24 (r0 - 0.5), z + 24 (r1 - 0.5)) for 30 s, r2 its chance" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = aloft(wildlife_st, 3, 0.01)
+    expect_eq(a.state, WILD_LAND)
+    expect_near(a.timer, 30.0, 0.0001)
+    expect_near(a.tx, a.x + (pn_roll(16, 0) - 0.5) * 24.0, 0.001)
+    expect_near(a.tz, a.z + (pn_roll(16, 1) - 0.5) * 24.0, 0.001)
+    expect_eq(pn_drew(wildlife_st, 16), 3)
+  }
+
+  test "FLY, its time up, somebody within land_shy: no landing roll; home moves by 120 (r0 - 0.5), 30 s" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_player(wildlife_tests_fake_st, 0.0, 0.0)
+    let a = aloft(wildlife_st, 3, 0.01)
+    expect_eq(a.state, WILD_FLY)
+    expect_near(a.timer, 30.0, 0.0001)
+    expect_near(a.home_x, (pn_roll(16, 0) - 0.5) * 120.0, 0.001)
+    expect_near(a.home_z, (pn_roll(16, 1) - 0.5) * 120.0, 0.001)
+    expect_eq(pn_drew(wildlife_st, 16), 2)
+  }
+
+  test "FLY, its time up, the chance failed: five rolls - spot, spot, chance, then home by r3, r4" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = aloft(wildlife_st, 5, 0.01)
+    expect_eq(a.state, WILD_FLY)
+    expect_near(a.timer, 30.0, 0.0001)
+    expect_near(a.home_x, (pn_roll(16, 3) - 0.5) * 120.0, 0.001)
+    expect_near(a.home_z, (pn_roll(16, 4) - 0.5) * 120.0, 0.001)
+    expect_eq(pn_drew(wildlife_st, 16), 5)
+  }
+
+  test "a bird made as given starts IDLE and circles on as IDLE" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = wildlife_make(wildlife_st, 3, 0.0, 0.0, false, 0.0, 0, 1.0, 1)
+    expect_eq(a.state, WILD_IDLE)
+    a.timer = 5.0
+    wildlife_seed(wildlife_st, 16)
+    pn_fly(wildlife_st, a)
+    expect_eq(a.state, WILD_IDLE)
+    expect(a.fly_h > 0.0)
+    expect_eq(pn_drew(wildlife_st, 16), 0)
+  }
+}

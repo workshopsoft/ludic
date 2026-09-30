@@ -1,0 +1,60 @@
+# pin - what the transition pins share (phase 27.2a): one step at a fixed rate, an animal set in a
+# state, a spot and a teaching switch of the test's own, and two species the fake has not
+numbers float
+import "dice.ludic"
+export state WildPinState {
+  pn_no_spot: bool = false       # the world offers no water or forage
+  pn_taught: bool = false        # feeding is being taught
+}
+
+function pn_spot(wild_pin_st: WildPinState, a: WildAnimal, water: bool, s: WildSpot) -> bool {
+  if wild_pin_st.pn_no_spot { return false }
+  s.uid = 900
+  s.x = a.x + 30.0
+  s.z = a.z
+  s.water = water
+  return true
+}
+
+function pn_taught(wild_pin_st: WildPinState) -> bool { return wild_pin_st.pn_taught }
+
+# after fk_setup: 4 a horse (tame), 5 a crow (flies, never comes down on its own)
+function pn_species(wildlife_st: WildlifeState) -> void {
+  let h = new WildSpecies
+  h.key = "horse"
+  h.tame = true
+  h.size = 2
+  h.diet = WILD_HAY
+  wildlife_species_add(wildlife_st, h)
+  let c = new WildSpecies
+  c.key = "crow"
+  c.flies = true
+  c.walk = 4.0
+  c.flee = 8.0
+  c.land_shy = 0.0
+  c.land_chance = 0.0
+  wildlife_species_add(wildlife_st, c)
+}
+
+# one of species sp at (x, z), in `state` with `timer` left; no droppings due for a long while
+function pn_at(wildlife_st: mut WildlifeState, sp: int, x: float, z: float, state: int, timer: float) -> WildAnimal {
+  let a = wildlife_make(wildlife_st, sp, x, z, false, 0.0, 0, 1.0, 1)
+  a.state = state
+  a.timer = timer
+  a.scat_t = 100000.0
+  return a
+}
+
+# one tick of 50 ms, a walker's and a bird's
+function pn_step(wildlife_st: mut WildlifeState, a: WildAnimal) -> void { wildlife_tick_ground(wildlife_st, a, 0.05, 0.05 / 60.0) }
+function pn_fly(wildlife_st: mut WildlifeState, a: WildAnimal) -> void { wildlife_tick_bird(wildlife_st, a, 0.05) }
+
+function pn_setup(wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) -> void {
+  fk_setup(wildlife_st, wildlife_tests_fake_st)
+  pn_species(wildlife_st)
+}
+
+function pn_player(wildlife_tests_fake_st: mut WildlifeTestsFakeState, x: float, z: float) -> void {
+  wildlife_tests_fake_st.fk_px[0] = x
+  wildlife_tests_fake_st.fk_pz[0] = z
+}

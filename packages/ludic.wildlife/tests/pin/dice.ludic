@@ -1,0 +1,46 @@
+# dice.ludic - what the package's dice drew since a seed, read off a newborn's yaw (the first draw
+# a newborn takes), and the facts and lures the pins count and set out
+numbers float
+const PN_TAU: float = 6.2831853
+
+# the k-th draw (from 0) of a stream seeded as wildlife_seed(seed) seeds the package's
+function pn_roll(seed: int, k: int) -> float {
+  let r = rng_new(seed)
+  for i in 0 .. k { rng_next(r) }
+  return rng_float(r)
+}
+
+# how many draws the package has taken since wildlife_seed(seed): the next one is a newborn's yaw;
+# -1 when it is none of the first 64
+function pn_drew(wildlife_st: mut WildlifeState, seed: int) -> int {
+  let yaw = wildlife_new(wildlife_st, 2, 9000.0, 9000.0, false).yaw
+  let r = rng_new(seed)
+  for k in 0 .. 64 {
+    if Math.abs(rng_float(r) * PN_TAU - yaw) < 0.00001 { return k }
+  }
+  return -1
+}
+
+# a wander's target from draws k (the angle) and k + 1 (the distance) about home, radius `home`
+function pn_tx(a: WildAnimal, seed: int, k: int, home: float) -> float { return a.home_x + Math.cos(pn_roll(seed, k) * PN_TAU) * pn_roll(seed, k + 1) * home }
+function pn_tz(a: WildAnimal, seed: int, k: int, home: float) -> float { return a.home_z + Math.sin(pn_roll(seed, k) * PN_TAU) * pn_roll(seed, k + 1) * home }
+
+# the facts waiting, drained, and how many of them are of a kind
+function pn_drain(wildlife_st: WildlifeState) -> []WildFact { return q_drain(wildlife_facts(wildlife_st)) }
+function pn_count(fs: []WildFact, what: int) -> int {
+  var n = 0
+  for i in 0 .. len(fs) { if fs[i].what == what { n += 1 } }
+  return n
+}
+
+function pn_lure(wildlife_tests_fake_st: mut WildlifeTestsFakeState, uid: int, kind: int, diet: int, x: float, z: float) -> WildLure {
+  let l = new WildLure
+  l.uid = uid
+  l.kind = kind
+  l.diet = diet
+  l.x = x
+  l.z = z
+  l.owner = 3
+  push(wildlife_tests_fake_st.fk_lures, l)
+  return l
+}

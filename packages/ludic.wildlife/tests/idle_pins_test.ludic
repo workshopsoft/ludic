@@ -1,0 +1,94 @@
+# idle_pins_test.ludic - phase 27.2a: IDLE's way out as it stands. Its time up it goes WANDER for
+# 6 + 10 r s toward a spot about home (an angle, a distance): a tracked walker first rolls for a bed
+# when the sit was short, and the droppings' roll comes before all of them
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program IdlePins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  test "IDLE, its time up: WANDER for 6 + 10 r0 s toward home at (r1, r2); a walker leaving no sign rolls three" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 0.0, 0.0, WILD_IDLE, 0.0)
+    wildlife_seed(wildlife_st, 11)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 6.0 + 10.0 * pn_roll(11, 0), 0.0001)
+    expect_near(a.tx, pn_tx(a, 11, 1, 60.0), 0.001)
+    expect_near(a.tz, pn_tz(a, 11, 1, 60.0), 0.001)
+    expect_eq(pn_count(pn_drain(wildlife_st), WILD_BED), 0)
+    expect_eq(pn_drew(wildlife_st, 11), 3)
+  }
+
+  test "a tracked walker after a short sit rolls r0 for a bed (under 0.06 leaves one), then the same three" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let seeds = [25, 11]
+    for i in 0 .. 2 {
+      let a = pn_at(wildlife_st, 0, 0.0, 0.0, WILD_IDLE, 0.0)
+      wildlife_seed(wildlife_st, seeds[i])
+      pn_step(wildlife_st, a)
+      var bed = 0
+      if pn_roll(seeds[i], 0) < 0.06 { bed = 1 }
+      expect_eq(pn_count(pn_drain(wildlife_st), WILD_BED), bed)
+      expect_eq(a.state, WILD_WANDER)
+      expect_near(a.timer, 6.0 + 10.0 * pn_roll(seeds[i], 1), 0.0001)
+      expect_near(a.tx, pn_tx(a, seeds[i], 2, 60.0), 0.001)
+      expect_eq(pn_drew(wildlife_st, seeds[i]), 4)
+    }
+  }
+
+  test "a sit of 6 s or more rolls no bed: the three alone" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 0, 0.0, 0.0, WILD_IDLE, -10.0)
+    wildlife_seed(wildlife_st, 25)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 6.0 + 10.0 * pn_roll(25, 0), 0.0001)
+    expect_eq(pn_count(pn_drain(wildlife_st), WILD_BED), 0)
+    expect_eq(pn_drew(wildlife_st, 25), 3)
+  }
+
+  test "droppings due roll first (scat_t = 120 + 300 r0, a fact within 500 m), then bed, time, target" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_player(wildlife_tests_fake_st, 100.0, 0.0)
+    let a = pn_at(wildlife_st, 0, 0.0, 0.0, WILD_IDLE, 0.0)
+    a.scat_t = 0.0
+    wildlife_seed(wildlife_st, 15)
+    pn_step(wildlife_st, a)
+    let fs = pn_drain(wildlife_st)
+    expect_eq(pn_count(fs, WILD_SCAT), 1)
+    expect_near(a.scat_t, 120.0 + 300.0 * pn_roll(15, 0), 0.001)
+    var bed = 0
+    if pn_roll(15, 1) < 0.06 { bed = 1 }
+    expect_eq(pn_count(fs, WILD_BED), bed)
+    expect_near(a.timer, 6.0 + 10.0 * pn_roll(15, 2), 0.0001)
+    expect_near(a.tx, pn_tx(a, 15, 3, 60.0), 0.001)
+    expect_eq(pn_drew(wildlife_st, 15), 5)
+  }
+
+  test "IDLE before its time stays, and rolls nothing" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 0.0, 0.0, WILD_IDLE, 5.0)
+    wildlife_seed(wildlife_st, 11)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_IDLE)
+    expect_near(a.timer, 4.95, 0.0001)
+    expect_eq(pn_drew(wildlife_st, 11), 0)
+  }
+}

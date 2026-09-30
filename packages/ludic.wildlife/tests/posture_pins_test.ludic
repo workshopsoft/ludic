@@ -1,0 +1,77 @@
+# posture_pins_test.ludic - phase 27.2a: the alert's postures as they stand. Over 25 and above what
+# it has already reacted to (`seen`) it looks up (ALERT, 1.5 + 2.5 r s); over 60, WARY (2 + 2 r s);
+# ALERT gives way to WARY, never WARY to ALERT; a level at or under `seen` does nothing
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program PosturePins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  function hare(wildlife_st: mut WildlifeState, state: int, alert: float, seen: float) -> WildAnimal {
+    let a = pn_at(wildlife_st, 2, 10.0, 0.0, state, 5.0)
+    a.alert = alert
+    a.seen = seen
+    wildlife_seed(wildlife_st, 3)
+    pn_step(wildlife_st, a)
+    return a
+  }
+
+  test "IDLE, alert over 25 and fresh: ALERT for 1.5 + 2.5 r0 s, one roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = hare(wildlife_st, WILD_IDLE, 40.0, 0.0)
+    expect_eq(a.state, WILD_ALERT)
+    expect_near(a.timer, 1.5 + 2.5 * pn_roll(3, 0), 0.0001)
+    expect_near(a.speed, 0.0, 0.00001)
+    expect_eq(pn_drew(wildlife_st, 3), 1)
+  }
+
+  test "IDLE, alert over 60 and fresh: WARY for 2 + 2 r0 s, one roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = hare(wildlife_st, WILD_IDLE, 70.0, 0.0)
+    expect_eq(a.state, WILD_WARY)
+    expect_near(a.timer, 2.0 + 2.0 * pn_roll(3, 0), 0.0001)
+    expect_eq(pn_drew(wildlife_st, 3), 1)
+  }
+
+  test "ALERT, alert rising over 60: WARY, one roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = hare(wildlife_st, WILD_ALERT, 70.0, 0.0)
+    expect_eq(a.state, WILD_WARY)
+    expect_near(a.timer, 2.0 + 2.0 * pn_roll(3, 0), 0.0001)
+    expect_eq(pn_drew(wildlife_st, 3), 1)
+  }
+
+  test "WARY, a fresh alert between 25 and 60: still WARY, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = hare(wildlife_st, WILD_WARY, 40.0, 0.0)
+    expect_eq(a.state, WILD_WARY)
+    expect_near(a.timer, 4.95, 0.0001)
+    expect_eq(pn_drew(wildlife_st, 3), 0)
+  }
+
+  test "an alert no higher than what it has seen: nothing, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = hare(wildlife_st, WILD_IDLE, 70.0, 80.0)
+    expect_eq(a.state, WILD_IDLE)
+    let b = hare(wildlife_st, WILD_IDLE, 40.0, 50.0)
+    expect_eq(b.state, WILD_IDLE)
+    expect_near(b.alert, 40.0 - 2.5 * 0.05, 0.0001)
+    expect_eq(pn_drew(wildlife_st, 3), 0)
+  }
+}

@@ -1,0 +1,93 @@
+# charge_pins_test.ludic - phase 27.2a: CHARGE as it stands (the bear). Anyone within the charge
+# reach (9 m) of a charger that is not calm is charged from any state but TRAPPED, before the alert
+# is read; within 2.6 m it shoves and wanders off calm; its 2.5 s up it wanders and may charge again
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program ChargePins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  function bear(wildlife_st: mut WildlifeState, state: int, timer: float) -> WildAnimal {
+    let a = pn_at(wildlife_st, 1, 0.0, 0.0, state, timer)
+    wildlife_seed(wildlife_st, 4)
+    pn_step(wildlife_st, a)
+    return a
+  }
+
+  test "IDLE, FLEE and EAT, somebody within 9 m: CHARGE for 2.5 s, a CHARGED fact, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_player(wildlife_tests_fake_st, 5.0, 0.0)
+    let states = [WILD_IDLE, WILD_FLEE, WILD_EAT]
+    for i in 0 .. 3 {
+      let a = bear(wildlife_st, states[i], 5.0)
+      expect_eq(a.state, WILD_CHARGE)
+      expect_near(a.timer, 2.5, 0.0001)
+      expect_near(a.speed, 6.0, 0.0001)
+      let fs = pn_drain(wildlife_st)
+      expect_eq(pn_count(fs, WILD_CHARGED), 1)
+      expect_eq(fs[0].player, 0)
+      expect_eq(pn_drew(wildlife_st, 4), 0)
+    }
+  }
+
+  test "CHARGE within 2.6 m: SHOVED, WANDER 8 s toward (r0, r1), calm 30 min" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_player(wildlife_tests_fake_st, 2.0, 0.0)
+    let a = bear(wildlife_st, WILD_CHARGE, 2.0)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 8.0, 0.0001)
+    expect_near(a.calm, 30.0, 0.0001)
+    expect_near(a.tx, pn_tx(a, 4, 0, 60.0), 0.001)
+    let fs = pn_drain(wildlife_st)
+    expect_eq(pn_count(fs, WILD_SHOVED), 1)
+    expect_eq(pn_count(fs, WILD_CHARGED), 0)
+    expect_eq(pn_drew(wildlife_st, 4), 2)
+  }
+
+  test "CHARGE, its 2.5 s up short of anyone: WANDER 6 s, two rolls, not calm - and the next tick charges again" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_player(wildlife_tests_fake_st, 5.0, 0.0)
+    let a = bear(wildlife_st, WILD_CHARGE, 0.01)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 6.0, 0.0001)
+    expect_near(a.calm, 0.0, 0.0001)
+    expect_near(a.tx, pn_tx(a, 4, 0, 60.0), 0.001)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_CHARGE)
+    expect_eq(pn_count(pn_drain(wildlife_st), WILD_CHARGED), 1)
+    expect_eq(pn_drew(wildlife_st, 4), 2)
+  }
+
+  test "no charge from a calm bear, from beyond 9 m, or out of a snare; no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    pn_player(wildlife_tests_fake_st, 5.0, 0.0)
+    let a = pn_at(wildlife_st, 1, 0.0, 0.0, WILD_IDLE, 5.0)
+    a.calm = 30.0
+    wildlife_seed(wildlife_st, 4)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_IDLE)
+    let t = bear(wildlife_st, WILD_TRAPPED, 5.0)
+    expect_eq(t.state, WILD_TRAPPED)
+    pn_player(wildlife_tests_fake_st, 9.5, 0.0)
+    let b = bear(wildlife_st, WILD_IDLE, 5.0)
+    expect_eq(b.state, WILD_IDLE)
+    expect_eq(pn_count(pn_drain(wildlife_st), WILD_CHARGED), 0)
+    expect_eq(pn_drew(wildlife_st, 4), 0)
+  }
+}

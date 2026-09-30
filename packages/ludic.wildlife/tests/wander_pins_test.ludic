@@ -1,0 +1,77 @@
+# wander_pins_test.ludic - phase 27.2a: WANDER's way out as it stands. At its target (1.5 m) or its
+# time up it goes IDLE for 3 + 8 r s; a refused step (water, a climb, a push) rolls nothing, turns
+# it 75 degrees and zeroes its timer (the next step that goes ends the wander)
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+import "pin"
+program WanderPins {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    about: fn fk_about_of
+    lures: fn fk_count
+    lure: fn fk_lure
+    present: fn fk_present
+    spot: fn pn_spot
+    taught: fn pn_taught
+  }
+
+  test "WANDER at its target: IDLE for 3 + 8 r0 s, one roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 0.0, 0.0, WILD_WANDER, 10.0)
+    a.tx = 0.5
+    a.tz = 0.0
+    wildlife_seed(wildlife_st, 7)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_IDLE)
+    expect_near(a.timer, 3.0 + 8.0 * pn_roll(7, 0), 0.0001)
+    expect_eq(pn_drew(wildlife_st, 7), 1)
+  }
+
+  test "WANDER, its time up short of the target: IDLE for 3 + 8 r0 s, one roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 0.0, 0.0, WILD_WANDER, 0.01)
+    a.tx = 50.0
+    a.tz = 0.0
+    wildlife_seed(wildlife_st, 7)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_IDLE)
+    expect_near(a.timer, 3.0 + 8.0 * pn_roll(7, 0), 0.0001)
+    expect_eq(pn_drew(wildlife_st, 7), 1)
+  }
+
+  test "WANDER on its way stays, and rolls nothing" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, 0.0, 0.0, WILD_WANDER, 5.0)
+    a.tx = 50.0
+    a.tz = 0.0
+    wildlife_seed(wildlife_st, 7)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 4.95, 0.0001)
+    expect_eq(pn_drew(wildlife_st, 7), 0)
+  }
+
+  test "a step into the water is refused: turned 75 degrees, timer 0, still WANDER, no roll" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    pn_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = pn_at(wildlife_st, 2, -299.99, 0.0, WILD_WANDER, 5.0)
+    a.yaw = 1.5707964
+    a.tx = -400.0
+    a.tz = 0.0
+    let wet = wildlife_turned_wet(wildlife_st)
+    wildlife_seed(wildlife_st, 7)
+    pn_step(wildlife_st, a)
+    expect_eq(a.state, WILD_WANDER)
+    expect_near(a.timer, 0.0, 0.00001)
+    expect_eq(wildlife_turned_wet(wildlife_st), wet + 1)
+    expect_near(a.x, -299.99, 0.0001)
+    expect_eq(pn_drew(wildlife_st, 7), 0)
+  }
+}
