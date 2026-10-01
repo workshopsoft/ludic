@@ -3,8 +3,10 @@
 # one-time allocations would fail the run. The rule: when a build keeps memory on purpose, say so
 # after it with `Mem.play()` then `Mem.settled()` - play re-arms the warm-up (judging stops, the
 # frame is not judged), settled re-baselines at once (the kept set now is the new floor). Without
-# the pair the build frame fails with exit 86. A `Mem.play()` before the build alone also works,
-# but the fence stays blind for the next R3D_ALLOC_REWARM (120) frames.
+# the pair the build frame fails with exit 86.
+# Mem.play() alone also works, but the fence then stays blind until 600 frames in a row keep nothing
+# or the R3D_ALLOC_WARM_MAX (3000) deadline from the first play, and for at least R3D_ALLOC_REWARM
+# (120) frames after the call; the pair is the deterministic form.
 # Here frame 900 builds the scene and passes; frame 2000 keeps a record for real and fails the
 # run (exit 86); R3D_ALLOC_FENCE=count runs on and prints `bad 1`.
 program AllocFenceScene {
