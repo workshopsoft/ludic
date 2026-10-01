@@ -94,6 +94,7 @@ export property AvatarPart {
   @Ref(AvatarBodies) bodies: []int = null
   @Range(-1000, 1000) layer: int = 0
   @Ref(AvatarSlots) hides: []int = null
+  covers: []string = null                # body regions it covers while worn (the body model's primitive / material names)
   @Ref(AvatarParts) conflicts: []int = null
   @Ref(AvatarPalettes) palette: int = -1
   @Range(0, 1000) level: int = 0

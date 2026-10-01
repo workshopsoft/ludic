@@ -25,6 +25,12 @@ export function avatar_apply(avatar_st: mut AvatarState, who: int) -> bool {
       AvatarView.color(who, s, p.tint, AvatarPalettes[avt_palette_of(s, r.parts[s])].colors[r.colors[s]])
     }
   }
+  # the body regions a drawn part covers (a shirt: the torso and arms), each said once
+  for i in 0 .. len(order) {
+    let cv = AvatarParts[r.parts[order[i]]].covers
+    if cv == null { continue }
+    for k in 0 .. len(cv) { AvatarView.cover(who, cv[k]) }
+  }
   for m in 0 .. AVM_COUNT {
     let mo = AvatarMorphs[m]
     if not avt_fits(mo.bodies, r.body) { continue }

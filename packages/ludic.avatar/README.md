@@ -25,7 +25,7 @@ id, so a registry may be reordered or grow and a stored avatar still reads.
 | `AvatarMorphs` | `AVM_` | a named morph: `group` (face, body), `kind` (blend_shape, bone_scale, bone_offset), `target` (the blend shape or bone), `axis`, `lo` / `hi` / `start` in permille, the bodies it exists on |
 | `AvatarHeritage` | `AVH_` | a parent preset: `morphs` and `values` side by side; an avatar blends two |
 | `AvatarSlots` | `AVS_` | a place worn: `layer` (stack order), `required`, `start` part, `palette` |
-| `AvatarParts` | `AVP_` | a thing worn: `slot`, `@Asset("gltf") mesh` + `@Node` + `@Material` tint, `bodies` it fits, `layer`, `hides` (slots), `conflicts` (parts), `palette`, unlock (`level`, `flag`, `price`) |
+| `AvatarParts` | `AVP_` | a thing worn: `slot`, `@Asset("gltf") mesh` + `@Node` + `@Material` tint, `bodies` it fits, `layer`, `hides` (slots), `covers` (body regions: primitive names of the body model), `conflicts` (parts), `palette`, unlock (`level`, `flag`, `price`) |
 | `AvatarRules` | `AVR_` | a slot-level rule: while `slot` (and `part`, or -1 any) is worn, `other` is `hides` (not drawn) or `conflicts` (cannot be worn) |
 | `AvatarPalettes` | `AVC_` | `@Color` `colors` a slot or part offers |
 | `AvatarZones` | `AVZ_` | where decals go: the `node` they project onto, how many fit (`max`) |
@@ -63,6 +63,7 @@ export port AvatarView {    # all optional: what a renderer / anim layer binds
   begin: fn(int) -> void
   body: fn(int, string, string) -> void                       # (who, model, root)
   part: fn(int, int, string, string, int) -> void             # (who, slot, mesh, attach node, draw order)
+  cover: fn(int, string) -> void                              # (who, body region): a drawn part covers it; hide that part of the body
   color: fn(int, int, string, int) -> void                    # (who, slot, material, rgb)
   morph: fn(int, int, string, int, float) -> void             # (who, kind 0 blend / 1 bone scale / 2 bone offset, target, axis, -1..1)
   decal: fn(int, string, string, float, float, float, float) -> void   # (who, zone node, texture, u, v, size, rot)

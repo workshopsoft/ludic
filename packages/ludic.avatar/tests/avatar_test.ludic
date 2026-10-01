@@ -38,6 +38,7 @@ program AvatarTest {
   def AvatarParts cap { id: 507, slot: AVS_HAT, mesh: "kit/cap.gltf", node: "head" }
   def AvatarParts hood { id: 508, slot: AVS_HAT, mesh: "kit/hood.gltf", node: "head", hides: [AVS_HAIR], palette: AVC_CLOTH_COLORS }
   def AvatarParts visor { id: 509, slot: AVS_MASK, mesh: "kit/visor.gltf", node: "head", flag: "unlocked_visor" }
+  def AvatarParts vest { id: 511, slot: AVS_TOP, mesh: "kit/vest.gltf", node: "torso", covers: ["body_torso", "body_arms"] }
   def AvatarParts scarf { id: 510, slot: AVS_TOP, mesh: "kit/scarf.gltf", node: "neck" }
 
   # a mask and a hat cannot be worn together; a hood hides the hair
@@ -86,8 +87,9 @@ program AvatarTest {
     push(avatar_test_st.calls, "decal " + node + " " + texture)
   }
   function v_pose(avatar_test_st: mut AvatarTestState, who: int, model: string, clip: string, loop: bool) -> void { push(avatar_test_st.calls, "pose " + clip) }
+  function v_cover(avatar_test_st: mut AvatarTestState, who: int, region: string) -> void { push(avatar_test_st.calls, "cover " + region) }
   function v_end(avatar_test_st: mut AvatarTestState, who: int) -> void { push(avatar_test_st.calls, "end") }
-  bind AvatarView { begin: fn v_begin, body: fn v_body, part: fn v_part, color: fn v_color, morph: fn v_morph, decal: fn v_decal, pose: fn v_pose, end: fn v_end }
+  bind AvatarView { begin: fn v_begin, body: fn v_body, part: fn v_part, cover: fn v_cover, color: fn v_color, morph: fn v_morph, decal: fn v_decal, pose: fn v_pose, end: fn v_end }
 
   function fresh(avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) -> void {
     avatar_reset(avatar_st)
@@ -106,7 +108,7 @@ program AvatarTest {
 
   test "the rows are the game's, each with a stable id apart from its place" {
     expect_eq(AVS_COUNT, 6)
-    expect_eq(AVP_COUNT, 10)
+    expect_eq(AVP_COUNT, 11)
     expect_eq(AvatarParts[AVP_COAT].id, 506)
     expect_eq(avatarparts_find("visor"), AVP_VISOR)
   }
@@ -367,6 +369,17 @@ program AvatarTest {
     expect_eq(avatar_validate(avatar_st, 1, true), 1)
     expect_eq(avatar_part_in(avatar_st, 1, AVS_TOP), -1)
     expect_eq(avatar_validate(avatar_st, 99, true), -1)
+  }
+
+  test "a drawn part says which body regions it covers" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
+    fresh(avatar_st, avatar_test_st)
+    avatar_new(avatar_st, 1, AVB_ADULT_A)
+    expect(avatar_set_part(avatar_st, 1, AVP_VEST))
+    avatar_apply(avatar_st, 1)
+    let c = avatar_test_st.calls
+    var n = 0
+    for i in 0 .. len(c) { if c[i] == "cover body_torso" or c[i] == "cover body_arms" { n += 1 } }
+    expect_eq(n, 2)
   }
 
   test "the view port gets body, parts lowest layer first, colours, morphs, decals, the clip, and hidden parts are left out" (avatar_st: mut AvatarState, avatar_test_st: mut AvatarTestState) {
