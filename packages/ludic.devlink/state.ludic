@@ -31,6 +31,7 @@ export state DevlinkState {
   dl_pend_port: int = 0
   dl_pend_t: float = 0.0
   dl_cam: DevlinkCam = new DevlinkCam
+  dl_hit: DevlinkHit = new DevlinkHit
   dl_ui: DevlinkUiScreen = new DevlinkUiScreen
   dl_focus: DevlinkFocus = new DevlinkFocus
   dl_call: DevCall = devcall_new()         # the declared verb being answered

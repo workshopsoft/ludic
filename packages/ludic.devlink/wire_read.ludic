@@ -65,6 +65,14 @@ function dl_float(st: mut DevlinkState) -> float {
   return v
 }
 
+# the bare word true or false (anything else is dl_bad)
+function dl_bool(st: mut DevlinkState) -> bool {
+  if dl_word(st, "true") { return true }
+  if dl_word(st, "false") { return false }
+  st.dl_bad = true
+  return false
+}
+
 # a quoted string into dl_str, unescaped: its length, or -1 (dl_bad) when it is not one
 function dl_quoted(st: mut DevlinkState) -> int {
   dl_skip(st)
