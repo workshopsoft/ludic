@@ -13,6 +13,7 @@ export function devlink_tick(devlink_st: mut DevlinkState, t: Tick) -> void {
     devlink_st.dl_tried = true
     devlink_st.dl_h = DevlinkNet.open(DevlinkWorld.port())
     if devlink_st.dl_h < 0 { return }
+    devlink_publish(devlink_st.dl_h)
   }
   let h = devlink_st.dl_h
   if devlink_late(devlink_st, t.dt) { DevlinkNet.send(h, devlink_st.dl_pend_ip, devlink_st.dl_pend_port, devlink_st.dl_out, devlink_st.dl_o) }

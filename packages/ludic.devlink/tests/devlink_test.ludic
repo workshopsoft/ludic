@@ -18,9 +18,13 @@ program DevlinkTest {
     steps: int = 0
     last: string = ""             # the last text a verb was handed
     calls: int = 0
+    asked: int = -9               # the port the link opened with
+    run_path: string = ""         # the run file it wrote, where and what
+    run_text: string = ""
   }
   function fk_open(fake_link_st: mut FakeLinkState, port: int) -> int {
     fake_link_st.opened += 1
+    fake_link_st.asked = port
     return 7
   }
   function fk_recv(fake_link_st: mut FakeLinkState, h: int, b: []byte, cap: int) -> int {
@@ -36,7 +40,13 @@ program DevlinkTest {
     return n
   }
   function fk_loop(ip: int) -> bool { return ip == 2130706433 }
-  bind DevlinkNet { open: fn fk_open, recv: fn fk_recv, from_ip: fn fk_ip, from_port: fn fk_port, send: fn fk_send, loopback: fn fk_loop }
+  function fk_bound(h: int) -> int { return 53412 }
+  function fk_publish(fake_link_st: mut FakeLinkState, path: string, b: []byte, n: int) -> int {
+    fake_link_st.run_path = path
+    fake_link_st.run_text = text_of(b, n)
+    return 0
+  }
+  bind DevlinkNet { open: fn fk_open, recv: fn fk_recv, from_ip: fn fk_ip, from_port: fn fk_port, send: fn fk_send, loopback: fn fk_loop, bound: fn fk_bound, publish: fn fk_publish }
 
   function fw_on(fake_link_st: FakeLinkState) -> bool { return fake_link_st.on }
   function fw_game() -> string { return "pinewood" }
@@ -240,5 +250,41 @@ program DevlinkTest {
     fake_link_st.on = false
     expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "")
     expect_eq(fake_link_st.opened, 0)
+  }
+
+  test "the port text: digits to 65535, anything else is the fallback" (devlink_st: mut DevlinkState) {
+    expect_eq(devlink_port_text("0", 47200), 0)
+    expect_eq(devlink_port_text("51234", 47200), 51234)
+    expect_eq(devlink_port_text("65535", 47200), 65535)
+    expect_eq(devlink_port_text("65536", 47200), 47200)
+    expect_eq(devlink_port_text("", 47200), 47200)
+    expect_eq(devlink_port_text("12x", 47200), 47200)
+    expect_eq(devlink_port_text("-1", 47200), 47200)
+    expect_eq(devlink_port_text("123456", 47200), 47200)
+  }
+
+  test "no LUDIC_DEVLINK_PORT: the link opens on 47200 and its run file says what it bound" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    Os.unset_env("LUDIC_DEVLINK_PORT")
+    Os.set_env("LUDIC_DEVLINK_RUN_DIR", "/run/dir")
+    Os.set_env("LUDIC_PROJECT", "/games/\"pine\"")
+    ask(devlink_st, fake_link_st, "1 ping", 0.016)
+    expect_eq(fake_link_st.asked, 47200)
+    expect(fake_link_st.run_path == `/run/dir/ludic-devlink-{Os.pid()}.json`)
+    expect(fake_link_st.run_text == `{{"v":1,"pid":{Os.pid()},"port":53412,"game":"pinewood","project":"/games/\\"pine\\"","build":"{Os.arg(0)}"}}\n`)
+    Os.unset_env("LUDIC_PROJECT")
+    Os.unset_env("LUDIC_DEVLINK_RUN_DIR")
+  }
+
+  test "LUDIC_DEVLINK_PORT=0 asks for any free port, a number asks for that one; the run file carries the bound port, written once" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    Os.set_env("LUDIC_DEVLINK_PORT", "0")
+    ask(devlink_st, fake_link_st, "1 ping", 0.016)
+    expect_eq(fake_link_st.asked, 0)
+    expect(Text.contains(fake_link_st.run_text, "\"port\":53412"))
+    fake_link_st.run_text = ""
+    ask(devlink_st, fake_link_st, "2 ping", 0.016)
+    expect(fake_link_st.run_text == "")
+    Os.set_env("LUDIC_DEVLINK_PORT", "48100")
+    expect_eq(DevlinkWorld.port(), 48100)
+    Os.unset_env("LUDIC_DEVLINK_PORT")
   }
 }

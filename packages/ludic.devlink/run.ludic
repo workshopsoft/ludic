@@ -1,0 +1,89 @@
+# run.ludic - which port a running game's link is on, and how a client finds it. Several games run on one
+# machine (agents test in parallel), so the port is not fixed: LUDIC_DEVLINK_PORT picks it, and the game
+# says what it bound in a run file a client reads.
+#
+#   LUDIC_DEVLINK_PORT   a port, or 0 for any free one; unset (or not a number) is DL_PORT_DEFAULT, 47200
+#   LUDIC_DEVLINK_RUN_DIR where the run file goes; unset is Os.temp_dir() (a launcher that wants it in a
+#                        project passes <project>/.studio/local/run, which it makes: Ludic cannot mkdir)
+#   LUDIC_PROJECT        the project path recorded in the run file; unset is the shell's PWD
+#
+# The file is <dir>/ludic-devlink-<pid>.json, one JSON object on one line:
+#   {"v":1,"pid":123,"port":53412,"game":"meridian","project":"/path","build":"/path/to/binary"}
+# Ludic has no way to remove a file or to run something at exit, so a game that quits leaves its file:
+# a reader checks that the pid is alive (and that the port answers hello) and sweeps the file when not.
+
+# a decimal text -> an int, or `fallback` when it is empty, has anything but digits, or is over 65535
+export function devlink_port_text(s: string, fallback: int) -> int {
+  if len(s) == 0 or len(s) > 5 { return fallback }
+  var n = 0
+  for i in 0 .. len(s) {
+    if s[i] < 48 or s[i] > 57 { return fallback }
+    n = n * 10 + (s[i] - 48)
+  }
+  if n > 65535 { return fallback }
+  return n
+}
+
+# the port to ask for: LUDIC_DEVLINK_PORT, else `fallback`
+export function devlink_port_env(fallback: int) -> int {
+  if not Os.has_env("LUDIC_DEVLINK_PORT") { return fallback }
+  return devlink_port_text(Os.env("LUDIC_DEVLINK_PORT"), fallback)
+}
+
+function rf_s(b: []byte, n: int, s: string) -> int {
+  var k = n
+  for i in 0 .. len(s) {
+    if k >= len(b) { return k }
+    b[k] = s[i]
+    k += 1
+  }
+  return k
+}
+function rf_q(b: []byte, n: int, s: string) -> int {
+  var k = rf_s(b, n, "\"")
+  for i in 0 .. len(s) {
+    if k + 2 >= len(b) { return k }
+    if s[i] == 34 or s[i] == 92 {
+      b[k] = 92
+      k += 1
+    }
+    if s[i] >= 32 {
+      b[k] = s[i]
+      k += 1
+    }
+  }
+  return rf_s(b, k, "\"")
+}
+
+# the run file's text into `b`: its length
+export function devlink_run_json(b: []byte, pid: int, port: int, game: string, project: string, build: string) -> int {
+  var n = rf_s(b, 0, "{\"v\":1,\"pid\":")
+  n = rf_s(b, n, string(pid))
+  n = rf_s(b, n, ",\"port\":")
+  n = rf_s(b, n, string(port))
+  n = rf_s(b, n, ",\"game\":")
+  n = rf_q(b, n, game)
+  n = rf_s(b, n, ",\"project\":")
+  n = rf_q(b, n, project)
+  n = rf_s(b, n, ",\"build\":")
+  n = rf_q(b, n, build)
+  return rf_s(b, n, "}\n")
+}
+
+export function devlink_run_path(pid: int) -> string {
+  var dir = Os.temp_dir()
+  if Os.has_env("LUDIC_DEVLINK_RUN_DIR") { dir = Os.env("LUDIC_DEVLINK_RUN_DIR") }
+  return `{dir}/ludic-devlink-{pid}.json`
+}
+
+# once, when the socket is open: say where this game's link is. A failure to write is not the game's problem.
+export function devlink_publish(h: int) -> void {
+  let pid = Os.pid()
+  var project = ""
+  if Os.has_env("LUDIC_PROJECT") { project = Os.env("LUDIC_PROJECT") } else { if Os.has_env("PWD") { project = Os.env("PWD") } }
+  var build = ""
+  if Os.arg_count() > 0 { build = Os.arg(0) }
+  var b: []byte = buffer(2048)
+  let n = devlink_run_json(b, pid, DevlinkNet.bound(h), DevlinkWorld.game(), project, build)
+  DevlinkNet.publish(devlink_run_path(pid), b, n)
+}

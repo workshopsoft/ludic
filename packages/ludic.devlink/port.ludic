@@ -1,6 +1,7 @@
 # port.ludic - what the link asks the game, every member defaulting to "not offered": an unbound build
 # answers ping and hello and nothing else. The verbs of a game or a package (goto, time, weather, map_load,
 # a store's unlock...) are not here: each is declared as a DevVerb (ludic.base/devverb.ludic). DevlinkNet is the transport (Udp in a game, a fake in a test).
+export const DL_PORT_DEFAULT: int = 47200   # the devlink port when LUDIC_DEVLINK_PORT is not set
 export const DL_UNBOUND: int = -2          # a member the game left at its default
 export property DevlinkCam {
   x: float = 0.0
@@ -17,6 +18,8 @@ export port DevlinkNet {
   from_port: fn(int) -> int = fn dln_none1
   send: fn(int, int, int, []byte, int) -> int = fn dln_none5    # handle, ip, port, bytes, n
   loopback: fn(int) -> bool = fn dln_no1              # is this sender this machine
+  bound: fn(int) -> int = fn dln_bound                # handle -> the port it is bound to (Udp.port; matters when 0 asked for any free one)
+  publish: fn(string, []byte, int) -> int = fn dln_publish # path, bytes, n -> 0 when the run file is written (Fs.write_bytes; a test captures it)
 }
 
 export port DevlinkWorld {
@@ -43,9 +46,14 @@ function dln_none1(a: int) -> int { return -1 }
 function dln_none3(a: int, b: []byte, c: int) -> int { return 0 }
 function dln_none5(a: int, b: int, c: int, d: []byte, e: int) -> int { return -1 }
 function dln_no1(a: int) -> bool { return false }
+function dln_bound(h: int) -> int { return Udp.port(h) }
+function dln_publish(path: string, b: []byte, n: int) -> int {
+  if Fs.write_bytes(path, b, n) { return 0 }
+  return -1
+}
 function dlw_no() -> bool { return false }
 function dlw_dev() -> bool { return dev_mode() }
-function dlw_port() -> int { return 47200 }
+function dlw_port() -> int { return devlink_port_env(DL_PORT_DEFAULT) }
 function dlw_game() -> string { return "ludic" }  # not drawn
 function dlw_zero() -> string { return "0" }
 function dlw_schema() -> long {

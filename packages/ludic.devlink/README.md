@@ -23,6 +23,26 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
 - **Call `devlink_tick`** once a frame from something that runs while the game is paused (not from a
   system the pause stops), or `resume` could never arrive.
 
+## Port and run file: several games on one machine
+
+The link no longer owns port 47200 alone. `LUDIC_DEVLINK_PORT` picks the UDP port the game opens: a number, or
+`0` for any free one (unset, or not a number up to 65535, keeps 47200). A game that binds `DevlinkWorld.port`
+keeps its own rule. When the socket opens, the game writes what it actually bound to a **run file**:
+
+`<dir>/ludic-devlink-<pid>.json`, one line:
+`{"v":1,"pid":123,"port":53412,"game":"meridian","project":"/path/to/project","build":"/path/to/binary"}`
+
+- `dir` is `LUDIC_DEVLINK_RUN_DIR` when set (a launcher that wants the files in a project passes
+  `<project>/.studio/local/run`, which it creates: Ludic has no mkdir), else `Os.temp_dir()` (`$TMPDIR`, or `/tmp`).
+- `project` is `LUDIC_PROJECT`, else the shell's `PWD`; `build` is `argv[0]`. The file's mtime is the start time.
+- The port comes from `DevlinkNet.bound` (default `Udp.port`), the write goes through `DevlinkNet.publish`
+  (default `Fs.write_bytes`); both are ports so a test captures them.
+- Ludic has no file removal and no exit hook, so a game that quits **leaves its file**. A client checks that the
+  pid is alive (and that the port answers `hello`) and deletes the file when not.
+
+Model: Chrome's `--remote-debugging-port=0`, which writes the chosen port to `DevToolsActivePort` in the profile
+directory so a driver can find it. Same idea, one file per process so several games coexist.
+
 ## Declaring a verb
 
 ```ludic
