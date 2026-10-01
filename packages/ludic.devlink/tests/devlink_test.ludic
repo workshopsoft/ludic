@@ -231,8 +231,8 @@ program DevlinkTest {
   }
 
   test "declared verbs: each argument type read and validated in place, optional arguments, every error" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
-    expect(ask(devlink_st, fake_link_st, "30 kinds -4 2.5 \"a \\\"b\\\"\" true 9", 0.016) == "30 ok -4 2.500 \"a \\\"b\\\"\" 1 9")
-    expect(ask(devlink_st, fake_link_st, "31 kinds 0 -0.25 \"\" false", 0.016) == "31 ok 0 -0.250 \"\" 0 \"none\"")
+    expect(ask(devlink_st, fake_link_st, "30 kinds -4 2.5 \"a \\\"b\\\"\" true 9", 0.016) == "30 ok -4 2.500 \"a \\\"b\\\"\" true 9")
+    expect(ask(devlink_st, fake_link_st, "31 kinds 0 -0.25 \"\" false", 0.016) == "31 ok 0 -0.250 \"\" false \"none\"")
     expect(ask(devlink_st, fake_link_st, "32 goto 100 -200.5 90", 0.016) == "32 ok 100.000 2919.500 -200.500")
     expect(ask(devlink_st, fake_link_st, "33 goto 1", 0.016) == "33 err bad_args \"bad arguments: goto x:float z:float yaw:float?\"")
     expect(ask(devlink_st, fake_link_st, "34 goto 1 2 3 4", 0.016) == "34 err bad_args \"bad arguments: goto x:float z:float yaw:float?\"")
