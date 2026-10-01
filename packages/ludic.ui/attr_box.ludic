@@ -74,14 +74,17 @@ function el_num_in(s: string, from: int, to: int) -> float {
   return f
 }
 # start, center, end, stretch; for justify also between, around, evenly - with CSS's spellings
+function el_is(s: string, off: int, w: string) -> bool { return len(s) - off == len(w) and sat(s, off, w) }
 function el_place(v: Val) -> int {
-  var s = vl_text(v)
-  if len(s) > 6 and sat(s, 0, "space-") { s = s[6..len(s)] }
-  if len(s) > 5 and sat(s, 0, "flex-") { s = s[5..len(s)] }
-  if s == "center" { return UI_CENTER }
-  if s == "end" or s == "right" { return UI_END }
-  if s == "stretch" or s == "between" { return 3 }
-  if s == "around" { return UI_AROUND }
-  if s == "evenly" { return UI_EVENLY }
+  let s = vl_text(v)
+  # the CSS prefixes are skipped by offset: a slice here made a string every frame (ALLOC_FENCE in the frame)
+  var o = 0
+  if len(s) > 6 and sat(s, 0, "space-") { o = 6 }
+  if len(s) > o + 5 and sat(s, o, "flex-") { o = o + 5 }
+  if el_is(s, o, "center") { return UI_CENTER }
+  if el_is(s, o, "end") or el_is(s, o, "right") { return UI_END }
+  if el_is(s, o, "stretch") or el_is(s, o, "between") { return 3 }
+  if el_is(s, o, "around") { return UI_AROUND }
+  if el_is(s, o, "evenly") { return UI_EVENLY }
   return UI_START
 }

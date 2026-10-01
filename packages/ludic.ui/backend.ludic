@@ -123,6 +123,7 @@ export state UiState {
   fr_clips: []float = new []float
   ui_view: UiView = null
   ui_errs: []string = new []string
+  ui_bad_keys: []string = new []string       # the properties el_attr already said are wrong: a stylesheet is applied every frame, so the message must not be made again
   ui_at: string = ""
   fc_key: string = ""
   fc_visible: bool = false    # focus came from the keyboard: :focus-visible, and the ring
