@@ -269,6 +269,7 @@ export function animset_tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, d
   }
   anim_to_pose(anim_st, sk, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s)
   skin_pose(sk)
+  foot_ik_apply(anim_st, pl, sk, step)
   pl.posed = true
   if anim_st.root_port and pl.actor >= 0 {
     if pl.rm[0] != 0.0 or pl.rm[1] != 0.0 or pl.rm[2] != 0.0 or pl.rm[3] != 0.0 {

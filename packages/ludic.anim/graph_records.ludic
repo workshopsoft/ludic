@@ -37,6 +37,30 @@ export property AnimLod {
   events: bool = true               # clip events fire (off: a far actor makes no sound)
 }
 
+# foot placement as data (foot_ik.ludic): the bones of two legs, by canonical name (the skeleton's `bones` map them to
+# nodes), what the ground may move a foot, and how far from the camera it is worth doing
+export property AnimFootIk {
+  pelvis: string = "hips"
+  thigh_l: string = "thigh_l"
+  shin_l: string = "shin_l"
+  foot_l: string = "foot_l"
+  toe_l: string = "toe_l"
+  thigh_r: string = "thigh_r"
+  shin_r: string = "shin_r"
+  foot_r: string = "foot_r"
+  toe_r: string = "toe_r"
+  @Unit("m") probe_up: float = 0.5        # a ground ray starts this far above the higher of the foot and the body
+  @Unit("m") max_drop: float = 0.4        # a foot goes down at most this far from where the clip put it
+  @Unit("m") max_raise: float = 0.4       # and up
+  @Unit("deg") max_tilt: float = 25.0     # the foot's pitch and roll to the ground, at most
+  @Range(1, 60) smooth: float = 14.0      # per second: how fast the offsets follow the ground (a step is eased, never snapped)
+  @Unit("m") contact_lo: float = 0.2      # a foot the clip holds higher than this over the body's ground is swinging:
+  @Unit("m") contact_hi: float = 0.6      # the ground's offset fades out over lo .. hi
+  @Unit("m") lod_dist: float = 25.0       # farther from the camera than this the legs are not solved
+  weight_by: string = "grounded"          # times this parameter (0..1) when the graph has it: off in the air
+  @Range(0, 1) pelvis_weight: float = 1.0 # how much of the lower foot's offset the pelvis takes
+}
+
 # a rig: its file, the prefix its clips carry, its bone names and its level of detail
 export property AnimSkeleton {
   key: string = ""
@@ -45,6 +69,7 @@ export property AnimSkeleton {
   prefix: string = ""               # its clips are "<prefix>_<name>"
   bones: []AnimBone = null
   lod: []AnimLod = null
+  foot_ik: []AnimFootIk = null      # none: no foot placement; one row: both legs (foot_ik.ludic)
 }
 
 # one row of a mask: a bone (and, with `below`, every bone under it) at a weight

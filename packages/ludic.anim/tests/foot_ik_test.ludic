@@ -1,0 +1,203 @@
+# foot_ik_test.ludic - feet stand on what is under them: a ground ray per foot through the AnimGround port, the
+# pelvis sinking to the lower foot, two-bone IK on thigh and shin, the foot turned to the normal, a weight that
+# is off in the air and far away, and bones that keep their lengths.
+import "ludic.render3d/r3d.ludic"
+import "ludic.anim"
+import "support/rig.ludic"
+program FootIkTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  def AnimSkeletons from "foot_skel.lres"
+  def AnimSets from "foot_sets.lres"
+
+  const SKEL: int = 0
+  const SET: int = 0
+
+  # the ground the port answers with: the height under the left foot (the world's x < 0 at yaw 0) and the right,
+  # and a normal tilted about z; `side_z` makes the left foot the one at positive world z (a body turned 90 degrees)
+  state Ground {
+    left: float = 0.0
+    right: float = 0.0
+    nx: float = 0.0
+    side_z: bool = false
+    probes: int = 0
+  }
+  function ground_got(g: mut Ground, actor: int, x: float, y: float, z: float, reach: float, out: floats) -> bool {
+    g.probes += 1
+    var is_left = x < 0.0
+    if g.side_z { is_left = z > 0.0 }
+    if is_left { out[0] = g.left } else { out[0] = g.right }
+    out[1] = g.nx
+    out[2] = Math.sqrt(1.0 - g.nx * g.nx)
+    out[3] = 0.0
+    return true
+  }
+  bind AnimGround { probe: fn ground_got }
+
+  # 0 hips (at 1 m), then each leg: thigh, shin, foot, toe. The knee has a small bend forward, so the leg is never dead straight.
+  function leg_skin(render3d_st: mut Render3dState) -> Skin {
+    render3d_st.gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"hips\", \"translation\": [0, 1, 0], \"children\": [1, 5]}, {\"name\": \"thigh_l\", \"translation\": [-0.1, 0, 0], \"children\": [2]}, {\"name\": \"shin_l\", \"translation\": [0, -0.45, -0.02], \"children\": [3]}, {\"name\": \"foot_l\", \"translation\": [0, -0.45, 0.02], \"children\": [4]}, {\"name\": \"toe_l\", \"translation\": [0, -0.05, -0.15]}, {\"name\": \"thigh_r\", \"translation\": [0.1, 0, 0], \"children\": [6]}, {\"name\": \"shin_r\", \"translation\": [0, -0.45, -0.02], \"children\": [7]}, {\"name\": \"foot_r\", \"translation\": [0, -0.45, 0.02], \"children\": [8]}, {\"name\": \"toe_r\", \"translation\": [0, -0.05, -0.15]}], \"skins\": [{\"joints\": [0, 1, 2, 3, 4, 5, 6, 7, 8]}]}")
+    return skin_load(render3d_st, 0)
+  }
+  function player(anim_st: mut AnimState) -> AnimPlayer {
+    anim_clear(anim_st)
+    let c = clip_new("fk_stand", 1.0, 1)
+    clip_rot(c, 0, 0, 0.0, 0.0)
+    anim_add(anim_st, c)
+    let pl = new AnimPlayer
+    expect(animset_bind_skel(anim_st, pl, SET, SKEL))
+    return pl
+  }
+  # one tick with the body at (0, by, 0) turned `yaw`
+  function tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, by: float, yaw: float, dt: float) -> void {
+    animset_body(pl, 0.0, by, 0.0, yaw, 1.0)
+    expect(animset_tick(anim_st, pl, sk, dt))
+  }
+  function settle(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, by: float, yaw: float) -> void {
+    for i in 0 .. 6 { tick(anim_st, pl, sk, by, yaw, 0.25) }
+  }
+  function pos_y(sk: Skin, node: int) -> float { return skin_mat(sk, node)[13] }
+  function pos_x(sk: Skin, node: int) -> float { return skin_mat(sk, node)[12] }
+  function pos_z(sk: Skin, node: int) -> float { return skin_mat(sk, node)[14] }
+
+  test "flat ground at the body's height leaves the pose as the clip made it" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = 0.0
+    ground.right = 0.0
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect(ground.probes > 0)
+    expect_near(pos_y(sk, 3), 0.1, 0.002)
+    expect_near(pos_y(sk, 7), 0.1, 0.002)
+    expect_near(sk.pose_t[1], 0.0, 0.001)
+  }
+
+  test "one foot on a kerb: it goes up with the ground, the other stays, the pelvis does not move" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = 0.15
+    ground.right = 0.0
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect_near(pos_y(sk, 3), 0.25, 0.003)
+    expect_near(pos_y(sk, 7), 0.1, 0.003)
+    expect_near(sk.pose_t[1], 0.0, 0.001)
+    # nothing slid: the ankles are where the clip had them in x and z
+    expect_near(pos_x(sk, 3), -0.1, 0.003)
+    expect_near(pos_z(sk, 3), -0.02 + 0.02, 0.003)
+  }
+
+  test "one foot down a step: the pelvis sinks to the lower foot and the high foot stays put" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = -0.2
+    ground.right = 0.0
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect_near(sk.pose_t[1], -0.2, 0.003)
+    expect_near(pos_y(sk, 3), -0.1, 0.004)
+    expect_near(pos_y(sk, 7), 0.1, 0.004)
+  }
+
+  test "a body floating above the ground is lowered onto it (the offset is from the body's own height)" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = 0.0
+    ground.right = 0.0
+    settle(anim_st, pl, sk, 0.06, 0.0)
+    expect_near(sk.pose_t[1], -0.06, 0.003)
+    # in the world (the body 0.06 up) the soles stand on the ground
+    expect_near(0.06 + pos_y(sk, 3) - 0.1, 0.0, 0.004)
+  }
+
+  test "bones keep their lengths however far the foot is moved" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = 0.3
+    ground.right = -0.3
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    for leg in 0 .. 2 {
+      let t = 1 + leg * 4
+      let l1 = Math.sqrt((pos_x(sk, t) - pos_x(sk, t + 1)) * (pos_x(sk, t) - pos_x(sk, t + 1)) + (pos_y(sk, t) - pos_y(sk, t + 1)) * (pos_y(sk, t) - pos_y(sk, t + 1)) + (pos_z(sk, t) - pos_z(sk, t + 1)) * (pos_z(sk, t) - pos_z(sk, t + 1)))
+      let l2 = Math.sqrt((pos_x(sk, t + 2) - pos_x(sk, t + 1)) * (pos_x(sk, t + 2) - pos_x(sk, t + 1)) + (pos_y(sk, t + 2) - pos_y(sk, t + 1)) * (pos_y(sk, t + 2) - pos_y(sk, t + 1)) + (pos_z(sk, t + 2) - pos_z(sk, t + 1)) * (pos_z(sk, t + 2) - pos_z(sk, t + 1)))
+      expect_near(l1, 0.45044, 0.002)
+      expect_near(l2, 0.45044, 0.002)
+    }
+  }
+
+  test "the foot lies on the slope: it turns toward the normal, no more than the limit" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.nx = 0.2
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    # the foot's up axis (its matrix's y column) leans to x = 0.2
+    expect_near(skin_mat(sk, 3)[4], 0.2, 0.01)
+    expect_near(skin_mat(sk, 7)[4], 0.2, 0.01)
+    # a wall-steep normal is held to 25 degrees
+    ground.nx = 0.9
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect_near(skin_mat(sk, 3)[4], Math.sin(25.0 * 3.14159265 / 180.0), 0.02)
+    ground.nx = 0.0
+  }
+
+  test "in the air (grounded off) the weight eases out and the clip's pose is back" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = 0.15
+    ground.right = 0.0
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect_near(pos_y(sk, 3), 0.25, 0.003)
+    animset_param(pl, "grounded", 0.0)
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect_near(pos_y(sk, 3), 0.1, 0.003)
+    expect_near(sk.pose_t[1], 0.0, 0.001)
+  }
+
+  test "a body past the lod distance is not solved, and costs no ray" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = 0.15
+    animset_distance(pl, 50.0)
+    ground.probes = 0
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect_near(pos_y(sk, 3), 0.1, 0.003)
+    expect(ground.probes == 0)
+  }
+
+  test "the offset is eased: a step in the ground is not snapped to in one frame" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = 0.0
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    ground.left = 0.15
+    tick(anim_st, pl, sk, 0.0, 0.0, 0.016)
+    let y1 = pos_y(sk, 3)
+    expect(y1 > 0.1)
+    expect(y1 < 0.2)
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect_near(pos_y(sk, 3), 0.25, 0.003)
+  }
+
+  test "the body's heading turns the probe points: a body turned 90 degrees asks the world's z for its sides" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.side_z = true
+    ground.left = 0.15
+    ground.right = 0.0
+    settle(anim_st, pl, sk, 0.0, 1.5707963)
+    expect_near(pos_y(sk, 3), 0.25, 0.003)
+    expect_near(pos_y(sk, 7), 0.1, 0.003)
+    ground.side_z = false
+  }
+
+  test "a rig without a foot_ik row is left alone" (anim_st: mut AnimState, render3d_st: mut Render3dState, ground: mut Ground) {
+    let sk = leg_skin(render3d_st)
+    let pl = player(anim_st)
+    ground.left = 0.0
+    tick(anim_st, pl, sk, 0.0, 0.0, 0.1)
+    pl.fik_ok = false
+    ground.left = 0.15
+    settle(anim_st, pl, sk, 0.0, 0.0)
+    expect_near(pos_y(sk, 3), 0.1, 0.001)
+  }
+}

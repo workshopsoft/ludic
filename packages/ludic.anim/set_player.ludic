@@ -108,6 +108,17 @@ export property AnimPlayer {
   rm_t: floats = floats(4)
   rm_u: floats = floats(4)
   # the signal bindings (link.ludic): per row, the parameter it writes, what it last sent, its edge and its last word
+  # foot placement (foot_ik.ludic): the nodes, the body the game last said, and what is eased between frames
+  fik_ok: bool = false
+  fik_node: words = words(9)    # pelvis, then thigh, shin, foot, toe of the left leg and of the right
+  fik_rest: floats = floats(2)  # each foot's rest height (the ankle over the sole)
+  fik_body: floats = floats(5)  # x, y, z, yaw (radians), scale of the actor
+  fik_has: bool = false
+  fik_w: float = 0.0
+  fik_p: float = 0.0
+  fik_d: floats = floats(2)
+  fik_nx: floats = floats(2)
+  fik_nz: floats = floats(2)
   oz_skel: pointer = null   # the skin's skeleton in ozz and what this actor samples with (ozz_play.ludic); null without the native layer
   oz_ctx: pointer = null
   oz_n: int = 0

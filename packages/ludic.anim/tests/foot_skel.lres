@@ -1,0 +1,6 @@
+# foot_skel.lres - a rig with legs: canonical names over the file's own node names, and a foot-IK row
+fk {
+  prefix: "fk"
+  root: "hips"
+  foot_ik: [{ max_tilt: 25.0, smooth: 20.0, lod_dist: 30.0 }]
+}
