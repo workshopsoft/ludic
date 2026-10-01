@@ -148,6 +148,8 @@ program DevlinkTest {
     return 0
   }
   function fw_left(fake_link_st: FakeLinkState) -> int { return fake_link_st.steps }
+  function fu_offers() -> string { return "ui_screen,ui_focus,ui_click,ui_click_id,ui_model,ui_tree,ui_override" }
+  bind DevlinkUi { offers: fn fu_offers }
   bind DevlinkWorld { enabled: fn fw_on, game: fn fw_game, schema: fn fw_schema, map: fn fw_map, offers: fn fw_offers, coop: fn fw_coop, camera_get: fn fw_cam_get, camera_set: fn fw_cam_set, screenshot: fn fw_shot, shot_state: fn fw_shot_st, shot_w: fn fw_w, shot_h: fn fw_h, step: fn fw_step, steps_left: fn fw_left }
 
   # one frame with `line` waiting (or nothing), and what the link sent (or "")
@@ -160,7 +162,7 @@ program DevlinkTest {
 
   test "ping and hello, and the answers to the camera, byte for byte" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
     expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "1 ok")
-    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"pinewood\" \"0\" \"0123456789abcdef\" \"forest\" \"cam_get,cam_set,shot,step,signal_source,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later\" \"signal_source at:int;goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later\"")
+    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"pinewood\" \"0\" \"0123456789abcdef\" \"forest\" \"cam_get,cam_set,shot,step,ui_screen,ui_focus,ui_click,ui_click_id,ui_model,ui_tree,ui_override,signal_source,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later\" \"signal_source at:int;goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later\"")
     expect(ask(devlink_st, fake_link_st, "3 cam_get", 0.016) == "3 ok 1038.500 -38.000 -405.250 124.000 -10.000")
     expect(ask(devlink_st, fake_link_st, "4 cam_set 12.5 3 -7 90.25 -5", 0.016) == "4 ok")
     expect(fake_link_st.cx == 12.5 and fake_link_st.cyaw == 90.25)

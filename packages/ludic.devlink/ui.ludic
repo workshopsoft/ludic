@@ -15,6 +15,7 @@ export property DevlinkFocus {
 }
 
 export port DevlinkUi {
+  offers: fn() -> string = fn dlu_blank               # the interface's verbs bound, comma-separated: hello lists them
   focus: fn(DevlinkFocus) -> int = fn dlu_focus
   screen: fn(DevlinkUiScreen) -> int = fn dlu_screen
   model: fn(string, string) -> int = fn dlu_s2        # class, out path -> 0 written, -1 no such instance
@@ -23,6 +24,7 @@ export port DevlinkUi {
   click_id: fn(string) -> int = fn dlu_s1             # an element's id -> 0 played, -1 no such element
   override: fn(string, string) -> int = fn dlu_s2     # path, file ("" clears it; "" "" clears all) -> 0, -1
 }
+function dlu_blank() -> string { return "" }
 function dlu_focus(f: DevlinkFocus) -> int { return DL_UNBOUND }
 function dlu_screen(s: DevlinkUiScreen) -> int { return DL_UNBOUND }
 function dlu_s1(a: string) -> int { return DL_UNBOUND }

@@ -62,12 +62,18 @@ function dl_verb_ok(st: mut DevlinkState, v: DevVerb) -> bool {
   return true
 }
 
-# hello's sixth field: the core verbs the game offers, then the declared ones, comma-separated
+# hello's sixth field: the core verbs the game offers, the interface's, then the declared ones, comma-separated
 function dl_hello_names(st: mut DevlinkState) -> void {
   dl_b(st, 34)
   let core = DevlinkWorld.offers()
   dl_esc(st, core)
   var any = len(core) > 0
+  let ui = DevlinkUi.offers()
+  if len(ui) > 0 {
+    if any { dl_b(st, 44) }
+    dl_esc(st, ui)
+    any = true
+  }
   for k in 0 .. DVB_COUNT {
     let v = DevVerbs[k]
     if dl_verb_ok(st, v) {

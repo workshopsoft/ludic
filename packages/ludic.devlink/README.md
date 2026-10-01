@@ -90,7 +90,7 @@ A release build carries the rows (a few function values) but never opens the soc
 
 `<id> ok 1 "<game>" "<build>" "<schema hash or 0>" "<map key>" "<verb,verb,...>" "<shapes>"`
 
-- The sixth value (v1): the core verbs the game offers, then the declared ones, comma-separated. A v1 client
+- The sixth value (v1): the core verbs the game offers, the interface's (`DevlinkUi.offers()`, which the game states itself: a member is never probed, some act), then the declared ones, comma-separated. A v1 client
   reads it as before.
 - The seventh value (added, protocol v1.1; a v1 client reads six values and ignores it): the declared verbs
   with their shapes, `;` between verbs, each `key` or `key name:type name:type?...`, for example
