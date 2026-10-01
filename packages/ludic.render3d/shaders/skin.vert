@@ -6,6 +6,7 @@ layout(location = 1) in vec3 a_nrm;
 layout(location = 2) in vec2 a_uv;
 layout(location = 5) in vec4 a_joints;      // integer indices, read as floats
 layout(location = 6) in vec4 a_weights;
+layout(location = 7) in vec4 a_col;         // COLOR_0 as RGBA8 (gltf_colour); a mesh without it leaves it unfed (zero)
 uniform mat4 u_model;
 uniform mat4 u_bones[48];
 uniform float u_skinned;                    // 0: a rigid model on the same path
@@ -22,7 +23,7 @@ out float v_seed;
 out vec2 v_rot;
 out float v_hull;
 out float v_quake;   // only aspens quake; written so model.frag can read it
-out vec4 v_col;          // vertex colour: none here, so white (model.frag multiplies it in)
+out vec4 v_col;          // COLOR_0, or white when the mesh has none (model.frag multiplies it in)
 out float v_near;         // model.frag declares it; 1 = no near fade
 out float v_lh;           // model.frag declares it; 1 = no low-plant occlusion
 void main() {
@@ -48,7 +49,7 @@ void main() {
   v_rot = vec2(0.0, 1.0);
   v_hull = 1.0;
   v_quake = 0.0;
-  v_col = vec4(1.0);
+  v_col = (a_col == vec4(0.0)) ? vec4(1.0) : a_col;   // as model.vert: an unfed input reads zero
   v_near = 1.0;
   v_lh = 1.0;
 #ifdef SHADOW_PASS

@@ -3012,6 +3012,7 @@ I 1fde9cd2 a_joints 5 vec4
 I 1fde9cd2 a_pos 0 vec3
 I 1fde9cd2 a_nrm 1 vec3
 I 1fde9cd2 a_uv 2 vec2
+I 1fde9cd2 a_col 7 vec4
 B 1fde9cd2 frag 1 980
 U 1fde9cd2 frag u_cascade_vp 0 mat4 5 64
 U 1fde9cd2 frag u_cascade_split 320 float 5 16
@@ -3081,6 +3082,7 @@ I a5ad521e a_joints 5 vec4
 I a5ad521e a_pos 0 vec3
 I a5ad521e a_nrm 1 vec3
 I a5ad521e a_uv 2 vec2
+I a5ad521e a_col 7 vec4
 B a5ad521e frag 1 980
 U a5ad521e frag u_cascade_vp 0 mat4 5 64
 U a5ad521e frag u_cascade_split 320 float 5 16
@@ -3151,6 +3153,7 @@ I 9068df1c a_joints 5 vec4
 I 9068df1c a_pos 0 vec3
 I 9068df1c a_nrm 1 vec3
 I 9068df1c a_uv 2 vec2
+I 9068df1c a_col 7 vec4
 B 9068df1c frag 1 844
 U 9068df1c frag u_cascade_vp 0 mat4 5 64
 U 9068df1c frag u_cascade_split 320 float 5 16
@@ -3211,6 +3214,7 @@ I e9b6300c a_joints 5 vec4
 I e9b6300c a_pos 0 vec3
 I e9b6300c a_nrm 1 vec3
 I e9b6300c a_uv 2 vec2
+I e9b6300c a_col 7 vec4
 B e9b6300c frag 1 844
 U e9b6300c frag u_cascade_vp 0 mat4 5 64
 U e9b6300c frag u_cascade_split 320 float 5 16
@@ -3270,6 +3274,7 @@ I b79a1f4e a_joints 5 vec4
 I b79a1f4e a_pos 0 vec3
 I b79a1f4e a_nrm 1 vec3
 I b79a1f4e a_uv 2 vec2
+I b79a1f4e a_col 7 vec4
 B b79a1f4e frag 0 832
 U b79a1f4e frag u_cascade_vp 0 mat4 5 64
 U b79a1f4e frag u_cascade_split 320 float 5 16
@@ -3328,6 +3333,7 @@ I a64015f2 a_joints 5 vec4
 I a64015f2 a_pos 0 vec3
 I a64015f2 a_nrm 1 vec3
 I a64015f2 a_uv 2 vec2
+I a64015f2 a_col 7 vec4
 B a64015f2 frag 0 832
 U a64015f2 frag u_cascade_vp 0 mat4 5 64
 U a64015f2 frag u_cascade_split 320 float 5 16
