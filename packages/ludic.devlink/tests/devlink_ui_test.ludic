@@ -60,7 +60,18 @@ program DevlinkUiTest {
     if id == "ghost" { return -1 }
     return 0
   }
-  bind DevlinkUi { click: fn fu_click, click_id: fn fu_click_id, screen: fn fu_screen, model: fn fu_model, tree: fn fu_tree, override: fn fu_override }
+  function fu_focus(fake_ui_st: FakeUiState, f: DevlinkFocus) -> int {
+    if not fake_ui_st.offered { return DL_UNBOUND }
+    f.screen = "SettingsMenu"
+    if fake_ui_st.last == "focused" {
+      f.key = "Settings/0/2"
+      f.id = "settings.back"
+      f.at = 2
+      f.count = 4
+    }
+    return 0
+  }
+  bind DevlinkUi { focus: fn fu_focus, click: fn fu_click, click_id: fn fu_click_id, screen: fn fu_screen, model: fn fu_model, tree: fn fu_tree, override: fn fu_override }
 
   function ask(devlink_st: mut DevlinkState, fake_ui_st: mut FakeUiState, line: string) -> string {
     fake_ui_st.inbox = line
@@ -74,6 +85,15 @@ program DevlinkUiTest {
     expect(ask(devlink_st, fake_ui_st, "2 ui_screen extra") == "2 err bad_args \"bad arguments\"")
     fake_ui_st.offered = false
     expect(ask(devlink_st, fake_ui_st, "3 ui_screen") == "3 err unbound \"not offered\"")
+  }
+
+  test "ui_focus answers key, id, place, count and screen; empty before a frame; unbound says not offered" (devlink_st: mut DevlinkState, fake_ui_st: mut FakeUiState) {
+    expect(ask(devlink_st, fake_ui_st, "4 ui_focus") == "4 ok \"\" \"\" -1 0 \"SettingsMenu\"")
+    fake_ui_st.last = "focused"
+    expect(ask(devlink_st, fake_ui_st, "5 ui_focus") == "5 ok \"Settings/0/2\" \"settings.back\" 2 4 \"SettingsMenu\"")
+    expect(ask(devlink_st, fake_ui_st, "6 ui_focus now") == "6 err bad_args \"bad arguments\"")
+    fake_ui_st.offered = false
+    expect(ask(devlink_st, fake_ui_st, "7 ui_focus") == "7 err unbound \"not offered\"")
   }
 
   test "ui_click plays a click at layout coordinates or on an element's id" (devlink_st: mut DevlinkState, fake_ui_st: mut FakeUiState) {
