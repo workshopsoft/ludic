@@ -122,3 +122,19 @@ export function dv_reply_str(c: DevCall, s: string) -> void {
   }
   dv_b(c, 34)
 }
+
+# ---- the `<kind>_near x z r max?` convention: a list answer is bounded by the reply cap ----
+export const DV_NEAR_DEFAULT: int = 12   # how many records `<kind>_near` answers when `max` is left out
+export const DV_NEAR_MAX: int = 16       # and the most it ever answers: 16 records of 60 bytes fit DV_OUT
+
+# how many records a `_near` verb may write after its count: the optional `max` at argument k (DV_NEAR_DEFAULT
+# when left out), clamped to 0 .. DV_NEAR_MAX and to what the bytes left in the reply hold at `per` bytes a record
+export function dv_near_limit(c: DevCall, k: int, per: int) -> int {
+  var m = DV_NEAR_DEFAULT
+  if dv_has(c, k) { m = dv_int(c, k) }
+  if m < 0 { m = 0 }
+  if m > DV_NEAR_MAX { m = DV_NEAR_MAX }
+  let room = (DV_OUT - c.out_n - 8) / per
+  if m > room { m = room }
+  return m
+}
