@@ -6,8 +6,9 @@ function fr_text(ui_st: mut UiState, n: UiNode) -> void {
   let y = n.y + n.pt + n.bt + (lh - n.rsize * 1.25) / 2.0
   let a = n.rfg_a * ui_st.fr_ga
   let sh = fr_text_shadow(n)
+  ui_st.ly_ls = ly_ls_of(n)
   if n.lines == null {
-    var s = tf_fit(ui_st, n, n.text)
+    var s = tf_fit(ui_st, n, ly_shown(ui_st, n, n.text))
     if n.ellipsis { s = ly_ellipsis(ui_st, s, ui_st.tf_size, n.cw - ly_hin(n)) }
     fr_line(ui_st, n, sh, fr_line_x(ui_st, n, s, ui_st.tf_size), y, s, a, ui_st.tf_size)
     return
@@ -15,9 +16,9 @@ function fr_text(ui_st: mut UiState, n: UiNode) -> void {
   for i in 0 .. len(n.lines) { fr_line(ui_st, n, sh, fr_line_x(ui_st, n, n.lines[i], n.rsize), y + float(i) * lh, n.lines[i], a, n.rsize) }
 }
 # one line, over its shadow when it has one
-function fr_line(ui_st: UiState, n: UiNode, sh: UiNodeX, x: float, y: float, s: string, a: float, size: float) -> void {
-  if sh != null { ui_st.ui_be.text(x + sh.tsh_x, y + sh.tsh_y, s, size, sh.tsh_c, sh.tsh_a * ui_st.fr_ga) }
-  ui_st.ui_be.text(x, y, s, size, n.rfg, a)
+function fr_line(ui_st: mut UiState, n: UiNode, sh: UiNodeX, x: float, y: float, s: string, a: float, size: float) -> void {
+  if sh != null { fr_run(ui_st, x + sh.tsh_x, y + sh.tsh_y, s, size, sh.tsh_c, sh.tsh_a * ui_st.fr_ga) }
+  fr_run(ui_st, x, y, s, size, n.rfg, a)
 }
 # text-shadow is inherited: the nearest element that says it, or null (none)
 function fr_text_shadow(n: UiNode) -> UiNodeX {

@@ -20,12 +20,14 @@ function el_line_h(ui_st: mut UiState, n: UiNode, s0: string) -> void {
   x.lh_kind = 2
   x.lh_v = el_unit(ui_st, s)
 }
-# the nearest element, out from this one, that says `what` (0 text-fit, 1 line-height), or null
+# the nearest element, out from this one, that says `what` (0 text-fit, 1 line-height, 2 text-transform, 3 letter-spacing), or null
 function tf_up(n: UiNode, what: int) -> UiNodeX {
   var at = n
   while at != null {
     if at.ex != null and what == 0 and at.ex.fit_min > 0.0 { return at.ex }
     if at.ex != null and what == 1 and at.ex.lh_kind > 0 { return at.ex }
+    if at.ex != null and what == 2 and at.ex.tt_kind > 0 { return at.ex }
+    if at.ex != null and what == 3 and at.ex.ls_set { return at.ex }
     at = at.parent
   }
   return null

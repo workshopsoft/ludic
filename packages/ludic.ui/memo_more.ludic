@@ -18,30 +18,32 @@ function mm_find_at(m: UiMemo, tag: int, s: string, a: float, b: float) -> int {
 }
 function ly_wrap(ui_st: mut UiState, s: string, size: float, room0: float) -> []string {
   let room = float(int(room0))
+  let key = ly_room_key(room, ui_st.ly_ls)
   let m = mm_of(ui_st)
-  let i = mm_find_at(m, MM_WRAP, s, size, room)
+  let i = mm_find_at(m, MM_WRAP, s, size, key)
   if i >= 0 { return m.lists[i] }
   let lines = ly_wrap_new(ui_st, s, size, room)
   let j = mm_add(m, MM_WRAP, s)
   if j >= 0 {
     m.lists[j] = lines
     m.n1[j] = size
-    m.n2[j] = room
+    m.n2[j] = key
   }
   return lines
 }
 function ly_ellipsis(ui_st: mut UiState, s: string, size: float, room0: float) -> string {
   if ly_text_w(ui_st, s, size) <= room0 { return s }
   let room = float(int(room0))
+  let key = ly_room_key(room, ui_st.ly_ls)
   let m = mm_of(ui_st)
-  let i = mm_find_at(m, MM_ELLIP, s, size, room)
+  let i = mm_find_at(m, MM_ELLIP, s, size, key)
   if i >= 0 { return m.texts[i] }
   let t = ly_ellipsis_new(ui_st, s, size, room)
   let j = mm_add(m, MM_ELLIP, s)
   if j >= 0 {
     m.texts[j] = t
     m.n1[j] = size
-    m.n2[j] = room
+    m.n2[j] = key
   }
   return t
 }

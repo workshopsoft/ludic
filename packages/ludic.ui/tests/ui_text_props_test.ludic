@@ -1,0 +1,82 @@
+# ui_text_props_test - text-transform and letter-spacing: the measured width grows by spacing x (n - 1),
+# the transform changes the measured and the drawn string (never the source), both are inherited, and
+# letter-spacing draws glyph by glyph.
+import "ludic.ui"
+program UiTextPropsTest {
+  numbers float
+  state TpState {
+    said: []string = new []string
+  }
+  # an uppercase letter is 10 wide, anything else 5
+  function w(s: string, size: float) -> float {
+    var t = 0.0
+    for i in 0 .. len(s) { if s[i] >= 65 and s[i] <= 90 { t += 10.0 } else { t += 5.0 } }
+    return t
+  }
+  function rec(tp: mut TpState, x: float, y: float, s: string, size: float, c: int, a: float) -> void { push(tp.said, `{s}@{int(x)}`) }
+  function tp_load(ui_st: mut UiState, tp: TpState, css: string, body: string) -> UiNode {
+    let b = new UiBackend
+    b.text = fn rec
+    b.measure = fn w
+    ui_backend(ui_st, b)
+    ui_load_text(ui_st, "<ui><style>p { height: 20px }\n" + css + "</style><screen name='t'>" + body + "</screen></ui>", "t.xml")
+    ui_show(ui_st, "t", null, 0.0, 0.0, 400.0, 300.0)
+    let root: UiNode = ui_nodes(ui_st, "t", null)
+    ui_place(ui_st, root, 0.0, 0.0, 400.0, 300.0)
+    return root
+  }
+  function said(tp: TpState) -> string {
+    var s = ""
+    for i in 0 .. len(tp.said) { s = s + tp.said[i] + "|" }
+    return s
+  }
+
+  test "letter-spacing adds spacing x (n - 1) to the measured width" (ui_st: mut UiState, tp: mut TpState) {
+    let r = tp_load(ui_st, tp, ".a { letter-spacing: 4px }", "<div><p>abcde</p><p class='a'>abcde</p><p class='a'>a</p></div>")
+    let d = r.children[0]
+    expect_eq(len(ui_errors(ui_st)), 0)
+    expect_eq(int(d.children[0].mw), 25)
+    expect_eq(int(d.children[1].mw), 25 + 4 * 4)
+    expect_eq(int(d.children[2].mw), 5)
+  }
+  test "letter-spacing in em is the element's font size, normal is none" (ui_st: mut UiState, tp: mut TpState) {
+    let r = tp_load(ui_st, tp, ".a { font-size: 10px; letter-spacing: 0.5em } .b { letter-spacing: normal }", "<div><p class='a'>abc</p><p class='b'>abc</p></div>")
+    let d = r.children[0]
+    expect_eq(len(ui_errors(ui_st)), 0)
+    expect_eq(int(d.children[0].mw), 15 + 2 * 5)
+    expect_eq(int(d.children[1].mw), 15)
+  }
+  test "letter-spacing is inherited, and a child can undo it" (ui_st: mut UiState, tp: mut TpState) {
+    let r = tp_load(ui_st, tp, ".a { letter-spacing: 2px } .n { letter-spacing: normal }", "<div class='a'><p>abc</p><div class='n'><p>abc</p></div></div>")
+    let d = r.children[0]
+    expect_eq(int(d.children[0].mw), 15 + 4)
+    expect_eq(int(d.children[1].children[0].mw), 15)
+  }
+  test "uppercase measures and draws the transformed string, the source stays" (ui_st: mut UiState, tp: mut TpState) {
+    let r = tp_load(ui_st, tp, ".u { text-transform: uppercase }", "<div><p>abc</p><p class='u'>abc</p></div>")
+    let d = r.children[0]
+    expect_eq(len(ui_errors(ui_st)), 0)
+    expect_eq(int(d.children[0].mw), 15)
+    expect_eq(int(d.children[1].mw), 30)
+    expect_eq(d.children[1].text, "abc")
+    expect(Text.contains(said(tp), "ABC@"))
+    expect(Text.contains(said(tp), "abc@"))
+  }
+  test "lowercase and capitalize, inherited from a parent" (ui_st: mut UiState, tp: mut TpState) {
+    let r = tp_load(ui_st, tp, ".l { text-transform: lowercase } .c { text-transform: capitalize }", "<div class='l'><p>ABC</p></div><div class='c'><p>the quick  fox</p></div>")
+    expect_eq(int(r.children[0].children[0].mw), 15)
+    expect_eq(int(r.children[1].children[0].mw), 80)
+    expect(Text.contains(said(tp), "abc@"))
+    expect(Text.contains(said(tp), "The Quick Fox@"))
+  }
+  test "letter-spacing draws glyph by glyph, a gap apart; the transform and the spacing agree" (ui_st: mut UiState, tp: mut TpState) {
+    let r = tp_load(ui_st, tp, ".s { text-transform: uppercase; letter-spacing: 3px }", "<div class='s'><p>ab</p></div>")
+    expect_eq(int(r.children[0].children[0].mw), 20 + 3)
+    expect(Text.contains(said(tp), "A@0|B@13|"))
+  }
+  test "an unknown text-transform is said" (ui_st: mut UiState, tp: mut TpState) {
+    let r = tp_load(ui_st, tp, ".x { text-transform: shout }", "<div class='x'><p>a</p></div>")
+    expect_eq(len(ui_errors(ui_st)), 1)
+    expect(Text.contains(ui_errors(ui_st)[0], "text-transform"))
+  }
+}

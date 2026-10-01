@@ -29,6 +29,9 @@ export property UiNodeX {
   grad: UiGradient = null       # background: linear-gradient(...)
   ratio: float = 0.0            # aspect-ratio, width over height; 0 none
   fit_obj: int = 0              # object-fit: 0 fill, 1 contain, 2 cover, 3 none, 4 scale-down
+  tt_kind: int = 0              # text-transform, inherited: 0 not said, then TT_NONE .. TT_CAP (text_props.ludic)
+  ls_set: bool = false          # letter-spacing, inherited: ls_v is its px
+  ls_v: float = 0.0
   zoom: float = 1.0             # zoom: this element and everything inside it, larger or smaller
 }
 function nx(n: UiNode) -> UiNodeX {

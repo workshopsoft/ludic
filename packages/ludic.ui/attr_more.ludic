@@ -1,10 +1,10 @@
 # attr_more.ludic - width and height (where 0 is 0 and calc() may hold a percentage), the flex
 # shorthand, flex-shrink, order, text-shadow, pointer-events, text-fit and line-height (text_fit.ludic)
-const EL_KEYS_MORE: string = " line-height order pointer-events shrink text-fit text-shadow aspect-ratio object-fit zoom "   # el_fit_props's too
+const EL_KEYS_MORE: string = " line-height order pointer-events shrink text-fit text-shadow text-transform letter-spacing aspect-ratio object-fit zoom "   # el_fit_props's too
 function el_more(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
   if not lk_in(EL_KEYS_MORE, key) { return false }      # not one of its keys: no text made for it
   let s = vl_text_u(ui_st, v)
-  if key == "shrink" { nx(n).shrink = Math.max(el_num(s), 0.0) } else if key == "order" { nx(n).order = int(el_num(s)) } else if key == "text-shadow" { el_text_shadow(ui_st, n, s) } else if key == "pointer-events" { nx(n).no_pointer = tw(ui_st, s) == "none" } else if key == "text-fit" { el_text_fit(ui_st, n, s) } else if key == "line-height" { el_line_h(ui_st, n, s) } else { return el_fit_props(ui_st, n, key, s) }
+  if key == "shrink" { nx(n).shrink = Math.max(el_num(s), 0.0) } else if key == "order" { nx(n).order = int(el_num(s)) } else if key == "text-shadow" { el_text_shadow(ui_st, n, s) } else if key == "pointer-events" { nx(n).no_pointer = tw(ui_st, s) == "none" } else if key == "text-fit" { el_text_fit(ui_st, n, s) } else if key == "line-height" { el_line_h(ui_st, n, s) } else if key == "text-transform" { el_text_transform(ui_st, n, s) } else if key == "letter-spacing" { el_letter_spacing(ui_st, n, s) } else { return el_fit_props(ui_st, n, key, s) }
   return true
 }
 # width or height: a length (0 included), fill, a percentage, calc(), or auto/fit (none)

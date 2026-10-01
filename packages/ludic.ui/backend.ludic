@@ -213,6 +213,7 @@ export state UiState {
   sc_want_px: []float = new []float
   st_keys: []string = new []string
   st_vals: []Val = new []Val
+  ly_ls: float = 0.0          # the letter-spacing of the text being measured or drawn, px
   tf_size: float = 0.0        # the size tf_fit drew at
   tt_key: string = ""
   tt_since: float = 0.0

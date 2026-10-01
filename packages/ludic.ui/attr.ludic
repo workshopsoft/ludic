@@ -1,6 +1,6 @@
 # attr.ludic - what a property sets, by its CSS name or the short one (width or w, background or
 # bg, font-size or size, ...). An attribute on an element is the same property, applied last.
-const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow cursor transition animation letter-spacing text-decoration "
+const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow cursor transition animation text-decoration "
 # a stylesheet's property: one that means nothing is said
 function el_attr(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
   if el_apply(ui_st, n, key, v) { return }

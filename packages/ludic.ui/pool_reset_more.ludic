@@ -78,6 +78,9 @@ function nx_reset(x: UiNodeX) -> void {
   x.grad = null
   x.ratio = 0.0
   x.fit_obj = 0
+  x.tt_kind = 0
+  x.ls_set = false
+  x.ls_v = 0.0
   x.zoom = 1.0
 }
 function env_reset(e: UiEnv) -> void {

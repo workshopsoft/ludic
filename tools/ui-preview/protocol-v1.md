@@ -154,6 +154,8 @@ unclipped, and the next frame starts unclipped again.
   `fonts/`), every code point measures half of `floor(size)`.
 - The string is the text as drawn: already translated (`locale`), already wrapped (one line a `text`
   line) and already cut with its ellipsis. A text-shadow is its own `text` line, drawn before.
+  With `text-transform` the string is already transformed; with `letter-spacing` a line is drawn as one
+  `text` line per character, each at its own x (the gap added), and measured as the sum plus n - 1 gaps.
 
 ## 6. Events
 

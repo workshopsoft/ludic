@@ -1,0 +1,115 @@
+# text_props.ludic - text-transform and letter-spacing, both inherited as CSS's are. The source text is
+# never changed: the transformed text is worked out at layout and at draw (memoized by the text), and
+# letter-spacing is added between glyphs (n - 1 gaps, as MDN says) to a measured width and to a draw.
+const TT_NONE: int = 1
+const TT_UPPER: int = 2
+const TT_LOWER: int = 3
+const TT_CAP: int = 4
+const MM_CASE: int = -17           # texts the transformed text; n1 the kind
+const MM_GLYPHS: int = -18         # lists a text's characters, one string each
+# text-transform: none | uppercase | lowercase | capitalize
+function el_text_transform(ui_st: mut UiState, n: UiNode, s: string) -> void {
+  let w = tw(ui_st, s)
+  if w == "none" { nx(n).tt_kind = TT_NONE } else if w == "uppercase" { nx(n).tt_kind = TT_UPPER } else if w == "lowercase" { nx(n).tt_kind = TT_LOWER } else if w == "capitalize" { nx(n).tt_kind = TT_CAP } else {
+    ui_err(ui_st, `text-transform: {s} - none, uppercase, lowercase or capitalize`)
+  }
+}
+# letter-spacing: normal, or a length in px or em (an em is this element's font size, kept as px)
+function el_letter_spacing(ui_st: mut UiState, n: UiNode, s: string) -> void {
+  let x = nx(n)
+  x.ls_set = true
+  x.ls_v = 0.0
+  if tw(ui_st, s) == "normal" { return }
+  x.ls_v = el_unit(ui_st, s)
+}
+# the nearest element's text-transform (none when no one says), and its letter-spacing in px
+function ly_tt(n: UiNode) -> int {
+  let x = tf_up(n, 2)
+  if x == null { return TT_NONE }
+  return x.tt_kind
+}
+function ly_ls_of(n: UiNode) -> float {
+  let x = tf_up(n, 3)
+  if x == null { return 0.0 }
+  return x.ls_v
+}
+# what a node's text shows: its text through its text-transform
+function ly_shown(ui_st: mut UiState, n: UiNode, s: string) -> string {
+  let kind = ly_tt(n)
+  if kind == TT_NONE or len(s) == 0 { return s }
+  let m = mm_of(ui_st)
+  let i = mm_find_at(m, MM_CASE, s, float(kind), 0.0)
+  if i >= 0 { return m.texts[i] }
+  let t = ly_case_new(s, kind)
+  let j = mm_add(m, MM_CASE, s)
+  if j >= 0 {
+    m.texts[j] = t
+    m.n1[j] = float(kind)
+  }
+  return t
+}
+@alloc_ok("a memo miss: once per text and kind (memo.ludic), bounded by MM_CAP")
+function ly_case_new(s: string, kind: int) -> string {
+  if kind == TT_UPPER { return Unicode.upper(s) }
+  if kind == TT_LOWER { return Unicode.lower(s) }
+  # capitalize: the first letter of each space-separated word; the rest as it was
+  let words = lss_split(s, 32)
+  var out = ""
+  for i in 0 .. len(words) {
+    let w = words[i]
+    var piece = w
+    if len(w) > 0 {
+      let first = Unicode.truncate(w, 1)
+      piece = Unicode.upper(first) + w[len(first)..len(w)]
+    }
+    if i > 0 { out = out + " " }
+    out = out + piece
+  }
+  return out
+}
+# letter-spacing's share of a measured width: a gap between each pair of characters
+function ly_ls_w(ui_st: UiState, s: string) -> float {
+  if ui_st.ly_ls == 0.0 { return 0.0 }
+  let n = Unicode.len(s)
+  if n < 2 { return 0.0 }
+  return ui_st.ly_ls * float(n - 1)
+}
+# a memo key for a room and a letter-spacing together (the room is whole pixels; the spacing, hundredths)
+function ly_room_key(room: float, ls: float) -> float { return room + float(int(ls * 100.0)) * 1048576.0 }
+# a text's characters (UTF-8 sequences), once per text
+function ly_glyphs(ui_st: mut UiState, s: string) -> []string {
+  let m = mm_of(ui_st)
+  let i = mm_find(m, MM_GLYPHS, s)
+  if i >= 0 { return m.lists[i] }
+  let g = ly_glyphs_new(s)
+  let j = mm_add(m, MM_GLYPHS, s)
+  if j >= 0 { m.lists[j] = g }
+  return g
+}
+@alloc_ok("a memo miss: once per text (memo.ludic), bounded by MM_CAP")
+function ly_glyphs_new(s: string) -> []string {
+  let out = new []string
+  var at = 0
+  while at < len(s) {
+    let b = s[at]
+    var k = 1
+    if b >= 240 { k = 4 } else if b >= 224 { k = 3 } else if b >= 192 { k = 2 }
+    if at + k > len(s) { k = len(s) - at }
+    push(out, s[at..at + k])
+    at += k
+  }
+  return out
+}
+# one line drawn: whole when it has no letter-spacing, else glyph by glyph, each a gap further on
+function fr_run(ui_st: mut UiState, x: float, y: float, s: string, size: float, c: int, a: float) -> void {
+  if ui_st.ly_ls == 0.0 or Unicode.len(s) < 2 {
+    ui_st.ui_be.text(x, y, s, size, c, a)
+    return
+  }
+  let g = ly_glyphs(ui_st, s)
+  var px = x
+  for i in 0 .. len(g) {
+    ui_st.ui_be.text(px, y, g[i], size, c, a)
+    px = px + ly_text_w_raw(ui_st, g[i], size) + ui_st.ly_ls
+  }
+}

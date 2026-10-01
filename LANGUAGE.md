@@ -1457,6 +1457,12 @@ applies to both:
     smaller, down to that size, then cuts what still does not fit with an ellipsis (for a chip
     whose words may be long in another language). `line-height` is a multiple of the font size
     (`1.5`), px or em. Both are inherited.
+  - `text-transform: none | uppercase | lowercase | capitalize` changes the case a text is measured
+    and drawn in (the source string, and its translation, stay as they are; Latin-1 letters map,
+    other scripts pass through; `capitalize` raises the first letter of each space-separated word).
+    `letter-spacing: normal | <length>` (px or em, an em being the element's own font size) adds
+    its length between the characters of a line, n - 1 gaps, to the measured width and to the
+    draw, which then places each character on its own. Both are inherited, as CSS's are.
   - `em` is the font size the element ends with, wherever its `font-size` is set among the rules
     that style it; in `font-size` itself it is the parent's. A sheet's own rule wins a tie with a
     rule it `@import`s.

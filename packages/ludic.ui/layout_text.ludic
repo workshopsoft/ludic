@@ -3,7 +3,9 @@
 function ly_measure_text(ui_st: mut UiState, n: UiNode, avail: float) -> void {
   n.lines = null
   let lh = ly_line_h(n)
-  var one = ly_text_w(ui_st, n.text, n.rsize)
+  ui_st.ly_ls = ly_ls_of(n)
+  let text = ly_shown(ui_st, n, n.text)
+  var one = ly_text_w(ui_st, text, n.rsize)
   var room = avail - n.ml - n.mr - ly_hin(n)
   if n.w >= 0.0 { room = n.w - ly_hin(n) }
   let fits = n.ex != null and n.ex.fit_min > 0.0
@@ -13,7 +15,7 @@ function ly_measure_text(ui_st: mut UiState, n: UiNode, avail: float) -> void {
     n.mh = n.mh + lh
     return
   }
-  n.lines = ly_wrap(ui_st, n.text, n.rsize, room)
+  n.lines = ly_wrap(ui_st, text, n.rsize, room)
   var widest = 0.0
   for i in 0 .. len(n.lines) { widest = Math.max(widest, ly_text_w(ui_st, n.lines[i], n.rsize)) }
   n.mw = n.mw + widest
@@ -44,6 +46,10 @@ function ly_ellipsis_new(ui_st: UiState, s: string, size: float, room: float) ->
   return s[0..n] + "..."
 }
 function ly_text_w(ui_st: UiState, s: string, size: float) -> float {
+  return ly_text_w_raw(ui_st, s, size) + ly_ls_w(ui_st, s)
+}
+# a width with no letter-spacing in it
+function ly_text_w_raw(ui_st: UiState, s: string, size: float) -> float {
   if ui_st.ui_be != null and ui_st.ui_be.measure != null { return ui_st.ui_be.measure(s, size) }
   return float(len(s)) * size * 0.5
 }
