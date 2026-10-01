@@ -1,0 +1,21 @@
+# devverb_yaw_test.ludic - dv_reply_yaw: a yaw faces (-sin, -cos); on the wire it is degrees in [0, 360), render3d's
+# (0 -> -z, 90 -> -x). Cameras are placed from this number.
+import "ludic.base"
+program DevverbYawTest {
+  numbers float
+  function yaw_of(rad: float) -> string {
+    let c = devcall_new()
+    dv_reply_yaw(c, rad)
+    return text_of(c.out, c.out_n)
+  }
+
+  test "dv_reply_yaw: degrees, normalised to [0, 360)" {
+    expect_eq(yaw_of(0.0), " 0.000")
+    expect_eq(yaw_of(-1.5707963), " 270.000")
+    expect_eq(yaw_of(1.5707963), " 90.000")
+    expect_eq(yaw_of(7.0 * 3.14159265), " 180.000")
+    expect_eq(yaw_of(-3.14159265), " 180.000")
+    expect_eq(yaw_of(3.14159265 * 2.0 - 0.0000001), " 0.000")     # a hair under a turn must not print 360.000
+    expect_eq(yaw_of(-0.0000001), " 0.000")
+  }
+}
