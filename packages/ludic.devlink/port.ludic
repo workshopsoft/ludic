@@ -11,6 +11,17 @@ export property DevlinkCam {
   pitch: float = 0.0
 }
 
+export const DL_GROUND_UNBOUND: float = -2000000000.0   # what the default `ground` returns: the game did not bind it
+export const DL_GROUND_NONE: float = -1000000000.0      # a bound `ground` answers this (or less) where there is no ground
+# the nearest thing a ray met, filled by DevlinkWorld.ray
+export property DevlinkHit {
+  hit: bool = false
+  t: float = 0.0       # distance along the (unit) direction
+  x: float = 0.0
+  y: float = 0.0
+  z: float = 0.0
+}
+
 export port DevlinkNet {
   open: fn(int) -> int = fn dln_none1                 # port -> a handle, < 0 none
   recv: fn(int, []byte, int) -> int = fn dln_none3    # handle, buffer, cap -> bytes (0 none)
@@ -41,6 +52,10 @@ export port DevlinkWorld {
   pause: fn(bool) -> int = fn dlw_b
   step: fn(int) -> int = fn dlw_i
   steps_left: fn() -> int = fn dlw_z0
+  # probes: what the game's physics says, which is what a player stands on (not the authored heightmap)
+  ground: fn(float, float) -> float = fn dlw_ground    # x z -> the ground's y there, DL_GROUND_NONE or less for none
+  ray: fn(float, float, float, float, float, float, float, DevlinkHit) -> int = fn dlw_ray   # origin, unit direction, max distance, the hit; 0 answered, < 0 failed
+  settled: fn() -> int = fn dlw_n0                    # the world around the player is ready for a shot: 1 yes, 0 not yet
 }
 function dln_none1(a: int) -> int { return -1 }
 function dln_none3(a: int, b: []byte, c: int) -> int { return 0 }
@@ -65,6 +80,8 @@ function dlw_cam(c: DevlinkCam) -> int { return DL_UNBOUND }
 function dlw_n5(a: float, b: float, c: float, d: float, e: float) -> int { return DL_UNBOUND }
 function dlw_n0() -> int { return DL_UNBOUND }
 function dlw_z0() -> int { return 0 }
+function dlw_ground(x: float, z: float) -> float { return DL_GROUND_UNBOUND }
+function dlw_ray(ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, m: float, h: DevlinkHit) -> int { return DL_UNBOUND }
 function dlw_s(s: string) -> int { return DL_UNBOUND }
 function dlw_b(b: bool) -> int { return DL_UNBOUND }
 function dlw_i(n: int) -> int { return DL_UNBOUND }

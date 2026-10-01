@@ -235,13 +235,13 @@ program ServicesTest {
     steam_achievement_unlock(steam_st, SACH_HERMIT)
     let c = devcall_new()
     expect_eq(verb("steam_state", c), DV_OK)
-    expect_eq(text_of(c.out, c.out_n), " 1 \"76561198000000001\" \"Tester\" 1 480 \"0\" 0 1 2")
+    expect_eq(text_of(c.out, c.out_n), " 1 \"76561198000000001\" \"Tester\" true 480 \"0\" 0 1 2")
   }
 
   test "steam_state answers even when Steam is not there" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
     let c = devcall_new()
     expect_eq(verb("steam_state", c), DV_OK)
-    expect_eq(text_of(c.out, c.out_n), " 0 \"0\" \"\" 0 0 \"0\" 0 0 2")
+    expect_eq(text_of(c.out, c.out_n), " 0 \"0\" \"\" false 0 \"0\" 0 0 2")
   }
 
   test "steam_unlock unlocks by key, refuses an unknown one with a suggestion, and needs Steam" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {
@@ -255,7 +255,7 @@ program ServicesTest {
     c.n = 1
     c.s[0] = "hermit"
     expect_eq(verb("steam_unlock", c), DV_OK)
-    expect_eq(text_of(c.out, c.out_n), " 1")
+    expect_eq(text_of(c.out, c.out_n), " true")
     expect(fake_ach(fake_st, "ACH_HERMIT"))
     devcall_clear(c)
     c.n = 1
@@ -266,7 +266,7 @@ program ServicesTest {
     c.n = 1
     c.s[0] = "hermit"
     expect_eq(verb("steam_unlock", c), DV_OK)
-    expect_eq(text_of(c.out, c.out_n), " 0")
+    expect_eq(text_of(c.out, c.out_n), " false")
   }
 
   test "steam_reset resets stats, and achievements when told" (steam_st: mut SteamState, fake_st: mut FakeSteamState) {

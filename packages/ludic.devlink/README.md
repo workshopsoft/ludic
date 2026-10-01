@@ -12,6 +12,21 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
   `cam_get` / `cam_set` / `cam_release`, `shot`, `pause` / `resume`, `step`. `shot` and `step` answer later
   by id (5 s at most, one at a time). While `coop()` says a session is connected, everything but `ping` and
   `hello` is refused. `DevlinkWorld.offers()` names only the core verbs the game bound.
+- **Probes** ask the game's physics what a player would meet (not the authored heightmap): `DevlinkWorld.ground`,
+  `ray` and `settled`, unbound by default. `ground x z` answers `ok y` (`err failed "no ground there"` when the
+  game answers `DL_GROUND_NONE`); `ray ox oy oz dx dy dz max` answers `ok true t x y z` (`t` the distance along the
+  direction, which devlink normalises) or `ok false`, with `err bad_args` for a zero direction or a max <= 0;
+  `settled` answers `ok true` or `ok false` (the member returns 1, 0, or `DL_UNBOUND`): the world around the
+  player is ready for a shot, and the game decides what that takes (physics for the cell made, streaming idle,
+  the body grounded). `ground` and `ray` are `unbound` until bound. Numbers are written with three decimals,
+  like `cam_get`. **`offers()` stays the game's own string**: a game that binds the probes adds
+  `ground,ray,settled` to it so `hello` lists them.
+- **`window w h retina?`** pins the drawable so a shot is the same size on every machine: the window's content size
+  in points (160 to 7680) and the backing-resolution (Retina) drawable on or off (off unless `true`), through the
+  runtime's `Gfx.set_window` / `Gfx.set_retina`. It answers `ok w h retina` with the drawable the window has after
+  the call (points times the live pixel scale, what `shot` writes). Always answered, no binding, not listed in
+  `hello`'s offers; refused while `coop()` like every verb but `ping` and `hello`; a no-op headless (the answer is the
+  asked size at scale 1).
 - **Declared verbs** are everything that belongs to a game or a package: `goto`, `time`, `weather`,
   `map_load`, a store's `steam_state` / `unlock`. Whoever owns one declares it with `def DevVerbs` (see below);
   devlink knows none of them.

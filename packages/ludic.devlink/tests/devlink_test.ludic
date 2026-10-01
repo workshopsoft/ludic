@@ -18,6 +18,7 @@ program DevlinkTest {
     steps: int = 0
     last: string = ""             # the last text a verb was handed
     calls: int = 0
+    settled: bool = false
     asked: int = -9               # the port the link opened with
     run_path: string = ""         # the run file it wrote, where and what
     run_text: string = ""
@@ -55,7 +56,7 @@ program DevlinkTest {
     let h: long = 81985529216486895
     return h
   }
-  function fw_offers() -> string { return "cam_get,cam_set,shot,step" }
+  function fw_offers() -> string { return "cam_get,cam_set,shot,step,ground,ray,settled" }
   function fw_coop(fake_link_st: FakeLinkState) -> bool { return fake_link_st.coop }
   function fw_cam_get(c: DevlinkCam) -> int {
     c.x = 1038.5
@@ -150,7 +151,25 @@ program DevlinkTest {
   function fw_left(fake_link_st: FakeLinkState) -> int { return fake_link_st.steps }
   function fu_offers() -> string { return "ui_screen,ui_focus,ui_click,ui_click_id,ui_model,ui_tree,ui_override" }
   bind DevlinkUi { offers: fn fu_offers }
-  bind DevlinkWorld { enabled: fn fw_on, game: fn fw_game, schema: fn fw_schema, map: fn fw_map, offers: fn fw_offers, coop: fn fw_coop, camera_get: fn fw_cam_get, camera_set: fn fw_cam_set, screenshot: fn fw_shot, shot_state: fn fw_shot_st, shot_w: fn fw_w, shot_h: fn fw_h, step: fn fw_step, steps_left: fn fw_left }
+  # the probes: ground is x + 3.25 z (no ground past z 100), the ray meets the plane y = 0
+  function fw_ground(x: float, z: float) -> float {
+    if z > 100.0 { return DL_GROUND_NONE }
+    return x + 3.25 * z
+  }
+  function fw_ray(ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, m: float, h: DevlinkHit) -> int {
+    if oz > 500.0 { return -1 }
+    if dy < 0.0 and oy > 0.0 and oy / -dy <= m {
+      let t = oy / -dy
+      h.hit = true
+      h.t = t
+      h.x = ox + dx * t
+      h.y = 0.0
+      h.z = oz + dz * t
+    }
+    return 0
+  }
+  function fw_settled(fake_link_st: FakeLinkState) -> int { if fake_link_st.settled { return 1 } else { return 0 } }
+  bind DevlinkWorld { enabled: fn fw_on, ground: fn fw_ground, ray: fn fw_ray, settled: fn fw_settled, game: fn fw_game, schema: fn fw_schema, map: fn fw_map, offers: fn fw_offers, coop: fn fw_coop, camera_get: fn fw_cam_get, camera_set: fn fw_cam_set, screenshot: fn fw_shot, shot_state: fn fw_shot_st, shot_w: fn fw_w, shot_h: fn fw_h, step: fn fw_step, steps_left: fn fw_left }
 
   # one frame with `line` waiting (or nothing), and what the link sent (or "")
   function ask(devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, line: string, dt: float) -> string {
@@ -162,7 +181,7 @@ program DevlinkTest {
 
   test "ping and hello, and the answers to the camera, byte for byte" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
     expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "1 ok")
-    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"pinewood\" \"0\" \"0123456789abcdef\" \"forest\" \"cam_get,cam_set,shot,step,ui_screen,ui_focus,ui_click,ui_click_id,ui_model,ui_tree,ui_override,signal_source,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later\" \"signal_source at:int;goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later\"")
+    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"pinewood\" \"0\" \"0123456789abcdef\" \"forest\" \"cam_get,cam_set,shot,step,ground,ray,settled,ui_screen,ui_focus,ui_click,ui_click_id,ui_model,ui_tree,ui_override,signal_source,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later\" \"signal_source at:int;goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later\"")
     expect(ask(devlink_st, fake_link_st, "3 cam_get", 0.016) == "3 ok 1038.500 -38.000 -405.250 124.000 -10.000")
     expect(ask(devlink_st, fake_link_st, "4 cam_set 12.5 3 -7 90.25 -5", 0.016) == "4 ok")
     expect(fake_link_st.cx == 12.5 and fake_link_st.cyaw == 90.25)
@@ -208,8 +227,8 @@ program DevlinkTest {
   }
 
   test "declared verbs: each argument type read and validated in place, optional arguments, every error" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
-    expect(ask(devlink_st, fake_link_st, "30 kinds -4 2.5 \"a \\\"b\\\"\" true 9", 0.016) == "30 ok -4 2.500 \"a \\\"b\\\"\" 1 9")
-    expect(ask(devlink_st, fake_link_st, "31 kinds 0 -0.25 \"\" false", 0.016) == "31 ok 0 -0.250 \"\" 0 \"none\"")
+    expect(ask(devlink_st, fake_link_st, "30 kinds -4 2.5 \"a \\\"b\\\"\" true 9", 0.016) == "30 ok -4 2.500 \"a \\\"b\\\"\" true 9")
+    expect(ask(devlink_st, fake_link_st, "31 kinds 0 -0.25 \"\" false", 0.016) == "31 ok 0 -0.250 \"\" false \"none\"")
     expect(ask(devlink_st, fake_link_st, "32 goto 100 -200.5 90", 0.016) == "32 ok 100.000 2919.500 -200.500")
     expect(ask(devlink_st, fake_link_st, "33 goto 1", 0.016) == "33 err bad_args \"bad arguments: goto x:float z:float yaw:float?\"")
     expect(ask(devlink_st, fake_link_st, "34 goto 1 2 3 4", 0.016) == "34 err bad_args \"bad arguments: goto x:float z:float yaw:float?\"")
@@ -246,6 +265,46 @@ program DevlinkTest {
     let b = devlink_st.dl_lcall
     for i in 0 .. 50 { expect(ask(devlink_st, fake_link_st, "70 goto 1 2", 0.016) == "70 ok 1.000 2919.500 2.000") }
     expect(devlink_st.dl_call == a and devlink_st.dl_lcall == b)
+  }
+
+  test "ground: the game's physics y at x z, none where there is no ground, bad arguments" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "3 ground 1 2", 0.016) == "3 ok 7.500")
+    expect(ask(devlink_st, fake_link_st, "4 ground -10.5 0", 0.016) == "4 ok -10.500")
+    expect(ask(devlink_st, fake_link_st, "5 ground 0 101", 0.016) == "5 err failed \"no ground there\"")
+    expect(ask(devlink_st, fake_link_st, "6 ground 1", 0.016) == "6 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_link_st, "7 ground 1 2 3", 0.016) == "7 err bad_args \"bad arguments\"")
+    fake_link_st.coop = true
+    expect(ask(devlink_st, fake_link_st, "8 ground 1 2", 0.016) == "8 err refused \"co-op session connected\"")
+  }
+
+  test "ray: a hit with its distance and point, a miss, a direction that is normalised, bad arguments, a failure" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "4 ray 0 10 0 0 -1 0 50", 0.016) == "4 ok true 10.000 0.000 0.000 0.000")
+    expect(ask(devlink_st, fake_link_st, "5 ray 3 10 4 0 -2 0 50", 0.016) == "5 ok true 10.000 3.000 0.000 4.000")
+    expect(ask(devlink_st, fake_link_st, "6 ray 0 10 0 0 -1 0 5", 0.016) == "6 ok false")
+    expect(ask(devlink_st, fake_link_st, "7 ray 0 10 0 0 1 0 50", 0.016) == "7 ok false")
+    expect(ask(devlink_st, fake_link_st, "8 ray 0 10 0 0 -1 1 50", 0.016) == "8 ok true 14.142 0.000 0.000 10.000")
+    expect(ask(devlink_st, fake_link_st, "9 ray 0 10 0 0 0 0 50", 0.016) == "9 err bad_args \"a direction and a positive max\"")
+    expect(ask(devlink_st, fake_link_st, "10 ray 0 10 0 0 -1 0 0", 0.016) == "10 err bad_args \"a direction and a positive max\"")
+    expect(ask(devlink_st, fake_link_st, "11 ray 0 10 0 0 -1 0", 0.016) == "11 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_link_st, "12 ray 0 10 600 0 -1 0 50", 0.016) == "12 err failed \"the ray could not be cast\"")
+  }
+
+  test "settled: true or false as the game says" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "3 settled", 0.016) == "3 ok false")
+    fake_link_st.settled = true
+    expect(ask(devlink_st, fake_link_st, "4 settled", 0.016) == "4 ok true")
+    expect(ask(devlink_st, fake_link_st, "5 settled now", 0.016) == "5 err bad_args \"bad arguments\"")
+  }
+
+  test "window: the size asked for and the drawable it makes, retina off unless asked, refused in co-op" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "3 window 1280 720", 0.016) == "3 ok 1280 720 false")
+    expect(ask(devlink_st, fake_link_st, "4 window 1280 720 false", 0.016) == "4 ok 1280 720 false")
+    expect(ask(devlink_st, fake_link_st, "5 window 800 600 true", 0.016) == "5 ok 800 600 false")   # headless: scale 1
+    expect(ask(devlink_st, fake_link_st, "6 window 1280", 0.016) == "6 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_link_st, "7 window 1280 720 yes", 0.016) == "7 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_link_st, "8 window 10 720", 0.016) == "8 err bad_args \"w and h are 160 to 7680\"")
+    fake_link_st.coop = true
+    expect(ask(devlink_st, fake_link_st, "9 window 1280 720", 0.016) == "9 err refused \"co-op session connected\"")
   }
 
   test "a build that is not a dev build never opens the socket" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {

@@ -72,6 +72,8 @@ function gfx_pixel_scale(rt_win_st: RtWinState) -> int { return rt_win_st.gfx_sc
 # the game's video settings: a window of w x h points, full screen on / off, the backing-
 # resolution (Retina) drawable on / off; no-ops headless
 function gfx_set_window(w: int, h: int) -> void { if is_windowed() { win_resize(w, h) } }
+# backing pixels per window point right now (the window's own answer; 1 headless)
+function gfx_live_scale() -> int { if is_windowed() { return win_scale() } else { return 1 } }
 function gfx_toggle_fullscreen() -> void { if is_windowed() { win_toggle_fullscreen() } }
 function gfx_set_retina(on: bool) -> void { if is_windowed() { var v = 0;  if on { v = 1 };  win_retina(v) } }
 # a renderer that owns its swapchain (render3d's Vulkan path) says what the drawable is

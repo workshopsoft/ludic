@@ -91,7 +91,9 @@ export function dv_reply_int(c: DevCall, v: int) -> void {
 
 export function dv_reply_bool(c: DevCall, v: bool) -> void {
   dv_sep(c)
-  if v { dv_b(c, 49) } else { dv_b(c, 48) }
+  var w = "false"
+  if v { w = "true" }
+  for i in 0 .. len(w) { dv_b(c, w[i]) }
 }
 
 # three decimals, a millimetre or a thousandth of a degree, as the link's own numbers

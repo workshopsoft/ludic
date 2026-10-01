@@ -39,3 +39,87 @@ function dl_step(st: mut DevlinkState, id: int) -> void {
   let r = DevlinkWorld.step(n)
   if r == DL_UNBOUND { dl_err(st, id, "unbound", "not offered") } else { dl_park(st, id, DL_STEP) }
 }
+
+# ---- probes: ground, ray and settled ask the game's physics; window is the runtime's own ----
+
+function dl_ground(st: mut DevlinkState, id: int) -> void {
+  let x = dl_float(st)
+  let z = dl_float(st)
+  if dl_bad_args(st, id) { return }
+  let y = DevlinkWorld.ground(x, z)
+  if y <= DL_GROUND_UNBOUND { dl_err(st, id, "unbound", "not offered") }
+  else if y <= DL_GROUND_NONE { dl_err(st, id, "failed", "no ground there") }
+  else {
+    dl_ok(st, id)
+    dl_b(st, 32)
+    dl_f(st, y)
+  }
+}
+
+# ray ox oy oz dx dy dz max: the direction need not be unit (t is a distance along it, normalised); a miss is `ok false`
+function dl_ray(st: mut DevlinkState, id: int) -> void {
+  let ox = dl_float(st)
+  let oy = dl_float(st)
+  let oz = dl_float(st)
+  let dx = dl_float(st)
+  let dy = dl_float(st)
+  let dz = dl_float(st)
+  let m = dl_float(st)
+  if dl_bad_args(st, id) { return }
+  let dlen = Math.sqrt(dx * dx + dy * dy + dz * dz)
+  if dlen < 0.000001 or m <= 0.0 {
+    dl_err(st, id, "bad_args", "a direction and a positive max")
+    return
+  }
+  let h = st.dl_hit
+  h.hit = false
+  let r = DevlinkWorld.ray(ox, oy, oz, dx / dlen, dy / dlen, dz / dlen, m, h)
+  if r == DL_UNBOUND { dl_err(st, id, "unbound", "not offered") }
+  else if r < 0 { dl_err(st, id, "failed", "the ray could not be cast") }
+  else {
+    dl_ok(st, id)
+    if h.hit {
+      dl_s(st, " true ")
+      dl_f(st, h.t)
+      dl_xyz(st, h.x, h.y, h.z)
+    } else {
+      dl_s(st, " false")
+    }
+  }
+}
+
+function dl_settled(st: mut DevlinkState, id: int) -> void {
+  if dl_bad_args(st, id) { return }
+  let r = DevlinkWorld.settled()
+  if r == DL_UNBOUND {
+    dl_err(st, id, "unbound", "not offered")
+    return
+  }
+  dl_ok(st, id)
+  if r > 0 { dl_s(st, " true") } else { dl_s(st, " false") }
+}
+
+# window w h retina?: the window's content size in points (160 to 7680) and the backing-resolution drawable on or off
+# (off when not given), so a shot is the same size on every machine. Answers `ok w h retina` with the drawable the
+# window has after the call: points times the live pixel scale, which is what `shot` then writes. Always answered
+# (not a DevlinkWorld member, not listed in hello); a no-op headless, where the answer is the asked size at scale 1.
+function dl_window(st: mut DevlinkState, id: int) -> void {
+  let w = dl_int(st)
+  let h = dl_int(st)
+  var retina = false
+  if not dl_done(st) { retina = dl_bool(st) }
+  if dl_bad_args(st, id) { return }
+  if w < 160 or h < 160 or w > 7680 or h > 7680 {
+    dl_err(st, id, "bad_args", "w and h are 160 to 7680")
+    return
+  }
+  Gfx.set_window(w, h)
+  Gfx.set_retina(retina)
+  let s = Gfx.scale()
+  dl_ok(st, id)
+  dl_b(st, 32)
+  dl_i(st, w * s)
+  dl_b(st, 32)
+  dl_i(st, h * s)
+  if s > 1 { dl_s(st, " true") } else { dl_s(st, " false") }
+}

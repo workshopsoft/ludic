@@ -37,6 +37,10 @@ function dl_verb(st: mut DevlinkState, id: int) -> void {
   else if dl_word(st, "pause") { dl_answer(st, id, DevlinkWorld.pause(true)) }
   else if dl_word(st, "resume") { dl_answer(st, id, DevlinkWorld.pause(false)) }
   else if dl_word(st, "step") { dl_step(st, id) }
+  else if dl_word(st, "ground") { dl_ground(st, id) }
+  else if dl_word(st, "ray") { dl_ray(st, id) }
+  else if dl_word(st, "settled") { dl_settled(st, id) }
+  else if dl_word(st, "window") { dl_window(st, id) }
   else if dl_word(st, "ui_screen") { dl_ui_screen(st, id) }
   else if dl_word(st, "ui_focus") { dl_ui_focus(st, id) }
   else if dl_word(st, "ui_model") { dl_ui_model(st, id) }
