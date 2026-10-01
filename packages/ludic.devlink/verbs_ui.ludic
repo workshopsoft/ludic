@@ -13,6 +13,33 @@ function dl_ui_screen(st: mut DevlinkState, id: int) -> void {
   dl_q(st, s.components)
 }
 
+# the keyboard's focus: `ok "key" "id" at count "screen"`. Before a screen has been shown it is
+# `ok "" "" -1 0 "<screen>"`, not an error
+function dl_ui_focus(st: mut DevlinkState, id: int) -> void {
+  if dl_bad_args(st, id) { return }
+  let f = st.dl_focus
+  f.key = ""
+  f.id = ""
+  f.at = -1
+  f.count = 0
+  f.screen = ""
+  if DevlinkUi.focus(f) == DL_UNBOUND {
+    dl_err(st, id, "unbound", "not offered")
+    return
+  }
+  dl_ok(st, id)
+  dl_b(st, 32)
+  dl_q(st, f.key)
+  dl_b(st, 32)
+  dl_q(st, f.id)
+  dl_b(st, 32)
+  dl_i(st, f.at)
+  dl_b(st, 32)
+  dl_i(st, f.count)
+  dl_b(st, 32)
+  dl_q(st, f.screen)
+}
+
 # a file the game writes: a path with no "..", as a shot's
 function dl_out_path(st: DevlinkState, n: int) -> bool {
   if n < 1 or n > len(st.dl_path) { return false }

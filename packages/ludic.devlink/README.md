@@ -16,7 +16,10 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
   `map_load`, a store's `steam_state` / `unlock`. Whoever owns one declares it with `def DevVerbs` (see below);
   devlink knows none of them.
 - **The interface's verbs** are `DevlinkUi` members, the same default: `ui_screen` answers the screen's root
-  class and every component up; `ui_model "<Class>" "<out>"` and `ui_tree "<out>"` have the game write the
+  class and every component up; `ui_focus` answers
+  `ok "key" "id" at count "screen"` (the focused control's key, the handle a tool hands back to the interface; its authored
+  id, `""` for none; its place among the focusable controls shown, -1 for none; how many there are; the screen they
+  belong to), and before the first frame `ok "" "" -1 0 "<screen>"`, not an error; `ui_model "<Class>" "<out>"` and `ui_tree "<out>"` have the game write the
   first instance's model, or the whole tree, to that file (no `..`) and answer `ok "<out>"`, so a datagram
   stays small; `ui_override "<path>" "<file>"` has the interface read a template or stylesheet from that file
   and reload it keeping state (`""` for the file clears one, `"" ""` clears all). All answer at once.

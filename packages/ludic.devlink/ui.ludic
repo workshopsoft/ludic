@@ -6,7 +6,16 @@ export property DevlinkUiScreen {
   components: string = ""                  # every component up, comma-separated
 }
 
+export property DevlinkFocus {
+  key: string = ""                         # the focused control's key: what ui_focus hands back ("" for none)
+  id: string = ""                          # its authored id ("" for none)
+  at: int = -1                             # its place among the focusable controls shown (-1 for none)
+  count: int = 0                           # how many controls can take the focus
+  screen: string = ""                      # the screen whose controls those are (the last one shown)
+}
+
 export port DevlinkUi {
+  focus: fn(DevlinkFocus) -> int = fn dlu_focus
   screen: fn(DevlinkUiScreen) -> int = fn dlu_screen
   model: fn(string, string) -> int = fn dlu_s2        # class, out path -> 0 written, -1 no such instance
   tree: fn(string) -> int = fn dlu_s1                 # out path -> 0 written, -1 failed
@@ -14,6 +23,7 @@ export port DevlinkUi {
   click_id: fn(string) -> int = fn dlu_s1             # an element's id -> 0 played, -1 no such element
   override: fn(string, string) -> int = fn dlu_s2     # path, file ("" clears it; "" "" clears all) -> 0, -1
 }
+function dlu_focus(f: DevlinkFocus) -> int { return DL_UNBOUND }
 function dlu_screen(s: DevlinkUiScreen) -> int { return DL_UNBOUND }
 function dlu_s1(a: string) -> int { return DL_UNBOUND }
 function dlu_s2(a: string, b: string) -> int { return DL_UNBOUND }

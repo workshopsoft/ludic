@@ -32,6 +32,7 @@ export state DevlinkState {
   dl_pend_t: float = 0.0
   dl_cam: DevlinkCam = new DevlinkCam
   dl_ui: DevlinkUiScreen = new DevlinkUiScreen
+  dl_focus: DevlinkFocus = new DevlinkFocus
   dl_call: DevCall = devcall_new()         # the declared verb being answered
   dl_lcall: DevCall = devcall_new()        # the late verb's reply, while it is polled
   dl_sty: int = 0                          # the schema word last read: its type (DL_T_*), and optional
