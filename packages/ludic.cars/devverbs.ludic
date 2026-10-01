@@ -3,7 +3,7 @@
 # sent as render3d's degrees [0, 360); speed is m/s along its forward, negative backing up; engine_on is a bool.
 # Wrecked cars are listed too: a QA run wants to see them.
 
-const CARS_DEV_REC: int = 56             # bytes one `cars_near` record may take: DV_NEAR_MAX of them fit DV_OUT
+const CARS_DEV_REC: int = 60             # bytes one `cars_near` record may take: DV_NEAR_MAX of them fit DV_OUT
 
 # `cars_near x z r max?`: the count n, then n records `id x y z yaw speed engine_on`, nearest first (the lower id
 # first among equals); max defaults to DV_NEAR_DEFAULT and is clamped to DV_NEAR_MAX

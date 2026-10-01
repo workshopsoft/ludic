@@ -91,8 +91,9 @@ program CarsDevTest {
     expect_eq(spaces(c), 6)
     car_engine(cars_st, a, true)
     expect_eq(DevVerbs[DVB_CAR_GET].run(c), DV_OK)
-    # a bool is 1/0 (or true/false when the wire writes words): either way, what the car says
-    let on = Text.ends_with(reply(c), " 1") or Text.ends_with(reply(c), " true")
+    # a bool is written as the word true/false
+    let on = Text.ends_with(reply(c), " true")
+    expect(on or Text.ends_with(reply(c), " false"))
     expect_eq(on, car_by_nid(cars_st, a).engine_on)
     c.i[0] = 99999
     expect_eq(DevVerbs[DVB_CAR_GET].run(c), DV_BAD)
