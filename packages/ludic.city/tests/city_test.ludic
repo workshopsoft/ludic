@@ -85,6 +85,22 @@ program CityTest {
     expect_eq(city_cell_count(city_st), 0)
   }
 
+  test "city_stream_idle: false until a stream call for the point's cell came back with nothing to do, and false again after a move" (city_st: mut CityState, bl: mut Buildings) {
+    expect(not city_stream_idle(city_st, 100.0, 100.0, 1))                      # never streamed
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, 1), 9)
+    expect(not city_stream_idle(city_st, 100.0, 100.0, 1))                      # it just loaded nine
+    expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, 1), 0)
+    expect(city_stream_idle(city_st, 100.0, 100.0, 1))
+    expect(city_stream_idle(city_st, 200.0, 50.0, 1))                           # the same cell
+    expect(not city_stream_idle(city_st, 300.0, 100.0, 1))                      # moved to another cell: nothing asked for it yet
+    expect(not city_stream_idle(city_st, 100.0, 100.0, 2))                      # another reach
+    expect(not city_stream_idle(city_st, 0.0 / 0.0, 100.0, 1))
+    city_stream(city_st, bl, "metro", 300.0, 100.0, 1)
+    city_stream(city_st, bl, "metro", 300.0, 100.0, 1)
+    expect(city_stream_idle(city_st, 300.0, 100.0, 1))
+    city_clear(city_st, bl)
+  }
+
   test "a point that is not a place streams nothing, and one far off or a wild reach cannot spin the loop" (city_st: mut CityState, bl: mut Buildings) {
     expect_eq(city_stream(city_st, bl, "metro", 100.0, 100.0, 1), 9)
     let nan = 0.0 / 0.0

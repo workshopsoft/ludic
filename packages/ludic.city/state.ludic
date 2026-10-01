@@ -71,6 +71,10 @@ export state CityState {
   ci_dx1: []float = new []float
   ci_dz1: []float = new []float
   ci_facts: Queue<CityFact> = ci_facts__new()
+  ci_last_cx: int = -2000000000          # the cell and reach of the last stream call, and whether it still had work (see city_stream_idle)
+  ci_last_cz: int = -2000000000
+  ci_last_reach: int = -1
+  ci_last_busy: int = 1
 }
 function ci_facts__new() -> Queue<CityFact> { return queue_new("city.facts") }
 
@@ -282,7 +286,25 @@ export function city_stream(city_st: mut CityState, bl: mut Buildings, map: stri
       }
     }
   }
+  ci_note(city_st, cx, cz, reach, changed)
   return changed
+}
+
+function ci_note(city_st: mut CityState, cx: int, cz: int, reach: int, busy: int) -> void {
+  city_st.ci_last_cx = cx
+  city_st.ci_last_cz = cz
+  city_st.ci_last_reach = reach
+  city_st.ci_last_busy = busy
+}
+
+# has the stream caught up with the point (x, z)? True when the last `city_stream` / `city_stream_step` call was for this
+# point's cell and this reach and changed nothing (cells with no data cannot come in, so they do not count against it; a
+# step call also counts the cells it still has missing). False before the first call, and after the point moved to another
+# cell until the next call: a harness's "settled" asks this each frame
+export function city_stream_idle(city_st: CityState, x: float, z: float, reach: int) -> bool {
+  if not is_finite(x) or not is_finite(z) { return false }
+  let reach = Math.clamp(reach, 0, CI_MAX_REACH)
+  return city_st.ci_last_cx == ci_floor(x / 256.0) and city_st.ci_last_cz == ci_floor(z / 256.0) and city_st.ci_last_reach == reach and city_st.ci_last_busy == 0
 }
 
 # the same, a frame at a time: cells out of reach go out (cheap), and at most ONE missing cell comes in, the nearest to the
@@ -294,9 +316,11 @@ export function city_stream_step(city_st: mut CityState, bl: mut Buildings, map:
   let cx = ci_floor(x / 256.0)
   let cz = ci_floor(z / 256.0)
   var i = 0
+  var went = 0
   while i < len(city_st.ci_cx) {
     if Math.abs(city_st.ci_cx[i] - cx) > reach or Math.abs(city_st.ci_cz[i] - cz) > reach {
       city_cell_out(city_st, bl, city_st.ci_cx[i], city_st.ci_cz[i])
+      went += 1
     } else {
       i += 1
     }
@@ -320,6 +344,7 @@ export function city_stream_step(city_st: mut CityState, bl: mut Buildings, map:
   if best_d >= 0 {
     if city_cell_in(city_st, bl, map, cx + best_dx, cz + best_dz) >= 0 { missing -= 1 }
   }
+  ci_note(city_st, cx, cz, reach, missing + went)
   return missing
 }
 

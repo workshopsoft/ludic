@@ -91,6 +91,7 @@ function city_frame(city_st: mut CityState, bl: mut Buildings, districts: Distri
 | `city_index(st, districts)` | after `districts_load`: a bounding box a district |
 | `city_stream(st, bl, map, x, z, reach)` | keep exactly the cells within `reach` of the point loaded; how many changed |
 | `city_stream_step(...)` | the same, **one load a call**, nearest first, returning how many are still missing: a stream spread over frames |
+| `city_stream_idle(st, x, z, reach)` | has the last stream call for this point's cell and reach nothing left to do: false until the first call, and after the point moves to another cell until the next call |
 | `city_cell_in(st, bl, map, cx, cz)`, `city_cell_out(...)`, `city_clear(...)` | one cell by hand; `city_cell_in` returns its building count (0: nobody built there; -1: a bad file) |
 | `city_cell_of / _count / _cx / _cz / _size` | the loaded cells, as indexes |
 | `city_facts(st)` | `CityFact { what: CITY_LOADED or CITY_UNLOADED, cx, cz, count }` per cell in or out - drain it every frame |
