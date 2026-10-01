@@ -1,0 +1,6 @@
+# foot_sets.lres - a graph that stands, with the `grounded` parameter foot placement is weighted by
+fkset {
+  entry: "stand"
+  parameters: [{ key: "grounded", kind: "bool", initial: 1.0 }]
+  states: [{ key: "stand", choices: [{ clip: "stand" }] }]
+}

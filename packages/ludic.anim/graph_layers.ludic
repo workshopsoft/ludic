@@ -89,6 +89,7 @@ export function animset_bind_skin(pl: AnimPlayer, sk: Skin) -> void {
       li += 1
     }
   }
+  foot_ik_bind(pl, sk)
   pl.root = top_joint(sk)
   if pl.skel >= 0 and pl.skel < len(AnimSkeletons) and AnimSkeletons[pl.skel].root != "" {
     let r = skin_joint_quiet(sk, AnimSkeletons[pl.skel].root)

@@ -1,0 +1,382 @@
+# foot_ik.ludic - feet that stand on what is under them. After a frame is posed from its clips, each leg
+# (an AnimSkeletons row's `foot_ik`) asks the game where the ground is under its foot, and the pose is
+# corrected, never replaced:
+#   1. one ground ray per foot, through the AnimGround port (a physics ray, a height function: the game's);
+#   2. the foot's offset is how far that ground is from the body's own height (the plane the clip was
+#      keyed against), limited, faded out while the clip holds the foot high (a swing), and eased;
+#   3. the pelvis takes the LOWER foot's offset (the body sinks onto the low foot, the high one bends);
+#   4. two-bone IK: thigh and shin turn so the ankle meets its offset position, the knee bending the way
+#      the clip bent it (its own pole, no extra data);
+#   5. the foot turns toward the ground's normal, limited, so it lies on a slope and a kerb;
+#   6. all of it times a weight that is off in the air (`weight_by`) and past `lod_dist`.
+# The offset is vertical only, so the foot's place on the ground does not change: a planted foot stays
+# planted, and the walk adds no sliding. The bind is made with the skin; a tick allocates nothing.
+
+# where the ground is under a point: (actor, world x, the ray's start height, world z, its reach down, out)
+# with out = height, then the unit normal x, y, z. False: nothing there (the foot keeps what the clip did).
+export port AnimGround {
+  probe: fn(int, float, float, float, float, floats) -> bool = fn anim_ground_none
+}
+function anim_ground_none(actor: int, x: float, y: float, z: float, reach: float, out: floats) -> bool { return false }
+
+# scratch quaternions and vectors, made once with the state
+function fik_scratch_new() -> []floats {
+  let l = new []floats
+  for k in 0 .. 24 { push(l, floats(4)) }
+  return l
+}
+# the scratch slots: A..H are vectors of one leg's solve, Q1..Q3 belong to set_grot, PG_* to pose_grot
+const FK_A: int = 0
+const FK_B: int = 1
+const FK_C: int = 2
+const FK_D: int = 3
+const FK_E: int = 4
+const FK_F: int = 5
+const FK_G: int = 6
+const FK_H: int = 7
+const FK_OUT: int = 8     # the probe's answer
+const FK_Q1: int = 9
+const FK_Q2: int = 10
+const FK_Q3: int = 11
+const FK_T: int = 12
+const FK_GT: int = 13     # the clip's global rotation of the thigh, shin and foot
+const FK_GS: int = 14
+const FK_GF: int = 15
+const FK_R1: int = 16     # the thigh's turn, the shin's, the foot's
+const FK_R2: int = 17
+const FK_RT: int = 18
+const PG_A: int = 19
+const PG_B: int = 20
+const PG_L: int = 21
+
+# the game says where the body stands, once a frame before the tick: world position, yaw (radians), scale
+export function animset_body(pl: AnimPlayer, x: float, y: float, z: float, yaw: float, scale: float) -> void {
+  pl.fik_body[0] = x;  pl.fik_body[1] = y;  pl.fik_body[2] = z;  pl.fik_body[3] = yaw
+  pl.fik_body[4] = scale
+  if not (scale > 0.0) { pl.fik_body[4] = 1.0 }
+  pl.fik_has = true
+}
+
+# the rest ankle height over the ground the rest pose stands on (rest translations down the chain, the model's metres)
+@alloc_ok("once per skin bound")
+function rest_height(sk: Skin, node: int) -> float {
+  var y = 0.0
+  var k = node
+  var n = 0
+  # y of a node = sum over its chain of the parent's global rest rotation applied to its rest offset
+  while k >= 0 and n < 40 {
+    let p = sk.par[k]
+    if p < 0 {
+      y += sk.rest_t[k * 3 + 1]
+    } else {
+      let g = new_q(sk, p)
+      let v = floats(3)
+      v3_set(v, sk.rest_t[k * 3], sk.rest_t[k * 3 + 1], sk.rest_t[k * 3 + 2])
+      q_rotate(v, g, v)
+      y += v[1]
+    }
+    k = p
+    n += 1
+  }
+  return y
+}
+@alloc_ok("once per skin bound")
+function new_q(sk: Skin, i: int) -> floats {
+  let q = floats(4)
+  q_load(q, sk.rest_g, i)
+  return q
+}
+
+function row_bone(r: AnimFootIk, i: int) -> string {
+  if i == 0 { return r.thigh_l }
+  if i == 1 { return r.shin_l }
+  if i == 2 { return r.foot_l }
+  if i == 3 { return r.toe_l }
+  if i == 4 { return r.thigh_r }
+  if i == 5 { return r.shin_r }
+  if i == 6 { return r.foot_r }
+  return r.toe_r
+}
+
+# nodes of the row for this skin; the rig lacking one leg bone leaves the feature off (no complaint: a row may be partial)
+@alloc_ok("once per skin bound")
+export function foot_ik_bind(pl: AnimPlayer, sk: Skin) -> void {
+  pl.fik_ok = false
+  pl.fik_w = 0.0
+  pl.fik_p = 0.0
+  for i in 0 .. 2 { pl.fik_d[i] = 0.0;  pl.fik_nx[i] = 0.0;  pl.fik_nz[i] = 0.0 }
+  if pl.skel < 0 or pl.skel >= len(AnimSkeletons) { return }
+  let rows = AnimSkeletons[pl.skel].foot_ik
+  if rows == null or len(rows) == 0 { return }
+  let r = rows[0]
+  pl.fik_node[0] = Math.max(0, bone_node(pl, sk, r.pelvis))
+  var ok = bone_node(pl, sk, r.pelvis) >= 0
+  for i in 0 .. 8 {
+    let n = bone_node(pl, sk, row_bone(r, i))
+    if n < 0 { ok = false }
+    pl.fik_node[1 + i] = Math.max(0, n)
+  }
+  if not ok { return }
+  pl.fik_rest[0] = rest_height(sk, pl.fik_node[3])
+  pl.fik_rest[1] = rest_height(sk, pl.fik_node[7])
+  pl.fik_ok = true
+}
+
+# a node's LOCAL rotation in the pose (what skin_pose builds from the node's delta), into o
+function local_rot(sk: Skin, node: int, o: floats, t1: floats, t2: floats) -> void {
+  q_load(t1, sk.pose_r, node)
+  let p = sk.par[node]
+  if p >= 0 {
+    q_load(t2, sk.rest_g, p)
+    q_mul(t1, t1, t2)
+    q_conj(t2, t2)
+    q_mul(t1, t2, t1)
+  }
+  q_load(t2, sk.rest_r, node)
+  q_mul(o, t1, t2)
+}
+
+# a node's GLOBAL rotation in the pose, into o (a walk down its ancestors; chains are short)
+function pose_grot(anim_st: mut AnimState, sk: Skin, node: int, o: floats) -> void {
+  let a = anim_st.fk[PG_A]
+  let b = anim_st.fk[PG_B]
+  let loc = anim_st.fk[PG_L]
+  q_identity(o)
+  # ancestors from the node up, replayed from the root down: each is found by climbing again
+  var depth = 0
+  var k = node
+  while k >= 0 and depth < 40 { depth += 1;  k = sk.par[k] }
+  var d = depth - 1
+  while d >= 0 {
+    k = node
+    var up = d
+    while up > 0 { k = sk.par[k];  up -= 1 }
+    local_rot(sk, k, loc, a, b)
+    q_mul(o, o, loc)
+    d -= 1
+  }
+}
+
+# set a node's pose delta so its global rotation is g, the parents as they stand now
+function set_grot(anim_st: mut AnimState, sk: Skin, node: int, g: floats) -> void {
+  let gp = anim_st.fk[FK_Q1]
+  let l = anim_st.fk[FK_Q2]
+  let t = anim_st.fk[FK_Q3]
+  let p = sk.par[node]
+  if p >= 0 { pose_grot(anim_st, sk, p, gp) } else { q_identity(gp) }
+  q_conj(gp, gp)
+  q_mul(l, gp, g)                       # the local rotation wanted
+  q_load(t, sk.rest_r, node)
+  q_conj(t, t)
+  q_mul(l, l, t)                        # L R_rest^-1
+  if p >= 0 {
+    q_load(gp, sk.rest_g, p)
+    q_mul(l, gp, l)
+    q_conj(gp, gp)
+    q_mul(l, l, gp)
+  }
+  q_normalize(l)
+  skin_set_quat(sk, node, l)
+}
+
+# the rotation taking unit-ish vector a to b (both nonzero), into o
+function from_to(o: floats, a: floats, b: floats, t: floats) -> void {
+  let la = v3_len(a)
+  let lb = v3_len(b)
+  if la < 0.000001 or lb < 0.000001 { q_identity(o);  return }
+  let d = v3_dot(a, b) / (la * lb)
+  v3_cross(t, a, b)
+  let l = v3_len(t)
+  if d < -0.999999 {
+    # opposite: turn half a circle about anything across a
+    if Math.abs(a[0]) < Math.abs(a[2]) { v3_set(t, 0.0, -a[2], a[1]) } else { v3_set(t, -a[1], a[0], 0.0) }
+    v3_normalize(t, t)
+    q_axis_angle(o, t[0], t[1], t[2], 3.14159265)
+    return
+  }
+  let s = 1.0 / (la * lb)
+  o[0] = t[0] * s;  o[1] = t[1] * s;  o[2] = t[2] * s
+  o[3] = 1.0 + d
+  q_normalize(o)
+}
+
+function node_pos(sk: Skin, node: int, o: floats) -> void {
+  let m = skin_mat(sk, node)
+  o[0] = m[12];  o[1] = m[13];  o[2] = m[14]
+}
+
+function smooth01(x: float) -> float {
+  let t = Math.clamp(x, 0.0, 1.0)
+  return t * t * (3.0 - 2.0 * t)
+}
+
+# One leg: its ankle to `dy` above where the clip put it (model metres), the pelvis having moved by `pe`,
+# and the foot turned `tilt` toward model-frame normal (nx, 1, nz), limited by `max_tilt` radians.
+function solve_leg(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, leg: int, pe: float, dy: float, nx: float, nz: float, max_tilt: float, w: float) -> void {
+  let fk = anim_st.fk
+  let thigh = pl.fik_node[1 + leg * 4]
+  let shin = pl.fik_node[2 + leg * 4]
+  let foot = pl.fik_node[3 + leg * 4]
+  let a = fk[FK_A]
+  let b = fk[FK_B]
+  let c = fk[FK_C]
+  node_pos(sk, thigh, a)
+  node_pos(sk, shin, b)
+  node_pos(sk, foot, c)
+  # the clip's global rotations of the three, before anything moves
+  pose_grot(anim_st, sk, thigh, fk[FK_GT])
+  pose_grot(anim_st, sk, shin, fk[FK_GS])
+  pose_grot(anim_st, sk, foot, fk[FK_GF])
+  let ab = fk[FK_D]
+  let bc = fk[FK_E]
+  let tg = fk[FK_F]
+  v3_sub(ab, b, a)
+  v3_sub(bc, c, b)
+  let l1 = v3_len(ab)
+  let l2 = v3_len(bc)
+  if l1 < 0.001 or l2 < 0.001 { return }
+  # the ankle's target relative to the thigh: where it is, plus the foot's move, minus the pelvis's
+  v3_sub(tg, c, a)
+  tg[1] = tg[1] + dy - pe
+  var dist = v3_len(tg)
+  let dmax = (l1 + l2) * 0.9995
+  let dmin = Math.abs(l1 - l2) + 0.001
+  if dist < 0.000001 { return }
+  v3_scale(tg, tg, 1.0 / dist)         # the direction; dist is clamped next
+  dist = Math.clamp(dist, dmin, dmax)
+  # the knee: l1 along the thigh's axis by the law of cosines, bending to the clip's own side
+  let ca = Math.clamp((l1 * l1 + dist * dist - l2 * l2) / (2.0 * l1 * dist), -1.0, 1.0)
+  let sa = Math.sqrt(Math.max(0.0, 1.0 - ca * ca))
+  let pole = fk[FK_G]
+  v3_madd(pole, ab, tg, -v3_dot(ab, tg))       # the clip's knee direction without its part along the new axis
+  if v3_len(pole) < 0.0001 { v3_set(pole, 0.0, 0.0, -1.0);  v3_madd(pole, pole, tg, -v3_dot(pole, tg)) }
+  v3_normalize(pole, pole)
+  let nk = fk[FK_H]
+  v3_scale(nk, tg, l1 * ca)
+  v3_madd(nk, nk, pole, l1 * sa)               # the new thigh vector, from the thigh
+  let r1 = fk[FK_R1]
+  let t = fk[FK_T]
+  from_to(r1, ab, nk, t)
+  # the shin: after the thigh's turn it points along R1 (bc); it must point at the target
+  let bc1 = fk[FK_A]
+  q_rotate(bc1, r1, bc)
+  let want = fk[FK_B]
+  v3_scale(want, tg, dist)
+  v3_sub(want, want, nk)
+  let r2 = fk[FK_R2]
+  from_to(r2, bc1, want, t)
+  # apply: thigh, shin, then the foot back to its own orientation turned toward the ground
+  let g = fk[FK_GT]
+  q_mul(g, r1, g)
+  set_grot(anim_st, sk, thigh, g)
+  let gs = fk[FK_GS]
+  q_mul(gs, r1, gs)
+  q_mul(gs, r2, gs)
+  set_grot(anim_st, sk, shin, gs)
+  let gf = fk[FK_GF]
+  let rt = fk[FK_RT]
+  let up = fk[FK_C]
+  let nn = fk[FK_D]
+  v3_set(up, 0.0, 1.0, 0.0)
+  let ny2 = 1.0 - nx * nx - nz * nz
+  v3_set(nn, nx, Math.sqrt(Math.max(0.0001, ny2)), nz)
+  from_to(rt, up, nn, t)
+  let ang = 2.0 * Math.atan2(Math.sqrt(rt[0] * rt[0] + rt[1] * rt[1] + rt[2] * rt[2]), rt[3])
+  var k = w
+  if ang > max_tilt and ang > 0.000001 { k = w * max_tilt / ang }
+  let id = fk[FK_E]
+  q_identity(id)
+  q_nlerp(rt, id, rt, k)
+  q_mul(gf, rt, gf)
+  set_grot(anim_st, sk, foot, gf)
+}
+
+# Fold the ground into the pose just made. False when nothing was done (no row, off, far, in the air).
+export function foot_ik_apply(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> bool {
+  if not pl.fik_ok or not pl.fik_has { return false }
+  let row = AnimSkeletons[pl.skel].foot_ik[0]
+  var target = 1.0
+  if pl.dist > row.lod_dist { target = 0.0 }
+  if row.weight_by != "" {
+    let pi = as_param_idx(pl, row.weight_by)
+    if pi >= 0 { target = target * Math.clamp(pl.vals[pi], 0.0, 1.0) }
+  }
+  let step = Math.min(1.0, row.smooth * dt)
+  pl.fik_w = pl.fik_w + (target - pl.fik_w) * step
+  if target == 0.0 and pl.fik_w < 0.01 {
+    pl.fik_w = 0.0
+    for i in 0 .. 2 { pl.fik_d[i] = 0.0;  pl.fik_nx[i] = 0.0;  pl.fik_nz[i] = 0.0 }
+    pl.fik_p = 0.0
+    return false
+  }
+  let s = pl.fik_body[4]
+  let by = pl.fik_body[1]
+  let yaw = pl.fik_body[3]
+  let cy = Math.cos(yaw)
+  let sy = Math.sin(yaw)
+  let fk = anim_st.fk
+  let out = fk[FK_OUT]
+  let a = fk[FK_A]
+  let tp = fk[FK_B]
+  let deg = 3.14159265 / 180.0
+  var any = false
+  var dt0 = 0.0
+  var dt1 = 0.0
+  var ntx0 = 0.0
+  var ntz0 = 0.0
+  var ntx1 = 0.0
+  var ntz1 = 0.0
+  for leg in 0 .. 2 {
+    let foot = pl.fik_node[3 + leg * 4]
+    let toe = pl.fik_node[4 + leg * 4]
+    node_pos(sk, foot, a)
+    node_pos(sk, toe, tp)
+    # the middle of the sole, in the world
+    let mx = (a[0] + tp[0]) * 0.5 * s
+    let mz = (a[2] + tp[2]) * 0.5 * s
+    let wx = pl.fik_body[0] + mx * cy + mz * sy
+    let wz = pl.fik_body[2] - mx * sy + mz * cy
+    let ay = by + a[1] * s
+    let top = Math.max(by, ay) + row.probe_up
+    let reach = top - (by - row.max_drop - 0.2)
+    var dd = 0.0
+    var nx = 0.0
+    var nz = 0.0
+    if AnimGround.probe(pl.actor, wx, top, wz, reach, out) {
+      let raw = Math.clamp(out[0] - by, -row.max_drop, row.max_raise)
+      let held = ay - by - pl.fik_rest[leg] * s       # how high the clip holds the sole over the body's plane
+      let contact = 1.0 - smooth01((held - row.contact_lo) / Math.max(0.001, row.contact_hi - row.contact_lo))
+      dd = raw * contact
+      # the normal into the model's frame (undo the yaw), x and z kept, y recovered
+      nx = (out[1] * cy - out[3] * sy) * contact
+      nz = (out[1] * sy + out[3] * cy) * contact
+      any = true
+    }
+    if leg == 0 { dt0 = dd;  ntx0 = nx;  ntz0 = nz } else { dt1 = dd;  ntx1 = nx;  ntz1 = nz }
+  }
+  # ease toward the targets; the first time a foot is placed it is placed at once
+  var k = step
+  if pl.fik_w < 0.05 and target > 0.0 { k = 1.0 }
+  pl.fik_d[0] = pl.fik_d[0] + (dt0 - pl.fik_d[0]) * k
+  pl.fik_d[1] = pl.fik_d[1] + (dt1 - pl.fik_d[1]) * k
+  pl.fik_nx[0] = pl.fik_nx[0] + (ntx0 - pl.fik_nx[0]) * k
+  pl.fik_nz[0] = pl.fik_nz[0] + (ntz0 - pl.fik_nz[0]) * k
+  pl.fik_nx[1] = pl.fik_nx[1] + (ntx1 - pl.fik_nx[1]) * k
+  pl.fik_nz[1] = pl.fik_nz[1] + (ntz1 - pl.fik_nz[1]) * k
+  let w = pl.fik_w
+  let d0 = pl.fik_d[0] * w
+  let d1 = pl.fik_d[1] * w
+  var pe = Math.min(d0, d1)
+  pe = pe * row.pelvis_weight
+  pl.fik_p = pe
+  if not any and Math.abs(d0) + Math.abs(d1) < 0.0005 { return false }
+  # the pelvis moves, taking both legs' tops with it; the legs then reach for their feet
+  let pv = pl.fik_node[0]
+  let pm = pe / s
+  skin_set_offset(sk, pv, sk.pose_t[pv * 3], sk.pose_t[pv * 3 + 1] + pm, sk.pose_t[pv * 3 + 2])
+  let tilt = row.max_tilt * deg
+  solve_leg(anim_st, pl, sk, 0, pm, d0 / s, pl.fik_nx[0], pl.fik_nz[0], tilt, w)
+  solve_leg(anim_st, pl, sk, 1, pm, d1 / s, pl.fik_nx[1], pl.fik_nz[1], tilt, w)
+  skin_pose(sk)
+  return true
+}

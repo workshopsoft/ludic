@@ -359,3 +359,21 @@ let a = anim_actor_spawn(anim_st, render3d_st, m, SET_PED, SKEL_PED, uid)       
 a.scale = 1.0
 anim_actor_despawn(anim_st, render3d_st, a, uid)                                          # when the ped is gone
 ```
+
+## Foot IK: feet on what is under them
+
+`foot_ik.ludic`. After a frame is posed from its clips, each leg is corrected to the ground the game reports (the usual
+foot-placement method: a ground ray per foot, two-bone IK, the pelvis to the lower foot, the foot turned to the normal, a
+weight that is off in the air). A row in `AnimSkeletons` turns it on:
+
+```
+person { ..., foot_ik: [{ max_tilt: 25.0, lod_dist: 25.0 }] }   # canonical bone names: pelvis hips, thigh_l shin_l foot_l toe_l, and _r
+```
+
+The game says where the body is each frame, `animset_body(pl, x, y, z, yaw, scale)`, and binds the ground:
+`bind AnimGround { probe: fn ground_probe }` with `(actor, x, ray_start_y, z, reach, out) -> bool`, out = height then the unit normal.
+The offset of a foot is its ground's height minus the body's `y` (so a body that floats is lowered onto the ground), clamped to
+`max_drop`/`max_raise`, faded out between `contact_lo` and `contact_hi` while the clip holds the foot high (a swing), eased at
+`smooth` per second. The offset is vertical, so a planted foot stays where it is: no sliding is added. The pelvis takes the lower
+foot's offset; the knee bends to the side the clip bent it. `weight_by` (default `grounded`) multiplies the weight, and past
+`lod_dist` (`animset_distance`) the legs are not solved and no ray is cast. Cost: two rays and one more `skin_pose` per near actor.
