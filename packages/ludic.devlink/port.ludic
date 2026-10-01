@@ -55,7 +55,7 @@ export port DevlinkWorld {
   # probes: what the game's physics says, which is what a player stands on (not the authored heightmap)
   ground: fn(float, float) -> float = fn dlw_ground    # x z -> the ground's y there, DL_GROUND_NONE or less for none
   ray: fn(float, float, float, float, float, float, float, DevlinkHit) -> int = fn dlw_ray   # origin, unit direction, max distance, the hit; 0 answered, < 0 failed
-  settled: fn() -> bool = fn dlw_no                   # the world around the player is ready for a shot: bind it and list "settled" in offers
+  settled: fn() -> int = fn dlw_n0                    # the world around the player is ready for a shot: 1 yes, 0 not yet
 }
 function dln_none1(a: int) -> int { return -1 }
 function dln_none3(a: int, b: []byte, c: int) -> int { return 0 }

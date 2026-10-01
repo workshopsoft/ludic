@@ -42,18 +42,6 @@ function dl_step(st: mut DevlinkState, id: int) -> void {
 
 # ---- probes: ground, ray and settled ask the game's physics; window is the runtime's own ----
 
-# is `name` among the core verbs the game says it bound (hello's sixth value): for a bool member, whose default cannot say "not offered"
-function dl_offered(name: string) -> bool {
-  let o = DevlinkWorld.offers()
-  let n = len(name)
-  var i = 0
-  while i + n <= len(o) {
-    if dl_seg(o, i, i + n, name) and (i == 0 or o[i - 1] == 44) and (i + n == len(o) or o[i + n] == 44) { return true }
-    i += 1
-  }
-  return false
-}
-
 function dl_ground(st: mut DevlinkState, id: int) -> void {
   let x = dl_float(st)
   let z = dl_float(st)
@@ -102,10 +90,11 @@ function dl_ray(st: mut DevlinkState, id: int) -> void {
 
 function dl_settled(st: mut DevlinkState, id: int) -> void {
   if dl_bad_args(st, id) { return }
-  if not dl_offered("settled") {
+  let r = DevlinkWorld.settled()
+  if r == DL_UNBOUND {
     dl_err(st, id, "unbound", "not offered")
     return
   }
   dl_ok(st, id)
-  if DevlinkWorld.settled() { dl_s(st, " true") } else { dl_s(st, " false") }
+  if r > 0 { dl_s(st, " true") } else { dl_s(st, " false") }
 }

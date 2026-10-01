@@ -16,10 +16,11 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
   `ray` and `settled`, unbound by default. `ground x z` answers `ok y` (`err failed "no ground there"` when the
   game answers `DL_GROUND_NONE`); `ray ox oy oz dx dy dz max` answers `ok true t x y z` (`t` the distance along the
   direction, which devlink normalises) or `ok false`, with `err bad_args` for a zero direction or a max <= 0;
-  `settled` answers `ok true` or `ok false`: the world around the player is ready for a shot (the game
-  decides what that takes: physics for the cell made, streaming idle, the body grounded). `settled` is `unbound`
-  unless the game lists `settled` in `offers()`, since a bool member's default cannot say "not offered".
-  `ground` and `ray` are `unbound` until bound. Numbers are written with three decimals, like `cam_get`.
+  `settled` answers `ok true` or `ok false` (the member returns 1, 0, or `DL_UNBOUND`): the world around the
+  player is ready for a shot, and the game decides what that takes (physics for the cell made, streaming idle,
+  the body grounded). `ground` and `ray` are `unbound` until bound. Numbers are written with three decimals,
+  like `cam_get`. **`offers()` stays the game's own string**: a game that binds the probes adds
+  `ground,ray,settled` to it so `hello` lists them.
 - **Declared verbs** are everything that belongs to a game or a package: `goto`, `time`, `weather`,
   `map_load`, a store's `steam_state` / `unlock`. Whoever owns one declares it with `def DevVerbs` (see below);
   devlink knows none of them.

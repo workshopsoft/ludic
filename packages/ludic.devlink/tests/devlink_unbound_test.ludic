@@ -1,0 +1,42 @@
+# devlink_unbound_test.ludic - a game that binds only enabled and game: every probe answers "not offered"
+import "ludic.devlink"
+import "ludic.base"
+program DevlinkUnboundTest {
+  numbers float
+  state FakeLinkState {
+    inbox: string = ""
+    sent: string = ""
+  }
+  function fk_open(fake_link_st: mut FakeLinkState, port: int) -> int { return 7 }
+  function fk_recv(fake_link_st: mut FakeLinkState, h: int, b: []byte, cap: int) -> int {
+    let n = len(fake_link_st.inbox)
+    for i in 0 .. n { b[i] = fake_link_st.inbox[i] }
+    fake_link_st.inbox = ""
+    return n
+  }
+  function fk_ip(h: int) -> int { return 2130706433 }
+  function fk_port(h: int) -> int { return 5555 }
+  function fk_send(fake_link_st: mut FakeLinkState, h: int, ip: int, port: int, b: []byte, n: int) -> int {
+    fake_link_st.sent = text_of(b, n)
+    return n
+  }
+  function fk_loop(ip: int) -> bool { return true }
+  function fk_publish(path: string, b: []byte, n: int) -> int { return 0 }
+  bind DevlinkNet { open: fn fk_open, recv: fn fk_recv, from_ip: fn fk_ip, from_port: fn fk_port, send: fn fk_send, loopback: fn fk_loop, publish: fn fk_publish }
+  function fw_on() -> bool { return true }
+  function fw_game() -> string { return "bare" }
+  bind DevlinkWorld { enabled: fn fw_on, game: fn fw_game }
+
+  function ask(devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, line: string) -> string {
+    fake_link_st.inbox = line
+    fake_link_st.sent = ""
+    devlink_tick(devlink_st, tick_new(0.016, 0, 0.0))
+    return fake_link_st.sent
+  }
+
+  test "ground, ray and settled are unbound until the game binds them" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "3 ground 1 2") == "3 err unbound \"not offered\"")
+    expect(ask(devlink_st, fake_link_st, "4 ray 0 10 0 0 -1 0 50") == "4 err unbound \"not offered\"")
+    expect(ask(devlink_st, fake_link_st, "5 settled") == "5 err unbound \"not offered\"")
+  }
+}

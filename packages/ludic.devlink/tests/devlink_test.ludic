@@ -19,7 +19,6 @@ program DevlinkTest {
     last: string = ""             # the last text a verb was handed
     calls: int = 0
     settled: bool = false
-    lean: bool = false            # the game lists no probes in offers
     asked: int = -9               # the port the link opened with
     run_path: string = ""         # the run file it wrote, where and what
     run_text: string = ""
@@ -57,10 +56,7 @@ program DevlinkTest {
     let h: long = 81985529216486895
     return h
   }
-  function fw_offers(fake_link_st: FakeLinkState) -> string {
-    if fake_link_st.lean { return "cam_get,cam_set,shot,step,unsettled" }
-    return "cam_get,cam_set,shot,step,ground,ray,settled"
-  }
+  function fw_offers() -> string { return "cam_get,cam_set,shot,step,ground,ray,settled" }
   function fw_coop(fake_link_st: FakeLinkState) -> bool { return fake_link_st.coop }
   function fw_cam_get(c: DevlinkCam) -> int {
     c.x = 1038.5
@@ -172,7 +168,7 @@ program DevlinkTest {
     }
     return 0
   }
-  function fw_settled(fake_link_st: FakeLinkState) -> bool { return fake_link_st.settled }
+  function fw_settled(fake_link_st: FakeLinkState) -> int { if fake_link_st.settled { return 1 } else { return 0 } }
   bind DevlinkWorld { enabled: fn fw_on, ground: fn fw_ground, ray: fn fw_ray, settled: fn fw_settled, game: fn fw_game, schema: fn fw_schema, map: fn fw_map, offers: fn fw_offers, coop: fn fw_coop, camera_get: fn fw_cam_get, camera_set: fn fw_cam_set, screenshot: fn fw_shot, shot_state: fn fw_shot_st, shot_w: fn fw_w, shot_h: fn fw_h, step: fn fw_step, steps_left: fn fw_left }
 
   # one frame with `line` waiting (or nothing), and what the link sent (or "")
@@ -293,13 +289,11 @@ program DevlinkTest {
     expect(ask(devlink_st, fake_link_st, "12 ray 0 10 600 0 -1 0 50", 0.016) == "12 err failed \"the ray could not be cast\"")
   }
 
-  test "settled: true or false as the game says, not offered when the game does not list it" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+  test "settled: true or false as the game says" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
     expect(ask(devlink_st, fake_link_st, "3 settled", 0.016) == "3 ok false")
     fake_link_st.settled = true
     expect(ask(devlink_st, fake_link_st, "4 settled", 0.016) == "4 ok true")
     expect(ask(devlink_st, fake_link_st, "5 settled now", 0.016) == "5 err bad_args \"bad arguments\"")
-    fake_link_st.lean = true
-    expect(ask(devlink_st, fake_link_st, "6 settled", 0.016) == "6 err unbound \"not offered\"")
   }
 
   test "a build that is not a dev build never opens the socket" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
