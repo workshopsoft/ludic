@@ -210,6 +210,8 @@ developer tools, so a player cannot trip them by accident:
 R3D_DEV=1 R3D_WIRE=1 ./MyGame.app/Contents/MacOS/MyGame
 ```
 
+The allocation fence has its own `R3D_ALLOC_*` switches (`R3D_ALLOC_FENCE`, `_WARM`, `_WARM_MAX`, `_REWARM`, `_AUTO`, `_PLAY`, `_CENSUS`, `_SCAN`, `_EXIT`); see `docs/language/mem/_section.md`.
+
 A game that has its own switches should gate them the same way: `dev_mode()` from
 `ludic.base` is true exactly when `R3D_DEV` is set to anything but `0`, and it is what
 `ludic.devlink` opens its editor link on by default (`DevlinkWorld.enabled`), so a
