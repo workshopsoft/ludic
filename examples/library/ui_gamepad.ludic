@@ -1,5 +1,5 @@
 # ui_gamepad.ludic — the pad and held keys, on the program's clock: a direction held presses once,
-# again after 0.42 s and every 0.11 s after that, at any frame rate; A presses what has the focus,
+# again after 0.4 s and every 0.125 s after that, at any frame rate; A presses what has the focus,
 # left and right step a range and a select, and B closes a popover.
 import "ludic.ui"
 import "ui_gamepad_parts/Pad.ludic"
@@ -39,7 +39,7 @@ program UiGamepad {
     frame(ui_st, new UiInput)
     hold(ui_gamepad_st, ui_st, "down", 1.0, 240)
     let fast = tap(ui_gamepad_st, ui_st, "a")
-    hold(ui_gamepad_st, ui_st, "down", 1.0, 60)
+    hold(ui_gamepad_st, ui_st, "down", 1.2, 60)
     hold(ui_gamepad_st, ui_st, "up", 0.5, 60)
     let slow = tap(ui_gamepad_st, ui_st, "a")
     for k in 0 .. 8 { tap(ui_gamepad_st, ui_st, "down") }
