@@ -23,6 +23,19 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
   first instance's model, or the whole tree, to that file (no `..`) and answer `ok "<out>"`, so a datagram
   stays small; `ui_override "<path>" "<file>"` has the interface read a template or stylesheet from that file
   and reload it keeping state (`""` for the file clears one, `"" ""` clears all). All answer at once.
+- **Keys and text** are declared by devlink itself (`verbs_key.ludic`), so every game offers them with no binding.
+  They go through `Input.press` / `Input.release` / `Input.type`, the layer the window feeds, so a game reads
+  them as real input: `key_down` while held, `key_pressed` on the frame it went down.
+  - `key "<name|code>" "down"` / `"up"` hold and let go a key at once; `key "<name|code>" "tap" ms?` presses it
+    and lets go after `ms` (default 80, 0 to 4000), answering `ok <ms>` once it is let go;
+    `key_repeat "<name|code>" n every_ms` presses `n` taps of 80 ms, one every `every_ms` (at least 80), answering
+    `ok <n>` after the last. `n * every_ms` is at most 4000 (a late answer has `late_s`, 5 s), anything more is `bad_args`.
+  - Names: `up down left right enter escape tab space backspace shift`, `w a s d f r t q e z c x v`, or a code 8 to 255.
+  - `text "<string>"` queues the text (at most 256 bytes, `err failed` while 256 bytes are still waiting): the next
+    `Input.text()` returns it once, when the window typed nothing that frame.
+  - `tap`/`repeat` time in real time, for a running game; in a paused scenario use `down`, `step n`, `up`.
+  - A `tap` on a key that `down` is already holding releases it at the end. While a `tap` or `key_repeat` is
+    parked, any other `key` or `key_repeat` is `err refused` busy (one late request at a time).
 - **Call `devlink_tick`** once a frame from something that runs while the game is paused (not from a
   system the pause stops), or `resume` could never arrive.
 
@@ -60,7 +73,7 @@ def DevVerbs goto { args: "x:float z:float yaw:float?", run: fn goto_verb }
 
 A verb is a row of the open registry `DevVerbs` (`ludic.base/devverb.ludic`): `key`, `args`, `run`, and for
 a verb that can take a while `late` and `late_s`. Its `run(c: DevCall) -> int` answers `DV_OK`, `DV_LATER`
-(started: devlink calls `late(c)` every frame until it answers 1 done, 0 not yet or -1 failed, within
+(started: devlink calls `late(c)` every frame until it answers 1 done, 0 not yet or -1 failed (a done answer's values are written in `late`, `run`'s are not kept), within
 `late_s`, 5 s by default, one at a time, the later request refused `busy`), `DV_FAILED` (`err failed`),
 `DV_BAD` (`err bad_args`, for a value out of range) or `DV_UNBOUND` (`err unbound`, this build does not
 offer it). `c.why` is the message of a failure, and `dv_reply_int` / `_float` / `_bool` / `_str` write the
