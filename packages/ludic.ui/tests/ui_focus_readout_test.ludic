@@ -9,6 +9,11 @@ program UiFocusReadoutTest {
     on hit() { n += 1 }
   }
 
+  component Plain {
+    state n: int = 0
+    on hit() { n += 1 }
+  }
+
   function frame(ui_st: mut UiState) -> void {
     ui_show(ui_st, "Clicker", null, 0.0, 0.0, 1920.0, 1080.0)
   }
@@ -28,6 +33,8 @@ program UiFocusReadoutTest {
     ui_focus(ui_st, key)
     frame(ui_st)
     expect_eq(ui_focused(ui_st), key)
+    expect_eq(ui_focused_id(ui_st), "go")
+    expect(ui_focused(ui_st) != "go")
     expect_eq(ui_focused_at(ui_st), 0)
     expect_eq(ui_focusable(ui_st), 1)
   }
@@ -37,7 +44,20 @@ program UiFocusReadoutTest {
     ui_backend(ui_st, be)
     ui_focus(ui_st, "ghost")
     frame(ui_st)
+    expect_eq(ui_focused(ui_st), "")
+    expect_eq(ui_focused_id(ui_st), "")
     expect_eq(ui_focused_at(ui_st), -1)
     expect_eq(ui_focusable(ui_st), 1)
+  }
+  test "a focused control with no id reads an empty id" (ui_st: mut UiState) {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    ui_show(ui_st, "Plain", null, 0.0, 0.0, 1920.0, 1080.0)
+    expect_eq(ui_focusable(ui_st), 1)
+    ui_focus(ui_st, ui_st.fc_list[0].key)
+    ui_show(ui_st, "Plain", null, 0.0, 0.0, 1920.0, 1080.0)
+    expect(ui_focused(ui_st) != "")
+    expect_eq(ui_focused_id(ui_st), "")
   }
 }
