@@ -81,6 +81,11 @@ still stick.
 | `char_facts() -> Queue<CharacterFact>` | `{ what, x, y, z, v }`: `CHAR_LANDED`, `_JUMPED`, `_FOOTFALL`, `_TOO_STEEP` (once per refusal), `_STARTED_SWIMMING`, `_LEFT_WATER`, `_OUT_OF_AIR` (v: seconds), `_CURRENT` (every 12 s) |
 | `char_reset()`, `char_system() -> System` | `"character"`, `PH_INPUT`, nothing saved: where a body stands is the game's to write |
 
+## Editor verbs
+
+`player` (declared in `devverbs.ludic`, offered by a dev build's editor link, see `ludic.devlink`):
+`x y z yaw vx vy vz grounded`, the yaw in render3d's degrees [0, 360), 0 facing -z.
+
 ## Tests
 
 ```bash

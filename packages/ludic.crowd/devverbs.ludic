@@ -1,6 +1,6 @@
 # devverbs.ludic - what an editor's link into a running dev build can ask of the crowd: who is near a point and
 # what one ped is doing. Nothing runs unless the link is up. A ped's height is the ground the game reports under it
-# (CrowdWorld.ground), which is where its body is placed; its yaw is the walk's heading (CrowdPed.yaw), its act
+# (CrowdWorld.ground), which is where its body is placed; its yaw is the walk's heading (CrowdPed.yaw, which faces (sin, cos)) sent as render3d's degrees, its act
 # the CROWD_* act number, its speed m/s, its lod 0 full, 1 mid, 2 puppet.
 
 const CROWD_DEV_REC: int = 60            # bytes one `peds_near` record may take: DV_NEAR_MAX of them fit DV_OUT
@@ -43,7 +43,7 @@ function crowd_peds_near_verb(crowd_st: mut CrowdState, c: DevCall) -> int {
     dv_reply_float(c, best.x)
     dv_reply_float(c, CrowdWorld.ground(best.x, best.z))
     dv_reply_float(c, best.z)
-    dv_reply_float(c, best.yaw)
+    dv_reply_yaw(c, best.yaw + 3.14159265)
     dv_reply_int(c, best.act)
     dv_reply_float(c, best.speed)
   }
@@ -63,7 +63,7 @@ function crowd_ped_get_verb(crowd_st: CrowdState, c: DevCall) -> int {
   dv_reply_float(c, x)
   dv_reply_float(c, CrowdWorld.ground(x, z))
   dv_reply_float(c, z)
-  dv_reply_float(c, crowd_yaw(crowd_st, uid))
+  dv_reply_yaw(c, crowd_yaw(crowd_st, uid) + 3.14159265)
   dv_reply_int(c, crowd_act(crowd_st, uid))
   dv_reply_float(c, crowd_speed(crowd_st, uid))
   dv_reply_int(c, crowd_lod(crowd_st, uid))

@@ -984,6 +984,19 @@ program CrowdTest {
     expect_eq(DevVerbs[DVB_PEDS_NEAR].run(c), DV_BAD)
   }
 
+  test "peds_near at the far edge of the map: 16 peds at -9999.999 still fit the reply cap" (crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios) {
+    fresh(crowd_st, zones, scen)
+    expect(crowd_prime(crowd_st) > 40)
+    for i in 0 .. crowd_count(crowd_st) { crowd_place(crowd_st, crowd_ped_at(crowd_st, i), -9999.999, -9999.999) }
+    let c = devcall_new()
+    dev_call(c, -9999.999, -9999.999, 100.0, 500)
+    expect_eq(DevVerbs[DVB_PEDS_NEAR].run(c), DV_OK)
+    print(`peds_near, 16 peds at -9999.999: {c.out_n} of {DV_OUT} bytes`)
+    expect(c.out_n < DV_OUT)
+    expect(Text.starts_with(reply(c), " 16 "))
+    expect_eq(spaces(c), 1 + 16 * 7)
+  }
+
   test "ped_get answers one ped's x y z yaw act speed lod, and refuses one that is gone" (crowd_st: mut CrowdState, zones: mut PopulationZones, scen: mut PedScenarios) {
     fresh(crowd_st, zones, scen)
     expect(crowd_prime(crowd_st) > 20)

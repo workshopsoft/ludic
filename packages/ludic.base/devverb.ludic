@@ -134,7 +134,17 @@ export function dv_near_limit(c: DevCall, k: int, per: int) -> int {
   if dv_has(c, k) { m = dv_int(c, k) }
   if m < 0 { m = 0 }
   if m > DV_NEAR_MAX { m = DV_NEAR_MAX }
-  let room = (DV_OUT - c.out_n - 8) / per
+  var room = (DV_OUT - c.out_n - 8) / per
+  if room < 0 { room = 0 }
   if m > room { m = room }
   return m
+}
+
+# a heading on the wire: render3d's yaw in degrees, 0 facing -z, 90 facing -x, in [0, 360). `rad` is a yaw that
+# faces (-sin, -cos); a package whose yaw faces (sin, cos) hands in yaw + pi
+export function dv_reply_yaw(c: DevCall, rad: float) -> void {
+  var d = rad * 57.29578
+  d = d - 360.0 * Math.floor(d / 360.0)
+  if d >= 359.9995 or d < 0.0 { d = 0.0 }
+  dv_reply_float(c, d)
 }

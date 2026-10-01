@@ -1,5 +1,5 @@
 # devverbs.ludic - what an editor's link into a running dev build can ask of the body: where it is and how it moves.
-# Nothing runs unless the link is up. The yaw is the body's own (it faces (-sin yaw, -cos yaw)), in radians.
+# Nothing runs unless the link is up. The yaw is render3d's, in degrees [0, 360), 0 facing -z (the body faces (-sin yaw, -cos yaw)).
 
 # the body's velocity across the ground, m/s: what the walker was handed last step (the air's own while it
 # is in the air, otherwise the facing, or an aimed body's last heading, at the speed)
@@ -19,7 +19,7 @@ function char_player_verb(character_st: CharacterState, c: DevCall) -> int {
   dv_reply_float(c, character_st.chr_x)
   dv_reply_float(c, character_st.chr_y)
   dv_reply_float(c, character_st.chr_z)
-  dv_reply_float(c, character_st.chr_yaw)
+  dv_reply_yaw(c, character_st.chr_yaw)
   dv_reply_float(c, chr_dev_vx(character_st))
   dv_reply_float(c, character_st.chr_vy)
   dv_reply_float(c, chr_dev_vz(character_st))

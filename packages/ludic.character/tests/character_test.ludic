@@ -501,7 +501,7 @@ program CharacterTest {
     expect_eq(p[0], "6.000")
     expect_eq(p[1], "0.450")
     expect_eq(p[2], "0.000")
-    expect_eq(p[3], "-1.571")
+    expect_eq(p[3], "270.000")
     expect_eq(p[4], "0.000")
     expect_eq(p[7], "1")
     fresh(character_st, 1.0, 0.0, EAST)

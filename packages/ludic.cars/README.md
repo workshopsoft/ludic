@@ -268,6 +268,12 @@ driving, the host. A guest's own car under host authority is driven by its contr
 - **Zero allocation**: the per-frame paths touch only kept records, rings and caller-owned slices; a test holds the
   heap flat over hundreds of frames for body, planar, lane and remote cars.
 
+## Editor verbs
+
+`cars_near x z r max?` (`id x y z yaw speed engine_on` records, nearest first, at most 16, wrecks included) and
+`car_get id` (`x y z yaw speed engine_on`), declared in `devverbs.ludic`; the id is the nid, the yaw render3d's
+degrees. The convention is in `ludic.devlink`.
+
 ## API, in short
 
 `car_spawn(model, x, z, yaw, owner) -> nid`, `car_remove`, `car_by_nid`, `car_count` / `car_at`, `car_nearest`,

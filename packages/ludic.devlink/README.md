@@ -86,6 +86,26 @@ The registry and `DevCall` live in `ludic.base` (not here) because a mechanic ma
 package such as a Steam mechanic can declare its verbs without depending on devlink. Devlink is the only reader.
 A release build carries the rows (a few function values) but never opens the socket.
 
+## Entity verbs: `player`, `<kind>_near`, `<kind>_get`
+
+The packages that own entities declare the same three shapes, so any game using them offers them with no code
+and a studio fans out to whichever `*_near` verbs `hello` lists. Today: `ludic.character` declares `player`,
+`ludic.crowd` `peds_near` / `ped_get`, `ludic.cars` `cars_near` / `car_get`.
+
+- `player` answers `x y z yaw vx vy vz grounded`.
+- `<kind>_near x z r max?` answers `n`, then `n` records of a fixed number of values, nearest first (ties: the
+  lower id first). `max` defaults to `DV_NEAR_DEFAULT` = 12 and is clamped to `DV_NEAR_MAX` = 16 (and to what the
+  reply holds), so the answer stays inside the `DV_OUT` = 1024 byte cap: a list answer is always bounded, and a
+  record is at most about 60 bytes. A negative `r` is `bad_args`. Records start with the id:
+  `peds_near`: `id x y z yaw act speed`; `cars_near`: `id x y z yaw speed engine_on`.
+- `<kind>_get id` answers the record without the id: `ped_get`: `x y z yaw act speed lod`; `car_get`:
+  `x y z yaw speed engine_on`. An id that is gone is `bad_args`.
+- **yaw**: degrees, render3d's, 0 -> -z, 90 -> -x, [0, 360). A package whose own yaw faces (sin, cos) converts
+  with `dv_reply_yaw(c, yaw + pi)`. Positions are metres, speeds m/s, a bool is `dv_reply_bool`.
+
+A package adds its own kind by declaring `<kind>_near` and `<kind>_get` in this shape and using
+`dv_near_limit` (`ludic.base`) for the bound.
+
 ## `hello`, with shapes
 
 `<id> ok 1 "<game>" "<build>" "<schema hash or 0>" "<map key>" "<verb,verb,...>" "<shapes>"`

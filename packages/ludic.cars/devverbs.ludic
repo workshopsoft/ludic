@@ -1,0 +1,79 @@
+# devverbs.ludic - what an editor's link into a running dev build can ask of the cars: which are near a point and
+# what one is doing. Nothing runs unless the link is up. A car's id is its nid; its yaw (Car.yaw faces (sin, cos)) is
+# sent as render3d's degrees [0, 360); speed is m/s along its forward, negative backing up; engine_on is a bool.
+# Wrecked cars are listed too: a QA run wants to see them.
+
+const CARS_DEV_REC: int = 56             # bytes one `cars_near` record may take: DV_NEAR_MAX of them fit DV_OUT
+
+# `cars_near x z r max?`: the count n, then n records `id x y z yaw speed engine_on`, nearest first (the lower id
+# first among equals); max defaults to DV_NEAR_DEFAULT and is clamped to DV_NEAR_MAX
+function cars_near_verb(cars_st: CarsState, c: DevCall) -> int {
+  let x = dv_float(c, 0)
+  let z = dv_float(c, 1)
+  let r = dv_float(c, 2)
+  if r < 0.0 {
+    c.why = "r must not be negative"
+    return DV_BAD
+  }
+  let lim = dv_near_limit(c, 3, CARS_DEV_REC)
+  let tb = cars_st.cr_cars
+  let n = tb_len(tb)
+  var within = 0
+  for q in 0 .. n {
+    let p = tb_rec(tb, q)
+    let dx = p.x - x
+    let dz = p.z - z
+    if dx * dx + dz * dz <= r * r { within += 1 }
+  }
+  var k = within
+  if k > lim { k = lim }
+  dv_reply_int(c, k)
+  var last_d = -1.0
+  var last_id = -1
+  for j in 0 .. k {
+    var best: Car = null
+    var bd = 0.0
+    for q in 0 .. n {
+      let p = tb_rec(tb, q)
+      let dx = p.x - x
+      let dz = p.z - z
+      let d = dx * dx + dz * dz
+      if d > r * r { continue }
+      if d < last_d or (d == last_d and p.nid <= last_id) { continue }
+      if best == null or d < bd or (d == bd and p.nid < best.nid) {
+        best = p
+        bd = d
+      }
+    }
+    if best == null { break }
+    last_d = bd
+    last_id = best.nid
+    dv_reply_int(c, best.nid)
+    dv_reply_float(c, best.x)
+    dv_reply_float(c, best.y)
+    dv_reply_float(c, best.z)
+    dv_reply_yaw(c, best.yaw + 3.14159265)
+    dv_reply_float(c, best.speed)
+    dv_reply_bool(c, best.engine_on)
+  }
+  return DV_OK
+}
+def DevVerbs cars_near { args: "x:float z:float r:float max:int?", run: fn cars_near_verb }
+
+# `car_get id`: x y z yaw speed engine_on
+function car_get_verb(cars_st: CarsState, c: DevCall) -> int {
+  let nid = dv_int(c, 0)
+  let car = car_by_nid(cars_st, nid)
+  if car == null {
+    c.why = `no car {nid}`
+    return DV_BAD
+  }
+  dv_reply_float(c, car.x)
+  dv_reply_float(c, car.y)
+  dv_reply_float(c, car.z)
+  dv_reply_yaw(c, car.yaw + 3.14159265)
+  dv_reply_float(c, car.speed)
+  dv_reply_bool(c, car.engine_on)
+  return DV_OK
+}
+def DevVerbs car_get { args: "id:int", run: fn car_get_verb }

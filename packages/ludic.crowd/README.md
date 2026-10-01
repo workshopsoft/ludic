@@ -259,6 +259,12 @@ many it reached), `CROWD_ACT`, `CROWD_EMBODIED`, `CROWD_HANDBACK`, `CROWD_ARRIVE
 Save: section `crowd`, version 1: the clock and the places still empty after a kill. The people are the seed's and are
 made again round the players.
 
+## Editor verbs
+
+`peds_near x z r max?` (`id x y z yaw act speed` records, nearest first, at most 16) and `ped_get id`
+(`x y z yaw act speed lod`), declared in `devverbs.ludic`. A ped's `y` is what `CrowdWorld.ground` says under
+it; yaw is render3d's degrees. The convention is in `ludic.devlink`.
+
 ## Performance
 
 The benchmark (`tests/crowd_bench_test.ludic`, four players walking through a dense city, a dense metro zone at
