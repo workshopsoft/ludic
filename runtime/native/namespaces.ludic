@@ -142,6 +142,7 @@ namespace Input {
   alias key_label(key) = input_key_label
   alias text() = input_text  # what was TYPED, UTF-8
   alias press(key) = input_press
+  alias type(text) = input_type   # inject typed text: the next Input.text returns it
   alias release(key) = input_release
   alias axis(neg, pos) = input_axis
   alias axis_i(neg, pos) = input_axis_i  # #79 directional int (-1/0/1)

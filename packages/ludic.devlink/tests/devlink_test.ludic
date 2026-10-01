@@ -162,7 +162,7 @@ program DevlinkTest {
 
   test "ping and hello, and the answers to the camera, byte for byte" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
     expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "1 ok")
-    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"pinewood\" \"0\" \"0123456789abcdef\" \"forest\" \"cam_get,cam_set,shot,step,ui_screen,ui_focus,ui_click,ui_click_id,ui_model,ui_tree,ui_override,signal_source,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later\" \"signal_source at:int;goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later\"")
+    expect(ask(devlink_st, fake_link_st, "2 hello\n", 0.016) == "2 ok 1 \"pinewood\" \"0\" \"0123456789abcdef\" \"forest\" \"cam_get,cam_set,shot,step,ui_screen,ui_focus,ui_click,ui_click_id,ui_model,ui_tree,ui_override,signal_source,goto,map_load,time,weather,steam_state,kinds,off,fail,bad_later,key,key_repeat,text\" \"signal_source at:int;goto x:float z:float yaw:float?;map_load key:string;time hour:float day:int?;weather key:string;steam_state;kinds n:int f:float s:string b:bool o:int?;off;fail;bad_later;key key:string how:string ms:int?;key_repeat key:string n:int every_ms:int;text text:string\"")
     expect(ask(devlink_st, fake_link_st, "3 cam_get", 0.016) == "3 ok 1038.500 -38.000 -405.250 124.000 -10.000")
     expect(ask(devlink_st, fake_link_st, "4 cam_set 12.5 3 -7 90.25 -5", 0.016) == "4 ok")
     expect(fake_link_st.cx == 12.5 and fake_link_st.cyaw == 90.25)
@@ -288,5 +288,102 @@ program DevlinkTest {
     Os.set_env("LUDIC_DEVLINK_PORT", "48100")
     expect_eq(DevlinkWorld.port(), 48100)
     Os.unset_env("LUDIC_DEVLINK_PORT")
+  }
+  # ---- key: the keyboard an agent does not have (verbs_key.ludic), read back through the same Input a game reads
+  test "key down and up hold and let go a key; names and codes; bad names and hows are refused" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "80 key \"down\" \"down\"", 0.016) == "80 ok")
+    Input.poll()
+    expect(Input.key_pressed(Key.Down) and Input.key_down(Key.Down))
+    Input.poll()
+    expect(Input.key_down(Key.Down) and not Input.key_pressed(Key.Down))
+    expect(ask(devlink_st, fake_link_st, "81 key \"down\" \"up\"", 0.016) == "81 ok")
+    Input.poll()
+    expect(not Input.key_down(Key.Down))
+    expect(ask(devlink_st, fake_link_st, "82 key \"w\" \"down\"", 0.016) == "82 ok")
+    expect(ask(devlink_st, fake_link_st, "83 key \"119\" \"up\"", 0.016) == "83 ok")
+    Input.poll()
+    expect(not Input.key_down(Key.W))
+    expect(ask(devlink_st, fake_link_st, "84 key \"nope\" \"down\"", 0.016) == "84 err bad_args \"no key nope: up, down, left, right, enter, escape, tab, space, backspace, shift, w a s d f r t q e z c x v or a code 8 to 255\"")
+    expect(ask(devlink_st, fake_link_st, "85 key \"7\" \"down\"", 0.016) == "85 err bad_args \"no key 7: up, down, left, right, enter, escape, tab, space, backspace, shift, w a s d f r t q e z c x v or a code 8 to 255\"")
+    expect(ask(devlink_st, fake_link_st, "86 key \"up\" \"hold\"", 0.016) == "86 err bad_args \"down, up or tap <ms>\"")
+    expect(ask(devlink_st, fake_link_st, "87 key \"up\" \"tap\" 5000", 0.016) == "87 err bad_args \"a tap of 0 to 4000 ms\"")
+  }
+
+  test "key tap: pressed on exactly one poll, held for the milliseconds, answered with them once let go" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "7 key \"down\" \"tap\" 80", 0.016) == "")   # parked: it answers when the key is let go
+    var pressed = 0
+    var held = 0
+    var answer = ""
+    var frames = 0
+    while answer == "" and frames < 60 {
+      Input.poll()
+      if Input.key_pressed(Key.Down) { pressed += 1 }
+      if Input.key_down(Key.Down) { held += 1 }
+      Time.sleep_us(long(16000))                          # a 60 Hz frame
+      answer = ask(devlink_st, fake_link_st, "", 0.016)
+      frames += 1
+    }
+    expect(answer == "7 ok 80")
+    expect_eq(pressed, 1)
+    expect(held >= 4)
+    Input.poll()
+    expect(not Input.key_down(Key.Down))
+    # a default tap is 80 ms, and a second tap while one is parked is refused as busy
+    expect(ask(devlink_st, fake_link_st, "9 key \"enter\" \"tap\"", 0.016) == "")
+    expect(ask(devlink_st, fake_link_st, "10 key \"enter\" \"tap\" 10", 0.016) == "10 err refused \"busy with an earlier request\"")
+    Time.sleep_us(long(100000))
+    expect(ask(devlink_st, fake_link_st, "", 0.016) == "9 ok 80")
+  }
+  test "key_repeat: n taps every every_ms, answers the count after the last; n * every_ms is capped at 4000" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, dk: mut DevlinkKeyState) {
+    expect(ask(devlink_st, fake_link_st, "30 key_repeat \"up\" 3 100", 0.016) == "")
+    var pressed = 0
+    var answer = ""
+    var frames = 0
+    while answer == "" and frames < 100 {
+      Input.poll()
+      if Input.key_pressed(Key.Up) { pressed += 1 }
+      Time.sleep_us(long(16000))
+      answer = ask(devlink_st, fake_link_st, "", 0.016)
+      frames += 1
+    }
+    expect(answer == "30 ok 3")
+    expect_eq(pressed, 3)
+    Input.poll()
+    expect(not Input.key_down(Key.Up))
+    # the cap: 4000 is the edge and is taken, 4001 and a period shorter than a tap are refused
+    let why = "n >= 1 taps every 80 ms or more, n * every_ms at most 4000"
+    expect(ask(devlink_st, fake_link_st, "31 key_repeat \"up\" 20 500", 0.016) == "31 err bad_args \"" + why + "\"")
+    expect(ask(devlink_st, fake_link_st, "32 key_repeat \"up\" 8 501", 0.016) == "32 err bad_args \"" + why + "\"")
+    expect(ask(devlink_st, fake_link_st, "33 key_repeat \"up\" 2 79", 0.016) == "33 err bad_args \"" + why + "\"")
+    expect(ask(devlink_st, fake_link_st, "34 key_repeat \"up\" 0 100", 0.016) == "34 err bad_args \"" + why + "\"")
+    expect(ask(devlink_st, fake_link_st, "35 key_repeat \"up\" 3", 0.016) == "35 err bad_args \"bad arguments: key_repeat key:string n:int every_ms:int\"")
+    expect(ask(devlink_st, fake_link_st, "36 key_repeat \"up\" 8 500", 0.016) == "")    # 4000: taken, it parks
+    dk_stop(dk)                                          # cancelled, so the suite stays fast
+    expect(ask(devlink_st, fake_link_st, "", 0.016) == "36 ok")
+    Input.poll()
+    expect(not Input.key_down(Key.Up))
+  }
+
+  test "text: typed into the next Input.text, once; over 256 bytes is refused" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(Input.text() == "")
+    expect(ask(devlink_st, fake_link_st, "8 text \"abc\"", 0.016) == "8 ok")
+    expect(Input.text() == "abc")
+    expect(Input.text() == "")
+    expect(ask(devlink_st, fake_link_st, "9 text \"a\\\"b\"", 0.016) == "9 ok")
+    expect(ask(devlink_st, fake_link_st, "10 text \"c\"", 0.016) == "10 ok")
+    expect(Input.text() == "a\"bc")
+    var big = ""
+    var x200 = ""
+    var x100 = ""
+    for i in 0 .. 257 {
+      big = big + "x"
+      if i < 200 { x200 = x200 + "x" }
+      if i < 100 { x100 = x100 + "x" }
+    }
+    expect(ask(devlink_st, fake_link_st, "12 text \"" + x200 + "\"", 0.016) == "12 ok")
+    expect(ask(devlink_st, fake_link_st, "13 text \"" + x100 + "\"", 0.016) == "13 err failed \"text still waiting (256 bytes)\"")
+    expect(Input.text() == x200)
+    expect(ask(devlink_st, fake_link_st, "11 text \"" + big + "\"", 0.016) == "11 err bad_args \"at most 256 bytes of text\"")
+    expect(Input.text() == "")
   }
 }
