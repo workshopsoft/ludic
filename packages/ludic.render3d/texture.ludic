@@ -264,6 +264,29 @@ function tex_load_ex__t(render3d_st: mut Render3dState, path: pointer, srgb: boo
   tex_note_size(render3d_st, id)
   return id
 }
+# A PNG held in memory as a texture (an image embedded in a .glb: a bufferView of its BIN chunk). buf is `size` bytes
+# plus 8 spare and is freed here; `key` names it in messages. 0 when it is not a PNG or will not inflate.
+@alloc_ok("loading a model: a load, not a frame")
+function tex_load_png_mem(render3d_st: mut Render3dState, buf: pointer, size: int, key: string, srgb: bool, dilate: int) -> int {
+  let was = render3d_st.gvk_tag
+  if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+  var id = 0
+  let j = png_parse_mem(render3d_st, buf, size, key)
+  if j != null {
+    j.path = key
+    j.z = tex_z(render3d_st, 0)
+    png_work(j)
+    let px = png_take(render3d_st, j)
+    if px != null {
+      if dilate > 0 { tex_dilate(render3d_st, px, 60, dilate) }
+      id = tex_upload(render3d_st, px, srgb, true)
+      free(px)
+      tex_note_size(render3d_st, id)
+    }
+  }
+  render3d_st.gvk_tag = was
+  return id
+}
 # the size each loaded texture was, by id: a nine-slice or a UI image asks
 # a texture's size, by its id: a slot per id (ids are reused), not a list that grows by every load
 function tex_note_size(render3d_st: mut Render3dState, id: int) -> void {

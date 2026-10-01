@@ -77,8 +77,8 @@ function gltf_texture(render3d_st: mut Render3dState, uri: string, srgb: bool) -
   return id
 }
 
-# the image uri behind materials[m].<slot>.index, or null
-function gltf_mat_uri(render3d_st: Render3dState, mat: Val, slot: pointer) -> string {
+# the images[] entry behind materials[m].<slot>.index, or a null value when the material has no such slot
+function gltf_mat_image(render3d_st: Render3dState, mat: Val, slot: pointer) -> Val {
   var holder = mat
   if slot == "baseColorTexture" or slot == "metallicRoughnessTexture" {
     if value_has(mat, "pbrMetallicRoughness") == 0 { return null }
@@ -88,9 +88,68 @@ function gltf_mat_uri(render3d_st: Render3dState, mat: Val, slot: pointer) -> st
   let ti = value_as_int(value_get(value_get(holder, slot), "index"))
   let tex = value_at(value_get(render3d_st.gltf_doc, "textures"), ti)
   let src = value_as_int(value_get(tex, "source"))
-  let img = value_at(value_get(render3d_st.gltf_doc, "images"), src)
-  if value_has(img, "uri") == 0 { return null }        # an image inside a .glb's BIN chunk: not read (textures are files beside the model)
+  return value_at(value_get(render3d_st.gltf_doc, "images"), src)
+}
+
+# the image uri behind materials[m].<slot>.index, or null (no slot, or an image embedded in the BIN chunk: gltf_mat_bv)
+function gltf_mat_uri(render3d_st: Render3dState, mat: Val, slot: pointer) -> string {
+  let img = gltf_mat_image(render3d_st, mat, slot)
+  if img == null or value_has(img, "uri") == 0 { return null }
   return value_as_str(value_get(img, "uri"))
+}
+
+# the bufferView holding the image behind materials[m].<slot> when it is embedded (a .glb's BIN chunk, no uri), or -1
+function gltf_mat_bv(render3d_st: Render3dState, mat: Val, slot: pointer) -> int {
+  let img = gltf_mat_image(render3d_st, mat, slot)
+  if img == null or value_has(img, "uri") != 0 or value_has(img, "bufferView") == 0 { return -1 }
+  return value_as_int(value_get(img, "bufferView"))
+}
+
+# bufferView bv's bytes from the open binary (8 spare at the end); the caller frees them
+@alloc_ok("loading a model: a load, not a frame")
+function gltf_view_bytes(render3d_st: mut Render3dState, bv: int) -> pointer {
+  let view = value_at(value_get(render3d_st.gltf_doc, "bufferViews"), bv)
+  let n = jint(view, "byteLength", 0)
+  let buf = bytes(n + 8)
+  file_seek(render3d_st.gltf_bin, render3d_st.gltf_bin_base + jint(view, "byteOffset", 0), 0)
+  file_read(render3d_st.gltf_bin, buf, n)
+  return buf
+}
+
+# An embedded PNG as a texture, once per (file, bufferView): the cache is keyed by the document's own binary, so two
+# files that both embed an image at bufferView 6 never share one.
+@alloc_ok("loading a model: a load, not a frame")
+function gltf_texture_bv(render3d_st: mut Render3dState, bv: int, srgb: bool) -> int {
+  if render3d_st.gltf_tex_paths == null { render3d_st.gltf_tex_paths = new []pointer;  render3d_st.gltf_tex_ids = words(256);  render3d_st.gltf_tex_refs = words(256) }
+  var owner = render3d_st.gltf_dir
+  if render3d_st.gltf_bin_path != null { owner = render3d_st.gltf_bin_path }
+  let key = `{owner}#{bv}`
+  var i = 0
+  while i < render3d_st.gltf_tex_n {
+    if render3d_st.gltf_tex_paths[i] == key {
+      free(key)
+      render3d_st.gltf_tex_refs[i] += 1
+      return render3d_st.gltf_tex_ids[i]
+    }
+    i += 1
+  }
+  let n = jint(value_at(value_get(render3d_st.gltf_doc, "bufferViews"), bv), "byteLength", 0)
+  if n <= 8 { print(`gltf: image bufferView {bv} of {owner} is empty`);  free(key);  return 0 }
+  let buf = gltf_view_bytes(render3d_st, bv)
+  var dil = 0
+  if render3d_st.gltf_cutout { dil = 24 }
+  let id = tex_load_png_mem(render3d_st, buf, n, key, srgb, dil)
+  if id != 0 and render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, key);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_refs[render3d_st.gltf_tex_n] = 1;  render3d_st.gltf_tex_n += 1 } else { free(key) }
+  return id
+}
+
+# one material slot's texture: a file beside the model (uri), or an image inside its .glb; 0 when it has neither
+function gltf_slot_texture(render3d_st: mut Render3dState, mat: Val, slot: pointer, srgb: bool) -> int {
+  let u = gltf_mat_uri(render3d_st, mat, slot)
+  if u != null { return gltf_texture(render3d_st, u, srgb) }
+  let bv = gltf_mat_bv(render3d_st, mat, slot)
+  if bv >= 0 { return gltf_texture_bv(render3d_st, bv, srgb) }
+  return 0
 }
 
 # read one accessor's bytes from the .bin; sets gltf_count / gltf_ctype / gltf_comps
@@ -193,29 +252,47 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
     let mat = value_at(value_get(render3d_st.gltf_doc, "materials"), value_as_int(value_get(p, "material")))
     render3d_st.gltf_cutout = value_has(mat, "alphaMode") != 0
     let ud = gltf_mat_uri(render3d_st, mat, "baseColorTexture")
-    let un = gltf_mat_uri(render3d_st, mat, "normalTexture")
-    let ua = gltf_mat_uri(render3d_st, mat, "metallicRoughnessTexture")
-    if ud != null { pr.diff = gltf_texture(render3d_st, ud, true) }
-    if un != null { pr.nrm = gltf_texture(render3d_st, un, false) }
-    if ua != null { pr.arm = gltf_texture(render3d_st, ua, false) }
-    gltf_factors(render3d_st, pr, mat, ud != null, ua != null)
+    let ed = gltf_mat_bv(render3d_st, mat, "baseColorTexture")
+    var td = 0;  var tn = 0;  var ta = 0
+    if ud != null or ed >= 0 { td = gltf_slot_texture(render3d_st, mat, "baseColorTexture", true) }
+    tn = gltf_slot_texture(render3d_st, mat, "normalTexture", false)
+    ta = gltf_slot_texture(render3d_st, mat, "metallicRoughnessTexture", false)
+    if td != 0 { pr.diff = td }
+    if tn != 0 { pr.nrm = tn }
+    if ta != 0 { pr.arm = ta }
+    gltf_factors(render3d_st, pr, mat, td != 0, ta != 0)
     var mname: string = null
     # a copy: the document goes, strings and all, at the next load
     if value_has(mat, "name") != 0 { let s = value_as_str(value_get(mat, "name"));  mname = s[0 .. len(s)] }
     pr.name = mname
     if mname != null {
-      if ud != null { gltf_mat_remember(render3d_st, mname, pr.diff, pr.nrm, pr.arm) }
-      else {
-        let k = gltf_mat_find(render3d_st, mname)
+      # The name cache serves a LOD chain exported without images (its textures came with the LOD0 download, in the same
+      # directory), so it is keyed by directory and name, and only a material with no texture of its own and no colour
+      # of its own asks it. A material whose image is embedded is self-contained: it neither fills the cache nor reads it.
+      let key = `{render3d_st.gltf_dir}/{mname}`
+      if ud != null { gltf_mat_remember(render3d_st, key, pr.diff, pr.nrm, pr.arm) }
+      else if td == 0 and not gltf_mat_has_colour(mat) {
+        let k = gltf_mat_find(render3d_st, key)
         if k >= 0 {
           pr.diff = render3d_st.gltf_mat_diff[k];  pr.nrm = render3d_st.gltf_mat_nrm[k];  pr.arm = render3d_st.gltf_mat_arm[k]
           gltf_tex_ref(render3d_st, pr.diff);  gltf_tex_ref(render3d_st, pr.nrm);  gltf_tex_ref(render3d_st, pr.arm)
         }
         else { print(`gltf: material {mname} has no textures and none were loaded before it`) }
       }
+      free(key)
     }
   }
   return pr
+}
+
+# a material that states its own base colour (a baseColorFactor other than white): it draws that, not another file's texture of its name
+function gltf_mat_has_colour(mat: Val) -> bool {
+  if value_has(mat, "pbrMetallicRoughness") == 0 { return false }
+  let pbr = value_get(mat, "pbrMetallicRoughness")
+  if value_has(pbr, "baseColorFactor") == 0 { return false }
+  let b = value_get(pbr, "baseColorFactor")
+  for k in 0 .. min(value_count(b), 3) { if jnum(value_at(b, k)) < 0.999 { return true } }
+  return false          # white: the factor changes nothing
 }
 
 # The material's factors (glTF's pbrMetallicRoughness and emissiveFactor), which the shaders multiply in;
