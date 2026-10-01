@@ -342,22 +342,32 @@ function prim_factors(render3d_st: mut Render3dState, p: int, pr: Prim) -> void 
 function gltf_open(render3d_st: mut Render3dState, dir: string, file: string) -> bool {
   render3d_st.gltf_dir = dir
   let at = dir + "/" + file
-  if render3d_st.gltf_doc != null { Json.free_all(render3d_st.gltf_doc);  render3d_st.gltf_doc = null }
+  # The parsed document is kept per file: a block glb names 300+ buildings and each model_actor asks for one node, so
+  # parsing its megabytes of JSON again for every node was the whole load time. The same path of the same size (and,
+  # for a .glb, the same JSON chunk length) is the same document; only the binary is reopened, which is cheap.
+  let size = Fs.size(at)
+  var same = render3d_st.gltf_doc != null and render3d_st.gltf_doc_key != null and render3d_st.gltf_doc_key == at and render3d_st.gltf_doc_size == size and render3d_st.gltf_doc == render3d_st.gltf_doc_own
   if render3d_st.gltf_bin_path != null { free(render3d_st.gltf_bin_path);  render3d_st.gltf_bin_path = null }
   render3d_st.gltf_bin_base = 0
-  let size = Fs.size(at)
   let f = file_open(at, "rb")
-  if f == null or size < 0 { print(`gltf: cannot read {dir}/{file}`);  free(at);  return false }
+  if f == null or size < 0 { print(`gltf: cannot read {dir}/{file}`);  free(at);  gltf_doc_drop(render3d_st);  return false }
   let lay = words(4)
   if glb_scan(f, size, lay) {
-    free(at)
-    let buf = bytes(lay[1] + 1)
-    file_seek(f, lay[0], 0)
-    file_read(f, buf, lay[1])
-    buf[lay[1]] = 0
-    let text: string = buf
-    render3d_st.gltf_doc = Json.parse(text)
-    free(buf)
+    if same and render3d_st.gltf_doc_jlen != lay[1] { same = false }
+    if not same {
+      gltf_doc_drop(render3d_st)
+      let buf = bytes(lay[1] + 1)
+      file_seek(f, lay[0], 0)
+      file_read(f, buf, lay[1])
+      buf[lay[1]] = 0
+      let text: string = buf
+      render3d_st.gltf_doc = Json.parse(text)
+      free(buf)
+      render3d_st.gltf_doc_own = render3d_st.gltf_doc
+      render3d_st.gltf_doc_key = at
+      render3d_st.gltf_doc_size = size
+      render3d_st.gltf_doc_jlen = lay[1]
+    } else { free(at) }
     let base = lay[2]
     free(lay)
     if base < 0 { print(`gltf: {file} has no binary chunk`);  file_close(f);  return false }
@@ -368,12 +378,18 @@ function gltf_open(render3d_st: mut Render3dState, dir: string, file: string) ->
   }
   free(lay)
   file_close(f)
-  let text = Fs.read_text(at)
-  free(at)
-  if text == null { print(`gltf: cannot read {dir}/{file}`);  return false }
-  # the text once parsed - nothing gives memory back on its own (plan 23 of maroon-lake)
-  render3d_st.gltf_doc = Json.parse(text)
-  free(text)
+  if not same {
+    gltf_doc_drop(render3d_st)
+    let text = Fs.read_text(at)
+    if text == null { print(`gltf: cannot read {dir}/{file}`);  free(at);  return false }
+    # the text once parsed - nothing gives memory back on its own (plan 23 of maroon-lake)
+    render3d_st.gltf_doc = Json.parse(text)
+    free(text)
+    render3d_st.gltf_doc_own = render3d_st.gltf_doc
+    render3d_st.gltf_doc_key = at
+    render3d_st.gltf_doc_size = size
+    render3d_st.gltf_doc_jlen = 0
+  } else { free(at) }
   let buffers = value_get(render3d_st.gltf_doc, "buffers")
   if value_count(buffers) == 0 or value_has(value_at(buffers, 0), "uri") == 0 { print(`gltf: {file} names no .bin`);  return false }
   let bin_uri = value_as_str(value_get(value_at(buffers, 0), "uri"))
@@ -382,6 +398,16 @@ function gltf_open(render3d_st: mut Render3dState, dir: string, file: string) ->
   if render3d_st.gltf_bin == null { print(`gltf: cannot open {bin_uri}`);  free(bin_at);  return false }
   render3d_st.gltf_bin_path = bin_at
   return true
+}
+
+# the kept document goes (a different file is opened, or a read failed), with the key that named it
+@alloc_ok("loading a model: a load, not a frame")
+function gltf_doc_drop(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gltf_doc != null { Json.free_all(render3d_st.gltf_doc);  render3d_st.gltf_doc = null }
+  if render3d_st.gltf_doc_key != null { free(render3d_st.gltf_doc_key);  render3d_st.gltf_doc_key = null }
+  render3d_st.gltf_doc_own = null
+  render3d_st.gltf_doc_size = -1
+  render3d_st.gltf_doc_jlen = 0
 }
 
 # Open the binary of the document gltf_load last read again (gltf_load closes it before it returns), for a reader of

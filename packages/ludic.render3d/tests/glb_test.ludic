@@ -63,6 +63,44 @@ program GlbTest {
     file_close(render3d_st.gltf_bin)
   }
 
+  test "the same file opened again keeps its parsed document, the binary is read afresh" (render3d_st: mut Render3dState) {
+    let dir = models(render3d_st)
+    keeps(render3d_st, dir, "tri.glb")
+    keeps(render3d_st, dir, "tri.gltf")
+  }
+  function keeps(render3d_st: mut Render3dState, dir: string, name: string) -> void {
+    expect(gltf_open(render3d_st, dir, name))
+    let first = render3d_st.gltf_doc
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+    expect(gltf_open(render3d_st, dir, name))
+    expect(render3d_st.gltf_doc == first)                  # not parsed again
+    expect(tri_ok(render3d_st))                            # and the binary reads right
+    file_close(render3d_st.gltf_bin)
+  }
+
+  test "another file, or the same path changed, is parsed anew" (render3d_st: mut Render3dState) {
+    let dir = Os.temp_dir() + "/r3d_glb_keep"
+    Fs.mkdir(dir)
+    let good = Fs.read_bytes(models(render3d_st) + "/tri.glb")
+    let n = Fs.size(models(render3d_st) + "/tri.glb")
+    expect(Fs.write_bytes(dir + "/a.glb", good, n))
+    expect(gltf_open(render3d_st, dir, "a.glb"))
+    file_close(render3d_st.gltf_bin)
+    expect(render3d_st.gltf_doc_key == dir + "/a.glb")
+    expect(Fs.copy(models(render3d_st) + "/tri.glb", dir + "/b.glb"))
+    expect(gltf_open(render3d_st, dir, "b.glb"))
+    expect(render3d_st.gltf_doc_key == dir + "/b.glb")
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+    # a document set by hand is never mistaken for the kept one
+    render3d_st.gltf_doc = Json.parse("{\"nodes\": []}")
+    expect(gltf_open(render3d_st, dir, "b.glb"))
+    expect(value_has(render3d_st.gltf_doc, "accessors") != 0)
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+  }
+
   test "the binary reopens after a load closed it, for a .glb and a .gltf" (render3d_st: mut Render3dState) {
     let dir = models(render3d_st)
     reopens(render3d_st, dir, "tri.glb")
