@@ -932,6 +932,17 @@ function alloc_fence_rewarm_case() -> void {
   if (rc == 86) and (head == "alloc-fence: frame 3000 kept +16 B (1 made, 0 freed)") { ok(lbl) } else { bad2(lbl, `rc={string(rc)} head=[{head}]`) }
 }
 
+function alloc_fence_scene_case() -> void {
+  let lbl = "alloc_fence_scene.ludic (a scene built after the launcher settled passes once Mem.play() + Mem.settled() mark the boundary; a leak after it still fails the run: exit 86 at its own frame; count mode says bad 1)"
+  let b = `{tmp_dir()}/e_alloc_fence_scene`
+  if not game_build_ok("bin/ludicc", "examples/lang/alloc_fence_scene.ludic", b) { bad2(lbl, "did not build"); return }
+  let rc = sh(`{b} < /dev/null > /dev/null 2>{tmp_dir()}/afsc.err`)
+  let head = capture_line(`grep 'alloc-fence: frame' {tmp_dir()}/afsc.err | head -1`)
+  let counted = capture_line(`R3D_ALLOC_FENCE=count {b} < /dev/null`)
+  if (rc == 86) and (head == "alloc-fence: frame 2000 kept +16 B (1 made, 0 freed)") and (counted == "bad 1") { ok(lbl) }
+  else { bad2(lbl, `rc={string(rc)} head=[{head}] count=[{counted}]`) }
+}
+
 function alloc_fence_sites_case() -> void {
   let lbl = "alloc_fence_sites.ludic (two lines take turns keeping memory, one through a runtime helper; each report charges its own line, never the one that allocated last)"
   let b = `{tmp_dir()}/e_alloc_fence_sites`
@@ -1349,6 +1360,7 @@ function cmd_dev_test() -> int {
   alloc_fence_leak_case()
   alloc_fence_unbounded_case()
   alloc_fence_rewarm_case()
+  alloc_fence_scene_case()
   alloc_fence_sites_case()
   alloc_fence_auto_case()
   arena_pool_case()
