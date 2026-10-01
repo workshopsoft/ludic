@@ -996,6 +996,12 @@ function emit_call(e: Node) -> Val {
   # capitalized by convention, so this rarely competes.
   let ctor = variant_enum(name)
   if (ctor != null) { return emit_variant_new(ctor, g_var_ord, e.kids) }
+  # `clear(xs)` on a slice (a local, a field, an element, a call's result) empties it, like push/len;
+  # only a colour argument is the framebuffer clear (rt_clear), which would take the slice as an int
+  if (name == "clear") and len(e.kids) == 1 and (find_fn("clear") == null) {
+    let ct = static_type(e.kids[0])
+    if (ct != null) and is_slice_ty(ct) { return emit_list_ns("clear", e) }
+  }
   var fn2 = find_fn(name)
   var cname = name
   if (fn2 == null) {

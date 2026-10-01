@@ -1,0 +1,26 @@
+# clear(xs) on a slice empties it, whether xs is a local or a record's field
+program T {
+  numbers float
+  property Bag { fs: []float, ns: []int }
+  entry {
+    let a = new []float
+    push(a, 1.5);  push(a, 2.5)
+    clear(a)
+    print(len(a))            # 0
+    push(a, 3.5)
+    print(len(a))            # 1
+    let b = new Bag
+    b.fs = new []float
+    b.ns = new []int
+    push(b.fs, 1.0);  push(b.fs, 2.0);  push(b.ns, 7)
+    clear(b.fs)
+    print(len(b.fs))         # 0
+    print(len(b.ns))         # 1
+    clear(b.ns)
+    print(len(b.ns))         # 0
+    let c = new []int
+    push(c, 4);  push(c, 5)
+    clear(c)
+    print(len(c))            # 0
+  }
+}
