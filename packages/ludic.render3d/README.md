@@ -338,3 +338,22 @@ start by the older paths. Those are the renderer's own bakes, not content, and s
 Ground streams that follow a rebasing origin; impostor atlases with mips and cards that cast shadows; a depth-corrected impostor (parallax);
 mesh LOD chains per kit (`layer_set_lods` has them for vegetation; kits go mesh to card); occlusion culling of the city by the depth buffer (only portals inside buildings);
 multi-player instance visibility beyond `intr_ref`; HLOD with merged textures and a window/roof texture instead of banding.
+
+## Modular characters: parts on one skeleton
+
+A body and its worn parts (hair, top, trousers, shoes) are separate glTFs, each skinned to the SAME armature (same joint
+names; order, count and inverse binds may differ). The body is the **leader**: whatever poses it (`ludic.anim`, a gait) is
+the only thing that moves a bone. A part is an `Actor` that follows it, as Unreal's leader pose component does and as Unity
+parts sharing a skeleton's bones do:
+
+```ludic
+let n = actor_follow(shirt, body)     # joints bound BY NAME, once; returns how many found a node (-1: no skin)
+actor_hide_parts(body, ["body_torso"], true)   # primitives (by material name) the shirt covers
+actor_unfollow(shirt)                 # back to a plain actor (actor_release does it too)
+```
+
+Each frame a follower copies the leader's placement, visibility and cull, and skins with
+`leader.gmat[node by name] * part.inv_bind[j]` (`skin_follow_pose`); a joint with no same-named node stays at rest. Shadows
+and the outline pass use the same palette. Releasing the leader hides its followers. The 48-joint cap (`SKIN_MAX_JOINTS`,
+`u_bones[48]`) applies per mesh, so a part skinned to few joints is cheaper than the body. Hiding is per primitive, the unit
+the glTF gives: export the body with one material per region. `actor_show_all` undoes it.

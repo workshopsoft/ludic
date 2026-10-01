@@ -40,7 +40,14 @@ property Actor {
   radius:  float = 0.0,        # float bits: bounding radius for culling (0 = never culled)
   cull:    float = 0.0,        # float bits: not drawn beyond this distance (0 = always)
   outline: float = 0.0,        # float bits: metres of rim drawn around it (0 = none)
-  ocol:    floats           # the rim's colour (null = white)
+  ocol:    floats,          # the rim's colour (null = white)
+  # a part of a modular character (actor_follow): it takes the leader's placement and pose, binds its joints
+  # to the leader's by name once, and draws its own mesh with its own palette (fbones)
+  leader:    Actor,
+  leader_id: int = 0,         # the leader's id when attached: a recycled record is not the same figure
+  fmap:      words,           # per joint of this model: the leader's node, or -1
+  fbones:    floats,          # 16 per joint: the palette this part skins with
+  fbones_v:  [][]float
 }
 const ACTOR_POOL: int = 512
 # a program and its uniform locations
@@ -173,6 +180,14 @@ function ac_bind_scene(render3d_st: mut Render3dState, ap: AcProg) -> void {
 }
 function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool {
   if a.model == null { return false }
+  if a.leader != null {
+    let l = a.leader
+    if l.id != a.leader_id or l.model == null { return false }      # the leader is gone: so is the part
+    a.x = l.x;  a.y = l.y;  a.z = l.z;  a.yaw = l.yaw;  a.scale = l.scale
+    m4_copy(a.mat, l.mat)
+    a.visible = l.visible;  a.cast_hidden = l.cast_hidden;  a.casts = l.casts
+    a.cull = l.cull;  a.radius = l.radius;  a.outline = l.outline;  a.emissive = l.emissive
+  }
   if not a.visible and not (shadow and a.cast_hidden) { return false }
   if shadow and not a.casts { return false }
   # an actor with no radius given is sized generously, since a building or the dock may be one
@@ -203,7 +218,14 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, ap.l_model, a.mat)
   var skinned = 0.0
-  if a.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.skin.n_joints, a.skin.bones) }
+  if a.leader != null and a.fmap != null {
+    var ls = a.leader.skin
+    if ls == null { ls = a.leader.model.skin }
+    skin_follow_pose(a.model.skin, ls, a.fmap, a.fbones, a.fbones_v)
+    skinned = 1.0
+    u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.fbones)
+  }
+  else if a.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.skin.n_joints, a.skin.bones) }
   else if a.model.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
   u_f(render3d_st, ap.l_skin, skinned)
   if not shadow {
@@ -361,7 +383,14 @@ function actor_draw_outlines(render3d_st: mut Render3dState) -> void {
 function actor_draw_outline_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg) -> void {
   u_mat4(render3d_st, ap.l_model, a.mat)
   var skinned = 0.0
-  if a.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.skin.n_joints, a.skin.bones) }
+  if a.leader != null and a.fmap != null {
+    var ls = a.leader.skin
+    if ls == null { ls = a.leader.model.skin }
+    skin_follow_pose(a.model.skin, ls, a.fmap, a.fbones, a.fbones_v)
+    skinned = 1.0
+    u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.fbones)
+  }
+  else if a.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.skin.n_joints, a.skin.bones) }
   else if a.model.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
   u_f(render3d_st, ap.l_skin, skinned)
   let model = a.model
@@ -473,6 +502,7 @@ function actor_release(render3d_st: mut Render3dState, a: Actor) -> void {
   if a.hide != null { free(a.hide);  a.hide = null }
   if a.skin_owned and a.skin != null { skin_clone_free(a.skin) }
   a.skin_owned = false
+  actor_unfollow(a)
   a.model = null;  a.skin = null;  a.ocol = null
   a.id = 0
   if render3d_st.ac_spare == null { return }   # made in actor_init, with its room
@@ -489,6 +519,56 @@ function actor_own_skin(a: Actor) -> Skin {
   a.skin = skin_clone(a.model.skin)
   a.skin_owned = true
   return a.skin
+}
+
+# `part` becomes a follower of `leader`: it stands where the leader stands, is visible when it is, and skins its own
+# mesh to the leader's CURRENT pose (whatever animates the leader - ludic.anim, a procedural gait). Joints are bound
+# by name, once, here; the leader's skin is its own (actor_own_skin / the anim pool) or its model's. Returns how many
+# of the part's joints found a node of the same name (a part with fewer than all is a bad export: the rest stay at
+# rest), or -1 when either has no skin. The part's model needs a skin (a rigid hat: attach it with a bone's matrix).
+# actor_release(leader) hides its followers; actor_release(part) frees the palette. Attach again to re-bind.
+@alloc_ok("one palette per attached part, made at attach and freed by actor_release / actor_unfollow")
+function actor_follow(part: Actor, leader: Actor) -> int {
+  if part == null or leader == null or part.model == null or leader.model == null { return -1 }
+  if part.model.skin == null { return -1 }
+  var ls = leader.skin
+  if ls == null { ls = leader.model.skin }
+  if ls == null { return -1 }
+  actor_unfollow(part)
+  let m = skin_follow_map(part.model.skin, ls)
+  let n = part.model.skin.n_joints
+  part.fmap = m
+  part.fbones = floats(n * 16)
+  part.fbones_v = m4_views(part.fbones, n)
+  part.leader = leader
+  part.leader_id = leader.id
+  return skin_follow_bound(m, n)
+}
+function actor_unfollow(a: Actor) -> void {
+  if a == null { return }
+  if a.fmap != null { free(a.fmap);  a.fmap = null }
+  if a.fbones != null { free(a.fbones);  a.fbones = null }
+  if a.fbones_v != null { free(a.fbones_v);  a.fbones_v = null }
+  a.leader = null
+  a.leader_id = 0
+}
+# Hide / show every primitive of the actor whose material name is in `names` (a body's skin, scalp, legs: what a
+# top or trousers covers). Returns how many primitives matched. Per primitive, because a draw is the unit the
+# format gives: the body is exported with one material per region (body_torso, body_legs ...).
+function actor_hide_parts(a: Actor, names: []string, hidden: bool) -> int {
+  if a == null or a.model == null or names == null { return 0 }
+  var c = 0
+  for k in 0 .. len(names) {
+    let before = c
+    for i in 0 .. len(a.model.prims) { if a.model.prims[i].name == names[k] { c += 1 } }
+    if c > before { actor_hide_part(a, names[k], hidden) }
+  }
+  return c
+}
+# show every primitive again
+function actor_show_all(a: Actor) -> void {
+  if a == null or a.hide == null { return }
+  for i in 0 .. len(a.hide) { a.hide[i] = 0 }
 }
 
 # room for n more actors in a list, made at start-up: filled and emptied, it keeps what it grew to

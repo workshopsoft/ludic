@@ -262,3 +262,38 @@ function skin_clone_free(sk: Skin) -> void {
   free(sk.tmp_l);  free(sk.tmp_q);  free(sk.tmp_a);  free(sk.tmp_b);  free(sk.tmp_c);  free(sk.tmp_v)
   free(sk)
 }
+
+# ---- a skin that wears another's pose ------------------------------------------------------------------
+# A modular character (a body, and hair, a top, trousers, shoes, each its own glTF with its own skin) is ONE
+# skeleton posed once. Each part is exported against the same armature, so its joints carry the same NAMES as
+# the body's, but not the same order or count (a shirt skins to the arms and chest, shoes to the feet) and its
+# own inverse bind matrices. `skin_follow_map` binds the joints by name, once; `skin_follow_pose` then fills
+# the part's joint matrices from the leader's current global matrices every frame:
+#     bones[j] = leader.gmat[ map[j] ] * part.inv_bind[j]
+# A joint the leader has no node for keeps the part's own rest matrix, so a stray bone never explodes a mesh.
+
+# per joint of `part`: the node of `leader` with that name, or -1. Returns the map (null when either is null)
+@alloc_ok("bound once when a part is attached to a leader, freed by actor_release")
+function skin_follow_map(part: Skin, leader: Skin) -> words {
+  if part == null or leader == null { return null }
+  let m = words(part.n_joints)
+  for j in 0 .. part.n_joints {
+    m[j] = -1
+    let nm = part.names[part.joints[j]]
+    for i in 0 .. leader.n_nodes { if leader.names[i] == nm { m[j] = i;  break } }
+  }
+  return m
+}
+# how many of the map's joints found their leader node
+function skin_follow_bound(map: words, n: int) -> int {
+  var c = 0
+  for j in 0 .. n { if map[j] >= 0 { c += 1 } }
+  return c
+}
+# the part's joint matrices (`out`: 16 per joint, `out_v` its views) from the leader's pose
+function skin_follow_pose(part: Skin, leader: Skin, map: words, out: floats, out_v: [][]float) -> void {
+  for j in 0 .. part.n_joints {
+    if map[j] >= 0 { m4_mul(out_v[j], skin_mat(leader, map[j]), part.inv_v[j]) }
+    else { m4_copy(out_v[j], part.bones_v[j]) }
+  }
+}

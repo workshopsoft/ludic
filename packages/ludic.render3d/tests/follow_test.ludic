@@ -1,0 +1,74 @@
+# follow_test.ludic - a part of a modular character binds its joints to the leader's skeleton by name, and
+# skins from the leader's pose: the shirt's joint order differs from the body's, the names decide
+import "ludic.render3d/r3d.ludic"
+program FollowTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # a chain of nodes named `names`, each a child of the one before, one joint per node, identity inverse bind
+  function chain(names: []string, joints: []int) -> Skin {
+    let n = len(names)
+    let sk = new Skin
+    sk.n_nodes = n
+    sk.par = words(n);  sk.walk = words(n)
+    sk.rest_t = floats(n * 3);  sk.rest_r = floats(n * 4);  sk.rest_s = floats(n * 3);  sk.rest_g = floats(n * 4)
+    sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = floats(n * 16)
+    sk.gmat_v = m4_views(sk.gmat, n)
+    sk.names = names
+    sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = floats(3)
+    for i in 0 .. n {
+      sk.par[i] = i - 1;  sk.walk[i] = i
+      sk.rest_r[i * 4 + 3] = 1.0;  sk.rest_g[i * 4 + 3] = 1.0
+      sk.rest_s[i * 3] = 1.0;  sk.rest_s[i * 3 + 1] = 1.0;  sk.rest_s[i * 3 + 2] = 1.0
+      sk.rest_t[i * 3 + 1] = 1.0                       # each node one metre above its parent
+    }
+    sk.n_joints = len(joints)
+    sk.joints = words(len(joints))
+    sk.inv_bind = floats(len(joints) * 16)
+    sk.inv_v = m4_views(sk.inv_bind, len(joints))
+    sk.bones = floats(len(joints) * 16)
+    sk.bones_v = m4_views(sk.bones, len(joints))
+    for j in 0 .. len(joints) { sk.joints[j] = joints[j];  m4_identity(sk.inv_v[j]) }
+    skin_reset(sk)
+    skin_pose(sk)
+    return sk
+  }
+
+  test "joints bind by name, whatever their order and count" {
+    let body = chain(["hips", "spine", "arm", "head"], [0, 1, 2, 3])
+    # a shirt: only spine and arm, in the other order, plus a bone the body lacks
+    let shirt = chain(["arm", "spine", "cuff"], [0, 1, 2])
+    let map = skin_follow_map(shirt, body)
+    expect_eq(map[0], 2)
+    expect_eq(map[1], 1)
+    expect_eq(map[2], -1)
+    expect_eq(skin_follow_bound(map, 3), 2)
+  }
+
+  test "the part skins from the leader's pose: lift the body's spine and the shirt's spine joint follows" {
+    let body = chain(["hips", "spine", "arm", "head"], [0, 1, 2, 3])
+    let shirt = chain(["arm", "spine", "cuff"], [0, 1, 2])
+    let map = skin_follow_map(shirt, body)
+    skin_set_offset(body, 1, 0.0, 0.5, 0.0)              # the spine rises half a metre, and its children with it
+    skin_pose(body)
+    skin_follow_pose(shirt, body, map, shirt.bones, shirt.bones_v)
+    # the arm (body node 2) is 3 m up at rest (hips 0->... chain of 1 m steps: node k at y = k + 1 since each is 1 m above the parent, root at 1 m), plus 0.5
+    expect_near(shirt.bones_v[0][13], body.gmat_v[2][13], 0.0001)
+    expect_near(shirt.bones_v[1][13], body.gmat_v[1][13], 0.0001)
+    expect(shirt.bones_v[1][13] > 2.4)
+  }
+
+  test "an unbound joint keeps the part's own rest matrix" {
+    let body = chain(["hips", "spine"], [0, 1])
+    let shirt = chain(["spine", "cuff"], [0, 1])
+    let map = skin_follow_map(shirt, body)
+    let rest = m4_new()
+    m4_copy(rest, shirt.bones_v[1])
+    skin_set_offset(body, 1, 0.0, 5.0, 0.0)
+    skin_pose(body)
+    skin_follow_pose(shirt, body, map, shirt.bones, shirt.bones_v)
+    expect_eq(map[1], -1)
+    for i in 0 .. 16 { expect_near(shirt.bones_v[1][i], rest[i], 0.0001) }
+    expect(shirt.bones_v[0][13] > 5.0)
+  }
+}
