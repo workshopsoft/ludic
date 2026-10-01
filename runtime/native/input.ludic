@@ -69,6 +69,7 @@ export state RtInputState {
   in_tbuf: words = null          # IN_TOUCH * 3
   in_text_out: pointer = null    # the typed text as UTF-8, 64 units at four bytes: read, sliced and joined by its one reader
   in_text_buf: words = null
+  in_typed: string = ""           # text injected by Input.type, drained by the next Input.text when the window typed nothing
 }
 
 
@@ -456,13 +457,13 @@ function input_key_label_new(k: int) -> string {
 # c-cedilla, g-breve, dotless i, o-umlaut, s-cedilla or u-umlaut anywhere - their own name included.
 # Empty headless, and where the platform has no text channel.
 function input_text(rt_input_st: mut RtInputState) -> string {
-  if not is_windowed() { return "" }
+  if not is_windowed() { return in_typed_take(rt_input_st) }
   if rt_input_st.in_text_buf == null {
     rt_input_st.in_text_buf = words(64)
     rt_input_st.in_text_out = bytes(64 * 4 + 1)
   }
   let n = win_text(rt_input_st.in_text_buf, 64)
-  if n <= 0 { return "" }
+  if n <= 0 { return in_typed_take(rt_input_st) }
   # one buffer for the whole text, made with the state: a string joined a character at a time kept every
   # shorter one, and a buffer per call kept one a keystroke
   let out = rt_input_st.in_text_out
@@ -481,6 +482,21 @@ function input_text(rt_input_st: mut RtInputState) -> string {
   out[at] = 0
   let s: string = out
   return s
+}
+# the injected text (Input.type), once; empty when none is waiting
+function in_typed_take(rt_input_st: mut RtInputState) -> string {
+  let s = rt_input_st.in_typed
+  if len(s) == 0 { return "" }
+  rt_input_st.in_typed = ""
+  return s
+}
+# type text as if the player had: queued (at most 256 bytes kept) until the next Input.text, which returns it
+# when the window typed nothing that frame. For tests, tutorials and the devlink's `text` verb.
+# false when it would not fit (text still waiting): nothing is queued then.
+function input_type(rt_input_st: mut RtInputState, s: string) -> bool {
+  if len(rt_input_st.in_typed) + len(s) > 256 { return false }
+  rt_input_st.in_typed = rt_input_st.in_typed + s
+  return true
 }
 # one code point's UTF-8 bytes into out at `at`; where the next one goes
 function in_utf8_into(out: bytes, at: int, c: int) -> int {

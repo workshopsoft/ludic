@@ -1,0 +1,162 @@
+# verbs_key.ludic - a key for an agent with no keyboard: `key <name|code> down`, `key <name|code> up`, or
+# `key <name|code> tap <ms>` (pressed, then let go after ms of real time; answered `ok <ms>` once it is let go),
+# `key_repeat <name|code> <n> <every_ms>` (n taps of 80 ms, one every every_ms; answered `ok <n>` after the last),
+# and `text "string"` (typed: the next Input.text returns it).
+# tap and repeat time in real time, for a running game; in a paused scenario use down, step n, up. A tap on a key
+# that `down` already holds lets it go at the end. A late verb is bounded by late_s (5 s): a tap is at most
+# 4000 ms and a repeat's n * every_ms at most 4000.
+# It goes through Input.press / Input.release, the device layer the platform's keys feed, so a game reads
+# it exactly as a real key: key_down while held, key_pressed on the frame it went down.
+export state DevlinkKeyState {
+  dk_code: int = -1          # the tapped key still down, or -1
+  dk_until_us: long = 0      # when it is let go, on Time.now_us
+  dk_reply: int = 0          # what a tap or repeat answers once done: its ms, or the taps made
+  dk_left: int = 0           # taps of a repeat still to press after the one down
+  dk_period_us: long = 0     # a repeat's tap to tap
+  dk_next_us: long = 0       # when the next tap of a repeat goes down
+  dk_hold_us: long = 0       # how long each tap of a repeat is down
+  dk_key: int = -1           # the key a repeat presses
+}
+# a name a UI or a player's gameplay answers (arrows, enter, escape, tab, space, backspace, shift, w a s d f r t q e z c x v), or a key code
+function dk_code_of(s: string) -> int {
+  if s == "up" { return Key.Up }
+  if s == "down" { return Key.Down }
+  if s == "left" { return Key.Left }
+  if s == "right" { return Key.Right }
+  if s == "enter" { return Key.Enter }
+  if s == "escape" { return Key.Escape }
+  if s == "tab" { return Key.Tab }
+  if s == "space" { return Key.Space }
+  if s == "backspace" { return Key.Backspace }
+  if s == "shift" { return Key.Shift }
+  if s == "w" { return Key.W }
+  if s == "a" { return Key.A }
+  if s == "s" { return Key.S }
+  if s == "d" { return Key.D }
+  if s == "f" { return Key.F }
+  if s == "r" { return Key.R }
+  if s == "t" { return Key.T }
+  if s == "q" { return Key.Q }
+  if s == "e" { return Key.E }
+  if s == "z" { return Key.Z }
+  if s == "c" { return Key.C }
+  if s == "x" { return Key.X }
+  if s == "v" { return Key.V }
+  if len(s) == 0 { return -1 }
+  var v = 0
+  for i in 0 .. len(s) {
+    if s[i] < 48 or s[i] > 57 { return -1 }
+    v = v * 10 + (s[i] - 48)
+  }
+  if v < 8 or v > 255 { return -1 }
+  return v
+}
+const DK_TAP_MS: int = 80          # how long each tap of a repeat is down, and a tap with no ms
+const DK_MAX_MS: int = 4000        # a tap, or the whole of a repeat: inside devlink's 5 s for a late answer
+function dk_us(ms: int) -> long { return long(ms) * long(1000) }
+function dk_verb(dk: mut DevlinkKeyState, c: DevCall) -> int {
+  let k = dk_code_of(dv_str(c, 0))
+  if k < 0 {
+    c.why = dk_no_key(dv_str(c, 0))
+    return DV_BAD
+  }
+  let how = dv_str(c, 1)
+  if how == "down" {
+    Input.press(k)
+    return DV_OK
+  }
+  if how == "up" {
+    Input.release(k)
+    return DV_OK
+  }
+  if how != "tap" {
+    c.why = "down, up or tap <ms>"
+    return DV_BAD
+  }
+  var ms = DK_TAP_MS
+  if dv_has(c, 2) { ms = dv_int(c, 2) }
+  if ms < 0 or ms > DK_MAX_MS {
+    c.why = "a tap of 0 to 4000 ms"
+    return DV_BAD
+  }
+  dk_stop(dk)
+  Input.press(k)
+  dk.dk_code = k
+  dk.dk_key = -1
+  dk.dk_left = 0
+  dk.dk_until_us = Time.now_us() + dk_us(ms)
+  dk.dk_reply = ms
+  return DV_LATER
+}
+# key_repeat <name|code> <n> <every_ms>: n taps of 80 ms, one every every_ms
+function dk_repeat(dk: mut DevlinkKeyState, c: DevCall) -> int {
+  let k = dk_code_of(dv_str(c, 0))
+  if k < 0 {
+    c.why = dk_no_key(dv_str(c, 0))
+    return DV_BAD
+  }
+  let n = dv_int(c, 1)
+  let every = dv_int(c, 2)
+  if n < 1 or every < DK_TAP_MS or n * every > DK_MAX_MS {
+    c.why = "n >= 1 taps every 80 ms or more, n * every_ms at most 4000"
+    return DV_BAD
+  }
+  dk_stop(dk)
+  Input.press(k)
+  dk.dk_code = k
+  dk.dk_key = k
+  dk.dk_left = n - 1
+  dk.dk_period_us = dk_us(every)
+  dk.dk_hold_us = dk_us(DK_TAP_MS)
+  let now = Time.now_us()
+  dk.dk_until_us = now + dk.dk_hold_us
+  dk.dk_next_us = now + dk.dk_period_us
+  dk.dk_reply = n
+  return DV_LATER
+}
+function dk_no_key(s: string) -> string {
+  return "no key " + s + ": up, down, left, right, enter, escape, tab, space, backspace, shift, w a s d f r t q e z c x v or a code 8 to 255"
+}
+# a tap or repeat still going is let go (a new one replaces it; its parked answer is then a plain ok)
+export function dk_stop(dk: mut DevlinkKeyState) -> void {
+  if dk.dk_code >= 0 { Input.release(dk.dk_code) }
+  dk.dk_code = -1
+  dk.dk_left = 0
+}
+function dk_late(dk: mut DevlinkKeyState, c: DevCall) -> int {
+  if dk.dk_code < 0 and dk.dk_left == 0 { return 1 }
+  let now = Time.now_us()
+  if dk.dk_code >= 0 {
+    if now < dk.dk_until_us { return 0 }
+    Input.release(dk.dk_code)
+    dk.dk_code = -1
+    if dk.dk_left == 0 {
+      dv_reply_int(c, dk.dk_reply)
+      return 1
+    }
+    return 0                       # a frame with the key up, so the next tap is a new press for the game
+  }
+  if now >= dk.dk_next_us {
+    Input.press(dk.dk_key)
+    dk.dk_code = dk.dk_key
+    dk.dk_until_us = now + dk.dk_hold_us
+    dk.dk_next_us = dk.dk_next_us + dk.dk_period_us
+    dk.dk_left -= 1
+  }
+  return 0
+}
+function dk_text(c: DevCall) -> int {
+  let t = dv_str(c, 0)
+  if len(t) > 256 {
+    c.why = "at most 256 bytes of text"
+    return DV_BAD
+  }
+  if not Input.type(t) {
+    c.why = "text still waiting (256 bytes)"
+    return DV_FAILED
+  }
+  return DV_OK
+}
+def DevVerbs key { args: "key:string how:string ms:int?", run: fn dk_verb, late: fn dk_late }
+def DevVerbs key_repeat { args: "key:string n:int every_ms:int", run: fn dk_repeat, late: fn dk_late }
+def DevVerbs text { args: "text:string", run: fn dk_text }
