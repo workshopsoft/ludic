@@ -111,4 +111,86 @@ program WalkerTest {
     expect(Math.abs(pose(physics_st, hull).x - 5.0) < 0.01)
     phys_close(physics_st)
   }
+
+  # a building's collision pieces (a generator's COL_* nodes) stood as convex hulls: an L's notch is open, where its
+  # bounding box would be a wall
+  test "a walker reaches into an L-shaped building's notch: its convex pieces, not its box" (physics_st: mut PhysicsState) {
+    flat(physics_st)
+    # two slabs: x 2..4 by z -4..4, and x 4..8 by z 2..4 - the notch is x 4..8, z -4..2
+    let a = new []float
+    let b = new []float
+    for k in 0 .. 2 {
+      let y = float(k) * 6.0
+      push(a, 2.0);  push(a, y);  push(a, -4.0);   push(a, 4.0);  push(a, y);  push(a, -4.0)
+      push(a, 4.0);  push(a, y);  push(a, 4.0);    push(a, 2.0);  push(a, y);  push(a, 4.0)
+      push(b, 4.0);  push(b, y);  push(b, 2.0);    push(b, 8.0);  push(b, y);  push(b, 2.0)
+      push(b, 8.0);  push(b, y);  push(b, 4.0);    push(b, 4.0);  push(b, y);  push(b, 4.0)
+    }
+    phys_static_add(physics_st, phys_convex(physics_st, a, 8), 0.0, 0.0, 0.0, 0.0)
+    phys_static_add(physics_st, phys_convex(physics_st, b, 8), 0.0, 0.0, 0.0, 0.0)
+    phys_settle(physics_st)
+    # from x 10, z 0 walking -x: into the notch, stopped at the first slab's face x 4 less its radius
+    let w = phys_walker_add(physics_st, 0.35, 1.8, 10.0, 0.0, 0.0, 50.0, 70.0)
+    walk(physics_st, w, 4.0, -3.0, 0.0)
+    let p = wpose(physics_st, w)
+    expect(p.x < 4.5 and p.x > 4.2)
+    expect(Math.abs(p.y) < 0.05)
+    # walking +z it meets the second slab's face at z 2
+    walk(physics_st, w, 2.0, 0.0, 3.0)
+    let q = wpose(physics_st, w)
+    expect(q.z < 1.7 and q.z > 1.4)
+    expect(phys_overlap(physics_st, 6.0, 1.0, 0.0, 0.3, PHYS_M_STATIC) == 0)
+    expect(phys_overlap(physics_st, 6.0, 1.0, 3.0, 0.3, PHYS_M_STATIC) > 0)
+    phys_close(physics_st)
+  }
+
+  # character versus character: a ped is a kinematic capsule the game moves; the player's walker cannot push it, so
+  # it is a body in the way, and the walker slides round it
+  test "a ped's kinematic capsule stops a walker, and moved away lets it through" (physics_st: mut PhysicsState) {
+    flat(physics_st)
+    let cap = phys_offset(physics_st, phys_capsule(physics_st, 0.575, 0.3), 0.0, 0.875, 0.0, 0.0)
+    let ped = phys_kinematic_add(physics_st, cap, 3.0, 0.0, 0.0, 0.0)
+    phys_settle(physics_st)
+    let w = phys_walker_add(physics_st, 0.35, 1.8, 0.0, 0.0, 0.0, 50.0, 70.0)
+    walk(physics_st, w, 2.0, 2.0, 0.0)
+    let p = wpose(physics_st, w)
+    expect(p.x < 2.4 and p.x > 2.2)
+    expect(Math.abs(p.y) < 0.05)
+    phys_place(physics_st, ped, 3.0, 0.0, 5.0, 0.0)
+    walk(physics_st, w, 2.0, 2.0, 0.0)
+    expect(wpose(physics_st, w).x > 5.0)
+    phys_close(physics_st)
+  }
+
+  # gravity is only the air's: standing on a slope it can walk is standing still, and one too steep is not climbed
+  test "a walker stands still on a 30 degree slope and does not climb a 60 degree one" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 1024, 1))
+    let h = floats(64 * 64)
+    for j in 0 .. 64 {
+      for i in 0 .. 64 {
+        let x = float(i) - 32.0
+        var y = 0.0
+        if x > 0.0 { y = x * 0.57735 }                    # 30 degrees, rising to +x
+        if x < -8.0 { y = (-8.0 - x) * 1.7320508 }        # 60 degrees, rising to -x
+        h[j * 64 + i] = y
+      }
+    }
+    phys_ground_add(physics_st, phys_heightfield(physics_st, h, 64, -32.0, -32.0, 1.0))
+    phys_settle(physics_st)
+    let w = phys_walker_add(physics_st, 0.35, 1.8, 6.0, 4.0, 0.0, 46.0, 70.0)
+    phys_walker_limits(physics_st, w, 0.4, 0.5, 46.0)
+    walk(physics_st, w, 1.0, 0.0, 0.0)
+    let p = wpose(physics_st, w)
+    expect_eq(p.ground, PHYS_ON_GROUND)
+    walk(physics_st, w, 3.0, 0.0, 0.0)
+    let q = wpose(physics_st, w)
+    expect(Math.abs(q.x - p.x) < 0.02 and Math.abs(q.y - p.y) < 0.02)
+    expect(Math.abs(q.y - 6.0 * 0.57735) < 0.1)
+    # down the slope, across the flat and at the steep one: it is held at its foot
+    walk(physics_st, w, 8.0, -3.0, 0.0)
+    let r = wpose(physics_st, w)
+    expect(r.x > -9.0)
+    expect(r.y < 0.6)
+    phys_close(physics_st)
+  }
 }

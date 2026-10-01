@@ -1,0 +1,51 @@
+# gltf_points.ludic - the points of a model's collision pieces, for a physics world to stand up as convex hulls.
+# A generator exports a building's colliders as nodes beside its mesh (COL_b06_0, COL_b06_1 ...), each one a
+# convex piece in the same space as the building's own mesh; the game reads them here and hands each piece to
+# ludic.physics' phys_convex, placed where it places the building. The renderer only reads: it knows nothing of
+# physics, and the physics package reads no files.
+
+# Every node whose name starts with `prefix`, in document order: its mesh's positions (all primitives) written into
+# `pts` as x, y, z from its start (pts grows when it is too short and is never shrunk, so one scratch serves every
+# building), and `at` likewise given each piece's first point (an index into pts / 3) and then one more entry, the end
+# (at[found]); entries past those are stale. Returns the pieces found, or -1 when the file cannot be read. The document stays parsed, so the next piece of the same file is not parsed again.
+@alloc_ok("loading a cell: a building's collider points, once")
+function gltf_points(render3d_st: mut Render3dState, dir: string, file: string, prefix: string, pts: []float, at: []int) -> int {
+  let path = dir + "/" + file
+  var open = false
+  if render3d_st.gltf_doc != null and render3d_st.gltf_bin_path != null and render3d_st.gltf_bin_path == path {
+    open = gltf_bin_reopen(render3d_st, dir)
+  }
+  free(path)
+  if not open { open = gltf_open(render3d_st, dir, file) }
+  if not open { return -1 }
+  let nodes = value_get(render3d_st.gltf_doc, "nodes")
+  let meshes = value_get(render3d_st.gltf_doc, "meshes")
+  var found = 0
+  var w = 0
+  for i in 0 .. value_count(nodes) {
+    let nd = value_at(nodes, i)
+    if value_has(nd, "name") == 0 { continue }
+    if not Text.starts_with(value_as_str(value_get(nd, "name")), prefix) { continue }
+    let mi = jint(nd, "mesh", -1)
+    if mi < 0 { continue }
+    gp_put(at, found, w / 3)
+    let prims = value_get(value_at(meshes, mi), "primitives")
+    for k in 0 .. value_count(prims) {
+      let attrs = value_get(value_at(prims, k), "attributes")
+      if value_has(attrs, "POSITION") == 0 { continue }
+      let v = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "POSITION")))
+      for j in 0 .. len(v) {
+        if w < len(pts) { pts[w] = v[j] } else { push(pts, v[j]) }
+        w += 1
+      }
+    }
+    found += 1
+  }
+  gp_put(at, found, w / 3)
+  file_close(render3d_st.gltf_bin)
+  render3d_st.gltf_bin = null
+  return found
+}
+function gp_put(at: []int, i: int, v: int) -> void {
+  if i < len(at) { at[i] = v } else { push(at, v) }
+}

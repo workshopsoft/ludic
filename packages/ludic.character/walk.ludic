@@ -45,7 +45,9 @@ function chr_walked(character_st: mut CharacterState, g: int, jumped: bool, dt: 
     return character_st.chr_speed * dt
   }
   let was_air = character_st.chr_air
-  character_st.chr_air = g == CHAR_WALK_AIR or jumped
+  # a body already falling stays in the air while it only brushes something it cannot stand on (UNSUPPORTED):
+  # it lands on ground, not on a wall's edge or a slope too steep
+  character_st.chr_air = g == CHAR_WALK_AIR or jumped or (was_air and g == CHAR_WALK_UNSUPPORTED)
   if was_air and not character_st.chr_air { chr_landed(character_st) }
   if g == CHAR_WALK_STEEP and not character_st.chr_air {
     if not (character_st.chr_steep > 0.0) { chr_say(character_st, CHAR_TOO_STEEP, ny - character_st.chr_y) }

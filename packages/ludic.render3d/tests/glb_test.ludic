@@ -34,6 +34,26 @@ program GlbTest {
     file_close(render3d_st.gltf_bin)
   }
 
+  test "gltf_points reads the positions of the nodes a prefix names, piece by piece, and nothing else" (render3d_st: mut Render3dState) {
+    let pts = new []float
+    let at = new []int
+    expect_eq(gltf_points(render3d_st, models(render3d_st), "tri.glb", "", pts, at), 1)
+    expect_eq(len(at), 2)
+    expect_eq(at[0], 0)
+    expect_eq(at[1], 3)
+    expect_eq(len(pts), 9)
+    expect(pts[3] == 2.0 and pts[7] == 3.0)
+    # a second ask of the same file keeps the parsed document and reuses the scratch
+    pts[3] = 9.0
+    expect_eq(gltf_points(render3d_st, models(render3d_st), "tri.glb", "", pts, at), 1)
+    expect_eq(len(at), 2)
+    expect_eq(len(pts), 9)
+    expect(pts[3] == 2.0)
+    expect_eq(gltf_points(render3d_st, models(render3d_st), "tri.glb", "COL_", pts, at), 0)
+    expect_eq(at[0], 0)
+    expect_eq(gltf_points(render3d_st, models(render3d_st), "missing.glb", "", pts, at), -1)
+  }
+
   test "a glb is told by its first bytes, not its name" (render3d_st: mut Render3dState) {
     let at = Os.temp_dir() + "/r3d_glb_name"
     Fs.mkdir(at)

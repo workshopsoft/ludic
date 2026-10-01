@@ -333,6 +333,22 @@ program CharacterTest {
     expect(not body_airborne(character_st))
   }
 
+  test "a jump against a wall stays in the air while it only brushes the wall (UNSUPPORTED), and lands once, on the ground" (character_st: mut CharacterState) {
+    # the tall post at (-6, 0): its face at x -5.5; facing west, the body walks into it and jumps
+    fresh(character_st, -4.8, 0.0, 1.5707963)
+    for i in 0 .. 60 { char_update(character_st, 0.0, 1.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    facts(character_st)
+    char_update(character_st, 0.0, 1.0, false, true, 0.0, 0.0, 1.0 / 60.0)
+    var guard = 0
+    while body_airborne(character_st) and guard < 200 {
+      char_update(character_st, 0.0, 1.0, false, false, 0.0, 0.0, 1.0 / 60.0)
+      guard += 1
+    }
+    expect(guard > 20)
+    expect(body_y(character_st) < 0.05)
+    expect_eq(count(facts(character_st), CHAR_LANDED), 1)
+  }
+
   test "a knock-back carries the body off its feet, and a post stops it" (character_st: mut CharacterState) {
     fresh(character_st, 0.0, -2.0, 0.0)
     char_knock(character_st, 0.0, 5.0, 3.0)
