@@ -312,6 +312,8 @@ program CityTest {
     push(b.pts, p)
     let h0 = city_block_hash(b)
     expect_eq(city_block_hash(b), h0)
+    p.y = 9.5                                                                # a point's height (the top of the sidewalk the studio stores) is not in the hash
+    expect_eq(city_block_hash(b), h0)
     b.asset = "blocks/x.glb"
     expect_eq(city_block_hash(b), h0)
     b.seed = 2

@@ -8,6 +8,7 @@
 export property CityPt {
   @Unit("m") x: float = 0.0
   @Unit("m") z: float = 0.0
+  @Unit("m") y: float = 0.0       # the height of the ground there: a block made from roads (the studio's network_blocks_make) stores the top of its sidewalk, which a generator takes as the edge of the block's ground; 0 for none (data from before it loads as is)
 }
 
 # how a kind of land is used: who lives and works in a building's floor area there, and how many people and cars an

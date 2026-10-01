@@ -15,7 +15,7 @@ city_world {
   world: "*"
   tables: [
     { key: "districts", title: "Districts", table: "Districts", kind: "region", points: "pts", group: "zoning", label: "key", color: 0xB48CFF },
-    { key: "blocks", title: "Blocks", table: "CityBlocks", kind: "region", points: "pts", x: "x", z: "z", group: "district", label: "key", color: 0x88C0D0 },
+    { key: "blocks", title: "Blocks", table: "CityBlocks", kind: "region", points: "pts", point_y: "y", x: "x", z: "z", group: "district", label: "key", color: 0x88C0D0 },
     { key: "buildings", title: "Buildings", table: "Buildings", kind: "point", model: "model", x: "x", z: "z", y: "y", yaw: "yaw", scale: "scale", group: "use", label: "key", color: 0xD4A373 },
     { key: "landmarks", title: "Landmarks", table: "Landmarks", kind: "point", model: "model", x: "x", z: "z", yaw: "yaw", group: "kind", label: "key", color: 0xFFD166 },
   ]
