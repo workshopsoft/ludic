@@ -414,6 +414,8 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Process" { g_uses_process = true }
       # Time.now_us / Time.sleep_us — the microsecond clock lives in the window layer (window.ludic).
       if e.a.kind == E_ID and e.a.s == "Time" and (e.s == "now_us" or e.s == "sleep_us") { g_uses_win = true }
+      # Gfx.set_window / set_retina / scale: the window layer's video settings (window.ludic), no-ops headless
+      if e.a.kind == E_ID and e.a.s == "Gfx" { g_uses_win = true }
       # Vk.* — any Vk method splices the Vulkan runtime (and links its loader)
       if e.a.kind == E_ID and e.a.s == "Vk" { g_uses_vk = true }
       # Tween.to/chain/delay/value/stop/parallel (#48): the fluent stateful handles

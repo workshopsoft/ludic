@@ -21,6 +21,12 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
   the body grounded). `ground` and `ray` are `unbound` until bound. Numbers are written with three decimals,
   like `cam_get`. **`offers()` stays the game's own string**: a game that binds the probes adds
   `ground,ray,settled` to it so `hello` lists them.
+- **`window w h retina?`** pins the drawable so a shot is the same size on every machine: the window's content size
+  in points (160 to 7680) and the backing-resolution (Retina) drawable on or off (off unless `true`), through the
+  runtime's `Gfx.set_window` / `Gfx.set_retina`. It answers `ok w h retina` with the drawable the window has after
+  the call (points times the live pixel scale, what `shot` writes). Always answered, no binding, not listed in
+  `hello`'s offers; refused while `coop()` like every verb but `ping` and `hello`; a no-op headless (the answer is the
+  asked size at scale 1).
 - **Declared verbs** are everything that belongs to a game or a package: `goto`, `time`, `weather`,
   `map_load`, a store's `steam_state` / `unlock`. Whoever owns one declares it with `def DevVerbs` (see below);
   devlink knows none of them.

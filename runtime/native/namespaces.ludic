@@ -30,6 +30,11 @@ namespace Screen {
   alias measure_text(text) = measure_text
   alias pixel(x, y) = get_px
 }
+namespace Gfx {
+  alias set_window(width, height) = gfx_set_window
+  alias set_retina(on) = gfx_set_retina
+  alias scale() = gfx_live_scale
+}
 namespace Sprite {
   alias sheet(path, cellw, cellh) = atlas_sheet
   alias cell(sheet, col, row) = atlas_cell

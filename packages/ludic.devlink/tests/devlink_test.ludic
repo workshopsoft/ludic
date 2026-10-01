@@ -296,6 +296,17 @@ program DevlinkTest {
     expect(ask(devlink_st, fake_link_st, "5 settled now", 0.016) == "5 err bad_args \"bad arguments\"")
   }
 
+  test "window: the size asked for and the drawable it makes, retina off unless asked, refused in co-op" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    expect(ask(devlink_st, fake_link_st, "3 window 1280 720", 0.016) == "3 ok 1280 720 false")
+    expect(ask(devlink_st, fake_link_st, "4 window 1280 720 false", 0.016) == "4 ok 1280 720 false")
+    expect(ask(devlink_st, fake_link_st, "5 window 800 600 true", 0.016) == "5 ok 800 600 false")   # headless: scale 1
+    expect(ask(devlink_st, fake_link_st, "6 window 1280", 0.016) == "6 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_link_st, "7 window 1280 720 yes", 0.016) == "7 err bad_args \"bad arguments\"")
+    expect(ask(devlink_st, fake_link_st, "8 window 10 720", 0.016) == "8 err bad_args \"w and h are 160 to 7680\"")
+    fake_link_st.coop = true
+    expect(ask(devlink_st, fake_link_st, "9 window 1280 720", 0.016) == "9 err refused \"co-op session connected\"")
+  }
+
   test "a build that is not a dev build never opens the socket" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
     fake_link_st.on = false
     expect(ask(devlink_st, fake_link_st, "1 ping", 0.016) == "")

@@ -98,3 +98,28 @@ function dl_settled(st: mut DevlinkState, id: int) -> void {
   dl_ok(st, id)
   if r > 0 { dl_s(st, " true") } else { dl_s(st, " false") }
 }
+
+# window w h retina?: the window's content size in points (160 to 7680) and the backing-resolution drawable on or off
+# (off when not given), so a shot is the same size on every machine. Answers `ok w h retina` with the drawable the
+# window has after the call: points times the live pixel scale, which is what `shot` then writes. Always answered
+# (not a DevlinkWorld member, not listed in hello); a no-op headless, where the answer is the asked size at scale 1.
+function dl_window(st: mut DevlinkState, id: int) -> void {
+  let w = dl_int(st)
+  let h = dl_int(st)
+  var retina = false
+  if not dl_done(st) { retina = dl_bool(st) }
+  if dl_bad_args(st, id) { return }
+  if w < 160 or h < 160 or w > 7680 or h > 7680 {
+    dl_err(st, id, "bad_args", "w and h are 160 to 7680")
+    return
+  }
+  Gfx.set_window(w, h)
+  Gfx.set_retina(retina)
+  let s = Gfx.scale()
+  dl_ok(st, id)
+  dl_b(st, 32)
+  dl_i(st, w * s)
+  dl_b(st, 32)
+  dl_i(st, h * s)
+  if s > 1 { dl_s(st, " true") } else { dl_s(st, " false") }
+}
