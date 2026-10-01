@@ -120,4 +120,31 @@ program GlbTest {
     gltf_bytes_free(fr)
     file_close(render3d_st.gltf_bin)
   }
+
+  test "an image embedded in a glb is found by its bufferView and decodes; materials own their textures" (render3d_st: mut Render3dState) {
+    expect(gltf_open(render3d_st, models(render3d_st), "emb.glb"))
+    let mats = value_get(render3d_st.gltf_doc, "materials")
+    let denim = value_at(mats, 0)
+    expect(gltf_mat_uri(render3d_st, denim, "baseColorTexture") == null)
+    expect_eq(gltf_mat_bv(render3d_st, denim, "baseColorTexture"), 3)
+    expect_eq(gltf_mat_bv(render3d_st, denim, "normalTexture"), -1)
+    # read the bytes the way gltf_texture_bv does and decode them
+    let n = jint(value_at(value_get(render3d_st.gltf_doc, "bufferViews"), 3), "byteLength", 0)
+    let buf = gltf_view_bytes(render3d_st, 3)
+    let j = png_parse_mem(render3d_st, buf, n, "emb.glb#3")
+    expect(j != null)
+    j.z = tex_z(render3d_st, 0)
+    png_work(j)
+    let px = png_take(render3d_st, j)
+    expect(px != null)
+    expect_eq(render3d_st.tex_w, 2);  expect_eq(render3d_st.tex_h, 2);  expect_eq(render3d_st.tex_channels, 4)
+    expect_eq(gltf_byte_at(px, 0), 255);  expect_eq(gltf_byte_at(px, 1), 0)
+    expect_eq(gltf_byte_at(px, 5), 255);  expect_eq(gltf_byte_at(px, 11), 255);  expect_eq(gltf_byte_at(px, 15), 128)
+    gltf_bytes_free(px)
+    # a colour of its own, other than white, keeps a material off the name cache; white does not
+    expect(gltf_mat_has_colour(value_at(mats, 1)))
+    expect(not gltf_mat_has_colour(value_at(mats, 2)))
+    expect(not gltf_mat_has_colour(denim))
+    file_close(render3d_st.gltf_bin)
+  }
 }

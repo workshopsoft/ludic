@@ -30,7 +30,12 @@ property PngBatch { jobs: []PngJob = null }
 function png_parse(render3d_st: mut Render3dState, path: pointer) -> PngJob {
   let d = r3d_read_file(render3d_st, path)
   if d == null { print(`png: cannot read {path}`);  return null }
-  let size = render3d_st.tex_file_len
+  return png_parse_mem(render3d_st, d, render3d_st.tex_file_len, path)
+}
+
+# The same from a PNG already in memory (an image inside a .glb's BIN chunk): d is `size` bytes (and 8 spare), freed here.
+@alloc_ok("loading a texture or a font: a load, not a frame")
+function png_parse_mem(render3d_st: mut Render3dState, d: pointer, size: int, path: pointer) -> PngJob {
   if size < 8 or d[0] != 137 or d[1] != 80 { free(d);  print(`png: not a png: {path}`);  return null }
   var w = 0;  var h = 0;  var bd = 0;  var ct = 0
   let plte = bytes(768)
