@@ -1,0 +1,29 @@
+# devverbs.ludic - what an editor's link into a running dev build can ask of the body: where it is and how it moves.
+# Nothing runs unless the link is up. The yaw is render3d's, in degrees [0, 360), 0 facing -z (the body faces (-sin yaw, -cos yaw)).
+
+# the body's velocity across the ground, m/s: what the walker was handed last step (the air's own while it
+# is in the air, otherwise the facing, or an aimed body's last heading, at the speed)
+function chr_dev_vx(character_st: CharacterState) -> float {
+  if character_st.chr_air { return character_st.chr_air_vx }
+  if CharacterBody.strafe() and not character_st.chr_swim and (character_st.chr_hx != 0.0 or character_st.chr_hz != 0.0) { return character_st.chr_hx * character_st.chr_speed }
+  return -Math.sin(character_st.chr_yaw) * character_st.chr_speed
+}
+function chr_dev_vz(character_st: CharacterState) -> float {
+  if character_st.chr_air { return character_st.chr_air_vz }
+  if CharacterBody.strafe() and not character_st.chr_swim and (character_st.chr_hx != 0.0 or character_st.chr_hz != 0.0) { return character_st.chr_hz * character_st.chr_speed }
+  return -Math.cos(character_st.chr_yaw) * character_st.chr_speed
+}
+
+# `player`: x y z yaw vx vy vz grounded (feet on the ground: not in the air, not swimming)
+function char_player_verb(character_st: CharacterState, c: DevCall) -> int {
+  dv_reply_float(c, character_st.chr_x)
+  dv_reply_float(c, character_st.chr_y)
+  dv_reply_float(c, character_st.chr_z)
+  dv_reply_yaw(c, character_st.chr_yaw)
+  dv_reply_float(c, chr_dev_vx(character_st))
+  dv_reply_float(c, character_st.chr_vy)
+  dv_reply_float(c, chr_dev_vz(character_st))
+  dv_reply_bool(c, not character_st.chr_air and not character_st.chr_swim)
+  return DV_OK
+}
+def DevVerbs player { args: "", run: fn char_player_verb }

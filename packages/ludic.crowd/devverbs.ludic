@@ -1,0 +1,72 @@
+# devverbs.ludic - what an editor's link into a running dev build can ask of the crowd: who is near a point and
+# what one ped is doing. Nothing runs unless the link is up. A ped's height is the ground the game reports under it
+# (CrowdWorld.ground), which is where its body is placed; its yaw is the walk's heading (CrowdPed.yaw, which faces (sin, cos)) sent as render3d's degrees, its act
+# the CROWD_* act number, its speed m/s, its lod 0 full, 1 mid, 2 puppet.
+
+const CROWD_DEV_REC: int = 60            # bytes one `peds_near` record may take: DV_NEAR_MAX of them fit DV_OUT
+
+# `peds_near x z r max?`: the count n, then n records `id x y z yaw act speed`, nearest first (the lower id first
+# among equals); max defaults to DV_NEAR_DEFAULT and is clamped to DV_NEAR_MAX
+function crowd_peds_near_verb(crowd_st: mut CrowdState, c: DevCall) -> int {
+  let x = dv_float(c, 0)
+  let z = dv_float(c, 1)
+  let r = dv_float(c, 2)
+  if r < 0.0 {
+    c.why = "r must not be negative"
+    return DV_BAD
+  }
+  let lim = dv_near_limit(c, 3, CROWD_DEV_REC)
+  let n = tb_within(crowd_st.cw_tab, crowd_st.cw_grid, x, z, r, -1, 0, crowd_st.cw_rows)
+  var k = n
+  if k > lim { k = lim }
+  dv_reply_int(c, k)
+  var last_d = -1.0
+  var last_uid = -1
+  for j in 0 .. k {
+    var best: CrowdPed = null
+    var bd = 0.0
+    for q in 0 .. n {
+      let p = crowd_st.cw_tab.rec[crowd_st.cw_rows[q]]
+      let dx = p.x - x
+      let dz = p.z - z
+      let d = dx * dx + dz * dz
+      if d < last_d or (d == last_d and p.uid <= last_uid) { continue }
+      if best == null or d < bd or (d == bd and p.uid < best.uid) {
+        best = p
+        bd = d
+      }
+    }
+    if best == null { break }
+    last_d = bd
+    last_uid = best.uid
+    dv_reply_int(c, best.uid)
+    dv_reply_float(c, best.x)
+    dv_reply_float(c, CrowdWorld.ground(best.x, best.z))
+    dv_reply_float(c, best.z)
+    dv_reply_yaw(c, best.yaw + 3.14159265)
+    dv_reply_int(c, best.act)
+    dv_reply_float(c, best.speed)
+  }
+  return DV_OK
+}
+def DevVerbs peds_near { args: "x:float z:float r:float max:int?", run: fn crowd_peds_near_verb }
+
+# `ped_get id`: x y z yaw act speed lod
+function crowd_ped_get_verb(crowd_st: CrowdState, c: DevCall) -> int {
+  let uid = dv_int(c, 0)
+  if not crowd_alive(crowd_st, uid) {
+    c.why = `no ped {uid}`
+    return DV_BAD
+  }
+  let x = crowd_x(crowd_st, uid)
+  let z = crowd_z(crowd_st, uid)
+  dv_reply_float(c, x)
+  dv_reply_float(c, CrowdWorld.ground(x, z))
+  dv_reply_float(c, z)
+  dv_reply_yaw(c, crowd_yaw(crowd_st, uid) + 3.14159265)
+  dv_reply_int(c, crowd_act(crowd_st, uid))
+  dv_reply_float(c, crowd_speed(crowd_st, uid))
+  dv_reply_int(c, crowd_lod(crowd_st, uid))
+  return DV_OK
+}
+def DevVerbs ped_get { args: "id:int", run: fn crowd_ped_get_verb }
