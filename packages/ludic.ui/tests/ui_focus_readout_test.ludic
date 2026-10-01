@@ -1,0 +1,43 @@
+# ui_focus_readout_test - what has the focus, where it sits among the focusable controls, and how many
+# there are: the readout a host's dev link answers with
+import "ludic.ui"
+program UiFocusReadoutTest {
+  numbers float
+
+  component Clicker {
+    state n: int = 0
+    on hit() { n += 1 }
+  }
+
+  function frame(ui_st: mut UiState) -> void {
+    ui_show(ui_st, "Clicker", null, 0.0, 0.0, 1920.0, 1080.0)
+  }
+
+  test "before any frame nothing is focused and nothing is focusable" (ui_st: mut UiState) {
+    expect_eq(ui_focused(ui_st), "")
+    expect_eq(ui_focused_at(ui_st), -1)
+    expect_eq(ui_focusable(ui_st), 0)
+  }
+  test "a focused control is read back by key and place, and the count is the focusable controls" (ui_st: mut UiState) {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    frame(ui_st)
+    expect_eq(ui_focusable(ui_st), 1)
+    let key = ui_st.fc_list[0].key
+    ui_focus(ui_st, key)
+    frame(ui_st)
+    expect_eq(ui_focused(ui_st), key)
+    expect_eq(ui_focused_at(ui_st), 0)
+    expect_eq(ui_focusable(ui_st), 1)
+  }
+  test "a key that is not on the screen reads as no place" (ui_st: mut UiState) {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    ui_focus(ui_st, "ghost")
+    frame(ui_st)
+    expect_eq(ui_focused_at(ui_st), -1)
+    expect_eq(ui_focusable(ui_st), 1)
+  }
+}

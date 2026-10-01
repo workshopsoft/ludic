@@ -71,3 +71,8 @@ function fc_autofocus(ui_st: mut UiState) -> void {
     }
   }
 }
+# what has the keyboard's focus: its key ("" for none), its place among the focusable controls of the
+# last screen shown (-1 for none), and how many there are - for a host's dev link or a test
+export function ui_focused(ui_st: UiState) -> string { return ui_st.fc_key }
+export function ui_focused_at(ui_st: UiState) -> int { return fc_find(ui_st) }
+export function ui_focusable(ui_st: UiState) -> int { return len(ui_st.fc_list) }
