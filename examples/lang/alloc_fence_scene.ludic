@@ -1,0 +1,25 @@
+# alloc_fence_scene.ludic - the scene boundary: a game that builds a world after its launcher has
+# sat idle past the warm-up (R3D_ALLOC_WARM, 600 frames) is already being judged, so the build's
+# one-time allocations would fail the run. The rule: when a build keeps memory on purpose, say so
+# after it with `Mem.play()` then `Mem.settled()` - play re-arms the warm-up (judging stops, the
+# frame is not judged), settled re-baselines at once (the kept set now is the new floor). Without
+# the pair the build frame fails with exit 86. A `Mem.play()` before the build alone also works,
+# but the fence stays blind for the next R3D_ALLOC_REWARM (120) frames.
+# Here frame 900 builds the scene and passes; frame 2000 keeps a record for real and fails the
+# run (exit 86); R3D_ALLOC_FENCE=count runs on and prints `bad 1`.
+program AllocFenceScene {
+  property Box { v: int = 0 }
+  entry {
+    var world = new []Box
+    for f in 0 .. 3000 {
+      if f == 900 {
+        for i in 0 .. 500 { push(world, new Box { v: i }) }   # the one-time build
+        Mem.play()
+        Mem.settled()
+      }
+      if f == 2000 { push(world, new Box { v: f }) }          # a leak after the boundary
+      Mem.frame()
+    }
+    print(`bad {Mem.bad_frames()}`)
+  }
+}
