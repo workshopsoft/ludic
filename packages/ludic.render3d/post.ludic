@@ -125,7 +125,7 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_vignette = 0.35
   render3d_st.post_saturation = 1.04
   render3d_st.post_contrast = 1.12
-  render3d_st.post_key = 0.19
+  render3d_st.post_key = 0.28       # the target for the meter's band mean (post_meter.ludic); 0.19 was the whole frame's
   render3d_st.post_lum = words(4)
   var m = 1;  var sz = max(w, h)
   while sz > 1 { sz = sz / 2;  m += 1 }
@@ -133,7 +133,7 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_adapt = 0.0
 }
 
-# Mean scene luminance from the HDR mip chain -> exposure = key / mean, eased over
+# The scene metered from the HDR mip chain (post_meter.ludic) -> exposure = key / that, eased over
 # frames. The value comes back through a pixel buffer one frame late: a direct
 # glGetTexImage waits for the GPU to finish the whole frame, which serialised the
 # CPU and the GPU. With the fly-camera demo that cost little (the CPU had nothing
@@ -154,7 +154,7 @@ function post_measure(render3d_st: mut Render3dState) -> void {
   gpu_use_program(render3d_st, render3d_st.post_p_adapt)
   r3d_bind_2d(render3d_st, render3d_st.post_p_adapt, "u_scene", 0, render3d_st.post_hdr.color)
   r3d_bind_2d(render3d_st, render3d_st.post_p_adapt, "u_prev", 1, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_lod"), float(render3d_st.post_mips - 1))
+  post_meter_bind(render3d_st, render3d_st.post_p_adapt)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_key"), render3d_st.post_key)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_max"), render3d_st.post_exposure_max)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_rate"), 0.08)

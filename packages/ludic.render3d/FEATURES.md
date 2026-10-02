@@ -70,7 +70,7 @@ Anti-aliasing, camera and post-processing
 43. HDR pipeline (RGBA16F) with NaN/inf sanitising at every stage — `post.ludic`, `shaders/lighting.glsl` `sane`
 44. Bloom: 13-tap downsample pyramid with soft threshold, tent upsample — `shaders/bloom_down.frag`, `shaders/bloom_up.frag`
 45. Auto-exposure by mean luminance with temporal adaptation — `post.ludic` `post_measure`
-46. ACES filmic tonemapping with log-space contrast — `shaders/tonemap.frag`
+46. ACES filmic tonemapping that keeps the scene's hue (Oklab), with a log-space contrast that steepens above mid grey only — `shaders/tonemap.frag`
 47. Colour grading: white balance, lift/gain, saturation — `shaders/tonemap.frag`
 48. Vignette, dithering, film grain — `shaders/tonemap.frag`, `shaders/sharpen.frag`
 49. Luma unsharp sharpening — `shaders/sharpen.frag`
@@ -92,7 +92,7 @@ Characters and moving objects
 63. Per-instance skin clones (a herd posed individually), per-part tints and hidden parts on actors, uniform-location caching with frustum and distance culling — `skin.ludic` `skin_clone`, `actor.ludic`
 64. A second point / cone light (a torch or flashlight in the hand) with a reach in metres and a gentle falloff to it — `daylight.ludic` `daylight_hand`, `shaders/lighting.glsl` `handLight`
 64a. Tree foliage dithered out inside arm's length of the camera, in the depth prepass — `shaders/model.vert` `v_near`, `shaders/depth.frag`, `#define NEAR_FADE`
-65. Auto-exposure adapted on the GPU: a 1x1 pass eases last frame's value toward key / mean and the tonemapper samples it, so nothing is read back (a pixel-buffer read still synchronised on Apple's GL) — `post.ludic` `post_measure`, `shaders/adapt.frag`
+65. Auto-exposure adapted on the GPU: a 1x1 pass meters a centre-weighted histogram of the frame (a band of it, averaged), holds it by day within a few stops of open ground's exposure, eases last frame's value toward key / that and the tonemapper samples it, so nothing is read back (a pixel-buffer read still synchronised on Apple's GL) — `post.ludic` `post_measure`, `post_meter.ludic`, `shaders/adapt.frag`
 66. A PPM reader with box-filtered downscale (photo thumbnails) and word-wrapped overlay text — `texture.ludic` `tex_load_ppm`, `overlay.ludic` `ov_text_wrap`
 67. The overlay batches a whole frame into one upload and draws per texture range with optional scissor clips (per-change uploads stalled the driver: 40 ms -> 25 ms), plus nine-slice, rotated, line, disc and arc primitives — `overlay.ludic` `ov_flush`, `ov_clip`, `ov_nine`, `ov_sub_rot`, `ov_line`, `ov_disc`, `ov_arc`
 68. Weather on the daylight: an overcast factor greys and dims the sun and the sky's light, a fog multiplier thickens the air, a lightning flash — `daylight.ludic` `daylight_weather`

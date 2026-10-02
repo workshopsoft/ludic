@@ -1,0 +1,42 @@
+# post_meter_test.ludic - the exposure meter's numbers (post_meter.ludic): a band is always a band, the hold's
+# stops stay sane, and the grid is read from the mip whose texels are about a cell (the metering is adapt.frag's)
+import "ludic.render3d/r3d.ludic"
+program PostMeterTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "the defaults: the band 0.3 .. 0.98, the centre weighted, held 3 stops under and 1.5 over open ground" {
+    let st = new Render3dState
+    expect_near(st.post_meter_lo, 0.3, 0.0001)
+    expect_near(st.post_meter_hi, 0.98, 0.0001)
+    expect(st.post_meter_centre > 0.0)
+    expect_near(st.post_meter_below, 3.0, 0.0001)
+    expect_near(st.post_meter_above, 1.5, 0.0001)
+  }
+
+  test "a band asked for upside down or empty still averages something" {
+    let st = new Render3dState
+    post_metering(st, 0.9, 0.2, -1.0, -2.0, 40.0)
+    expect(st.post_meter_hi >= st.post_meter_lo + 0.05)
+    expect(st.post_meter_hi <= 1.0)
+    expect_near(st.post_meter_centre, 0.0, 0.0001)
+    expect_near(st.post_meter_below, 0.0, 0.0001)
+    expect_near(st.post_meter_above, 16.0, 0.0001)
+    post_metering(st, 0.0, 1.0, 0.0, 64.0, 64.0)
+    expect_near(st.post_meter_lo, 0.0, 0.0001)
+    expect_near(st.post_meter_hi, 1.0, 0.0001)
+  }
+
+  test "the grid's mip: 32 texels or fewer across" {
+    expect_near(post_meter_lod(32), 0.0, 0.0001)
+    expect_near(post_meter_lod(1920), 6.0, 0.0001)
+    expect_near(post_meter_lod(3840), 7.0, 0.0001)
+    expect_near(post_meter_lod(1440), 6.0, 0.0001)
+  }
+
+  test "open ground's share is held off zero" {
+    let st = new Render3dState
+    post_metering_open(st, 0.0)
+    expect(st.post_meter_open > 0.0)
+  }
+}

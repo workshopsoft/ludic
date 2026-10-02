@@ -1,0 +1,51 @@
+# ============================================================================
+# post_meter.ludic — how auto-exposure meters the frame (adapt.frag): a histogram of a grid of cells
+# from the HDR mip chain, its darkest and brightest shares dropped and the rest averaged, the centre
+# weighted; then, by day, held within a few stops of the exposure open ground would get from the sky
+# and the sun, so a frame of shade is metered as shade and not as noon.
+# ============================================================================
+
+# The meter's numbers. lo / hi: the shares of the frame's weight below and above the band averaged
+# (0 and 1 is the plain mean the meter used to be); centre: how much the middle of the screen counts
+# (exp(-centre * r^2), 0 even); below / above: the stops under and over open ground's exposure the day
+# lets it adapt to - a cave or a frame of snow still reaches its own exposure past them, by night the
+# hold is gone.
+function post_metering(render3d_st: mut Render3dState, lo: float, hi: float, centre: float, below: float, above: float) -> void {
+  render3d_st.post_meter_lo = Math.clamp(lo, 0.0, 0.95)
+  render3d_st.post_meter_hi = Math.clamp(hi, render3d_st.post_meter_lo + 0.05, 1.0)
+  render3d_st.post_meter_centre = Math.clamp(centre, 0.0, 8.0)
+  render3d_st.post_meter_below = Math.clamp(below, 0.0, 16.0)
+  render3d_st.post_meter_above = Math.clamp(above, 0.0, 16.0)
+}
+# a frame of open ground's band mean as a share of the light a level face takes (what the hold is centred on)
+function post_metering_open(render3d_st: mut Render3dState, share: float) -> void { render3d_st.post_meter_open = Math.clamp(share, 0.005, 1.0) }
+
+# the grid is 32 cells across (18 down for 16:9), read from the mip whose texels are about a cell
+function post_meter_lod(w: int) -> float {
+  var lod = 0.0
+  var s = float(w)
+  while s > 32.0 { s = s * 0.5;  lod += 1.0 }
+  return lod
+}
+
+function post_meter_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  let w = render3d_st.post_hdr.w;  let h = render3d_st.post_hdr.h
+  let gw = 32.0
+  let gh = Math.clamp(Math.floor(gw * float(h) / float(max(w, 1)) + 0.5), 1.0, 36.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_lod"), post_meter_lod(w))
+  u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_grid"), gw, gh)
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_meter"), render3d_st.post_meter_lo, render3d_st.post_meter_hi, render3d_st.post_meter_centre)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_open_share"), render3d_st.post_meter_open)
+  # the open ground's light is the sky's convolved map and the sun; with no sky there is nothing to hold to
+  var below = render3d_st.post_meter_below
+  var above = render3d_st.post_meter_above
+  var irr = render3d_st.sky_irradiance
+  if irr == 0 { irr = render3d_st.post_adapt_t[render3d_st.post_adapt_i].color;  below = 64.0;  above = 64.0 }
+  u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_range"), below, above)
+  r3d_bind_2d(render3d_st, prog, "u_irradiance", 2, irr)
+  if render3d_st.day_ibl == null { u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ibl_scale"), 1.0, 1.0, 1.0) } else { u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_ibl_scale"), render3d_st.day_ibl) }
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_sun_dir"), render3d_st.sun_dir)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_sun_color"), render3d_st.sun_color)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_daylight"), render3d_st.day_light)
+}
+
