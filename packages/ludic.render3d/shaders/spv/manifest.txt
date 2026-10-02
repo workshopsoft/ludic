@@ -4201,6 +4201,67 @@ T 46e2325c u_shadow 8
 T 46e2325c u_tershadow 9
 T 46e2325c u_tershadow_aux 10
 T 46e2325c u_ts_height 11
+P 69b0f9cd water.vert water_patch.frag 
+B 69b0f9cd vert 0 152
+U 69b0f9cd vert u_view 0 mat4 1 0
+U 69b0f9cd vert u_proj 64 mat4 1 0
+U 69b0f9cd vert u_level 128 float 1 0
+U 69b0f9cd vert u_center 136 vec2 1 0
+U 69b0f9cd vert u_extent 144 vec2 1 0
+I 69b0f9cd a_xz 0 vec2
+B 69b0f9cd frag 1 1216
+U 69b0f9cd frag u_cascade_vp 0 mat4 5 64
+U 69b0f9cd frag u_cascade_split 320 float 5 16
+U 69b0f9cd frag u_cascade_range 400 float 5 16
+U 69b0f9cd frag u_cascade_texel 480 float 5 16
+U 69b0f9cd frag u_sun_dir 560 vec3 1 0
+U 69b0f9cd frag u_sun_color 576 vec3 1 0
+U 69b0f9cd frag u_cam_pos 592 vec3 1 0
+U 69b0f9cd frag u_prefilter_levels 604 float 1 0
+U 69b0f9cd frag u_fog_density 608 float 1 0
+U 69b0f9cd frag u_fog_height_falloff 612 float 1 0
+U 69b0f9cd frag u_fog_base 616 float 1 0
+U 69b0f9cd frag u_clip_y 620 float 1 0
+U 69b0f9cd frag u_spec_scale 624 float 1 0
+U 69b0f9cd frag u_sky_rot 632 vec2 1 0
+U 69b0f9cd frag u_ground_alb 640 vec3 1 0
+U 69b0f9cd frag u_ground_alb_hi 656 vec3 1 0
+U 69b0f9cd frag u_ground_hi_y 668 float 1 0
+U 69b0f9cd frag u_ground_hi_w 672 float 1 0
+U 69b0f9cd frag u_ibl_scale 688 vec3 1 0
+U 69b0f9cd frag u_daylight 700 float 1 0
+U 69b0f9cd frag u_fire_pos 704 vec3 1 0
+U 69b0f9cd frag u_fire_color 720 vec3 1 0
+U 69b0f9cd frag u_hand_pos 736 vec3 1 0
+U 69b0f9cd frag u_hand_color 752 vec3 1 0
+U 69b0f9cd frag u_hand_dir 768 vec3 1 0
+U 69b0f9cd frag u_hand_cone 780 float 1 0
+U 69b0f9cd frag u_hand_reach 784 float 1 0
+U 69b0f9cd frag u_ts_origin 792 vec2 1 0
+U 69b0f9cd frag u_ts_half 800 float 1 0
+U 69b0f9cd frag u_ts_on 804 float 1 0
+U 69b0f9cd frag u_force_cascade 808 int 1 0
+U 69b0f9cd frag u_cloud_shadow 812 float 1 0
+U 69b0f9cd frag u_time 816 float 1 0
+U 69b0f9cd frag u_fog_inscatter 820 float 1 0
+U 69b0f9cd frag u_fog_desat 824 float 1 0
+U 69b0f9cd frag u_fog_wall 828 float 1 0
+U 69b0f9cd frag u_sky_relight 832 float 1 0
+U 69b0f9cd frag u_view 848 mat4 1 0
+U 69b0f9cd frag u_screen 912 vec2 1 0
+U 69b0f9cd frag u_refl_on 920 float 1 0
+U 69b0f9cd frag u_center 928 vec2 1 0
+U 69b0f9cd frag u_extent 936 vec2 1 0
+U 69b0f9cd frag u_seed 944 float 1 0
+U 69b0f9cd frag u_rip 960 vec4 16 16
+T 69b0f9cd u_brdf 2
+T 69b0f9cd u_irradiance 3
+T 69b0f9cd u_prefilter 4
+T 69b0f9cd u_refl 5
+T 69b0f9cd u_shadow 6
+T 69b0f9cd u_tershadow 7
+T 69b0f9cd u_tershadow_aux 8
+T 69b0f9cd u_ts_height 9
 P b20fdcb5 grass_inst.vert model.frag #define FOLIAGE;#define BLADE;#define GBLADE;#define GINST;
 B b20fdcb5 vert 0 160
 U b20fdcb5 vert u_view 0 mat4 1 0
@@ -4656,4 +4717,4 @@ T 14b79603 u_shadow 7
 T 14b79603 u_tershadow 8
 T 14b79603 u_tershadow_aux 9
 T 14b79603 u_ts_height 10
-E 68
+E 69
