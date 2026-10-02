@@ -3,12 +3,16 @@ export const HINTS_TIP: int = 0        # worth knowing
 export const HINTS_NOTE: int = 1       # worth doing soon
 export const HINTS_WARN: int = 2       # worth doing now
 export const HINTS_URGENT: int = 3     # do it or lose the day
+export const HINTS_PRIORITY_MAX: int = 9
 
 # The words are the lesson's text keys (the game translates them where it draws). Pictures are
 # the game's: `icon` / `picN` name a glyph, `item` / `itemN` a thing's picture instead (-1: none).
 export property HintCard {
   key: string = ""
   @OneOf(HINTS_TIP, HINTS_NOTE, HINTS_WARN, HINTS_URGENT) urgency: int = HINTS_TIP
+  # within an urgency the higher priority takes a place on the rail first (a card that is true only for
+  # a while outranks a standing tip); the same priority keeps the registry's order
+  @Range(0, 9) priority: int = 0
   icon: string = ""
   @Ref(Items) item: int = -1
   @Text line: Key = null          # the chip on the rail: five or six words

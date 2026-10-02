@@ -1,5 +1,5 @@
 # rail.ludic - the rail: once a pass (a second by default) the most urgent true cards, up to a few,
-# muted ones left out; in a tie the registry's order decides
+# muted ones left out; in a tie the card's priority decides, then the registry's order
 export state HintsState {
   hn_mute: []bool = hn_mutes()
   hn_foreign: []string = new []string      # muted keys with no card in this build, written back as read
@@ -51,11 +51,13 @@ export function hints_tick(hints_st: mut HintsState, dt: float) -> void {
 export function hints_sort(hints_st: mut HintsState) -> void {
   hints_st.hn_n = 0
   let on = HintsWorld.showing()
-  for u in 0 .. 4 {
-    let want = HINTS_URGENT - u
+  let ranks = 4 * (HINTS_PRIORITY_MAX + 1)
+  for r in 0 .. ranks {
+    let want = ranks - 1 - r
     for id in 0 .. HINT_COUNT {
       if not on or hints_st.hn_n >= hints_st.hn_shown { break }
-      if Hints[id].urgency != want or hints_muted(hints_st, id) { continue }
+      if Hints[id].urgency * (HINTS_PRIORITY_MAX + 1) + Hints[id].priority != want { continue }
+      if hints_muted(hints_st, id) { continue }
       if not HintsWorld.true_now(id) { continue }
       hints_st.hn_top[hints_st.hn_n] = id
       hints_st.hn_n += 1

@@ -8,7 +8,7 @@ program HintsTest {
   def Hints parched { urgency: HINTS_URGENT, line: k"hints.drink_now", title: k"hints.water_now" }
   def Hints rain { urgency: HINTS_TIP, line: k"hints.rain" }
   def Hints cold { urgency: HINTS_WARN, line: k"hints.cold" }
-  def Hints night { urgency: HINTS_TIP, line: k"hints.night" }
+  def Hints night { urgency: HINTS_TIP, priority: 3, line: k"hints.night" }
   def Hints from "cards.lres"
 
   state HintsTestState {
@@ -62,6 +62,17 @@ program HintsTest {
     expect_eq(hints_at(hints_st, 0), HINT_COLD)
     expect_eq(hints_at(hints_st, 1), HINT_THIRSTY)
     expect_eq(hints_at(hints_st, 2), HINT_FIRE)
+  }
+
+  test "within an urgency a higher priority comes first, and urgency still outranks it" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
+    fresh(hints_st, hints_test_st)
+    hints_test_st.on[HINT_RAIN] = true
+    hints_test_st.on[HINT_NIGHT] = true
+    hints_test_st.on[HINT_COLD] = true
+    hints_sort(hints_st)
+    expect_eq(hints_at(hints_st, 0), HINT_COLD)              # a warn, though night's priority is higher
+    expect_eq(hints_at(hints_st, 1), HINT_NIGHT)             # a tip with priority 3 ahead of rain, which is first in the registry
+    expect_eq(hints_at(hints_st, 2), HINT_RAIN)
   }
 
   test "nothing on the rail while it is not showing" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {

@@ -30,14 +30,15 @@ thirsty {
 }
 ```
 
-`urgency` is `HINTS_TIP`, `HINTS_NOTE`, `HINTS_WARN` or `HINTS_URGENT`. A picture is a glyph by
+`urgency` is `HINTS_TIP`, `HINTS_NOTE`, `HINTS_WARN` or `HINTS_URGENT`; `priority` (0..9, default 0) orders
+cards of one urgency, so a card true only for a while can outrank a standing tip. A picture is a glyph by
 name (`icon`, `picN`) or a thing's picture by number (`item`, `itemN`, -1 for none) - both the
 game's to interpret.
 
 ## The rules it keeps
 
 1. **The most urgent few.** Once a pass (a second by default) the rail is the true, unmuted cards,
-   most urgent first and in registry order within an urgency, up to `hints_config`'s count.
+   most urgent first, then by `priority` (0..9, higher first) within an urgency, then in registry order, up to `hints_config`'s count.
 2. **A card follows its subject.** As the rail re-sorts under an open card, the pick follows it;
    when what it was about stops being true (or the rail stops showing) it is put down, with no fact.
 3. **A lesson lands once.** `hints_mute_card()` takes the open card off the rail until
@@ -57,7 +58,7 @@ export port HintsWorld {
 
 | | |
 | --- | --- |
-| `HintCard { key, urgency, icon, item, line, title, s1..s3, pic1..pic3, item1..item3, later }`, `open registry Hints ... as HINT` | a card |
+| `HintCard { key, urgency, priority, icon, item, line, title, s1..s3, pic1..pic3, item1..item3, later }`, `open registry Hints ... as HINT` | a card |
 | `hints_config(shown, every)` | how many the rail holds (3) and seconds between passes (1) |
 | `hints_tick(dt)`, `hints_sort()`, `hints_refresh()` | a pass when due, a pass now, the next tick's pass now |
 | `hints_rail() -> []int`, `hints_count()`, `hints_at(k)`, `hints_pick()`, `hints_hot(k)` | the rail |
