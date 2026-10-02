@@ -51,8 +51,11 @@ void main() {
   c = pow(c / 0.18, vec3(u_contrast)) * 0.18;
   vec3 pre = c;                    // what ACES is about to roll off, kept for HDR highlights
   c = aces(c);
-  // lift / gain grade in display space
+  // lift / gain grade in display space - after the 2.2, as the day's numbers mean it: in linear a
+  // lift of 0.025 is a floor of 48/255 in sRGB, which painted every shadow at noon blue-grey
+  c = pow(max(c, vec3(0.0)), vec3(1.0 / 2.2));
   c = c * u_gain + u_lift * (1.0 - c);
+  c = pow(max(c, vec3(0.0)), vec3(2.2));
   float lum = dot(c, vec3(0.2126, 0.7152, 0.0722));
   c = mix(vec3(lum), c, u_saturation);
   vec2 q = v_uv * 2.0 - 1.0;
