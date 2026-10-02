@@ -88,6 +88,7 @@ function cmd_selfhost_test() -> int {
   sh_case("sort", "0 39 20 1 2 3 3 1 30 10 20 40 2 8")
   sh_case("control", "55 4 15 1")
   sh_case("match_bits", "1 2 9 16 4 15")
+  sh_case("match_str", "1 2 2 0 2 7 1 0 1 0")
   sh_case("enums", "1 0 15 7 19 18 0 80 17")
   sh_case("fixed", "2 3 0 6 1")
   sh_case("const", "1 0 10 5 20 0 10 7 1 0")
