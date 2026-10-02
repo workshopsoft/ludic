@@ -1,0 +1,63 @@
+# made_test.ludic - i18n_made makes what L makes (holes, a key in a hole bare, escaped or bracketed, a
+# plural, a key en.po lacks, plain text) as a new string each time, and keeps none of it
+import "ludic.i18n"
+program I18nMadeTest {
+  numbers float
+  function q(s: string) -> string { return "\"" + s + "\"" }
+  function po_line(id: string, tr: string) -> string { return "msgid " + q(id) + "\nmsgstr " + q(tr) + "\n\n" }
+  function en() -> string {
+    var s = po_line("hud.day", "Day {1}") + po_line("pause.quit", "Quit") + po_line("shop.ada", "Ada: {1}")
+    s = s + po_line("lore.talk", "{1} is back, {2}.") + po_line("lore.brief", "{1} {2} {3}") + po_line("fmt.percent", "{1}%")
+    s = s + po_line("fmt.swap", "{2} then {1}{3}")
+    return s + "msgid \"catch.count\"\nmsgid_plural \"catch.count\"\nmsgstr[0] \"{1} trout\"\nmsgstr[1] \"{1} trouts\"\n\n"
+  }
+  function b(s: string) -> string {
+    let o = buffer(1)
+    o[0] = I18N_OPEN
+    let c = buffer(1)
+    c[0] = I18N_CLOSE
+    return text_of(o, 1) + s + text_of(c, 1)
+  }
+  function start(i18n_st: mut I18nState) -> void {
+    i18n_off(i18n_st)
+    i18n_loud(i18n_st, false)
+    i18n_base_text(i18n_st, en())
+  }
+  # made and L agree, and making it again (nothing kept from the first) makes it the same
+  function same(i18n_st: mut I18nState, s: string, want: string) -> void {
+    expect(i18n_made(i18n_st, s) == want)
+    expect(L(i18n_st, s) == want)
+    expect(i18n_made(i18n_st, s) == want)
+  }
+
+  test "a key's holes, in the language's order, a missing one empty" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    same(i18n_st, trf(k"fmt.percent", "58", "", "", ""), "58%")
+    same(i18n_st, trf(k"fmt.swap", "a", "b", "", ""), "b then a")
+    same(i18n_st, trn(kn"catch.count", 1, "", "", ""), "1 trout")
+    same(i18n_st, trn(kn"catch.count", 3, "", "", ""), "3 trouts")
+  }
+
+  test "a key in a hole: bare, with holes of its own escaped, or bracketed" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    same(i18n_st, trf(k"shop.ada", tr(k"pause.quit"), "", "", ""), "Ada: Quit")
+    same(i18n_st, trf(k"shop.ada", trf(k"hud.day", "3", "", "", ""), "", "", ""), "Ada: Day 3")
+    same(i18n_st, trf(k"shop.ada", b(trf(k"hud.day", "4", "", "", "")), "", "", ""), "Ada: Day 4")
+    let talk = trf(k"lore.talk", "Old Maroon", "under the far shore", "", "")
+    same(i18n_st, trf(k"lore.brief", "Lightning.", talk, tr(k"pause.quit"), ""), "Lightning. Old Maroon is back, under the far shore. Quit")
+  }
+
+  test "a key en.po lacks is its name, and plain text is itself" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    same(i18n_st, trf(k"no.such", "1", "", "", ""), "no.such")
+    same(i18n_st, "a player's name", "a player's name")
+    same(i18n_st, "Day " + b(trf(k"hud.day", "5", "", "", "")), "Day Day 5")
+  }
+
+  test "a long line grows the buffer and is whole" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    var long = ""
+    for i in 0 .. 60 { long = long + "abcdefghij" }
+    same(i18n_st, trf(k"fmt.percent", long, "", "", ""), long + "%")
+  }
+}

@@ -1,0 +1,111 @@
+# made.ludic - a line with holes a screen shows while it is built (t('fmt.percent', n), or a program's
+# marked line with holes as an element's text), made in the language by the backend's `make` and kept
+# by the screen's pool like its nodes: let go once two builds of that screen have passed without it,
+# so a count or a distance that keeps changing holds the texts it shows, not one for every value seen
+export property UiMade {
+  h: int = 0
+  key: string = null            # the marked line, the pool's own copy; null: a free slot
+  out: string = null            # its text in the language, the pool's own
+  last: int = 0                 # the build that last showed it
+}
+
+# is a build under way that may make lines this way (outside one, a value may be kept: the memo's)
+function md_on(ui_st: UiState) -> bool {
+  return ui_st.uv_on and ui_st.pl_cur != null and not ui_st.tr_no and ui_st.ui_be != null and ui_st.ui_be.make != null
+}
+# a key with holes: its mark, then a byte 31 (a key alone is the translator's, a text per key)
+function md_holes(s: string) -> bool {
+  if len(s) == 0 or (s[0] != 1 and s[0] != 2) { return false }
+  for i in 1 .. len(s) { if s[i] == 31 { return true } }
+  return false
+}
+# a text an element shows: a key with holes made here while a screen is built, the rest translated
+function ui_tr_shown(ui_st: mut UiState, s: string) -> string {
+  if md_on(ui_st) and md_holes(s) { return md_text(ui_st, s) }
+  return ui_tr(ui_st, s)
+}
+function md_hash(h0: int, s: string) -> int {
+  var h = h0
+  for i in 0 .. len(s) { h = ((h ^ s[i]) * 16777619) & 2147483647 }
+  return h
+}
+# the text of the marked line s
+function md_text(ui_st: mut UiState, s: string) -> string {
+  let p = ui_st.pl_cur
+  let h = md_hash(216613626, s)
+  for i in 0 .. len(p.made) {
+    let m = p.made[i]
+    if m.key != null and m.h == h and m.key == s {
+      m.last = p.built
+      return m.out
+    }
+  }
+  return md_new(ui_st, p, h, md_copy(s))
+}
+@alloc_ok("a line that changed: the pool's own copy of its key, let go by md_sweep")
+function md_copy(s: string) -> string { return keep(s) }
+# the text of the marked line these pieces join into (tkey.ludic), compared in place
+function md_pieces(ui_st: mut UiState, ps: []string) -> string {
+  let p = ui_st.pl_cur
+  var h = 216613626
+  for k in 0 .. len(ps) { h = md_hash(h, ps[k]) }
+  for i in 0 .. len(p.made) {
+    let m = p.made[i]
+    if m.key != null and m.h == h and tx_same(ps, m.key) {
+      m.last = p.built
+      return m.out
+    }
+  }
+  return md_new(ui_st, p, h, md_join(ui_st, ps))
+}
+# the pieces joined, written in the kept buffer first so nothing is made on the way but the line
+@alloc_ok("a line that changed: its key, let go by md_sweep two builds after the last that showed it")
+function md_join(ui_st: mut UiState, ps: []string) -> string {
+  var n = 0
+  for k in 0 .. len(ps) { n += len(ps[k]) }
+  if n > len(ui_st.md_buf) { md_room(ui_st, n) }
+  let b = ui_st.md_buf
+  var at = 0
+  for k in 0 .. len(ps) {
+    let t = ps[k]
+    for i in 0 .. len(t) { b[at + i] = t[i] }
+    at += len(t)
+  }
+  return text_of(b, n)
+}
+@alloc_ok("once per longer line than any before: the buffer kept")
+function md_room(ui_st: mut UiState, n: int) -> void { ui_st.md_buf = buffer(n * 2) }
+@alloc_ok("a line that changed: made in the language, let go by md_sweep as its key is")
+function md_new(ui_st: mut UiState, p: UiPool, h: int, key: string) -> string {
+  var out = ui_st.ui_be.make(key)
+  if out == null { out = keep(key) }
+  let m = md_slot(p)
+  m.h = h
+  m.key = key
+  m.out = out
+  m.last = p.built
+  return out
+}
+function md_slot(p: UiPool) -> UiMade {
+  for i in 0 .. len(p.made) { if p.made[i].key == null { return p.made[i] } }
+  return md_grow(p)
+}
+@alloc_ok("a pool miss: past the most changing lines a screen has shown in two builds, then kept")
+function md_grow(p: UiPool) -> UiMade {
+  let m = new UiMade
+  push(p.made, m)
+  return m
+}
+# a build of the screen begins: what its last build did not show is let go - the build before that,
+# the last whose nodes and Values could hold it, is handed out again now
+function md_sweep(p: UiPool) -> void {
+  for i in 0 .. len(p.made) {
+    let m = p.made[i]
+    if m.key != null and m.last < p.built - 1 {
+      free(m.out)
+      free(m.key)
+      m.key = null
+      m.out = null
+    }
+  }
+}

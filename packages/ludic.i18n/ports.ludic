@@ -36,6 +36,10 @@ export state I18nState {
   base_tried: bool = false
   kc: Dict = null                     # a marked string (key and args) -> index into kc_out, in this language
   kc_out: []string = null
+  mbs: [][]byte = new [][]byte        # keyed_buf.ludic: a key's text written here, a buffer per depth
+  md: int = 0                         # how deep in keys made inside keys' holes
+  ka: Dict = Dict.new()               # an argument that holds a key -> index into ka_s, its one kept string
+  ka_s: []string = new []string
   loud: bool = false                  # a developer's build: a key en.po lacks draws as [[key]], said once
   said: Dict = null
 }

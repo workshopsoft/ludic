@@ -1,12 +1,12 @@
-# keyed_render.ludic - a marked string made into text where it is drawn: its key looked up (a plural's by
-# its count), its holes filled with its arguments, each argument that is itself a key made first
+# keyed_render.ludic - a marked string made into text where it is drawn (keyed_make.ludic): kept by L,
+# or handed to a caller that keeps it only while it shows it (i18n_made)
 
 # what L does with a key: made once per distinct marked string in this language, then kept
 function keyed(i18n_st: mut I18nState, s: string) -> string {
   if i18n_st.kc == null { kc_clear(i18n_st) }
   let ci = Dict.get_or(i18n_st.kc, s, -1)
   if ci >= 0 { return i18n_st.kc_out[ci] }
-  let r = kr_make(i18n_st, s)
+  let r = km_text(i18n_st, s)
   if Dict.size(i18n_st.kc) >= CACHE_MAX { kc_clear(i18n_st) }
   @alloc_ok("a key made into text: the result kept, up to CACHE_MAX")
   Dict.set(i18n_st.kc, s, len(i18n_st.kc_out))
@@ -22,51 +22,10 @@ function kc_clear(i18n_st: mut I18nState) -> void {
   i18n_st.kc_out = new []string
 }
 
-@alloc_ok("a key made into text (a cache miss): once per distinct marked string")
-function kr_make(i18n_st: mut I18nState, s: string) -> string {
-  let args = new []string
-  var start = 1
-  var i = 1
-  var depth = 0
-  while i <= len(s) {
-    if i < len(s) and s[i] == I18N_ESC {
-      i += 2                                # an escaped byte belongs to its argument
-      continue
-    }
-    if i < len(s) and s[i] == I18N_OPEN { depth += 1 }            # a bracketed line's own 31s are its own
-    if i < len(s) and s[i] == I18N_CLOSE and depth > 0 { depth -= 1 }
-    if i >= len(s) or (s[i] == I18N_SEP and depth == 0) {
-      var e = i
-      if e > len(s) { e = len(s) }
-      push(args, kr_unescape(s[start..e]))
-      start = i + 1
-    }
-    i += 1
-  }
-  let key = args[0]
-  var t = ""
-  if s[0] == I18N_PLURAL and len(args) > 1 { t = kb_plural(i18n_st, key, kr_int(args[1])) } else { t = kb_text(i18n_st, key) }
-  return kr_fill(i18n_st, t, args)
-}
-
-# {k} is argument k (args[0] is the key); a missing one is empty, a key is made into its own text
-@alloc_ok("a key made into text (a cache miss): its holes filled")
-function kr_fill(i18n_st: mut I18nState, t: string, args: []string) -> string {
-  var r = ""
-  var seg = 0
-  var i = 0
-  while i < len(t) {
-    let h = hole_at(t, i)
-    if h >= 1 {
-      var v = ""
-      if h < len(args) { v = args[h] }
-      if i18n_is_key(v) or kx_mixed(v) or kx_nested(v) { v = L(i18n_st, v) }
-      r = r + t[seg..i] + v
-      i = hole_end(t, i)
-      seg = i
-      continue
-    }
-    i += 1
-  }
-  return r + t[seg..len(t)]
+# s made into text as a new string the caller keeps or lets go (free), nothing kept here: L keeps one
+# per distinct line, which a count or a distance drawn as it changes grows without end
+@alloc_ok("a line made for a caller that lets it go when it stops showing it")
+export function i18n_made(i18n_st: mut I18nState, s: string) -> string {
+  if i18n_is_key(s) and not kx_mixed(s) { return km_text(i18n_st, s) }
+  return keep(L(i18n_st, s))
 }

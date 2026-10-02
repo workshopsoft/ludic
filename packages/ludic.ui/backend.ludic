@@ -16,6 +16,7 @@ export property UiBackend {
   scale: fn() -> float = null      # screen pixels per design pixel
   pointer_scale: fn() -> float = null   # screen pixels per unit of Input.mouse_x/y (2 on Retina)
   translate: fn(string) -> string = null   # the program's language, for every text a template shows
+  make: fn(string) -> string = null        # a marked line with holes made into a NEW string, nothing kept (made.ludic)
   sound: fn(string) -> void = null         # a control was used: "click", or its sound="..."
   read: fn(string) -> string = null        # a template file's text (else Fs.read_text)
   now: fn() -> float = null                # seconds, for animation (else frames at 60 a second)
@@ -43,6 +44,7 @@ export state UiState {
   @max(512) pl_pools: []UiPool = new []UiPool      # pool.ludic: each screen's nodes and envs, used again
   pl_cur: UiPool = null
   uv_on: bool = false                    # pool.ludic: a build is under way, so expressions' Values are pooled
+  md_buf: []byte = buffer(256)           # made.ludic: a line's pieces joined
   uv_true: Val = null
   uv_false: Val = null
   mm: UiMemo = null                      # memo.ludic: splits, gradients and keys by their text
@@ -256,6 +258,11 @@ function ui_sound(ui_st: UiState, name: string) -> void {
 # the program's language: every text a template shows goes through `f` before it is measured
 export function ui_translator(ui_st: mut UiState, f: fn(string) -> string) -> void {
   if ui_st.ui_be != null { ui_st.ui_be.translate = f }
+}
+# the program's language for a line with holes a screen shows (a count, a distance): `f` hands back a
+# new string and keeps nothing, and the screen lets it go once no build has shown it (made.ludic)
+export function ui_maker(ui_st: mut UiState, f: fn(string) -> string) -> void {
+  if ui_st.ui_be != null { ui_st.ui_be.make = f }
 }
 # the program's sounds: "click" when a control is used, or the control's own sound="..."
 export function ui_sounds(ui_st: mut UiState, f: fn(string) -> void) -> void {

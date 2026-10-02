@@ -1,7 +1,8 @@
 # tkey.ludic - t('pause.resume') and t('hud.day', day) in a template: the key as text, marked, its holes'
 # values after it ("\x01hud.day\x1f12"), handed to the translator at draw time like any text (the game's
 # ludic.i18n decodes it). A key already marked (a Key held in the model) keeps its mark, a plural's too.
-# Joined through the memo, so a key and holes that read the same as last frame make nothing.
+# Joined through the memo, so a key and holes that read the same as last frame make nothing; with holes,
+# while a screen is built, made in the language at once and kept only while shown (made.ludic).
 function ev_t(ui_st: mut UiState, args: Val) -> Val {
   let depth = ui_st.tx_depth
   @alloc_ok("once per depth of nesting, then kept")
@@ -17,6 +18,7 @@ function ev_t(ui_st: mut UiState, args: Val) -> Val {
     tx_piece(ui_st, ps, Value.at(args, i))
   }
   ui_st.tx_depth = depth
+  if Value.count(args) > 1 and md_on(ui_st) { return uv_str(ui_st, md_pieces(ui_st, ps)) }   # holes: made, kept while shown
   return tx_memo(ui_st, ps)
 }
 # one byte as a string, made once for the state's two markers

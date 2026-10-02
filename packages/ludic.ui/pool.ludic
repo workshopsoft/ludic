@@ -18,6 +18,8 @@ export property UiPool {
   vals0: []Val = null           # what expressions work out while the screen is built (uv_new)
   vals1: []Val = null
   uv: int = 0
+  built: int = 0                # how many times the screen has been built (made.ludic)
+  made: []UiMade = null         # the lines with holes its last two builds showed, and free slots
 }
 # a build of `screen` begins: its other generation is handed out again from the start
 function pl_begin(ui_st: mut UiState, screen: string) -> void {
@@ -27,6 +29,8 @@ function pl_begin(ui_st: mut UiState, screen: string) -> void {
   }
   if p == null { p = pl_new(ui_st, screen) }
   p.gen = 1 - p.gen
+  p.built += 1
+  md_sweep(p)
   p.un = 0
   p.ue = 0
   p.uv = 0
@@ -45,6 +49,7 @@ function pl_new(ui_st: mut UiState, screen: string) -> UiPool {
   p.vals1 = new []Val
   p.ups0 = new []UiPass
   p.ups1 = new []UiPass
+  p.made = new []UiMade
   push(ui_st.pl_pools, p)
   return p
 }

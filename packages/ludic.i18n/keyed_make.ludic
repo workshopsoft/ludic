@@ -1,0 +1,90 @@
+# keyed_make.ludic - a key with its holes made into text in a kept buffer, one per depth (an argument
+# that is a key is made by L first, which may make another): no list of arguments and no piece of text
+# on the way, so making one costs the one string it hands back
+
+# the text of the marked string s, a new string; the key's name is let go once its text is found
+@alloc_ok("a key made into text: the one string handed back, kept by L or let go by its caller")
+function km_text(i18n_st: mut I18nState, s: string) -> string {
+  let d = i18n_st.md
+  i18n_st.md = d + 1
+  var e = 1
+  while e < len(s) and s[e] != I18N_SEP { e += 1 }
+  let key = s[1..e]
+  var t = ""
+  if s[0] == I18N_PLURAL and e < len(s) { t = kb_plural(i18n_st, key, km_int(s, e + 1, km_end(s, e + 1))) } else { t = kb_text(i18n_st, key) }
+  let n = km_fill(i18n_st, d, t, s, e)
+  if km_known(i18n_st, key, s[0] == I18N_PLURAL) { free(key) }   # a key en.po lacks may be the text, or said
+  i18n_st.md = d
+  return text_of(i18n_st.mbs[d], n)
+}
+
+# t with each hole {k} filled by argument k of s (the arguments follow the 31 at e); returns the length
+function km_fill(i18n_st: mut I18nState, d: int, t: string, s: string, e: int) -> int {
+  var n = 0
+  var seg = 0
+  var i = 0
+  while i < len(t) {
+    let h = hole_at(t, i)
+    if h >= 1 {
+      for j in seg .. i { n = km_put(i18n_st, d, n, t[j]) }
+      let a = km_at(s, e, h)
+      if a >= 0 { n = km_arg(i18n_st, d, n, s, a, km_end(s, a)) }
+      i = hole_end(t, i)
+      seg = i
+      continue
+    }
+    i += 1
+  }
+  for j in seg .. len(t) { n = km_put(i18n_st, d, n, t[j]) }
+  return n
+}
+
+# where argument h (1 the first) starts: after the h-th 31 outside a bracket and an escape; -1 if none
+function km_at(s: string, e: int, h: int) -> int {
+  if e >= len(s) { return -1 }
+  var a = e + 1
+  for k in 1 .. h {
+    let b = km_end(s, a)
+    if b >= len(s) { return -1 }
+    a = b + 1
+  }
+  return a
+}
+
+# where the argument starting at a ends: its 31, or the end
+function km_end(s: string, a: int) -> int {
+  var i = a
+  var depth = 0
+  while i < len(s) {
+    if s[i] == I18N_ESC {
+      i += 2                                # an escaped byte belongs to its argument
+      continue
+    }
+    if s[i] == I18N_OPEN { depth += 1 }
+    if s[i] == I18N_CLOSE and depth > 0 { depth -= 1 }
+    if s[i] == I18N_SEP and depth == 0 { return i }
+    i += 1
+  }
+  return len(s)
+}
+
+# argument s[a..b] written at n: its bytes unescaped, or, when it holds a key, the key's text
+function km_arg(i18n_st: mut I18nState, d: int, at: int, s: string, a: int, b: int) -> int {
+  var n = at
+  var keyish = false
+  for i in a .. b { if s[i] == I18N_KEY or s[i] == I18N_PLURAL or s[i] == I18N_OPEN or s[i] == I18N_CLOSE { keyish = true } }
+  if keyish {
+    let w = L(i18n_st, km_kept_arg(i18n_st, s, a, b))
+    for i in 0 .. len(w) { n = km_put(i18n_st, d, n, w[i]) }
+    return n
+  }
+  var depth = 0
+  var i = a
+  while i < b {
+    depth = kx_depth(depth, s[i])
+    if depth == 0 and s[i] == I18N_ESC and i + 1 < b { i += 1 }
+    n = km_put(i18n_st, d, n, s[i])
+    i += 1
+  }
+  return n
+}

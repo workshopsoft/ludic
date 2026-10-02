@@ -1,0 +1,85 @@
+# ui_made_test - a line with holes a screen shows (t() with holes, or a program's marked line as an
+# element's text) is made by the backend's `make` once per value it reads, and the screen holds only
+# what its last two builds showed: a count that changes every frame does not keep a text per value
+import "ludic.ui"
+program UiMadeTest {
+  numbers float
+  state MdState {
+    n: int = 0
+    makes: int = 0
+    line: string = ""
+  }
+  function w(s: string, size: float) -> float { return float(len(s)) * 5.0 }
+  function rec(x: float, y: float, s: string, size: float, c: int, a: float) -> void { }
+  # what a language makes of a marked line: its bytes after the mark, the separators as spaces
+  function make(md: mut MdState, s: string) -> string {
+    md.makes += 1
+    let b = buffer(len(s))
+    for i in 1 .. len(s) {
+      b[i - 1] = s[i]
+      if s[i] == 31 { b[i - 1] = 32 }
+    }
+    return text_of(b, len(s) - 1)
+  }
+  function tr_plain(s: string) -> string { return s }
+  function byte_text(c: int) -> string {
+    let b = buffer(1)
+    b[0] = c
+    return text_of(b, 1)
+  }
+  function md_model(md: MdState) -> Val {
+    let o = Value.object()
+    Value.put(o, "n", Value.int(md.n))
+    Value.put(o, "line", Value.str(md.line))
+    return o
+  }
+  function md_load(ui_st: mut UiState, with_make: bool, body: string) -> void {
+    let b = new UiBackend
+    b.text = fn rec
+    b.measure = fn w
+    ui_backend(ui_st, b)
+    ui_translator(ui_st, fn tr_plain)
+    if with_make { ui_maker(ui_st, fn make) }
+    ui_load_text(ui_st, "<ui><screen name='m'>" + body + "</screen></ui>", "m.xml")
+  }
+  function md_show(ui_st: mut UiState) -> UiNode {
+    let v = new UiView
+    v.model = fn md_model
+    ui_show(ui_st, "m", v, 0.0, 0.0, 400.0, 300.0)
+    return ui_root(ui_st, "m")
+  }
+
+  test "t() with holes is made once per value and held only while shown" (ui_st: mut UiState, md: mut MdState) {
+    md_load(ui_st, true, "<div><p>{t('fmt.count', n)}</p></div>")
+    for f in 0 .. 50 {
+      md.n = f
+      let r = md_show(ui_st)
+      expect(r.children[0].children[0].text == "fmt.count " + `{f}`)
+      expect(ui_made_held(ui_st, "m") <= 2)
+    }
+    expect_eq(md.makes, 50)
+    md_show(ui_st)
+    md_show(ui_st)
+    expect_eq(md.makes, 50)                           # the same value again: made already
+    expect_eq(ui_made_held(ui_st, "m"), 1)
+  }
+
+  test "a program's marked line with holes as an element's text is made the same way" (ui_st: mut UiState, md: mut MdState) {
+    md_load(ui_st, true, "<div><p>{line}</p></div>")
+    for f in 0 .. 20 {
+      md.line = byte_text(1) + "hud.metres" + byte_text(31) + `{f}`
+      let r = md_show(ui_st)
+      expect(r.children[0].children[0].text == "hud.metres " + `{f}`)
+    }
+    expect(ui_made_held(ui_st, "m") <= 2)
+  }
+
+  test "with no maker, the translator has it as ever" (ui_st: mut UiState, md: mut MdState) {
+    md_load(ui_st, false, "<div><p>{t('fmt.count', n)}</p></div>")
+    md.n = 7
+    let r = md_show(ui_st)
+    expect(r.children[0].children[0].text == byte_text(1) + "fmt.count" + byte_text(31) + "7")
+    expect_eq(ui_made_held(ui_st, "m"), 0)
+    expect_eq(md.makes, 0)
+  }
+}

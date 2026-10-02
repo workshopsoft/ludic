@@ -1,0 +1,56 @@
+# keyed_buf.ludic - keyed_make's kept pieces: a byte buffer per depth, the count read in place, and
+# an argument that holds a key kept once per distinct text (L may keep what it is handed)
+
+# byte c at n of depth d's buffer, which is made, or made longer, when it has no room
+function km_put(i18n_st: mut I18nState, d: int, n: int, c: int) -> int {
+  if len(i18n_st.mbs) <= d or n >= len(i18n_st.mbs[d]) { km_room(i18n_st, d, n + 1) }
+  i18n_st.mbs[d][n] = c
+  return n + 1
+}
+
+@alloc_ok("once per depth, and once per longer text than any before: the buffer kept")
+function km_room(i18n_st: mut I18nState, d: int, need: int) -> void {
+  while len(i18n_st.mbs) <= d { push(i18n_st.mbs, buffer(256)) }
+  let old = i18n_st.mbs[d]
+  if need <= len(old) { return }
+  var size = len(old)
+  while size < need { size = size * 2 }
+  let b = buffer(size)
+  for i in 0 .. len(old) { b[i] = old[i] }
+  i18n_st.mbs[d] = b
+}
+
+# a count written as decimal digits in s[a..b] (a leading - allowed); anything else is 0
+function km_int(s: string, a: int, b: int) -> int {
+  var v = 0
+  var neg = false
+  for i in a .. b {
+    if i == a and s[i] == 45 { neg = true } else if s[i] >= 48 and s[i] <= 57 { v = v * 10 + (s[i] - 48) }
+  }
+  if neg { return -v }
+  return v
+}
+
+# is the key's text a file's (so the name is not the text drawn, nor kept as said)
+function km_known(i18n_st: I18nState, key: string, plural: bool) -> bool {
+  if plural { return i18n_st.base_plural != null and Dict.get_or(i18n_st.base_plural, key, -1) >= 0 }
+  if i18n_st.on and i18n_st.exact != null and Dict.get_or(i18n_st.exact, key, -1) >= 0 { return true }
+  return i18n_st.base_exact != null and Dict.get_or(i18n_st.base_exact, key, -1) >= 0
+}
+
+# argument s[a..b], unescaped, as the one string kept for that text: L keeps a key it makes by the
+# string it is handed, so what it is handed is never let go
+@alloc_ok("an argument that holds a key: kept once per distinct text, the copies let go")
+function km_kept_arg(i18n_st: mut I18nState, s: string, a: int, b: int) -> string {
+  let raw = s[a..b]
+  let v = kr_unescape(raw)
+  if v != raw { free(raw) }
+  let j = Dict.get_or(i18n_st.ka, v, -1)
+  if j >= 0 {
+    free(v)
+    return i18n_st.ka_s[j]
+  }
+  Dict.set(i18n_st.ka, v, len(i18n_st.ka_s))
+  push(i18n_st.ka_s, v)
+  return v
+}

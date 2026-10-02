@@ -23,7 +23,7 @@ function bd_elem(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string) -> UiNode 
   let say = ui_attr_text(n, "translate")
   if say == "no" { ui_st.tr_no = true } else if say == "yes" { ui_st.tr_no = false }
   bd_kids(ui_st, k.kids, e, key, n.children)
-  if k.text != null { el_text(ui_st, n, ui_tr(ui_st, ui_eval_text(ui_st, k.text, e))) }
+  if k.text != null { el_text(ui_st, n, ui_tr_shown(ui_st, ui_eval_text(ui_st, k.text, e))) }
   el_inline(ui_st, n)
   if k.tag == "input" or k.tag == "select" or k.tag == "progress" or k.tag == "meter" { ct_build(ui_st, n) }
   ui_st.tr_no = was_no

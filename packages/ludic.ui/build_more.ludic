@@ -21,7 +21,7 @@ function bd_group(ui_st: mut UiState, k: UiTpl, e: UiEnv, key: string, out: []Ui
   let t = nd_take(ui_st)
   t.kind = UI_TEXT
   t.key = key
-  t.text = ui_tr(ui_st, ui_eval_text(ui_st, k.text, e))
+  t.text = ui_tr_shown(ui_st, ui_eval_text(ui_st, k.text, e))
   t.env = e
   ui_kept(out, t)
 }

@@ -84,7 +84,7 @@ function mm_add(m: UiMemo, tag: int, s: string) -> int {
   }
   var at = mm_hash(tag, s) & (MM_CAP - 1)
   while m.slots[at] != 0 { at = (at + 1) & (MM_CAP - 1) }
-  push(m.keys, s)
+  push(m.keys, keep(s))          # its own copy: a text a screen showed (made.ludic) is let go
   push(m.tags, tag)
   push(m.lists, null)
   push(m.grads, null)

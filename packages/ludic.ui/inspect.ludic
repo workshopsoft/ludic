@@ -69,3 +69,14 @@ export function ui_file_forget(ui_st: mut UiState, path: string) -> void {
 }
 # every error forgotten, so each is said again the next time it is made (a host that reloads a class)
 export function ui_errors_clear(ui_st: mut UiState) -> void { List.clear(ui_st.ui_errs) }
+# how many lines with holes the screen `screen` holds made (made.ludic): what its last two builds showed
+export function ui_made_held(ui_st: UiState, screen: string) -> int {
+  var n = 0
+  for i in 0 .. len(ui_st.pl_pools) {
+    let p = ui_st.pl_pools[i]
+    if p.key == screen and p.made != null {
+      for j in 0 .. len(p.made) { if p.made[j].key != null { n += 1 } }
+    }
+  }
+  return n
+}
