@@ -30,7 +30,6 @@ function r3d_ground_albedo(render3d_st: mut Render3dState, r: float, g: float, b
 }
 # the sky's HDR image, when it is not the default photograph under r3d_assets
 
-
 # R3D_NOPREPASS=1: light the foliage the old way, every card behind the front one included
 function r3d_prepass_off(render3d_st: mut Render3dState) -> bool {
   if render3d_st.r3d_prepass_env < 0 { render3d_st.r3d_prepass_env = 0;  if r3d_env_has(render3d_st, "R3D_NOPREPASS") { render3d_st.r3d_prepass_env = 1 } }
@@ -336,6 +335,11 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
     water_draw(render3d_st, render3d_st.post_depth_copy.depth)
     prof_end(render3d_st)
   }
+  # the blended actors (smoke, a bubble, a glow) over the resolved frame and the water, before bloom
+  # and the tonemap read it: depth-tested against the scene, writing none (actor_blend.ludic)
+  prof_begin(render3d_st, "blended actors")
+  actor_draw_blended(render3d_st)
+  prof_end(render3d_st)
   render3d_st.post_color = render3d_st.post_hdr.color;  render3d_st.post_color_w = render3d_st.post_w;  render3d_st.post_color_h = render3d_st.post_h
   # DLSS super resolution: the lit frame up to the display's size, before anything reads it
   if gsl_dlss_live(render3d_st) { prof_begin(render3d_st, "DLSS");  render3d_st.post_color = gsl_dlss_eval(render3d_st);  prof_end(render3d_st) }
