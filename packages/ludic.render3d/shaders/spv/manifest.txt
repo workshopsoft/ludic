@@ -543,7 +543,7 @@ T 4cf96468 u_tershadow 7
 T 4cf96468 u_tershadow_aux 8
 T 4cf96468 u_ts_height 9
 P 428caa3a fullscreen.vert sky.frag 
-B 428caa3a frag 1 940
+B 428caa3a frag 1 988
 U 428caa3a frag u_cascade_vp 0 mat4 5 64
 U 428caa3a frag u_cascade_split 320 float 5 16
 U 428caa3a frag u_cascade_range 400 float 5 16
@@ -588,6 +588,10 @@ U 428caa3a frag u_moon_haze 924 float 1 0
 U 428caa3a frag u_moon_phase 928 float 1 0
 U 428caa3a frag u_moon_illum 932 float 1 0
 U 428caa3a frag u_sky_relight 936 float 1 0
+U 428caa3a frag u_disc_on 940 float 1 0
+U 428caa3a frag u_disc_dir 944 vec3 1 0
+U 428caa3a frag u_disc_col 960 vec3 1 0
+U 428caa3a frag u_sun_hdri 976 vec3 1 0
 T 428caa3a u_brdf 2
 T 428caa3a u_irradiance 3
 T 428caa3a u_prefilter 4

@@ -85,11 +85,55 @@ vec3 analyticSky(vec3 dir) {
   return base;
 }
 
+// ---- the sun ---------------------------------------------------------------------------------
+// The photograph's own sun disc stands at one elevation (about 48 degrees) however the sky is
+// turned, and the real sun does not (solar.ludic). While a day runs (u_disc_on) the photograph's
+// disc and its glow are painted out - filled with the sky just round them - and the sun is drawn
+// where the light really comes from: a disc and an aureole of the sun's own colour (daylight.ludic),
+// cut by the horizon. Nothing is drawn for a sun that is down.
+uniform float u_disc_on;
+uniform vec3 u_disc_dir;         // the real sun, in the world
+uniform vec3 u_disc_col;         // its colour; the light's, so a low sun is warm and dim and cloud dims it
+uniform vec3 u_sun_hdri;         // where the photograph keeps its sun, in the photograph's own frame
+vec3 photoSky(vec3 dir) {
+  vec3 col = min(textureLod(u_sky, skyUV(dir), 0.0).rgb, vec3(4096.0));
+  if (u_disc_on < 0.5) return col;
+  vec3 r = vec3(u_sky_rot.y * dir.x + u_sky_rot.x * dir.z, dir.y, -u_sky_rot.x * dir.x + u_sky_rot.y * dir.z);
+  // 1 within 4 degrees of the photograph's disc, 0 beyond 10: the glow the photograph has round it
+  float w = smoothstep(0.98481, 0.99756, dot(r, u_sun_hdri));
+  if (w <= 0.0) return col;
+  // what the sky is round the glow: a ring of the photograph 12 degrees out, read soft
+  vec3 s = u_sun_hdri;
+  vec3 up = abs(s.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  vec3 t = normalize(cross(up, s));
+  vec3 b = cross(s, t);
+  vec3 fill = vec3(0.0);
+  for (int i = 0; i < 8; i++) {
+    float a = float(i) * 0.7853981634;
+    vec3 d = s * 0.97815 + (t * cos(a) + b * sin(a)) * 0.20791;
+    fill += min(textureLod(u_sky, equirectUV(d), 5.0).rgb, vec3(4096.0));
+  }
+  return mix(col, fill * 0.125, w);
+}
+vec3 sunColour(vec3 dir) {
+  float ang = acos(clamp(dot(dir, u_disc_dir), -1.0, 1.0));
+  float deg = degrees(ang);
+  // the aureole: forward-scattered light, fitted to the photograph's own glow less its sky; it
+  // spreads wider and stronger as the sun lowers into more air
+  float lowsun = 1.0 - smoothstep(0.0, 0.45, u_disc_dir.y);
+  vec3 col = u_disc_col * (20.0 / pow(deg * deg + 1.0, 1.32)) * (1.0 + 1.5 * lowsun);
+  // the disc: about 0.6 degrees across, as bright as the photograph's was, in the sun's own hue
+  vec3 d = u_disc_col * 1000.0;
+  d *= min(1.0, 4096.0 / max(max(d.r, d.g), max(d.b, 1.0)));
+  col += d * (1.0 - smoothstep(0.0044, 0.0056, ang));
+  return col * smoothstep(-0.004, 0.012, dir.y);
+}
+
 void main() {
   vec4 a = u_inv_vp * vec4(v_uv * 2.0 - 1.0, 1.0, 1.0);
   vec3 dir = normalize(a.xyz / a.w - u_cam_pos);
   // level 0: the equirect seam (atan wraps) would otherwise pick the smallest mip along one column
-  vec3 col = min(textureLod(u_sky, skyUV(dir), 0.0).rgb, vec3(4096.0)) * u_sky_gain;
+  vec3 col = photoSky(dir) * u_sky_gain;
   if (u_sky_relight > 0.001) {
     vec3 sk = analyticSky(dir);
     float sl = max(dot(sk, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
@@ -100,6 +144,7 @@ void main() {
   col = max(mix(vec3(l), col, u_sky_sat), vec3(0.0));
   // the photograph's sky dims with the day (daylight.ludic); the night adds its own
   col *= u_ibl_scale;
+  if (u_disc_on > 0.5) col += sunColour(dir);
   float night = 1.0 - smoothstep(0.0, 0.45, u_daylight);
   if (night > 0.0) {
     vec3 nightCol = mix(vec3(0.012, 0.016, 0.034), vec3(0.003, 0.004, 0.010), clamp(dir.y, 0.0, 1.0));

@@ -195,6 +195,7 @@ function r3d_draw_sky(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_gain"), 0.95)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_relight"), render3d_st.r3d_sky_relight)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sky_sat"), 1.35)
+  sky_bind_disc(render3d_st, p)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_fog_wall"), render3d_st.r3d_fog_wall)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_fog_inscatter"), render3d_st.r3d_fog_inscatter)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_time"), render3d_st.r3d_time)

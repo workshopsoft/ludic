@@ -30,6 +30,17 @@ function sky_set_rot(render3d_st: mut Render3dState, yaw: float) -> void {
 }
 function sky_bind_rot(render3d_st: mut Render3dState, prog: int) -> void { u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_sky_rot"), render3d_st.sky_rot_s, render3d_st.sky_rot_c) }
 
+# The photograph's sun disc sits at one elevation, so while a day runs it is masked out of the image
+# and the sun is drawn at the real one (sky.frag): its direction and colour, and the disc's place in the photograph
+function sky_bind_disc(render3d_st: mut Render3dState, prog: int) -> void {
+  var on = 0.0
+  if render3d_st.day_on and render3d_st.sun_hdri != null { on = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_disc_on"), on)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_disc_dir"), render3d_st.sky_disc_dir)
+  u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_disc_col"), render3d_st.sky_disc_col)
+  if on > 0.0 { u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_sun_hdri"), render3d_st.sun_hdri) }
+}
+
 # direction for an equirect uv (matches equirectUV in lighting.glsl)
 function sky_dir_from_uv(o: floats, u: float, v: float) -> void {
   let phi = (u - 0.5) * (2.0 * PI)

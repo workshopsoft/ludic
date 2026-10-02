@@ -1,0 +1,51 @@
+# sun_disc_test.ludic - the sun the sky draws (sky.frag's analytic disc) is the real one: its direction follows the
+# site and the date whatever the light is clamped to, it is the colour the light is, and it is down when the sun is
+import "ludic.render3d/r3d.ludic"
+program SunDiscTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # a state as sky_load leaves it, with Maroon Lake's site on 15 July (day 196)
+  function july() -> Render3dState {
+    let st = new Render3dState
+    st.sun_dir = floats(3)
+    st.sun_hdri = floats(3)
+    st.sun_color = v3_new(9.0, 9.0, 8.0)
+    daylight_init(st)
+    daylight_site(st, 39.0986, -106.9406, -6.0)
+    daylight_date(st, 196.0)
+    st.day_on = true
+    return st
+  }
+  function disc_el(st: Render3dState) -> float { return Math.rad_to_deg(Math.asin(st.sky_disc_dir[1])) }
+  function disc_az(st: Render3dState) -> float { return Math.rad_to_deg(Math.atan2(-st.sky_disc_dir[0], -st.sky_disc_dir[2])) }
+
+  test "the disc stands where the sun is: 11 degrees up in the west-north-west at 19:24, whatever the light is clamped to" {
+    let st = july()
+    daylight_set(st, 19.4)
+    expect_near(disc_el(st), 11.4, 0.5)
+    expect_near((360.0 - disc_az(st)) % 360.0, 288.4, 0.7)
+    # the light itself comes from the same place by day
+    expect_near(Math.rad_to_deg(Math.asin(st.sun_dir[1])), disc_el(st), 0.01)
+  }
+
+  test "the disc keeps the real height after the light has been lifted to 3 degrees, and carries no light below the horizon" {
+    let st = july()
+    daylight_set(st, 20.5)
+    expect(disc_el(st) < 3.0)
+    daylight_set(st, 22.5)
+    expect(disc_el(st) < -10.0)
+    expect_near(st.sky_disc_col[0] + st.sky_disc_col[1] + st.sky_disc_col[2], 0.0, 0.001)
+  }
+
+  test "a low sun is warm and dimmer than noon's: the disc takes the light's colour" {
+    let st = july()
+    daylight_set(st, 13.0)
+    let noon = st.sky_disc_col[1]
+    expect(noon > 1.0)
+    expect_near(st.sky_disc_col[0], st.sky_disc_col[1], 0.01 * noon)
+    daylight_set(st, 19.4)
+    expect(st.sky_disc_col[1] < noon)
+    expect(st.sky_disc_col[2] < st.sky_disc_col[0])
+  }
+}
