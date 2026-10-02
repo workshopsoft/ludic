@@ -1,0 +1,70 @@
+# ground_density_patch.ludic — one layer of the open ground densities replaced from its PNG, in memory: an editor's paint
+# reaching a running dev build (ludic.devlink). The layer is cut as the dev copy cuts it and its tiles held in a buffer of
+# their own; its index words point there (GD_PATCHED in the length word), so a tile is read from the buffer, not the file.
+# Nothing is written, and the map's next load goes back to the file.
+
+const GD_PATCHED: int = 0x40000000      # a tile's length word: its bytes are in the layer's patch buffer
+const GD_FIRST: int = 8                 # where a patched layer's first tile starts (0 and 1 are the empty and one-value codes)
+
+# layer l replaced by the PNG at `png`; false when the densities are not open, l is no layer or the PNG is not the map's size
+@alloc_ok("a dev link's density patch: the layer's tile buffer, once a patch")
+export function ground_density_patch(render3d_st: mut Render3dState, l: int, png: string) -> bool {
+  if render3d_st.gd_file == null or l < 0 or l >= render3d_st.gd_layers { return false }
+  let n = render3d_st.gd_n
+  let w = n * GD_SIDE
+  let px = png_decode_bytes(render3d_st, png, null)
+  if px == null { gd_say_bad(png, w);  return false }
+  if render3d_st.tex_w != w or render3d_st.tex_h != w {
+    free(px)
+    gd_say_bad(png, w)
+    return false
+  }
+  let c = render3d_st.tex_channels
+  var ch = 1
+  if c >= 2 and gd_g_varies(px, c, w) { ch = 2 }
+  let tile = buffer(GD_SIDE * GD_SIDE * 2)
+  let out = buffer(GD_FIRST + gd_patch_bytes(px, c, ch, n, tile))
+  gd_patch_cut(render3d_st, l, px, c, ch, n, tile, out)
+  free(px);  free(tile)
+  if render3d_st.gd_patch == null {
+    render3d_st.gd_patch = new [][]byte
+    for k in 0 .. GD_LAYERS { push(render3d_st.gd_patch, null) }
+  }
+  if render3d_st.gd_patch[l] != null { free(render3d_st.gd_patch[l]) }
+  render3d_st.gd_patch[l] = out
+  render3d_st.gd_ch[l] = ch
+  gd_cache_reset(render3d_st, render3d_st.gd_layers * n * n)
+  if l == render3d_st.gb_layer { render3d_st.gb_tx = GB_NONE }   # the blades' window reads the layer again
+  return true
+}
+
+# how many bytes the layer's tiles that are neither empty nor one value take
+function gd_patch_bytes(px: []byte, c: int, ch: int, n: int, tile: []byte) -> int {
+  var at = 0
+  for j in 0 .. n {
+    for i in 0 .. n { if gd_tile_q(px, c, ch, n * GD_SIDE, GD_SIDE, i, j, tile) == 2 { at += GD_SIDE * GD_SIDE * ch } }
+  }
+  return at
+}
+
+# the tiles into `out` and layer l's index words to point at them
+function gd_patch_cut(render3d_st: mut Render3dState, l: int, px: []byte, c: int, ch: int, n: int, tile: []byte, out: []byte) -> void {
+  var at = GD_FIRST
+  let bytes = GD_SIDE * GD_SIDE * ch
+  for j in 0 .. n {
+    for i in 0 .. n {
+      let kind = gd_tile_q(px, c, ch, n * GD_SIDE, GD_SIDE, i, j, tile)
+      let e = (l * n * n + j * n + i) * 2
+      render3d_st.gd_idx[e] = 0;  render3d_st.gd_idx[e + 1] = 0
+      if kind == 1 {
+        var g = 0
+        if ch == 2 { g = tile[1] }
+        render3d_st.gd_idx[e] = 1;  render3d_st.gd_idx[e + 1] = tile[0] | (g << 8)
+      } else if kind == 2 {
+        mem_copy(mem_off(data_of(out), at), data_of(tile), bytes)
+        render3d_st.gd_idx[e] = at;  render3d_st.gd_idx[e + 1] = bytes | GD_PATCHED
+        at += bytes
+      }
+    }
+  }
+}

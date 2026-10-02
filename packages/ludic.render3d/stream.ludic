@@ -350,6 +350,24 @@ function stream_census(render3d_st: Render3dState) -> void {
   print(`  {string(inst)} instances held, {string(inst * INST_FLOATS * 4 / 1024)} KB`)
 }
 
+# every stream's cached chunks let go, so the next walk fills them again from what the ground says then (a dev link's
+# re-grow after an edit or a paint); the records go back to the spare list, which is what evicting does one by one
+export function streams_forget(render3d_st: mut Render3dState) -> void {
+  if render3d_st.stream_all == null { return }
+  for k in 0 .. len(render3d_st.stream_all) {
+    let s = render3d_st.stream_all[k]
+    while len(s.chunks) > 0 {
+      let c = List.pop(s.chunks)
+      c.off = -1
+      @alloc_ok("within the stream's record pool, all made with the stream (STREAM_MAX_CHUNKS)")
+      push(s.spare, c)
+    }
+    s.n = 0;  s.top = 0
+    for h in 0 .. STREAM_HASH { s.htab[h] = 0 }
+    s.last_cx = 999999;  s.last_cz = 999999;  s.pending = false
+  }
+}
+
 function stream_update_all(render3d_st: mut Render3dState) -> void {
   if render3d_st.stream_all == null { return }
   render3d_st.stream_deadline = clock_now_us() + render3d_st.STREAM_BUDGET_US

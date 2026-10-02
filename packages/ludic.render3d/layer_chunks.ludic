@@ -53,3 +53,13 @@ function layer_chunks_changed(l: Layer) -> void {
   l.g_n = -1
   l.view_gen = -1
 }
+
+# a layer on the CPU path let go of the spatial grid it sorted its instances into, so the next update sorts them again: a
+# dev link's re-grow changes chunks under it, and a grid is only ever built once. The GPU cull has none
+export function layer_chunks_regrid(l: Layer) -> void {
+  if l.gcell == 0.0 { return }
+  free(l.gstart);  free(l.gymin);  free(l.gymax);  free(l.gsorted)
+  l.gstart = null;  l.gymin = null;  l.gymax = null;  l.gsorted = null
+  l.gcell = 0.0
+  l.view_gen = -1
+}

@@ -58,28 +58,39 @@ function gd_g_varies(px: []byte, c: int, w: int) -> bool {
   return false
 }
 
+# tile (i, j) of a layer's PNG quantized into `tile`: 0 nothing (all zero), 1 one value (in tile[0], and tile[1] with a
+# scale), 2 its bytes
+function gd_tile_q(px: []byte, c: int, ch: int, w: int, side: int, i: int, j: int, tile: []byte) -> int {
+  var same = true
+  for r in 0 .. side {
+    for k in 0 .. side {
+      let o = ((j * side + r) * w + i * side + k) * c
+      let p = (r * side + k) * ch
+      tile[p] = gd_q(px[o], GD_R_BITS)
+      if ch == 2 { tile[p + 1] = gd_q(px[o + 1], GD_G_BITS) }
+      if tile[p] != tile[0] or (ch == 2 and tile[p + 1] != tile[1]) { same = false }
+    }
+  }
+  if not same { return 2 }
+  var g = 0
+  if ch == 2 { g = tile[1] }
+  if tile[0] != 0 or g != 0 { return 1 }
+  return 0
+}
+
 # one layer's tiles: each quantized, then nothing (all zero), a word (one value) or its bytes; the next offset
 function gd_write_layer(f: pointer, px: []byte, c: int, ch: int, n: int, side: int, tile: []byte, idx: words, i0: int, at0: int) -> int {
   let w = n * side
   var at = at0
   for j in 0 .. n {
     for i in 0 .. n {
-      var same = true
-      for r in 0 .. side {
-        for k in 0 .. side {
-          let o = ((j * side + r) * w + i * side + k) * c
-          let p = (r * side + k) * ch
-          tile[p] = gd_q(px[o], GD_R_BITS)
-          if ch == 2 { tile[p + 1] = gd_q(px[o + 1], GD_G_BITS) }
-          if tile[p] != tile[0] or (ch == 2 and tile[p + 1] != tile[1]) { same = false }
-        }
-      }
+      let kind = gd_tile_q(px, c, ch, w, side, i, j, tile)
       let e = i0 + (j * n + i) * 2
-      if same {
+      if kind == 1 {
         var g = 0
         if ch == 2 { g = tile[1] }
-        if tile[0] != 0 or g != 0 { idx[e] = 1;  idx[e + 1] = tile[0] | (g << 8) }
-      } else {
+        idx[e] = 1;  idx[e + 1] = tile[0] | (g << 8)
+      } else if kind == 2 {
         file_write(f, data_of(tile), side * side * ch)
         idx[e] = at;  idx[e + 1] = side * side * ch
         at += side * side * ch
