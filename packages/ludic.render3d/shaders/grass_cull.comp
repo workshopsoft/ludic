@@ -28,6 +28,7 @@ layout(set = 0, binding = 0) uniform Params {
   vec4 gk_ground;   // slope_lo, slope_hi, snow_in, snow_out
   vec4 gk_ortho;    // ortho_floor, ortho_gain, ortho_green, cell (m)
   vec4 bd;          // the painted density's window (grass_density.ludic): world x/z of its corner, m a texel, texels a side (0: the rules)
+  vec4 gk_forb;     // forbs in flower: share, patch size (m), width and height of a blade's
 } pr;
 
 layout(set = 0, binding = 1) readonly buffer Tiles { vec4 tiles[]; };   // corner x/z, indices per cell, cells per side
@@ -132,6 +133,10 @@ vec3 bladeField(vec2 xz, float y) {
   t *= mix(vec3(0.7, 0.8, 0.55), vec3(1.1, 1.05, 0.85), patchy);
   float dryp = smoothstep(0.2, 0.8, gnoise(xz * 0.33 + 17.0) * 0.5 + 0.5);
   t *= mix(vec3(0.92, 1.0, 0.95), vec3(1.30, 1.10, 0.62), dryp);
+  // swales and rises ten metres across: the damp hollow's deeper, cooler green against the dry rise's gold
+  // (terrain.frag carries the same field under the blades)
+  float swale = smoothstep(0.44, 0.56, fbm(xz * 0.075 + 23.0, 2) * 0.5 + 0.5);
+  t *= mix(vec3(1.06, 1.02, 0.92), vec3(0.84, 1.0, 0.88), swale);
   return t * (0.55 + 0.80 * (gnoise(xz * 1.9 + 41.0) * 0.5 + 0.5));
 }
 
@@ -179,12 +184,24 @@ void main() {
   tall *= mix(pr.gk_clump.x, pr.gk_clump.y, clump * clump * (3.0 - 2.0 * clump));
   float bw = pr.gk_grow.y * mix(1.0, pr.gk_grow.z * grow, smoothstep(1.0, 4.0, grow));
   bw = max(bw, dist * pr.dens.z * 1.1);
+  // a forb in flower: a share of the blades, kept to patches, stands upright, taller and wider, and flowers
+  // at its tip (model.frag); its seed carries the mark, plus 2, which leaves its wind's phase where it was
+  float arch = pr.gk_clump.z + pr.gk_clump.w * h4;
+  if (pr.gk_forb.x > 0.0) {
+    float fp = smoothstep(0.40, 0.62, gnoise(xz / pr.gk_forb.y + 61.0) * 0.5 + 0.5);
+    if (bladeHash(ci, j, 7) < pr.gk_forb.x * fp * 2.0) {
+      tall *= pr.gk_forb.w;
+      bw *= pr.gk_forb.z;
+      seed += 2.0;
+      arch = 0.08;
+    }
+  }
   uint b = dist < pr.bands.x ? 0u : (dist < pr.bands.y ? 1u : 2u);
   uint slot = atomicAdd(cmds[b * 5u + 1u], 1u);
   if (slot >= pr.cap[b]) { atomicAdd(cmds[b * 5u + 1u], 0xFFFFFFFFu); return; }
   uint o = (pr.base[b] + slot) * 4u;
   outv[o] = vec4(xz.x, h - 0.02, xz.y, seed);
   outv[o + 1u] = vec4(sin(ang), cos(ang), tall, bw);
-  outv[o + 2u] = vec4(bladeField(xz, h), pr.gk_clump.z + pr.gk_clump.w * h4);
+  outv[o + 2u] = vec4(bladeField(xz, h), arch);
   outv[o + 3u] = vec4(gn, dist);
 }

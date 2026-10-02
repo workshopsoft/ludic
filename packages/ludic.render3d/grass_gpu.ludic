@@ -140,7 +140,7 @@ function gg_cull_frame(render3d_st: mut Render3dState) -> void {
   let texs = render3d_st.gg_texs
   texs[0] = render3d_st.ter_height_tex;  texs[1] = render3d_st.ter_ortho_tex;  texs[2] = render3d_st.ter_normal_tex
   gg_page_texs(render3d_st, texs)
-  gpu_dispatch_tex(render3d_st, render3d_st.gg_cull, data_of(pr), 304, bufs, texs, (render3d_st.gg_max + 63) / 64, render3d_st.gg_n)
+  gpu_dispatch_tex(render3d_st, render3d_st.gg_cull, data_of(pr), 320, bufs, texs, (render3d_st.gg_max + 63) / 64, render3d_st.gg_n)
 }
 
 # the page pool's four, after the three whole-map ones (the stand-ins while paging is off)
@@ -150,10 +150,10 @@ function gg_page_texs(render3d_st: mut Render3dState, texs: words) -> void {
   if render3d_st.tp_on { texs[3] = render3d_st.tp_page_tex;  texs[4] = render3d_st.tp_h_tex;  texs[5] = render3d_st.tp_n_tex;  texs[6] = render3d_st.tp_o_tex }
 }
 
-# grass_cull.comp's Params, std140: 19 vec4s, into the block made once with the device
+# grass_cull.comp's Params, std140: 20 vec4s, into the block made once with the device
 function gg_params(render3d_st: mut Render3dState) -> words {
   let pr = render3d_st.gg_pr
-  for i in 0 .. 76 { pr[i] = 0 }
+  for i in 0 .. 80 { pr[i] = 0 }
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
   pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(grass_reach(render3d_st))
   var ph = render3d_st.post_h

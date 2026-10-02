@@ -60,6 +60,22 @@ property GrassKind {
   tuft_mix: float = 0.45     # a far tuft: this far from root to tip colour ...
   tuft_shade: float = 0.72   # ... and this dark
   ao_root: float = 0.55      # the blade's own occlusion at the root
+  # forbs in flower among the blades (the GPU path): a share of them, in patches, taller and wider, the top
+  # of each its flower in one of three colours (linear albedo). 0 draws none, as before
+  forb_share: float = 0.0
+  forb_patch: float = 6.0    # metres: about how big their patches are
+  forb_tip: float = 0.3      # the flowering share of a forb's length
+  forb_wide: float = 2.5     # its width, of a blade's
+  forb_tall: float = 1.3     # its height, of a blade's
+  forb_a_r: float = 0.14
+  forb_a_g: float = 0.12
+  forb_a_b: float = 0.42
+  forb_b_r: float = 0.45
+  forb_b_g: float = 0.04
+  forb_b_b: float = 0.05
+  forb_c_r: float = 0.62
+  forb_c_g: float = 0.60
+  forb_c_b: float = 0.52
   rough: float = 0.85
   spec: float = 0.008        # its sheen (u_spec_scale)
   wind: float = 2.4
@@ -104,6 +120,10 @@ function grass_derive(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_GRASS_D0") { render3d_st.grass_d0 = float(Text.to_int(r3d_env(render3d_st, "R3D_GRASS_D0"))) }
   render3d_st.grass_cell = grass_cell_of(k)
 }
+
+# how many of the kind's blades are forbs in flower now: the game's season, between the kind's own share
+# (in bloom) and none (gone over)
+function grass_forbs_bloom(render3d_st: mut Render3dState, share: float) -> void { grass_kind(render3d_st).forb_share = Math.max(share, 0.0) }
 
 # the cell in whole metres, held to one the 4 m tile divides
 function grass_cell_of(k: GrassKind) -> int {

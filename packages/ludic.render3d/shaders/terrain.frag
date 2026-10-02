@@ -89,6 +89,10 @@ uniform sampler2D u_snow_d;  uniform sampler2D u_carpet;   // the clump cards ba
 uniform float u_carpet_on;
 uniform float u_grass_reach;   // where the GPU blades stop (0: none): the ground under them is in their shade
 uniform float u_snow_line;
+// where the ground goes to bare rock by height alone (above treeline): the band's foot and its width,
+// in the world's metres - a map's own, since the same 170 m is subalpine forest on one map and scree on another
+uniform float u_rock_line;
+uniform float u_rock_band;
 uniform float u_lake_level;      // the ground just above the water is wet and dark
 // ---- RAIN THAT LEAVES SOMETHING BEHIND -----------------------------------------------------
 // Rain fell and the ground did not change: the weather was a curtain of particles in front of a
@@ -302,12 +306,24 @@ float sunInline(vec3 p, float dist, float viewDepth) {
              smoothstep(u_far_split - u_far_band, u_far_split + u_far_band, dist));
 }
 #endif
+// The floor of a spruce-fir stand: needle litter, rust-brown and darker in the hollows, broken by low
+// whortleberry and moss in patches a few metres across, which carpet these stands in the Rockies. It
+// replaced one flat duff colour, which under the meadow's blades read as tilled earth. `grain` is the
+// turf sheet's own value (1 at its mean), so the floor keeps the sheet's texture and none of its hue.
+vec3 forestFloor(vec2 xz, float grain, bool cheap) {
+  // (fbm and gnoise sit mostly within 0.5 +- 0.12 here, so the bands are narrow)
+  float green = smoothstep(0.46, 0.60, fbmC(cheap, xz * 0.22 + 31.0, 3) * 0.5 + 0.5);
+  float humus = smoothstep(0.40, 0.62, gnoiseC(cheap, xz * 0.9 + 7.0) * 0.5 + 0.5);
+  vec3 litter = mix(vec3(0.115, 0.082, 0.052), vec3(0.060, 0.045, 0.030), humus);
+  vec3 under = mix(vec3(0.050, 0.082, 0.028), vec3(0.036, 0.058, 0.026), humus);
+  return mix(litter, under, green * 0.85) * grain;
+}
 vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool cheap) {
   // ---- material weights ----
   float macro = fbmC(cheap, p.xz * 0.02, 2);
   // a foot track: two metres wide, worn into whatever the ground is, not a painted band
   float pathW = 0.6 * smoothstep(3.0 + 0.8 * macro, 1.0, pathDist(p.xz)) * smoothstep(0.35, 0.1, slope);
-  float rockW = max(smoothstep(0.30, 0.55, slope + 0.1 * macro), 0.9 * smoothstep(170.0, 300.0, p.y + 30.0 * macro));
+  float rockW = max(smoothstep(0.30, 0.55, slope + 0.1 * macro), 0.9 * smoothstep(u_rock_line, u_rock_line + u_rock_band, p.y + 30.0 * macro));
   // The ridge field places the snow line's raggedness and nothing else. Both terms below
   // are zero more than 160 m under the snow line whatever it returns (macro and ridgeN
   // can lift the test height by at most 100 m), which is the whole valley floor.
@@ -389,10 +405,14 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
 #ifdef TFAST_3
   needGrass = 0.0;  needRock = 0.0;
 #endif
+  // the meadow's own patches, kept to multiply the photograph by too (see orthoW)
+  vec3 meadowMod = vec3(1.0);
   if (needGrass > 0.002) {
     // dry / lush variation across the meadow (read only here and by the carpet below)
     float lush = fbmC(cheap, p.xz * 0.006 + 2.0, 2) * 0.5 + 0.5;
     matC(cheap, u_grass_d, u_grass_n, u_grass_a, uvg, duvgx, duvgy, gA, gN, gR);
+    // the sheet's value against its mean luminance (0.267, measured): the forest floor's grain
+    float sheetV = clamp(dot(gA, vec3(0.3, 0.59, 0.11)) / 0.267, 0.55, 1.45);
     // tint the grass by lushness
     gA *= mix(vec3(0.42, 0.55, 0.3), vec3(0.28, 0.55, 0.25), lush) * 0.5;
     // sun-facing slopes (south, +z) dry out lighter and warmer; shaded faces stay deep green
@@ -420,13 +440,15 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
       // and the tussocks' own shade, half a metre across: where blades stand a pixel wide the ground
       // is most of what shows, and it has to carry the same light and dark as the blades on it
       float tus = 0.55 + 0.80 * (gnoise(p.xz * 1.9 + 41.0) * 0.5 + 0.5);
-      gA *= mix(vec3(1.0), pf / vec3(0.95, 0.96, 0.72) * tus, grassW);
+      float swale = smoothstep(0.44, 0.56, fbmC(cheap, p.xz * 0.075 + 23.0, 2) * 0.5 + 0.5);
+      meadowMod = pf / vec3(0.95, 0.96, 0.72) * tus * mix(vec3(1.06, 1.02, 0.92), vec3(0.84, 1.0, 0.88), swale);
+      gA *= mix(vec3(1.0), meadowMod, grassW);
       if (u_grass_reach > 0.0) gA *= mix(1.0, mix(0.50, 1.0, smoothstep(u_grass_reach * 0.25, u_grass_reach, dist)), grassW);
     }
     // Subalpine forest floor: dark duff where the stands are dense. The photograph-driven
     // term marks duff only where the survey actually shows dense conifer, and is the same
     // at any distance — ground shading must not depend on where the viewer is.
-    gA = mix(gA, vec3(0.045, 0.06, 0.025), forestW * 0.85);
+    gA = mix(gA, forestFloor(p.xz, sheetV, cheap), forestW * 0.9);
   }
   pA = gA * vec3(0.95, 0.82, 0.62);   // the same ground, worn to earth
   pN = gN;  pR = vec3(0.9, 0.85, 0.0);
@@ -510,13 +532,23 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
     // valley the same image is the best record there is of where the meadow, the duff and the
     // gravel actually are, so it keeps the valley and gives up the mountain.
     orthoW *= 1.0 - 0.72 * smoothstep(280.0, 720.0, p.y);
+    // and under the trees it is a picture of their crowns, not of the floor: the floor keeps its own
+    orthoW *= 1.0 - 0.65 * forestW;
     // grain at three scales so the far slopes keep structure the photograph's pixels cannot carry
 #ifdef TFAST_20
     float grain = 0.82;
 #else
     float grain = 0.82 + 0.36 * fbmC(cheap, p.xz * 0.7, 2) + 0.12 * fbmC(cheap, p.xz * 4.0, 2) + 0.3 * (fbmC(cheap, p.xz * 0.06 + 5.0, 3) - 0.5) + 0.15 * (ridgedC(cheap, p.xz * 0.02 + 9.0, 2) - 0.5);
 #endif
-    alb = mix(alb, oc * (0.35 + 1.4 * lumA / max(lumA + 0.12, 1e-3)) * grain, orthoW);
+    vec3 photo = oc * (0.35 + 1.4 * lumA / max(lumA + 0.12, 1e-3)) * grain;
+    // The meadow's patches ride on the photograph as well as under it: lerped toward a 10 m picture,
+    // a dry rise, a damp swale and a tussock kept less than half their strength and the meadow read flat
+    // Over its own mean (0.95, 0.97, 0.65 where the fields sit at their middle), so the photograph keeps its
+    // colour and gains only the variation: light and dark whole, hue at half (whole, the meadow went mustard)
+    vec3 mm = meadowMod / vec3(0.95, 0.97, 0.65);
+    vec3 photoMod = mix(vec3(dot(mm, vec3(0.3, 0.59, 0.11))), mm, 0.5);
+    photo *= mix(vec3(1.0), photoMod, grassW * (1.0 - forestW));
+    alb = mix(alb, photo, orthoW);
   }
   // ---- the shoreline, continued onto the land ------------------------------------
   // A flat water plane cutting a slope meets it along one exact contour, and no amount

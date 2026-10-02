@@ -35,7 +35,10 @@ uniform float u_blade_tex_on;
 // the grass kind (grass_kind.ludic, grass_bind_look): the scatter's blade layers bind it too
 uniform vec4 u_gk_seed;          // gone to seed: colour, and how far a seeded blade goes to it
 uniform vec4 u_gk_look;          // seed_lo, seed_hi (the share gone to seed), tuft_mix, tuft_shade
-uniform vec4 u_gk_mat;           // ao_root, roughness
+uniform vec4 u_gk_mat;           // ao_root, roughness, the flowering share of a forb from its tip
+uniform vec4 u_gk_forb_a;        // a forb's flower colours: a third of the forbs each
+uniform vec4 u_gk_forb_b;
+uniform vec4 u_gk_forb_c;
 #endif
 #ifdef CARD
 uniform float u_cull;        // the layer's cull distance (m); 0 = none
@@ -141,6 +144,14 @@ void main() {
   }
   // a far tuft is a patch of the meadow, darker than a lit blade tip and never straw
   if (v_hull < 0.0) alb = mix(u_blade_base, u_blade_tip, u_gk_look.z) * field * u_gk_look.w;
+  // A forb in flower among the grass (grass_cull.comp marks one by its seed, plus 2): the top of it is
+  // its flower in one of the kind's three colours - a July meadow's colour is its forbs, not its grass
+  if (v_seed > 1.5) {
+    float fl = smoothstep(1.0 - u_gk_mat.z - 0.04, 1.0 - u_gk_mat.z, t);
+    float pick = fract(v_seed * 5.13);
+    vec3 fc = pick < 0.34 ? u_gk_forb_a.rgb : (pick < 0.67 ? u_gk_forb_b.rgb : u_gk_forb_c.rgb);
+    alb = mix(alb, fc * (0.75 + 0.25 * t), fl);
+  }
   // a rounded cross-section reads softer than a flat card
   vec3 side = normalize(cross(N, vec3(0.0, 1.0, 0.0)) + vec3(1e-4));
   n = (v_hull < 0.0) ? N : normalize(N + side * (v_uv.x * 2.0 - 1.0) * 0.6);

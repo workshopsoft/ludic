@@ -161,6 +161,10 @@ vec3 bladeField(vec2 xz, float y) {
   // dry and green patches a few metres across, and the tussocks' own shade of the same green
   float dryp = smoothstep(0.2, 0.8, gnoise(xz * 0.33 + 17.0) * 0.5 + 0.5);
   t *= mix(vec3(0.92, 1.0, 0.95), vec3(1.30, 1.10, 0.62), dryp);
+  // swales and rises ten metres across: the damp hollow's deeper, cooler green against the dry rise's gold
+  // (terrain.frag carries the same field under the blades)
+  float swale = smoothstep(0.44, 0.56, fbm(xz * 0.075 + 23.0, 2) * 0.5 + 0.5);
+  t *= mix(vec3(1.06, 1.02, 0.92), vec3(0.84, 1.0, 0.88), swale);
   return t * (0.55 + 0.80 * (gnoise(xz * 1.9 + 41.0) * 0.5 + 0.5));
 }
 

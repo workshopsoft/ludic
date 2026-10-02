@@ -815,7 +815,7 @@ function gvk_startup_state(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_pc_last = words(4096)
   for i in 0 .. 4096 { render3d_st.gvk_pc_last[i] = -1 }
   render3d_st.gg_rb = words(8);  render3d_st.gg_cb = words(1);  render3d_st.gg_bufs = words(4)
-  render3d_st.gg_texs = words(7);  render3d_st.gg_pr = words(76)
+  render3d_st.gg_texs = words(7);  render3d_st.gg_pr = words(80)
   if render3d_st.gpu_unit_2d == null {
     render3d_st.gpu_unit_2d = words(32)
     for i in 0 .. 32 { render3d_st.gpu_unit_2d[i] = -1 }
