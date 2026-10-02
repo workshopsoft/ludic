@@ -5,6 +5,7 @@ const AT_UNDRAWN: string = " font-weight font-family font-style box-shadow curso
 function el_attr(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> void {
   if el_apply(ui_st, n, key, v) { return }
   for i in 0 .. len(ui_st.ui_bad_keys) { if ui_st.ui_bad_keys[i] == key { return } }   # said already: no message made again
+  @alloc_ok("only when a template is wrong: a broken screen, never a working one, and once per property")
   push(ui_st.ui_bad_keys, key)
   @alloc_ok("only when a template is wrong: a broken screen, never a working one, and once per property")
   if lk_in(AT_UNDRAWN, at_alias(key)) { ui_err(ui_st, `{key}: this renderer does not draw it`) } else { ui_err(ui_st, `{key}: there is no such property`) }
