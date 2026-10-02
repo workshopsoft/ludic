@@ -39,4 +39,56 @@ program PostMeterTest {
     post_metering_open(st, 0.0)
     expect(st.post_meter_open > 0.0)
   }
+
+  # the eased exposure, stepped as the shader does: e += (target - e) * rate each frame, at hz frames a second
+  function settle_seconds(hz: float, tau: float, share: float) -> float {
+    var e = 0.0
+    var t = 0.0
+    let dt = post_adapt_dt(0.0, 1.0 / hz)
+    while e < share and t < 30.0 {
+      e = e + (1.0 - e) * post_adapt_rate(dt, tau)
+      t += dt
+    }
+    return t
+  }
+
+  test "60 Hz keeps the old pace: 0.08 of the way a frame" {
+    let st = new Render3dState
+    expect_near(post_adapt_rate(1.0 / 60.0, st.post_adapt_bright), 0.08, 0.0005)
+  }
+
+  function same_settle(tau: float) -> void {
+    let want = -tau * Math.log(1.0 - 0.9)
+    expect(Math.abs(settle_seconds(30.0, tau, 0.9) - want) <= 1.0 / 30.0 + 0.0001)
+    expect(Math.abs(settle_seconds(60.0, tau, 0.9) - want) <= 1.0 / 60.0 + 0.0001)
+    expect(Math.abs(settle_seconds(144.0, tau, 0.9) - want) <= 1.0 / 144.0 + 0.0001)
+    expect(Math.abs(settle_seconds(240.0, tau, 0.9) - want) <= 1.0 / 240.0 + 0.0001)
+  }
+
+  test "the same settle time at 30, 60, 144 and 240 Hz, to within a frame" {
+    let st = new Render3dState
+    same_settle(st.post_adapt_bright)
+    same_settle(st.post_adapt_dark)
+  }
+
+  test "two short frames are one long one" {
+    let a = post_adapt_rate(0.01, 0.2)
+    let two = 1.0 - (1.0 - a) * (1.0 - a)
+    expect_near(two, post_adapt_rate(0.02, 0.2), 0.00001)
+  }
+
+  test "dark adaptation is the slower side, and a zero time constant is at once" {
+    let st = new Render3dState
+    expect(post_adapt_rate(1.0 / 60.0, st.post_adapt_dark) < post_adapt_rate(1.0 / 60.0, st.post_adapt_bright))
+    post_adapt_speed(st, 0.0, -3.0)
+    expect_near(post_adapt_rate(1.0 / 60.0, st.post_adapt_bright), 1.0, 0.0001)
+    expect_near(post_adapt_rate(1.0 / 60.0, st.post_adapt_dark), 1.0, 0.0001)
+  }
+
+  test "a clock that goes back is one frame, and a stall is held to half a second" {
+    expect_near(post_adapt_dt(5.0, 5.25), 0.25, 0.0001)
+    expect_near(post_adapt_dt(5.0, 0.0), 1.0 / 60.0, 0.0001)
+    expect_near(post_adapt_dt(5.0, 65.0), 0.5, 0.0001)
+    expect_near(post_adapt_dt(5.0, 5.0), 0.0, 0.0001)
+  }
 }

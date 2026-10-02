@@ -27,7 +27,7 @@ uniform vec2 u_range;             // stops below and above the open ground's exp
 uniform float u_open_share;       // a frame of open ground's band mean, as a share of its light
 uniform float u_key;
 uniform float u_max;
-uniform float u_rate;
+uniform vec2 u_rate;              // the share of the way covered this frame: scene brighter (exposure falls), darker (rises)
 uniform float u_reset;
 const int METER_BINS = 48;
 const float METER_LMIN = -16.0;   // the log2 luminances the bins span
@@ -77,7 +77,7 @@ void main() {
   float held = clamp(target, eo * exp2(-u_range.x), eo * exp2(u_range.y));
   target = clamp(mix(target, held, clamp(u_daylight, 0.0, 1.0)), 0.02, u_max);
   float prev = texture(u_prev, vec2(0.5)).r;
-  float e = mix(prev, target, u_rate);
+  float e = mix(prev, target, target < prev ? u_rate.x : u_rate.y);
   if (u_reset > 0.5 || !(prev > 0.0)) e = target;
   o_color = vec4(e, 0.0, 0.0, 1.0);
 }

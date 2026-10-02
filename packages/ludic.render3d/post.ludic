@@ -157,7 +157,8 @@ function post_measure(render3d_st: mut Render3dState) -> void {
   post_meter_bind(render3d_st, render3d_st.post_p_adapt)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_key"), render3d_st.post_key)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_max"), render3d_st.post_exposure_max)
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_rate"), 0.08)
+  let dt = render3d_st.r3d_dt
+  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_rate"), post_adapt_rate(dt, render3d_st.post_adapt_bright), post_adapt_rate(dt, render3d_st.post_adapt_dark))
   var reset = 0.0
   if render3d_st.post_adapt_reset { reset = 1.0;  render3d_st.post_adapt_reset = false }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_adapt, "u_reset"), reset)

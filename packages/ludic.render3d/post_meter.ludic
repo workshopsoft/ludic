@@ -20,6 +20,29 @@ function post_metering(render3d_st: mut Render3dState, lo: float, hi: float, cen
 # a frame of open ground's band mean as a share of the light a level face takes (what the hold is centred on)
 function post_metering_open(render3d_st: mut Render3dState, share: float) -> void { render3d_st.post_meter_open = Math.clamp(share, 0.005, 1.0) }
 
+# The eye's pace, in seconds: exposure eases toward its target as 1 - exp(-dt / tau), so the time it
+# takes does not depend on the frame rate. bright: the scene got brighter (exposure falls), dark: it got
+# darker (exposure rises). Light adaptation takes seconds and dark adaptation minutes, so the dark side
+# is the slower (Ferwerda et al. 1996; Pattanaik et al. 2000, "Time-dependent visual adaptation for fast
+# realistic image display"; Unreal's eye adaptation likewise brightens faster than it darkens). 0 is at once.
+function post_adapt_speed(render3d_st: mut Render3dState, bright: float, dark: float) -> void {
+  render3d_st.post_adapt_bright = Math.clamp(bright, 0.0, 60.0)
+  render3d_st.post_adapt_dark = Math.clamp(dark, 0.0, 60.0)
+}
+
+# the share of the way to the target covered in dt seconds with the time constant tau
+function post_adapt_rate(dt: float, tau: float) -> float {
+  if tau <= 0.0 { return 1.0 }
+  return 1.0 - Math.exp(-Math.max(dt, 0.0) / tau)
+}
+
+# the seconds between two frames' clocks: a clock that went back (a new scene) counts as one 60 Hz frame,
+# and a long stall is held to half a second, which is already the whole way for any tau worth setting
+function post_adapt_dt(prev: float, now: float) -> float {
+  if now < prev { return 1.0 / 60.0 }
+  return Math.min(now - prev, 0.5)
+}
+
 # the grid is 32 cells across (18 down for 16:9), read from the mip whose texels are about a cell
 function post_meter_lod(w: int) -> float {
   var lod = 0.0
