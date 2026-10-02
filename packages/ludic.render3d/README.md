@@ -424,7 +424,9 @@ glow.emissive = 3.0                                   # bloom catches it
   drawing effects into the frame an upscaler reads. The pass draws at one sample over the resolved frame, so where
   a blended surface passes behind a multisampled edge that edge's pixels show the stair-step.
 - **Cost.** Two lists made at start-up with room for 2048 actors each, filled every frame and sorted in place
-  (nothing is made per frame), one program, the frame's light bound once, the blend function set twice. A part
+  (nothing is made per frame), one program, the frame's light bound once, the blend function set twice. Measured
+  on an M4 Pro at 1080p: about 2 us of CPU an actor, and 2.4 ms of GPU for 200 lit, overlapping 0.9 m puffs (it is
+  fill: a lit puff runs the opaque shading, shadow lookups included; an `unlit` one skips them). A part
   following a leader (`actor_follow`) takes its leader's `blend`, `alpha`, `soft`, `unlit` and `blend_casts`.
 
 `ACTOR_ALPHA` actors drawn last frame: `render3d_st.ac_blend_over_n`, additive: `ac_blend_add_n`. The lab's

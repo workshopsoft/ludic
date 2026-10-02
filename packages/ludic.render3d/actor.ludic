@@ -75,6 +75,9 @@ property AcProg {
   l_ocol:   int = -1,
   l_mh:     int = -1,
   l_tr:     int = -1,          # u_tr: alpha, soft, blend, unlit (TRANSLUCENT)
+  l_fbase:  int = -1,          # a primitive's glTF factors (prim_factors, by location)
+  l_fmr:    int = -1,
+  l_femis:  int = -1,
   scene_frame: int = -1    # the frame its scene uniforms were bound
 }
 
@@ -88,6 +91,7 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   a.l_view = gpu_uniform(render3d_st, p, "u_view");  a.l_proj = gpu_uniform(render3d_st, p, "u_proj");  a.l_mh = gpu_uniform(render3d_st, p, "u_model_h")
   a.l_out = gpu_uniform(render3d_st, p, "u_outline");  a.l_ocol = gpu_uniform(render3d_st, p, "u_outline_col")
   a.l_tr = gpu_uniform(render3d_st, p, "u_tr")
+  a.l_fbase = gpu_uniform(render3d_st, p, "u_fac_base_inv");  a.l_fmr = gpu_uniform(render3d_st, p, "u_fac_mr_inv");  a.l_femis = gpu_uniform(render3d_st, p, "u_fac_emis")
   # the samplers never move: units 0, 1, 2
   gpu_use_program(render3d_st, p)
   u_i(render3d_st, gpu_uniform(render3d_st, p, "u_diff"), 0);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_nrm"), 1);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_arm"), 2)
