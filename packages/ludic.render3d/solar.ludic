@@ -1,0 +1,54 @@
+# ============================================================================
+# solar.ludic — where the sun is: NOAA's general solar position calculation (the Fourier
+# series for the equation of time and the declination, good to a fraction of a degree for
+# any date this century). Game-agnostic: a site is a latitude, a longitude (east positive),
+# the clock's offset from UTC in hours (the zone a clock on that site keeps, daylight
+# saving included) and a date. `doy` is the day of the year, 1.0 = 1 January; `hours` the
+# clock's hour, 0 .. 24. Angles in are degrees, angles out radians; the azimuth runs clockwise
+# from north (east = 90 degrees), as a compass does. daylight.ludic turns it into the
+# renderer's own yaw (daylight_site, daylight_date).
+# ============================================================================
+
+# the fractional year, radians
+function solar_gamma(doy: float, hours: float) -> float {
+  return 2.0 * PI / 365.0 * (doy - 1.0 + (hours - 12.0) / 24.0)
+}
+# the equation of time, in minutes: how far the sundial runs ahead of the clock
+function solar_eot_minutes(doy: float, hours: float) -> float {
+  let g = solar_gamma(doy, hours)
+  return 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2.0 * g) - 0.040849 * Math.sin(2.0 * g))
+}
+# the sun's declination, radians
+function solar_declination(doy: float, hours: float) -> float {
+  let g = solar_gamma(doy, hours)
+  return 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2.0 * g) + 0.000907 * Math.sin(2.0 * g) - 0.002697 * Math.cos(3.0 * g) + 0.00148 * Math.sin(3.0 * g)
+}
+# the hour angle, radians: 0 at solar noon, positive in the afternoon. The clock hour becomes
+# true solar time through the longitude's distance from the zone's own meridian and the
+# equation of time.
+function solar_hour_angle(lon_deg: float, utc_hours: float, doy: float, hours: float) -> float {
+  let tst = hours * 60.0 + solar_eot_minutes(doy, hours) + 4.0 * lon_deg - 60.0 * utc_hours
+  return Math.deg_to_rad(tst / 4.0 - 180.0)
+}
+# the clock hour of solar noon on a date
+function solar_noon(lon_deg: float, utc_hours: float, doy: float) -> float {
+  return 12.0 - (solar_eot_minutes(doy, 12.0) + 4.0 * lon_deg - 60.0 * utc_hours) / 60.0
+}
+# the sun's height above the horizon (radians; negative below it, with no refraction)
+function solar_elevation(lat_deg: float, lon_deg: float, utc_hours: float, doy: float, hours: float) -> float {
+  let lat = Math.deg_to_rad(lat_deg)
+  let dec = solar_declination(doy, hours)
+  let ha = solar_hour_angle(lon_deg, utc_hours, doy, hours)
+  return Math.asin(Math.clamp(Math.sin(lat) * Math.sin(dec) + Math.cos(lat) * Math.cos(dec) * Math.cos(ha), -1.0, 1.0))
+}
+# the sun's bearing (radians, 0 north, clockwise: 90 degrees east, 180 south, 270 west)
+function solar_azimuth(lat_deg: float, lon_deg: float, utc_hours: float, doy: float, hours: float) -> float {
+  let lat = Math.deg_to_rad(lat_deg)
+  let dec = solar_declination(doy, hours)
+  let ha = solar_hour_angle(lon_deg, utc_hours, doy, hours)
+  # from the south, positive toward the west; half a turn on is from the north
+  let south = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(lat) - Math.tan(dec) * Math.cos(lat))
+  var a = south + PI
+  if a >= 2.0 * PI { a = a - 2.0 * PI }
+  return a
+}

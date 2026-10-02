@@ -1,0 +1,60 @@
+# solar_test.ludic - the sun's place from a site and a date (solar.ludic, NOAA's general calculation), held to
+# values worked out by a second method (the Astronomical Almanac's low-precision sun, by Julian date) for
+# Maroon Lake: 39.0986 N, 106.9406 W, a clock six hours behind UTC (Mountain Daylight Time)
+import "ludic.render3d/r3d.ludic"
+program SolarTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function el_deg(doy: float, hours: float) -> float { return Math.rad_to_deg(solar_elevation(39.0986, -106.9406, -6.0, doy, hours)) }
+  function az_deg(doy: float, hours: float) -> float { return Math.rad_to_deg(solar_azimuth(39.0986, -106.9406, -6.0, doy, hours)) }
+
+  test "15 July: up at dawn in the north-east, 72 degrees at noon, 11 degrees up at 19:24 in the west-north-west" {
+    # 15 July is day 196
+    expect_near(el_deg(196.0, 6.5), 5.37, 0.5)
+    expect_near(az_deg(196.0, 6.5), 66.6, 0.7)
+    expect_near(el_deg(196.0, 9.0), 33.61, 0.5)
+    expect_near(el_deg(196.0, 13.1), 72.24, 0.5)
+    expect_near(az_deg(196.0, 13.1), 174.0, 1.5)
+    expect_near(el_deg(196.0, 17.0), 38.93, 0.5)
+    expect_near(az_deg(196.0, 17.0), 267.0, 0.7)
+    expect_near(el_deg(196.0, 19.4), 11.41, 0.5)
+    expect_near(az_deg(196.0, 19.4), 288.4, 0.7)
+    expect_near(el_deg(196.0, 21.0), -5.34, 0.5)
+  }
+
+  test "25 October and 21 December: a lower, shorter sun" {
+    expect_near(el_deg(298.0, 12.0), 37.22, 0.5)
+    expect_near(az_deg(298.0, 12.0), 164.0, 1.5)
+    expect_near(el_deg(298.0, 17.0), 12.73, 0.5)
+    expect_near(az_deg(298.0, 17.0), 242.2, 0.8)
+    expect_near(el_deg(355.0, 12.0), 25.59, 0.5)
+    expect_near(el_deg(355.0, 16.5), 11.38, 0.5)
+  }
+
+  test "1 May at 10:30 is 48 degrees up in the south-east" {
+    expect_near(el_deg(121.0, 10.5), 48.58, 0.5)
+    expect_near(az_deg(121.0, 10.5), 114.2, 0.8)
+  }
+
+  test "solar noon falls an hour past the clock's noon here, and the sun is due south then" {
+    let n = solar_noon(-106.9406, -6.0, 196.0)
+    expect(n > 13.0 and n < 13.3)
+    expect_near(az_deg(196.0, n), 180.0, 0.5)
+    expect_near(Math.rad_to_deg(solar_declination(196.0, 12.0)), 21.5, 0.4)
+    expect_near(Math.rad_to_deg(solar_declination(80.0, 12.0)), 0.0, 0.6)
+  }
+
+  test "the bearing runs clockwise from north through the day, and the sun sets as it rises: east of south, then west" {
+    var h = 6.0
+    var last = az_deg(196.0, h)
+    while h < 21.0 {
+      h = h + 0.5
+      let a = az_deg(196.0, h)
+      expect(a > last)
+      last = a
+    }
+    expect(az_deg(196.0, 8.0) < 180.0)
+    expect(az_deg(196.0, 18.0) > 180.0)
+  }
+}

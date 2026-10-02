@@ -44,3 +44,22 @@ export function clock_first_day_of(clock_st: ClockState, season: int) -> int {
   }
   return -1
 }
+
+# The real date the calendar stands for: the day of the year (1 = 1 January) each month begins on, in the
+# order of the year. A game day then lands on a calendar day (clock_doy), so a sun or a season can follow a date.
+export function clock_dates(clock_st: mut ClockState, month_starts: []int) -> void { clock_st.cal_doy = month_starts }
+
+# the day of the year (a whole day, 1 .. 365) a game day lands on: its month's start, and the month's real length
+# (up to the next month's start) a tenth at a time; 1 when the game gave no dates
+export function clock_doy_of(clock_st: ClockState, day: int) -> float {
+  let n = clock_st.cal_year_months
+  if clock_st.cal_doy == null or len(clock_st.cal_doy) != n { return 1.0 }
+  let m = clock_month_of(clock_st, day)
+  let a = clock_st.cal_doy[m]
+  var b = clock_st.cal_doy[(m + 1) % n]
+  if b <= a { b = b + 365 }
+  var d = Math.floor(float(a) + float(b - a) * float(clock_day_of_month_of(clock_st, day) - 1) / float(clock_st.cal_month_days))
+  if d > 365.0 { d = d - 365.0 }
+  return d
+}
+export function clock_doy(clock_st: ClockState) -> float { return clock_doy_of(clock_st, clock_st.ck_day) }

@@ -43,6 +43,7 @@ export state ClockState {
   cal_month_days: int = 30
   cal_year_months: int = 12
   cal_season: []int = null
+  cal_doy: []int = null           # the real day of the year each month begins on, when the game says
   ck_day: int = 1
   ck_hours: float = 0.0
   ck_moon: float = 0.0

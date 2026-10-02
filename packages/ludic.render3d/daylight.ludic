@@ -1,8 +1,9 @@
 # ============================================================================
 # daylight.ludic — a time of day over the HDRI sky. The photograph is one late
 # morning; the game wants a whole day. The sun's direction and colour follow a
-# simple solar arc from the time (`daylight_set`), the sky image turns to keep
-# its disc under that sun, the image-based light is scaled toward a deep-blue
+# simple solar arc from the time (`daylight_set`) - or, once `daylight_site` has
+# put the sun on a site and `daylight_date` on a day, the real sun (solar.ludic) -
+# the sky image turns to keep its disc under that sun, the image-based light is scaled toward a deep-blue
 # night (`u_ibl_scale`), and after dusk the light becomes a moon so the world
 # still has shadows and form. A campfire is the one point light (`u_fire_*`).
 # The convolved sky maps are rebuilt only when the sky has turned far from the
@@ -51,14 +52,31 @@ function smoothf(a: float, b: float, x: float) -> float {
   return t * t * (3.0 - 2.0 * t)
 }
 
+# Put the sun on a site: from now on its place is solar.ludic's for the date daylight_date names,
+# not the fixed arc. The renderer takes numbers only - degrees north and east, and the offset of
+# the clock the game keeps from UTC in hours.
+function daylight_site(render3d_st: mut Render3dState, lat_deg: float, lon_deg: float, utc_hours: float) -> void {
+  render3d_st.day_lat = lat_deg;  render3d_st.day_lon = lon_deg;  render3d_st.day_utc = utc_hours
+  render3d_st.day_solar = true
+  render3d_st.day_baked_az = 1000.0
+  daylight_set(render3d_st, render3d_st.day_hours)
+}
+# the date the sun is for: day of the year, 1.0 = 1 January (takes effect at the next daylight_set)
+function daylight_date(render3d_st: mut Render3dState, doy: float) -> void { render3d_st.day_doy = doy }
+
 function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   var h = hours % 24.0
   if h < 0.0 { h = h + 24.0 }
   render3d_st.day_hours = h
   # the arc: up at 5:30, highest (about 57 degrees) at 12:45, down at 20:00
   let t = (h - 5.5) / 14.5 * PI
-  let el = Math.deg_to_rad(-6.0 + 63.0 * Math.sin(t))
-  let az = render3d_st.day_az0 + (h - render3d_st.day_hour0) * Math.deg_to_rad(15.0) * render3d_st.day_dir
+  var el = Math.deg_to_rad(-6.0 + 63.0 * Math.sin(t))
+  var az = render3d_st.day_az0 + (h - render3d_st.day_hour0) * Math.deg_to_rad(15.0) * render3d_st.day_dir
+  if render3d_st.day_solar {
+    # a site and a date: the real sun (the yaw runs the other way round the compass)
+    el = solar_elevation(render3d_st.day_lat, render3d_st.day_lon, render3d_st.day_utc, render3d_st.day_doy, h)
+    az = -solar_azimuth(render3d_st.day_lat, render3d_st.day_lon, render3d_st.day_utc, render3d_st.day_doy, h)
+  }
   render3d_st.day_az = az;  render3d_st.day_el = el
   let d = smoothf(Math.deg_to_rad(-8.0), Math.deg_to_rad(12.0), el)
   render3d_st.day_light = d
@@ -80,8 +98,14 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   # rises as the sun sets; at new it is alongside the sun and up all day, invisible. The
   # sign matters — a waxing crescent has to set AFTER the sun, not before it.
   let moon_lag = 2.0 * PI * render3d_st.day_moon_phase
-  let maz = az - moon_lag * render3d_st.day_dir
-  let mel = Math.deg_to_rad(-6.0 + 63.0 * Math.sin(t - moon_lag))
+  var maz = az - moon_lag * render3d_st.day_dir
+  var mel = Math.deg_to_rad(-6.0 + 63.0 * Math.sin(t - moon_lag))
+  if render3d_st.day_solar {
+    # where the sun was `phase` of a day ago, on this site and date
+    let lag_h = render3d_st.day_moon_phase * 24.0
+    mel = solar_elevation(render3d_st.day_lat, render3d_st.day_lon, render3d_st.day_utc, render3d_st.day_doy, h - lag_h)
+    maz = -solar_azimuth(render3d_st.day_lat, render3d_st.day_lon, render3d_st.day_utc, render3d_st.day_doy, h - lag_h)
+  }
   let mce = Math.cos(mel)
   v3_set(render3d_st.day_moon_dir, -(Math.sin(maz) * mce), Math.sin(mel), -(Math.cos(maz) * mce))
   render3d_st.day_moon = false
@@ -211,14 +235,18 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   if render3d_st.day_moon { night_max = 4.5 + 3.5 * render3d_st.day_moon_illum }
   render3d_st.post_exposure_max = Math.lerp(night_max, 20.0, d)
   # the visible sky turns with the sun (cheap); its convolutions rebake when far off
-  let sky_yaw_now = render3d_st.day_yaw0 + (h - render3d_st.day_hour0) * Math.deg_to_rad(15.0) * render3d_st.day_dir
+  var sky_yaw_now = render3d_st.day_yaw0 + (h - render3d_st.day_hour0) * Math.deg_to_rad(15.0) * render3d_st.day_dir
+  # the lookup turns a world direction by +yaw, so a photograph whose sun stands at azimuth `a` in its
+  # own frame has it at a - yaw in the world: the yaw that puts the disc under the sun is a - az
+  if render3d_st.day_solar and render3d_st.sun_hdri != null { sky_yaw_now = Math.atan2(-render3d_st.sun_hdri[0], -render3d_st.sun_hdri[2]) - az }
   sky_set_rot(render3d_st, sky_yaw_now)
-  if Math.abs(day_wrap(sky_yaw_now - render3d_st.day_sky_baked)) > Math.deg_to_rad(35.0) and d > 0.05 {
+  if Math.abs(day_wrap(sky_yaw_now - render3d_st.day_sky_baked)) > Math.deg_to_rad(35.0) and d > 0.05 and render3d_st.sky_irradiance != 0 {
     render3d_st.day_sky_baked = sky_yaw_now
     sky_precompute(render3d_st)
   }
   # the terrain's baked shadow follows the light in steps
-  if Math.abs(day_wrap(laz - render3d_st.day_baked_az)) > Math.deg_to_rad(4.0) or Math.abs(lel - render3d_st.day_baked_el) > Math.deg_to_rad(3.0) {
+  # (an azimuth near the zenith is a small angle on the sky, so its step is measured on the sky)
+  if Math.abs(day_wrap(laz - render3d_st.day_baked_az)) * Math.cos(lel) > Math.deg_to_rad(4.0) or Math.abs(lel - render3d_st.day_baked_el) > Math.deg_to_rad(3.0) {
     render3d_st.day_baked_az = laz;  render3d_st.day_baked_el = lel
     render3d_st.day_gen += 1
   }

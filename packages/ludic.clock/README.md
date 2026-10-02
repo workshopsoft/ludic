@@ -57,6 +57,7 @@ bind ClockWorld { owns_world: fn ses_owns_world, rest_scale: fn rt_rest_scale, s
 | `clock_config(start_hours, night_from, night_to)` | when a trip starts, and which hours are night |
 | `clock_config_moon(days, lo, hi)` | the moon's month in days, and the part of it a new trip starts in |
 | `clock_calendar(month_days, season_of_month)` | a month's length, and each month's season (the list's length is the year) |
+| `clock_dates(month_starts)` | the real day of the year (1 = 1 January) each month begins on: a game day then lands on a date |
 | `clock_set_scale(s)`, `clock_scale()` | game seconds per real second |
 | `clock_rate()`, `clock_hours_in(dt)` | the rate with the rest included, and the game hours `dt` real seconds are worth |
 | `clock_advance(gh)` | run the hours on (the system's tick does this from `Tick.hours`); past midnight the day turns |
@@ -64,6 +65,7 @@ bind ClockWorld { owns_world: fn ses_owns_world, rest_scale: fn rt_rest_scale, s
 | `clock_reset()` | day one at the start hour, the moon from the seed |
 | `clock_day()`, `clock_hours()`, `clock_moon()`, `clock_hhmm()`, `clock_is_night()` | what the world asks |
 | `clock_month()`, `clock_year()`, `clock_day_of_month()`, `clock_season()`, `clock_days_to_change()` | today in the calendar |
+| `clock_doy()`, `clock_doy_of(d)` | the day of the year a game day lands on (a whole day; 1 with no dates) |
 | `clock_month_of(d)`, `clock_year_of(d)`, `clock_day_of_month_of(d)`, `clock_season_of(d)`, `clock_days_to_change_from(d)`, `clock_first_day_of(season)` | any day in the calendar |
 | `clock_days() -> Queue<DayTurned>` | the facts: `{ day, how }`, `how` one of `DAY_STAYED_UP`, `DAY_SLEPT` |
 | `clock_system() -> System` | `"clock"`, `PH_INPUT` (first, so every later system reads this frame's hour): reset, tick, and its save section (`clock_save`, `clock_load`: day, hours, moon) |
