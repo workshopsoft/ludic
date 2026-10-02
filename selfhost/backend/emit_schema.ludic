@@ -198,6 +198,7 @@ function sc_attrs(b: Buf, g: int) -> void {
       buf_puts(b, ", \"args\": ")
       buf_puts(b, g_at_args[j])
       if g_at_unres[j] { buf_puts(b, ", \"unresolved\": true") }
+      rf_schema(b, j)                          # a ref line in package.ludic set it (attrs_manifest.ludic)
       if (g_at_name[j] == "Asset") and at_asset_scope(g_at_args[j]) > 0 { buf_puts(b, ", \"scope\": \"map\"") }
       if (g_at_name[j] == "Ref") and g_at_first[j] != null and pm_named(g_at_first[j]) { buf_puts(b, ", \"scope\": \"map\"") }
       buf_puts(b, "}")

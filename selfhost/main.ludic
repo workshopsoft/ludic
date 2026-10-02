@@ -204,6 +204,7 @@ entry {
 
   app_manifest(path)                              # Build.app_name() / app_version(): package.ludic's `app` lines
   i18n_manifest(path)                             # phase 26: a `lang` line and its en.po, before the parse fills rows from it
+  rf_manifest(path)                               # `ref "Table.field" "Registry"` lines, put over their fields' @Ref (attrs_manifest.ludic)
   let src = read_file(path)
   if (src == null) { die("ludicc: cannot open input\n") }
 

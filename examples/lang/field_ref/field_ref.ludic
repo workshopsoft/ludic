@@ -1,0 +1,31 @@
+# field_ref.ludic - package.ludic's `ref "Layers.kind" "Places"`: a package declares @Ref(Kinds) on a
+# layer's kind because it needs a default, and this program's kinds are its own Places. The map's row
+# names PL_SHORE, which Kinds (empty) would refuse; `ludicc --check` reads it against Places, and the
+# schema says Places, what the field declared and the manifest line that changed it.
+#
+# Running it prints:  yes 2 1
+program FieldRef {
+  # what a package declares: its own table of kinds, empty here, and a layer naming one
+  property Kind { key: string = "" }
+  registry Kinds of Kind as KD
+  property Layer {
+    key: string = ""
+    @Ref(Kinds) kind: int = 0
+  }
+  @PerMap @ByKey registry Layers of Layer from "layers.lres"
+  # the program's own kinds, which package.ludic names for Layer.kind and Tag.place
+  property Place { key: string = "" }
+  registry Places of Place as PL
+  def Places meadow { }
+  def Places shore { }
+  property Tag { key: string = "", place: int = 0 }
+  function yn(b: bool) -> string {
+    if b { return "yes" }
+    return "no"
+  }
+  entry (layers: mut Layers) {
+    let ok = layers_load(layers, "m1")
+    let i = layers_find(layers, "grass")
+    print(`{yn(ok)} {PL_COUNT} {layers.rows[i].kind}`)
+  }
+}

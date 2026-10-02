@@ -1,0 +1,18 @@
+# field_ref_bad.ludic - package.ludic's ref lines, each refused at its line: a field the record lacks, a
+# table and a registry the program lacks, a line without its field, and a field set twice (by its
+# registry's name and then its record's)
+program FieldRefBad {
+  property Kind { key: string = "" }
+  registry Kinds of Kind as KD
+  property Layer {
+    key: string = ""
+    @Ref(Kinds) kind: int = 0
+  }
+  @PerMap @ByKey registry Layers of Layer from "layers.lres"
+  property Place { key: string = "" }
+  registry Places of Place as PL
+  def Places meadow { }
+  entry {
+    print(`{PL_COUNT}`)
+  }
+}

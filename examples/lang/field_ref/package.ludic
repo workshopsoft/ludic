@@ -1,0 +1,6 @@
+# field_ref.ludic's package: `ref` puts the program's own registry over a field's @Ref - a record's
+# (Layer, through its registry Layers) and one with no @Ref at all (Tag, by the record's name)
+entry "field_ref.ludic"
+maps "maps"
+ref "Layers.kind" "Places"
+ref "Tag.place" "Places"
