@@ -1,0 +1,16 @@
+# handler_missing_state.ludic - a handler that hands a function one of the two states it takes is
+# refused; the other used to arrive as null, and a lab run crashed on it.
+# (Rejected on purpose: tools/ludic-cli/test.ludic, reject_case.)
+program HandlerMissingState {
+  state A {
+    n: int = 1
+  }
+  state B {
+    m: int = 2
+  }
+  function two(a: mut A, b: mut B) -> void { print(`{a.n} {b.m}`) }
+  handler Boot(a: mut A) phase Start {
+    two(a)
+    quit()
+  }
+}

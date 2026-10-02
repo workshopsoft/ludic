@@ -1,0 +1,9 @@
+# handler_types.ludic - a handler's lets are typed as a function's are: an int is not a string.
+# (Rejected on purpose: tools/ludic-cli/test.ludic, reject_case.)
+program HandlerTypes {
+  handler Boot() phase Start {
+    let s: string = 3
+    print(s)
+    quit()
+  }
+}

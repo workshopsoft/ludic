@@ -34,6 +34,7 @@ program Attributes {
     @OneOf(VD_STORE, VD_MARINA) sold_at: int = VD_MARINA
     @Material(model) finish: string = "steel"  # a material in that model
     @OneOf("box", "hull") shape: string = "box" # what it collides as: one of these words, row by row
+    @Asset("ogg", optional) clink: string = "" # the sound it makes set down, if it has one
   }
   @AppendOnly
   registry Tools of Tool as TL from "data/attr_tools.lres"

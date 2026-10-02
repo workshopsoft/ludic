@@ -1,8 +1,8 @@
 # check_stmt.ludic — L4: statements, and the pass itself. check_program runs between the parse and
 # the emitter over everything the program wrote (not the runtime spliced in after it): every
-# function, the entry, the tests, the globals' initializers and every @On listener with its
-# event's fields in scope. ECS handler, query, spawn and machine bodies bind names the checker
-# does not model, so they are left to the emitter.
+# function, the entry, every handler, the tests, the globals' initializers and every @On listener
+# with its event's fields in scope (a handler's body was once left to the emitter, which let a call
+# with an argument missing through). Spawn and machine bodies are read for what they touch.
 function ck_block(b: Node) -> void {
   if b == null { return }
   if b.kind != N_BLOCK {
@@ -308,8 +308,9 @@ function check_program() -> void {
       ck_widget(d.a)
       g_mg_cur = -1
     }
-    if d.kind == N_SYS and g_migrate {          # a handler's body: only the migration reads it here
+    if d.kind == N_SYS {                        # a handler's body is checked as a function's is
       mg_enter(d, 2)
+      ck_ret = "void"
       ck_block(d.a)
       mg_leave()
     }

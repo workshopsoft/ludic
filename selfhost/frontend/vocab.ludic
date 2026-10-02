@@ -197,7 +197,7 @@ function vocab_attributes() -> void {
   vc_at("OneOf", "checked", "field", "(PREFIX_) | (CONST, ...) | (\"word\", ...)", "One of the constants with that prefix, one of those constants, or on a string field one of those words.")
   vc_at("Range", "checked", "field", "(lo, hi)", "The least and the most the value may be.")
   vc_at("Unit", "checked", "field", "(\"m/s\")", "The value's unit, one canonical ASCII spelling (m, m/s, s, deg, kg, ...).")
-  vc_at("Asset", "checked", "field", "(\"kind\"[, map[, optional]])", "A path to a file of that kind; with map, under each map's directory.")
+  vc_at("Asset", "checked", "field", "(\"kind\"[, map][, optional])", "A path to a file of that kind; with map, under each map's directory; with optional, a row may leave it out.")
   vc_at("Color", "checked", "field", "", "A colour.")
   vc_at("Node", "checked", "field", "(model_field)", "A node inside the glTF that field names.")
   vc_at("Clip", "checked", "field", "(model_field)", "An animation clip inside the glTF that field names.")

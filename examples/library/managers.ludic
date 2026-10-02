@@ -39,6 +39,6 @@ program Managers {
       spawn Thing { Position { x: 20, y: 20 }, Sprite { id: 5, move_id: 9, face: 1, flash: 3, blink: 6 }, TopDown { want_x: -1 } }
     }
     if managers_st.frames == 3 { print(Map.is_solid(x: 0, y: 0) * 10 + Map.is_solid_at(x: 40, y: 40)) }   # 10
-    if managers_st.frames == 5 { for (s, t) in query [Sprite, Tag] { print(s.flip * 100 + s.flash * 10 + s.blink) };  quit() }   # 102
+    if managers_st.frames == 5 { for (s, t) in query [Sprite, Tag] { print(s.flip * 100 + int(s.flash) * 10 + int(s.blink)) };  quit() }   # 102
   }
 }

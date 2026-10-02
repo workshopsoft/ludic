@@ -1,0 +1,9 @@
+# handler_extra_arg.ludic - a call from a handler with one argument too many is refused.
+# (Rejected on purpose: tools/ludic-cli/test.ludic, reject_case.)
+program HandlerExtraArg {
+  function plain(x: int, y: int) -> void { print(`{x} {y}`) }
+  handler Boot() phase Start {
+    plain(1, 2, 3)
+    quit()
+  }
+}
