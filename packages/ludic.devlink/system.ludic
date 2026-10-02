@@ -1,5 +1,6 @@
 # system.ludic - a frame of the link, first thing in PH_INPUT: a waiting answer sent when it is done, then
-# at most one request read, answered and sent. A build whose `enabled` says no never opens the socket.
+# at most one request read, answered and sent. A build whose `enabled` says no never opens the socket. A
+# request's own memory is the link's (dl_settle), so a dev session does not fail the alloc fence
 export function devlink_system() -> System {
   let s = system_new("devlink", PH_INPUT)
   s.tick = fn devlink_tick
@@ -23,8 +24,20 @@ export function devlink_tick(devlink_st: mut DevlinkState, t: Tick) -> void {
   devlink_st.dl_port = DevlinkNet.from_port(h)
   if not DevlinkNet.loopback(devlink_st.dl_ip) { return }       # only this machine
   devlink_st.dl_n = n
+  let heap0 = Os.heap_bytes()
+  let kept0 = Mem.kept()
   devlink_handle(devlink_st)
   if devlink_st.dl_o > 0 { DevlinkNet.send(h, devlink_st.dl_ip, devlink_st.dl_port, devlink_st.dl_out, devlink_st.dl_o) }
+  dl_settle(heap0, kept0)
+}
+
+# a request that grew the heap (a path, a model's JSON, a reload) is the alloc fence's new floor, as a load is; the
+# rest of the frame is judged as ever, and one that kept nothing leaves it alone (heap_bytes is 0 off macOS: settle)
+function dl_settle(heap0: long, kept0: long) -> void {
+  let heap = Os.heap_bytes()
+  if heap > 0 and heap <= heap0 and Mem.kept() <= kept0 { return }
+  Mem.play()
+  Mem.settled()
 }
 
 # whether a request is waiting on a slow answer (a map load, a shot, steps)

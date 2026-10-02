@@ -74,6 +74,16 @@ program UiMadeTest {
     expect(ui_made_held(ui_st, "m") <= 2)
   }
 
+  test "a marked line wholly in one bracket (a game's txt_line) is made by the maker too" (ui_st: mut UiState, md: mut MdState) {
+    md_load(ui_st, true, "<div><p>{line}</p></div>")
+    for f in 0 .. 20 {
+      md.line = byte_text(29) + byte_text(1) + "hud.metres" + byte_text(31) + `{f}` + byte_text(30)
+      md_show(ui_st)
+    }
+    expect_eq(md.makes, 20)                           # every value through the maker, none through the translator
+    expect(ui_made_held(ui_st, "m") <= 2)
+  }
+
   test "with no maker, the translator has it as ever" (ui_st: mut UiState, md: mut MdState) {
     md_load(ui_st, false, "<div><p>{t('fmt.count', n)}</p></div>")
     md.n = 7

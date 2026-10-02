@@ -3,6 +3,23 @@
 # a quoted argument as text for the game (made per request, never per frame)
 @alloc_ok("one request's key or path: once per request, in a dev build")
 function dl_text(st: DevlinkState, n: int) -> string { return text_of(st.dl_str, n) }
+# a string argument (a declared verb's, a class, a path): the text already made for those bytes - an agent
+# sends "w", "down", "tap" again and again - so a repeat makes nothing (DL_WORDS of them kept)
+function dl_arg_text(st: mut DevlinkState, n: int) -> string {
+  for w in 0 .. len(st.dl_words) {
+    let t = st.dl_words[w]
+    if len(t) == n and dl_same(st, t, n) { return t }
+  }
+  let s = dl_text(st, n)
+  if len(st.dl_words) < DL_WORDS { dl_word_keep(st, s) }
+  return s
+}
+function dl_same(st: DevlinkState, t: string, n: int) -> bool {
+  for i in 0 .. n { if t[i] != st.dl_str[i] { return false } }
+  return true
+}
+@alloc_ok("a new word an editor sends, kept so it is never made again: at most DL_WORDS")
+function dl_word_keep(st: mut DevlinkState, s: string) -> void { push(st.dl_words, s) }
 
 # a .ppm and no "..": the one file an editor may name; w and h, when given, are the frame's own
 function dl_shot(st: mut DevlinkState, id: int) -> void {

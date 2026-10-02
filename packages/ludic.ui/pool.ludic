@@ -127,8 +127,7 @@ function uv_new(ui_st: mut UiState, tag: int) -> Val {
     p.uv += 1
     return Value.become(v, tag)
   }
-  let v = Value.become(Value.null(), tag)
-  ui_kept(list, v)
+  let v = Value.become(ui_kept_val(list), tag)
   p.uv += 1
   return v
 }
@@ -159,8 +158,7 @@ function uv_hold(ui_st: mut UiState) -> Val {
     p.uv += 1
     return list[p.uv - 1]
   }
-  let v = Value.null()
-  ui_kept(list, v)
+  let v = ui_kept_val(list)
   p.uv += 1
   return v
 }

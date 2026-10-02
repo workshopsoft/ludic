@@ -75,3 +75,12 @@ function kx_strip(s: string) -> string {
   }
   return r + s[seg..len(p)]
 }
+
+# a line wholly in one bracket round a key and its holes (a game's txt_line of a count or a distance): what
+# i18n_made makes by the key alone, as L would (kx_nest_line), without keeping one per value
+export function kx_whole_key(s: string) -> bool {
+  let p: string = s
+  let n = len(p)
+  if n < 3 or p[0] != I18N_OPEN or (p[1] != I18N_KEY and p[1] != I18N_PLURAL) or kx_close(p, 0) != n - 1 { return false }
+  return not kx_mixed(s[1..n - 1])
+}

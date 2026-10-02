@@ -13,10 +13,14 @@ export property UiMade {
 function md_on(ui_st: UiState) -> bool {
   return ui_st.uv_on and ui_st.pl_cur != null and not ui_st.tr_no and ui_st.ui_be != null and ui_st.ui_be.make != null
 }
-# a key with holes: its mark, then a byte 31 (a key alone is the translator's, a text per key)
+# a key with holes: its mark, then a byte 31 (a key alone is the translator's, a text per key) - bare, or
+# wholly in one bracket (29 .. 30: a game's txt_line of a distance), which the translator kept one of per value
 function md_holes(s: string) -> bool {
-  if len(s) == 0 or (s[0] != 1 and s[0] != 2) { return false }
-  for i in 1 .. len(s) { if s[i] == 31 { return true } }
+  let n = len(s)
+  var at = 0
+  if n > 2 and s[0] == 29 and s[n - 1] == 30 { at = 1 }
+  if n <= at or (s[at] != 1 and s[at] != 2) { return false }
+  for i in at + 1 .. n { if s[i] == 31 { return true } }
   return false
 }
 # a text an element shows: a key with holes made here while a screen is built, the rest translated

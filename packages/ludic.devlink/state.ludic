@@ -1,5 +1,6 @@
 # state.ludic - the socket, the two buffers and the one late answer in flight; made once, reused every frame
 export const DL_BUF: int = 8192
+export const DL_WORDS: int = 256          # distinct argument texts kept, so repeating one makes nothing
 export const DL_LATE_S: float = 5.0        # a late answer gives up after this long
 export const DL_T_INT: int = 0
 export const DL_T_FLOAT: int = 1
@@ -36,6 +37,8 @@ export state DevlinkState {
   dl_focus: DevlinkFocus = new DevlinkFocus
   dl_call: DevCall = devcall_new()         # the declared verb being answered
   dl_lcall: DevCall = devcall_new()        # the late verb's reply, while it is polled
+  dl_words: []string = new []string        # the declared arguments' texts already made (dl_arg_text)
   dl_sty: int = 0                          # the schema word last read: its type (DL_T_*), and optional
   dl_sopt: bool = false
 }
+

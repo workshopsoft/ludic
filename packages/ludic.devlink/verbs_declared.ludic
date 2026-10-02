@@ -122,7 +122,7 @@ function dl_read_args(st: mut DevlinkState, v: DevVerb, c: DevCall) -> bool {
     else if st.dl_sty == DL_T_FLOAT { c.f[k] = dl_float(st) }
     else if st.dl_sty == DL_T_STR {
       let n = dl_quoted(st)
-      if not st.dl_bad { c.s[k] = dl_text(st, n) }
+      if not st.dl_bad { c.s[k] = dl_arg_text(st, n) }
     } else if dl_word(st, "true") { c.i[k] = 1 }
     else if not dl_word(st, "false") { st.dl_bad = true }
     if st.dl_bad { return false }

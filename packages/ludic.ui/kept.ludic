@@ -4,3 +4,10 @@ function ui_kept<T>(xs: []T, v: T) -> void {
   @alloc_ok("a kept list: cleared and filled again, it grows to the most it has held once")
   push(xs, v)
 }
+# a blank Value made into a kept list (a pool's or a ring's) the first time it is that long, and handed out
+@alloc_ok("a pool miss: past the most Values a screen or the ring has had, then kept")
+function ui_kept_val(xs: []Val) -> Val {
+  let v = Value.null()
+  push(xs, v)
+  return v
+}

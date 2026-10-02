@@ -63,14 +63,14 @@ function dl_ui_model(st: mut DevlinkState, id: int) -> void {
     dl_err(st, id, "bad_args", "a class and a path")
     return
   }
-  let cls = dl_text(st, nc)
+  let cls = dl_arg_text(st, nc)
   let n = dl_quoted(st)
   if dl_bad_args(st, id) { return }
   if not dl_out_path(st, n) {
     dl_err(st, id, "bad_args", "a path without ..")
     return
   }
-  dl_wrote(st, id, DevlinkUi.model(cls, dl_text(st, n)), n, "no such instance")
+  dl_wrote(st, id, DevlinkUi.model(cls, dl_arg_text(st, n)), n, "no such instance")
 }
 
 function dl_ui_tree(st: mut DevlinkState, id: int) -> void {
@@ -80,7 +80,7 @@ function dl_ui_tree(st: mut DevlinkState, id: int) -> void {
     dl_err(st, id, "bad_args", "a path without ..")
     return
   }
-  dl_wrote(st, id, DevlinkUi.tree(dl_text(st, n)), n, "not written")
+  dl_wrote(st, id, DevlinkUi.tree(dl_arg_text(st, n)), n, "not written")
 }
 
 # "" for the file clears that path's override; "" "" clears every one
@@ -114,6 +114,6 @@ function dl_ui_click(st: mut DevlinkState, id: int) -> void {
 function dl_ui_click_id(st: mut DevlinkState, id: int) -> void {
   let n = dl_quoted(st)
   if dl_bad_args(st, id) { return }
-  let r = DevlinkUi.click_id(dl_text(st, n))
+  let r = DevlinkUi.click_id(dl_arg_text(st, n))
   if r < 0 and r != DL_UNBOUND { dl_err(st, id, "failed", "no such element on a screen shown") } else { dl_answer(st, id, r) }
 }

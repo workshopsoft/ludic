@@ -72,7 +72,7 @@ function ev_into(ui_st: mut UiState) -> Val {
   let v = uv_hold(ui_st)
   if v != null { return v }
   let ring = ui_st.ev_ring
-  if len(ring) < EV_RING { ui_kept(ring, Value.null()) }
+  if len(ring) < EV_RING { ui_kept_val(ring) }
   let at = ui_st.ev_ring_at % len(ring)
   ui_st.ev_ring_at = at + 1
   return ring[at]

@@ -27,5 +27,6 @@ function kc_clear(i18n_st: mut I18nState) -> void {
 @alloc_ok("a line made for a caller that lets it go when it stops showing it")
 export function i18n_made(i18n_st: mut I18nState, s: string) -> string {
   if i18n_is_key(s) and not kx_mixed(s) { return km_text(i18n_st, s) }
+  if kx_whole_key(s) { return km_text(i18n_st, s[1..len(s) - 1]) }   # a game's bracketed line: the same, unwrapped
   return keep(L(i18n_st, s))
 }

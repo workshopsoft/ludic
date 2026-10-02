@@ -1,0 +1,115 @@
+# devlink_fence_test.ludic - what an editor's request keeps (a path, a model's JSON, a reload) is the link's: under the
+# alloc fence, a verb that keeps memory every 50 frames for 2000 frames fails no frame, where the same keep in play counts
+import "ludic.devlink"
+import "ludic.base"
+program DevlinkFenceTest {
+  numbers float
+  state FakeLinkState {
+    inbox: string = ""
+    out: []byte = buffer(256)                  # what was sent, copied into a buffer made once: a send keeps nothing
+    out_n: int = 0
+  }
+  property HoardRow {
+    at: int = 0
+    pad: []int = null
+  }
+  state HoardState {
+    rows: []HoardRow = new []HoardRow
+  }
+  function fk_open(port: int) -> int { return 7 }
+  function fk_recv(fake_link_st: mut FakeLinkState, h: int, b: []byte, cap: int) -> int {
+    let n = len(fake_link_st.inbox)
+    for i in 0 .. n { b[i] = fake_link_st.inbox[i] }
+    fake_link_st.inbox = ""
+    return n
+  }
+  function fk_ip(h: int) -> int { return 2130706433 }
+  function fk_port(h: int) -> int { return 5555 }
+  function fk_send(fake_link_st: mut FakeLinkState, h: int, ip: int, port: int, b: []byte, n: int) -> int {
+    for i in 0 .. n { fake_link_st.out[i] = b[i] }
+    fake_link_st.out_n = n
+    return n
+  }
+  function sent(fake_link_st: FakeLinkState) -> string { return text_of(fake_link_st.out, fake_link_st.out_n) }
+  function fk_loop(ip: int) -> bool { return true }
+  function fk_publish(path: string, b: []byte, n: int) -> int { return 0 }
+  bind DevlinkNet { open: fn fk_open, recv: fn fk_recv, from_ip: fn fk_ip, from_port: fn fk_port, send: fn fk_send, loopback: fn fk_loop, publish: fn fk_publish }
+  function fw_on() -> bool { return true }
+  function fw_game() -> string { return "hoarder" }
+  bind DevlinkWorld { enabled: fn fw_on, game: fn fw_game }
+
+  # a verb that keeps a record and a list each time, as a reload or a model's JSON does
+  function hoard_one(hoard_st: mut HoardState) -> void {
+    let r = new HoardRow
+    r.at = len(hoard_st.rows)
+    r.pad = new []int
+    for i in 0 .. 64 { push(r.pad, i) }
+    push(hoard_st.rows, r)
+  }
+  function v_hoard(hoard_st: mut HoardState, c: DevCall) -> int {
+    hoard_one(hoard_st)
+    dv_reply_int(c, len(hoard_st.rows))
+    return DV_OK
+  }
+  def DevVerbs hoard { run: fn v_hoard }
+  function v_say(c: DevCall) -> int {
+    dv_reply_int(c, len(dv_str(c, 0)))
+    return DV_OK
+  }
+  def DevVerbs say { args: "what:string how:string", run: fn v_say }
+
+  test "a request that keeps memory is the link's: 2000 frames, a keep every 50, no frame fails" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, hoard_st: mut HoardState) {
+    fake_link_st.inbox = "1 ping"
+    devlink_tick(devlink_st, tick_new(0.016, 0, 0.0))
+    expect(sent(fake_link_st) == "1 ok")
+    let t = tick_new(0.016, 0, 0.0)
+    Mem.play()
+    Mem.settled()
+    hoard_one(hoard_st)
+    expect(Mem.kept() > long(0))                     # the same keep outside the link: the fence counts it
+    Mem.play()
+    Mem.settled()
+    for k in 0 .. 2000 {
+      if k % 50 == 0 { fake_link_st.inbox = "7 hoard" }
+      devlink_tick(devlink_st, t)
+      Mem.frame()
+    }
+    expect_eq(len(hoard_st.rows), 41)
+    expect(sent(fake_link_st) == "7 ok 41")
+    print(`devlink: 40 keeping requests over 2000 frames, {Mem.bad_frames()} frames kept memory`)
+    expect(Mem.bad_frames() == long(0))
+  }
+
+  test "a request that keeps nothing leaves the fence's floor where it was" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, hoard_st: mut HoardState) {
+    fake_link_st.inbox = "1 ping"
+    devlink_tick(devlink_st, tick_new(0.016, 0, 0.0))
+    Mem.play()
+    Mem.settled()
+    hoard_one(hoard_st)
+    let kept = Mem.kept()
+    expect(kept > long(0))
+    let t = tick_new(0.016, 0, 0.0)
+    fake_link_st.inbox = "2 ping"
+    devlink_tick(devlink_st, t)
+    expect(Mem.kept() >= kept)                       # not settled: what play kept before it is still counted
+  }
+
+  test "string arguments sent before make nothing: 200 requests of two kinds, the heap does not grow" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    let t = tick_new(0.016, 0, 0.0)
+    fake_link_st.inbox = "1 say \"w\" \"down\""
+    devlink_tick(devlink_st, t)
+    expect(sent(fake_link_st) == "1 ok 1")
+    fake_link_st.inbox = "2 say \"escape\" \"up\""
+    devlink_tick(devlink_st, t)
+    let before = Os.heap_bytes()
+    for k in 0 .. 200 {
+      fake_link_st.inbox = "2 say \"w\" \"down\""
+      if k % 2 == 1 { fake_link_st.inbox = "2 say \"escape\" \"up\"" }
+      devlink_tick(devlink_st, t)
+    }
+    let grew = Os.heap_bytes() - before
+    print(`devlink: 200 repeated requests, heap grew {grew} bytes`)
+    expect(grew == long(0))
+    expect(sent(fake_link_st) == "2 ok 6")
+  }
+}

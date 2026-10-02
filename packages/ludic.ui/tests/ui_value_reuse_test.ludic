@@ -1,0 +1,41 @@
+# ui_value_reuse_test.ludic - a pooled Value a call answers a list into keeps its items: turned to a number and back
+# (a screen closed and opened again) it makes none again, and a list of another's Values never turns them
+import "ludic.ui"
+program UiValueReuseTest {
+  numbers float
+  test "a list answer turned away and back makes no new items" {
+    let into = Value.null()
+    let xs = new []int
+    for i in 0 .. 8 { push(xs, i) }
+    value_into_ints(into, xs)
+    value_become(into, 7)
+    value_into_ints(into, xs)
+    let before = Os.heap_bytes()
+    for k in 0 .. 500 {
+      value_become(into, 7)
+      value_into_ints(into, xs)
+    }
+    let grew = Os.heap_bytes() - before
+    print(`ui values: 500 turns of an 8-item answer, heap grew {grew} bytes`)
+    expect(grew == long(0))
+    expect(Value.count(into) == 8)
+    expect(Value.as_int(Value.at(into, 7)) == 7)
+    expect(Value.as_int(into) == 0)
+  }
+
+  test "a list holding another's Values does not turn them" {
+    let a = Value.int(41)
+    let into = Value.list()
+    Value.add(into, a)
+    let xs = new []int
+    push(xs, 5)
+    value_into_ints(into, xs)
+    expect(Value.as_int(a) == 41)
+    expect(Value.as_int(Value.at(into, 0)) == 5)
+    value_become(into, 5)
+    Value.add(into, a)
+    value_become(into, 1)
+    value_into_ints(into, xs)
+    expect(Value.as_int(a) == 41)
+  }
+}

@@ -54,6 +54,16 @@ program I18nMadeTest {
     same(i18n_st, "Day " + b(trf(k"hud.day", "5", "", "", "")), "Day Day 5")
   }
 
+  test "a line wholly in one bracket is made by its key, as L makes it" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    same(i18n_st, b(trf(k"hud.day", "7", "", "", "")), "Day 7")
+    same(i18n_st, b(trf(k"shop.ada", b(trf(k"hud.day", "8", "", "", "")), "", "", "")), "Ada: Day 8")
+    same(i18n_st, b(trn(kn"catch.count", 2, "", "", "")), "2 trouts")
+    expect(kx_whole_key(b(trf(k"hud.day", "7", "", "", ""))))
+    expect(not kx_whole_key(b(tr(k"pause.quit")) + b(tr(k"pause.quit"))))   # two brackets: L's, as ever
+    expect(not kx_whole_key(b("Settings")))
+  }
+
   test "a long line grows the buffer and is whole" (i18n_st: mut I18nState) {
     start(i18n_st)
     var long = ""
