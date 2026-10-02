@@ -69,21 +69,7 @@ vec3 moonColour(vec3 dir, float night) {
 // the chroma and the photograph keeps the luminance: clouds stay exactly where they are and go
 // orange at dusk the way real ones do, and the zenith goes deep blue at noon without a second
 // photograph being shipped.
-uniform float u_sky_relight;     // 0 leaves the photograph alone; the day fades this in
-vec3 analyticSky(vec3 dir) {
-  float ct = clamp(dir.y, 0.0, 1.0);
-  float cs = clamp(dot(dir, u_sun_dir), -1.0, 1.0);
-  float lowsun = 1.0 - smoothstep(0.0, 0.45, u_sun_dir.y);
-  // Rayleigh: deep overhead, pale at the horizon where the line of sight is longest
-  vec3 base = mix(vec3(0.60, 0.70, 0.85), vec3(0.16, 0.33, 0.74), pow(ct, 0.55));
-  // the sun's warmth spreads into the sky around it, and spreads FURTHER the lower it is
-  float glow = pow(max(cs, 0.0), mix(9.0, 2.0, lowsun));
-  base = mix(base, vec3(1.0, 0.55, 0.22), glow * mix(0.22, 0.88, lowsun));
-  // and at dusk the whole horizon band warms, not only the part near the sun
-  float band = (1.0 - smoothstep(0.0, 0.32, ct)) * lowsun;
-  base = mix(base, vec3(0.96, 0.52, 0.28), band * 0.55);
-  return base;
-}
+// (u_sky_relight and analyticSky are lighting.glsl's: the fog wall is relit by the same model)
 
 // ---- the sun ---------------------------------------------------------------------------------
 // The photograph's own sun disc stands at one elevation (about 48 degrees) however the sky is

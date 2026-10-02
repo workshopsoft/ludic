@@ -48,4 +48,28 @@ program SunDiscTest {
     expect(st.sky_disc_col[1] < noon)
     expect(st.sky_disc_col[2] < st.sky_disc_col[0])
   }
+
+  # the light's blue against its red, over the photograph's own (9, 9, 8)
+  function blue_red(st: Render3dState) -> float { return (st.sun_color[2] / 8.0) / (st.sun_color[0] / 9.0) }
+
+  test "the air takes the blue first: white high up, a fifth of the blue gone at 21 degrees, near half at 11" {
+    let st = july()
+    daylight_set(st, 13.0)
+    expect_near(blue_red(st), 1.0, 0.001)
+    daylight_set(st, 18.5)
+    expect(blue_red(st) < 0.85 and blue_red(st) > 0.7)
+    daylight_set(st, 19.4)
+    expect(blue_red(st) < 0.6 and blue_red(st) > 0.4)
+    # and it is dimmer for the air it crossed, not only warmer
+    expect(st.sun_color[0] < 9.0 * 0.7)
+  }
+
+  test "thin dry air warms a low sun less than the sea's" {
+    let st = july()
+    daylight_set(st, 19.4)
+    let sea = blue_red(st)
+    daylight_air(st, 0.7, 0.02)
+    daylight_set(st, 19.4)
+    expect(blue_red(st) > sea + 0.05)
+  }
 }

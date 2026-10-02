@@ -61,6 +61,13 @@ function daylight_site(render3d_st: mut Render3dState, lat_deg: float, lon_deg: 
   render3d_st.day_baked_az = 1000.0
   daylight_set(render3d_st, render3d_st.day_hours)
 }
+# The air over the site, for the sun's colour: its pressure over sea level's (about exp(-metres / 8434)) and
+# its haze as Angstrom's turbidity (0.02 a dry mountain sky, 0.06 a clear day, 0.2 a hazy one). Takes effect
+# at the next daylight_set.
+function daylight_air(render3d_st: mut Render3dState, pressure: float, beta: float) -> void {
+  render3d_st.day_air_p = Math.clamp(pressure, 0.3, 1.1)
+  render3d_st.day_air_beta = Math.clamp(beta, 0.0, 0.5)
+}
 # the date the sun is for: day of the year, 1.0 = 1 January (takes effect at the next daylight_set)
 function daylight_date(render3d_st: mut Render3dState, doy: float) -> void { render3d_st.day_doy = doy }
 
@@ -82,9 +89,18 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   render3d_st.day_light = d
   # the sun, warm and dim near the horizon; past dusk, the moon from across the sky
   var laz = az;  var lel = Math.max(el, Math.deg_to_rad(3.0))
-  var warm_r = 1.0;  var warm_g = 1.0;  var warm_b = 1.0
-  let low = smoothf(0.0, Math.deg_to_rad(24.0), el)
-  warm_g = Math.lerp(0.55, 1.0, low);  warm_b = Math.lerp(0.28, 1.0, low)
+  # The sun's colour is what the air leaves of it: each channel's transmittance toward the sun now over the
+  # same at the photograph's own sun (day_sun_base is that sun's light), held at 1 above it. It was a ramp
+  # that stayed white down to 20 degrees - and a basin's ridges take the sun at 15 to 20, so its light never
+  # warmed at all; through the air a sun 20 degrees up has lost a fifth of its blue, at 10 two fifths.
+  let am = solar_air_mass(el)
+  var el0 = Math.deg_to_rad(45.0)
+  if render3d_st.sun_hdri != null and render3d_st.sun_hdri[1] > 0.05 { el0 = Math.asin(Math.min(render3d_st.sun_hdri[1], 1.0)) }
+  let am0 = solar_air_mass(el0)
+  let ap = render3d_st.day_air_p;  let ab = render3d_st.day_air_beta
+  let warm_r = Math.min(1.0, solar_transmit(0.61, am, ap, ab) / solar_transmit(0.61, am0, ap, ab))
+  let warm_g = Math.min(1.0, solar_transmit(0.55, am, ap, ab) / solar_transmit(0.55, am0, ap, ab))
+  let warm_b = Math.min(1.0, solar_transmit(0.465, am, ap, ab) / solar_transmit(0.465, am0, ap, ab))
   # an overcast sky: the sun goes diffuse and grey, a lightning flash brings it back white
   let oc = Math.clamp(render3d_st.day_overcast, 0.0, 1.0)
   let sunk = 1.0 - 0.92 * oc + 2.5 * render3d_st.day_flash
@@ -294,6 +310,7 @@ function daylight_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hand_cone"), render3d_st.hand_cone)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hand_reach"), render3d_st.hand_reach)
   u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_ibl_scale"), render3d_st.day_ibl)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_sky_relight"), render3d_st.r3d_sky_relight)
   u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_moon_dir"), render3d_st.day_moon_dir)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_moon_phase"), render3d_st.day_moon_phase)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_moon_illum"), render3d_st.day_moon_illum)

@@ -289,10 +289,33 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
 uniform float u_fog_inscatter;   // how hard the air scatters the sun forward
 uniform float u_fog_desat;       // how fast distance takes a surface's own colour away
 uniform float u_fog_wall;        // r3d_fog_wall: > 0, the distance past which nothing is seen
-// the colour the fog wall hides things in: the sky at the horizon under this view, and the sun
-// scattered through it, so what is far melts into the sky behind it (the sky's band meets it)
+// the colour the fog wall hides things in: the haze the camera would see at the horizon that way. Its
+// light is the whole sky's (its mean radiance, the irradiance an upward face takes - the photograph's
+// average horizon), coloured as the drawn sky is at the horizon at this hour (analyticSky, by the same
+// relight), and the sun scattered forward through it. It was the photograph's own horizon prefiltered at
+// roughness 0.6: half that lobe is the puresky image's slate lower half and the rest its clouds, never
+// relit - a storm on one side of a clear morning and white milk on the other.
+uniform float u_sky_relight;     // 0 leaves the photograph alone; the day fades this in
+vec3 analyticSky(vec3 dir) {
+  float ct = clamp(dir.y, 0.0, 1.0);
+  float cs = clamp(dot(dir, u_sun_dir), -1.0, 1.0);
+  float lowsun = 1.0 - smoothstep(0.0, 0.45, u_sun_dir.y);
+  // Rayleigh: deep overhead, pale at the horizon where the line of sight is longest
+  vec3 base = mix(vec3(0.60, 0.70, 0.85), vec3(0.16, 0.33, 0.74), pow(ct, 0.55));
+  // the sun's warmth spreads into the sky around it, and spreads FURTHER the lower it is
+  float glow = pow(max(cs, 0.0), mix(9.0, 2.0, lowsun));
+  base = mix(base, vec3(1.0, 0.55, 0.22), glow * mix(0.22, 0.88, lowsun));
+  // and at dusk the whole horizon band warms, not only the part near the sun
+  float band = (1.0 - smoothstep(0.0, 0.32, ct)) * lowsun;
+  base = mix(base, vec3(0.96, 0.52, 0.28), band * 0.55);
+  return base;
+}
 vec3 fogWallCol(vec3 dir) {
-  vec3 c = skyPrefiltered(vec3(dir.x, max(dir.y, 0.02), dir.z), 0.6);
+  vec3 amb = skyIrradianceRaw(vec3(0.0, 1.0, 0.0));
+  vec3 sk = analyticSky(normalize(vec3(dir.x, 0.04, dir.z) + vec3(1e-4, 0.0, 0.0)));
+  float la = dot(amb, vec3(0.2126, 0.7152, 0.0722));
+  float ls = max(dot(sk, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+  vec3 c = mix(amb, sk * (la / ls), u_sky_relight);
   return c + u_sun_color * u_fog_inscatter * pow(max(dot(dir, u_sun_dir), 0.0), 8.0);
 }
 vec3 applyFog(vec3 col, vec3 wpos, float dist) {
