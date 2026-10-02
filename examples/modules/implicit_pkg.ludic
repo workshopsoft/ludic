@@ -1,0 +1,11 @@
+# implicit_pkg.ludic - a package with no module line is a module all the same: `ludic deps` and
+# `ludic schema`'s code.modules list it, named for its folder (ludic_render3d), with its files.
+#
+# Running it prints:  6
+import "implicit_pkg"
+program ImplicitPkg {
+  numbers float
+  entry {
+    print(int(rim_turn()))
+  }
+}

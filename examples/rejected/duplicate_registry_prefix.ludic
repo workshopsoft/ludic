@@ -1,0 +1,13 @@
+# duplicate_registry_prefix.ludic - two registries that both say `as DRK` both make DRK_COUNT. The
+# compiler refuses it and names both registries; a game once gave one prefix to two of its tables.
+# (Rejected on purpose: tools/ludic-cli/test.ludic, reject_case.)
+program DuplicateRegistryPrefix {
+  property DrinkStep { key: string = "", n: int = 0 }
+  property DrinkRule { key: string = "", reach: float = 1.0 }
+  registry DrinkSteps of DrinkStep as DRK
+  registry DrinkRules of DrinkRule as DRK
+  def DrinkSteps kneel { n: 1 }
+  def DrinkSteps sip { n: 2 }
+  def DrinkRules rules { reach: 1.2 }
+  entry { print(DRK_COUNT) }
+}

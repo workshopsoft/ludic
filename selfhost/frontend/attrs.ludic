@@ -135,18 +135,18 @@ function at_field(g: int, a: pointer) -> void {
   if (a == "Range") and n != 2 { perr("@Range takes the least and the most: @Range(0, 1.5)") }
   if (a == "Range") and not g_at_allnum { perr("@Range takes two numbers: @Range(0, 1.5)") }
   if (a == "Unit") and (n != 1 or toks[pi - 2].kind != TK_STR) { perr(`@{a} takes one string: @{a}("m/s")`) }
-  if (a == "Asset") and not at_asset_ok(args, n) { perr("@Asset takes a kind, and `map` for a path under each map's directory (then `optional`): @Asset(\"png\"), @Asset(\"png\", map), @Asset(\"png\", map, optional)") }
+  if (a == "Asset") and not at_asset_ok(args, n) { perr("@Asset takes a kind, then `map` for a path under each map's directory, then `optional` for a file a row may leave out: @Asset(\"png\"), @Asset(\"png\", optional), @Asset(\"png\", map), @Asset(\"png\", map, optional)") }
   if a == "Unit" { at_unit_check(g_at_arg0, toks[pi - 2]) }
   if at_flag(a) and n != 0 { perr(`@{a} takes nothing`) }
   at_push(g, a, args, g_at_arg0, n)
 }
-# @Asset("png"), @Asset("png", map) or @Asset("png", map, optional)
+# @Asset("png"), @Asset("png", optional), @Asset("png", map) or @Asset("png", map, optional)
 function at_asset_ok(args: pointer, n: int) -> bool {
   if n < 1 or n > 3 { return false }
   let w = at_arg_names(args)
   if len(w) != n { return false }
-  if n >= 2 and not (w[1] == "map") { return false }
-  if n == 3 and not (w[2] == "optional") { return false }
+  if n == 2 { return (w[1] == "map") or (w[1] == "optional") }
+  if n == 3 { return (w[1] == "map") and (w[2] == "optional") }
   return true
 }
 # a field's group, made the first time it needs one

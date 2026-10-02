@@ -257,8 +257,9 @@ function cmd_test_pkg() -> int {
     ok("ludic get fetches + links a prebuilt (kind prebuilt) package for the target")
   } else { bad2("prebuilt ludic get failed", capture_line(`tail -1 {work}/get3.out`)) }
   # compile the ECS consumer from the repo root (so runtime/native resolves), then
-  # link the module dylib via `ludic link-flags` (a real external build's link step).
-  shell(`LUDIC_HOME={root} {root}/bin/ludicc --headless {proj3}/game.ludic --emit-llvm -o {proj3}/game.ll 2>{work}/gc.err`)
+  # link the module dylib via `ludic link-flags` (a real external build's link step). Its handler
+  # calls the module's function through `extern`, which is raw memory (L7): --unsafe.
+  shell(`LUDIC_HOME={root} {root}/bin/ludicc --headless --unsafe {proj3}/game.ludic --emit-llvm -o {proj3}/game.ll 2>{work}/gc.err`)
   let flags = capture_line(`( cd {proj3} && LUDIC_STORE={store} {root}/bin/ludic link-flags )`)
   if shq(`{cc()} -O2 -Wno-override-module {proj3}/game.ll {flags} -o {proj3}/game 2>{work}/gl.err`) {
     let got = capture_line(`printf 'aaaaaa' | {proj3}/game`)

@@ -940,6 +940,7 @@ property Tool {
   @Range(0, 20.5) @Unit("kg") weight: float = 1.0
   @Asset("gltf") model: string = ""        # a file of that kind (any string)
   @Asset("png", map) density: string = ""  # a path under EACH map's directory (assets/maps/<key>/...)
+  @Asset("ogg", optional) call: string = "" # a file of that kind that a row may leave empty
   @Color tint: int = 0
   @Node(model) grip: string = ""           # a node inside the glTF that `model` names
   @Clip(model) swing: string = ""          # a clip inside it
@@ -972,7 +973,8 @@ registry whose record has exactly one `@Asset("gltf")` field (the model is then 
 directory, not the game's root: `ludicc --check` looks for it in every map - a @PerMap row's in its own
 map, a game-wide row's in all of them - and refuses a map that lacks it, unless the field says
 `@Asset(kind, map, optional)`; the schema marks it `"scope": "map"`. A plain `@Asset(kind)` is not
-looked for.
+looked for, and `@Asset(kind, optional)` says to an editor that a row may leave it empty; `map` comes
+before `optional` when a field says both.
 
 `ludicc app.ludic --emit-schema out.json` (or `ludic schema [file] [-o out.json]`) writes what the
 compiler resolved, once the types are checked and every open registry has its entries, as one JSON

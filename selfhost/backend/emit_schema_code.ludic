@@ -169,12 +169,27 @@ function cx_mod_names(names: []pointer, seen: StrSet, from: []pointer) -> void {
     i += 1
   }
 }
+# a package with no `module` line is the module named for its folder (pkg_name_of): ludic_render3d
+# is one, and a `uses` names it as it names any other, so the list has it as `ludic deps` does
+function cx_pkg_loose(i: int) -> bool {
+  return module_of(g_pk_file[i]) == "" and not is_runtime_file(g_pk_file[i])
+}
+function cx_pkg_implicit() -> []pointer {
+  let out = new []pointer
+  var i = 0
+  while i < len(g_pk_file) {
+    if cx_pkg_loose(i) { push(out, g_pk_name[i]) }
+    i += 1
+  }
+  return out
+}
 function cx_modules(b: Buf) -> void {
   let names = new []pointer
   let seen = ss_new(256)
   cx_mod_names(names, seen, g_mod_name)
   cx_mod_names(names, seen, g_mu_mod)
   cx_mod_names(names, seen, g_mod_friends)
+  cx_mod_names(names, seen, cx_pkg_implicit())
   let xs = cx_order(names)
   var a = 0
   while a < len(xs) {
@@ -186,6 +201,11 @@ function cx_modules(b: Buf) -> void {
     var i = 0
     while i < len(g_mod_file) {
       if (g_mod_name[i] == m) and not is_runtime_file(g_mod_file[i]) { push(files, g_mod_file[i]) }
+      i += 1
+    }
+    i = 0
+    while i < len(g_pk_file) {
+      if (g_pk_name[i] == m) and cx_pkg_loose(i) { push(files, g_pk_file[i]) }
       i += 1
     }
     var pkg: pointer = null

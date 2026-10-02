@@ -1,0 +1,10 @@
+# handler_missing_arg.ludic - a handler's body is checked as a function's is: a call that leaves out
+# an argument is refused. It used to compile, and the callee read whatever was in the register.
+# (Rejected on purpose: tools/ludic-cli/test.ludic, reject_case.)
+program HandlerMissingArg {
+  function plain(x: int, y: int) -> void { print(`{x} {y}`) }
+  handler Boot() phase Start {
+    plain(1)
+    quit()
+  }
+}

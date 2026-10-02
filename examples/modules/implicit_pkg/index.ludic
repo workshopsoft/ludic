@@ -1,0 +1,8 @@
+# implicit_pkg/index.ludic - a mechanic that names the renderer under `uses`: ludic.render3d has no
+# module line, so it is the module named for its folder, ludic_render3d
+module rim uses ludic_render3d
+numbers float
+import "ludic.render3d/fmath.ludic"
+export function rim_turn() -> float {
+  return PI * 2.0
+}

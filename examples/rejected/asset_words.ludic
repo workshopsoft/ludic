@@ -1,0 +1,11 @@
+# asset_words.ludic - @Asset's words come in one order: the kind, then `map`, then `optional`.
+# (Rejected on purpose: tools/ludic-cli/test.ludic, reject_case.)
+program AssetWords {
+  property Patch {
+    key: string = ""
+    @Asset("png", optional, map) mask: string = ""
+  }
+  registry Patches of Patch as PT
+  def Patches meadow { mask: "meadow.png" }
+  entry { print(PT_COUNT) }
+}
