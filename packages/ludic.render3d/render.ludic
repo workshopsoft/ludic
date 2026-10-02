@@ -20,6 +20,14 @@
 # draws (a lab's stage, ludic.lab). Set before the load; nothing of the landscape is made, so
 # its hundreds of megabytes of height field, materials and grass never exist.
 function r3d_plate_mode(render3d_st: mut Render3dState, on: bool) -> void { render3d_st.r3d_plate = on }
+# The ground under the scene, as linear albedo: what the sky's light below the horizon and the sun's
+# bounce off the ground are tinted by (lighting.glsl). The default is a meadow; a stage that stands on
+# something else - a grey plate, scree, snow - says so, or everything on it is lit from a lawn.
+function r3d_ground_albedo(render3d_st: mut Render3dState, r: float, g: float, b: float) -> void {
+  render3d_st.r3d_ground_alb_r = r
+  render3d_st.r3d_ground_alb_g = g
+  render3d_st.r3d_ground_alb_b = b
+}
 # the sky's HDR image, when it is not the default photograph under r3d_assets
 
 

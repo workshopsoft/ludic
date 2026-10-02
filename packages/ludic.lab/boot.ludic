@@ -33,6 +33,8 @@ export function lab_boot(lab_st: mut LabState, render3d_st: mut Render3dState) -
   lab_st.lb_w = ww
   lab_st.lb_h = wh
   r3d_plate_mode(render3d_st, true)
+  # the plate is the ground here, not a meadow: plate/plate_diff.png's mean linear albedo
+  r3d_ground_albedo(render3d_st, 0.27, 0.284, 0.23)
   render3d_st.r3d_sky_path = `{lab_plate_dir(lab_st)}/sky.hdr`
   if not r3d_init(render3d_st, ww, wh, lab_st.lb_title) {
     quit()

@@ -53,7 +53,6 @@ uniform float u_ground_hi_w;     // over how many metres
 vec3 groundAlbAt(float y) {
   return mix(u_ground_alb, u_ground_alb_hi, smoothstep(u_ground_hi_y, u_ground_hi_y + u_ground_hi_w, y));
 }
-const vec3 GROUND_ALB = vec3(0.30, 0.34, 0.14);
 // the time of day (daylight.ludic): the sky's light scaled toward night, and the campfire
 uniform vec3 u_ibl_scale;
 uniform float u_daylight;
@@ -65,10 +64,13 @@ uniform vec3 u_hand_dir;
 uniform float u_hand_cone;        // cos of the half-angle; <= -1: a point light
 uniform float u_hand_reach;       // metres to where it dies out entirely
 vec3 skyIrradianceRaw(vec3 n) { return texture(u_irradiance, equirectUV(n)).rgb * u_ibl_scale; }
+// The ground's light is the scene's own ground (u_ground_alb, the low ground: what bounce reads too).
+// A surface tilted down still sees (1 + n.y) / 2 of the sky, so the window never gives it less: cut to
+// nothing by n.y = -0.25, every jaw, neck and hanging arm was lit by the ground alone and came out olive.
 vec3 skyIrradiance(vec3 n) {
   vec3 up = skyIrradianceRaw(vec3(n.x, max(n.y, 0.0), n.z));
-  vec3 ground = skyIrradianceRaw(normalize(vec3(n.x, 0.15, n.z) + vec3(1e-4, 0.0, 0.0))) * GROUND_ALB;
-  return mix(ground, up, smoothstep(-0.25, 0.2, n.y));
+  vec3 ground = skyIrradianceRaw(normalize(vec3(n.x, 0.15, n.z) + vec3(1e-4, 0.0, 0.0))) * u_ground_alb;
+  return mix(ground, up, max(smoothstep(-0.25, 0.2, n.y), clamp(0.5 + 0.5 * n.y, 0.0, 1.0)));
 }
 vec3 skyPrefilteredRaw(vec3 r, float rough) {
   float lv = rough * (u_prefilter_levels - 1.0);
@@ -104,7 +106,7 @@ vec3 handLight(vec3 wpos, vec3 n, vec3 albedo) {
 }
 vec3 skyPrefiltered(vec3 r, float rough) {
   vec3 up = skyPrefilteredRaw(vec3(r.x, max(r.y, 0.0), r.z), rough);
-  vec3 ground = skyPrefilteredRaw(normalize(vec3(r.x, 0.15, r.z) + vec3(1e-4, 0.0, 0.0)), max(rough, 0.6)) * GROUND_ALB;
+  vec3 ground = skyPrefilteredRaw(normalize(vec3(r.x, 0.15, r.z) + vec3(1e-4, 0.0, 0.0)), max(rough, 0.6)) * u_ground_alb;
   return mix(ground, up, smoothstep(-0.2, 0.15, r.y));
 }
 
