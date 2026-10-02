@@ -105,6 +105,24 @@ the steps it becomes are in [SHIPPING.md](SHIPPING.md#releasing-ludic-release).
 when no file is given. Without it the CLI tries `src/main.ludic`, `main.ludic`, then
 the one file under `src/` that declares a `program`.
 
+### A field's registry
+
+```
+ref "GroundLayers.kind" "PlaceKinds"   # render3d's @Ref(GroundKinds) field names this game's PlaceKinds
+```
+
+A package declares `@Ref(GroundKinds) kind: int` on a record because it needs a default registry; a game
+whose rows name kinds of its own says so once, here. In that program the field refers to the named registry
+wherever the compiler checks an `@Ref` (a map's rows under `ludicc --check`, a `.lres` row), and the schema
+export (`ludic schema`, `--emit-schema`) gives the attribute as the program sees it, with what the field
+`declared` and the line that changed it (`"by": "package.ludic:8"`), so an editor reads the same reference.
+The first word is a registry and its record's field (`GroundLayers.kind`) or a record's name and field
+(`GroundLayer.kind`); the second is a registry the program declares. A field with no `@Ref` gets one.
+
+The package's `entry` program (or every program, when the manifest names no entry) holds every line: a table,
+field or registry it lacks is an error at the line, and so is a field two lines set. Any other program under
+the package - a test that imports a part of the game - skips a line whose table or registry it does not have.
+
 ### Scripts and hooks
 
 ```

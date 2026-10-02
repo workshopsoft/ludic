@@ -1,0 +1,7 @@
+# field_ref_bad.ludic's package: five ref lines --check refuses (no entry, so the program holds them all)
+ref "Layers.colour" "Places"
+ref "Nowhere.kind" "Places"
+ref "Layers.kind" "Nowhere"
+ref "Layers" "Places"
+ref "Layers.kind" "Places"
+ref "Layer.kind" "Places"

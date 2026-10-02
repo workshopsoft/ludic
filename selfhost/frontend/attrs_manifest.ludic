@@ -1,0 +1,173 @@
+# attrs_manifest.ludic — package.ludic's `ref "GroundLayers.kind" "PlaceKinds"`: in this program that
+# record's field refers to that registry, whatever its @Ref says. A package declares @Ref(GroundKinds)
+# because it needs a default; a game with a table of kinds of its own names it once, here, and every
+# check of an @Ref (a map's rows, the schema an editor reads) then uses the game's. The table is a
+# registry (its record's field) or a record's name; the registry is any the program declares.
+#
+# The package's entry program (or every program, when the manifest names no entry) holds each line
+# strictly: an unknown table, field or registry is an error at the line. Any other program under the
+# package - a test importing a part of the game - takes the lines it can and skips one whose table or
+# registry it lacks. A field its table lacks is a typo in any program.
+var g_rf_table: []pointer = new []pointer     # per line: "GroundLayers" ...
+var g_rf_field: []pointer = new []pointer     # ... "kind" ...
+var g_rf_reg: []pointer = new []pointer       # ... "PlaceKinds" ...
+var g_rf_line: []int = new []int              # ... and its line in the manifest
+var g_rf_file: pointer = null                 # the package.ludic read
+var g_rf_strict: bool = true                  # this program is the package's entry, or it names none
+var g_rf_at: []int = new []int                # each attribute a line set (the schema says so) ...
+var g_rf_was: []pointer = new []pointer       # ... the registry it named before, or null ...
+var g_rf_from: []int = new []int              # ... and the line that set it
+
+# the nearest package.ludic up to four directories above the program, as `lang` and `maps` are found
+function rf_manifest(entry: pointer) -> void {
+  var dir = dir_of(entry)
+  var up = 0
+  while up < 5 {
+    var root = dir
+    if len(root) > 0 and not is_sep(root[len(root) - 1]) { root = root + "/" }
+    let txt = read_file(root + "package.ludic")
+    if txt != null {
+      g_rf_file = pm_norm(root + "package.ludic")
+      rf_manifest_read(txt, root, entry)
+      return
+    }
+    if len(dir) == 0 { dir = ".." } else { dir = dir + "/.." }
+    up += 1
+  }
+}
+function rf_manifest_read(txt: pointer, root: pointer, entry: pointer) -> void {
+  var named: pointer = null
+  var i = 0
+  var line = 1
+  let tn = len(txt)
+  while i < tn {
+    var e = i
+    while (e < tn) and (txt[e] != '\n') { e += 1 }
+    var le = e
+    if (le > i) and (txt[le - 1] == 13) { le -= 1 }
+    let ws = native_words(txt[i..le])
+    if len(ws) > 0 and (ws[0] == "ref") { rf_line(ws, line) }
+    if (len(ws) == 2) and (ws[0] == "entry") { named = ws[1] }
+    i = e + 1
+    line += 1
+  }
+  if named != null { g_rf_strict = pm_norm(join_path(root, named)) == pm_norm(entry) }
+}
+# `ref "Table.field" "Registry"`, its words read
+function rf_line(ws: []pointer, line: int) -> void {
+  var dot = -1
+  if len(ws) == 3 {
+    var k = 0
+    while k < len(ws[1]) {
+      if ws[1][k] == '.' { if dot < 0 { dot = k } else { dot = -2 } }
+      k += 1
+    }
+  }
+  if dot <= 0 or dot >= len(ws[1]) - 1 or len(ws[2]) == 0 {
+    push(g_rf_table, null)                      # refused with the others, once the program is read
+    push(g_rf_field, null)
+    push(g_rf_reg, null)
+    push(g_rf_line, line)
+    return
+  }
+  push(g_rf_table, ws[1][0..dot])
+  push(g_rf_field, ws[1][dot + 1..len(ws[1])])
+  push(g_rf_reg, ws[2])
+  push(g_rf_line, line)
+}
+
+# once every registry is declared, before any @Ref is checked: each line put over its field
+function rf_apply() -> void {
+  var i = 0
+  while i < len(g_rf_table) {
+    rf_apply_one(i)
+    i += 1
+  }
+}
+function rf_apply_one(i: int) -> void {
+  let line = g_rf_line[i]
+  if g_rf_table[i] == null {
+    perr_at(g_rf_file, line, 1, "a ref line names a field and the registry it refers to: ref \"GroundLayers.kind\" \"PlaceKinds\"")
+    return
+  }
+  let where = `ref "{g_rf_table[i]}.{g_rf_field[i]}" "{g_rf_reg[i]}"`
+  let r = reg_find(g_rf_table[i])
+  var rec: Node = null
+  if r >= 0 { rec = at_record(g_rg_type[r]) } else { rec = at_record(g_rf_table[i]) }
+  let target = reg_find(g_rf_reg[i])
+  if rec == null or target < 0 {
+    if not g_rf_strict { return }
+    if rec == null { perr_at(g_rf_file, line, 1, `{where}: this program has no registry or record {g_rf_table[i]}`) }
+    if target < 0 { perr_at(g_rf_file, line, 1, `{where}: this program has no registry {g_rf_reg[i]}`) }
+    return
+  }
+  let f = at_field_of(rec, g_rf_field[i])
+  if f == null {
+    perr_at(g_rf_file, line, 1, `{where}: {vis_plain(rec.s)} has no field {g_rf_field[i]}`)
+    return
+  }
+  rf_set(f, g_rf_reg[i], line, where)
+}
+# the field's @Ref made to name reg: rewritten where it has one, added (in a group of its own, its other
+# attributes copied) where it has none
+function rf_set(f: Node, reg: pointer, line: int, where: pointer) -> void {
+  let b = buf_new()
+  buf_puts(b, "[")
+  jq_put(b, reg)
+  buf_puts(b, "]")
+  let args = buf_str(b)
+  if f.at >= 0 {
+    var j = g_at_start[f.at]
+    while j < g_at_start[f.at] + g_at_count[f.at] {
+      if g_at_name[j] == "Ref" {
+        if rf_set_by(j) >= 0 {
+          perr_at(g_rf_file, line, 1, `{where}: the field's registry is set already, at line {itoa(g_rf_from[rf_set_by(j)])}`)
+          return
+        }
+        rf_note(j, g_at_first[j], line)
+        g_at_first[j] = reg
+        g_at_args[j] = args
+        g_at_unres[j] = false
+        return
+      }
+      j += 1
+    }
+  }
+  let g = at_group()
+  if f.at >= 0 { rf_copy(f.at, g) }
+  at_push(g, "Ref", args, reg, 1)
+  rf_note(len(g_at_name) - 1, null, line)
+  f.at = g
+}
+function rf_copy(from: int, g: int) -> void {
+  var j = g_at_start[from]
+  while j < g_at_start[from] + g_at_count[from] {
+    g_at_strs_next = g_at_strs[j]
+    at_push(g, g_at_name[j], g_at_args[j], g_at_first[j], g_at_nargs[j])
+    g_at_unres[len(g_at_unres) - 1] = g_at_unres[j]
+    j += 1
+  }
+}
+function rf_note(j: int, was: pointer, line: int) -> void {
+  push(g_rf_at, j)
+  push(g_rf_was, was)
+  push(g_rf_from, line)
+}
+# which line set attribute j, as an index into g_rf_at, or -1
+function rf_set_by(j: int) -> int {
+  var k = 0
+  while k < len(g_rf_at) {
+    if g_rf_at[k] == j { return k }
+    k += 1
+  }
+  return -1
+}
+# the schema's word on an attribute a ref line set: what the field declared, and where it was changed
+function rf_schema(b: Buf, j: int) -> void {
+  let k = rf_set_by(j)
+  if k < 0 { return }
+  buf_puts(b, ", \"declared\": ")
+  sc_str(b, g_rf_was[k])
+  buf_puts(b, ", \"by\": ")
+  jq_put(b, `{g_rf_file}:{itoa(g_rf_from[k])}`)
+}

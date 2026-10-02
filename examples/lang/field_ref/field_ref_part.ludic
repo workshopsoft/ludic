@@ -1,0 +1,14 @@
+# field_ref_part.ludic - a program under the same package that holds the layers but not Places (a test
+# of one part): the package's ref line is not this program's to keep, so it is skipped, not refused
+program FieldRefPart {
+  property Kind { key: string = "" }
+  registry Kinds of Kind as KD
+  property Layer {
+    key: string = ""
+    @Ref(Kinds) kind: int = 0
+  }
+  @PerMap @ByKey registry Layers of Layer from "layers.lres"
+  entry {
+    print(`{KD_COUNT}`)
+  }
+}

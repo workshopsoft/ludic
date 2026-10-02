@@ -195,6 +195,7 @@ function at_registry_take() -> int {
 # listing @OneOf constants that exist, or the build
 # stops with every one that does not
 function at_check_refs() -> void {
+  rf_apply()                                   # package.ludic's ref lines first (attrs_manifest.ludic)
   var i = 0
   while i < len(prog) {
     let d = prog[i]

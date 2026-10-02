@@ -74,6 +74,19 @@ function permap_check_case() -> void {
   if not s_contains(capture(`cat {js}`), "the unit is spelled") or not s_contains(capture(`cat {js}`), "deg") { bad2(lbl, capture_line(`head -3 {js}`));  return }
   ok(lbl)
 }
+# package.ludic's ref lines (attrs_manifest.ludic): a map's row read against the registry a line names
+# (and refused by the field's own @Ref without it); a program holding a part of the package skips it
+function field_ref_check_case() -> void {
+  let lbl = "--check: a ref line puts a registry over a field's @Ref, the map's rows read against it; a part of the package skips it"
+  let js = `{tmp_dir()}/dj_field_ref.json`
+  if not shq(`bin/ludicc examples/lang/field_ref/field_ref.ludic --check --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, capture_line(`head -3 {js}`));  return }
+  if not shq(`bin/ludicc examples/lang/field_ref/field_ref_part.ludic --check --no-maps --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, "the part refused the line: " + capture_line(`head -3 {js}`));  return }
+  let nr = `{tmp_dir()}/field_ref_noref`
+  shq(`rm -rf {nr} && cp -R examples/lang/field_ref {nr} && grep -v '^ref' examples/lang/field_ref/package.ludic > {nr}/package.ludic`)
+  if shq(`bin/ludicc {nr}/field_ref.ludic --check --diagnostics=json > {js} 2>/dev/null`) { bad2(lbl, "without the ref line the map's row still checked clean");  return }
+  if not s_contains(capture(`cat {js}`), "@Ref(Kinds) has 0 entries") { bad2(lbl, "without the ref line: " + capture_line(`head -3 {js}`));  return }
+  ok(lbl)
+}
 # phase 26: a template checks clean against en.po, its one line of words a warning, and ludic deps
 # counts it as english_left
 function i18n_check_case() -> void {
@@ -1410,6 +1423,15 @@ function cmd_dev_test() -> int {
   reject_case("rejected/resource_missing", "cannot read the resource file data/no_such.lres", "a registry's resource file must exist")
   feat_case("lang/permap/permap", "", "yes yes 3 7 90 2 -4 fly 5 42 0 9 3 yes 8 / yes 1 -1 0 crate 12 1 0 0 21 same examples/lang/permap/maps/beta/density/a.png / 0 1 2 2 7 1 0 1 1 / -1 1 0 2 3 / no 0 examples/lang/permap/maps/bad/one/props.lres:2:18: PropRow has no field colour", "permap.ludic (@PerMap: rows read per map - constants and fn by name, nested lists, a cross-row @Ref, a reload shrinking in place, chunks in/out/in, a missing chunk empty, a bad file false + file:line:col; built under arena strict)")
   permap_check_case()
+  feat_case("lang/field_ref/field_ref", "", "yes 2 1", "field_ref.ludic (package.ludic's `ref \"Layers.kind\" \"Places\"`: a map's row names one of the program's own registry over the field's @Ref(Kinds))")
+  field_ref_check_case()
+  schema_case("lang/field_ref/field_ref", "{\"name\": \"Ref\", \"args\": [\"Places\"], \"declared\": \"Kinds\", \"by\": \"examples/lang/field_ref/package.ludic:5\"}", "--emit-schema: a ref line's registry is the field's @Ref, with what it declared and the line that set it")
+  schema_case("lang/field_ref/field_ref", "\"attributes\": [{\"name\": \"Ref\", \"args\": [\"Places\"], \"declared\": null, \"by\": \"examples/lang/field_ref/package.ludic:6\"}]", "--emit-schema: a ref line on a field with no @Ref (a record named by its own name) gives it one")
+  diag_json_case("rejected/field_ref_bad/field_ref_bad", 5, "Layer has no field colour", "a ref line: a field its record lacks is refused at the manifest's line")
+  diag_json_case("rejected/field_ref_bad/field_ref_bad", 5, "this program has no registry or record Nowhere", "a ref line: a table the entry program lacks is refused")
+  diag_json_case("rejected/field_ref_bad/field_ref_bad", 5, "this program has no registry Nowhere", "a ref line: a registry the entry program lacks is refused")
+  diag_json_case("rejected/field_ref_bad/field_ref_bad", 5, "a ref line names a field and the registry it refers to", "a ref line without its field is refused")
+  diag_json_case("rejected/field_ref_bad/field_ref_bad", 5, "the field's registry is set already, at line 6", "a ref line: one field set twice (by its registry's name and its record's) is refused")
   schema_case("lang/permap/permap", "\"prefix\": null, \"source\": \"instances/{cx}_{cz}.lres\", \"open\": false, \"exported\": false, \"module\": null, \"scope\": \"map\", \"chunk\": 64", "--emit-schema: a @PerMap registry has scope map, its chunk size and no prefix")
   schema_case("lang/permap/permap", "{\"name\": \"Ref\", \"args\": [\"Spots\"], \"scope\": \"map\"}", "--emit-schema: an @Ref into a map table says scope map")
   schema_case("lang/permap/permap", "\"units\": [\"m\", \"m/s\", \"m/s2\"", "--emit-schema: the canonical @Unit spellings")

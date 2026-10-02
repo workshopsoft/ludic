@@ -1,0 +1,2 @@
+# layers.lres - one layer, its kind one of the program's Places (package.ludic's ref line)
+grass { kind: PL_SHORE }
