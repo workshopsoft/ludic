@@ -55,6 +55,8 @@ bind ClockWorld { owns_world: fn ses_owns_world, rest_scale: fn rt_rest_scale, s
 | --- | --- |
 | `bind ClockWorld { ... }` | the port (a declaration, not a call) |
 | `clock_config(start_hours, night_from, night_to)` | when a trip starts, and which hours are night |
+| `clock_set_night(night_from, night_to)` | move the night with the day (the game's sunset and sunrise); `clock_is_night()` follows it |
+| `clock_set_sun(sunrise, sunset)`, `clock_sunrise()`, `clock_sunset()` | the hours the sun rises and sets at today, set by the game from its place and date (6 and 20 until it does), for whatever offsets a window of the day from them |
 | `clock_config_moon(days, lo, hi)` | the moon's month in days, and the part of it a new trip starts in |
 | `clock_calendar(month_days, season_of_month)` | a month's length, and each month's season (the list's length is the year) |
 | `clock_dates(month_starts)` | the real day of the year (1 = 1 January) each month begins on: a game day then lands on a date |

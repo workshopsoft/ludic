@@ -137,4 +137,21 @@ program ClockTest {
     expect_near(clock_doy_of(clock_st, 120), 118.0, 0.01)        # the last of April's month
     expect_near(clock_doy_of(clock_st, 121), 121.0, 0.01)        # and the year comes round
   }
+
+  test "the night moves with the sun once the game sets it, and the sun's hours are asked back" (clock_st: mut ClockState, clock_test_st: mut ClockTestState) {
+    fresh(clock_st, clock_test_st)
+    expect(clock_sunrise(clock_st) == 6.0 and clock_sunset(clock_st) == 20.0)
+    clock_set_hours(clock_st, 19.0)
+    expect(not clock_is_night(clock_st))
+    clock_set_night(clock_st, 18.25, 7.5)
+    clock_set_sun(clock_st, 7.5, 18.25)
+    expect(clock_is_night(clock_st))
+    expect(clock_sunrise(clock_st) == 7.5 and clock_sunset(clock_st) == 18.25)
+    clock_set_hours(clock_st, 7.0)
+    expect(clock_is_night(clock_st))
+    clock_set_hours(clock_st, 7.6)
+    expect(not clock_is_night(clock_st))
+    clock_reset(clock_st)
+    expect(clock_sunrise(clock_st) == 7.5)
+  }
 }

@@ -52,3 +52,30 @@ function solar_azimuth(lat_deg: float, lon_deg: float, utc_hours: float, doy: fl
   if a >= 2.0 * PI { a = a - 2.0 * PI }
   return a
 }
+
+# the hour angle, radians, at which the sun's upper limb meets the horizon (refraction and the disc's
+# radius: a zenith of 90.833 degrees) for a declination: 0 where the sun never rises, PI where it never sets
+function solar_horizon_angle(lat_deg: float, dec: float) -> float {
+  let lat = Math.deg_to_rad(lat_deg)
+  let c = (Math.cos(Math.deg_to_rad(90.833)) - Math.sin(lat) * Math.sin(dec)) / (Math.cos(lat) * Math.cos(dec))
+  return Math.acos(Math.clamp(c, -1.0, 1.0))
+}
+# the clock hour the sun crosses the horizon on a date: `side` -1 rising, +1 setting. The declination and the
+# equation of time move through the day, so the crossing is found where it happens (three passes settle it).
+# Where the sun does not cross (a polar day or night) the answer is solar noon -12 / +12 (day) or noon itself (night).
+function solar_crossing(lat_deg: float, lon_deg: float, utc_hours: float, doy: float, side: float) -> float {
+  var t = 12.0 + side * 6.0
+  for pass in 0 .. 3 {
+    let noon = 12.0 - (solar_eot_minutes(doy, t) + 4.0 * lon_deg - 60.0 * utc_hours) / 60.0
+    t = noon + side * solar_horizon_angle(lat_deg, solar_declination(doy, t)) * 12.0 / PI
+  }
+  return t
+}
+# the clock hour the sun rises on a date
+function solar_sunrise(lat_deg: float, lon_deg: float, utc_hours: float, doy: float) -> float {
+  return solar_crossing(lat_deg, lon_deg, utc_hours, doy, -1.0)
+}
+# the clock hour the sun sets on a date
+function solar_sunset(lat_deg: float, lon_deg: float, utc_hours: float, doy: float) -> float {
+  return solar_crossing(lat_deg, lon_deg, utc_hours, doy, 1.0)
+}

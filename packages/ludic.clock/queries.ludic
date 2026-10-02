@@ -10,6 +10,10 @@ export function clock_rate(clock_st: ClockState) -> float { return clock_st.ck_s
 # the game hours `dt` real seconds are worth at the current rate
 export function clock_hours_in(clock_st: ClockState, dt: float) -> float { return dt * clock_rate(clock_st) / 3600.0 }
 
+# the hours the sun rose and will set at today (6 and 20 until the game says: clock_set_sun)
+export function clock_sunrise(clock_st: ClockState) -> float { return clock_st.ck_sunrise }
+export function clock_sunset(clock_st: ClockState) -> float { return clock_st.ck_sunset }
+
 export function clock_is_night(clock_st: ClockState) -> bool { return clock_st.ck_hours > clock_st.ck_night_from or clock_st.ck_hours < clock_st.ck_night_to }
 
 # "07:05", from the table the state was made with

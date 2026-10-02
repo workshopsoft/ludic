@@ -51,12 +51,15 @@ export state ClockState {
   ck_start_hours: float = 8.0
   ck_night_from: float = 20.0
   ck_night_to: float = 6.0
+  ck_sunrise: float = 6.0         # the clock hours the day's sun rises and sets at, as the game last set them (clock_set_sun)
+  ck_sunset: float = 20.0
   ck_moon_days: float = 29.5
   ck_moon_lo: float = 0.0
   ck_moon_hi: float = 1.0
   ck_dice: Rng = null
   ck_data_done: bool = false      # the ClockSettings row was read (once, at the first reset or load)
   ck_timing_set: bool = false     # the hours, the moon, the calendar and the scale were set in code: the row's part is not read
+  ck_night_set: bool = false      # the night was set in code (clock_set_night): the row's night is not read
   ck_moon_set: bool = false
   ck_cal_set: bool = false
   ck_scale_set: bool = false
@@ -80,6 +83,20 @@ export function clock_config(clock_st: mut ClockState, start_hours: float, night
   clock_st.ck_timing_set = true
 }
 
+# the day's night, when the game moves it with the sun (a new day's sunset and sunrise): clock_is_night follows it
+export function clock_set_night(clock_st: mut ClockState, night_from: float, night_to: float) -> void {
+  clock_st.ck_night_from = night_from
+  clock_st.ck_night_to = night_to
+  clock_st.ck_night_set = true
+}
+
+# the hours the sun rises and sets at today, for whatever asks where the day is (a window of the day
+# reaches for them through clock_sunrise / clock_sunset); the game sets them from its place and date
+export function clock_set_sun(clock_st: mut ClockState, sunrise: float, sunset: float) -> void {
+  clock_st.ck_sunrise = sunrise
+  clock_st.ck_sunset = sunset
+}
+
 # a new trip's moon falls in [lo, hi) of its month; the month is `days` long
 export function clock_config_moon(clock_st: mut ClockState, days: float, lo: float, hi: float) -> void {
   clock_st.ck_moon_days = days
@@ -97,6 +114,8 @@ function ck_from_data(clock_st: mut ClockState) -> void {
   if not clock_st.ck_scale_set { clock_st.ck_scale = 86400.0 / (r.day_minutes * 60.0) }
   if not clock_st.ck_timing_set {
     clock_st.ck_start_hours = r.start_hours
+  }
+  if not clock_st.ck_timing_set and not clock_st.ck_night_set {
     clock_st.ck_night_from = r.night_from
     clock_st.ck_night_to = r.night_to
   }

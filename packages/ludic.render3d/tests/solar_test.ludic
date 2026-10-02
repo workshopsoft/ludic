@@ -57,4 +57,45 @@ program SolarTest {
     expect(az_deg(196.0, 8.0) < 180.0)
     expect(az_deg(196.0, 18.0) > 180.0)
   }
+
+  function rise(doy: float) -> float { return solar_sunrise(39.0986, -106.9406, -6.0, doy) }
+  function set(doy: float) -> float { return solar_sunset(39.0986, -106.9406, -6.0, doy) }
+
+  test "sunrise and sunset at Maroon: 16 July 05:54 and 20:33, 25 October 07:26 and 18:17, 21 December 08:23 and 17:48" {
+    # held to the same low-precision series solved by bisection on solar_elevation's own -0.833 degrees
+    expect_near(rise(197.0), 5.898, 0.03)
+    expect_near(set(197.0), 20.551, 0.03)
+    expect_near(rise(298.0), 7.439, 0.03)
+    expect_near(set(298.0), 18.278, 0.03)
+    expect_near(rise(355.0), 8.383, 0.03)
+    expect_near(set(355.0), 17.804, 0.03)
+  }
+
+  test "the sun is at the horizon at the hours it says: an elevation of -0.833 degrees there, up a minute later, down a minute earlier" {
+    for d in 0 .. 6 {
+      let doy = 15.0 + float(d) * 60.0
+      let r = rise(doy)
+      let s = set(doy)
+      expect_near(el_deg(doy, r), -0.833, 0.05)
+      expect_near(el_deg(doy, s), -0.833, 0.05)
+      expect(el_deg(doy, r + 0.0167) > -0.833 and el_deg(doy, r - 0.0167) < -0.833)
+      expect(el_deg(doy, s - 0.0167) > -0.833 and el_deg(doy, s + 0.0167) < -0.833)
+    }
+  }
+
+  test "the day is longest in June and shortest in December, and the sun rises before it sets" {
+    expect(set(172.0) - rise(172.0) > 14.5)
+    expect(set(355.0) - rise(355.0) < 9.6)
+    for d in 0 .. 12 {
+      let doy = 1.0 + float(d) * 30.0
+      expect(rise(doy) < solar_noon(-106.9406, -6.0, doy) and solar_noon(-106.9406, -6.0, doy) < set(doy))
+    }
+  }
+
+  test "inside the polar circle in midsummer the sun does not set, in midwinter it does not rise" {
+    let up = solar_sunset(75.0, 0.0, 0.0, 172.0) - solar_sunrise(75.0, 0.0, 0.0, 172.0)
+    expect(up > 23.9)
+    let down = solar_sunset(75.0, 0.0, 0.0, 355.0) - solar_sunrise(75.0, 0.0, 0.0, 355.0)
+    expect(down < 0.1 and down > -0.1)
+  }
 }
