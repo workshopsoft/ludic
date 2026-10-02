@@ -1,0 +1,93 @@
+# ground_edit.ludic — a map's edits and heroes (ground_rows.ludic) as the solid growth asks them: the edited ids
+# ascending, a binary search a candidate, and the things that stand somewhere other than they grew - moved, swapped to
+# another kind, placed by hand - as arrivals, each listed with the layer growing its kind in the chunk it lands in.
+
+const GS_HERO_BASE: int = 2113929216    # layer 63's ids, which ground_solid_id never gives: a hero's is this + its hash
+const GS_HERO_MASK: int = 33554431      # 2^25 - 1: the hash's bits a hero id keeps
+
+export property GroundExtras {
+  e_ids: []int = new []int              # the edited ids, ascending
+  e_turn: []float = new []float         # each one's turn (radians) and resize where it stands
+  e_resize: []float = new []float
+  e_gone: []int = new []int             # 1: not where it grew (removed, or an arrival)
+  a_kind: []int = new []int             # the arrivals: the kind each is listed as, its id and cell (-1 a hero's)
+  a_id: []int = new []int
+  a_cell: []int = new []int
+  a_x: []float = new []float
+  a_z: []float = new []float
+  a_scale: []float = new []float
+  a_yaw: []float = new []float
+  a_seed: []float = new []float
+  a_wind: []float = new []float
+  cand: GroundCand = new GroundCand     # a load's candidate
+  list: GroundSolids = ground_solids_new(1024)   # a solid chunk's things as ground_fill draws them
+}
+
+# a hero's id: GS_HERO_BASE + the low 25 bits of its key's FNV-1a (32-bit, over its characters' codes)
+export function ground_hero_id(key: string) -> int {
+  var h = -2128831035                   # the offset basis 2166136261 as a signed 32-bit int
+  for k in 0 .. Text.length(key) { h = (h ^ Text.char_at(key, k)) * 16777619 }
+  return GS_HERO_BASE + (h & GS_HERO_MASK)
+}
+
+# no edits and no heroes (a map being opened, or one without rows)
+export function ground_edits_reset(render3d_st: mut Render3dState) -> void {
+  let x = render3d_st.gx
+  List.clear(x.e_ids);  List.clear(x.e_turn);  List.clear(x.e_resize);  List.clear(x.e_gone)
+  List.clear(x.a_kind);  List.clear(x.a_id);  List.clear(x.a_cell);  List.clear(x.a_x);  List.clear(x.a_z)
+  List.clear(x.a_scale);  List.clear(x.a_yaw);  List.clear(x.a_seed);  List.clear(x.a_wind)
+}
+
+# the slot of edited id `id`, or -1
+export function ge_find(x: GroundExtras, id: int) -> int {
+  var lo = 0
+  var hi = len(x.e_ids) - 1
+  while lo <= hi {
+    let mid = (lo + hi) / 2
+    let v = x.e_ids[mid]
+    if v == id { return mid }
+    if v < id { lo = mid + 1 } else { hi = mid - 1 }
+  }
+  return -1
+}
+
+# the edit on the thing just grown into `out` (its id set): false when it is not there (removed, or an arrival
+# elsewhere); else turned by the edit's turn (yaw + turn) and resized (scale x resize)
+export function ge_apply(x: GroundExtras, out: GroundCand) -> bool {
+  let i = ge_find(x, out.id)
+  if i < 0 { return true }
+  if x.e_gone[i] != 0 { return false }
+  out.yaw = out.yaw + x.e_turn[i]
+  out.scale = out.scale * x.e_resize[i]
+  return true
+}
+
+@alloc_ok("a map load: one edit kept for the map, in its place among the ids")
+function ge_insert(x: GroundExtras, id: int, turn: float, resize: float, gone: int) -> void {
+  push(x.e_ids, id);  push(x.e_turn, turn);  push(x.e_resize, resize);  push(x.e_gone, gone)
+  var j = len(x.e_ids) - 1
+  while j > 0 and x.e_ids[j - 1] > id {
+    x.e_ids[j] = x.e_ids[j - 1];  x.e_turn[j] = x.e_turn[j - 1];  x.e_resize[j] = x.e_resize[j - 1];  x.e_gone[j] = x.e_gone[j - 1]
+    j -= 1
+  }
+  x.e_ids[j] = id;  x.e_turn[j] = turn;  x.e_resize[j] = resize;  x.e_gone[j] = gone
+}
+
+@alloc_ok("a map load: one arrival kept for the map")
+function ga_push(x: GroundExtras, kind: int, id: int, cell: int, px: float, pz: float, scale: float, yaw: float, seed: float, wind: float) -> void {
+  push(x.a_kind, kind);  push(x.a_id, id);  push(x.a_cell, cell);  push(x.a_x, px);  push(x.a_z, pz)
+  push(x.a_scale, scale);  push(x.a_yaw, yaw);  push(x.a_seed, seed);  push(x.a_wind, wind)
+}
+
+# the arrivals of g's kind standing in chunk (cx, cz) of the grid from (ox, oz), `size` a side, after what grew there
+export function ga_join(x: GroundExtras, g: GroundFill, ox: float, oz: float, size: float, cx: int, cz: int, out: GroundSolids) -> void {
+  if g.kind < 0 { return }
+  let c = out.cand
+  for a in 0 .. len(x.a_id) {
+    if x.a_kind[a] != g.kind { continue }
+    if int(Math.floor((x.a_x[a] - ox) / size)) != cx or int(Math.floor((x.a_z[a] - oz) / size)) != cz { continue }
+    c.id = x.a_id[a];  c.cell = x.a_cell[a];  c.x = x.a_x[a];  c.z = x.a_z[a]
+    c.scale = x.a_scale[a];  c.yaw = x.a_yaw[a];  c.seed = x.a_seed[a];  c.wind = x.a_wind[a]
+    gs_put(out, c)
+  }
+}

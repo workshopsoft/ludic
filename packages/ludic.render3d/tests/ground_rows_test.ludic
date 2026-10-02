@@ -1,0 +1,108 @@
+# ground_rows_test.ludic - a map's rows over the painted ground: an area and a strip cleared, edits to grown solid things by
+# their id (removed, turned and resized, moved, moved a chunk over, swapped to another kind) changing only their own
+# thing, an edit or hero that cannot be honoured left out and counted, heroes listed and drawn, and the rows read from a map
+import "ludic.render3d/r3d.ludic"
+program GroundRowsTest {
+  numbers float
+  import "fakes/ground_golden.ludic"
+  import "fakes/ground_golden_json.ludic"
+  import "fakes/ground_golden_things.ludic"
+  import "fakes/ground_golden_rows.ludic"
+  import "fakes/ground_golden_edits.ludic"
+  def GroundKinds from "ground_kinds.lres"
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "an area is its floor inside and full past its feather; a strip is its floor along its line" (render3d_st: mut Render3dState) {
+    r3d_ground_clearings_reset(render3d_st)
+    expect(r3d_ground_clearing_area(render3d_st, gg_area(), 2.5, 0.1))
+    expect(ground_clear_at(render3d_st, 110.0, -45.0) == 0.1)
+    expect(ground_clear_at(render3d_st, 118.0, -45.0) == 1.0)        # 3.5 m past the edge at x 114.5
+    let mid = ground_clear_at(render3d_st, 115.75, -45.0)             # half the feather out: the smoothstep's middle
+    expect(mid > 0.5 and mid < 0.6)
+    r3d_ground_clearings_reset(render3d_st)
+    expect(r3d_ground_clearing_strip(render3d_st, gg_strip(), 1.0, 1.5, 0.0))
+    expect(ground_clear_at(render3d_st, 109.25, -51.0) == 0.0)
+    expect(ground_clear_at(render3d_st, 109.25, -48.0) < 1.0 and ground_clear_at(render3d_st, 109.25, -47.4) == 1.0)
+    expect(not r3d_ground_clearing_area(render3d_st, [gg_pt(0.0, 0.0), gg_pt(1.0, 0.0)], 1.0, 0.0))   # two points: no area
+  }
+
+  test "the map's clearings hand over, areas then strips, in place of what was held" (render3d_st: mut Render3dState, areas: mut GroundClearings, strips: mut GroundStrips) {
+    expect(r3d_ground_clearing(render3d_st, 0.0, 0.0, 1.0, 2.0, 0.0))
+    expect(ground_clearings_load(areas, "meadow") and ground_strips_load(strips, "meadow"))
+    expect_eq(ground_clearings_use(render3d_st, areas, strips), 3)
+    expect_eq(render3d_st.gd_clear_n, 3)
+    expect(ground_clear_at(render3d_st, 13.0, 12.0) == 0.0 and ground_clear_at(render3d_st, -12.0, -15.0) == 0.25)
+    expect(ground_clear_at(render3d_st, 30.0, 5.0) == 0.0 and ground_clear_at(render3d_st, 30.0, 9.0) == 1.0)
+  }
+
+  test "an edit changes its own thing and no other; a moved one lands in the chunk it moved to" (render3d_st: mut Render3dState) {
+    expect(gg_open(render3d_st, "edits"))
+    let fills = gg_edit_fills()
+    let l0 = ground_solids_new(256)
+    expect(ground_solid_list(render3d_st, fills[0], 0.0, 0.0, 32.0, GG_CX, GG_CZ, l0) > 8)
+    expect_eq(gg_edits_take(render3d_st, fills), 0)
+    let l = ground_solids_new(256)
+    ground_solid_list(render3d_st, fills[0], 0.0, 0.0, 32.0, GG_CX, GG_CZ, l)
+    expect_eq(l.n, l0.n - 4 + 2)                                       # four gone from their cells; the nudge and hero_a arrive
+    expect_eq(l.ids[0], l0.ids[1])
+    expect(Math.abs(l.yaws[0] - (l0.yaws[1] + 30.0 * PI / 180.0)) < 0.000001 and l.scales[0] == l0.scales[1] * 1.25 and l.xs[0] == l0.xs[1])
+    for k in 1 .. l0.n - 4 { expect(l.ids[k] == l0.ids[k + 4] and l.xs[k] == l0.xs[k + 4] and l.yaws[k] == l0.yaws[k + 4] and l.scales[k] == l0.scales[k + 4]) }
+    let a = l0.n - 4
+    expect(l.ids[a] == l0.ids[2] and l.xs[a] == l0.xs[2] + 1.5 and l.zs[a] == l0.zs[2] - 0.75)
+    expect(l.ids[a + 1] == ground_hero_id("hero_a") and l.cells[a + 1] == -1 and l.xs[a + 1] == 100.5)
+    let east = ground_solids_new(256)
+    ground_solid_list(render3d_st, fills[0], 0.0, 0.0, 32.0, GG_CX + 1, GG_CZ, east)
+    expect(gt_holds(east, l0.ids[3], l0.xs[3] + 32.0) and gt_holds(east, ground_hero_id("hero_b"), 130.0))
+    let b = ground_solids_new(256)
+    expect_eq(ground_solid_list(render3d_st, fills[1], 0.0, 0.0, 32.0, GG_CX, GG_CZ, b), 1)    # layer 1 grows nothing: only the swap
+    expect(b.ids[0] == l0.ids[4] and b.xs[0] == l0.xs[4] and b.cells[0] == l0.cells[4])
+  }
+
+  test "an edit or a hero that cannot be honoured is left out and counted; the rows read from a map" (render3d_st: mut Render3dState, layers: mut GroundLayers, edits: mut GroundEdits, heroes: mut GroundHeroes) {
+    expect(gg_open(render3d_st, "stale"))
+    let fills = gg_edit_fills()
+    let l0 = ground_solids_new(256)
+    ground_solid_list(render3d_st, fills[0], 0.0, 0.0, 32.0, GG_CX, GG_CZ, l0)
+    expect(ground_edit_take(render3d_st, gg_edit("a", l0.ids[0], true, 0.0, 0.0, 0.0, 1.0, -1), fills, 2, 0.0, 0.0, 32.0))
+    expect(not ground_edit_take(render3d_st, gg_edit("again", l0.ids[0], false, 0.0, 0.0, 9.0, 1.0, -1), fills, 2, 0.0, 0.0, 32.0))
+    expect(not ground_edit_take(render3d_st, gg_edit("swap", l0.ids[1], false, 0.0, 0.0, 0.0, 1.0, 7), fills, 2, 0.0, 0.0, 32.0))
+    expect(not ground_edit_take(render3d_st, gg_edit("far", ground_solid_id(0, -100, 5, 1, 1, 8), true, 0.0, 0.0, 0.0, 1.0, -1), fills, 2, 0.0, 0.0, 32.0))
+    expect(not ground_hero_take(render3d_st, gg_hero("lost", 9, 100.0, -50.0, 0.0, 1.0), fills, 2))
+    expect(ground_hero_take(render3d_st, gg_hero("one", 1, 100.0, -50.0, 0.0, 1.0), fills, 2))
+    expect(not ground_hero_take(render3d_st, gg_hero("one", 1, 101.0, -50.0, 0.0, 1.0), fills, 2))
+    expect(ground_layers_load(layers, "meadow") and ground_edits_load(edits, "meadow") and ground_heroes_load(heroes, "meadow"))
+    let mf = ground_layers_fills(layers)
+    expect_eq(ground_edits_use(render3d_st, edits, heroes, mf, len(mf), 0.0, 0.0, 32.0), 1)   # the edit of an id never grown
+    let rocks = ground_solids_new(256)
+    ground_solid_list(render3d_st, mf[1], 0.0, 0.0, 32.0, GG_CX, GG_CZ, rocks)
+    expect(gt_holds(rocks, ground_hero_id("old_rock"), 101.0))
+    expect_eq(len(render3d_st.gx.e_ids), 0)
+  }
+
+  test "a hero's id is its key's, outside every grown id; the draw grows the list, a hero at every band" (render3d_st: mut Render3dState) {
+    expect_eq(ground_hero_id("a"), 2113929216 + 796972)                # FNV-1a 32 of "a" is 0xE40C292C
+    expect(ground_hero_id("hero_a") == ground_hero_id("hero_a") and ground_hero_id("hero_a") != ground_hero_id("hero_b"))
+    expect_eq(ground_solid_id(63, 0, 0, 0, 0, 8), -1)
+    expect(ground_solid_id(62, 127, 127, 7, 7, 8) < 2113929216)
+    expect(gg_open(render3d_st, "draw"))
+    let fills = gg_edit_fills()
+    expect_eq(gg_edits_take(render3d_st, fills), 0)
+    let l = ground_solids_new(256)
+    ground_solid_list(render3d_st, fills[0], 0.0, 0.0, 32.0, GG_CX, GG_CZ, l)
+    for band in 0 .. 4 {
+      let s = gg_stream(render3d_st)
+      ground_fill(render3d_st, s, GG_CX, GG_CZ, band, fills[0])
+      if band == 0 { expect_eq(s.cur.count, l.n) }
+      var hero = false
+      for k in 0 .. s.cur.count { hero = hero or render3d_st.stream_scratch[k * INST_FLOATS] == 100.5 }
+      expect(hero)
+    }
+  }
+
+  # whether list l holds `id` at x
+  function gt_holds(l: GroundSolids, id: int, x: float) -> bool {
+    for k in 0 .. l.n { if l.ids[k] == id and l.xs[k] == x { return true } }
+    return false
+  }
+}

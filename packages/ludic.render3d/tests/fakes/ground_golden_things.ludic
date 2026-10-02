@@ -1,5 +1,5 @@
-# fakes/ground_golden_things.ludic - the golden's second half: the clearing, the layers' numbers and what each
-# grows in the chunk (a cover layer at GG_BAND, a solid layer at band 0 with what band 2 still draws)
+# fakes/ground_golden_things.ludic - the golden's second half: the clearing, the layers' numbers and what each grows
+# in the chunk (a cover layer at GG_BAND, a solid layer at band 0 with what band 2 still draws), then the rows' parts
 
 function gg_fill(g: GroundFill) -> string {
   var s = `{{"layer": {g.layer}, "steps": [{gg_b(g.step0)}, {gg_b(g.step1)}, {gg_b(g.step2)}, {gg_b(g.step3)}], "jitter": {gg_b(g.jitter)}, `
@@ -10,11 +10,14 @@ function gg_fill(g: GroundFill) -> string {
 
 function gg_clearings(render3d_st: Render3dState) -> string {
   var s = "  \"clearings_rule\": \"floor + (1 - floor) * smoothstep((d - r_in) / (r_out - r_in)), 1 past r_out\",\n  \"clearings\": ["
+  var first = true
   for c in 0 .. render3d_st.gd_clear_n {
-    let o = c * 5
+    let o = c * GD_CLEAR_W
     let cl = render3d_st.gd_clear
-    if c > 0 { s = s + ", " }
-    s = s + `[{gg_b(cl[o])}, {gg_b(cl[o + 1])}, {gg_b(cl[o + 2])}, {gg_b(cl[o + 3])}, {gg_b(cl[o + 4])}]`
+    if cl[o] != 0.0 { continue }      # the discs: the areas and strips are clearing_shapes'
+    if not first { s = s + ", " }
+    first = false
+    s = s + `[{gg_b(cl[o + 1])}, {gg_b(cl[o + 2])}, {gg_b(cl[o + 3])}, {gg_b(cl[o + 4])}, {gg_b(cl[o + 5])}]`
   }
   return s + "],\n"
 }
@@ -53,7 +56,7 @@ function gg_solid_json(render3d_st: mut Render3dState) -> string {
     if k > 0 { s = s + ",\n" }
     s = s + `    [{c.id}, {c.cell}, {gg_thing(c)}, {far}]`
   }
-  return s + "\n  ]}\n"
+  return s + "\n  ]},\n"
 }
 
 # the whole golden, as ground_fill_golden.json holds it
@@ -61,5 +64,6 @@ function gg_json(render3d_st: mut Render3dState) -> string {
   var s = "{\n  \"about\": \"ludic.render3d ground_fill conformance (tests/ground_fill_test.ludic; regenerate with tests/gen/ground_fill_golden.ludic)\",\n"
   s = s + "  \"numbers\": \"every float is its IEEE-754 single-precision bits as a signed 32-bit int\",\n"
   s = s + gg_lerps() + gg_yaw() + gg_hashes() + gg_density() + gg_clearings(render3d_st)
-  return s + gg_cover_json(render3d_st) + gg_solid_json(render3d_st) + "}\n"
+  s = s + gg_cover_json(render3d_st) + gg_solid_json(render3d_st)
+  return s + gg_shapes_json(render3d_st) + gg_edits_json(render3d_st) + "}\n"
 }

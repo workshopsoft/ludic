@@ -53,7 +53,7 @@ function gft_golden_fault(text: string) -> string {
   if not gft_json_whole(text) { return "not one JSON value with nothing after it" }
   let v = Json.parse(text)
   if v == null or Value.kind(v) != 6 { return "not a JSON object" }
-  let keys = ["about", "numbers", "lerp_order", "lerp", "yaw", "hash", "density", "clearings_rule", "clearings", "cover", "solid"]
+  let keys = ["about", "numbers", "lerp_order", "lerp", "yaw", "hash", "density", "clearings_rule", "clearings", "cover", "solid", "clearing_shapes", "edits"]
   var fault = ""
   if Value.count(v) != len(keys) { fault = `{Value.count(v)} sections, not {len(keys)}` }
   for k in 0 .. min(Value.count(v), len(keys)) {

@@ -1,11 +1,12 @@
 # ground_solid_list.ludic — a solid layer's things in one chunk, into a list the caller made once: what physics,
-# the nav bake and a save ask, the same candidates the draw grows at band 0 (ground_solid.ludic).
+# the nav bake and a save ask, the same things the draw grows at band 0 (ground_solid.ludic), edits applied.
 
 export property GroundSolids {
   cap: int = 0,
   n: int = 0,          # how many were written, never over cap
   found: int = 0,      # how many stand in the chunk: over cap, the list was too short for it
   ids: words = null,
+  cells: words = null,  # each one's cell (gf_cell, its draws' fifth input); -1 a hero's
   xs: floats = null,
   zs: floats = null,
   scales: floats = null,
@@ -20,6 +21,7 @@ export function ground_solids_new(cap: int) -> GroundSolids {
   let l = new GroundSolids
   l.cap = max(cap, 1)
   l.ids = words(l.cap)
+  l.cells = words(l.cap)
   l.xs = floats(l.cap)
   l.zs = floats(l.cap)
   l.scales = floats(l.cap)
@@ -35,6 +37,7 @@ function gs_put(l: GroundSolids, c: GroundCand) -> void {
   if l.n >= l.cap { return }
   let k = l.n
   l.ids[k] = c.id
+  l.cells[k] = c.cell
   l.xs[k] = c.x
   l.zs[k] = c.z
   l.scales[k] = c.scale
@@ -45,7 +48,8 @@ function gs_put(l: GroundSolids, c: GroundCand) -> void {
 }
 
 # chunk (cx, cz) of solid layer g - the stream's corner (ox, oz) and chunk side `size` - into `out`, emptied
-# first, in cell order (j, then i); answers how many stand there
+# first: what grew in cell order (j, then i), then the arrivals of g's kind landing in the chunk (moved, swapped
+# and hero things, in the order their rows were taken); answers how many stand there
 export function ground_solid_list(render3d_st: mut Render3dState, g: GroundFill, ox: float, oz: float, size: float, cx: int, cz: int, out: GroundSolids) -> int {
   out.n = 0
   out.found = 0
@@ -56,5 +60,6 @@ export function ground_solid_list(render3d_st: mut Render3dState, g: GroundFill,
       if ground_solid_candidate(render3d_st, g, ox, oz, size, cx, cz, i, j, out.cand) { gs_put(out, out.cand) }
     }
   }
+  ga_join(render3d_st.gx, g, ox, oz, size, cx, cz, out)
   return out.found
 }

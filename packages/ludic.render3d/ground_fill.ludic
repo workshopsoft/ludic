@@ -18,7 +18,8 @@ export property GroundFill {
   trample: bool = true,
   scale_var: float = 0.0,    # each instance's own size: x (1 +- var), from its hash (a flower is not its neighbour)
   band_grow: float = 0.0,    # a far band's instances larger by this a band, to keep the cover as the step widens
-  solid: bool = false        # things to touch: one step (step0) at every band, a stable id each, distance only thins
+  solid: bool = false,       # things to touch: one step (step0) at every band, a stable id each, distance only thins
+  kind: int = -1             # what it grows (its row's kind): the map's moved, swapped and hero things of it join it
 }
 
 # how much of a candidate at (x, z) the game lets stand (the camp, the town): 0..1, asked only when the row says

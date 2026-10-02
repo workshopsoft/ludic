@@ -23,12 +23,34 @@ a pure function of those two - the same on every machine and in the editor's pre
   `((layer * 256 + cz + 128) * 256 + cx + 128) * 512 + i * cells + j`, a positive 31-bit int, stable
   while the painting under it is. It holds chunks -128 .. 127 about the stream's corner and at most 22
   cells a chunk side (a step of at least 32 / 22 m on 32 m chunks); a cell past that has no id and is
-  not grown. `ground_solid_list` fills a caller's `GroundSolids` (made once, `ground_solids_new`) with a
+  not grown. Layer 63 grows no ids: its range (from `GS_HERO_BASE`, 2113929216) is the heroes'. `ground_solid_list` fills a caller's `GroundSolids` (made once, `ground_solids_new`) with a
   chunk's things for physics, the nav bake or a save; `ground_solid_at` answers one by id.
-- **The trample as data** (`ground_clear.ludic`): `r3d_ground_clearing(x, z, r_in, r_out, floor)` hands
-  over a clearing - `floor` inside `r_in`, back to full at `r_out` on a smoothstep, the shape of the
-  camp's ring and the town's yard. A layer with `trample` multiplies its chance by the game's callback
-  (`r3d_on_ground_trample`, kept for now) and then by every clearing. A game should use one or the other.
+- **The trample as data** (`ground_clear.ludic`, `ground_clear_shape.ludic`): a clearing is a disc
+  (`r3d_ground_clearing(x, z, r_in, r_out, floor)`: `floor` inside `r_in`, back to full at `r_out` on a
+  smoothstep), an area (`r3d_ground_clearing_area(pts, feather, floor)`: `floor` inside the polygon by the
+  even-odd rule) or a strip (`r3d_ground_clearing_strip(pts, half, feather, floor)`: `floor` within `half`
+  of the centre line). Past an area's or strip's edge the share is `floor + (1 - floor) * smoothstep((d -
+  half) / feather)`, 1 from `half + feather`, d the nearest segment's distance (`gc_seg_d2`; an area's edge
+  k runs from point k to point k - 1, a strip's segment k from k - 1 to k). Every clearing's share
+  multiplies, in the order handed over (64 at most, 4096 points); a layer with `trample` multiplies its
+  chance by the game's callback (`r3d_on_ground_trample`, kept for now) and then by that product, before
+  draw 2 - so outside every clearing the same candidates stand with the same numbers.
+- **A map's rows over its ground** (`ground_rows.ludic`, beside `ground_layers.lres`, all `@PerMap`):
+  `GroundClearings` (`ground_clearings.lres`: areas) and `GroundStrips` (`ground_strips.lres`: trails),
+  handed over with `ground_clearings_use(render3d_st, areas, strips)` (areas, then strips, in row order);
+  `GroundEdits` (`ground_edits.lres`) and `GroundHeroes` (`ground_heroes.lres`), taken with
+  `ground_edits_use(render3d_st, edits, heroes, fills, n, ox, oz, size)` over the map's solid layers and
+  grid after the clearings (`ground_edit.ludic`, `ground_edit_use.ludic`). An edit names a grown solid
+  thing by its id and says how it differs: `remove`, `dx` / `dz`, `turn` (degrees: yaw + turn * PI / 180),
+  `resize` (scale x resize), `kind` (grown as another layer's kind). It applies as the thing grows
+  (`ground_solid_candidate`), so the list, the draw and anything keyed by id agree. A moved or swapped
+  thing, and a hero (a thing placed by hand: kind, x, z, yaw in degrees, scale), is an arrival: listed by
+  the solid layer whose `GroundFill.kind` is its kind, in the chunk `floor((x - ox) / size)` it stands in,
+  after that chunk's grown things, in row order (edits, then heroes). A hero's id is `GS_HERO_BASE +
+  (FNV-1a 32 of its key & 2^25 - 1)`, its seed `gf_hash(id, 0, 0, 0, 0, 4)`, its wind
+  `Math.lerp(wind_lo, wind_hi, gf_hash(id, 0, 0, 0, 0, 5))`; it is drawn at every band, and an arrival
+  from a grown thing thins by its own draw 7. A row that cannot be honoured (its thing no longer grows, an
+  id edited twice, a kind no solid layer grows, a hero id taken) is printed once and left out.
 - **The layers as a map's data** (`ground_layers.ludic`): one row a layer in the map's own
   `assets/maps/<map>/ground_layers.lres` (a `@PerMap` registry, `GroundLayers`, loaded with
   `ground_layers_load(layers, map)`): the painted `density` image (`@Asset("png", map)`), its `texel`, what
@@ -44,7 +66,8 @@ a pure function of those two - the same on every machine and in the editor's pre
   renderer's water with the rows (8 at most) and answers how many it took; `water_init` for one reflecting
   plane is the older way.
 - **Conformance**: `tests/ground_fill_test.ludic` holds the package to `tests/ground_fill_golden.json`
-  (gf_hash, lerp, yaw, one cover chunk and one solid chunk over a hand-written density), which the
+  (gf_hash, lerp, yaw, one cover chunk and one solid chunk over a hand-written density, an area and a strip
+  cleared with the share at 289 probes, and the solid chunk under five edits and two heroes), which the
   studio's own test reads. After a deliberate change, rebuild it from the repository root:
   `bin/ludic run packages/ludic.render3d/tests/gen/ground_fill_golden.ludic --headless`, and commit it.
 

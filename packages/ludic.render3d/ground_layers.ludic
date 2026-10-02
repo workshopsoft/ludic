@@ -66,6 +66,7 @@ export function ground_layer_fill(out: GroundFill, g: GroundLayer, index: int) -
   out.scale_var = g.scale_var
   out.band_grow = g.band_grow
   out.solid = g.solid
+  out.kind = g.kind
 }
 
 # every row of a loaded map as a GroundFill, made once when the map opens (a frame asks the list, not this)

@@ -1,0 +1,2 @@
+# ground_heroes.lres - a boulder placed by hand
+old_rock { kind: GK_BOULDER, x: 101.0, z: -47.0, yaw: 30.0, scale: 1.8 }

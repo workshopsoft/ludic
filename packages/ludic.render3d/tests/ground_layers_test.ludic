@@ -8,6 +8,8 @@ program GroundLayersTest {
   import "fakes/ground_golden.ludic"
   import "fakes/ground_golden_json.ludic"
   import "fakes/ground_golden_things.ludic"
+  import "fakes/ground_golden_rows.ludic"
+  import "fakes/ground_golden_edits.ludic"
   import "fakes/ground_golden_check.ludic"
   def GroundKinds from "ground_kinds.lres"
   # never called: naming Input links the engine's runtime, which render3d's textures stand on

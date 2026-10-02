@@ -1,0 +1,88 @@
+# ground_clear_shape.ludic — a clearing's outline: an area (a closed polygon, `floor` inside it) or a strip (a centre
+# line, `floor` within `half` of it), each back to full across `feather` farther out on a smoothstep. The distance is
+# to the nearest segment; inside an area is the even-odd rule. Its points are held in render3d_st.gd_clear_pts.
+
+# an area over the closed polygon `pts` (3 or more points): false when there is no room for it or it is not one
+export function r3d_ground_clearing_area(render3d_st: mut Render3dState, pts: []GroundPt, feather: float, floor: float) -> bool {
+  if pts == null or len(pts) < 3 { return false }
+  return gc_points(render3d_st, 1, pts, 0.0, feather, floor)
+}
+
+# a strip `half` either side of the centre line `pts` (2 or more points)
+export function r3d_ground_clearing_strip(render3d_st: mut Render3dState, pts: []GroundPt, half: float, feather: float, floor: float) -> bool {
+  if pts == null or len(pts) < 2 or half < 0.0 { return false }
+  return gc_points(render3d_st, 2, pts, half, feather, floor)
+}
+
+# the points copied after those held and the clearing put with its box: the points' own, `half + feather` wider
+function gc_points(render3d_st: mut Render3dState, shape: int, pts: []GroundPt, half: float, feather: float, floor: float) -> bool {
+  let n = len(pts)
+  let f = Math.max(feather, 0.0)
+  if render3d_st.gd_clear_n >= GD_CLEAR_MAX or render3d_st.gd_clear_pn + n > GD_CLEAR_PTS { return false }
+  let at = render3d_st.gd_clear_pn
+  var x0 = pts[0].x
+  var z0 = pts[0].z
+  var x1 = x0
+  var z1 = z0
+  for i in 0 .. n {
+    render3d_st.gd_clear_pts[(at + i) * 2] = pts[i].x
+    render3d_st.gd_clear_pts[(at + i) * 2 + 1] = pts[i].z
+    x0 = Math.min(x0, pts[i].x)
+    z0 = Math.min(z0, pts[i].z)
+    x1 = Math.max(x1, pts[i].x)
+    z1 = Math.max(z1, pts[i].z)
+  }
+  render3d_st.gd_clear_pn += n
+  let pad = half + f
+  return gc_put(render3d_st, shape, float(at), float(n), half, f, floor, x0 - pad, z0 - pad, x1 + pad, z1 + pad)
+}
+
+# the squared distance from (x, z) to the segment from (ax, az) to (bx, bz)
+export function gc_seg_d2(ax: float, az: float, bx: float, bz: float, x: float, z: float) -> float {
+  let ex = bx - ax
+  let ez = bz - az
+  let l2 = ex * ex + ez * ez
+  var t = 0.0
+  if l2 > 0.0 { t = Math.clamp(((x - ax) * ex + (z - az) * ez) / l2, 0.0, 1.0) }
+  let qx = ax + ex * t - x
+  let qz = az + ez * t - z
+  return qx * qx + qz * qz
+}
+
+# a share by the distance d from the outline: floor within `half`, 1 from `half + feather`, a smoothstep between
+# (no feather: a hard edge)
+export function gf_clear_edge(d: float, half: float, feather: float, floor: float) -> float {
+  if d <= half { return floor }
+  if not (feather > 0.0) or d >= half + feather { return 1.0 }
+  var t = (d - half) / feather
+  t = t * t * (3.0 - 2.0 * t)
+  return floor + (1.0 - floor) * t
+}
+
+# the share at (x, z) of the area or strip whose numbers start at o: an area's edge k runs from point k to point
+# k - 1 (the last for k 0), a strip's segment k from point k - 1 to point k
+function gc_shape_keep(render3d_st: Render3dState, o: int, x: float, z: float) -> float {
+  let cl = render3d_st.gd_clear
+  let p = render3d_st.gd_clear_pts
+  let at = int(cl[o + 1])
+  let n = int(cl[o + 2])
+  let area = cl[o] == 1.0
+  var best = 1000000000000.0
+  var inside = false
+  var j = n - 1
+  for i in 0 .. n {
+    let ax = p[(at + i) * 2]
+    let az = p[(at + i) * 2 + 1]
+    let bx = p[(at + j) * 2]
+    let bz = p[(at + j) * 2 + 1]
+    if area {
+      if (az > z) != (bz > z) and x < (bx - ax) * (z - az) / (bz - az) + ax { inside = not inside }
+      best = Math.min(best, gc_seg_d2(ax, az, bx, bz, x, z))
+    } else if i > 0 {
+      best = Math.min(best, gc_seg_d2(bx, bz, ax, az, x, z))
+    }
+    j = i
+  }
+  if inside { return cl[o + 5] }
+  return gf_clear_edge(Math.sqrt(best), cl[o + 3], cl[o + 4], cl[o + 5])
+}

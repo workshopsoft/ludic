@@ -1,21 +1,38 @@
-# ground_clear.ludic — the trample as data: clearings the game hands over (a camp's ring, a town's yard), each a
-# disc trodden to `floor` inside r_in and back to full at r_out on a smoothstep. A layer with `trample` multiplies
-# its chance by every clearing's; the editor draws the same discs, where it cannot see a callback.
+# ground_clear.ludic — the trample as data: clearings the game hands over (a camp's ring, a town's yard, a cabin's
+# footprint, a trail), each thinning every layer with `trample` to `floor` inside it and back to full past its edge
+# on a smoothstep. A disc here; an area and a strip in ground_clear_shape.ludic, the map's rows in ground_rows.ludic.
 
-const GD_CLEAR_MAX: int = 32
+const GD_CLEAR_MAX: int = 64
+const GD_CLEAR_W: int = 10       # floats a clearing: its shape, four numbers, its floor and its box (x0, z0, x1, z1)
+const GD_CLEAR_PTS: int = 4096   # the areas' and strips' points, all told
 
 # no clearings (a map being opened, before the game hands its own)
-export function r3d_ground_clearings_reset(render3d_st: mut Render3dState) -> void { render3d_st.gd_clear_n = 0 }
+export function r3d_ground_clearings_reset(render3d_st: mut Render3dState) -> void {
+  render3d_st.gd_clear_n = 0
+  render3d_st.gd_clear_pn = 0
+}
 
 # a clearing at (x, z): false when GD_CLEAR_MAX are already held, or the disc is not r_in < r_out
 export function r3d_ground_clearing(render3d_st: mut Render3dState, x: float, z: float, r_in: float, r_out: float, floor: float) -> bool {
-  if render3d_st.gd_clear_n >= GD_CLEAR_MAX or not (r_in < r_out) { return false }
-  let o = render3d_st.gd_clear_n * 5
-  render3d_st.gd_clear[o] = x
-  render3d_st.gd_clear[o + 1] = z
-  render3d_st.gd_clear[o + 2] = r_in
-  render3d_st.gd_clear[o + 3] = r_out
-  render3d_st.gd_clear[o + 4] = Math.clamp(floor, 0.0, 1.0)
+  if not (r_in < r_out) { return false }
+  return gc_put(render3d_st, 0, x, z, r_in, r_out, floor, x - r_out, z - r_out, x + r_out, z + r_out)
+}
+
+# clearing `shape` (0 disc, 1 area, 2 strip) with its numbers (a, b, c, d) and its box, after those held
+function gc_put(render3d_st: mut Render3dState, shape: int, a: float, b: float, c: float, d: float, floor: float, x0: float, z0: float, x1: float, z1: float) -> bool {
+  if render3d_st.gd_clear_n >= GD_CLEAR_MAX { return false }
+  let o = render3d_st.gd_clear_n * GD_CLEAR_W
+  let cl = render3d_st.gd_clear
+  cl[o] = float(shape)
+  cl[o + 1] = a
+  cl[o + 2] = b
+  cl[o + 3] = c
+  cl[o + 4] = d
+  cl[o + 5] = Math.clamp(floor, 0.0, 1.0)
+  cl[o + 6] = x0
+  cl[o + 7] = z0
+  cl[o + 8] = x1
+  cl[o + 9] = z1
   render3d_st.gd_clear_n += 1
   return true
 }
@@ -32,13 +49,16 @@ export function gf_clear_one(cx: float, cz: float, r_in: float, r_out: float, fl
   return floor + (1.0 - floor) * t
 }
 
-# every clearing's share at (x, z), multiplied in the order they were handed over
+# every clearing's share at (x, z), multiplied in the order they were handed over; one whose box (x0..x1, z0..z1)
+# leaves (x, z) out is 1 and skipped
 export function ground_clear_at(render3d_st: Render3dState, x: float, z: float) -> float {
   var k = 1.0
+  let cl = render3d_st.gd_clear
   for c in 0 .. render3d_st.gd_clear_n {
-    let o = c * 5
-    let cl = render3d_st.gd_clear
-    k = k * gf_clear_one(cl[o], cl[o + 1], cl[o + 2], cl[o + 3], cl[o + 4], x, z)
+    let o = c * GD_CLEAR_W
+    if x < cl[o + 6] or z < cl[o + 7] or x > cl[o + 8] or z > cl[o + 9] { continue }
+    if cl[o] == 0.0 { k = k * gf_clear_one(cl[o + 1], cl[o + 2], cl[o + 3], cl[o + 4], cl[o + 5], x, z) }
+    else { k = k * gc_shape_keep(render3d_st, o, x, z) }
   }
   return k
 }

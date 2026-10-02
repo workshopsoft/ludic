@@ -7,6 +7,8 @@ program GroundFillTest {
   import "fakes/ground_golden.ludic"
   import "fakes/ground_golden_json.ludic"
   import "fakes/ground_golden_things.ludic"
+  import "fakes/ground_golden_rows.ludic"
+  import "fakes/ground_golden_edits.ludic"
   import "fakes/ground_golden_check.ludic"
   # never called: naming Input links the engine's runtime, which render3d's textures stand on
   function links_runtime() -> bool { return Input.key_pressed(0) }
@@ -85,13 +87,14 @@ program GroundFillTest {
   }
 
   test "a solid id holds its layer and chunk, and refuses what it cannot hold" {
-    let id = ground_solid_id(63, -128, 127, 21, 21, 22)
+    let id = ground_solid_id(62, -128, 127, 21, 21, 22)
     expect(id > 0)
-    expect_eq(ground_solid_layer(id), 63)
+    expect_eq(ground_solid_layer(id), 62)
     expect_eq(ground_solid_cx(id), -128)
     expect_eq(ground_solid_cz(id), 127)
     expect_eq(ground_solid_id(0, 128, 0, 0, 0, 8), -1)
     expect_eq(ground_solid_id(0, 0, 0, 0, 0, 23), -1)
     expect_eq(ground_solid_id(64, 0, 0, 0, 0, 8), -1)
+    expect_eq(ground_solid_id(63, 0, 0, 0, 0, 8), -1)     # the last layer's ids are the heroes'
   }
 }

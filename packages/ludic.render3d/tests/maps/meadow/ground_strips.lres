@@ -1,0 +1,2 @@
+# ground_strips.lres - the meadow's trail, kept clear along its centre line
+trail { points: [{ x: 0.0, z: 0.0 }, { x: 30.0, z: 5.0 }, { x: 60.0, z: 0.0 }], width: 2.0, feather: 1.0 }

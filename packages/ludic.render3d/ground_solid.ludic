@@ -1,13 +1,15 @@
 # ground_solid.ludic — a solid layer (rocks, trees): its candidates at step0 and band 0 whatever the camera, so
 # a thing stands in one place for physics, the nav bake, a save and the draw alike. Its id is (layer, chunk,
 # cell), stable while the painting under it is; a far band draws a subset of the same things, never others.
+# The map's edits (ground_edit.ludic) apply to a thing as it grows; its heroes and moved things join its list.
 
 const GS_SPAN: int = 256    # chunks a side an id holds: -128 .. 127 about the stream's corner
 const GS_CELLS: int = 512   # cells a chunk an id holds: a solid layer's step is at least the chunk's side / 22
 
 # the id of cell (i, j) of chunk (cx, cz) in `layer`, where a chunk is cells x cells; -1 past what an id holds
+# (the last layer's ids are the heroes', GS_HERO_BASE: a solid layer is one of the first GD_LAYERS - 1)
 export function ground_solid_id(layer: int, cx: int, cz: int, i: int, j: int, cells: int) -> int {
-  if layer < 0 or layer >= GD_LAYERS or cells * cells > GS_CELLS { return -1 }
+  if layer < 0 or layer >= GD_LAYERS - 1 or cells * cells > GS_CELLS { return -1 }
   if cx < -128 or cx > 127 or cz < -128 or cz > 127 { return -1 }
   return ((layer * GS_SPAN + (cz + 128)) * GS_SPAN + (cx + 128)) * GS_CELLS + i * cells + j
 }
@@ -26,7 +28,8 @@ export function gs_thin(g: GroundFill, band: int) -> float {
   return Math.min(r * r, 1.0)
 }
 
-# cell (i, j) of chunk (cx, cz) of solid layer g into `out`, its id with it: true when one stands there
+# cell (i, j) of chunk (cx, cz) of solid layer g into `out`, its id with it and its edit applied: true when one
+# stands there (an edit that removes it, or that moves or swaps it to stand elsewhere, says false)
 export function ground_solid_candidate(render3d_st: mut Render3dState, g: GroundFill, ox: float, oz: float, size: float, cx: int, cz: int, i: int, j: int, out: GroundCand) -> bool {
   if g.step0 <= 0.0 { return false }
   let id = ground_solid_id(g.layer, cx, cz, i, j, gs_cells(g, size))
@@ -35,23 +38,28 @@ export function ground_solid_candidate(render3d_st: mut Render3dState, g: Ground
   let z0 = oz + float(cz) * size
   if not ground_candidate(render3d_st, g, cx, cz, 0, i, j, x0, z0, size, out) { return false }
   out.id = id
+  if len(render3d_st.gx.e_ids) > 0 { return ge_apply(render3d_st.gx, out) }
   return true
 }
 
-# the draw: every candidate at band 0, a stable subset of them farther out (draw 7 under gs_thin)
+# the draw: the chunk's list (ground_solid_list: its grown things, then its arrivals) at band 0, a stable subset
+# farther out - a grown thing's draw 7 (its own layer, chunk and cell) under gs_thin; a hero at every band
 function ground_fill_solid(render3d_st: mut Render3dState, s: Stream, cx: int, cz: int, band: int, g: GroundFill) -> void {
   if g.step0 <= 0.0 or render3d_st.gd_file == null { return }
-  let cells = gs_cells(g, s.size)
+  let l = render3d_st.gx.list
+  ground_solid_list(render3d_st, g, s.ox, s.oz, s.size, cx, cz, l)
   let thin = gs_thin(g, band)
-  let c = render3d_st.gd_cand
-  for j in 0 .. cells {
-    for i in 0 .. cells {
-      if not ground_solid_candidate(render3d_st, g, s.ox, s.oz, s.size, cx, cz, i, j, c) { continue }
-      if band > 0 and not (gf_hash(g.layer, cx, cz, 0, c.cell, 7) < thin) { continue }
-      let h = terrain_height(render3d_st, c.x, c.z) - g.sink
-      stream_emit(render3d_st, s, c.x, h, c.z, c.scale, c.yaw, c.seed, c.wind)
-    }
+  for k in 0 .. l.n {
+    if band > 0 and not gs_far_keeps(l.ids[k], l.cells[k], thin) { continue }
+    let h = terrain_height(render3d_st, l.xs[k], l.zs[k]) - g.sink
+    stream_emit(render3d_st, s, l.xs[k], h, l.zs[k], l.scales[k], l.yaws[k], l.seeds[k], l.winds[k])
   }
+}
+
+# whether a listed thing (its id and cell, -1 a hero's) is drawn at a band thinned to `thin`
+export function gs_far_keeps(id: int, cell: int, thin: float) -> bool {
+  if cell < 0 { return true }
+  return gf_hash(ground_solid_layer(id), ground_solid_cx(id), ground_solid_cz(id), 0, cell, 7) < thin
 }
 
 # the candidate `id` names in solid layer g (the stream's corner and chunk side): false when the painting

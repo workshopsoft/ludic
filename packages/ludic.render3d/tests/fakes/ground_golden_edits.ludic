@@ -1,0 +1,67 @@
+# fakes/ground_golden_edits.ludic - the golden's edits: the solid chunk's first five things removed, turned and
+# resized, moved within the chunk, moved 32 m into the chunk east, swapped to kind 2; a hero in each of the two chunks.
+
+@alloc_ok("a test: the rows, once")
+function gg_edit_rows(l: GroundSolids) -> []GroundEdit {
+  return [gg_edit("rm", l.ids[0], true, 0.0, 0.0, 0.0, 1.0, -1), gg_edit("turn", l.ids[1], false, 0.0, 0.0, 30.0, 1.25, -1),
+          gg_edit("nudge", l.ids[2], false, 1.5, -0.75, 0.0, 1.0, -1), gg_edit("east", l.ids[3], false, 32.0, 0.0, -45.0, 0.8, -1),
+          gg_edit("swap", l.ids[4], false, 0.0, 0.0, 0.0, 1.0, 2)]
+}
+@alloc_ok("a test: the rows, once")
+function gg_hero_rows() -> []GroundHero { return [gg_hero("hero_a", 1, 100.5, -50.25, 45.0, 1.3), gg_hero("hero_b", 1, 130.0, -40.0, -90.0, 0.9)] }
+
+# the rows taken over the two layers (the first listed before any edit, for the ids); how many were left out
+@alloc_ok("a test: the list the ids are read from")
+function gg_edits_take(render3d_st: mut Render3dState, fills: []GroundFill) -> int {
+  ground_edits_reset(render3d_st)
+  let l = ground_solids_new(256)
+  ground_solid_list(render3d_st, fills[0], 0.0, 0.0, 32.0, GG_CX, GG_CZ, l)
+  let es = gg_edit_rows(l)
+  let hs = gg_hero_rows()
+  var bad = 0
+  for i in 0 .. len(es) { if not ground_edit_take(render3d_st, es[i], fills, 2, 0.0, 0.0, 32.0) { bad += 1 } }
+  for i in 0 .. len(hs) { if not ground_hero_take(render3d_st, hs[i], fills, 2) { bad += 1 } }
+  return bad
+}
+
+# fill g's list of chunk (cx, cz): [id, cell, x, z, scale, yaw, seed, wind, drawn at band 2]
+function gg_list_json(render3d_st: mut Render3dState, g: GroundFill, cx: int, cz: int) -> string {
+  let l = ground_solids_new(256)
+  ground_solid_list(render3d_st, g, 0.0, 0.0, 32.0, cx, cz, l)
+  var s = "["
+  for k in 0 .. l.n {
+    if k > 0 { s = s + ",\n" }
+    s = s + `      [{l.ids[k]}, {l.cells[k]}, {gg_b(l.xs[k])}, {gg_b(l.zs[k])}, {gg_b(l.scales[k])}, {gg_b(l.yaws[k])}, {gg_b(l.seeds[k])}, {gg_b(l.winds[k])}, {gs_far_keeps(l.ids[k], l.cells[k], gs_thin(g, 2))}]`
+  }
+  return s + "]"
+}
+
+@alloc_ok("a test: the golden's text")
+function gg_edits_json(render3d_st: mut Render3dState) -> string {
+  let fills = gg_edit_fills()
+  let probe = ground_solids_new(256)
+  ground_solid_list(render3d_st, fills[0], 0.0, 0.0, 32.0, GG_CX, GG_CZ, probe)
+  let es = gg_edit_rows(probe)
+  let hs = gg_hero_rows()
+  gg_edits_take(render3d_st, fills)
+  var s = "  \"edits\": {\"rule\": \"an edit applies to its id as it grows (yaw + turn * PI / 180, scale * resize); a removed, moved or swapped one is not "
+  s = s + "listed where it grew; arrivals (moved, swapped, heroes) follow the grown, in row order, in the chunk floor((x - ox) / size) they land in; "
+  s = s + "a hero's id is 2113929216 + (FNV-1a 32 of its key & 33554431), its seed gf_hash(id,0,0,0,0,4), its wind lerp(wind_lo, wind_hi, gf_hash(id,0,0,0,0,5))\",\n"
+  s = s + `    "fill_a": {gg_fill(fills[0])}, "kind_a": 1, "fill_b": {gg_fill(fills[1])}, "kind_b": 2, "ox": 0, "oz": 0, "size": {gg_b(32.0)}, "cx": {GG_CX}, "cz": {GG_CZ},\n`
+  s = s + "    \"rows\": ["
+  for i in 0 .. len(es) {
+    let e = es[i]
+    if i > 0 { s = s + ", " }
+    s = s + `["{e.key}", {e.id}, {e.remove}, {gg_b(e.dx)}, {gg_b(e.dz)}, {gg_b(e.turn)}, {gg_b(e.resize)}, {e.kind}]`
+  }
+  s = s + "],\n    \"heroes\": ["
+  for i in 0 .. len(hs) {
+    let h = hs[i]
+    if i > 0 { s = s + ", " }
+    s = s + `["{h.key}", {ground_hero_id(h.key)}, {h.kind}, {gg_b(h.x)}, {gg_b(h.z)}, {gg_b(h.yaw)}, {gg_b(h.scale)}]`
+  }
+  s = s + "],\n    \"chunk\": " + gg_list_json(render3d_st, fills[0], GG_CX, GG_CZ) + ",\n"
+  s = s + "    \"east\": " + gg_list_json(render3d_st, fills[0], GG_CX + 1, GG_CZ) + ",\n"
+  s = s + "    \"swapped\": " + gg_list_json(render3d_st, fills[1], GG_CX, GG_CZ) + "\n  }\n"
+  return s
+}

@@ -1,0 +1,61 @@
+# ground_edit_use.ludic — a map's edits and heroes taken at its load, over its solid layers: each edit's thing grown
+# as the generator grows it (so hand the clearings over first), an arrival kept where it lands. What cannot be honoured
+# is said once, here, and left out: an edit whose thing no longer grows, an id edited twice, a kind no layer grows.
+
+# the map's edits and heroes over fills[0 .. n) (a solid one each layer) and the solid grid from (ox, oz), `size` a
+# side, in place of what was held; how many rows were left out
+@alloc_ok("a map load: the edits and arrivals, held for the map")
+export function ground_edits_use(render3d_st: mut Render3dState, edits: GroundEdits, heroes: GroundHeroes, fills: []GroundFill, n: int, ox: float, oz: float, size: float) -> int {
+  ground_edits_reset(render3d_st)
+  var bad = 0
+  for i in 0 .. len(edits.rows) { if not ground_edit_take(render3d_st, edits.rows[i], fills, n, ox, oz, size) { bad += 1 } }
+  for i in 0 .. len(heroes.rows) { if not ground_hero_take(render3d_st, heroes.rows[i], fills, n) { bad += 1 } }
+  return bad
+}
+
+# the solid fill of layer `layer`, or of kind `kind`, among fills[0 .. n), or null
+function ge_fill_layer(fills: []GroundFill, n: int, layer: int) -> GroundFill {
+  for i in 0 .. min(n, len(fills)) { if fills[i].solid and fills[i].layer == layer { return fills[i] } }
+  return null
+}
+function ge_fill_kind(fills: []GroundFill, n: int, kind: int) -> GroundFill {
+  for i in 0 .. min(n, len(fills)) { if fills[i].solid and fills[i].kind == kind { return fills[i] } }
+  return null
+}
+
+# one edit taken after those held: false (and said) when it cannot be honoured
+export function ground_edit_take(render3d_st: mut Render3dState, e: GroundEdit, fills: []GroundFill, n: int, ox: float, oz: float, size: float) -> bool {
+  let x = render3d_st.gx
+  if ge_find(x, e.id) >= 0 { return ge_say(e.key, e.id, "is edited by an earlier row too") }
+  let g = ge_fill_layer(fills, n, ground_solid_layer(e.id))
+  let c = x.cand
+  if g == null or not ground_solid_at(render3d_st, g, ox, oz, size, e.id, c) { return ge_say(e.key, e.id, "no longer grows") }
+  var kind = g.kind
+  if e.kind >= 0 { kind = e.kind }
+  if kind != g.kind and ge_fill_kind(fills, n, kind) == null { return ge_say(e.key, e.id, "is swapped to a kind no layer grows") }
+  let turn = e.turn * PI / 180.0
+  let moves = e.dx != 0.0 or e.dz != 0.0 or kind != g.kind
+  var gone = 0
+  if e.remove or moves { gone = 1 }
+  ge_insert(x, e.id, turn, e.resize, gone)
+  if moves and not e.remove { ga_push(x, kind, e.id, c.cell, c.x + e.dx, c.z + e.dz, c.scale * e.resize, c.yaw + turn, c.seed, c.wind) }
+  return true
+}
+
+# a hero taken after those held: listed with the solid layer growing its kind, its seed and wind drawn from its id
+# (gf_hash(id, 0, 0, 0, 0, 4) and draw 5 into the layer's wind range); false (and said) when it cannot be
+export function ground_hero_take(render3d_st: mut Render3dState, h: GroundHero, fills: []GroundFill, n: int) -> bool {
+  let x = render3d_st.gx
+  let g = ge_fill_kind(fills, n, h.kind)
+  let id = ground_hero_id(h.key)
+  if g == null { return ge_say(h.key, id, "is a kind no layer grows") }
+  for a in 0 .. len(x.a_id) { if x.a_id[a] == id { return ge_say(h.key, id, "has the id of another hero (rename it)") } }
+  let wind = Math.lerp(g.wind_lo, g.wind_hi, gf_hash(id, 0, 0, 0, 0, 5))
+  ga_push(x, h.kind, id, -1, h.x, h.z, h.scale, h.yaw * PI / 180.0, gf_hash(id, 0, 0, 0, 0, 4), wind)
+  return true
+}
+
+function ge_say(key: string, id: int, what: string) -> bool {
+  print(`ground: {key} (id {id}) {what} - left out`)
+  return false
+}

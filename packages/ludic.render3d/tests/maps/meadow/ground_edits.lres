@@ -1,0 +1,2 @@
+# ground_edits.lres - the meadow's edits: one names an id the fixture never grows, and is said and left out
+nowhere { id: 12345, remove: true }

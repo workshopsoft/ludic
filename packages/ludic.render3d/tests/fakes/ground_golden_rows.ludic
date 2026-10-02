@@ -1,0 +1,66 @@
+# fakes/ground_golden_rows.ludic - the golden's rows: an area and a strip cleared beside the disc, with the share every
+# probe of the chunk gets; and the solid chunk under a map's edits and heroes - its list, the next chunk east's, and the
+# list of a second solid layer (kind 2, nothing painted) a thing was swapped into.
+
+function gg_pt(x: float, z: float) -> GroundPt {
+  let p = new GroundPt
+  p.x = x
+  p.z = z
+  return p
+}
+
+# a pentagon round (110, -45) and a strip across the chunk
+function gg_area() -> []GroundPt { return [gg_pt(114.5, -45.0), gg_pt(111.4, -40.7), gg_pt(106.4, -42.4), gg_pt(106.4, -47.6), gg_pt(111.4, -49.3)] }
+function gg_strip() -> []GroundPt { return [gg_pt(96.0, -60.5), gg_pt(109.25, -51.0), gg_pt(127.5, -35.75)] }
+
+function gg_pts(p: []GroundPt) -> string {
+  var s = "["
+  for i in 0 .. len(p) {
+    if i > 0 { s = s + ", " }
+    s = s + `[{gg_b(p[i].x)}, {gg_b(p[i].z)}]`
+  }
+  return s + "]"
+}
+
+# the area and the strip handed over after the disc, and every clearing's product at each probe [x, z, share]
+function gg_shapes_json(render3d_st: mut Render3dState) -> string {
+  r3d_ground_clearing_area(render3d_st, gg_area(), 2.5, 0.1)
+  r3d_ground_clearing_strip(render3d_st, gg_strip(), 1.0, 1.5, 0.0)
+  var s = "  \"clearing_shapes\": {\"rule\": \"after the discs, in order: an area is floor inside (even-odd), a strip floor within half of its line; "
+  s = s + "past that floor + (1 - floor) * smoothstep((d - half) / feather), 1 from half + feather; d the nearest segment's (gc_seg_d2)\",\n"
+  s = s + `    "area": {{"feather": {gg_b(2.5)}, "floor": {gg_b(0.1)}, "points": {gg_pts(gg_area())}}},\n`
+  s = s + `    "strip": {{"half": {gg_b(1.0)}, "feather": {gg_b(1.5)}, "floor": {gg_b(0.0)}, "points": {gg_pts(gg_strip())}}},\n`
+  s = s + "    \"probes\": [\n"
+  for j in 0 .. 17 {
+    for i in 0 .. 17 {
+      let x = 96.0 + float(i) * 2.0
+      let z = -64.0 + float(j) * 2.0
+      if i > 0 or j > 0 { s = s + ",\n" }
+      s = s + `      [{gg_b(x)}, {gg_b(z)}, {gg_b(ground_clear_at(render3d_st, x, z))}]`
+    }
+  }
+  return s + "\n    ]},\n"
+}
+
+# the golden's solid layer as kind 1, and a second solid layer (layer 1, nothing painted there) as kind 2
+@alloc_ok("a test: the edits' two layers")
+function gg_edit_fills() -> []GroundFill {
+  let a = gg_solid()
+  a.kind = 1
+  let b = gg_solid()
+  b.layer = 1
+  b.kind = 2
+  return [a, b]
+}
+
+function gg_edit(key: string, id: int, remove: bool, dx: float, dz: float, turn: float, resize: float, kind: int) -> GroundEdit {
+  let e = new GroundEdit
+  e.key = key;  e.id = id;  e.remove = remove;  e.dx = dx;  e.dz = dz;  e.turn = turn;  e.resize = resize;  e.kind = kind
+  return e
+}
+
+function gg_hero(key: string, kind: int, x: float, z: float, yaw: float, scale: float) -> GroundHero {
+  let h = new GroundHero
+  h.key = key;  h.kind = kind;  h.x = x;  h.z = z;  h.yaw = yaw;  h.scale = scale
+  return h
+}

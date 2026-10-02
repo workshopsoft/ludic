@@ -6,12 +6,14 @@ import "ludic.render3d/r3d.ludic"
 # only a texel past the map's edge clamps to the edge texel (gd_texel, gd_fill), and a missing channel reads 128.
 
 # Several clearings MULTIPLY (ground_clear_at), in the order handed over: each floor..1, 1 past r_out, floor
-# clamped to 0..1, at most GD_CLEAR_MAX (32); a layer with trample multiplies its chance by the product.
+# clamped to 0..1, at most GD_CLEAR_MAX (64) - discs, areas and strips in one list; a trampled layer multiplies its chance by the product.
 program GroundFillGolden {
   numbers float
   import "../fakes/ground_golden.ludic"
   import "../fakes/ground_golden_json.ludic"
   import "../fakes/ground_golden_things.ludic"
+  import "../fakes/ground_golden_rows.ludic"
+  import "../fakes/ground_golden_edits.ludic"
   # never called: naming Input links the engine's runtime, which render3d's textures stand on
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
