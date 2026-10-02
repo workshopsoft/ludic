@@ -114,6 +114,7 @@ function dk_repeat(dk: mut DevlinkKeyState, c: DevCall) -> int {
   dk.dk_reply = n
   return DV_LATER
 }
+@alloc_ok("only for a refused key verb: its reason")
 function dk_no_key(s: string) -> string {
   return "no key " + s + ": up, down, left, right, enter, escape, tab, space, backspace, shift, w a s d f r t q e z c x v or a code 8 to 255"
 }

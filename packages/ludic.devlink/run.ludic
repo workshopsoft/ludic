@@ -56,6 +56,7 @@ function rf_q(b: []byte, n: int, s: string) -> int {
 }
 
 # the run file's text into `b`: its length
+@alloc_ok("once, when the socket opens: the run file's numbers as text")
 export function devlink_run_json(b: []byte, pid: int, port: int, game: string, project: string, build: string) -> int {
   var n = rf_s(b, 0, "{\"v\":1,\"pid\":")
   n = rf_s(b, n, string(pid))
@@ -70,6 +71,7 @@ export function devlink_run_json(b: []byte, pid: int, port: int, game: string, p
   return rf_s(b, n, "}\n")
 }
 
+@alloc_ok("once, when the socket opens")
 export function devlink_run_path(pid: int) -> string {
   var dir = Os.temp_dir()
   if Os.has_env("LUDIC_DEVLINK_RUN_DIR") { dir = Os.env("LUDIC_DEVLINK_RUN_DIR") }
@@ -77,6 +79,7 @@ export function devlink_run_path(pid: int) -> string {
 }
 
 # once, when the socket is open: say where this game's link is. A failure to write is not the game's problem.
+@alloc_ok("once, when the socket opens: the run file's buffer")
 export function devlink_publish(h: int) -> void {
   let pid = Os.pid()
   var project = ""

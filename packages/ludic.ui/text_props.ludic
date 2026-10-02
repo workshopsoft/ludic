@@ -11,6 +11,7 @@ const MM_GLYPHS: int = -18         # lists a text's characters, one string each
 function el_text_transform(ui_st: mut UiState, n: UiNode, s: string) -> void {
   let w = tw(ui_st, s)
   if w == "none" { nx(n).tt_kind = TT_NONE } else if w == "uppercase" { nx(n).tt_kind = TT_UPPER } else if w == "lowercase" { nx(n).tt_kind = TT_LOWER } else if w == "capitalize" { nx(n).tt_kind = TT_CAP } else {
+    @alloc_ok("only when a template is wrong: a broken screen, never a working one")
     ui_err(ui_st, `text-transform: {s} - none, uppercase, lowercase or capitalize`)
   }
 }
