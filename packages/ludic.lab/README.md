@@ -28,7 +28,7 @@ program Lab {
 }
 ```
 
-`example/plate.ludic` is this program. Scenes are an open registry, so a game - or a package
+`example/plate.ludic` is this program. `example/blend.ludic` shows ludic.render3d's blended actors on the plate (a bubble laid over the probe, lit smoke, additive glows) with the props in `plate/fx.gltf`. Scenes are an open registry, so a game - or a package
 showing its own models - adds them from its own module with `def LabScenes <name> { ... }`:
 
 | field | |
@@ -69,6 +69,8 @@ showing its own models - adds them from its own module with `def LabScenes <name
 `plate/` is built by `tools/lab/plate_build.py` in the toolchain's checkout and is deterministic:
 `plate.gltf` (the disc), `probe.gltf` (a box with a ball on it, for looking at the light), and
 `sky.hdr` (512 x 256, the sun at 40 degrees). Change the script and run it again; never edit them.
+`tools/lab/fx_build.py` writes the effect props beside them, as deterministically: `fx.gltf` (a `puff` and a `glow` card
+in the x-y plane facing +z, and a `bubble` sphere), `fx_puff.png` (a soft lumpy disc in alpha) and `fx_glow.png` (a gaussian).
 
 ## Not here yet
 

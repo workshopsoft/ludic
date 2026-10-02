@@ -584,9 +584,29 @@ function lab_plate_case() -> void {
   let pl = s_trim(capture_line(`grep 'peak memory footprint' {work}/time.out`))
   var k = 0
   while k < len(pl) and pl[k] >= '0' and pl[k] <= '9' { k += 1 }
-  let peak = pl[0 .. k]
+  let peak = pl[0..k]
   if len(peak) >= 10 { bad2(lbl, `peak memory footprint {peak} bytes`);  return }
   ok(`{lbl} (peak {peak} bytes)`)
+}
+
+# render3d's blended actors on the plate: a bubble and smoke laid over, additive glows, three shots, and
+# the pass drawing every one of them (the scene prints what the pass drew)
+function lab_blend_case() -> void {
+  let lbl = "render3d blended actors: the lab's blend scene draws 10 over and 6 additive, three PNGs"
+  if not is_darwin() { skip(lbl);  return }
+  let bin = `{tmp_dir()}/lab_blend`
+  if not shq(`bin/ludic build packages/ludic.lab/example/blend.ludic --headless -o {bin} > {tmp_dir()}/labb.out 2>&1`) { bad2(lbl, capture_line(`grep -i error {tmp_dir()}/labb.out | head -1`));  return }
+  shell("rm -rf build/lab/blend")
+  if not shq(`yes '' | head -300 | {bin} > {tmp_dir()}/labb.run 2>&1`) { bad2(lbl, capture_line(`tail -1 {tmp_dir()}/labb.run`));  return }
+  let said = capture_line(`grep '^blend:' {tmp_dir()}/labb.run`)
+  if not (said == "blend: 10 over, 6 additive") { bad2(lbl, `said [{said}]`);  return }
+  var n = 0
+  let names = ["front", "side", "above"]
+  for i in 0 .. 3 {
+    if shq(`file build/lab/blend/{names[i]}.png | grep -q 'PNG image data, 1920 x 1080'`) { n += 1 }
+  }
+  if n != 3 { bad2(lbl, `{string(n)} of 3 shots are PNGs`);  return }
+  ok(lbl)
 }
 
 # ludic deps: the module graph as the compiler resolved it, its numbers, a baseline check and --dot
@@ -1697,6 +1717,7 @@ function cmd_dev_test() -> int {
   deps_case()
   check_build_case()
   lab_plate_case()
+  lab_blend_case()
   pack_roundtrip_case()
   packignore_case()
   os_dirs_case()
