@@ -21,6 +21,7 @@ export port PhotoLens {
 
 export port PhotoLight {
   hour: fn() -> float = fn pht__noon
+  sun_elev: fn() -> float = fn pht__no_sun           # the sun's height over the horizon, degrees; PHOTO_NO_SUN: the game has none and the hour decides
   night: fn() -> bool = fn pht__no
   moon: fn() -> float = fn pht__zero                 # 0..1 lit
   dim: fn() -> int = fn pht__none                    # what the weather takes off (a storm 4)
@@ -46,6 +47,7 @@ function pht__clear(ax: float, ay: float, az: float, bx: float, by: float, bz: f
 function pht__range() -> float { return 100.0 }
 function pht__no() -> bool { return false }
 function pht__noon() -> float { return 12.0 }
+function pht__no_sun() -> float { return PHOTO_NO_SUN }
 function pht__none() -> int { return 0 }
 function pht__twelve(sp: int) -> int { return 12 }
 function pht__legend(sp: int) -> int { return 120 }

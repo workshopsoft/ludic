@@ -1,0 +1,100 @@
+# npc_sun_test.ludic - a game with a sun says when it is dark, when it is deep night, when the day's light ends and
+# which window of the day a step is in; the hour decides none of them
+import "ludic.npc"
+import "ludic.base"
+import "fake"
+program NpcSunTest {
+  numbers float
+  bind NpcWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    allowed: fn fk_allowed
+    clear: fn fk_clear
+    hour: fn fk_hour_now
+    day: fn fk_day_now
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_z: fn fk_z
+    want: fn fk_wanted
+    taken: fn fk_taken
+    born: fn fk_on_born
+    gone: fn fk_on_gone
+    after_dark: fn fk_dark_now
+    deep_night: fn fk_deep_now
+    sunset: fn fk_sunset_at
+    window: fn fk_window_open
+  }
+  bind NpcTalk { say: fn tk_say, greeting: fn tk_greeting }
+
+  def NpcActs sit { }
+  def NpcActs fish { turns: false }
+  def NpcKinds from "sun_kinds.lres"
+  def NpcNames from "names.lres"
+  def NpcLines from "lines.lres"
+
+  function tk_say(p: NpcPerson, line: int) -> string { return "" }
+  function tk_greeting(p: NpcPerson) -> string { return "" }
+  function tk_start(npc_st: mut NpcState, p: NpcPerson) -> void { npc_start_near(npc_st, p, 0.0, 0.0, 0.0, 10.0) }
+
+  function one(npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState, kind: int, sunset: float) -> NpcPerson {
+    fk_setup(npc_st, npc_tests_fake_st)
+    npc_tests_fake_st.fk_sunset = sunset
+    npc_tests_fake_st.fk_want = 1
+    let p = npc_spawn(npc_st, kind)
+    npc_set_at(p, -20.0, 0.0)
+    return p
+  }
+
+  test "a step is in its window when the game says so, whatever the hour" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_CAMPER, 20.0)
+    npc_tests_fake_st.fk_hour = 12.0
+    npc_tests_fake_st.fk_open = 2
+    npc_plan(npc_st, p)
+    expect_eq(p.next_act, NPCA_FISH)
+    npc_tests_fake_st.fk_hour = 23.0
+    npc_tests_fake_st.fk_open = 1
+    npc_plan(npc_st, p)
+    expect_eq(p.act, NPCA_SIT)
+  }
+
+  test "after dark is the game's, not 21 to 5: at noon it can be dark and only who stays out is drawn, at 23 it can be light and all are" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    fk_setup(npc_st, npc_tests_fake_st)
+    npc_tests_fake_st.fk_want = 8
+    npc_tests_fake_st.fk_dark = true
+    npc_tick(npc_st, 0.05)
+    expect_eq(npc_count(npc_st), 8)
+    for i in 0 .. len(npc_walkers(npc_st)) { expect_eq(npc_walkers(npc_st)[i].kind, NPCK_CAMPER) }
+    fk_setup(npc_st, npc_tests_fake_st)
+    npc_tests_fake_st.fk_want = 8
+    npc_tests_fake_st.fk_hour = 23.0
+    npc_tick(npc_st, 0.05)
+    var hikers = 0
+    for i in 0 .. len(npc_walkers(npc_st)) { if npc_walkers(npc_st)[i].kind == NPCK_HIKER { hikers += 1 } }
+    expect(hikers > 0)
+  }
+
+  test "a kind that leaves by the sun goes an hour before sunset, and the deep night sends the rest" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {
+    let p = one(npc_st, npc_tests_fake_st, NPCK_HIKER, 20.5)
+    npc_do(npc_st, p, NPCA_IDLE, 1000.0)
+    npc_tests_fake_st.fk_hour = 17.5
+    fk_player_at(npc_tests_fake_st, 500.0, 0.0)
+    fk_run(npc_st, 0.5)
+    expect(p.active)
+    let q = one(npc_st, npc_tests_fake_st, NPCK_HIKER, 17.0)
+    npc_do(npc_st, q, NPCA_IDLE, 1000.0)
+    npc_tests_fake_st.fk_hour = 17.5
+    fk_player_at(npc_tests_fake_st, 500.0, 0.0)
+    fk_run(npc_st, 0.5)
+    expect(not q.active)
+    let r = one(npc_st, npc_tests_fake_st, NPCK_HIKER, 20.5)
+    npc_do(npc_st, r, NPCA_IDLE, 1000.0)
+    npc_tests_fake_st.fk_hour = 12.0
+    fk_player_at(npc_tests_fake_st, 500.0, 0.0)
+    fk_run(npc_st, 0.5)
+    expect(r.active)
+    npc_tests_fake_st.fk_deep = true
+    fk_run(npc_st, 0.5)
+    expect(not r.active)
+  }
+}

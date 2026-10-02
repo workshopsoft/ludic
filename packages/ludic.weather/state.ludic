@@ -6,6 +6,7 @@ export port WeatherWorld {
   owns_world: fn() -> bool = fn wx_owns_alone
   hours: fn() -> float = fn wx_noon
   is_night: fn() -> bool = fn wx_daylight
+  wind_up: fn() -> bool = fn wx_up_by_clock      # the slopes are warm and the wind blows up the valley (unbound: between up_from and up_to on the clock)
   odds: fn(int) -> []float = fn wx_own_odds      # weights for the next spell, per kind, from this kind
   bias: fn() -> int = fn wx_no_bias              # what the story wants now: WEATHER_* below
   front: fn() -> int = fn wx_first_wet           # the kind a wanted front comes as
@@ -14,6 +15,10 @@ export port WeatherWorld {
 }
 function wx_owns_alone() -> bool { return true }
 function wx_noon() -> float { return 12.0 }
+function wx_up_by_clock(weather_st: WeatherState) -> bool {
+  let h = WeatherWorld.hours()
+  return h > weather_st.wx_up_from and h < weather_st.wx_up_to
+}
 function wx_daylight() -> bool { return false }
 function wx_own_odds(weather_st: WeatherState, from: int) -> []float { return weather_kind(weather_st, from).odds }
 function wx_no_bias() -> int { return WEATHER_NO_BIAS }
@@ -49,7 +54,8 @@ export property WeatherKind {
 @AppendOnly @ByKey @TextKey("weather")
 export open registry WeatherKinds of WeatherKind as WK
 
-# the valley's wind, turning with the hours: down the valley from dusk to `up_from`, up it until `up_to`
+# the valley's wind, turning with the hours: down the valley from dusk to `up_from`, up it until `up_to` (a game
+# with a sun answers WeatherWorld.wind_up itself)
 export property WeatherSetting {
   key: string = ""
   @Unit("rad") down_dir: float = 0.0     # the wind toward, overnight and into the morning

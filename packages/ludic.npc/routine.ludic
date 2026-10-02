@@ -53,6 +53,7 @@ export function npc_set_home_face(p: NpcPerson, x: float, z: float) -> void {
 }
 
 function np_in_hours(s: NpcStep, h: float) -> bool {
+  if s.window >= 0 { return NpcWorld.window(s.window, h) }
   if s.from <= s.to { return h >= s.from and h < s.to }
   return h >= s.from or h < s.to
 }

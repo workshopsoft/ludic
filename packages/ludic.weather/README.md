@@ -58,6 +58,7 @@ property WeatherKind {
 export port WeatherWorld {         # every member has a default, so any may be left out
   owns_world: fn() -> bool        # does this machine run the world? (unbound: yes)
   hours: fn() -> float            # the hour, for the wind's daily turn (unbound: noon)
+  wind_up: fn() -> bool           # the slopes are warm, the wind blows up the valley (unbound: between the row's up_from and up_to on the clock)
   is_night: fn() -> bool          # a front clearing at night is no WEATHER_CLEARED
   odds: fn(int) -> []float        # the next spell's weights from a kind (unbound: the kind's own)
   bias: fn() -> int               # what the story wants now: WEATHER_NO_BIAS, _WANT_WET, _HOLD, _WANT_CLEAR

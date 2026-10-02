@@ -1,0 +1,36 @@
+# photo_sun_test.ludic - a game with a sun says how high it is, and the golden hour is the sun just up or about to
+# set (-1 to 15 degrees), whatever the clock says; a sun high overhead is flat; the hour is not asked
+import "ludic.photo"
+import "ludic.base"
+program PhotoSunTest {
+  numbers float
+
+  state PhotoSunState {
+    hour: float = 12.0
+    elev: float = 30.0
+  }
+  function fk_hour(photo_sun_st: PhotoSunState) -> float { return photo_sun_st.hour }
+  function fk_elev(photo_sun_st: PhotoSunState) -> float { return photo_sun_st.elev }
+  bind PhotoLight { hour: fn fk_hour, sun_elev: fn fk_elev }
+
+  function light(photo_sun_st: mut PhotoSunState, hour: float, elev: float) -> int {
+    photo_sun_st.hour = hour
+    photo_sun_st.elev = elev
+    return photo_score_light(0.0, -20.0)
+  }
+
+  test "the golden hour is the sun's height, not the hour" (photo_sun_st: mut PhotoSunState) {
+    expect_eq(light(photo_sun_st, 5.0, 3.0), 20)        # an October dawn is later than the summer clock's 5.5
+    expect_eq(light(photo_sun_st, 6.0, 3.0), 20)
+    expect_eq(light(photo_sun_st, 6.0, -0.5), 20)
+    expect_eq(light(photo_sun_st, 17.0, 8.0), 20)
+    expect_eq(light(photo_sun_st, 6.5, 17.0), 10)       # the old 5.5 to 8 hours, with the sun already well up
+    expect_eq(light(photo_sun_st, 7.0, -3.0), 10)       # before the sun is up it is not gold
+  }
+
+  test "a sun high overhead is flat, a low one in the middle of the day is not" (photo_sun_st: mut PhotoSunState) {
+    expect_eq(light(photo_sun_st, 13.0, 72.0), 9)
+    expect_eq(light(photo_sun_st, 13.0, 38.0), 10)      # October noon at the valley's latitude
+    expect_eq(light(photo_sun_st, 3.0, 65.0), 9)
+  }
+}

@@ -17,6 +17,9 @@ export state WildlifeTestsFakeState {
   fk_lures: []WildLure = null
   fk_gone: int = 0                  # a uid the port says is no longer there
   fk_trunk: bool = false            # a trunk 1 m round at (0.3, -20)
+  fk_hour: float = 12.0
+  fk_heat: bool = false
+  fk_drinks: bool = false
   fk_out_x: float = 0.0
   fk_out_z: float = 0.0
 }
@@ -89,6 +92,9 @@ function fk_still_of(wildlife_tests_fake_st: WildlifeTestsFakeState, p: int) -> 
 function fk_wind_of(wildlife_tests_fake_st: WildlifeTestsFakeState) -> float { return wildlife_tests_fake_st.fk_wind }
 function fk_wind_to(wildlife_tests_fake_st: WildlifeTestsFakeState) -> float { return wildlife_tests_fake_st.fk_wind_dir }
 function fk_winter_of(wildlife_tests_fake_st: WildlifeTestsFakeState) -> float { return wildlife_tests_fake_st.fk_winter }
+function fk_hour_of(wildlife_tests_fake_st: WildlifeTestsFakeState) -> float { return wildlife_tests_fake_st.fk_hour }
+function fk_heat_now(wildlife_tests_fake_st: WildlifeTestsFakeState) -> bool { return wildlife_tests_fake_st.fk_heat }
+function fk_drinks_now(wildlife_tests_fake_st: WildlifeTestsFakeState) -> bool { return wildlife_tests_fake_st.fk_drinks }
 function fk_about_of(wildlife_tests_fake_st: WildlifeTestsFakeState, a: WildAnimal) -> int { return wildlife_tests_fake_st.fk_about }
 function fk_one(sp: int) -> int { return 1 }
 function fk_count(wildlife_tests_fake_st: WildlifeTestsFakeState) -> int { return len(wildlife_tests_fake_st.fk_lures) }

@@ -1,0 +1,41 @@
+# thirst_sun_test.ludic - a game with a sun binds when it is hot and when they drink, and the hour no longer
+# decides: noon is not hot when the game says so, and the middle of the night is a drinking time when it says so
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+program ThirstSun {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    hour: fn fk_hour_of
+    heat: fn fk_heat_now
+    drinking_time: fn fk_drinks_now
+    about: fn fk_about_of
+  }
+
+  function climb(wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState, hour: float, heat: bool, drinks: bool) -> float {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    wildlife_tests_fake_st.fk_hour = hour
+    wildlife_tests_fake_st.fk_heat = heat
+    wildlife_tests_fake_st.fk_drinks = drinks
+    let a = wildlife_make(wildlife_st, 0, 10.0, 0.0, false, 0.0, 0, 1.0, 1)
+    a.state = WILD_IDLE
+    a.timer = 30.0
+    a.thirst = 0.0
+    wildlife_tick_ground(wildlife_st, a, 0.05, 0.1)
+    return a.thirst
+  }
+
+  test "the port's heat and drinking time win over the hour" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 12.0, false, false), 0.8, 0.001)
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 3.0, true, false), 1.2, 0.001)
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 3.0, false, true), 0.8 * 1.8, 0.001)
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 12.0, true, true), 1.2 * 1.8, 0.001)
+  }
+}

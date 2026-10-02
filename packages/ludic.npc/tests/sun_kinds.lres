@@ -1,0 +1,18 @@
+# sun_kinds.lres - the sun test's kinds: a camper whose steps hang on the game's windows (1 the dark, 2 the
+# day), and a hiker who leaves an hour before sunset
+camper {
+  weight: 1, night: true, stays: true
+  steps: [
+    { window: 1, spot: NPCS_HOME, act: NPCA_SIT, lo: 60, hi: 150 },
+    { window: 2, spot: NPCS_SHORE_HERE, act: NPCA_FISH, far: 80.0, lo: 60, hi: 90 }
+  ]
+}
+hiker {
+  weight: 3
+  leave_lo: -1.0, leave_hi: -1.0, leave_by_sun: true
+  start: fn tk_start
+  steps: [
+    { weight: 1, spot: NPCS_HERE, act: NPCA_SIT }
+  ]
+}
+vendor { weight: 0, notice: 15.0 }

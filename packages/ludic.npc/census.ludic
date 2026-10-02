@@ -22,6 +22,7 @@ export function npc_spawn(npc_st: mut NpcState, kind: int) -> NpcPerson {
   p.leg = npc_between(npc_st, 0, 3)
   p.seed = npc_rnd(npc_st) * 40.0
   p.out_h = k.leave_lo + npc_rnd(npc_st) * (k.leave_hi - k.leave_lo)
+  if k.leave_by_sun { p.out_h += NpcWorld.sunset() }
   p.yaw = npc_rnd(npc_st) * NP_TAU
   if k.start != null {
     let start = k.start

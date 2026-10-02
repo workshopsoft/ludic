@@ -12,6 +12,10 @@ export port NpcWorld {
   pushed_z: fn() -> float = fn nw_asked_z
   clear: fn(float, float, float, float, float, float) -> bool = fn nw_clear   # nothing between two points
   hour: fn() -> float = fn nw_noon
+  after_dark: fn() -> bool = fn nw_dark_by_clock           # dark enough that only the kinds that stay out are drawn (the clock's 21 to 5)
+  deep_night: fn() -> bool = fn nw_deep_by_clock           # so late nobody who does not stay is about (the clock's 22 to 4)
+  sunset: fn() -> float = fn nw_dusk                       # the hour the day's light ends: what a kind's `leave_by_sun` hangs on
+  window: fn(int, float) -> bool = fn nw_no_window         # (w, hour): is the hour in the game's window w today (a step's `window`)
   day: fn() -> int = fn nw_day_one
   players: fn() -> int = fn nw_one                         # player slots
   player_on: fn(int) -> bool = fn nw_first
@@ -50,6 +54,10 @@ function nw_asked_x(npc_st: NpcState) -> float { return npc_st.np_ask_x }
 function nw_asked_z(npc_st: NpcState) -> float { return npc_st.np_ask_z }
 function nw_clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return true }
 function nw_noon() -> float { return 12.0 }
+function nw_dusk() -> float { return 20.0 }
+function nw_dark_by_clock() -> bool { return NpcWorld.hour() >= 21.0 or NpcWorld.hour() < 5.0 }
+function nw_deep_by_clock() -> bool { return NpcWorld.hour() > 22.0 or NpcWorld.hour() < 4.0 }
+function nw_no_window(w: int, h: float) -> bool { return false }
 function nw_day_one() -> int { return 1 }
 function nw_one() -> int { return 1 }
 function nw_first(p: int) -> bool { return p == 0 }

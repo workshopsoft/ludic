@@ -12,6 +12,10 @@ export state NpcTestsFakeState {
   fk_born: int = 0
   fk_gone: int = 0
   fk_trunk: bool = false         # a trunk 1 m round at (10, 0.3)
+  fk_dark: bool = false          # what a game with a sun binds: dark, deep night, the sunset, and the one window that is open
+  fk_deep: bool = false
+  fk_sunset: float = 20.0
+  fk_open: int = -1
   fk_out_x: float = 0.0
   fk_out_z: float = 0.0
 }
@@ -27,6 +31,10 @@ function fk_setup(npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState
   npc_tests_fake_st.fk_born = 0
   npc_tests_fake_st.fk_gone = 0
   npc_tests_fake_st.fk_trunk = false
+  npc_tests_fake_st.fk_dark = false
+  npc_tests_fake_st.fk_deep = false
+  npc_tests_fake_st.fk_sunset = 20.0
+  npc_tests_fake_st.fk_open = -1
   npc_clear(npc_st)
   npc_reset(npc_st)
   npc_seed(npc_st, 7)
@@ -41,6 +49,10 @@ function fk_water(x: float, z: float) -> float {
 function fk_allowed(x: float, z: float) -> bool { return npc_d(x, z, 40.0, 0.0) > 15.0 }
 function fk_hour_now(npc_tests_fake_st: NpcTestsFakeState) -> float { return npc_tests_fake_st.fk_hour }
 function fk_day_now(npc_tests_fake_st: NpcTestsFakeState) -> int { return npc_tests_fake_st.fk_day }
+function fk_dark_now(npc_tests_fake_st: NpcTestsFakeState) -> bool { return npc_tests_fake_st.fk_dark }
+function fk_deep_now(npc_tests_fake_st: NpcTestsFakeState) -> bool { return npc_tests_fake_st.fk_deep }
+function fk_sunset_at(npc_tests_fake_st: NpcTestsFakeState) -> float { return npc_tests_fake_st.fk_sunset }
+function fk_window_open(npc_tests_fake_st: NpcTestsFakeState, w: int, h: float) -> bool { return w == npc_tests_fake_st.fk_open }
 function fk_players() -> int { return 2 }
 function fk_player_on(npc_tests_fake_st: NpcTestsFakeState, i: int) -> bool { return npc_tests_fake_st.fk_on[i] }
 function fk_x(npc_tests_fake_st: NpcTestsFakeState, i: int) -> float { return npc_tests_fake_st.fk_px[i] }

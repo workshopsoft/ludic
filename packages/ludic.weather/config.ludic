@@ -45,8 +45,6 @@ function wx_first_wet(weather_st: WeatherState) -> int {
 
 function wx_owns() -> bool { return WeatherWorld.owns_world() }
 
-function wx_hours() -> float { return WeatherWorld.hours() }
-
 function wx_night() -> bool { return WeatherWorld.is_night() }
 
 function wx_bias() -> int { return WeatherWorld.bias() }

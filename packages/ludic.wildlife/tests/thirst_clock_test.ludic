@@ -1,0 +1,38 @@
+# thirst_clock_test.ludic - a game with no sun binds only the hour, and thirst keeps the clock's hours: the heat
+# of 11 to 16 climbs at 12 an hour, dawn (5 to 8) and dusk (18 to 21) at 1.8 times the rate
+import "ludic.wildlife"
+import "ludic.base"
+import "fake"
+program ThirstClock {
+  numbers float
+  bind WildlifeWorld {
+    ground: fn fk_ground
+    water: fn fk_water
+    players: fn fk_players
+    player_on: fn fk_player_on
+    player_x: fn fk_x
+    player_y: fn fk_y
+    player_z: fn fk_z
+    hour: fn fk_hour_of
+    about: fn fk_about_of
+  }
+
+  function climb(wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState, hour: float) -> float {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    wildlife_tests_fake_st.fk_hour = hour
+    let a = wildlife_make(wildlife_st, 0, 10.0, 0.0, false, 0.0, 0, 1.0, 1)
+    a.state = WILD_IDLE
+    a.timer = 30.0
+    a.thirst = 0.0
+    wildlife_tick_ground(wildlife_st, a, 0.05, 0.1)
+    return a.thirst
+  }
+
+  test "unbound heat and drinking hours are the clock's" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 13.0), 1.2, 0.001)
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 6.5), 0.8 * 1.8, 0.001)
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 19.5), 0.8 * 1.8, 0.001)
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 9.0), 0.8, 0.001)
+    expect_near(climb(wildlife_st, wildlife_tests_fake_st, 2.0), 0.8, 0.001)
+  }
+}

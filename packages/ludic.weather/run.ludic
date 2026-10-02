@@ -24,9 +24,8 @@ function wx_wind_tick(weather_st: mut WeatherState, dt: float) -> void {
   weather_st.wx_wind = weather_st.wx_wind + (kd.wind - weather_st.wx_wind) * Math.min(1.0, dt * 0.3)
   var want = kd.wind_dir
   if want < 0.0 {
-    let h = wx_hours()
     want = weather_st.wx_down_dir
-    if h > weather_st.wx_up_from and h < weather_st.wx_up_to { want = weather_st.wx_up_dir }
+    if WeatherWorld.wind_up() { want = weather_st.wx_up_dir }
   }
   let r = dt * 0.12
   weather_st.wx_dir = wx_wrap(weather_st.wx_dir + Math.clamp(wx_wrap(want - weather_st.wx_dir), -r, r))

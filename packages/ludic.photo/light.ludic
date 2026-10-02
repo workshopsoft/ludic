@@ -1,10 +1,19 @@
-# light.ludic - 0..20 from the light on a subject at (x, z): the hour after dawn and before dusk pay
-# best, flat noon middling, the night by the moon; the weather takes off and adds what it says; and a
-# subject between the lens and the sun is backlit
+# light.ludic - 0..20 from the light on a subject at (x, z): the golden hour (the sun just up or about to set)
+# pays best, a sun high overhead is flat and middling, the night is by the moon; the weather takes off and adds
+# what it says; and a subject between the lens and the sun is backlit
+export const PHOTO_NO_SUN: float = -1000.0     # sun_elev's answer for a game with no sun: the clock's hours stand in
+export const PHOTO_GOLDEN_LO: float = -1.0     # the golden hour: the sun between here ...
+export const PHOTO_GOLDEN_HI: float = 15.0     # ... and here, degrees over the horizon
+export const PHOTO_FLAT_FROM: float = 60.0     # a sun this high lights everything flat
 export function photo_score_light(x: float, z: float) -> int {
   var v = 10
-  let h = PhotoLight.hour()
-  if (h > 5.5 and h < 8.0) or (h > 17.5 and h < 20.0) { v = 20 } else if h > 11.0 and h < 15.0 { v = 9 }
+  let e = PhotoLight.sun_elev()
+  if e > PHOTO_NO_SUN + 1.0 {
+    if e > PHOTO_GOLDEN_LO and e < PHOTO_GOLDEN_HI { v = 20 } else if e > PHOTO_FLAT_FROM { v = 9 }
+  } else {
+    let h = PhotoLight.hour()
+    if (h > 5.5 and h < 8.0) or (h > 17.5 and h < 20.0) { v = 20 } else if h > 11.0 and h < 15.0 { v = 9 }
+  }
   let night = PhotoLight.night()
   if night { v = int(3.0 + PhotoLight.moon() * 6.0) }
   v = v - PhotoLight.dim() + PhotoLight.bonus()

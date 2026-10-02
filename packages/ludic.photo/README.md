@@ -20,7 +20,7 @@ Out of a hundred, for the frame's best subject:
 | --- | --- |
 | size (40) | the subject's height as a share of the picture: under 4% a record shot, a quarter to two thirds pays, past 85% cropped |
 | framing (20) | how near a thirds point it sits; a subject cut by an edge keeps a third of that (a tripod adds 5) |
-| light (20) | the hour after dawn and before dusk best, flat noon middling, the moon at night; the weather's `dim` and `bonus`; backlit costs 7 |
+| light (20) | the golden hour best (the sun between `PHOTO_GOLDEN_LO` and `PHOTO_GOLDEN_HI`, -1 to 15 degrees, from `PhotoLight.sun_elev`; with no sun bound, the clock's 5:30 to 8 and 17:30 to 20), a sun above `PHOTO_FLAT_FROM` (60) or, with no sun, 11 to 15 middling, the moon at night; the weather's `dim` and `bonus`; backlit costs 7 |
 | the moment (20) | what it is doing, as the game scores it (head up and still unaware is worth most) |
 
 Framing, light and the moment are weighted by how much subject there is, so a deer three pixels wide
@@ -39,7 +39,7 @@ export port PhotoLens {
   clear(ax, ay, az, bx, by, bz) -> bool,          # a line of sight: the ground and every still thing
   range(), steady() -> bool                       # the lens in the pack
 }
-export port PhotoLight { hour, night, moon, dim, bonus, sun_x, sun_z }
+export port PhotoLight { hour, sun_elev, night, moon, dim, bonus, sun_x, sun_z }
 export port PhotoRules { behaviour, subject_value(sp), legend_value(sp), mult }
 ```
 

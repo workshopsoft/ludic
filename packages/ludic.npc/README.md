@@ -19,11 +19,12 @@ game's too (`NpcAct.clip` is a hint: `"walk"`, `"idle"`, or `""` for a pose of i
 ## Four tables the game fills
 
 - **`NpcKinds`** - a kind of person: `weight` in the census draw (`night`: the only kinds drawn
-  after dark), whether it `stays` the night, `leave_lo` .. `leave_hi` (the hour it walks out),
+  after dark), whether it `stays` the night, `leave_lo` .. `leave_hi` (the hour it walks out; with `leave_by_sun`, hours after `NpcWorld.sunset()`),
   `notice` (m it turns to face a player), `start` (where a new one goes: call
   `npc_start_near(p, x, z, r0, r1)`), `plan` (the first word on what next; true: decided) and
   `steps`, its routine.
-- **`NpcStep`** (inside a kind) - in the hours `from` .. `to` (round midnight when `from > to`),
+- **`NpcStep`** (inside a kind) - in the hours `from` .. `to` (round midnight when `from > to`), or
+  in the game's `window` (`NpcWorld.window(w, hour)`, for a game whose day follows the sun),
   `weight` of the draw, go to `spot` (`near` .. `far` m, `n` the spot's own number) and do `act`
   for `lo` .. `hi` seconds. A step whose spot cannot be found gives way to the next one in the table.
 - **`NpcSpots`** - where a step goes; `find(p, step)` sends the person (`npc_go` / `npc_do`, or
@@ -81,6 +82,8 @@ export port NpcWorld {       # every member has a default: a flat dry field at n
   push: fn(x, z, r, feet, head) -> bool, pushed_x, pushed_z   # a walker slid clear of still things (r 0.35)
   clear: fn(ax, ay, az, bx, by, bz) -> bool          # no still thing between: npc_line_ok asks it at 1 m
   hour: fn() -> float, day: fn() -> int              # the clock
+  after_dark, deep_night: fn() -> bool               # only who stays is drawn / nobody else is about (unbound: the clock's 21-5 and 22-4)
+  sunset: fn() -> float, window: fn(int, float) -> bool   # the day's end, for `leave_by_sun`; is the hour in the game's window w
   players: fn() -> int, player_on: fn(int) -> bool, player_x / player_z: fn(int) -> float
   want: fn() -> int, extra: fn() -> int              # the census: how many, and a kind brought out regardless (-1)
   origin_x / origin_z: fn() -> float                 # where anyone goes when nowhere else will do
