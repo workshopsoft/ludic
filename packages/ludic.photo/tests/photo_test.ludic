@@ -202,6 +202,10 @@ program PhotoTest {
     let fs = facts(photo_st)
     expect(fs[0].file == "a.png")
     expect_eq(photo_species_shot(photo_st), 14)
+    # the slots are made with the roll: a frame added after one was forgotten takes the freed one
+    expect_eq(photo_add(photo_st, 1, 9.0, 2, 0, false, "d", "d.png", 40, 0), 2)
+    expect(photo_tags(photo_st, 2) == "d")
+    expect(photo_file(photo_st, 1) == "c.png")
   }
 
   test "the roll in order: newest first, best first, by subject, and a page at a time" (photo_st: mut PhotoState) {

@@ -35,8 +35,8 @@ export function photo_add(photo_st: mut PhotoState, day: int, hour: float, mask:
   if sold { photo_st.pht_sold[i] = 1 }
   photo_st.pht_grade[i] = grade
   photo_st.pht_why[i] = why
-  push(photo_st.pht_tags, tags)
-  push(photo_st.pht_file, file)
+  photo_st.pht_tags[i] = tags
+  photo_st.pht_file[i] = file
   photo_st.pht_n += 1
   photo_st.pht_species_shot = photo_st.pht_species_shot | mask
   for sp in 0 .. 32 { if (mask & (1 << sp)) != 0 and grade > photo_st.pht_best[sp] { photo_st.pht_best[sp] = grade } }
@@ -48,13 +48,6 @@ export function photo_remove(photo_st: mut PhotoState, i: int) -> void {
   if i < 0 or i >= photo_st.pht_n { return }
   let f = pht_fact(photo_st, PHOTO_DELETED, i)
   f.file = photo_st.pht_file[i]
-  let tags = new []string
-  let files = new []string
-  for k in 0 .. photo_st.pht_n {
-    if k == i { continue }
-    push(tags, photo_st.pht_tags[k])
-    push(files, photo_st.pht_file[k])
-  }
   for k in i .. photo_st.pht_n - 1 {
     photo_st.pht_day[k] = photo_st.pht_day[k + 1]
     photo_st.pht_hour[k] = photo_st.pht_hour[k + 1]
@@ -63,9 +56,11 @@ export function photo_remove(photo_st: mut PhotoState, i: int) -> void {
     photo_st.pht_sold[k] = photo_st.pht_sold[k + 1]
     photo_st.pht_grade[k] = photo_st.pht_grade[k + 1]
     photo_st.pht_why[k] = photo_st.pht_why[k + 1]
+    photo_st.pht_tags[k] = photo_st.pht_tags[k + 1]
+    photo_st.pht_file[k] = photo_st.pht_file[k + 1]
   }
-  photo_st.pht_tags = tags
-  photo_st.pht_file = files
+  photo_st.pht_tags[photo_st.pht_n - 1] = ""
+  photo_st.pht_file[photo_st.pht_n - 1] = ""
   photo_st.pht_n -= 1
   if photo_st.pht_cover == i { photo_st.pht_cover = -1 } else if photo_st.pht_cover > i { photo_st.pht_cover -= 1 }
 }

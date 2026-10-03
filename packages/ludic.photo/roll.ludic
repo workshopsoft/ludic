@@ -60,8 +60,6 @@ export state PhotoState {
   pht_fact_q: Queue<PhotoFact> = pht_fact_q__new()
 }
 
-
-
 export function photo_facts(photo_st: PhotoState) -> Queue<PhotoFact> {
   return photo_st.pht_fact_q
 }
@@ -95,6 +93,12 @@ function pht_ints(n: int) -> []int {
   return out
 }
 
+function pht_strs(n: int) -> []string {
+  let out = new []string
+  for i in 0 .. n { push(out, "") }
+  return out
+}
+
 function pht_floats(n: int) -> []float {
   let out = new []float
   for i in 0 .. n { push(out, 0.0) }
@@ -112,8 +116,8 @@ function pht_blank(photo_st: mut PhotoState) -> void {
   photo_st.pht_sold = pht_ints(photo_st.pht_max)
   photo_st.pht_grade = pht_ints(photo_st.pht_max)
   photo_st.pht_why = pht_ints(photo_st.pht_max)
-  photo_st.pht_tags = new []string
-  photo_st.pht_file = new []string
+  photo_st.pht_tags = pht_strs(photo_st.pht_max)
+  photo_st.pht_file = pht_strs(photo_st.pht_max)
   photo_st.pht_best = pht_ints(32)
   photo_st.pht_comp = pht_floats(4)
   photo_st.pht_comp_have = false
