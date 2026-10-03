@@ -38,7 +38,7 @@ void main() {
     float band = rd - front;
     float wave = sin(band * 26.0) * exp(-band * band * 18.0);   // a few crests round the front
     float fade = exp(-q.z * 1.6) * q.w;
-    slope += (rd > 1e-3 ? off / rd : vec2(0.0)) * wave * fade * 0.55;
+    slope += (rd > 1e-3 ? off / rd : vec2(0.0)) * wave * fade * 0.9;
   }
   vec3 n = normalize(vec3(-slope.x, 1.0, -slope.y));
   float NoV = max(dot(n, v), 0.0);
@@ -48,15 +48,15 @@ void main() {
   r3.y = abs(r3.y);
   vec3 refl = skyPrefiltered(r3, 0.05);
   if (u_refl_on > 0.5) {
-    vec2 ruv = clamp(suv + n.xz * 0.06, 0.001, 0.999);
+    vec2 ruv = clamp(suv + n.xz * 0.09, 0.001, 0.999);   // the rings bend what is mirrored
     refl = sane(textureLod(u_refl, ruv, 0.25).rgb);
   }
-  // A puddle reads as a dark mirror: what it shows is the world above it, dimmed, more of it
-  // looking along the surface (Fresnel) - a game camera looks down at 30-60 degrees, where a real
-  // puddle still mirrors the bright things plainly, so the floor of the reflectance is lifted.
-  float k = clamp(0.30 + F * 0.65, 0.0, 0.92);
-  // a dark mirror: water returns less than it is shown, and a roof's film of grime greys the sky in it
-  refl = mix(refl, vec3(dot(refl, vec3(0.2126, 0.7152, 0.0722))), 0.3) * 0.55;
+  // A puddle reads as a dark mirror: a near-black body, the world above it mirrored a little darker
+  // than itself, more of it looking along the surface (Fresnel). A game camera looks down at 30-60
+  // degrees, where a real puddle still mirrors the bright things plainly, so the floor of the
+  // reflectance is lifted; a film of grime takes the edge off the sky's blue.
+  float k = clamp(0.5 + F * 0.45, 0.0, 0.95);
+  refl = mix(refl, vec3(dot(refl, vec3(0.2126, 0.7152, 0.0722))), 0.45) * 0.8;
   vec3 body = vec3(0.012, 0.014, 0.018) * skyIrradiance(vec3(0, 1, 0));
   vec3 hv = normalize(v + u_sun_dir);
   float glint = D_GGX(max(dot(n, hv), 0.0), 0.04) * 0.12;
