@@ -64,6 +64,23 @@ program I18nMadeTest {
     expect(not kx_whole_key(b("Settings")))
   }
 
+  test "a line with a line bracketed in it, or a key glued to words, is made as L makes it and kept whole nowhere" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    let quit = tr(k"pause.quit")
+    let lines = [b(quit) + " " + b(trf(k"hud.day", "9", "", "", "")), "[E] " + b(trf(k"hud.day", "10", "", "", "")), quit + " now", "Press " + quit, b(quit) + b(quit)]
+    let want = ["Quit Day 9", "[E] Day 10", "Quit now", "Press Quit", "QuitQuit"]
+    for i in 0 .. len(lines) { expect(i18n_made(i18n_st, lines[i]) == want[i]) }
+    for i in 0 .. len(lines) { expect(L(i18n_st, lines[i]) == want[i]) }
+    let kept = i18n_cached(i18n_st)
+    for k in 0 .. 50 {
+      let s = b(quit) + " " + b(trf(k"hud.day", `{k + 100}`, "", "", ""))     # fifty prompts met once
+      let t = i18n_made(i18n_st, s)
+      expect(t == "Quit Day " + `{k + 100}`)
+      i18n_let_go(t)
+    }
+    expect_eq(i18n_cached(i18n_st), kept)               # neither the fifty lines nor the days in them are kept
+  }
+
   test "a long line grows the buffer and is whole" (i18n_st: mut I18nState) {
     start(i18n_st)
     var long = ""

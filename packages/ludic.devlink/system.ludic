@@ -24,18 +24,17 @@ export function devlink_tick(devlink_st: mut DevlinkState, t: Tick) -> void {
   devlink_st.dl_port = DevlinkNet.from_port(h)
   if not DevlinkNet.loopback(devlink_st.dl_ip) { return }       # only this machine
   devlink_st.dl_n = n
-  let heap0 = Os.heap_bytes()
   let kept0 = Mem.kept()
   devlink_handle(devlink_st)
   if devlink_st.dl_o > 0 { DevlinkNet.send(h, devlink_st.dl_ip, devlink_st.dl_port, devlink_st.dl_out, devlink_st.dl_o) }
-  dl_settle(heap0, kept0)
+  dl_settle(kept0)
 }
 
-# a request that grew the heap (a path, a model's JSON, a reload) is the alloc fence's new floor, as a load is; the
-# rest of the frame is judged as ever, and one that kept nothing leaves it alone (heap_bytes is 0 off macOS: settle)
-function dl_settle(heap0: long, kept0: long) -> void {
-  let heap = Os.heap_bytes()
-  if heap > 0 and heap <= heap0 and Mem.kept() <= kept0 { return }
+# a request that kept memory (a path, a model's JSON, a reload) is the alloc fence's new floor, as a load is;
+# the rest of the frame is judged as ever. The fence's own count says so: the process heap also moves with
+# every other thread's (Metal, the driver), and re-flooring on it wiped the fence's rising streaks every few frames
+function dl_settle(kept0: long) -> void {
+  if Mem.kept() <= kept0 { return }
   Mem.play()
   Mem.settled()
 }

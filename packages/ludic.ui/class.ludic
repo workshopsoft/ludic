@@ -40,6 +40,7 @@ function uc_find(ui_st: UiState, name: string) -> UiClass {
 @alloc_ok("once per component class: its template and styles are read the first time it is shown")
 function uc_load(ui_st: mut UiState, k: UiClass) -> void {
   if k.root != null { return }
+  Mem.rewarm()                         # a component's first showing is a load: its template, styles, pool and memo grow now, once
   let f = lib_blank(k.xml_path)
   f.src = k.xml
   if k.lss != "" {

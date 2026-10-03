@@ -1,0 +1,57 @@
+# dump_style.ludic - dp_style's computed styles for ui_dump_to, written into its buffer as they are worked out
+# dp_style's " [font 21 color #f5eddb ...]", written in place
+function dw_style(d: UiDumpBuf, n: UiNode) -> void {
+  if n.size > 0.0 { dw_word_int(d, "font", int(n.size)) }
+  if n.fg >= 0 { dw_hex(d, "color", n.fg) }
+  if n.bg >= 0 and n.bg_a > 0.0 { dw_hex(d, "bg", n.bg) }
+  if n.alpha < 1.0 { dw_word_float(d, "opacity", n.alpha) }
+  if n.pt + n.pr + n.pb + n.pl > 0.0 { dw_four(d, "pad", n.pt, n.pr, n.pb, n.pl) }
+  if n.mt + n.mr + n.mb + n.ml > 0.0 { dw_four(d, "margin", n.mt, n.mr, n.mb, n.ml) }
+  if n.grow > 0.0 { dw_word_float(d, "grow", n.grow) }
+  if n.pos > 0 {
+    dw_word_int(d, "pos", n.pos)
+    dw_word_int(d, "z", n.z)
+  }
+  if not n.enabled { dw_word(d, "disabled") }
+  if d.open { dw_byte(d, 93) }
+  d.open = false
+}
+# a style's name, after " [" for the first and a space for the rest
+function dw_word(d: UiDumpBuf, w: string) -> void {
+  if d.open { dw_byte(d, 32) } else { dw_str(d, " [") }
+  d.open = true
+  dw_str(d, w)
+}
+function dw_word_int(d: UiDumpBuf, w: string, v: int) -> void {
+  dw_word(d, w)
+  dw_byte(d, 32)
+  dw_int(d, v)
+}
+function dw_four(d: UiDumpBuf, w: string, a: float, b: float, c: float, e: float) -> void {
+  dw_word_int(d, w, int(a))
+  dw_byte(d, 32)
+  dw_int(d, int(b))
+  dw_byte(d, 32)
+  dw_int(d, int(c))
+  dw_byte(d, 32)
+  dw_int(d, int(e))
+}
+# ui_hex's #rrggbb
+function dw_hex(d: UiDumpBuf, w: string, c: int) -> void {
+  dw_word(d, w)
+  dw_str(d, " #")
+  var div = 1048576
+  while div >= 1 {
+    let h = (c / div) % 16
+    if h < 10 { dw_byte(d, 48 + h) } else { dw_byte(d, 87 + h) }
+    div = div / 16
+  }
+}
+# a float as the template literal writes it: made, copied in, let go
+function dw_word_float(d: UiDumpBuf, w: string, v: float) -> void {
+  dw_word(d, w)
+  dw_byte(d, 32)
+  let t = `{v}`
+  dw_str(d, t)
+  free(t)
+}

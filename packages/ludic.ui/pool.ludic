@@ -39,6 +39,7 @@ function pl_begin(ui_st: mut UiState, screen: string) -> void {
 }
 @alloc_ok("once per screen: its pool is made the first time it is built")
 function pl_new(ui_st: mut UiState, screen: string) -> UiPool {
+  pl_load()
   let p = new UiPool
   p.key = screen
   p.nodes0 = new []UiNode
@@ -73,6 +74,7 @@ function nd_take(ui_st: mut UiState) -> UiNode {
 # frame after (the other generation) and the next few elements find theirs already made
 @alloc_ok("a pool miss: past the most nodes a screen has had, then kept")
 function pl_grow_nodes(p: UiPool) -> void {
+  pl_load()
   let more = Math.max(16, len(p.nodes0) / 2)
   for i in 0 .. more {
     push(p.nodes0, nd_fresh())
@@ -87,9 +89,29 @@ function nd_fresh() -> UiNode {
   n.akeys = new []string
   n.avals = new []string
   n.vals = new []Val
+  nd_room(n)
   n.ex = new UiNodeX                   # made with the node: nx() then never makes one in a frame
   return n
 }
+# a node's lists made with room for what most elements hold, so an element taking a pooled node
+# later grows none of them (a list grows once past its room, and stays)
+function nd_room(n: UiNode) -> void {
+  for i in 0 .. 16 { push(n.children, n) }
+  for i in 0 .. 8 {
+    push(n.classes, "")
+    push(n.akeys, "")
+    push(n.avals, "")
+    push(n.vals, null)
+  }
+  List.clear(n.children)
+  List.clear(n.classes)
+  List.clear(n.akeys)
+  List.clear(n.avals)
+  List.clear(n.vals)
+}
+# a screen's pool growing past the most it has held is a load, as its first build is: the alloc fence
+# warms up again (docs/plan 25), and a pool reaches its most within a screen's first showings
+function pl_load() -> void { Mem.rewarm() }
 function env_take(ui_st: mut UiState) -> UiEnv {
   let p = ui_st.pl_cur
   if p == null { return env_fresh() }
@@ -101,10 +123,11 @@ function env_take(ui_st: mut UiState) -> UiEnv {
     env_reset(e)
     return e
   }
-  let e = env_fresh()
-  ui_kept(list, e)
+  pl_load()
+  let at = len(list)
+  for i in 0 .. Math.max(16, at / 2) { ui_kept(list, env_fresh()) }   # a stretch at once, as nodes grow
   p.ue += 1
-  return e
+  return list[at]
 }
 @alloc_ok("a pool miss: past the most scopes a screen has had, then kept")
 function env_fresh() -> UiEnv {
@@ -112,6 +135,14 @@ function env_fresh() -> UiEnv {
   e.names = new []string
   e.vals = new []Val
   e.on_envs = new []UiEnv
+  for i in 0 .. 8 {
+    push(e.names, "")
+    push(e.vals, null)
+    push(e.on_envs, e)
+  }
+  List.clear(e.names)
+  List.clear(e.vals)
+  List.clear(e.on_envs)
   return e
 }
 # a Value an expression works out while a screen is built: from the pool while the build runs (none
@@ -127,7 +158,7 @@ function uv_new(ui_st: mut UiState, tag: int) -> Val {
     p.uv += 1
     return Value.become(v, tag)
   }
-  let v = Value.become(ui_kept_val(list), tag)
+  let v = Value.become(ui_kept_vals(list), tag)
   p.uv += 1
   return v
 }
@@ -158,7 +189,7 @@ function uv_hold(ui_st: mut UiState) -> Val {
     p.uv += 1
     return list[p.uv - 1]
   }
-  let v = ui_kept_val(list)
+  let v = ui_kept_vals(list)
   p.uv += 1
   return v
 }
@@ -172,8 +203,9 @@ function up_take(ui_st: mut UiState) -> UiPass {
     p.uu += 1
     return list[p.uu - 1]
   }
-  let u = new UiPass
-  ui_kept(list, u)
+  pl_load()
+  let at = len(list)
+  for i in 0 .. Math.max(16, at / 2) { ui_kept(list, new UiPass) }   # a stretch at once, as nodes grow
   p.uu += 1
-  return u
+  return list[at]
 }

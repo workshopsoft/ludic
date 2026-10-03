@@ -29,8 +29,8 @@ export property PhotoFact {
 export state PhotoState {
   pht_sort: int = 0
   pht_page: int = 0
-  @max(256) pht_order: []int = new []int      # the roll's order, refilled in place (a page asks it every frame)
-  @max(8) pht_page_out: []int = new []int     # a page of it, the same
+  @max(256) pht_order: []int = pht_room(256)  # the roll's order, refilled in place (a page asks it every frame)
+  @max(8) pht_page_out: []int = pht_room(8)   # a page of it, the same; both made at their room, so a roll filling grows neither
   pht_max: int = 40
   pht_n: int = 0
   pht_day: []int = null
@@ -90,6 +90,14 @@ function pht_fact(photo_st: PhotoState, what: int, i: int) -> PhotoFact {
 function pht_ints(n: int) -> []int {
   let out = new []int
   for i in 0 .. n { push(out, 0) }
+  return out
+}
+
+# an empty list with room for n: cleared keeps its room
+@alloc_ok("once: a list the state refills in place, made at its room")
+function pht_room(n: int) -> []int {
+  let out = pht_ints(n)
+  List.clear(out)
   return out
 }
 

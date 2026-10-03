@@ -57,6 +57,14 @@ program DevlinkFenceTest {
     return DV_OK
   }
   def DevVerbs say { args: "what:string how:string", run: fn v_say }
+  # a verb whose memory is declared (a cache, a pool's room): the process heap grows, the fence's count does not
+  @alloc_ok("a test's declared keep: the heap moves, the frame keeps nothing")
+  function v_note(hoard_st: mut HoardState, c: DevCall) -> int {
+    hoard_one(hoard_st)
+    dv_reply_int(c, len(hoard_st.rows))
+    return DV_OK
+  }
+  def DevVerbs note { run: fn v_note }
 
   test "a request that keeps memory is the link's: 2000 frames, a keep every 50, no frame fails" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, hoard_st: mut HoardState) {
     fake_link_st.inbox = "1 ping"
@@ -92,6 +100,21 @@ program DevlinkFenceTest {
     fake_link_st.inbox = "2 ping"
     devlink_tick(devlink_st, t)
     expect(Mem.kept() >= kept)                       # not settled: what play kept before it is still counted
+  }
+
+  test "a request that only moves the heap leaves the floor and the streaks where they were" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState, hoard_st: mut HoardState) {
+    fake_link_st.inbox = "1 ping"
+    devlink_tick(devlink_st, tick_new(0.016, 0, 0.0))
+    Mem.play()
+    Mem.settled()
+    hoard_one(hoard_st)
+    let kept = Mem.kept()
+    expect(kept > long(0))
+    let heap = Os.heap_bytes()
+    fake_link_st.inbox = "3 note"
+    devlink_tick(devlink_st, tick_new(0.016, 0, 0.0))
+    expect(Os.heap_bytes() > heap)                   # the request grew the process heap (on macOS)...
+    expect(Mem.kept() >= kept)                       # ...and the fence was not settled again for it
   }
 
   test "string arguments sent before make nothing: 200 requests of two kinds, the heap does not grow" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {

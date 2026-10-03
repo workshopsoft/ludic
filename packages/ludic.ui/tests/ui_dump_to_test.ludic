@@ -1,0 +1,45 @@
+# ui_dump_to_test - the tree written to a file reads as ui_dump prints it (names, boxes, styles, text),
+# and asking for it again and again, as an editor's live link does, keeps nothing
+import "ludic.ui"
+program UiDumpToTest {
+  numbers float
+
+  component Clicker {
+    state n: int = 0
+    on hit() { n += 1 }
+  }
+
+  function frame(ui_st: mut UiState) -> void {
+    ui_show(ui_st, "Clicker", null, 0.0, 0.0, 1920.0, 1080.0)
+  }
+  function shown(ui_st: mut UiState) -> UiNode {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    frame(ui_st)
+    frame(ui_st)
+    return ui_nodes(ui_st, "Clicker", null)
+  }
+  function path(tag: string) -> string { return Os.temp_dir() + "/ui_dump_to_" + tag + ".txt" }
+
+  test "the file holds what ui_dump prints" (ui_st: mut UiState) {
+    let root = shown(ui_st)
+    let p = path("same")
+    expect(ui_dump_to(root, p))
+    let want = ui_dump(root, 0)
+    let got = Fs.read_text(p)
+    if got != want { print(`want:\n{want}\ngot:\n{got}`) }
+    expect(got == want)
+    expect(Text.contains(got, "Go 0"))
+  }
+  test "a dump asked for again and again keeps nothing" (ui_st: mut UiState) {
+    let root = shown(ui_st)
+    let p = path("again")
+    for i in 0 .. 20 { ui_dump_to(root, p) }
+    let before = Os.heap_bytes()
+    for i in 0 .. 200 { ui_dump_to(root, p) }
+    let grew = Os.heap_bytes() - before
+    print(`ui_dump_to: 200 dumps, heap grew {grew} bytes`)
+    expect(grew < 4096)
+  }
+}

@@ -19,8 +19,14 @@ function md_holes(s: string) -> bool {
   let n = len(s)
   var at = 0
   if n > 2 and s[0] == 29 and s[n - 1] == 30 { at = 1 }
-  if n <= at or (s[at] != 1 and s[at] != 2) { return false }
+  if n <= at { return false }
+  if s[at] != 1 and s[at] != 2 { return md_nested(s) }
   for i in at + 1 .. n { if s[i] == 31 { return true } }
+  return false
+}
+# a line with a line bracketed in it ("[E] [a count]"): the translator kept one per distinct line too
+function md_nested(s: string) -> bool {
+  for i in 0 .. len(s) { if s[i] == 29 { return true } }
   return false
 }
 # a text an element shows: a key with holes made here while a screen is built, the rest translated
@@ -96,9 +102,10 @@ function md_slot(p: UiPool) -> UiMade {
 }
 @alloc_ok("a pool miss: past the most changing lines a screen has shown in two builds, then kept")
 function md_grow(p: UiPool) -> UiMade {
-  let m = new UiMade
-  push(p.made, m)
-  return m
+  pl_load()
+  let at = len(p.made)
+  for i in 0 .. Math.max(8, at / 2) { push(p.made, new UiMade) }   # free slots, a stretch at once
+  return p.made[at]
 }
 # a build of the screen begins: what its last build did not show is let go - the build before that,
 # the last whose nodes and Values could hold it, is handed out again now

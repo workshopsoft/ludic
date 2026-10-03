@@ -6,13 +6,31 @@ function keyed(i18n_st: mut I18nState, s: string) -> string {
   if i18n_st.kc == null { kc_clear(i18n_st) }
   let ci = Dict.get_or(i18n_st.kc, s, -1)
   if ci >= 0 { return i18n_st.kc_out[ci] }
-  let r = km_text(i18n_st, s)
+  var r = kc_plain(i18n_st, s)
+  if r == null { r = km_text(i18n_st, s) }
   if Dict.size(i18n_st.kc) >= CACHE_MAX { kc_clear(i18n_st) }
   @alloc_ok("a key made into text: the result kept, up to CACHE_MAX")
   Dict.set(i18n_st.kc, s, len(i18n_st.kc_out))
   @alloc_ok("a key made into text: as above")
   push(i18n_st.kc_out, r)
   return r
+}
+
+# a key alone whose text has no hole: the language table's own string, which lives as long as the language
+# is known, rather than a copy made the first time each key is drawn
+@alloc_ok("a key's name, read for its lookup and let go")
+function kc_plain(i18n_st: mut I18nState, s: string) -> string {
+  let p: string = s
+  if len(p) < 2 or p[0] != I18N_KEY { return null }
+  for i in 1 .. len(p) { if p[i] == I18N_SEP { return null } }
+  let key = s[1..len(p)]
+  var t: string = null
+  if km_known(i18n_st, key, false) { t = kb_text(i18n_st, key) }
+  free(key)
+  if t == null { return null }
+  let tp: string = t
+  for i in 0 .. len(tp) { if tp[i] == 123 or tp[i] == I18N_ESC { return null } }   # a hole, or an escape: made as ever
+  return t
 }
 
 # a language's change makes every kept text stale
@@ -28,5 +46,6 @@ function kc_clear(i18n_st: mut I18nState) -> void {
 export function i18n_made(i18n_st: mut I18nState, s: string) -> string {
   if i18n_is_key(s) and not kx_mixed(s) { return km_text(i18n_st, s) }
   if kx_whole_key(s) { return km_text(i18n_st, s[1..len(s) - 1]) }   # a game's bracketed line: the same, unwrapped
+  if kx_nested(s) or kx_mixed(s) { return kx_made(i18n_st, s) }      # nor kept whole: a prompt met once is not kept
   return keep(L(i18n_st, s))
 }

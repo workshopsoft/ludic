@@ -225,6 +225,22 @@ program PhotoTest {
     expect_eq(len(photo_page_list(photo_st)), 2)
   }
 
+  test "a roll filling to its last frame grows neither its order nor its page (the Photos tab asks both every frame)" (photo_st: mut PhotoState) {
+    photo_config(photo_st, 40)
+    photo_add(photo_st, 1, 9.0, 1, 0, false, "x", "x.png", 10, 0)
+    photo_page_list(photo_st)
+    let before = Os.heap_bytes()
+    for i in 1 .. 40 {
+      photo_add(photo_st, 1, 9.0, 1 << (i % 3), 0, false, "x", "x.png", (i * 37) % 100, 0)
+      photo_page_list(photo_st)
+      photo_sort_next(photo_st)
+    }
+    let grew = Os.heap_bytes() - before
+    print(`photo: a roll of 40 filled and paged, heap grew {grew} bytes`)
+    expect(grew == long(0))
+    expect_eq(len(photo_order(photo_st)), 40)
+  }
+
   test "a file name from the tags" {
     expect(photo_slug("Elk, the Ghost Elk") == "elk-the-ghost-elk")
     expect(photo_slug("") == "photo")

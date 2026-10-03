@@ -1,0 +1,71 @@
+# nest_made.ludic - i18n_made's line with a line bracketed in it, or a key glued to words: written into a
+# kept buffer and handed back as the one string it makes, nothing kept. L keeps one per distinct line, so
+# a prompt met once, or a count in one, was kept for good; a glued key alone is still L's (once per key)
+
+# the text of s, a new string the caller lets go (i18n_let_go)
+@alloc_ok("a line made for a caller that lets it go: the one string handed back")
+function kx_made(i18n_st: mut I18nState, s: string) -> string {
+  let d = i18n_st.md
+  i18n_st.md = d + 1
+  let n = kx_made_into(i18n_st, d, s)
+  if n == 0 { km_room(i18n_st, d, 1) }
+  i18n_st.md = d
+  return text_of(i18n_st.mbs[d], n)
+}
+
+# s written at depth d: each outermost bracket made the same way, a glued key by its key, a stray bracket left out
+function kx_made_into(i18n_st: mut I18nState, d: int, s: string) -> int {
+  let p: string = s
+  var n = 0
+  var i = 0
+  while i < len(p) {
+    let c = p[i]
+    if c == I18N_OPEN and kx_close(p, i) > i {
+      let e = kx_close(p, i)
+      n = kx_put_made(i18n_st, d, n, s[i + 1..e])
+      i = e + 1
+    } else if c == I18N_KEY or c == I18N_PLURAL {
+      let e = kx_name_end(p, i + 1)
+      n = kx_put_text(i18n_st, d, n, keyed(i18n_st, kx_kept_text(i18n_st, s, i, e)))
+      i = e
+    } else {
+      if c != I18N_OPEN and c != I18N_CLOSE { n = km_put(i18n_st, d, n, c) }
+      i += 1
+    }
+  }
+  return n
+}
+
+# a bracket's line made the same way (a count or a distance in it made, never kept) and let go once written
+function kx_put_made(i18n_st: mut I18nState, d: int, at: int, inner: string) -> int {
+  let w = i18n_made(i18n_st, inner)
+  let n = kx_put_text(i18n_st, d, at, w)
+  free(w)
+  free(inner)
+  return n
+}
+function kx_put_text(i18n_st: mut I18nState, d: int, at: int, w: string) -> int {
+  let p: string = w
+  var n = at
+  for i in 0 .. len(p) { n = km_put(i18n_st, d, n, p[i]) }
+  return n
+}
+
+# s[a..b] as the one string kept for that text: keyed keeps a key by the string it is handed, so what it
+# is handed is never let go
+@alloc_ok("a glued key's name: kept once per distinct key, the copies let go")
+function kx_kept_text(i18n_st: mut I18nState, s: string, a: int, b: int) -> string {
+  let t = s[a..b]
+  let j = Dict.get_or(i18n_st.ka, t, -1)
+  if j >= 0 {
+    free(t)
+    return i18n_st.ka_s[j]
+  }
+  Dict.set(i18n_st.ka, t, len(i18n_st.ka_s))
+  push(i18n_st.ka_s, t)
+  return t
+}
+
+# a line i18n_made handed back (always the caller's own), let go by a caller that has read it; a screen's
+# pool does this itself
+export function i18n_let_go(s: string) -> void { free(s) }

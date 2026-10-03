@@ -7,6 +7,11 @@ const CACHE_MAX: int = 4000
 export function i18n_on(i18n_st: I18nState) -> bool { return i18n_st.on }
 export function i18n_current(i18n_st: I18nState) -> string { return i18n_st.cur }
 export function i18n_font_now(i18n_st: I18nState) -> string { return i18n_st.font_now }
+# how many marked lines L keeps made in this language (a test's, or a diagnosis's question)
+export function i18n_cached(i18n_st: I18nState) -> int {
+  if i18n_st.kc == null { return 0 }
+  return Dict.size(i18n_st.kc)
+}
 export function i18n_exact_count(i18n_st: I18nState) -> int {
   if i18n_st.out == null { return 0 }
   return len(i18n_st.out)

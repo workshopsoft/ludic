@@ -7,7 +7,17 @@ function ui_kept<T>(xs: []T, v: T) -> void {
 # a blank Value made into a kept list (a pool's or a ring's) the first time it is that long, and handed out
 @alloc_ok("a pool miss: past the most Values a screen or the ring has had, then kept")
 function ui_kept_val(xs: []Val) -> Val {
+  pl_load()
   let v = Value.null()
   push(xs, v)
   return v
+}
+# a pool's Values past its most: a stretch made at once (half again, 16 at least), so a screen reaches
+# its most in a few loads rather than one a Value; the first new one handed out
+@alloc_ok("a pool miss: past the most Values a screen has had, a stretch made and kept")
+function ui_kept_vals(xs: []Val) -> Val {
+  pl_load()
+  let at = len(xs)
+  for i in 0 .. Math.max(16, at / 2) { push(xs, Value.null()) }
+  return xs[at]
 }

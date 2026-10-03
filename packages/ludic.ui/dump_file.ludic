@@ -1,0 +1,80 @@
+# dump_file.ludic - ui_dump's lines written straight to a file, keeping nothing: an editor's live link
+# asks for the tree again and again, and the text joined a piece at a time kept every piece for good
+property UiDumpBuf {
+  b: []byte = null
+  n: int = 0
+  open: bool = false            # a node's styles: its bracket begun
+}
+
+# the tree under n written to path as ui_dump would print it; false when the file cannot be written
+@alloc_ok("a tree written to a file: the buffer and the record let go once it is written")
+export function ui_dump_to(n: UiNode, path: string) -> bool {
+  let d = new UiDumpBuf
+  d.b = buffer(8192)
+  dw_node(d, n, 0)
+  let ok = Fs.write_bytes(path, d.b, d.n)
+  free(d.b)
+  free(d)
+  return ok
+}
+function dw_node(d: UiDumpBuf, n: UiNode, depth: int) -> void {
+  for i in 0 .. depth { dw_str(d, "  ") }
+  dw_name(d, n)
+  dw_byte(d, 32)
+  dw_int(d, int(n.x))
+  dw_byte(d, 44)
+  dw_int(d, int(n.y))
+  dw_byte(d, 32)
+  dw_int(d, int(n.cw))
+  dw_byte(d, 120)
+  dw_int(d, int(n.ch))
+  dw_style(d, n)
+  dw_byte(d, 32)
+  dw_str(d, n.text)
+  dw_byte(d, 10)
+  if n.children != null {
+    for i in 0 .. len(n.children) { dw_node(d, n.children[i], depth + 1) }
+  }
+}
+# dp_name's tag#id.class, written in place
+function dw_name(d: UiDumpBuf, n: UiNode) -> void {
+  if n.tag == "" {
+    dw_byte(d, 40)
+    dw_int(d, n.kind)
+    dw_byte(d, 41)
+  } else { dw_str(d, n.tag) }
+  if n.id != "" {
+    dw_byte(d, 35)
+    dw_str(d, n.id)
+  }
+  if n.classes != null {
+    for i in 0 .. len(n.classes) {
+      dw_byte(d, 46)
+      dw_str(d, n.classes[i])
+    }
+  }
+}
+function dw_str(d: UiDumpBuf, s: string) -> void {
+  let p: string = s
+  for i in 0 .. len(p) { dw_byte(d, p[i]) }
+}
+function dw_int(d: UiDumpBuf, v: int) -> void {
+  if v < 0 {
+    dw_byte(d, 45)
+    dw_int(d, 0 - v)
+    return
+  }
+  if v >= 10 { dw_int(d, v / 10) }
+  dw_byte(d, 48 + v % 10)
+}
+@alloc_ok("a dump longer than its buffer: a bigger one, the old let go")
+function dw_byte(d: UiDumpBuf, c: int) -> void {
+  if d.n >= len(d.b) {
+    let b = buffer(len(d.b) * 2)
+    for i in 0 .. d.n { b[i] = d.b[i] }
+    free(d.b)
+    d.b = b
+  }
+  d.b[d.n] = c
+  d.n += 1
+}
