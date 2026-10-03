@@ -261,6 +261,7 @@ make:
   store ptr %app, ptr @W_app
   %sel_pol = call ptr @sel_registerName(ptr @.s_policy)
   %a1 = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %app, ptr %sel_pol, i64 0)
+  call void @app_menu(ptr %app)              ; the menu bar, Cmd-Q and the Dock's Quit
 
   ; build the view class once: NSView + drawRect: + acceptsFirstResponder
   %viewsuper = call ptr @objc_getClass(ptr @.c_view)
@@ -294,8 +295,8 @@ make:
   %sel_alloc = call ptr @sel_registerName(ptr @.s_alloc)
   %w0 = call ptr @objc_msgSend(ptr %wincls, ptr %sel_alloc)
   %sel_initw = call ptr @sel_registerName(ptr @.s_initw)
-  ; NSWindowStyleMaskTitled|Closable|Resizable = 11, NSBackingStoreBuffered = 2
-  %win = call ptr (ptr, ptr, %CGRect, i64, i64, i8) @objc_msgSend(ptr %w0, ptr %sel_initw, %CGRect %rect, i64 11, i64 2, i8 0)
+  ; NSWindowStyleMaskTitled|Closable|Miniaturizable|Resizable = 15, NSBackingStoreBuffered = 2
+  %win = call ptr (ptr, ptr, %CGRect, i64, i64, i8) @objc_msgSend(ptr %w0, ptr %sel_initw, %CGRect %rect, i64 15, i64 2, i8 0)
   store ptr %win, ptr @W_win
   ; NSWindowCollectionBehaviorFullScreenPrimary = 1 << 7: the green button and toggleFullScreen: work
   %sel_cb = call ptr @sel_registerName(ptr @.s_setcb)
@@ -614,6 +615,20 @@ wdo:
   store double %wf2, ptr @W_wheelf
   br label %forward
 key:
+  ; a Command keystroke goes to the main menu first (Cmd-Q, Cmd-H, Cmd-M); one it takes is not the game's
+  %sel_kmf = call ptr @sel_registerName(ptr @.s_modf)
+  %kmf = call i64 (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_kmf)
+  %kcmd = and i64 %kmf, 1048576                 ; NSEventModifierFlagCommand = 1 << 20
+  %iscmd = icmp ne i64 %kcmd, 0
+  br i1 %iscmd, label %keqv, label %keygame
+keqv:
+  %sel_mm = call ptr @sel_registerName(ptr @.s_mmenu)
+  %mmenu = call ptr @objc_msgSend(ptr %app, ptr %sel_mm)
+  %sel_pke = call ptr @sel_registerName(ptr @.s_pke)
+  %took8 = call i8 (ptr, ptr, ptr) @objc_msgSend(ptr %mmenu, ptr %sel_pke, ptr %ev)
+  %took = icmp ne i8 %took8, 0
+  br i1 %took, label %pump, label %keygame
+keygame:
   %kdv = call i32 @ev_keyval(ptr %ev)          ; #50 — press the held key
   call void @win_held_bit(i32 %kdv, i32 1)
   ; what this keystroke TYPED, for Input.text. Control characters are not text: Enter, Tab,
@@ -708,7 +723,16 @@ finish:
 checkvis:
   %ah = load i32, ptr @W_apphidden
   %byapp = icmp ne i32 %ah, 0
-  br i1 %byapp, label %done, label %checkvis2
+  br i1 %byapp, label %done, label %checkhid
+checkhid:
+  ; a hidden app (Cmd-H) or a minimised window is off screen, not closed
+  %sel_ih = call ptr @sel_registerName(ptr @.s_ishidden)
+  %ih = call i8 (ptr, ptr) @objc_msgSend(ptr %app, ptr %sel_ih)
+  %sel_im = call ptr @sel_registerName(ptr @.s_isminiat)
+  %im = call i8 (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_im)
+  %away8 = or i8 %ih, %im
+  %away = icmp ne i8 %away8, 0
+  br i1 %away, label %done, label %checkvis2
 checkvis2:
   %sel_vis = call ptr @sel_registerName(ptr @.s_visib)
   %vis = call i8 (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_vis)
@@ -1671,8 +1695,7 @@ mkwin:
   ; The application has to have finished launching before AppKit will map a
   ; window; without this the window exists, draws into its backing store, and is
   ; never composited - which looks exactly like the splash not working.
-  %sel_fl = call ptr @sel_registerName(ptr @.s_finlau)
-  %fl = call ptr @objc_msgSend(ptr %nsapp2, ptr %sel_fl)
+  call void @app_launch(ptr %nsapp2)
   %sel_actv = call ptr @sel_registerName(ptr @.s_act)
   %av = call ptr (ptr, ptr, i8) @objc_msgSend(ptr %nsapp2, ptr %sel_actv, i8 1)
   %sel_ofr = call ptr @sel_registerName(ptr @.s_ofr)
@@ -1975,4 +1998,230 @@ ask:
   ret i32 %r
 yes:
   ret i32 1
+}
+
+; ---- the application menu, and quitting from outside the game --------------------------------
+; A Ludic program pumps its own events and never calls -[NSApplication run], so nothing gave it
+; a main menu (no menu bar, no Quit item, Cmd-Q did nothing) or a way to honour a terminate
+; request: the Dock's Quit, the 'quit' Apple event (osascript ... to quit failed with -1708) and
+; logout. app_menu builds the standard application menu (Hide, Hide Others, Show All, Quit) and a
+; Window menu (Minimize), titled from CFBundleName or the process name, and makes an object of
+; LudicAppDelegate the application's delegate and the 'quit' Apple event's handler. Quit in the
+; menu (Cmd-Q) reaches -applicationShouldTerminate: and the Apple event -handleQuitEvent:; both
+; end the run the way closing the window does (W_running = 0), so AppKit never exit()s under the
+; game and its own shutdown runs. win_poll hands a Command keystroke to the main menu first.
+@.c_menu     = private unnamed_addr constant [7 x i8]  c"NSMenu\00"
+@.c_mitem    = private unnamed_addr constant [11 x i8] c"NSMenuItem\00"
+@.c_object   = private unnamed_addr constant [9 x i8]  c"NSObject\00"
+@.c_appdel   = private unnamed_addr constant [17 x i8] c"LudicAppDelegate\00"
+@.c_bundle   = private unnamed_addr constant [9 x i8]  c"NSBundle\00"
+@.c_procinfo = private unnamed_addr constant [14 x i8] c"NSProcessInfo\00"
+@.s_init     = private unnamed_addr constant [5 x i8]  c"init\00"
+@.s_mbundle  = private unnamed_addr constant [11 x i8] c"mainBundle\00"
+@.s_infokey  = private unnamed_addr constant [28 x i8] c"objectForInfoDictionaryKey:\00"
+@.s_pinfo    = private unnamed_addr constant [12 x i8] c"processInfo\00"
+@.s_pname    = private unnamed_addr constant [12 x i8] c"processName\00"
+@.s_append   = private unnamed_addr constant [25 x i8] c"stringByAppendingString:\00"
+@.s_additem  = private unnamed_addr constant [9 x i8]  c"addItem:\00"
+@.s_addtitle = private unnamed_addr constant [39 x i8] c"addItemWithTitle:action:keyEquivalent:\00"
+@.s_setsub   = private unnamed_addr constant [12 x i8] c"setSubmenu:\00"
+@.s_sepitem  = private unnamed_addr constant [14 x i8] c"separatorItem\00"
+@.s_setkemod = private unnamed_addr constant [30 x i8] c"setKeyEquivalentModifierMask:\00"
+@.s_inittl   = private unnamed_addr constant [15 x i8] c"initWithTitle:\00"
+@.s_setmmenu = private unnamed_addr constant [13 x i8] c"setMainMenu:\00"
+@.s_setwmenu = private unnamed_addr constant [16 x i8] c"setWindowsMenu:\00"
+@.s_mmenu    = private unnamed_addr constant [9 x i8]  c"mainMenu\00"
+@.s_pke      = private unnamed_addr constant [22 x i8] c"performKeyEquivalent:\00"
+@.s_setdel   = private unnamed_addr constant [13 x i8] c"setDelegate:\00"
+@.s_shterm   = private unnamed_addr constant [28 x i8] c"applicationShouldTerminate:\00"
+@.s_terminate = private unnamed_addr constant [11 x i8] c"terminate:\00"
+@.s_hideapp  = private unnamed_addr constant [6 x i8]  c"hide:\00"
+@.s_hideoth  = private unnamed_addr constant [23 x i8] c"hideOtherApplications:\00"
+@.s_unhideall = private unnamed_addr constant [23 x i8] c"unhideAllApplications:\00"
+@.s_pminiat  = private unnamed_addr constant [20 x i8] c"performMiniaturize:\00"
+@.s_ishidden = private unnamed_addr constant [9 x i8]  c"isHidden\00"
+@.s_isminiat = private unnamed_addr constant [15 x i8] c"isMiniaturized\00"
+@.s_awtab    = private unnamed_addr constant [33 x i8] c"setAllowsAutomaticWindowTabbing:\00"
+@.t_bname    = private unnamed_addr constant [13 x i8] c"CFBundleName\00"
+@.t_hide     = private unnamed_addr constant [6 x i8]  c"Hide \00"
+@.t_hideoth  = private unnamed_addr constant [12 x i8] c"Hide Others\00"
+@.t_showall  = private unnamed_addr constant [9 x i8]  c"Show All\00"
+@.t_quit     = private unnamed_addr constant [6 x i8]  c"Quit \00"
+@.t_window   = private unnamed_addr constant [7 x i8]  c"Window\00"
+@.t_minimize = private unnamed_addr constant [9 x i8]  c"Minimize\00"
+@.t_none     = private unnamed_addr constant [1 x i8]  c"\00"
+@.t_h        = private unnamed_addr constant [2 x i8]  c"h\00"
+@.t_q        = private unnamed_addr constant [2 x i8]  c"q\00"
+@.t_m        = private unnamed_addr constant [2 x i8]  c"m\00"
+@.enc_term   = private unnamed_addr constant [5 x i8]  c"Q@:@\00"
+@.enc_aev    = private unnamed_addr constant [6 x i8]  c"v@:@@\00"
+@.c_aemgr    = private unnamed_addr constant [20 x i8] c"NSAppleEventManager\00"
+@.s_sharedae = private unnamed_addr constant [24 x i8] c"sharedAppleEventManager\00"
+@.s_seteh    = private unnamed_addr constant [54 x i8] c"setEventHandler:andSelector:forEventClass:andEventID:\00"
+@.s_quitev   = private unnamed_addr constant [32 x i8] c"handleQuitEvent:withReplyEvent:\00"
+@W_menu     = internal global i32 0
+@W_launched = internal global i32 0   ; -finishLaunching has run (splash_show or app_menu)
+
+; -applicationShouldTerminate: — the run ends as a closed window ends it; NSTerminateCancel (0)
+define internal i64 @ludic_should_terminate(ptr %self, ptr %sel, ptr %sender) {
+entry:
+  store i32 0, ptr @W_running
+  ret i64 0
+}
+
+; -handleQuitEvent:withReplyEvent: — the 'quit' Apple event (the Dock, osascript, logout) ends the
+; run the same way, and is answered with no error: AppKit's own handler would go through
+; -terminate:, whose cancel the sender reads as -128 (and a logout as being refused)
+define internal void @ludic_quit_event(ptr %self, ptr %sel, ptr %event, ptr %reply) {
+entry:
+  store i32 0, ptr @W_running
+  ret void
+}
+
+; finishLaunching once: it installs the Apple event handlers (the 'quit' event among them)
+define internal void @app_launch(ptr %app) {
+entry:
+  %done = load i32, ptr @W_launched
+  %again = icmp ne i32 %done, 0
+  br i1 %again, label %out, label %go
+go:
+  store i32 1, ptr @W_launched
+  %sel_fl = call ptr @sel_registerName(ptr @.s_finlau)
+  %fl = call ptr @objc_msgSend(ptr %app, ptr %sel_fl)
+  br label %out
+out:
+  ret void
+}
+
+define internal ptr @ns_str(ptr %c) {
+entry:
+  %strcls = call ptr @objc_getClass(ptr @.c_str)
+  %sel_utf8 = call ptr @sel_registerName(ptr @.s_utf8)
+  %s = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %strcls, ptr %sel_utf8, ptr %c)
+  ret ptr %s
+}
+
+; [menu addItemWithTitle:title action:@selector(action) keyEquivalent:key] -> the item
+define internal ptr @menu_add(ptr %menu, ptr %title, ptr %action, ptr %key) {
+entry:
+  %sel_add = call ptr @sel_registerName(ptr @.s_addtitle)
+  %act = call ptr @sel_registerName(ptr %action)
+  %k = call ptr @ns_str(ptr %key)
+  %item = call ptr (ptr, ptr, ptr, ptr, ptr) @objc_msgSend(ptr %menu, ptr %sel_add, ptr %title, ptr %act, ptr %k)
+  ret ptr %item
+}
+
+; a new menu, hung off a new item of the menu bar
+define internal ptr @menu_sub(ptr %bar, ptr %title) {
+entry:
+  %sel_alloc = call ptr @sel_registerName(ptr @.s_alloc)
+  %sel_init = call ptr @sel_registerName(ptr @.s_init)
+  %itemcls = call ptr @objc_getClass(ptr @.c_mitem)
+  %i0 = call ptr @objc_msgSend(ptr %itemcls, ptr %sel_alloc)
+  %item = call ptr @objc_msgSend(ptr %i0, ptr %sel_init)
+  %sel_additem = call ptr @sel_registerName(ptr @.s_additem)
+  %r0 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %bar, ptr %sel_additem, ptr %item)
+  %menucls = call ptr @objc_getClass(ptr @.c_menu)
+  %m0 = call ptr @objc_msgSend(ptr %menucls, ptr %sel_alloc)
+  %sel_ititle = call ptr @sel_registerName(ptr @.s_inittl)
+  %menu = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %m0, ptr %sel_ititle, ptr %title)
+  %sel_sub = call ptr @sel_registerName(ptr @.s_setsub)
+  %r1 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %item, ptr %sel_sub, ptr %menu)
+  ret ptr %menu
+}
+
+; the app's name as the menu bar shows it: CFBundleName, else the process name
+define internal ptr @app_name() {
+entry:
+  %bcls = call ptr @objc_getClass(ptr @.c_bundle)
+  %sel_mb = call ptr @sel_registerName(ptr @.s_mbundle)
+  %mb = call ptr @objc_msgSend(ptr %bcls, ptr %sel_mb)
+  %sel_ik = call ptr @sel_registerName(ptr @.s_infokey)
+  %key = call ptr @ns_str(ptr @.t_bname)
+  %bn = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %mb, ptr %sel_ik, ptr %key)
+  %nobn = icmp eq ptr %bn, null
+  br i1 %nobn, label %proc, label %out
+proc:
+  %pcls = call ptr @objc_getClass(ptr @.c_procinfo)
+  %sel_pi = call ptr @sel_registerName(ptr @.s_pinfo)
+  %pi = call ptr @objc_msgSend(ptr %pcls, ptr %sel_pi)
+  %sel_pn = call ptr @sel_registerName(ptr @.s_pname)
+  %pn = call ptr @objc_msgSend(ptr %pi, ptr %sel_pn)
+  ret ptr %pn
+out:
+  ret ptr %bn
+}
+
+define internal void @app_menu(ptr %app) {
+entry:
+  %done = load i32, ptr @W_menu
+  %again = icmp ne i32 %done, 0
+  br i1 %again, label %out, label %go
+go:
+  store i32 1, ptr @W_menu
+  ; the delegate: NSObject + applicationShouldTerminate:
+  %objsuper = call ptr @objc_getClass(ptr @.c_object)
+  %dcls = call ptr @objc_allocateClassPair(ptr %objsuper, ptr @.c_appdel, i64 0)
+  %sel_st = call ptr @sel_registerName(ptr @.s_shterm)
+  %m1 = call i8 @class_addMethod(ptr %dcls, ptr %sel_st, ptr @ludic_should_terminate, ptr @.enc_term)
+  %sel_qe = call ptr @sel_registerName(ptr @.s_quitev)
+  %m2 = call i8 @class_addMethod(ptr %dcls, ptr %sel_qe, ptr @ludic_quit_event, ptr @.enc_aev)
+  call void @objc_registerClassPair(ptr %dcls)
+  %sel_alloc = call ptr @sel_registerName(ptr @.s_alloc)
+  %sel_init = call ptr @sel_registerName(ptr @.s_init)
+  %d0 = call ptr @objc_msgSend(ptr %dcls, ptr %sel_alloc)
+  %del = call ptr @objc_msgSend(ptr %d0, ptr %sel_init)
+  %sel_sd = call ptr @sel_registerName(ptr @.s_setdel)
+  %r0 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %app, ptr %sel_sd, ptr %del)
+
+  %name = call ptr @app_name()
+  %sel_cat = call ptr @sel_registerName(ptr @.s_append)
+  %menucls = call ptr @objc_getClass(ptr @.c_menu)
+  %b0 = call ptr @objc_msgSend(ptr %menucls, ptr %sel_alloc)
+  %bar = call ptr @objc_msgSend(ptr %b0, ptr %sel_init)
+
+  ; the application menu (AppKit titles it in bold with the app's name itself)
+  %amenu = call ptr @menu_sub(ptr %bar, ptr %name)
+  %hide0 = call ptr @ns_str(ptr @.t_hide)
+  %hide = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %hide0, ptr %sel_cat, ptr %name)
+  %i1 = call ptr @menu_add(ptr %amenu, ptr %hide, ptr @.s_hideapp, ptr @.t_h)
+  %hoth = call ptr @ns_str(ptr @.t_hideoth)
+  %i2 = call ptr @menu_add(ptr %amenu, ptr %hoth, ptr @.s_hideoth, ptr @.t_h)
+  ; Option-Command (1 << 19 | 1 << 20)
+  %sel_km = call ptr @sel_registerName(ptr @.s_setkemod)
+  %r1 = call ptr (ptr, ptr, i64) @objc_msgSend(ptr %i2, ptr %sel_km, i64 1572864)
+  %sall = call ptr @ns_str(ptr @.t_showall)
+  %i3 = call ptr @menu_add(ptr %amenu, ptr %sall, ptr @.s_unhideall, ptr @.t_none)
+  %itemcls = call ptr @objc_getClass(ptr @.c_mitem)
+  %sel_sep = call ptr @sel_registerName(ptr @.s_sepitem)
+  %sep = call ptr @objc_msgSend(ptr %itemcls, ptr %sel_sep)
+  %sel_additem = call ptr @sel_registerName(ptr @.s_additem)
+  %r2 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %amenu, ptr %sel_additem, ptr %sep)
+  %quit0 = call ptr @ns_str(ptr @.t_quit)
+  %quit = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %quit0, ptr %sel_cat, ptr %name)
+  %i4 = call ptr @menu_add(ptr %amenu, ptr %quit, ptr @.s_terminate, ptr @.t_q)
+
+  ; the Window menu, without the tab items AppKit adds to it for a window that may be tabbed
+  %wincls = call ptr @objc_getClass(ptr @.c_win)
+  %sel_awt = call ptr @sel_registerName(ptr @.s_awtab)
+  call void (ptr, ptr, i8) @objc_msgSend(ptr %wincls, ptr %sel_awt, i8 0)
+  %wtitle = call ptr @ns_str(ptr @.t_window)
+  %wmenu = call ptr @menu_sub(ptr %bar, ptr %wtitle)
+  %mini = call ptr @ns_str(ptr @.t_minimize)
+  %i5 = call ptr @menu_add(ptr %wmenu, ptr %mini, ptr @.s_pminiat, ptr @.t_m)
+
+  %sel_smm = call ptr @sel_registerName(ptr @.s_setmmenu)
+  %r3 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %app, ptr %sel_smm, ptr %bar)
+  %sel_swm = call ptr @sel_registerName(ptr @.s_setwmenu)
+  %r4 = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %app, ptr %sel_swm, ptr %wmenu)
+  call void @app_launch(ptr %app)
+  ; after -finishLaunching, which installs AppKit's own: kCoreEventClass 'aevt', kAEQuitApplication 'quit'
+  %aecls = call ptr @objc_getClass(ptr @.c_aemgr)
+  %sel_sae = call ptr @sel_registerName(ptr @.s_sharedae)
+  %aem = call ptr @objc_msgSend(ptr %aecls, ptr %sel_sae)
+  %sel_seh = call ptr @sel_registerName(ptr @.s_seteh)
+  call void (ptr, ptr, ptr, ptr, i32, i32) @objc_msgSend(ptr %aem, ptr %sel_seh, ptr %del, ptr %sel_qe, i32 1634039412, i32 1903520116)
+  br label %out
+out:
+  ret void
 }
