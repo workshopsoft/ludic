@@ -1,0 +1,55 @@
+# water_reflect_test.ludic - whether the mirrored water is in view (water_reflect_visible): a camera
+# wading in a lake and looking at its bank sees the water, one looking down at its feet on the bank does not
+import "ludic.render3d/r3d.ludic"
+program WaterReflectTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # a 512 m map: a lake 1 m deep at level 0 south of z = 8, its bank rising 1 in 2 north of it
+  function lake() -> Render3dState {
+    let st = new Render3dState
+    st.TERRAIN_HALF = 256
+    st.ter_heights = floats(TERRAIN_RES * TERRAIN_RES)
+    let per = float(TERRAIN_RES) / 512.0
+    for iz in 0 .. TERRAIN_RES {
+      let z = float(iz) / per - 256.0
+      let h = -1.0 + Math.max(0.0, z - 8.0) * 0.5
+      for ix in 0 .. TERRAIN_RES { st.ter_heights[iz * TERRAIN_RES + ix] = h }
+    }
+    st.wb_n = 1
+    st.wb_primary = 0
+    st.water_on = true
+    st.water_level = 0.0
+    st.water_cx = 0.0
+    st.water_cz = -100.0
+    st.water_ex = 250.0
+    st.water_ez = 110.0
+    st.wb_refl_always = 0
+    st.wb_dbg = 0
+    cam_init(st, 16.0 / 9.0)
+    return st
+  }
+
+  test "wading, the water between the eye and the bank is in view though the five points of its cell are not" {
+    let st = lake()
+    # a metre over the water, three in from the cell's edge, facing the bank 13 m off (+z)
+    cam_set(st, 3.0, 1.0, -3.0, 180.0, -10.0)
+    expect(water_reflect_visible(st))
+    # the cell it stands in: its five points behind the camera or on the bank
+    expect(st.wb_ncells > 0)
+  }
+
+  test "on the bank by the water, looking down at the feet with the lake behind, the cell is in the frame and no water is" {
+    let st = lake()
+    # 4 m up the bank from the water line, facing away from it (+z) and down
+    cam_set(st, 3.0, 2.7, 12.0, 180.0, -75.0)
+    expect(wb_rect_visible(st, -26.0, -18.0, 6.0, 14.0))
+    expect(not water_reflect_visible(st))
+  }
+
+  test "from the bank looking out over the lake, the water is in view" {
+    let st = lake()
+    cam_set(st, 3.0, 8.7, 22.0, 0.0, -20.0)
+    expect(water_reflect_visible(st))
+  }
+}

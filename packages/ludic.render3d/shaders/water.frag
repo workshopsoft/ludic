@@ -12,6 +12,59 @@ uniform vec2 u_center;          // this body's centre and half extents (world xz
 uniform vec2 u_extent;
 uniform float u_clip_ellipse;   // 1: the body is the ellipse inside its rectangle (a lake), 0: the whole plane (the sea)
 uniform sampler2D u_scene;       // the scene as drawn before the water: the bed, to refract
+// The ground under a pixel, as the terrain draws it (the shore's terms belong to the bed, and the
+// scene depth can be a fish or a pair of legs standing on it). terpage.glsl, pasted (the reference
+// copy and its rules are there): the height sections, read through u_ts_height.
+#define TP_FRAGMENT
+// ---- the page table ----------------------------------------------------------------------
+#ifndef TP_HELPERS
+#define TP_HELPERS
+uniform sampler2D u_tp_page;   // R32F, a texel a tile: slot + 1, 0 = not resident
+uniform float u_tp_on;         // 1 while paging; 0 reads the whole maps exactly as before
+uniform vec4 u_tp_dims;        // tiles a side, height texels a tile, photo texels a tile, full height res
+// the layer holding a full-map uv, or -1: paging off, off the map, or not resident
+float tpSlot(vec2 uv) {
+  if (u_tp_on < 0.5 || uv.x < 0.0 || uv.y < 0.0 || uv.x >= 1.0 || uv.y >= 1.0) return -1.0;
+  ivec2 t = min(ivec2(floor(uv * u_tp_dims.x)), ivec2(int(u_tp_dims.x) - 1));
+  return texelFetch(u_tp_page, t, 0).r - 1.0;
+}
+// a full-map uv inside its tile's layer of k texels a side, past the one-texel border
+vec2 tpUV(vec2 uv, float k) { return (1.0 + fract(uv * u_tp_dims.x) * k) / (k + 2.0); }
+#endif
+// ---- height (vertex and mesh stages) -----------------------------------------------------
+#ifndef TP_HEIGHT
+#define TP_HEIGHT
+#ifndef TP_HMAP
+#define TP_HMAP u_ts_height
+#endif
+uniform sampler2DArray u_tp_h;
+// bilinear height, fine where a tile is resident. Outside a fragment stage texture() IS level 0
+// (glslang emits the same explicit-lod sample), so this is the old read bit for bit.
+float terHeight(vec2 uv) {
+  float s = tpSlot(uv);
+  if (s >= 0.0) return textureLod(u_tp_h, vec3(tpUV(uv, u_tp_dims.y), s), 0.0).r;
+  return textureLod(TP_HMAP, uv, 0.0).r;
+}
+// The B-spline through four bilinear taps (heightSmooth). Paging on, the texel is the FULL
+// map's - the coarse map's own size would halve the surface's detail - and each tap finds its
+// own tile, so a patch straddling two tiles, or a tile and the coarse map, stays one surface.
+float terHeightSmooth(vec2 uv) {
+  vec2 res = u_tp_on > 0.5 ? vec2(u_tp_dims.w) : vec2(textureSize(TP_HMAP, 0));
+  vec2 t = uv * res - 0.5;
+  vec2 f = fract(t);
+  vec2 i = floor(t);
+  vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0;
+  vec2 w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
+  vec2 w3 = f * f * f / 6.0;
+  vec2 w2 = 1.0 - w0 - w1 - w3;
+  vec2 s0 = w0 + w1, s1 = w2 + w3;
+  vec2 o0 = (i - 1.0 + w1 / s0 + 0.5) / res;
+  vec2 o1 = (i + 1.0 + w3 / s1 + 0.5) / res;
+  return (terHeight(vec2(o0.x, o0.y)) * s0.x + terHeight(vec2(o1.x, o0.y)) * s1.x) * s0.y
+       + (terHeight(vec2(o0.x, o1.y)) * s0.x + terHeight(vec2(o1.x, o1.y)) * s1.x) * s1.y;
+}
+#endif
+vec2 terUV(vec2 xz) { return (xz - u_ts_origin) / (2.0 * u_ts_half) + 0.5; }
 // wind-streaked capillary ripples (stretched along the wind) over slower swells
 float waterH(vec2 p, float t) {
   vec2 w = vec2(p.x * 0.7 + p.y * 0.15, p.y * 1.4) ;            // mildly anisotropic: cat's-paws stretched along the wind
@@ -65,6 +118,24 @@ void main() {
   vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, sd * 2.0 - 1.0, 1.0);
   vec3 ground = gp.xyz / gp.w;
   float depthBelow = clamp(v_wpos.y - ground.y, 0.0, 10.0);
+  float alongRay = length(ground - v_wpos);
+  // What the depth found may not be the bed: a fish, or the legs of someone wading, stands
+  // clear of the ground it is over. The light to it still crosses depthBelow of water, but
+  // the shore's terms - the wash, the lap and the soft edge, which exist to hide where the
+  // plane cuts the BANK - read the bed under this pixel instead. Keyed off the object, they
+  // laid the shoreline's foam over every fish within 35 cm of the top and the wader's hips,
+  // and faded the surface away over a shallow fish, which then lay on the water unreflected.
+  // Past half a metre of water to what was hit, neither term reaches it, so nothing is read.
+  float body = 0.0;
+  float shoreBelow = depthBelow;
+  float shoreRay = alongRay;
+  if (dist < 250.0 && depthBelow < 0.5 && ground.y < v_wpos.y) {
+    float lift = ground.y - terHeightSmooth(terUV(ground.xz));
+    body = smoothstep(0.15, 0.35, lift) * smoothstep(250.0, 200.0, dist);
+    float bedBelow = clamp(v_wpos.y - terHeightSmooth(terUV(v_wpos.xz)), 0.0, 10.0);
+    shoreBelow = mix(depthBelow, bedBelow, body);
+    shoreRay = mix(alongRay, max(alongRay, bedBelow), body);
+  }
   // How opaque the water is at the shoreline. This used to fade over the last 1.2 m of
   // depth, which is the same band the foam lives in, so the surface went transparent
   // exactly where it should have been breaking white: the foam was drawn and then
@@ -96,17 +167,17 @@ void main() {
   // a single octave is a blobby lattice that magnifies into visible squares when you
   // stand next to it, which is what made the wash read as cartoon cut-outs. Several
   // octaves plus a fine breakup term give it structure at every range it is seen from.
-  float lap = 0.5 + 0.5 * sin(depthBelow * 9.0 - u_time * 1.6 + 2.0 * gnoise(v_wpos.xz * 0.8 + u_time * 0.2));
+  float lap = 0.5 + 0.5 * sin(shoreBelow * 9.0 - u_time * 1.6 + 2.0 * gnoise(v_wpos.xz * 0.8 + u_time * 0.2));
   float fdet = fbm(v_wpos.xz * 7.0 - u_time * 0.35, 3) * 0.5 + 0.5;      // fine bubbles
   float fmid = fbm(v_wpos.xz * 2.6 + u_time * 0.5, 3) * 0.5 + 0.5;
   float fedge = fbm(v_wpos.xz * 1.4 - u_time * 0.3, 2) * 0.5 + 0.5;
   // a still alpine lake has a wet line, not surf: the wash is thin (the last 0.35 m of
   // depth) and faint, and the terrain runs the same fields at the same strength
-  foam += smoothstep(0.35, 0.0, depthBelow) * (0.12 * smoothstep(0.30, 0.72, fmid) + 0.10 * smoothstep(0.55, 0.95, lap) * smoothstep(0.22, 0.6, fedge)) * (0.55 + 0.75 * fdet);
+  foam += smoothstep(0.35, 0.0, shoreBelow) * (0.12 * smoothstep(0.30, 0.72, fmid) + 0.10 * smoothstep(0.55, 0.95, lap) * smoothstep(0.22, 0.6, fedge)) * (0.55 + 0.75 * fdet);
   // the lap is a near-field detail: from a distance a lake's edge is a line, not a surf
   foam *= smoothstep(120.0, 15.0, dist);
   // the wash dies where the surface meets the ground, so it cannot end on a hard line
-  foam *= smoothstep(0.0, 0.5, length(ground - v_wpos));
+  foam *= smoothstep(0.0, 0.5, shoreRay);
   float NoV = max(dot(n, v), 0.0);
   float F = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
   vec3 hv = normalize(v + u_sun_dir);
@@ -153,8 +224,7 @@ void main() {
   // the low, near-the-waterline view where the plane's silhouette turns into a hard
   // glassy line. The distance from the surface to the bed along the ray stays a smooth
   // quantity at any angle, so the water dissolves into the ground it meets instead.
-  float alongRay = length(ground - v_wpos);
-  float soft = smoothstep(0.0, 0.5, alongRay);
+  float soft = smoothstep(0.0, 0.5, shoreRay);
   col = mix(bed, col, soft);
   o_color = vec4(sane(col), 1.0);
 }

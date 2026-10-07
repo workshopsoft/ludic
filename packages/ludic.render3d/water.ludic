@@ -162,7 +162,8 @@ function wb_point_hidden(render3d_st: mut Render3dState, x: float, z: float) -> 
   }
   return false
 }
-# every point the wet test sampled (the centre and four near the corners) is out of sight
+# every point the wet test sampled (the centre and four near the corners) is out of sight, and for a
+# cell the camera is in or beside, every point of a finer grid too (wb_near_hidden)
 function wb_cell_occluded(render3d_st: mut Render3dState, i: int) -> bool {
   let o = i * 4
   let x0 = render3d_st.wb_cells[o];  let z0 = render3d_st.wb_cells[o + 1];  let x1 = render3d_st.wb_cells[o + 2];  let z1 = render3d_st.wb_cells[o + 3]
@@ -172,7 +173,26 @@ function wb_cell_occluded(render3d_st: mut Render3dState, i: int) -> bool {
   if not wb_point_hidden(render3d_st, cx - ox, cz - oz) { return false }
   if not wb_point_hidden(render3d_st, cx + ox, cz - oz) { return false }
   if not wb_point_hidden(render3d_st, cx - ox, cz + oz) { return false }
-  return wb_point_hidden(render3d_st, cx + ox, cz + oz)
+  if not wb_point_hidden(render3d_st, cx + ox, cz + oz) { return false }
+  return wb_near_hidden(render3d_st, x0, z0, x1, z1)
+}
+# Five points are a far cell's sample. A cell the camera stands in or beside is seen from inside it:
+# wading off the dock, the water between the eye and the bank lay between the five, two of them
+# behind the camera and the rest on the bank, so the pass was skipped with the lake filling half the
+# frame - and the surface mirrored the bare sky over the wader's legs and every fish (R3D_REFL_DBG).
+# Within a cell's width of the camera the cell is walked on a grid WB_NEAR a side as well.
+const WB_NEAR: int = 8
+function wb_near_hidden(render3d_st: mut Render3dState, x0: float, z0: float, x1: float, z1: float) -> bool {
+  let m = Math.max(x1 - x0, z1 - z0)
+  let ex = render3d_st.cam_pos[0];  let ez = render3d_st.cam_pos[2]
+  if ex < x0 - m or ex > x1 + m or ez < z0 - m or ez > z1 + m { return true }
+  let sx = (x1 - x0) / float(WB_NEAR);  let sz = (z1 - z0) / float(WB_NEAR)
+  for j in 0 .. WB_NEAR {
+    for k in 0 .. WB_NEAR {
+      if not wb_point_hidden(render3d_st, x0 + (float(j) + 0.5) * sx, z0 + (float(k) + 0.5) * sz) { return false }
+    }
+  }
+  return true
 }
 function wb_cell_add(render3d_st: mut Render3dState, x0: float, z0: float, x1: float, z1: float) -> void {
   let o = render3d_st.wb_ncells * 4
