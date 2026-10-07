@@ -30,12 +30,16 @@ void main() {
   float coc = (z - u_focus) / max(z, 0.1) * u_aperture;
   float r = clamp(abs(coc), 0.0, 1.0) * u_max_coc;
   if (r < 0.75) { o_color = vec4(texture(u_src, v_uv).rgb, 1.0); return; }
-  // a 16-point spiral, which reads as a lens rather than as a box blur
+  // a spiral of taps, which reads as a lens rather than as a box blur. It is TURNED a different
+  // amount at every pixel (interleaved gradient noise): the same sixteen offsets everywhere copied
+  // each thin dark blade of grass sixteen times in one fixed pattern, which drew as vertical streaks
+  // over the whole meadow; turned, the copies fall as fine grain instead.
+  float turn = 6.2831853 * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
   vec3 acc = texture(u_src, v_uv).rgb;
   float wsum = 1.0;
-  for (int i = 0; i < 16; i++) {
-    float a = float(i) * 2.3999632;                  // golden angle
-    float rr = sqrt((float(i) + 0.5) / 16.0) * r;
+  for (int i = 0; i < 24; i++) {
+    float a = float(i) * 2.3999632 + turn;           // golden angle
+    float rr = sqrt((float(i) + 0.5) / 24.0) * r;
     vec2 off = vec2(cos(a), sin(a)) * rr * u_texel;
     vec2 uv2 = v_uv + off;
     // Do not drag a SHARP FOREGROUND pixel into a blurred background: that is the halo every
