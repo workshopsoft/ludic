@@ -3,6 +3,9 @@
 # out of the ground and aimed back at the pivot. Or the eyes, with the gait's bob on them.
 function chr_eyes_allowed(character_st: CharacterState) -> bool { return not CharacterBody.riding() and not character_st.chr_sit and CharacterBody.eyes_ok() }
 
+# what the camera must stay above: the bed, and anything the body can stand on over it (a dock's deck)
+function chr_cam_floor(x: float, z: float) -> float { return Math.max(CharacterGround.bed(x, z), CharacterGround.height(x, z)) }
+
 function chr_shoulder(character_st: CharacterState) -> float { return Math.clamp(character_st.chr_cam_dist * 0.30, 0.6, 1.9) }
 
 export function char_camera(character_st: mut CharacterState, dt: float) -> void {
@@ -33,10 +36,10 @@ export function char_camera_third(character_st: mut CharacterState, dt: float) -
   let cx = ax - fx * character_st.chr_cam_dist
   var cyy = character_st.chr_piv_y - fy * character_st.chr_cam_dist
   let cz = az - fz * character_st.chr_cam_dist
-  cyy = Math.max(cyy, CharacterGround.bed(cx, cz) + 0.55)
+  cyy = Math.max(cyy, chr_cam_floor(cx, cz) + 0.55)
   # at the top of the water the camera is held clear of it; under it, it follows the dive
   if character_st.chr_swim and not character_st.chr_dive and cyy < character_st.chr_water + 0.35 { cyy = character_st.chr_water + 0.35 }
-  let mid_g = CharacterGround.bed((cx + ax) * 0.5, (cz + az) * 0.5) + 0.4
+  let mid_g = chr_cam_floor((cx + ax) * 0.5, (cz + az) * 0.5) + 0.4
   let mid_y = (cyy + character_st.chr_piv_y) * 0.5
   if mid_y < mid_g { cyy = cyy + (mid_g - mid_y) * 2.0 }
   character_st.chr_eye_x = cx
@@ -59,7 +62,7 @@ function chr_camera_eyes(character_st: mut CharacterState, dt: float) -> void {
   let want = 0.035 * moving * (1.0 - Math.cos(character_st.chr_phase * 2.0))
   character_st.chr_fps_bob = Math.lerp(character_st.chr_fps_bob, want, Math.min(1.0, 12.0 * dt))
   # never inside the ground on a steep step
-  let ey = Math.max(character_st.chr_y + eye + character_st.chr_fps_bob, CharacterGround.bed(character_st.chr_x, character_st.chr_z) + 0.30)
+  let ey = Math.max(character_st.chr_y + eye + character_st.chr_fps_bob, chr_cam_floor(character_st.chr_x, character_st.chr_z) + 0.30)
   character_st.chr_piv_x = character_st.chr_x
   character_st.chr_piv_y = ey
   character_st.chr_piv_z = character_st.chr_z
