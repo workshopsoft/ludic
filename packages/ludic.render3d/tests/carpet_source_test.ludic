@@ -1,0 +1,30 @@
+# carpet_source_test.ludic - what the grass carpet draws straight down: a card layer's scan, never its crossed card,
+# whose two upright quads are edge-on from above and covered no texel (the tile came out all zeros)
+import "ludic.render3d/r3d.ludic"
+program CarpetSourceTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "a card layer puts the model its atlas was baked from into the carpet" {
+    let card = new Model
+    let scan = new Model
+    let im = new Impostor
+    im.model = scan
+    let l = new Layer
+    l.model = card
+    l.card = true
+    l.atlas = im
+    expect(carpet_source(l) == scan)
+  }
+
+  test "a model layer, and a card with no scan, put their own model in" {
+    let m = new Model
+    let l = new Layer
+    l.model = m
+    expect(carpet_source(l) == m)
+    l.card = true
+    l.atlas = new Impostor
+    expect(carpet_source(l) == m)
+  }
+}

@@ -1229,21 +1229,25 @@ function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: 
   let eye = v3_new(0.0, 6.0, 0.0);  let at = v3_new(0.0, 0.0, 0.0);  let up = v3_new(0.0, 0.0, -1.0)
   m4_look_at(view, eye, at, up)
   m4_ortho(proj, -half, half, -half, half, 0.1, 12.0)
-  let bake = render3d_st.sc_bake_card_prog
-  gpu_use_program(render3d_st, bake)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_view"), view)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_proj"), proj)
-  u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_wind"), 0.0)
-  u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_flutter"), 0.0)
-  u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_time"), 0.0)
+  # A crossed card is two upright quads, edge-on from straight above: drawn here they covered no
+  # texel and the tile came out all zeros. A card layer draws the model its atlas was baked from.
   for li in 0 .. len(layers) {
     let l = layers[li]
-    if l.atlas == null { continue }
-    u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_card_w"), l.atlas.radius * 2.0);  u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_card_h"), l.atlas.height)
-    r3d_bind_2d(render3d_st, bake, "u_diff", 0, l.atlas.albedo)
-    r3d_bind_2d(render3d_st, bake, "u_arm", 2, l.atlas.normal)
-    for i in 0 .. len(l.model.prims) {
-      let pr = l.model.prims[i]
+    let src = carpet_source(l)
+    if src == null { continue }
+    var bake = render3d_st.sc_bake_prog
+    if l.atlas != null and l.atlas.flower { bake = render3d_st.sc_bake_flower_prog }
+    gpu_use_program(render3d_st, bake)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_view"), view)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_proj"), proj)
+    u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_wind"), 0.0)
+    u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_flutter"), 0.0)
+    u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_time"), 0.0)
+    for i in 0 .. len(src.prims) {
+      let pr = src.prims[i]
+      r3d_bind_2d(render3d_st, bake, "u_diff", 0, pr.diff)
+      r3d_bind_2d(render3d_st, bake, "u_arm", 2, pr.arm)
+      prim_factors(render3d_st, bake, pr)
       scatter_attach(render3d_st, pr.mesh, buf)
       mesh_draw_instanced(render3d_st, pr.mesh, n9)
     }
@@ -1256,6 +1260,11 @@ function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: 
   carpet_finish(render3d_st, tex)
   gpu_check(render3d_st, "carpet bake")
   return tex
+}
+# what a layer puts into the carpet: a card layer's scan (its crossed card is edge-on from above), else its model
+function carpet_source(l: Layer) -> Model {
+  if l.card and l.atlas != null and l.atlas.model != null { return l.atlas.model }
+  return l.model
 }
 # the carpet tile made ready to wear: repeat-wrapped and mipmapped (a bake's too, bake_load.ludic)
 function carpet_finish(render3d_st: mut Render3dState, tex: int) -> void {
