@@ -1,0 +1,24 @@
+# zero_feed_test.ludic - a shader input a mesh does not feed (a_col on a tree with no COLOR_0) reads zeros that stay
+# inside the shared buffer for any draw: the GPU-culled trees start their LOD buckets at firstInstance = level x layer
+# count, and a vec4 per instance ran off the 64 KB buffer past instance 4095 (mid-distance conifers drew in garbage)
+import "ludic.render3d/r3d.ludic"
+program ZeroFeedTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "the zeros binding has a stride of 0: every vertex of every instance reads the first vec4" {
+    expect_eq(GVK_ZERO_STRIDE, 0)
+    expect(GVK_ZERO_BYTES >= 16)
+  }
+
+  test "a GPU-culled tree layer's last bucket reads inside the zeros buffer" {
+    # Maroon Lake's largest conifer layer: 2538 trees, four levels and the impostor bucket (scatter.ludic, SC_RECS)
+    let cap = 2538
+    let n_lods = 4
+    for k in 0 .. n_lods + 1 { expect(gvk_zero_feed_end(k * cap, cap) <= GVK_ZERO_BYTES) }
+    # and a layer far larger than any map has yet
+    expect(gvk_zero_feed_end(4 * 1000000, 1000000) <= GVK_ZERO_BYTES)
+    expect_eq(gvk_zero_feed_end(0, 0), 0)
+  }
+}

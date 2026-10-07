@@ -342,14 +342,25 @@ function gvk_input_format(t: string) -> int {
   if t == "vec3" { return VK_FORMAT_R32G32B32_SFLOAT }
   return VK_FORMAT_R32G32B32A32_SFLOAT
 }
-# 64 KB of zeros, the buffer every unfed input reads (one vec4 per instance, up to 4096)
+# The buffer every unfed input reads, bound with a stride of 0: every vertex of every instance reads
+# its first vec4, wherever the draw's instances start. It was a vec4 per instance (64 KB, 4096 of
+# them), and the GPU-culled trees draw their LOD buckets from firstInstance = level x layer count:
+# past instance 4095 a_col read whatever lay beyond the buffer, and mid-distance conifers drew in
+# magenta, blue and green (MoltenVK does not bound vertex fetches).
+const GVK_ZERO_BYTES: int = 256
+const GVK_ZERO_STRIDE: int = 0
+# one past the last byte of the zeros buffer a draw of `instances` from `first_instance` reads
+function gvk_zero_feed_end(first_instance: int, instances: int) -> int {
+  if instances <= 0 { return 0 }
+  return (first_instance + instances - 1) * GVK_ZERO_STRIDE + 16
+}
 @alloc_ok("the one buffer of zeros every unfed input reads: made once")
 function gvk_zero_vbuf_get(render3d_st: mut Render3dState) -> int {
   if render3d_st.gvk_zero_vbuf == 0 {
     render3d_st.gvk_zero_vbuf = gvk_buf_new(render3d_st)
-    let z = bytes(65536)
-    Vk.zero(z, 65536)
-    gvk_buf_upload(render3d_st, render3d_st.gvk_zero_vbuf, 65536, z)
+    let z = bytes(GVK_ZERO_BYTES)
+    Vk.zero(z, GVK_ZERO_BYTES)
+    gvk_buf_upload(render3d_st, render3d_st.gvk_zero_vbuf, GVK_ZERO_BYTES, z)
     free(z)
   }
   return render3d_st.gvk_zero_vbuf
@@ -488,7 +499,7 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
     if not need_zero {
       need_zero = true
       Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_binding, nbd)
-      Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_stride, 16)
+      Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_stride, GVK_ZERO_STRIDE)
       Vk.put_i32(bnds, nbd * bdw + VkVertexInputBindingDescription_inputRate, VK_VERTEX_INPUT_RATE_INSTANCE)
     }
     Vk.put_i32(attrs, na * aw + VkVertexInputAttributeDescription_location, v.i_loc[q])
