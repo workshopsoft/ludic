@@ -2,6 +2,10 @@
 # walk the rail with the card up, and "I know this" mutes the card being read
 export function hints_card(hints_st: HintsState) -> int { return hints_st.hn_card }
 
+# whether the player opened the card with the key (then Enter and the arrows are the card's), or it
+# showed on its own (then they are the game's)
+export function hints_own(hints_st: HintsState) -> bool { return hints_st.hn_own }
+
 # the key: the picked card opened, or the open one put down
 export function hints_key(hints_st: mut HintsState) -> void {
   if hints_st.hn_card >= 0 {
@@ -9,6 +13,7 @@ export function hints_key(hints_st: mut HintsState) -> void {
     return
   }
   hints_open(hints_st, hints_st.hn_pick)
+  hints_st.hn_own = hints_st.hn_card >= 0
 }
 
 # the k-th chip on the rail opened as a card
@@ -23,6 +28,7 @@ export function hints_close(hints_st: mut HintsState) -> void {
   if hints_st.hn_card < 0 { return }
   let c = hints_st.hn_card
   hints_st.hn_card = -1
+  hints_st.hn_own = false
   hn_fact(hints_st, HINTS_F_CLOSED, c)
 }
 
@@ -38,8 +44,24 @@ export function hints_mute_card(hints_st: mut HintsState) -> void {
   let c = hints_st.hn_card
   hints_mute(hints_st, c, true)
   hints_st.hn_card = -1
+  hints_st.hn_own = false
   hints_st.hn_t = 0.0
   hn_fact(hints_st, HINTS_F_MUTED, c)
+}
+
+# what the arrows and Enter mean this frame: the game's own unless the player opened the card with the
+# key. HINTS_KEY_NONE says they pass through; the others are the card's walk and its mute
+export const HINTS_KEY_NONE: int = 0
+export const HINTS_KEY_PREV: int = 1
+export const HINTS_KEY_NEXT: int = 2
+export const HINTS_KEY_MUTE: int = 3
+
+export function hints_keys_act(hints_st: HintsState, left: bool, right: bool, enter: bool) -> int {
+  if not hints_st.hn_own or hints_st.hn_card < 0 { return HINTS_KEY_NONE }
+  if left { return HINTS_KEY_PREV }
+  if right { return HINTS_KEY_NEXT }
+  if enter { return HINTS_KEY_MUTE }
+  return HINTS_KEY_NONE
 }
 
 # a step's words and its picture (n 1..3): the glyph's name, or the item (-1 when it is a glyph)

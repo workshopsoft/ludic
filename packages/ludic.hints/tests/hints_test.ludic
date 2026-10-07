@@ -111,6 +111,37 @@ program HintsTest {
     expect_eq(count(hints_st, HINTS_F_OPENED), 4)
   }
 
+  test "Enter and the arrows are the card's only when the player opened it; Esc closes either" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
+    fresh(hints_st, hints_test_st)
+    hints_test_st.on[HINT_COLD] = true
+    hints_test_st.on[HINT_THIRSTY] = true
+    hints_sort(hints_st)
+    hints_open(hints_st, 0)                                  # shown on its own
+    expect_eq(hints_card(hints_st), HINT_COLD)
+    expect(not hints_own(hints_st))
+    expect_eq(hints_keys_act(hints_st, false, false, true), HINTS_KEY_NONE)
+    expect_eq(hints_keys_act(hints_st, true, false, false), HINTS_KEY_NONE)
+    expect_eq(hints_keys_act(hints_st, false, true, false), HINTS_KEY_NONE)
+    expect_eq(hints_mute_count(hints_st), 0)
+    hints_close(hints_st)                                    # Esc
+    expect_eq(hints_card(hints_st), -1)
+    hints_key(hints_st)                                      # the player's key
+    expect(hints_own(hints_st))
+    expect_eq(hints_keys_act(hints_st, true, false, false), HINTS_KEY_PREV)
+    expect_eq(hints_keys_act(hints_st, false, true, false), HINTS_KEY_NEXT)
+    hints_move(hints_st, 1)
+    expect(hints_own(hints_st))                              # walking keeps it theirs
+    expect_eq(hints_keys_act(hints_st, false, false, true), HINTS_KEY_MUTE)
+    hints_mute_card(hints_st)
+    expect(not hints_own(hints_st))
+    expect_eq(hints_mute_count(hints_st), 1)
+    hints_key(hints_st)
+    hints_close(hints_st)                                    # Esc on their own card
+    expect_eq(hints_card(hints_st), -1)
+    expect(not hints_own(hints_st))
+    expect_eq(hints_keys_act(hints_st, false, false, true), HINTS_KEY_NONE)
+  }
+
   test "the card follows its subject as the rail re-sorts, and goes when it is no longer true" (hints_st: mut HintsState, hints_test_st: mut HintsTestState) {
     fresh(hints_st, hints_test_st)
     hints_test_st.on[HINT_THIRSTY] = true

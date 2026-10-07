@@ -10,6 +10,7 @@ export state HintsState {
   hn_t: float = 0.0            # seconds to the next pass
   hn_pick: int = 0             # which chip the key would open
   hn_card: int = -1            # the card being read, or -1
+  hn_own: bool = false         # the card was opened by the player's own key, not shown on its own
   hn_facts: Queue<HintsFact> = hn_facts__new()
 }
 
@@ -66,6 +67,7 @@ export function hints_sort(hints_st: mut HintsState) -> void {
   if hints_st.hn_pick >= hints_st.hn_n { hints_st.hn_pick = 0 }
   if hints_st.hn_card < 0 { return }
   if not on or hints_muted(hints_st, hints_st.hn_card) or not HintsWorld.true_now(hints_st.hn_card) {
+    hints_st.hn_own = false
     hints_st.hn_card = -1
     return
   }
@@ -96,6 +98,7 @@ export function hints_reset(hints_st: mut HintsState) -> void {
   hints_st.hn_n = 0
   hints_st.hn_t = 0.0
   hints_st.hn_pick = 0
+  hints_st.hn_own = false
   hints_st.hn_card = -1
   q_clear(hints_facts(hints_st))
 }
