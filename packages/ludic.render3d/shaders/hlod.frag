@@ -7,6 +7,9 @@ out vec4 o_color;
 uniform mat4 u_view;
 void main() {
   if (v_wpos.y < u_clip_y) discard;
+#ifndef SHADOW_PASS
+  if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
+#endif
   vec3 N = normalize(v_nrm);
   float dist = length(v_wpos - u_cam_pos);
   float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;

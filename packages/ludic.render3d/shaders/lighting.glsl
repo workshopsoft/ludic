@@ -288,7 +288,9 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
 // is that air.
 uniform float u_fog_inscatter;   // how hard the air scatters the sun forward
 uniform float u_fog_desat;       // how fast distance takes a surface's own colour away
-uniform float u_fog_wall;        // r3d_fog_wall: > 0, the distance past which nothing is seen
+uniform float u_fog_wall;        // r3d_fog_wall: > 0, the distance past which nothing but the land is drawn
+uniform float u_fog_haze;        // how much of the wall's colour the far land takes (1: all, the land hidden too)
+uniform vec2 u_fog_cut;          // the wall's dissolve, start and end (m) from the camera; end 0 for none
 // the colour the fog wall hides things in: the haze the camera would see at the horizon that way. Its
 // light is the whole sky's (its mean radiance, the irradiance an upward face takes - the photograph's
 // average horizon), coloured as the drawn sky is at the horizon at this hour (analyticSky, by the same
@@ -340,11 +342,19 @@ vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = mix(col, vec3(l), clamp(f * u_fog_desat, 0.0, 1.0));
   col = mix(col, fogCol, f);
-  // the fog wall: from three tenths of its distance to all of it, everything goes to the sky's colour
+  // the fog wall: from three tenths of its distance on, everything takes the haze's colour - all of it by
+  // 0.85 of the wall when the land is hidden too, a share (u_fog_haze) when the land draws through it
   if (u_fog_wall > 0.0) {
-    // full by 0.85 of the wall, so whatever is cut at the wall is cut inside solid fog
-    float w = smoothstep(0.3 * u_fog_wall, 0.85 * u_fog_wall, dist);
+    float w = smoothstep(0.3 * u_fog_wall, 0.85 * u_fog_wall, dist) * u_fog_haze;
     if (w > 0.0) col = mix(col, fogWallCol(dir), w);
   }
   return col;
+}
+// is this fragment of a scatter instance, a layer or an actor dissolved at the wall? A dither from the
+// dissolve's start to its end, so what the wall takes thins into the land behind rather than ending in a line
+bool fogCut(vec3 wpos) {
+  if (u_fog_cut.y <= 0.0) return false;
+  float t = (length(wpos - u_cam_pos) - u_fog_cut.x) / max(u_fog_cut.y - u_fog_cut.x, 1.0);
+  if (t <= 0.0) return false;
+  return t >= fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
 }

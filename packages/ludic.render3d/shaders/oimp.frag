@@ -44,6 +44,9 @@ vec2 frameUv(float f, vec3 p) {
 }
 void main() {
   if (v_wpos.y < u_clip_y) discard;
+#ifndef SHADOW_PASS
+  if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
+#endif
   vec4 a = vec4(0.0);
   vec4 nn = vec4(0.0);
   float wsum = 0.0;

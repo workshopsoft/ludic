@@ -147,10 +147,11 @@ void main() {
   // the wall hides meets the sky with no seam; the sky overhead stays
   if (u_fog_wall > 0.0) {
     float band = clamp(90.0 / u_fog_wall, 0.06, 0.75);
-    col = mix(col, fogWallCol(dir), 1.0 - smoothstep(-0.02, band, dir.y));
+    col = mix(col, fogWallCol(dir), (1.0 - smoothstep(-0.02, band, dir.y)) * u_fog_haze);
     // a thick fog (110 m and nearer, easing out by 175 m) takes the whole sky, overhead too: no
     // stars and no clouds through it, only a soft glow where the sun (in fogWallCol) or the moon is
-    float cover = 1.0 - smoothstep(110.0, 175.0, u_fog_wall);
+    // (the share of it the land is under, when the land draws through the wall)
+    float cover = (1.0 - smoothstep(110.0, 175.0, u_fog_wall)) * u_fog_haze;
     if (cover > 0.0) {
       vec3 thick = fogWallCol(dir);
       float mg = pow(max(dot(dir, u_moon_dir), 0.0), 12.0) * u_moon_illum * night * step(-0.08, u_moon_dir.y);

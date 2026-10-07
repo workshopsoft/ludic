@@ -7,7 +7,6 @@
 # the size of each cascade's depth layer; shadow_set_res changes it at run time
 const SHADOW_CASCADES: int = 5
 
-
 # the GPU memory it makes is counted as VKM_SHADOW (R3D_VKMEM)
 function shadow_init(render3d_st: mut Render3dState) -> void {
   let was = render3d_st.gvk_tag
@@ -141,7 +140,6 @@ function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: fl
 
 function shadow_cascade_vp(render3d_st: Render3dState, c: int) -> floats { return render3d_st.sh_vp_v[c] }
 
-
 # render every cascade; `draw` happens through terrain_draw_shadow + the scene's casters
 function shadow_pass(render3d_st: mut Render3dState) -> void {
   var near = render3d_st.cam_near
@@ -162,7 +160,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
     let past = wall > 0.0 and near >= wall
     near = render3d_st.sh_split[c]
     # a cascade the fog's shadow array has no layer for: fitted (its uniforms stay sane), never drawn
-    if c >= render3d_st.sh_layers { continue }
+    if c >= render3d_st.sh_layers { shadow_cascade_none(render3d_st, c);  continue }
     gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, c)
     if render3d_st.r3d_debug and c == 0 { shadow_debug_fbo(render3d_st) }
     gpu_clear(render3d_st, GPU_DEPTH_BUFFER_BIT)

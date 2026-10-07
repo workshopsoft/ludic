@@ -12,6 +12,9 @@ uniform vec3 u_tint;
 uniform float u_radius;
 void main() {
   if (v_wpos.y < u_clip_y) discard;
+#ifndef SHADOW_PASS
+  if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
+#endif
   vec2 uv = vec2((v_tile + v_uv.x) / u_tiles, v_uv.y);
 #ifdef SHADOW_PASS
   // the map's texels are coarse: read a finer mip so the crown's coverage is not averaged away

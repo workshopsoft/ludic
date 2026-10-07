@@ -142,6 +142,9 @@ vec4 interiorAt(float lod) {
 
 void main() {
   if (v_wpos.y < u_clip_y) discard;
+#ifndef SHADOW_PASS
+  if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
+#endif
   vec3 N = normalize(v_nrm);
   if (!gl_FrontFacing) N = -N;
   float dist = length(v_wpos - u_cam_pos);

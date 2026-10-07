@@ -150,7 +150,7 @@ function wb_cell_visible(render3d_st: Render3dState, i: int) -> bool {
 # or under the surface hides nothing behind the ground.
 function wb_point_hidden(render3d_st: mut Render3dState, x: float, z: float) -> bool {
   if terrain_height(render3d_st, x, z) > render3d_st.water_level + 0.05 { return true }
-  if not cam_sphere_visible(render3d_st, x, render3d_st.water_level, z, 0.5) { return true }
+  if not cam_sphere_land(render3d_st, x, render3d_st.water_level, z, 0.5) { return true }
   let ey = render3d_st.cam_pos[1]
   if not (ey > render3d_st.water_level) { return false }
   let dx = x - render3d_st.cam_pos[0];  let dz = z - render3d_st.cam_pos[2]

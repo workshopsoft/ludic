@@ -1,0 +1,57 @@
+# fog_land_test.ludic - the fog wall leaves the land (fog_land.ludic): the far plane, the terrain's and the
+# water's visibility, the share of the wall's haze and the dissolve, with the land drawn through and without
+import "ludic.render3d/r3d.ludic"
+program FogLandTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # a camera at the origin with the default far plane and a wall at `wall` metres (0: none)
+  function at(wall: float) -> Render3dState {
+    let st = new Render3dState
+    st.cam_pos = floats(3)
+    st.cam_far = 14000.0
+    st.r3d_fog_wall = wall
+    return st
+  }
+
+  test "with the land drawn through, the far plane is the camera's and the wall still bounds what costs" {
+    let st = at(175.0)
+    expect(r3d_fog_land(st))
+    expect_near(r3d_view_far(st), 14000.0, 0.001)
+    expect_near(r3d_reach(st, 0.0), 183.0, 0.001)
+    # a sphere 2 km off: past the wall for a tree, in view for the ground
+    expect(not cam_sphere_visible(st, 2000.0, 0.0, 0.0, 10.0))
+    expect(cam_sphere_land(st, 2000.0, 0.0, 0.0, 10.0))
+  }
+
+  test "the old wall hides the land too, and no wall changes nothing" {
+    let st = at(175.0)
+    st.r3d_fog_land_on = false
+    expect(not r3d_fog_land(st))
+    expect_near(r3d_view_far(st), 183.0, 0.001)
+    expect(not cam_sphere_land(st, 2000.0, 0.0, 0.0, 10.0))
+    expect_near(fog_haze(st), 1.0, 0.0001)
+    expect_near(fog_cut_end(st), 0.0, 0.0001)
+    let open = at(0.0)
+    expect(not r3d_fog_land(open))
+    expect_near(r3d_view_far(open), 14000.0, 0.001)
+    expect_near(fog_haze(open), 1.0, 0.0001)
+  }
+
+  test "the haze over the land is heavier the nearer the wall, and never all of it" {
+    expect_near(fog_haze(at(30.0)), 0.5, 0.001)
+    expect_near(fog_haze(at(1000.0)), 0.2, 0.001)
+    let h = fog_haze(at(175.0))
+    expect(h > 0.3 and h < 0.4)
+    expect(fog_haze(at(70.0)) > h)
+  }
+
+  test "the dissolve ends at the reach and takes 30 m, or six tenths of a near wall" {
+    let st = at(175.0)
+    expect_near(fog_cut_end(st), 183.0, 0.001)
+    expect_near(fog_cut_start(st), 153.0, 0.001)
+    let near = at(30.0)
+    expect_near(fog_cut_end(near), 38.0, 0.001)
+    expect_near(fog_cut_start(near), 20.0, 0.001)
+  }
+}

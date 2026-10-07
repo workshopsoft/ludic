@@ -60,6 +60,9 @@ void main() {
   //  early depth rejection off and bring the overdraw back, and the prepass has already
   //  cut both the clip plane and the alpha)
   if (v_wpos.y < u_clip_y) discard;
+#ifndef SHADOW_PASS
+  if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
+#endif
 #ifdef NEAR_FADE
   // the same dither as the prepass, for the draws that have no prepass in front of them
   if (v_near < 0.999 && v_near < fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;

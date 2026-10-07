@@ -1,0 +1,66 @@
+# fog_land.ludic - the fog wall leaves the land. Past the wall nothing that costs is drawn - the scatter,
+# the layers, the actors, the terrain's fine pages (r3d_reach) - but the terrain and the water are, to the
+# camera's far plane, under the day's aerial perspective and a share of the wall's haze (u_fog_haze), so a
+# skyline and its peaks stay in view at every distance. What the wall takes is dissolved over its last
+# metres by a dither (u_fog_cut, lighting.glsl fogCut) rather than ending in a line.
+# R3D_FOG_LAND=0 (or r3d_fog_land_set(false)) is the old wall: the land hidden with everything else.
+
+const FOG_CUT_M: float = 30.0       # the dissolve's depth, at most
+const FOG_CUT_SHARE: float = 0.6    # and at most this share of the wall, so a near wall keeps its near things
+const FOG_HAZE_NEAR: float = 0.5    # the wall's haze over the land at the nearest wall (30 m)
+const FOG_HAZE_FAR: float = 0.2     # and at a kilometre
+const FOG_HAZE_M0: float = 30.0
+const FOG_HAZE_M1: float = 1000.0
+
+# a game that wants the land hidden too, as before (true by default)
+export function r3d_fog_land_set(render3d_st: mut Render3dState, on: bool) -> void {
+  if on == render3d_st.r3d_fog_land_on { return }
+  render3d_st.r3d_fog_land_on = on
+  cam_update(render3d_st)
+}
+
+# is there a wall, and does the land draw through it?
+export function r3d_fog_land(render3d_st: Render3dState) -> bool { return render3d_st.r3d_fog_wall > 0.0 and render3d_st.r3d_fog_land_on }
+
+# the projection's far plane: the camera's own when the land draws through the wall, else the wall's reach
+function r3d_view_far(render3d_st: Render3dState) -> float {
+  if r3d_fog_land(render3d_st) { return render3d_st.cam_far }
+  return r3d_reach(render3d_st, render3d_st.cam_far)
+}
+
+# a sphere of the land in view: the side planes alone when the land draws through the wall
+function cam_sphere_land(render3d_st: Render3dState, x: float, y: float, z: float, r: float) -> bool {
+  if r3d_fog_land(render3d_st) { return cam_sphere_in_view(render3d_st, x, y, z, r) }
+  return cam_sphere_visible(render3d_st, x, y, z, r)
+}
+
+# how much of the wall's colour the farthest things take: all of it with the land hidden, less the farther the wall
+function fog_haze(render3d_st: Render3dState) -> float {
+  if not r3d_fog_land(render3d_st) { return 1.0 }
+  let t = Math.clamp(Math.log(render3d_st.r3d_fog_wall / FOG_HAZE_M0) / Math.log(FOG_HAZE_M1 / FOG_HAZE_M0), 0.0, 1.0)
+  return Math.lerp(FOG_HAZE_NEAR, FOG_HAZE_FAR, t)
+}
+
+# the dissolve: from its start to the reach every scatter, layer and actor fragment is dropped by a dither
+function fog_cut_end(render3d_st: Render3dState) -> float {
+  if not r3d_fog_land(render3d_st) { return 0.0 }
+  return r3d_reach(render3d_st, 0.0)
+}
+function fog_cut_start(render3d_st: Render3dState) -> float {
+  let e = fog_cut_end(render3d_st)
+  return e - Math.min(FOG_CUT_M, FOG_CUT_SHARE * render3d_st.r3d_fog_wall)
+}
+
+# the wall's share and the dissolve, for a program that includes lighting.glsl (fog_bind, the sky, the prepass)
+function fog_land_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_haze"), fog_haze(render3d_st))
+  u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_fog_cut"), fog_cut_start(render3d_st), fog_cut_end(render3d_st))
+}
+
+# a cascade the wall left no layer for reads lit: its matrix puts every point outside the map (x = 2.5),
+# where the lookup answers 1 - the land past the wall is drawn, and it read the last layer's depths
+function shadow_cascade_none(render3d_st: mut Render3dState, c: int) -> void {
+  for i in 0 .. 16 { render3d_st.sh_vp[c * 16 + i] = 0.0 }
+  render3d_st.sh_vp[c * 16 + 12] = 4.0
+  render3d_st.sh_vp[c * 16 + 15] = 1.0
+}

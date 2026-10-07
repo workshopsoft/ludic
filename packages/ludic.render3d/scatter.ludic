@@ -1075,6 +1075,8 @@ function layer_draw_depth(render3d_st: mut Render3dState, l: Layer, model: Model
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_y"), render3d_st.r3d_clip_y)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  fog_land_bind(render3d_st, p)
   gpu_cull(render3d_st, false)
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]

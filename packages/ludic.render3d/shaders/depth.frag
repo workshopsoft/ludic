@@ -16,6 +16,9 @@ in float v_near;
 uniform sampler2D u_diff;
 void main() {
   if (v_wpos.y < u_clip_y) discard;
+#ifndef SHADOW_PASS
+  if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
+#endif
 #ifdef NEAR_FADE
   // Leaves in the camera's face (model.vert's v_near). Dithered out rather than blended:
   // no sorting, no second pass and no halo, and because it happens in the PREPASS the lit

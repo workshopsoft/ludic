@@ -30,8 +30,6 @@ const GSL_PRESENT_END: int = 5
 
 const GSL_LAYOUT_READ: int = 5        # VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 
-
-
 # ---- structure headers ------------------------------------------------------------------
 function gsl_le16(v: int) -> int { return ((v >> 8) & 255) | ((v & 255) << 8) }
 function gsl_header(p: pointer, a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, version: int) -> void {
@@ -358,7 +356,7 @@ function gsl_constants(render3d_st: mut Render3dState) -> void {
   let fix = m4_new();  let proj = m4_new();  let v2c = m4_new();  let c2v = m4_new()
   let cur = m4_new();  let prev = m4_new();  let inv_cur = m4_new();  let c2p = m4_new();  let p2c = m4_new()
   gsl_clip_fix(fix)
-  m4_perspective(proj, render3d_st.cam_fov, render3d_st.cam_aspect, render3d_st.cam_near, r3d_reach(render3d_st, render3d_st.cam_far))
+  m4_perspective(proj, render3d_st.cam_fov, render3d_st.cam_aspect, render3d_st.cam_near, r3d_view_far(render3d_st))
   m4_mul(v2c, fix, proj)
   m4_inverse(c2v, v2c)
   gsl_put_m4(k, 32, v2c)                            # cameraViewToClip (no jitter)
@@ -393,7 +391,7 @@ function gsl_constants(render3d_st: mut Render3dState) -> void {
   gsl_put_v3(k, 400, render3d_st.cam_right)
   gsl_put_v3(k, 412, render3d_st.cam_fwd)
   Vk.put_i32(k, 424, float_bits(render3d_st.cam_near))
-  Vk.put_i32(k, 428, float_bits(r3d_reach(render3d_st, render3d_st.cam_far)))
+  Vk.put_i32(k, 428, float_bits(r3d_view_far(render3d_st)))
   Vk.put_i32(k, 432, float_bits(render3d_st.cam_fov))
   Vk.put_i32(k, 436, float_bits(render3d_st.cam_aspect))
   Vk.put_i32(k, 440, float_bits(0.0))                        # motionVectorsInvalidValue
