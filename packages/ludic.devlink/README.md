@@ -4,7 +4,9 @@ An editor's live link into a running dev build: the wire protocol v1 frozen in
 `game-editor/proposals/2026-09-29-devlink/protocol-v1.md`. Uses `ludic.base` and nothing else.
 
 - **Transport** is the `DevlinkNet` port (a game binds `Udp.*`, a test a fake). One request a frame, read
-  from one fixed 8 KB buffer and answered into another; nothing is made per frame. Only a loopback sender
+  from one fixed 8 KB buffer and answered into another; nothing is made per frame. A request's texts (a string argument, a path) are the request's: made when it is
+  read and let go when the next one is, a shot's path when the next shot is - a port member or a verb that wants one
+  longer copies it (`keep`). Only a loopback sender
   is answered (`DevlinkNet.loopback`); the socket opens only when `DevlinkWorld.enabled()` says so. Its default is `dev_mode()` from `ludic.base`
   (the `R3D_DEV` environment variable set to anything but `0`, see docs/SHIPPING.md), so a game binds nothing
   and a player's run never opens it; bind `enabled` only for a rule of the game's own.

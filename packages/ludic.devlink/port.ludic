@@ -45,7 +45,7 @@ export port DevlinkWorld {
   camera_get: fn(DevlinkCam) -> int = fn dlw_cam
   camera_set: fn(float, float, float, float, float) -> int = fn dlw_n5
   camera_release: fn() -> int = fn dlw_n0
-  screenshot: fn(string) -> int = fn dlw_s              # the frame now being made, written there
+  screenshot: fn(string) -> int = fn dlw_s              # the frame now being made, written there (the path is the link's until the next shot: hold it, never copy it)
   shot_state: fn() -> int = fn dlw_n0                   # 1 written, 0 not yet, -1 failed
   shot_w: fn() -> int = fn dlw_z0
   shot_h: fn() -> int = fn dlw_z0

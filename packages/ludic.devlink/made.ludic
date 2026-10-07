@@ -1,0 +1,30 @@
+# made.ludic - a request's texts are the request's: a string argument or a path is made when its request is read
+# and let go when the next one is; a shot's path when the next shot is. An editor names every shot afresh
+# (ludic-studio-shot-<pid>-<n>.ppm), and a text made per request and never let go rose window after window under
+# the alloc fence until a driven session failed it ("declared but unbounded" at text_of, exit 86). Whoever
+# wants one longer copies it (map_load's keep, ui_override's intern, Input.type's queue)
+
+@alloc_ok("a request's text, let go by its owner: the request (dl_let_go) or the shot (dl_shot_text)")
+function dl_make(st: DevlinkState, n: int) -> string { return text_of(st.dl_str, n) }
+
+# the quoted argument just read, as text for this request alone
+function dl_text(st: mut DevlinkState, n: int) -> string {
+  let s = dl_make(st, n)
+  push(st.dl_made, s)
+  return s
+}
+
+# a new request is read: the last one's texts go
+function dl_let_go(st: mut DevlinkState) -> void {
+  for i in 0 .. len(st.dl_made) { free(st.dl_made[i]) }
+  List.clear(st.dl_made)
+}
+
+# a shot's path: the game writes the frame there after the request is read (at the end of its frame, or later), and
+# other requests may come first, so it lives until the next shot is taken (one is parked at a time, dl_busy)
+function dl_shot_text(st: mut DevlinkState, n: int) -> string {
+  if st.dl_shot_held { free(st.dl_shot_s) }
+  st.dl_shot_s = dl_make(st, n)
+  st.dl_shot_held = true
+  return st.dl_shot_s
+}

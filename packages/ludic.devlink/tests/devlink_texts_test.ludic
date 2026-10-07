@@ -1,0 +1,90 @@
+# devlink_texts_test.ludic - a request's texts are the request's: an editor names every shot afresh, and a session
+# of them, or of ever new words, keeps nothing (a text made per request rose under the alloc fence until a driven
+# session failed it: "declared but unbounded" at text_of, exit 86)
+import "ludic.devlink"
+import "ludic.base"
+program DevlinkTextsTest {
+  numbers float
+  state FakeLinkState {
+    inbox: string = ""
+    out: []byte = buffer(256)                  # what was sent, copied into a buffer made once: a send keeps nothing
+    out_n: int = 0
+    shot_path: string = ""                     # the link's text, held as the port says (never copied)
+    shot_st: int = 0
+  }
+  function fk_open(port: int) -> int { return 7 }
+  function fk_recv(fake_link_st: mut FakeLinkState, h: int, b: []byte, cap: int) -> int {
+    let n = len(fake_link_st.inbox)
+    for i in 0 .. n { b[i] = fake_link_st.inbox[i] }
+    fake_link_st.inbox = ""
+    return n
+  }
+  function fk_ip(h: int) -> int { return 2130706433 }
+  function fk_port(h: int) -> int { return 5555 }
+  function fk_send(fake_link_st: mut FakeLinkState, h: int, ip: int, port: int, b: []byte, n: int) -> int {
+    for i in 0 .. n { fake_link_st.out[i] = b[i] }
+    fake_link_st.out_n = n
+    return n
+  }
+  function sent(fake_link_st: FakeLinkState) -> string { return text_of(fake_link_st.out, fake_link_st.out_n) }
+  function fk_loop(ip: int) -> bool { return true }
+  function fk_publish(path: string, b: []byte, n: int) -> int { return 0 }
+  bind DevlinkNet { open: fn fk_open, recv: fn fk_recv, from_ip: fn fk_ip, from_port: fn fk_port, send: fn fk_send, loopback: fn fk_loop, publish: fn fk_publish }
+  function fw_on() -> bool { return true }
+  function fw_game() -> string { return "shooter" }
+  function fw_shot(fake_link_st: mut FakeLinkState, path: string) -> int {
+    fake_link_st.shot_path = path
+    fake_link_st.shot_st = 1                   # written at once
+    return 0
+  }
+  function fw_shot_st(fake_link_st: FakeLinkState) -> int { return fake_link_st.shot_st }
+  bind DevlinkWorld { enabled: fn fw_on, game: fn fw_game, screenshot: fn fw_shot, shot_state: fn fw_shot_st }
+  function v_say(c: DevCall) -> int {
+    dv_reply_int(c, len(dv_str(c, 0)))
+    return DV_OK
+  }
+  def DevVerbs say { args: "what:string", run: fn v_say }
+
+  # n requests made before anything is measured: building them is the test's memory, not the link's
+  function requests(fmt_shot: bool, n: int) -> []string {
+    let rs = new []string
+    for k in 0 .. n {
+      if fmt_shot { push(rs, `{k + 1} shot "/tmp/ludic-studio-shot-12345-{k + 1000}.ppm"`) }
+      else { push(rs, `{k + 1} say "word{k + 1000}"`) }
+    }
+    return rs
+  }
+
+  test "a shot with a fresh path each time keeps nothing: 300 shots, the heap does not grow" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    let rs = requests(true, 300)
+    let t = tick_new(0.016, 0, 0.0)
+    var before: long = 0
+    for k in 0 .. len(rs) {
+      if k == 4 { before = Os.heap_bytes() }
+      fake_link_st.inbox = rs[k]
+      fake_link_st.shot_st = 0
+      devlink_tick(devlink_st, t)              # read and parked
+      devlink_tick(devlink_st, t)              # answered: the game wrote it
+    }
+    let grew = Os.heap_bytes() - before        # before anything the test makes to look at the answer
+    expect(sent(fake_link_st) == "300 ok \"/tmp/ludic-studio-shot-12345-1299.ppm\" 0 0")
+    expect(fake_link_st.shot_path == "/tmp/ludic-studio-shot-12345-1299.ppm")   # the last shot's path still held
+    print(`devlink: 296 shots with fresh paths, heap grew {grew} bytes`)
+    expect(grew == long(0))
+  }
+
+  test "a new word every request keeps nothing: 400 distinct words, the heap does not grow" (devlink_st: mut DevlinkState, fake_link_st: mut FakeLinkState) {
+    let rs = requests(false, 400)
+    let t = tick_new(0.016, 0, 0.0)
+    var before: long = 0
+    for k in 0 .. len(rs) {
+      if k == 4 { before = Os.heap_bytes() }
+      fake_link_st.inbox = rs[k]
+      devlink_tick(devlink_st, t)
+    }
+    let grew = Os.heap_bytes() - before
+    expect(sent(fake_link_st) == "400 ok 8")
+    print(`devlink: 396 requests of a word never sent before, heap grew {grew} bytes`)
+    expect(grew == long(0))
+  }
+}

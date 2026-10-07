@@ -24,6 +24,7 @@ export function devlink_tick(devlink_st: mut DevlinkState, t: Tick) -> void {
   devlink_st.dl_port = DevlinkNet.from_port(h)
   if not DevlinkNet.loopback(devlink_st.dl_ip) { return }       # only this machine
   devlink_st.dl_n = n
+  dl_let_go(devlink_st)                                         # the last request's texts (made.ludic)
   let kept0 = Mem.kept()
   devlink_handle(devlink_st)
   if devlink_st.dl_o > 0 { DevlinkNet.send(h, devlink_st.dl_ip, devlink_st.dl_port, devlink_st.dl_out, devlink_st.dl_o) }
