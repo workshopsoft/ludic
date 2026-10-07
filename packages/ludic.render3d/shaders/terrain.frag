@@ -359,13 +359,19 @@ float canopyOver(vec3 p, vec3 N, float dist, vec3 dpx, vec3 dpy, inout vec3 alb,
   vec3 col = cn.rgb;
   gap = mix(0.75, 0.5, cover);
   if (detail > 0.01) {
-    // crowns five metres apart, wider where the stand is thick
+    // crowns five metres apart, wider where the stand is thick, and a thin stand leaves cells empty
     vec3 c = crownCell(p.xz * 0.2);
-    float r = mix(0.3, 0.6, cover) * (0.8 + 0.45 * fract(c.z * 3.17 + 0.5));
+    float here = step(fract(c.z * 13.7 + 0.25), mix(0.5, 1.0, cover));
+    float r = mix(0.3, 0.6, cover) * (0.65 + 0.7 * fract(c.z * 3.17 + 0.5));
+    // a spruce from above is a star of branch tips, not a disc
+    float rr = r * (0.82 + 0.18 * sin(atan(c.y, c.x) * 7.0 + fract(c.z * 5.3) * 6.2831853));
     float d = length(c.xy);
-    float inC = smoothstep(r, r * 0.8, d);
-    vec2 o = -c.xy / r;
-    cnN = normalize(mix(N, normalize(N + vec3(o.x, 0.0, o.y) * 0.6), inC * detail));
+    float inC = smoothstep(rr, rr * 0.75, d) * here;
+    // a cone, not a dome: the same slope from tip to skirt, so the lit and shaded halves meet in a
+    // line through the tip. Smooth hemispheres on the grid put a crescent on every crown, and a
+    // hillside of them read as fish scales (vqa8 ov_nohud).
+    vec2 o = -c.xy / max(d, 1e-4);
+    cnN = normalize(mix(N, normalize(N + vec3(o.x, 0.0, o.y) * 0.25), inC * detail));
     roof = mix(roof, inC, detail);
     gap = mix(gap, mix(0.45, 0.9, inC), detail);
     col *= mix(1.0, 0.85 + 0.3 * fract(c.z * 7.31 + 0.5), detail);
