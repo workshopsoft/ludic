@@ -42,6 +42,13 @@ export property GroundLayer {
   @Unit("m") @Range(0, 2000) band3: float = 0.0
   @Unit("m") @Range(0, 4000) reach: float = 0.0    # and the last one's
   layer: int = -1                                  # its place in the map's baked densities (-1: its place among these rows)
+  # seen past the fog wall, where nothing is grown: the share of the ground its crowns roof from afar for each
+  # unit of its mean density (crowns stand taller and wider than the cell they grow in; 0: none, the ground
+  # shows), and their colour from afar, linear (ground_canopy.ludic)
+  @Range(0, 64) canopy: float = 0.0
+  @Range(0, 1) canopy_r: float = 0.04
+  @Range(0, 1) canopy_g: float = 0.06
+  @Range(0, 1) canopy_b: float = 0.035
 }
 
 @PerMap @ByKey

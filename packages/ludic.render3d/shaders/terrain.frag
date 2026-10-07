@@ -87,6 +87,10 @@ vec3 terNormal(vec2 uv) { vec2 xz = terNormalXZ(uv);  return vec3(xz.x, sqrt(max
 uniform sampler2D u_rock_d;  uniform sampler2D u_rock_n;  uniform sampler2D u_rock_a;
 uniform sampler2D u_snow_d;  uniform sampler2D u_carpet;   // the clump cards baked straight down (alpha = coverage)
 uniform float u_carpet_on;
+// the crowns past the fog wall (ground_canopy.ludic): sRGB colour, alpha the share roofed; read only while the
+// land draws through the wall, faded in over the wall's own dissolve (u_fog_cut) as the grown trees fade out
+uniform sampler2D u_canopy;
+uniform float u_canopy_on;
 uniform float u_grass_reach;   // where the GPU blades stop (0: none): the ground under them is in their shade
 uniform float u_snow_line;
 // where the ground goes to bare rock by height alone (above treeline): the band's foot and its width,
@@ -317,6 +321,57 @@ vec3 forestFloor(vec2 xz, float grain, bool cheap) {
   vec3 litter = mix(vec3(0.115, 0.082, 0.052), vec3(0.060, 0.045, 0.030), humus);
   vec3 under = mix(vec3(0.050, 0.082, 0.028), vec3(0.036, 0.058, 0.026), humus);
   return mix(litter, under, green * 0.85) * grain;
+}
+// The nearest crown on a jittered grid (x in cells): the offset from here to its centre, and its own hash
+vec3 crownCell(vec2 x) {
+  vec2 i = floor(x), f = fract(x);
+  vec3 best = vec3(9.0, 9.0, 0.0);
+  float bd = 99.0;
+  for (int v = -1; v <= 1; v++) {
+    for (int u = -1; u <= 1; u++) {
+      vec2 o = vec2(float(u), float(v));
+      vec2 h = hash2(i + o);
+      vec2 r = o + 0.5 + 0.48 * h - f;
+      float d = dot(r, r);
+      if (d < bd) { bd = d;  best = vec3(r, h.x); }
+    }
+  }
+  return best;
+}
+// The forest the wall took, as its crowns seen from afar: their colour over the ground in stands, and while a
+// pixel is smaller than a crown, each crown a dome lit on its sun side with the gaps round it in shade (full
+// noise in both tiers: the far tier's is flat, and the far tier is most of it). Returns how much of the ground's
+// light the crowns take (0, and nothing touched, nearer than the dissolve); gap is the light the sun and sky reach.
+float canopyOver(vec3 p, vec3 N, float dist, vec3 dpx, vec3 dpy, inout vec3 alb, out vec3 cnN, out float gap) {
+  cnN = N;  gap = 1.0;
+  if (u_canopy_on < 0.5 || u_fog_cut.y <= 0.0) return 0.0;
+  float fade = smoothstep(u_fog_cut.x, u_fog_cut.y, dist);
+  if (fade < 0.002) return 0.0;
+  vec4 cn = texture(u_canopy, v_huv);
+  if (cn.a < 0.004) return 0.0;
+  // stands and glades a hundred metres across thin or thicken what the painted densities say
+  float stand = gnoise(p.xz * 0.012 + 13.0) * 0.5 + 0.5;
+  float cover = clamp(cn.a * mix(0.55, 1.45, stand), 0.0, 1.0);
+  float cw = fade * smoothstep(0.04, 0.3, cover);
+  if (cw < 0.002) return 0.0;
+  float detail = smoothstep(2.6, 0.9, max(length(dpx.xz), length(dpy.xz)));
+  float roof = mix(0.55, 1.0, cover);          // seen from afar: the share of the ground behind crowns
+  vec3 col = cn.rgb;
+  gap = mix(0.75, 0.5, cover);
+  if (detail > 0.01) {
+    // crowns five metres apart, wider where the stand is thick
+    vec3 c = crownCell(p.xz * 0.2);
+    float r = mix(0.3, 0.6, cover) * (0.8 + 0.45 * fract(c.z * 3.17 + 0.5));
+    float d = length(c.xy);
+    float inC = smoothstep(r, r * 0.8, d);
+    vec2 o = -c.xy / r;
+    cnN = normalize(mix(N, normalize(N + vec3(o.x, 0.0, o.y) * 0.6), inC * detail));
+    roof = mix(roof, inC, detail);
+    gap = mix(gap, mix(0.45, 0.9, inC), detail);
+    col *= mix(1.0, 0.85 + 0.3 * fract(c.z * 7.31 + 0.5), detail);
+  }
+  alb = mix(alb, col * mix(0.85, 1.1, stand), cw * roof);
+  return cw;
 }
 vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool cheap) {
   // ---- material weights ----
@@ -600,6 +655,9 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   float gully = 0.0;
   if (gullyGate > 0.002) { gully = smoothstep(0.62, 0.85, ridgedC(cheap, p.xz * 0.02 + 3.0, 2)) * gullyGate; }
   alb = mix(alb, sA * 1.05, gully * 0.9);
+  vec3 crownN;
+  float crownGap;
+  float crownW = canopyOver(p, N, dist, dpx, dpy, alb, crownN, crownGap);
   vec3 arm = gR * grassW + pR * pathW + rR * rockW + sR * snowW;
   // world tangent frame for the planar maps
   vec3 T = normalize(vec3(1.0, 0.0, 0.0) - N * N.x);
@@ -615,6 +673,10 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   // dark: the sky glances off it. A puddle is smoother still and flat, so its normal is the
   // world's up rather than the ground's relief.
   rough = mix(rough, 0.28, wet * 0.8);
+  // crowns are rough and shade each other: no glint, and the gaps between them darker than any ground
+  rough = mix(rough, 0.95, crownW);
+  ao *= mix(1.0, crownGap, crownW);
+  n = normalize(mix(n, crownN, crownW));
   if (pud > 0.01) {
     rough = mix(rough, 0.06, pud);
     n = normalize(mix(n, vec3(0.0, 1.0, 0.0), pud * 0.9));
@@ -632,6 +694,8 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   // cascade read cannot happen in here (on OpenGL).
   float shadow = texelFetch(u_sunshadow, ivec2(gl_FragCoord.xy), 0).r;
 #endif
+  // seen from afar most of a stand is a crown's shaded flank or the shadow it throws: the sun reaches the gaps' share
+  shadow *= mix(1.0, 0.4 + 0.6 * crownGap, crownW);
   vec3 col = shade(p, n, alb, rough, metal, ao, shadow, viewDepth);
   dbg_n = n; dbg_alb = alb; dbg_shadow = shadow; dbg_mat = vec3(rockW, grassW, snowW);
   return col;

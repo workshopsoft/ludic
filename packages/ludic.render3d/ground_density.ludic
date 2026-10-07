@@ -83,6 +83,7 @@ function gd_cache_reset(render3d_st: mut Render3dState, tiles: int) -> void {
 }
 
 export function ground_density_close(render3d_st: mut Render3dState) -> void {
+  ground_canopy_free(render3d_st)
   if render3d_st.gd_file != null { file_close(render3d_st.gd_file);  render3d_st.gd_file = null }
   if render3d_st.gd_patch != null {
     for k in 0 .. len(render3d_st.gd_patch) {

@@ -1,0 +1,103 @@
+# ground_canopy.ludic — the forest past the fog wall. Trees are grown only inside the wall's reach, so past it
+# the ground under a crown layer reads as canopy instead: each row's `canopy` share of its painted density, in
+# its `canopy_r/g/b`, folded at the map's open into one small texture (GC_DIV density texels a side a texel),
+# which terrain.frag lays over the ground where the wall's dissolve takes the trees (u_fog_cut, u_canopy).
+
+const GC_DIV: int = 4          # density texels a canopy texel a side: 8 m at the densities' 2 m
+const GC_SUB: int = 2          # of those, every GC_SUB-th is read (a canopy texel is a mean, not a sum)
+
+# the map's canopy made from the rows that name one (none: no texture, and the ground stays as it was)
+@alloc_ok("a map opening: the canopy's sums and its texture, once a map")
+export function ground_canopy_build(render3d_st: mut Render3dState, layers: GroundLayers) -> void {
+  ground_canopy_free(render3d_st)
+  if r3d_env_has(render3d_st, "R3D_NOCANOPY") { return }
+  let t0 = clock_now_us()
+  let acc = ground_canopy_sums(render3d_st, layers)
+  if acc == null { return }
+  gc_upload(render3d_st, acc, ground_canopy_side(render3d_st))
+  free(acc)
+  if render3d_st.r3d_debug { gc_say(ground_canopy_side(render3d_st), int(clock_now_us() - t0)) }
+}
+
+# texels a side of the canopy: the densities' over GC_DIV
+export function ground_canopy_side(render3d_st: Render3dState) -> int { return render3d_st.gd_n * GD_SIDE / GC_DIV }
+
+# the canopy's sums, four floats a texel (colour weighted by what each layer roofs, and what is roofed), spread
+# as the texture will be; null when no densities are open or no row roofs anything. The caller frees them
+@alloc_ok("a map opening: the canopy's sums, made once and handed to the caller")
+export function ground_canopy_sums(render3d_st: mut Render3dState, layers: GroundLayers) -> floats {
+  if render3d_st.gd_file == null { return null }
+  let w = ground_canopy_side(render3d_st)
+  var acc: floats = null
+  for i in 0 .. len(layers.rows) {
+    let g = layers.rows[i]
+    var l = i
+    if g.layer >= 0 { l = g.layer }
+    if g.canopy > 0.0 and l < render3d_st.gd_layers and render3d_st.gd_ch[l] > 0 {
+      if acc == null { acc = gc_zeros(w * w * 4) }
+      gc_layer(render3d_st, acc, w, l, g)
+    }
+  }
+  if acc != null { gc_blur(acc, w) }
+  return acc
+}
+function gc_say(w: int, us: int) -> void { print(`r3d: canopy: {w}x{w} texels, {us / 1000} ms`) }
+
+export function ground_canopy_free(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ter_canopy != 0 { gpu_tex_free(render3d_st, render3d_st.ter_canopy);  render3d_st.ter_canopy = 0 }
+}
+
+# one layer's density, a tile at a time: an empty tile adds nothing, a one-value tile adds its value whole
+function gc_layer(render3d_st: mut Render3dState, acc: floats, w: int, l: int, g: GroundLayer) -> void {
+  let n = render3d_st.gd_n
+  let k = GD_SIDE / GC_DIV
+  for tz in 0 .. n {
+    for tx in 0 .. n {
+      let key = l * n * n + tz * n + tx
+      let a = render3d_st.gd_idx[key * 2]
+      if a == 1 {
+        let v = float(render3d_st.gd_idx[key * 2 + 1] & 255) / 255.0
+        for cz in 0 .. k { for cx in 0 .. k { gc_add(acc, (tz * k + cz) * w + tx * k + cx, v * g.canopy, g) } }
+      } else if a != 0 {
+        gc_tile(render3d_st, acc, w, l, tz * n + tx, tx * k, tz * k, g)
+      }
+    }
+  }
+}
+
+# a stored tile: each canopy texel the mean of its density texels' R
+function gc_tile(render3d_st: mut Render3dState, acc: floats, w: int, l: int, t: int, ox: int, oz: int, g: GroundLayer) -> void {
+  let s = gd_slot(render3d_st, l, t)
+  let ch = render3d_st.gd_ch[l]
+  let base = s * GD_SIDE * GD_SIDE * 2
+  let k = GD_SIDE / GC_DIV
+  let per = float((GC_DIV / GC_SUB) * (GC_DIV / GC_SUB)) * 255.0
+  for cz in 0 .. k {
+    for cx in 0 .. k {
+      var sum = 0
+      var z = cz * GC_DIV
+      while z < (cz + 1) * GC_DIV {
+        var x = cx * GC_DIV
+        while x < (cx + 1) * GC_DIV {
+          sum += render3d_st.gd_pool[base + (z * GD_SIDE + x) * ch]
+          x += GC_SUB
+        }
+        z += GC_SUB
+      }
+      if sum > 0 { gc_add(acc, (oz + cz) * w + ox + cx, float(sum) / per * g.canopy, g) }
+    }
+  }
+}
+
+function gc_add(acc: floats, i: int, c: float, g: GroundLayer) -> void {
+  acc[i * 4] = acc[i * 4] + c * g.canopy_r
+  acc[i * 4 + 1] = acc[i * 4 + 1] + c * g.canopy_g
+  acc[i * 4 + 2] = acc[i * 4 + 2] + c * g.canopy_b
+  acc[i * 4 + 3] = acc[i * 4 + 3] + c
+}
+@alloc_ok("a map opening: the canopy's sums, made once and handed to the caller")
+function gc_zeros(n: int) -> floats {
+  let a = floats(n)
+  for i in 0 .. n { a[i] = 0.0 }
+  return a
+}

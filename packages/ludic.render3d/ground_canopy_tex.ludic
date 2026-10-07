@@ -1,0 +1,63 @@
+# ground_canopy_tex.ludic — the canopy's texture (ground_canopy.ludic): made from its sums at the map's open, and
+# handed to the ground's programs, which read it only while the land draws through the fog wall.
+
+const GC_BLUR: int = 2         # texels each side a stand is spread over (40 m at 8 m)
+
+# the crowns for a terrain program: the texture (the grass sheet standing in when there is none) and whether to read it
+function ground_canopy_bind(render3d_st: mut Render3dState, p: int) -> void {
+  var t = render3d_st.ter_canopy
+  var on = 1.0
+  if t == 0 or not r3d_fog_land(render3d_st) { on = 0.0 }
+  if t == 0 { t = render3d_st.ter_tex[0] }
+  r3d_bind_2d(render3d_st, p, "u_canopy", 12, t)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_canopy_on"), on)
+}
+
+# the sums spread over GC_BLUR texels each way (a box, rows then columns): a tree is painted as a 2 m speck,
+# and what reads from afar is how thick the stand is, not where each stem stands
+@alloc_ok("a map opening: one row of the canopy's sums, made and let go")
+function gc_blur(acc: floats, w: int) -> void {
+  let line = floats(w * 4)
+  for pass in 0 .. 2 {
+    for j in 0 .. w {
+      for i in 0 .. w { for c in 0 .. 4 { line[i * 4 + c] = acc[gc_at(pass, i, j, w) * 4 + c] } }
+      for i in 0 .. w {
+        for c in 0 .. 4 {
+          var s = 0.0
+          for e in 0 .. 2 * GC_BLUR + 1 { s += line[min(max(i + e - GC_BLUR, 0), w - 1) * 4 + c] }
+          acc[gc_at(pass, i, j, w) * 4 + c] = s / float(2 * GC_BLUR + 1)
+        }
+      }
+    }
+  }
+  free(line)
+}
+function gc_at(pass: int, i: int, j: int, w: int) -> int {
+  if pass == 0 { return j * w + i }
+  return i * w + j
+}
+
+# the sums as sRGB crowns (their colour, weighted by what each layer roofs) and the roofed share in alpha
+function gc_upload(render3d_st: mut Render3dState, acc: floats, w: int) -> void {
+  let px = buffer(w * w * 4)
+  for i in 0 .. w * w {
+    let c = acc[i * 4 + 3]
+    let d = Math.max(c, 0.0001)
+    px[i * 4] = gc_srgb(acc[i * 4] / d);  px[i * 4 + 1] = gc_srgb(acc[i * 4 + 1] / d);  px[i * 4 + 2] = gc_srgb(acc[i * 4 + 2] / d)
+    px[i * 4 + 3] = int(Math.clamp(c, 0.0, 1.0) * 255.0 + 0.5)
+  }
+  render3d_st.tex_w = w;  render3d_st.tex_h = w;  render3d_st.tex_channels = 4;  render3d_st.tex_depth = 8
+  let was = render3d_st.gvk_tag
+  if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+  render3d_st.ter_canopy = tex_upload(render3d_st, data_of(px), true, true)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+  render3d_st.gvk_tag = was
+  free(px)
+}
+function gc_srgb(v: float) -> int {
+  let c = Math.clamp(v, 0.0, 1.0)
+  var s = 12.92 * c
+  if c > 0.0031308 { s = 1.055 * Math.pow(c, 1.0 / 2.4) - 0.055 }
+  return int(s * 255.0 + 0.5)
+}

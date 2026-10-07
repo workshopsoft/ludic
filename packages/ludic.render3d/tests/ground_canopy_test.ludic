@@ -1,0 +1,76 @@
+# ground_canopy_test.ludic - the forest past the fog wall (ground_canopy.ludic): a map whose rows name no canopy
+# has none, and a crown row roofs the ground by its density times its canopy, in its own colour - two such
+# rows over the same ground add their roofs and mix their colours by them
+import "ludic.render3d/r3d.ludic"
+program GroundCanopyTest {
+  numbers float
+  def GroundKinds from "ground_kinds.lres"
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # a two-tile map of densities written as the bake writes them (LGD2): the meadow's grass row one value (255)
+  # in every tile, its rocks row 128 over the west half of the first tile, stored, and nothing in the rest
+  @alloc_ok("a test: its densities file, once")
+  function open_meadow(st: mut Render3dState, layers: mut GroundLayers) -> bool {
+    if not ground_layers_load(layers, "meadow") { return false }
+    let dir = Os.temp_dir() + "/r3d-canopy-test"
+    Fs.mkdir(dir)
+    let path = dir + "/meadow.lgd"
+    let ib = GD_HEADW * 4
+    let b = buffer(ib + 64 + GD_SIDE * GD_SIDE)
+    for k in 0 .. len(b) { b[k] = 0 }
+    put(b, 0, GD_MAGIC);  put(b, 1, GD_VERSION);  put(b, 2, 2);  put(b, 3, GD_SIDE);  put(b, 4, 2)
+    put(b, 8, 1);  put(b, 9, ib);  put(b, 10, 1);  put(b, 11, ib + 32)
+    for t in 0 .. 4 { put(b, GD_HEADW + t * 2, 1);  put(b, GD_HEADW + t * 2 + 1, 255) }
+    put(b, GD_HEADW + 8, ib + 64);  put(b, GD_HEADW + 9, GD_SIDE * GD_SIDE)
+    for q in 0 .. GD_SIDE * GD_SIDE {
+      if q % GD_SIDE < GD_SIDE / 2 { b[ib + 64 + q] = 128 }
+    }
+    Fs.write_bytes(path, b, len(b))
+    return gd_open_at(st, path, 0)
+  }
+
+  # word i of the file, little-endian
+  function put(b: []byte, i: int, v: int) -> void {
+    for k in 0 .. 4 { b[i * 4 + k] = (v >> (k * 8)) & 255 }
+  }
+
+  test "rows that name no canopy make none" (layers: mut GroundLayers) {
+    let st = new Render3dState
+    expect(open_meadow(st, layers))
+    expect(ground_canopy_sums(st, layers) == null)
+    ground_density_close(st)
+  }
+
+  test "nothing open, nothing roofed" (layers: mut GroundLayers) {
+    let st = new Render3dState
+    expect(ground_layers_load(layers, "meadow"))
+    layers.rows[1].canopy = 2.0
+    expect(ground_canopy_sums(st, layers) == null)
+  }
+
+  test "a crown row roofs by its density times its canopy, in its colour, and two add and mix" (layers: mut GroundLayers) {
+    let st = new Render3dState
+    expect(open_meadow(st, layers))
+    let rocks = layers.rows[ground_layers_find(layers, "rocks")]
+    rocks.layer = 1                    # (the fixture's rocks read the grass's layer; this file has one of their own)
+    rocks.canopy = 2.0
+    rocks.canopy_r = 0.1;  rocks.canopy_g = 0.2;  rocks.canopy_b = 0.3
+    let w = ground_canopy_side(st)
+    expect_eq(w, 16)
+    let one = ground_canopy_sums(st, layers)
+    expect(one != null)
+    let mid = (4 * w + 1) * 4          # inside the painted half, past the spread of its edge
+    expect_near(one[mid + 3], 2.0 * 128.0 / 255.0, 0.01)
+    expect_near(one[mid] / one[mid + 3], 0.1, 0.001)
+    expect_near(one[mid + 2] / one[mid + 3], 0.3, 0.001)
+    expect_near(one[(12 * w + 13) * 4 + 3], 0.0, 0.0001)   # an unpainted tile roofs nothing
+    let grass = layers.rows[ground_layers_find(layers, "grass")]
+    grass.canopy = 1.0
+    grass.canopy_r = 0.5;  grass.canopy_g = 0.5;  grass.canopy_b = 0.5
+    let two = ground_canopy_sums(st, layers)
+    let a = 2.0 * 128.0 / 255.0
+    expect_near(two[mid + 3], a + 1.0, 0.01)
+    expect_near(two[mid] / two[mid + 3], (0.1 * a + 0.5) / (a + 1.0), 0.002)
+    ground_density_close(st)
+  }
+}
