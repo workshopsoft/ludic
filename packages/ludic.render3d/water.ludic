@@ -363,8 +363,13 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
     gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
     gpu_tex_mips(render3d_st, GPU_TEX2D)
   }
-  r3d_bind_2d(render3d_st, p, "u_depth", 0, depth_tex)
+  # the bed is read through its mips too (water.frag's underBlur: what is under the surface softens
+  # with its depth), so its chain is made the same way, on its own unit, before the depth binds
   r3d_bind_2d(render3d_st, p, "u_scene", 2, render3d_st.post_scene.color)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_scene.color)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
+  gpu_tex_mips(render3d_st, GPU_TEX2D)
+  r3d_bind_2d(render3d_st, p, "u_depth", 0, depth_tex)
   sky_bind_lighting(render3d_st, p)
   shadow_bind(render3d_st, p)
   fog_bind(render3d_st, p)

@@ -641,11 +641,14 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   alb = mix(alb, mix(alb * 0.5, shoreWater, 0.45), film);
   // The wash itself: the water's lap, run above the line and fading as it climbs — the
   // same fields, octaves and phase the water uses, so the two agree across the seam.
-  // Its two gates — the last 22 cm above the waterline, and the first 120 m from the
-  // camera — are pure geometry, and outside them the four noise fields behind it cannot
-  // reach the screen. They are worth testing first: the wash is a hairline along one
-  // shore and the fields were being evaluated for every pixel of the valley.
-  float washGate = smoothstep(0.22, 0.0, above) * smoothstep(120.0, 15.0, dist);
+  // Its gates — the last 22 cm above the waterline, the first 30 cm below it, and the first
+  // 120 m from the camera — are pure geometry, and outside them the four noise fields behind
+  // it cannot reach the screen. They are worth testing first: the wash is a hairline along one
+  // shore and the fields were being evaluated for every pixel of the valley. Below the line it
+  // runs only as far down as the water's own wash (its last 0.35 m), to meet it across the
+  // seam: gated above alone it was 1 over the whole bed, and the lap's bands lay across the
+  // lake floor within 120 m - through the shallows, and plain from under the surface.
+  float washGate = smoothstep(0.22, 0.0, above) * smoothstep(-0.30, 0.0, above) * smoothstep(120.0, 15.0, dist);
   if (washGate > 0.002) {
     float lapT = 0.5 + 0.5 * sin(-above * 9.0 - u_time * 1.6 + 2.0 * gnoiseC(cheap, p.xz * 0.8 + u_time * 0.2));
     float fdetT = fbmC(cheap, p.xz * 7.0 - u_time * 0.35, 3) * 0.5 + 0.5;

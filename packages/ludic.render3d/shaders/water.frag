@@ -2,6 +2,7 @@
 in vec3 v_wpos;
 out vec4 o_color;
 uniform mat4 u_view;
+uniform mat4 u_proj;       // its [1][1] turns a spread in metres into pixels
 uniform vec3 u_wade;       // x, z, strength: a body standing in the water
 uniform sampler2D u_depth;        // scene depth (resolved) for shore softness / depth tint
 uniform mat4 u_inv_vp;
@@ -74,6 +75,21 @@ float waterH(vec2 p, float t) {
   // one sheet of water with a mountain in it.
   return 0.26 * gnoise(w * 0.9 + vec2(t * 0.05, t * 0.3)) + 0.075 * gnoise(p * 2.3 - vec2(t * 0.04, -t * 0.055)) + 0.028 * gnoise(p * 6.0 + vec2(t * 0.7, t * 0.24));
 }
+// What is under a rippled surface is seen through a spread of directions, one per ripple, and
+// the spread on the far side widens with the depth below: a fish 0.5 m down is soft, the shelf
+// at a metre and a half softer. One read of the scene's mips, r pixels wide (taps on a disc
+// left ghost copies of a wader's fingers); narrowed by how much of its footprint finds something
+// above the surface - the near bank, a wader's dry shoulders - or it would smear into the water.
+vec3 underBlur(vec2 uv, vec3 c0, float r, float surfY) {
+  float clear = 1.0;
+  for (int i = 0; i < 4; i++) {
+    vec2 tuv = clamp(uv + vec2(i < 2 ? -r : r, (i % 2) == 0 ? -r : r) / u_screen, 0.001, 0.999);
+    vec4 tp = u_inv_vp * vec4(tuv * 2.0 - 1.0, texture(u_depth, tuv).r * 2.0 - 1.0, 1.0);
+    if (tp.y / tp.w > surfY) clear -= 0.25;
+  }
+  if (clear <= 0.0) return c0;
+  return sane(textureLod(u_scene, uv, log2(r) * clear).rgb);
+}
 vec3 rippleNormal(vec2 p, float t) {
   float e = 0.06;
   float h = waterH(p, t), hx = waterH(p + vec2(e, 0), t), hz = waterH(p + vec2(0, e), t);
@@ -127,11 +143,15 @@ void main() {
   // and faded the surface away over a shallow fish, which then lay on the water unreflected.
   // Past half a metre of water to what was hit, neither term reaches it, so nothing is read.
   float body = 0.0;
+  float standing = 0.0;      // the same test at any depth the water lets anything through: the veil below
   float shoreBelow = depthBelow;
   float shoreRay = alongRay;
-  if (dist < 250.0 && depthBelow < 0.5 && ground.y < v_wpos.y) {
+  if (dist < 250.0 && depthBelow < 3.0 && ground.y < v_wpos.y) {
     float lift = ground.y - terHeightSmooth(terUV(ground.xz));
-    body = smoothstep(0.15, 0.35, lift) * smoothstep(250.0, 200.0, dist);
+    standing = smoothstep(0.15, 0.35, lift) * smoothstep(250.0, 200.0, dist);
+  }
+  if (depthBelow < 0.5 && standing > 0.0) {
+    body = standing;
     float bedBelow = clamp(v_wpos.y - terHeightSmooth(terUV(v_wpos.xz)), 0.0, 10.0);
     shoreBelow = mix(depthBelow, bedBelow, body);
     shoreRay = mix(alongRay, max(alongRay, bedBelow), body);
@@ -207,8 +227,21 @@ void main() {
   // gravel of the shelf went out before the bank did.
   vec3 absorb = vec3(0.34, 0.15, 0.09);
   vec3 trans = exp(-absorb * pathLen);
+  // the ripples' spread, SPREAD metres a metre of depth, in pixels at this distance; only where
+  // any of the bed still comes through (past that the read would soften what is not seen)
+  const float SPREAD = 0.04;
+  float vd = -(u_view * vec4(v_wpos, 1.0)).z;
+  float spreadPx = min(SPREAD * depthBelow * 0.5 * u_screen.y * u_proj[1][1] / max(vd, 0.5), 3.0);
+  if (spreadPx > 0.75 && trans.b > 0.03) { bed = underBlur(ruv2, bed, spreadPx, v_wpos.y); }
   vec3 tint = vec3(0.030, 0.085, 0.105) * skyIrradiance(vec3(0, 1, 0)) * 1.15;   // Maroon Lake: deep, dark blue-green, not turquoise
-  vec3 through = bed * trans + tint * (1.0 - trans);
+  // The bed comes here already wet (terrain.frag's `wet`, about 0.6) and under a film of the lake's
+  // colour (`film`, about half its albedo); a fish, a wader's legs or a rock on the bed come lit as
+  // if in air, and absorption alone left a trout half a metre down brighter than the gravel round
+  // it, golden and un-tinted, lying ON the lake. What stands clear of the bed is darkened as a wet
+  // surface is (a surface under water loses what air would have reflected) and veiled by its path.
+  float under = standing * smoothstep(0.0, 0.1, depthBelow);
+  vec3 through = bed * trans * (1.0 - 0.3 * under) + tint * (1.0 - trans);
+  through = mix(through, tint, under * 0.4 * (1.0 - exp(-0.7 * pathLen)));
   // ---- surface -------------------------------------------------------------------
   // How much of what you see is the sky and how much is the bottom. The fresnel term is
   // physical and stays; what changed is the weight it is given and, more to the point, the
