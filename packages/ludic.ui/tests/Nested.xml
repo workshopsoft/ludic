@@ -1,0 +1,15 @@
+<div>
+  <row role="tablist">
+    <button id="o0" role="tab" aria-selected="false" aria-controls="p0">A</button>
+    <button id="o1" role="tab" aria-selected="true" aria-controls="p0">B</button>
+  </row>
+  <div id="p0" role="tabpanel">
+    <row role="tablist">
+      <button id="i0" role="tab" aria-selected="false" aria-controls="q0">one</button>
+      <button id="i1" role="tab" aria-selected="true" aria-controls="q0">two</button>
+    </row>
+    <div id="q0" role="tabpanel">
+      <button id="c0">row</button>
+    </div>
+  </div>
+</div>

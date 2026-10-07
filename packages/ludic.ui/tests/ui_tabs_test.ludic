@@ -6,11 +6,12 @@ program UiTabsTest {
 
   component Tabbed { state n: int = 0 }
   component Bare { state n: int = 0 }
+  component Nested { state n: int = 0 }
 
   function frame(ui_st: mut UiState, name: string) -> void {
     ui_show(ui_st, name, null, 0.0, 0.0, 1920.0, 1080.0)
   }
-  function start(ui_st: mut UiState, name: string, id: string) -> void {
+  function open_at(ui_st: mut UiState, name: string, id: string) -> void {
     let be = new UiBackend
     be.input = false
     ui_backend(ui_st, be)
@@ -31,7 +32,7 @@ program UiTabsTest {
   }
 
   test "Right and Left walk the tabs and wrap" (ui_st: mut UiState) {
-    start(ui_st, "Tabbed", "t0")
+    open_at(ui_st, "Tabbed", "t0")
     press(ui_st, "Tabbed", 1)
     expect_eq(ui_focused_id(ui_st), "t1")
     press(ui_st, "Tabbed", 1)
@@ -41,14 +42,14 @@ program UiTabsTest {
     expect_eq(ui_focused_id(ui_st), "t2")
   }
   test "Down from any tab enters the panel it controls, Up returns to the selected tab" (ui_st: mut UiState) {
-    start(ui_st, "Tabbed", "t2")
+    open_at(ui_st, "Tabbed", "t2")
     press(ui_st, "Tabbed", 2)
     expect_eq(ui_focused_id(ui_st), "c0")
     press(ui_st, "Tabbed", 3)
     expect_eq(ui_focused_id(ui_st), "t0")
   }
   test "inside the panel and beyond, arrows keep the ordinary move" (ui_st: mut UiState) {
-    start(ui_st, "Tabbed", "c0")
+    open_at(ui_st, "Tabbed", "c0")
     press(ui_st, "Tabbed", 2)
     expect_eq(ui_focused_id(ui_st), "c1")
     press(ui_st, "Tabbed", 2)
@@ -58,8 +59,20 @@ program UiTabsTest {
     press(ui_st, "Tabbed", 1)
     expect_eq(ui_focused_id(ui_st), "outside")
   }
+  test "a strip inside another's panel: Down walks in level by level, Up walks back out" (ui_st: mut UiState) {
+    open_at(ui_st, "Nested", "o1")
+    press(ui_st, "Nested", 2)
+    expect_eq(ui_focused_id(ui_st), "i0")
+    press(ui_st, "Nested", 2)
+    expect_eq(ui_focused_id(ui_st), "c0")
+    press(ui_st, "Nested", 3)
+    expect_eq(ui_focused_id(ui_st), "i1")
+    open_at(ui_st, "Nested", "i0")
+    press(ui_st, "Nested", 3)
+    expect_eq(ui_focused_id(ui_st), "o1")
+  }
   test "a strip with no aria-controls opens onto the controls after it" (ui_st: mut UiState) {
-    start(ui_st, "Bare", "t0")
+    open_at(ui_st, "Bare", "t0")
     press(ui_st, "Bare", 2)
     expect_eq(ui_focused_id(ui_st), "c0")
     press(ui_st, "Bare", 3)

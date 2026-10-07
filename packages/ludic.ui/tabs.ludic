@@ -53,12 +53,11 @@ function fc_tab_back(ui_st: UiState, first: int) -> int {
 function fc_tab_arrow(ui_st: UiState, at: int, dir: int) -> int {
   if at < 0 { return -1 }
   let n = ui_st.fc_list[at]
-  if fc_is_tab(n) {
-    if dir == 0 { return fc_tab_next(ui_st, at, -1) }
-    if dir == 1 { return fc_tab_next(ui_st, at, 1) }
-    if dir == 2 { return fc_panel_first(ui_st, n) }
-    return -1
-  }
+  # Up from a panel's first control - a tab too, when a strip opens another tab's panel - goes back out
   if dir == 3 { return fc_tab_back(ui_st, at) }
+  if not fc_is_tab(n) { return -1 }
+  if dir == 0 { return fc_tab_next(ui_st, at, -1) }
+  if dir == 1 { return fc_tab_next(ui_st, at, 1) }
+  if dir == 2 { return fc_panel_first(ui_st, n) }
   return -1
 }
