@@ -39,6 +39,7 @@ export property GearCharge {
   full: float = 100.0
   per_hour: float = 0.0
   @Ref(GearValues) rate: int = -1
+  low: float = 0.0         # the charge under which the game says it is nearly out (a hint)
   hand: bool = true
 }
 

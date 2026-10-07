@@ -42,7 +42,7 @@ export port GearWorld { hidden: fn(int) -> bool }                          # unb
 | --- | --- |
 | `GearKind { key, vendor, icon, tiers, blurb, howto, names, cost, rep, item, start, mult }`, `open registry GearKinds ... as GEAR` | a kind: per tier to buy, `names` / `cost` / `rep`; `start` the level a trip begins at |
 | `GearValue { key, gear, at }`, `open registry GearValues ... as GV` | a number a kind's tier decides, per level from 0 |
-| `GearCharge { key, item, full, per_hour, rate, hand }`, `open registry GearCharges ... as CHARGE` | a charge; `rate` a value's index to burn by instead of `per_hour` |
+| `GearCharge { key, item, full, per_hour, rate, low, hand }`, `open registry GearCharges ... as CHARGE` | a charge; `rate` a value's index to burn by instead of `per_hour`; `low` the level a hint calls it nearly out |
 | `gear_level(k)`, `gear_set_level(k, lv)`, `gear_owned(k)`, `gear_best(k)`, `gear_level_name(k, lv)` | what is owned |
 | `gear_next_name(k)`, `gear_next_cost(k)`, `gear_next_rep(k)`, `gear_can_buy(k)`, `gear_buy(k)`, `gear_kinds_at(vendor)`, `gear_sync()` | buying |
 | `gear_mult(k)`, `gear_value(v)`, `gear_stack_limit(base, mult)` | what a tier is worth |
