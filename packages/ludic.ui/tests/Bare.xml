@@ -1,0 +1,8 @@
+<div>
+  <row role="tablist">
+    <button id="t0" role="tab" aria-selected="false">A</button>
+    <button id="t1" role="tab" aria-selected="true">B</button>
+  </row>
+  <button id="c0">one</button>
+  <button id="c1">two</button>
+</div>

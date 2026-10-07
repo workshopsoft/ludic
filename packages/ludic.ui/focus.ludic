@@ -35,8 +35,7 @@ function fc_keys(ui_st: mut UiState, root: UiNode) -> void {
   if at >= 0 { n = ui_st.fc_list[at] }
   if i.tab and i.shift { fc_move(ui_st, -1) } else if i.tab { fc_move(ui_st, 1) }
   let horizontal = n != null and ct_takes_arrows(n)
-  if i.up or (i.left and not horizontal) { fc_move(ui_st, -1) }
-  if i.down_key or (i.right and not horizontal) { fc_move(ui_st, 1) }
+  fc_arrows(ui_st, at, i, horizontal)
   ct_num_blur(ui_st, root)
   if n == null { return }
   fc_hold(ui_st, root, n)
@@ -44,6 +43,21 @@ function fc_keys(ui_st: mut UiState, root: UiNode) -> void {
   if horizontal and i.left { ct_step(ui_st, n, -1) }
   if horizontal and i.right { ct_step(ui_st, n, 1) }
   ct_typed(ui_st, n)
+}
+# the arrows: a tab strip's own (tabs.ludic), else one place back or on
+function fc_arrows(ui_st: mut UiState, at: int, i: UiInput, horizontal: bool) -> void {
+  var to = -1
+  if i.left and not horizontal { to = fc_tab_arrow(ui_st, at, 0) }
+  if i.right and not horizontal { to = fc_tab_arrow(ui_st, at, 1) }
+  if i.down_key { to = fc_tab_arrow(ui_st, at, 2) }
+  if i.up { to = fc_tab_arrow(ui_st, at, 3) }
+  if to >= 0 {
+    ui_st.fc_key = ui_st.fc_list[to].key
+    ui_st.fc_visible = true
+    return
+  }
+  if i.up or (i.left and not horizontal) { fc_move(ui_st, -1) }
+  if i.down_key or (i.right and not horizontal) { fc_move(ui_st, 1) }
 }
 # Enter or A held on a control: its on-down, and on-up when let go (or the focus moves away)
 function fc_hold(ui_st: mut UiState, root: UiNode, n: UiNode) -> void {

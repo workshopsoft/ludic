@@ -1,0 +1,64 @@
+# tabs.ludic - arrows in a tab strip, as HTML's tablist does them: Left and Right walk the tabs
+# (role="tab" under one parent), Down goes to the first control of the panel the tab controls
+# (aria-controls names the panel's id; without it, the controls after the strip), and Up from that
+# control returns to the selected tab (aria-selected). Every function answers a place in fc_list, or -1.
+function fc_is_tab(n: UiNode) -> bool { return ui_attr_text(n, "role") == "tab" }
+function fc_under(n: UiNode, id: string) -> bool {
+  var p = n.parent
+  while p != null {
+    if p.id == id { return true }
+    p = p.parent
+  }
+  return false
+}
+# the place of the first control of the panel `tab` controls
+function fc_panel_first(ui_st: UiState, tab: UiNode) -> int {
+  let ctl = ui_attr_text(tab, "aria-controls")
+  var after = -1
+  for i in 0 .. len(ui_st.fc_list) {
+    let c = ui_st.fc_list[i]
+    if ctl != "" and fc_under(c, ctl) { return i }
+    if ctl == "" and c.parent == tab.parent and fc_is_tab(c) { after = i }
+  }
+  if ctl == "" and after >= 0 and after + 1 < len(ui_st.fc_list) { return after + 1 }
+  return -1
+}
+# the next (step 1) or previous (-1) tab of the strip, wrapping
+function fc_tab_next(ui_st: UiState, at: int, step: int) -> int {
+  let tab = ui_st.fc_list[at]
+  var j = at
+  for k in 0 .. len(ui_st.fc_list) {
+    j = (j + step + len(ui_st.fc_list)) % len(ui_st.fc_list)
+    let c = ui_st.fc_list[j]
+    if c.parent == tab.parent and fc_is_tab(c) { return j }
+  }
+  return at
+}
+# the selected tab of the strip whose panel opens at `first`, when the control there is it
+function fc_tab_back(ui_st: UiState, first: int) -> int {
+  for i in 0 .. len(ui_st.fc_list) {
+    let t = ui_st.fc_list[i]
+    if not fc_is_tab(t) or fc_panel_first(ui_st, t) != first { continue }
+    var best = i
+    for j in 0 .. len(ui_st.fc_list) {
+      let c = ui_st.fc_list[j]
+      if c.parent == t.parent and fc_is_tab(c) and ui_attr_on(c, "aria-selected") { best = j }
+    }
+    return best
+  }
+  return -1
+}
+# where the arrow `dir` (0 left, 1 right, 2 down, 3 up) takes the focus at `at`, or -1 for the
+# ordinary move
+function fc_tab_arrow(ui_st: UiState, at: int, dir: int) -> int {
+  if at < 0 { return -1 }
+  let n = ui_st.fc_list[at]
+  if fc_is_tab(n) {
+    if dir == 0 { return fc_tab_next(ui_st, at, -1) }
+    if dir == 1 { return fc_tab_next(ui_st, at, 1) }
+    if dir == 2 { return fc_panel_first(ui_st, n) }
+    return -1
+  }
+  if dir == 3 { return fc_tab_back(ui_st, at) }
+  return -1
+}

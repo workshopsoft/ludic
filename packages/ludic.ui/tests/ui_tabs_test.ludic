@@ -1,0 +1,68 @@
+# ui_tabs_test - arrows in a tab strip: Left and Right walk the tabs, Down enters the panel, Up from
+# the panel's first control returns to the selected tab; other controls keep the ordinary move
+import "ludic.ui"
+program UiTabsTest {
+  numbers float
+
+  component Tabbed { state n: int = 0 }
+  component Bare { state n: int = 0 }
+
+  function frame(ui_st: mut UiState, name: string) -> void {
+    ui_show(ui_st, name, null, 0.0, 0.0, 1920.0, 1080.0)
+  }
+  function start(ui_st: mut UiState, name: string, id: string) -> void {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    frame(ui_st, name)
+    for i in 0 .. len(ui_st.fc_list) {
+      if ui_st.fc_list[i].id == id { ui_focus(ui_st, ui_st.fc_list[i].key) }
+    }
+    frame(ui_st, name)
+  }
+  function press(ui_st: mut UiState, name: string, dir: int) -> void {
+    let i = new UiInput
+    if dir == 0 { i.left = true }
+    if dir == 1 { i.right = true }
+    if dir == 2 { i.down_key = true }
+    if dir == 3 { i.up = true }
+    ui_input(ui_st, i)
+    frame(ui_st, name)
+  }
+
+  test "Right and Left walk the tabs and wrap" (ui_st: mut UiState) {
+    start(ui_st, "Tabbed", "t0")
+    press(ui_st, "Tabbed", 1)
+    expect_eq(ui_focused_id(ui_st), "t1")
+    press(ui_st, "Tabbed", 1)
+    press(ui_st, "Tabbed", 1)
+    expect_eq(ui_focused_id(ui_st), "t0")
+    press(ui_st, "Tabbed", 0)
+    expect_eq(ui_focused_id(ui_st), "t2")
+  }
+  test "Down from any tab enters the panel it controls, Up returns to the selected tab" (ui_st: mut UiState) {
+    start(ui_st, "Tabbed", "t2")
+    press(ui_st, "Tabbed", 2)
+    expect_eq(ui_focused_id(ui_st), "c0")
+    press(ui_st, "Tabbed", 3)
+    expect_eq(ui_focused_id(ui_st), "t0")
+  }
+  test "inside the panel and beyond, arrows keep the ordinary move" (ui_st: mut UiState) {
+    start(ui_st, "Tabbed", "c0")
+    press(ui_st, "Tabbed", 2)
+    expect_eq(ui_focused_id(ui_st), "c1")
+    press(ui_st, "Tabbed", 2)
+    expect_eq(ui_focused_id(ui_st), "outside")
+    press(ui_st, "Tabbed", 3)
+    expect_eq(ui_focused_id(ui_st), "c1")
+    press(ui_st, "Tabbed", 1)
+    expect_eq(ui_focused_id(ui_st), "outside")
+  }
+  test "a strip with no aria-controls opens onto the controls after it" (ui_st: mut UiState) {
+    start(ui_st, "Bare", "t0")
+    press(ui_st, "Bare", 2)
+    expect_eq(ui_focused_id(ui_st), "c0")
+    press(ui_st, "Bare", 3)
+    expect_eq(ui_focused_id(ui_st), "t1")
+  }
+}
