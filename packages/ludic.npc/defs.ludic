@@ -74,7 +74,7 @@ export property NpcPerson {
 export property NpcStep {
   from: float = 0.0
   to: float = 24.0
-  window: int = -1             # a window of the game's day (NpcWorld.window) in place of from .. to; -1: the hours
+  @OneOf(DAYW_) window: int = -1             # a window of the game's day (NpcWorld.window) in place of from .. to; -1: the hours
   weight: int = 1
   @Ref(NpcSpots) spot: int = 0
   @Ref(NpcActs) act: int = 1
