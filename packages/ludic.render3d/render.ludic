@@ -177,7 +177,8 @@ function r3d_load_step_run(render3d_st: mut Render3dState, i: int) -> bool {
     # was doing its whole job through colour and could not be raised without the valley going
     # blue. With the desaturation term carrying the depth, the air can be as thick as real air
     # at 2900 m and the far ridge recedes instead of tinting.
-    render3d_st.r3d_fog_density = 0.00024
+    # the renderer's own noon, only where the game said none: a map's fog_noon is set before this step and used to be overwritten
+    if render3d_st.r3d_fog_density == 0.0 { render3d_st.r3d_fog_density = 0.00024 }
     render3d_st.r3d_fog_falloff = 0.002
     render3d_st.r3d_ready = true
     r3d_warm_commands(render3d_st)
