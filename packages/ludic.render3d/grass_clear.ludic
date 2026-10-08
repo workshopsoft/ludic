@@ -4,8 +4,8 @@
 # it is held here - GD_CLEAR_W floats a clearing, then the areas' and strips' points - sent again only when a
 # clearing is put or the list let go (gd_clear_ver), never per frame; the cull walks it, each box first.
 
-const GG_CLEAR_PTS_AT: int = 640     # GD_CLEAR_MAX * GD_CLEAR_W: where the points start in the buffer
-const GG_CLEAR_FLOATS: int = 8832    # ... and the whole buffer: the clearings, then GD_CLEAR_PTS (x, z) points
+const GG_CLEAR_PTS_AT: int = 704     # GD_CLEAR_MAX * GD_CLEAR_W: where the points start in the buffer
+const GG_CLEAR_FLOATS: int = 8896    # ... and the whole buffer: the clearings, then GD_CLEAR_PTS (x, z) points
 
 # once, with the cull's buffers: the list's floats and its buffer, empty
 @alloc_ok("start-up: the clearings' copy and buffer for the blade cull, once")

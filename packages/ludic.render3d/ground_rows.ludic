@@ -14,6 +14,7 @@ export property GroundClearing {
   points: []GroundPt = null                        # a closed polygon, 3 or more points
   @Unit("m") @Range(0, 100) feather: float = 2.0   # how far past the edge the chance is back to full
   @Range(0, 1) floor: float = 0.0                  # the chance left inside (0: nothing grows)
+  layers: []string = null                          # which layers it thins: "scatter" (not solid), "solid" (trees, rocks, ...), "blades" (the GPU grass); none named: all
 }
 
 @PerMap @ByKey
@@ -67,13 +68,29 @@ export function ground_clearings_use(render3d_st: mut Render3dState, areas: Grou
   var n = 0
   for i in 0 .. len(areas.rows) {
     let r = areas.rows[i]
-    if r3d_ground_clearing_area(render3d_st, r.points, r.feather, r.floor) { n += 1 } else { gr_say(r.key) }
+    if r3d_ground_clearing_area(render3d_st, r.points, r.feather, r.floor) {
+      r3d_ground_clearing_only(render3d_st, gr_mask(r.layers))
+      n += 1
+    } else { gr_say(r.key) }
   }
   for i in 0 .. len(strips.rows) {
     let r = strips.rows[i]
     if r3d_ground_clearing_strip(render3d_st, r.points, r.width * 0.5, r.feather, r.floor) { n += 1 } else { gr_say(r.key) }
   }
   return n
+}
+
+# the classes a row's `layers` name, added up (none named, or none known: all)
+export function gr_mask(layers: []string) -> int {
+  if layers == null { return GC_ALL }
+  var m = 0
+  for i in 0 .. len(layers) {
+    if layers[i] == "scatter" { m = m | GC_SCATTER }
+    if layers[i] == "solid" { m = m | GC_SOLID }
+    if layers[i] == "blades" { m = m | GC_BLADES }
+  }
+  if m == 0 { return GC_ALL }
+  return m
 }
 
 function gr_say(key: string) -> void { print(`ground: clearing {key} left out (too few points, or past {GD_CLEAR_MAX} clearings)`) }

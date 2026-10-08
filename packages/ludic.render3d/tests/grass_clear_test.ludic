@@ -58,4 +58,21 @@ program GrassClearTest {
     gg_clear_params(st, pr)
     expect_eq(float_from_bits(pr[80]), 0.0)
   }
+
+  test "a clearing thins only the classes it names; the mask rides to the blade cull, and a row naming none thins all" {
+    let st = held()
+    let pts = [pt(0.0, 0.0), pt(10.0, 0.0), pt(10.0, 10.0), pt(0.0, 10.0)]
+    expect(r3d_ground_clearing_area(st, pts, 2.0, 0.1))
+    expect(r3d_ground_clearing_area(st, pts, 2.0, 0.2))
+    r3d_ground_clearing_only(st, GC_SOLID)          # the second: trees and rocks only
+    expect_eq(ground_clear_for(st, GC_SOLID, 5.0, 5.0), 0.1 * 0.2)
+    expect_eq(ground_clear_for(st, GC_SCATTER, 5.0, 5.0), 0.1)
+    expect_eq(ground_clear_for(st, GC_BLADES, 5.0, 5.0), 0.1)
+    gg_clear_pack(st)
+    expect_eq(st.gg_clear_data[10], float(GC_ALL))
+    expect_eq(st.gg_clear_data[GD_CLEAR_W + 10], float(GC_SOLID))
+    expect_eq(gr_mask(null), GC_ALL)
+    expect_eq(gr_mask(["solid", "blades"]), GC_SOLID + GC_BLADES)
+    expect_eq(gr_mask(["rock"]), GC_ALL)            # nothing known named: all, as no field
+  }
 }

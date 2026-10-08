@@ -1,9 +1,15 @@
 # ground_clear.ludic — the trample as data: clearings the game hands over (a camp's ring, a town's yard, a cabin's
 # footprint, a trail), each thinning every layer with `trample` to `floor` inside it and back to full past its edge
 # on a smoothstep. A disc here; an area and a strip in ground_clear_shape.ludic, the map's rows in ground_rows.ludic.
+# A clearing thins the classes of layer it names (a mask, all by default): scatter (a layer that is not solid), solid
+# (trees, rocks, stones, gatherables) and blades (the GPU grass).
 
 const GD_CLEAR_MAX: int = 64
-const GD_CLEAR_W: int = 10       # floats a clearing: its shape, four numbers, its floor and its box (x0, z0, x1, z1)
+const GD_CLEAR_W: int = 11       # floats a clearing: its shape, four numbers, its floor, its box (x0, z0, x1, z1) and its class mask
+export const GC_SCATTER: int = 1
+export const GC_SOLID: int = 2
+export const GC_BLADES: int = 4
+export const GC_ALL: int = 7
 const GD_CLEAR_PTS: int = 4096   # the areas' and strips' points, all told
 
 # no clearings (a map being opened, before the game hands its own)
@@ -34,9 +40,17 @@ function gc_put(render3d_st: mut Render3dState, shape: int, a: float, b: float, 
   cl[o + 7] = z0
   cl[o + 8] = x1
   cl[o + 9] = z1
+  cl[o + 10] = float(GC_ALL)
   render3d_st.gd_clear_n += 1
   render3d_st.gd_clear_ver += 1
   return true
+}
+
+# the clearing put last thins only the classes in `mask` (GC_* added together; 0 or less leaves it as it was)
+export function r3d_ground_clearing_only(render3d_st: mut Render3dState, mask: int) -> void {
+  if render3d_st.gd_clear_n == 0 or mask <= 0 { return }
+  render3d_st.gd_clear[(render3d_st.gd_clear_n - 1) * GD_CLEAR_W + 10] = float(mask & GC_ALL)
+  render3d_st.gd_clear_ver += 1
 }
 
 # one clearing's share at (x, z), 0..1: `floor` inside r_in, 1 past r_out
@@ -53,12 +67,16 @@ export function gf_clear_one(cx: float, cz: float, r_in: float, r_out: float, fl
 
 # every clearing's share at (x, z), multiplied in the order they were handed over; one whose box (x0..x1, z0..z1)
 # leaves (x, z) out is 1 and skipped
-export function ground_clear_at(render3d_st: Render3dState, x: float, z: float) -> float {
+export function ground_clear_at(render3d_st: Render3dState, x: float, z: float) -> float { return ground_clear_for(render3d_st, GC_SCATTER, x, z) }
+
+# the same for a layer of `class` (one GC_*): a clearing that leaves its class out is 1
+export function ground_clear_for(render3d_st: Render3dState, class: int, x: float, z: float) -> float {
   var k = 1.0
   let cl = render3d_st.gd_clear
   for c in 0 .. render3d_st.gd_clear_n {
     let o = c * GD_CLEAR_W
     if x < cl[o + 6] or z < cl[o + 7] or x > cl[o + 8] or z > cl[o + 9] { continue }
+    if (int(cl[o + 10]) & class) == 0 { continue }
     if cl[o] == 0.0 { k = k * gf_clear_one(cl[o + 1], cl[o + 2], cl[o + 3], cl[o + 4], cl[o + 5], x, z) }
     else { k = k * gc_shape_keep(render3d_st, o, x, z) }
   }

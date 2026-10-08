@@ -126,8 +126,9 @@ float bladeRules(vec2 xz, vec2 huv, float y, vec3 gn) {
 }
 // the clearings (ground_clear.ludic's ground_clear_at, kept in step): each one's share at xz multiplied in, one
 // whose box leaves xz out skipped; a disc is (x, z, r_in, r_out), an area or a strip its points from CLR_PTS
-#define CLR_W 10
-#define CLR_PTS 640
+#define CLR_W 11
+#define CLR_PTS 704
+#define CLR_BLADES 4   // the blades' bit in a clearing's class mask (GC_BLADES)
 float clearEdge(float d, float half_w, float feather, float fl) {
   if (d <= half_w) return fl;
   if (!(feather > 0.0) || d >= half_w + feather) return 1.0;
@@ -168,6 +169,7 @@ float clearAt(vec2 p) {
   for (int c = 0; c < n; c++) {
     int o = c * CLR_W;
     if (p.x < clr[o + 6] || p.y < clr[o + 7] || p.x > clr[o + 8] || p.y > clr[o + 9]) continue;
+    if ((int(clr[o + 10] + 0.5) & CLR_BLADES) == 0) continue;
     if (clr[o] == 0.0) {
       float d = length(p - vec2(clr[o + 1], clr[o + 2]));
       if (d > clr[o + 4]) continue;

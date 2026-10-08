@@ -35,11 +35,16 @@ export function gf_seed(g: GroundFill, cx: int, cz: int, band: int, e: int) -> f
 
 export function gf_wind(g: GroundFill, cx: int, cz: int, band: int, e: int) -> float { return Math.lerp(g.wind_lo, g.wind_hi, gf_hash(g.layer, cx, cz, band, e, 5)) }
 
+function gf_class(solid: bool) -> int {
+  if solid { return GC_SOLID }
+  return GC_SCATTER
+}
+
 # the chance at (x, z) after the trample: the game's callback, then the clearings it handed over as data
-function gf_trampled(render3d_st: mut Render3dState, keep: float, x: float, z: float) -> float {
+function gf_trampled(render3d_st: mut Render3dState, keep: float, solid: bool, x: float, z: float) -> float {
   var k = keep
   if render3d_st.gd_trample_cb != null { k = k * render3d_st.gd_trample_cb(x, z) }
-  if render3d_st.gd_clear_n > 0 { k = k * ground_clear_at(render3d_st, x, z) }
+  if render3d_st.gd_clear_n > 0 { k = k * ground_clear_for(render3d_st, gf_class(solid), x, z) }
   return k
 }
 
@@ -68,7 +73,7 @@ export function ground_candidate(render3d_st: mut Render3dState, g: GroundFill, 
   var keep = ground_density_at(render3d_st, g.layer, px, pz, 0)
   if keep <= 0.0 { return false }
   if g.wade < 1000.0 and ground_water_depth(render3d_st, px, pz) > g.wade { return false }
-  if g.trample { keep = gf_trampled(render3d_st, keep, px, pz) }
+  if g.trample { keep = gf_trampled(render3d_st, keep, g.solid, px, pz) }
   if not gf_keeps(g, cx, cz, band, e, keep) { return false }
   out.x = px
   out.z = pz
