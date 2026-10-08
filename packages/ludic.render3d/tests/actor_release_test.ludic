@@ -70,4 +70,15 @@ program ActorReleaseTest {
       expect_eq(len(m.skin.spares), 1)
     }
   }
+
+  test "a clone given back twice waits once: two figures never share a skeleton" (render3d_st: mut Render3dState) {
+    let src = bones2()
+    let a = skin_clone(src)
+    skin_clone_free(a)
+    skin_clone_free(a)
+    expect_eq(len(src.spares), 1)
+    let b = skin_clone(src)
+    let c = skin_clone(src)
+    expect(b == a and c != a)
+  }
 }

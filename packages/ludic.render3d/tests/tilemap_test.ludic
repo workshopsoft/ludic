@@ -272,4 +272,22 @@ program TileMapTest {
     tmd_free(render3d_st, td)
     expect_eq(td.frees, 0)
   }
+
+  # tmd_build's replacement as far as it runs with no device: a patch's next model made, the one before let go
+  # (model_release), twice - each primitive owns its factors, so letting one go leaves the ground's and the next's whole
+  test "a patch's model owns its factors: one let go between two builds frees none another holds" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st, 64.0)
+    let td = tmd_new(render3d_st, tm, 64.0)
+    let a = tmd_model_of(render3d_st, td, null, 0, 0)
+    let b = tmd_model_of(render3d_st, td, null, 0, 0)
+    expect(a.prims[0].fac != td.fac and b.prims[0].fac != td.fac and a.prims[0].fac != b.prims[0].fac)
+    model_release(render3d_st, a)
+    let c = tmd_model_of(render3d_st, td, null, 0, 0)
+    model_release(render3d_st, b)
+    for k in 0 .. 9 { expect_near(c.prims[0].fac[k], td.fac[k], 0.0) }
+    expect_near(td.fac[4], td.rough, 0.0)
+    expect_near(td.fac[0], 1.0, 0.0)
+    model_release(render3d_st, c)
+    tmd_free(render3d_st, td)
+  }
 }

@@ -30,7 +30,7 @@ export property TileDraw {
   tm: TileMap = null
   ms: TmMeshes = null
   patches: []TmPatch = null          # mesh slot * patches * patches + pz * patches + px
-  fac: floats = null                 # every patch's material factors (white, the roughness below), made once
+  fac: floats = null                 # the patches' material factors (white, the roughness below): each patch's primitive owns a copy
   color: floats = null               # the ground's colour, r g b (an actor's tint): a mid grey until the game says
   rough: float = 0.95                # read when tmd_new makes the factors
   build_budget: int = 2              # patches uploaded a frame
@@ -105,15 +105,22 @@ function tmd_model(render3d_st: mut Render3dState, td: TileDraw) -> Model {
   m.count = ms.ni
   gpu_mesh_done(render3d_st, m)
   render3d_st.gvk_tag = was
+  return tmd_model_of(render3d_st, td, m, ms.nv, ms.ni)
+}
+# the uploaded mesh as the patch's model: its primitive wears the ground's material and owns a copy of its factors,
+# since model_release gives a primitive's factors back (one array shared by every patch was freed with the first)
+@alloc_ok("a patch changing level: its model is made when it does")
+function tmd_model_of(render3d_st: Render3dState, td: TileDraw, m: Mesh, nv: int, ni: int) -> Model {
   let pr = new Prim
   pr.mesh = m
-  pr.verts = ms.nv
+  pr.verts = nv
   pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
-  pr.fac = td.fac                                      # shared: model_release leaves a primitive's factors alone
+  pr.fac = floats(9)
+  for k in 0 .. 9 { pr.fac[k] = td.fac[k] }
   let model = new Model
   model.prims = new []Prim
   push(model.prims, pr)
-  model.tris = ms.ni / 3
+  model.tris = ni / 3
   return model
 }
 
