@@ -54,3 +54,18 @@ function km_kept_arg(i18n_st: mut I18nState, s: string, a: int, b: int) -> strin
   push(i18n_st.ka_s, v)
   return v
 }
+
+# argument s[a..b] of a line made for a caller (i18n_made): made the same way and let go once written, so a
+# count in the hole of a line that is itself a value ("Catch 5 trout  (3/5)") keeps nothing per count
+@alloc_ok("an argument that holds a key, in a made line: made, written and let go")
+function km_made_arg(i18n_st: mut I18nState, d: int, at: int, s: string, a: int, b: int) -> int {
+  let raw = s[a..b]
+  let v = kr_unescape(raw)
+  if v != raw { free(raw) }
+  let w = i18n_made(i18n_st, v)
+  var n = at
+  for i in 0 .. len(w) { n = km_put(i18n_st, d, n, w[i]) }
+  if w != v { free(w) }
+  free(v)
+  return n
+}

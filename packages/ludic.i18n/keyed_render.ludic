@@ -42,8 +42,14 @@ function kc_clear(i18n_st: mut I18nState) -> void {
 
 # s made into text as a new string the caller keeps or lets go (free), nothing kept here: L keeps one
 # per distinct line, which a count or a distance drawn as it changes grows without end
-@alloc_ok("a line made for a caller that lets it go when it stops showing it")
 export function i18n_made(i18n_st: mut I18nState, s: string) -> string {
+  i18n_st.mk += 1
+  let t = km_made_line(i18n_st, s)
+  i18n_st.mk -= 1
+  return t
+}
+@alloc_ok("a line made for a caller that lets it go when it stops showing it")
+function km_made_line(i18n_st: mut I18nState, s: string) -> string {
   if i18n_is_key(s) and not kx_mixed(s) { return km_text(i18n_st, s) }
   if kx_whole_key(s) { return km_text(i18n_st, s[1..len(s) - 1]) }   # a game's bracketed line: the same, unwrapped
   if kx_nested(s) or kx_mixed(s) { return kx_made(i18n_st, s) }      # nor kept whole: a prompt met once is not kept

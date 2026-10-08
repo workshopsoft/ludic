@@ -73,6 +73,7 @@ function km_arg(i18n_st: mut I18nState, d: int, at: int, s: string, a: int, b: i
   var n = at
   var keyish = false
   for i in a .. b { if s[i] == I18N_KEY or s[i] == I18N_PLURAL or s[i] == I18N_OPEN or s[i] == I18N_CLOSE { keyish = true } }
+  if keyish and i18n_st.mk > 0 { return km_made_arg(i18n_st, d, n, s, a, b) }
   if keyish {
     let w = L(i18n_st, km_kept_arg(i18n_st, s, a, b))
     for i in 0 .. len(w) { n = km_put(i18n_st, d, n, w[i]) }

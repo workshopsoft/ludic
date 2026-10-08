@@ -1,0 +1,59 @@
+# made_args_test.ludic - a line made for a caller (i18n_made) whose hole holds another line with a count in it -
+# a game's step and its count, "Catch 5 trout  (3/5)" - is made whole, and keeps nothing per count
+import "ludic.i18n"
+program I18nMadeArgsTest {
+  numbers float
+  function q(s: string) -> string { return "\"" + s + "\"" }
+  function po_line(id: string, tr: string) -> string { return "msgid " + q(id) + "\nmsgstr " + q(tr) + "\n\n" }
+  function en() -> string {
+    var s = po_line("step.fish", "Catch 5 trout") + po_line("fmt.step_count", "{1}  ({2})") + po_line("fmt.count_of", "{1}/{2}")
+    return s + po_line("fmt.name_m", "{1}, {2} m") + po_line("species.elk", "elk")
+  }
+  function b(s: string) -> string {
+    let o = buffer(1)
+    o[0] = I18N_OPEN
+    let c = buffer(1)
+    c[0] = I18N_CLOSE
+    return text_of(o, 1) + s + text_of(c, 1)
+  }
+  function start(i18n_st: mut I18nState) -> void {
+    i18n_off(i18n_st)
+    i18n_loud(i18n_st, false)
+    i18n_base_text(i18n_st, en())
+  }
+  function count(n: int, of: int) -> string { return b(trf(k"fmt.count_of", `{n}`, `{of}`, "", "")) }
+  function step(n: int) -> string { return b(trf(k"fmt.step_count", tr(k"step.fish"), count(n, 500), "", "")) }
+
+  test "five hundred counts of a step, made as a screen makes them, keep no line and no argument" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    let first = i18n_made(i18n_st, step(0))
+    expect(first == "Catch 5 trout  (0/500)")
+    i18n_let_go(first)
+    let lines = i18n_cached(i18n_st)
+    let args = len(i18n_st.ka_s)
+    for n in 1 .. 500 {
+      let t = i18n_made(i18n_st, step(n))
+      expect(t == "Catch 5 trout  (" + `{n}` + "/500)")
+      i18n_let_go(t)
+    }
+    expect_eq(i18n_cached(i18n_st), lines)
+    expect_eq(len(i18n_st.ka_s), args)
+  }
+
+  test "a key in the hole of a made line is its text, a count beside it plain" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    let t = i18n_made(i18n_st, b(trf(k"fmt.name_m", tr(k"species.elk"), "62", "", "")))
+    expect(t == "elk, 62 m")
+    i18n_let_go(t)
+  }
+
+  test "L makes the same line, and still keeps what it makes" (i18n_st: mut I18nState) {
+    start(i18n_st)
+    expect(L(i18n_st, step(3)) == "Catch 5 trout  (3/500)")
+    let lines = i18n_cached(i18n_st)
+    expect(L(i18n_st, step(3)) == "Catch 5 trout  (3/500)")
+    expect_eq(i18n_cached(i18n_st), lines)
+    expect(L(i18n_st, step(4)) == "Catch 5 trout  (4/500)")
+    expect(i18n_cached(i18n_st) > lines)
+  }
+}

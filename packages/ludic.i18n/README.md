@@ -62,7 +62,7 @@ port I18nWorld {
 | | |
 | --- | --- |
 | `L(s) -> string` | what the game draws, in the language in use (made once per distinct line, kept) |
-| `i18n_made(s) -> string` | the same text as a NEW string, nothing kept: for a caller that lets it go when it stops showing it (ludic.ui's `ui_maker`), so a count or a distance drawn as it changes keeps nothing per value |
+| `i18n_made(s) -> string` | the same text as a NEW string, nothing kept: for a caller that lets it go when it stops showing it (ludic.ui's `ui_maker`), so a count or a distance drawn as it changes keeps nothing per value - nor does a line in one of its holes (a step and its count), which is made the same way and let go |
 | `tr(k: Key)`, `trf(k: Key, a, b, c, d)`, `trn(k: Key, n, a, b, c) -> string` | a key (`k"..."`), a key with its holes' arguments, a plural key (`kn"..."`) by `n`: made into text by `L` |
 | `i18n_key(name)`, `i18n_key_plural(name)`, `key_text(k)`, `i18n_is_key(s)` | a key named at run time, its name without the marker, whether a string is one |
 | `i18n_base_text(text)`, `i18n_loud(on)` | the base (en.po) from text, for a test; a developer's build's loud missing key |
@@ -80,7 +80,7 @@ ludic test packages/ludic.i18n
 ```
 
 `keys_test`: keys, holes, plurals, a key glued into text, plain text as it is. `made_test`: `i18n_made`
-makes what `L` makes. `nest_test`: lines
+makes what `L` makes. `made_args_test`: a count bracketed in a made line's hole keeps nothing per count. `nest_test`: lines
 inside lines, bare, bracketed and escaped. `i18n_test`: a shipped list and a mod folder in the temp
 directory, a language's keys, plurals (a Russian-shaped rule), the font and its fallback, a mod
 replacing a shipped code, a forced code.
