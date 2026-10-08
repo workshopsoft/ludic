@@ -506,6 +506,8 @@ function terrain_bind_prog(render3d_st: mut Render3dState, p: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_snow_line"), render3d_st.ter_snow_line)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rock_line"), render3d_st.ter_rock_line)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rock_band"), render3d_st.ter_rock_band)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_rock_tint"), render3d_st.ter_rock_r, render3d_st.ter_rock_g, render3d_st.ter_rock_b)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rock_strata"), render3d_st.ter_rock_strata)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet"), render3d_st.ter_wet)
   var lake = -100000.0
   if render3d_st.ter_lake_ex != 0.0 { lake = render3d_st.ter_lake_level }

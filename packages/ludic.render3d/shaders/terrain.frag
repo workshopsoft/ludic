@@ -97,6 +97,9 @@ uniform float u_snow_line;
 // in the world's metres - a map's own, since the same 170 m is subalpine forest on one map and scree on another
 uniform float u_rock_line;
 uniform float u_rock_band;
+// the map's rock: its mean albedo (linear) and how hard the bedding shows on the steep faces
+uniform vec3 u_rock_tint;
+uniform float u_rock_strata;
 uniform float u_lake_level;      // the ground just above the water is wet and dark
 // ---- RAIN THAT LEAVES SOMETHING BEHIND -----------------------------------------------------
 // Rain fell and the ground did not change: the weather was a curtain of particles in front of a
@@ -454,7 +457,7 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
   // mountain the range is named for. The file's own rule a hundred lines up says the cheap
   // tier must keep the near tier's MEAN COLOUR or the boundary shows as a ring; this is that
   // rule applied to the one material where the mean is not grey.
-  vec3 rA = vec3(0.24, 0.085, 0.065), rN = vec3(0.0, 1.0, 0.0), rR = vec3(1.0, 0.8, 0.0);
+  vec3 rA = u_rock_tint * vec3(0.62, 0.71, 0.72), rN = vec3(0.0, 1.0, 0.0), rR = vec3(1.0, 0.8, 0.0);
   vec3 sA = vec3(0.86, 0.88, 0.92), sN = vec3(0.0, 0.0, 1.0), sR = vec3(1.0, 0.55, 0.0);
   vec3 pA, pN, pR;
   vec2 uvg = p.xz * 0.28;
@@ -527,7 +530,7 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
     rA = mix(rA, rA * rA2 * 2.2, 0.35) * (0.9 + 0.2 * fbmC(cheap, vec2(p.y * 0.03, p.x * 0.004 + p.z * 0.004), 3));
     // the Bells' sedimentary strata: near-horizontal bands, tilted a little, sharper on the cliffs
     float strata = 0.5 + 0.5 * sin(p.y * 0.45 + p.x * 0.012 + 3.0 * fbmC(cheap, p.xz * 0.01, 2));
-    rA *= mix(1.0, 0.75 + 0.5 * smoothstep(0.35, 0.65, strata), 0.5 * smoothstep(0.3, 0.6, slope));
+    rA *= mix(1.0, 0.75 + 0.5 * smoothstep(0.35, 0.65, strata), u_rock_strata * smoothstep(0.3, 0.6, slope));
     rN = normalize(rN + vec3(rN2.x, 0.0, rN2.y) * 0.6 * smoothstep(80.0, 400.0, dist));
     // the Bells are maroon mudstone: warm red-brown rock with grey scree below
     // The Bells are maroon mudstone: warm red-brown rock, with grey weathered scree below.
@@ -538,7 +541,7 @@ vec3 groundShade(vec3 p, vec3 N, float slope, float dist, float viewDepth, bool 
     // raising the magnitude from 0.14 to 0.38 made the face lighter, not redder, and it came
     // out pale tan. The albedo debug view measured red:blue at 1.56 where maroon mudstone wants
     // nearer 4, so what this needed was the GREEN and BLUE pulled down, not the red pushed up.
-    rA *= mix(vec3(0.30, 0.085, 0.065), vec3(0.47, 0.155, 0.115), fbmC(cheap, p.xz * 0.003, 2) * 0.5 + 0.5);
+    rA *= u_rock_tint * mix(0.78, 1.22, fbmC(cheap, p.xz * 0.003, 2) * 0.5 + 0.5);
   }
   if (needSnow > 0.002) {
     sA = textureGrad(u_snow_d, p.xz * 0.25, dpx.xz * 0.25, dpy.xz * 0.25).rgb * 0.8;

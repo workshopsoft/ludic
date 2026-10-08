@@ -40,9 +40,9 @@ program FogLandTest {
 
   test "the haze over the land is heavier the nearer the wall, and never all of it" {
     expect_near(fog_haze(at(30.0)), 0.5, 0.001)
-    expect_near(fog_haze(at(1000.0)), 0.2, 0.001)
+    expect_near(fog_haze(at(1000.0)), 0.05, 0.001)
     let h = fog_haze(at(175.0))
-    expect(h > 0.3 and h < 0.4)
+    expect(h > 0.25 and h < 0.3)
     expect(fog_haze(at(70.0)) > h)
   }
 

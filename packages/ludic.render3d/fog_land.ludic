@@ -8,7 +8,7 @@
 const FOG_CUT_M: float = 30.0       # the dissolve's depth, at most
 const FOG_CUT_SHARE: float = 0.6    # and at most this share of the wall, so a near wall keeps its near things
 const FOG_HAZE_NEAR: float = 0.5    # the wall's haze over the land at the nearest wall (30 m)
-const FOG_HAZE_FAR: float = 0.2     # and at a kilometre
+const FOG_HAZE_FAR: float = 0.05    # and at a kilometre: a thin veil, or a red face two kilometres off goes lilac
 const FOG_HAZE_M0: float = 30.0
 const FOG_HAZE_M1: float = 1000.0
 

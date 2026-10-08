@@ -170,7 +170,7 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   let fog_rise = smoothf(Math.deg_to_rad(-12.0), Math.deg_to_rad(1.0), el)
   let fog_high = smoothf(Math.deg_to_rad(2.0), Math.deg_to_rad(26.0), el)
   let lowsun = fog_rise * (1.0 - fog_high)
-  var dens = render3d_st.day_fog_base * (1.0 + 1.5 * lowsun)
+  var dens = render3d_st.day_fog_base * (1.0 + render3d_st.day_lowsun_haze * lowsun)
   dens = dens * (1.0 + 1.2 * oc)
   render3d_st.r3d_fog_density = dens * render3d_st.day_fog_mul * render3d_st.r3d_fog_scale
   # how fast the haze thins with height: a settled morning's lies IN the valley, a noon sky is
