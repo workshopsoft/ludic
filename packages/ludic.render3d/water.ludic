@@ -59,7 +59,8 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   gpu_depth_func(render3d_st, GPU_LESS)
   gpu_depth_write(render3d_st, true)
   gpu_cull(render3d_st, true)
-  gpu_cull_face(render3d_st, GPU_FRONT)                  # the mirror flips the winding
+  gpu_cull_face(render3d_st, GPU_BACK)
+  gpu_mirror(render3d_st, true)                          # the mirror flips the winding
   gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 1.0)
   gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
   render3d_st.sc_freeze = true
@@ -76,7 +77,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.ter_reflect = false
   render3d_st.sc_skip_blade = sb
   render3d_st.sc_freeze = false
-  gpu_cull_face(render3d_st, GPU_BACK)
+  gpu_mirror(render3d_st, false)
   if r3d_env_has(render3d_st, "R3D_DUMP_REFL") and not render3d_st.water_dumped { render3d_st.water_dumped = true;  tex_dump(render3d_st, render3d_st.water_refl.color, render3d_st.water_refl.w, render3d_st.water_refl.h, "build/dbg_refl.ppm") }
   # restore
   render3d_st.r3d_clip_y = -2147483600.0

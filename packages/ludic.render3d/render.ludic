@@ -84,7 +84,7 @@ function r3d_reach(render3d_st: Render3dState, far: float) -> float {
 function r3d_env_flags(render3d_st: mut Render3dState) -> void {
   render3d_st.r3d_no_shadow = r3d_env_has(render3d_st, "R3D_NOSHADOW")
   render3d_st.r3d_no_trees = r3d_env_has(render3d_st, "R3D_NOTREES")
-  render3d_st.r3d_no_refl = r3d_env_has(render3d_st, "R3D_NOREFL")
+  render3d_st.r3d_env_no_refl = r3d_env_has(render3d_st, "R3D_NOREFL")
   # R3D_FOG_WALL=<m>: the fog wall at that distance, for a shot (a game sets it with r3d_fog_wall)
   # R3D_TERRAIN_TILES=<dir>: the height field and photograph as tiles in that directory (terrain_tiles_to)
   if r3d_env_has(render3d_st, "R3D_TERRAIN_TILES") and render3d_st.tt_dir == "" { terrain_tiles_to(render3d_st, r3d_env(render3d_st, "R3D_TERRAIN_TILES"), "terrain") }
@@ -287,7 +287,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   r3d_scene_prepare(render3d_st)            # the game's own (the big world's instance cull, r3d_on_prepare)
   if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "shadow");  shadow_pass(render3d_st);  prof_end(render3d_st) }
   prof_cpu_mark(render3d_st, "shadow pass")
-  if render3d_st.water_on and not render3d_st.r3d_no_refl and water_reflect_visible(render3d_st) { prof_begin(render3d_st, "water reflection");  water_reflection_pass(render3d_st);  prof_end(render3d_st) }
+  if render3d_st.water_on and not render3d_st.r3d_no_refl and not render3d_st.r3d_env_no_refl and water_reflect_visible(render3d_st) { prof_begin(render3d_st, "water reflection");  water_reflection_pass(render3d_st);  prof_end(render3d_st) }
   prof_cpu_mark(render3d_st, "reflection")
   post_begin_scene(render3d_st)
   # the near tree foliage lays its depth down before anything is shaded, so the terrain

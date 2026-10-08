@@ -1,0 +1,31 @@
+# mirror_face_test.ludic - a pass drawn through a mirror (the water's reflection) says so in its pipelines'
+# state: its front faces are the counter-clockwise ones, so gl_FrontFacing means what it does in any other pass
+import "ludic.render3d/r3d.ludic"
+program MirrorFaceTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function plain() -> Render3dState {
+    let st = new Render3dState
+    st.gvk_state = new GvkState
+    return st
+  }
+
+  test "a pass that is not mirrored builds clockwise-front pipelines" {
+    let st = plain()
+    expect_eq(gvk_state_now(st).mirror, 0)
+  }
+
+  test "the mirror is part of the state a pipeline is built from, and is let go after" {
+    let st = plain()
+    gpu_cull(st, true)
+    gpu_cull_face(st, GPU_BACK)
+    gpu_mirror(st, true)
+    let m = gvk_state_now(st)
+    expect_eq(m.mirror, 1)
+    # the mirror keeps culling what is behind: the faces it keeps are the same ones GPU_FRONT kept
+    expect_eq(m.cull_face, GPU_BACK)
+    gpu_mirror(st, false)
+    expect_eq(gvk_state_now(st).mirror, 0)
+  }
+}

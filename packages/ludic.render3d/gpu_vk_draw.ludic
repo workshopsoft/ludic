@@ -327,7 +327,8 @@ property GvkState {
   bias: int = 0,
   bias_factor: int = 0,            # float bits
   bias_units: int = 0,             # float bits
-  wireframe: int = 0
+  wireframe: int = 0,
+  mirror: int = 0                  # 1: front faces are counter-clockwise (gpu_mirror)
 }
 
 # does the mesh leave shader input `loc` unfed (no attribute recorded there)?
@@ -438,7 +439,7 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
   let v = render3d_st.gvk_prog_var[p]
   if v == null { return zero }
   let lkey = gvk_layout_key(m)
-  let key = `{p}|{lkey}|{st.depth_test},{st.depth_write},{st.depth_func},{st.blend},{st.blend_src},{st.blend_dst},{st.cull},{st.cull_face},{st.color_write},{st.a2c},{st.bias},{st.bias_factor},{st.bias_units},{st.wireframe}|{n_color},{color_fmt},{depth_fmt},{samples}`
+  let key = `{p}|{lkey}|{st.depth_test},{st.depth_write},{st.depth_func},{st.blend},{st.blend_src},{st.blend_dst},{st.cull},{st.cull_face},{st.color_write},{st.a2c},{st.bias},{st.bias_factor},{st.bias_units},{st.wireframe},{st.mirror}|{n_color},{color_fmt},{depth_fmt},{samples}`
   free(lkey)
   if render3d_st.gvk_pipe_keys == null { render3d_st.gvk_pipe_keys = new []string;  render3d_st.gvk_pipe = new []long;  render3d_st.gvk_pipe_bufs = words(GPU_MAX_VBUFS) }
   for i in 0 .. len(render3d_st.gvk_pipe_keys) { if render3d_st.gvk_pipe_keys[i] == key { return render3d_st.gvk_pipe[i] } }
@@ -536,7 +537,8 @@ function gvk_pipeline(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkSt
   }
   # no y flip between the APIs' clip spaces and their framebuffers' rows, so a triangle that is
   # counter-clockwise on OpenGL's bottom-up window is clockwise in Vulkan's top-down one
-  Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_frontFace, VK_FRONT_FACE_CLOCKWISE)
+  # (and through a mirror the other way round: gpu_mirror)
+  if st.mirror == 1 { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_frontFace, VK_FRONT_FACE_COUNTER_CLOCKWISE) } else { Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_frontFace, VK_FRONT_FACE_CLOCKWISE) }
   Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_lineWidth, 0x3F800000)
   if st.bias == 1 {
     Vk.put_i32(rs, VkPipelineRasterizationStateCreateInfo_depthBiasEnable, 1)
@@ -1634,6 +1636,7 @@ function gvk_state_now(render3d_st: mut Render3dState) -> GvkState {
   st.bias_factor = float_bits(render3d_st.gpu_s_bias_f)
   st.bias_units = float_bits(render3d_st.gpu_s_bias_u)
   st.wireframe = render3d_st.gvk_wireframe
+  st.mirror = render3d_st.gpu_s_mirror
   return st
 }
 # An indirect draw goes through gvk_draw like any other - the same pipeline, set and buffers -
@@ -2096,7 +2099,7 @@ function gvk_blend_index(f: int) -> int {
 }
 function gvk_pipeline_fast(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState, n_color: int, color_fmt: int, depth_fmt: int, samples: int) -> long {
   let layout = gvk_layout_id(render3d_st, m)
-  var state = st.depth_test | (st.depth_write << 1) | (st.blend << 2) | (st.cull << 3) | (st.color_write << 4) | (st.a2c << 5) | (st.bias << 6) | (st.wireframe << 7)
+  var state = st.depth_test | (st.depth_write << 1) | (st.blend << 2) | (st.cull << 3) | (st.color_write << 4) | (st.a2c << 5) | (st.bias << 6) | (st.wireframe << 7) | (st.mirror << 24)
   state = state | ((st.depth_func & 15) << 8) | ((st.cull_face & 15) << 12) | (gvk_blend_index(st.blend_src) << 16) | (gvk_blend_index(st.blend_dst) << 20)
   let bias = st.bias_factor * 31 + st.bias_units
   let pass = ((n_color * 1000 + color_fmt) * 1000 + depth_fmt) * 64 + samples

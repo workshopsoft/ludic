@@ -95,6 +95,11 @@ function gpu_cull_face(render3d_st: mut Render3dState, face: int) -> void {
   if face == render3d_st.gpu_s_cull_face { return }
   render3d_st.gpu_s_cull_face = face
 }
+# Drawing through a mirror (a view of determinant -1, the water's reflection): every triangle's winding on
+# screen flips, so its front faces are the counter-clockwise ones. Culling what is behind and the shaders'
+# gl_FrontFacing then mean what they mean in any other pass; culling GPU_FRONT instead kept the right faces
+# but told every shader it was seeing a back face, and a two-sided leaf lit as its own far side came out white.
+function gpu_mirror(render3d_st: mut Render3dState, on: bool) -> void { render3d_st.gpu_s_mirror = gpu_b(on) }
 # all four channels together: nothing in the renderer writes a partial mask
 function gpu_color_write(render3d_st: mut Render3dState, on: bool) -> void {
   let v = gpu_b(on)
