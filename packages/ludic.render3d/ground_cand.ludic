@@ -43,6 +43,19 @@ function gf_trampled(render3d_st: mut Render3dState, keep: float, x: float, z: f
   return k
 }
 
+# how deep the water is over (x, z): the greatest of the planes' (level - ground) where it is inside a plane's
+# ellipse, 0 on dry ground
+export function ground_water_depth(render3d_st: mut Render3dState, x: float, z: float) -> float {
+  var depth = 0.0
+  for b in 0 .. render3d_st.wb_n {
+    let qx = (x - render3d_st.wb_cx[b]) / render3d_st.wb_ex[b]
+    let qz = (z - render3d_st.wb_cz[b]) / render3d_st.wb_ez[b]
+    if qx * qx + qz * qz >= 1.0 { continue }
+    depth = Math.max(depth, render3d_st.wb_level[b] - terrain_height(render3d_st, x, z))
+  }
+  return depth
+}
+
 # cell (i, j) of chunk (cx, cz) at `band` - the chunk's corner (x0, z0), its side `size` - into `out`: true when
 # one stands there
 export function ground_candidate(render3d_st: mut Render3dState, g: GroundFill, cx: int, cz: int, band: int, i: int, j: int, x0: float, z0: float, size: float, out: GroundCand) -> bool {
@@ -54,6 +67,7 @@ export function ground_candidate(render3d_st: mut Render3dState, g: GroundFill, 
   if px < x0 or px >= x0 + size or pz < z0 or pz >= z0 + size { return false }
   var keep = ground_density_at(render3d_st, g.layer, px, pz, 0)
   if keep <= 0.0 { return false }
+  if g.wade < 1000.0 and ground_water_depth(render3d_st, px, pz) > g.wade { return false }
   if g.trample { keep = gf_trampled(render3d_st, keep, px, pz) }
   if not gf_keeps(g, cx, cz, band, e, keep) { return false }
   out.x = px

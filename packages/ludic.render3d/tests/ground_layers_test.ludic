@@ -45,9 +45,17 @@ program GroundLayersTest {
     expect(f.step0 == d.step0 and f.step3 == d.step3 and f.jitter == d.jitter and f.sink == d.sink)
     expect(f.scale_lo == d.scale_lo and f.wind_lo == d.wind_lo and f.wind_hi == d.wind_hi)
     expect(f.trample == d.trample and f.solid == d.solid and f.scale_var == d.scale_var and f.band_grow == d.band_grow)
+    expect(f.wade == d.wade and f.wade == 1000.0)      # no water rule unless the row says one
     g.layer = 7
+    g.wade = 0.05
     ground_layer_fill(f, g, 3)
     expect_eq(f.layer, 7)
+    expect_eq(f.wade, 0.05)
+  }
+
+  test "no plane, no depth: dry ground is 0 under any wade" (render3d_st: mut Render3dState) {
+    render3d_st.wb_n = 0
+    expect_eq(ground_water_depth(render3d_st, 10.0, -20.0), 0.0)
   }
 
   test "a layer made from a row grows exactly what the hand-written GroundFill did" (render3d_st: mut Render3dState, layers: mut GroundLayers) {

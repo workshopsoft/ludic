@@ -35,6 +35,7 @@ export property GroundLayer {
   @Range(0, 1) wind_hi: float = 1.0
   @Unit("m") sink: float = 0.03                    # sunk into the ground this far
   trample: bool = true                             # thinned in the game's clearings (r3d_ground_clearing)
+  @Unit("m") @Range(0, 1000) wade: float = 1000.0  # the deepest water it grows in (0.05: out of the lake but its wet edge); 1000: anywhere
   solid: bool = false                              # things to touch: one step at every band, a stable id each
   @Unit("m") @Range(0, 64) foot: float = 0.0       # a solid thing's footprint a unit of scale, bedded on the lowest ground under it
   @Unit("m") @Range(0, 2000) band1: float = 0.0    # the bands' outer radii from the camera (0: the stream's own)
@@ -74,6 +75,7 @@ export function ground_layer_fill(out: GroundFill, g: GroundLayer, index: int) -
   out.band_grow = g.band_grow
   out.solid = g.solid
   out.kind = g.kind
+  out.wade = g.wade
 }
 
 # every row of a loaded map as a GroundFill, made once when the map opens (a frame asks the list, not this)
