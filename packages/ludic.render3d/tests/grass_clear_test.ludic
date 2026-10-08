@@ -1,0 +1,61 @@
+# grass_clear_test.ludic - the clearings as the blade cull reads them (grass_clear.ludic): the same floats in the
+# same places as ground_clear_at's, sent again only when the list changes, and its count in the cull's Params
+import "ludic.render3d/r3d.ludic"
+program GrassClearTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function pt(x: float, z: float) -> GroundPt {
+    let p = new GroundPt
+    p.x = x
+    p.z = z
+    return p
+  }
+
+  function held() -> Render3dState {
+    let st = new Render3dState
+    st.gg_clear_data = floats(GG_CLEAR_FLOATS)
+    return st
+  }
+
+  test "the buffer is laid out as the list is held: the clearings, then every point" {
+    expect_eq(GG_CLEAR_PTS_AT, GD_CLEAR_MAX * GD_CLEAR_W)
+    expect_eq(GG_CLEAR_FLOATS, GG_CLEAR_PTS_AT + GD_CLEAR_PTS * 2)
+  }
+
+  test "a disc and an area are packed where grass_cull.comp reads them" {
+    let st = held()
+    expect(r3d_ground_clearing(st, 10.0, 20.0, 1.0, 3.0, 0.25))
+    let pts = [pt(0.0, 0.0), pt(4.0, 0.0), pt(4.0, 4.0)]
+    expect(r3d_ground_clearing_area(st, pts, 1.5, 0.0))
+    gg_clear_pack(st)
+    let d = st.gg_clear_data
+    expect_eq(d[0], 0.0)        # a disc
+    expect_eq(d[1], 10.0)
+    expect_eq(d[4], 3.0)
+    expect_eq(d[5], 0.25)
+    expect_eq(d[GD_CLEAR_W], 1.0)          # an area, its points from 0, three of them
+    expect_eq(d[GD_CLEAR_W + 2], 3.0)
+    expect_eq(d[GD_CLEAR_W + 4], 1.5)      # its feather
+    expect_eq(d[GG_CLEAR_PTS_AT + 2], 4.0)  # the second point's x
+    expect_eq(d[GG_CLEAR_PTS_AT + 5], 4.0)  # the third's z
+    let pr = words(84)
+    gg_clear_params(st, pr)
+    expect_eq(float_from_bits(pr[80]), 2.0)
+  }
+
+  test "the list is sent again only when a clearing is put or the list let go" {
+    let st = held()
+    let v0 = st.gd_clear_ver
+    expect(r3d_ground_clearing(st, 0.0, 0.0, 1.0, 2.0, 0.0))
+    expect(st.gd_clear_ver != v0)
+    let v1 = st.gd_clear_ver
+    expect(not r3d_ground_clearing(st, 0.0, 0.0, 2.0, 1.0, 0.0))   # refused: nothing changed
+    expect_eq(st.gd_clear_ver, v1)
+    r3d_ground_clearings_reset(st)
+    expect(st.gd_clear_ver != v1)
+    let pr = words(84)
+    gg_clear_params(st, pr)
+    expect_eq(float_from_bits(pr[80]), 0.0)
+  }
+}
