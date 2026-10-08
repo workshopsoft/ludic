@@ -17,11 +17,13 @@ const GPU_TEXTURE_MAX_ANISOTROPY_EXT: int = 0x84FE
 # record the sampler cache reads - so a settings
 # screen can offer it live instead of on the next start.
 function r3d_set_anisotropy(render3d_st: mut Render3dState, level: int) -> void {
+  var lv = level
+  if r3d_env_has(render3d_st, "R3D_ANISO") { lv = Text.to_int(r3d_env(render3d_st, "R3D_ANISO")) }   # the switch wins over the setting
   var a: fixed = 1.0
-  if level >= 2 { a = 2.0 }
-  if level >= 4 { a = 4.0 }
-  if level >= 8 { a = 8.0 }
-  if level >= 16 { a = 16.0 }
+  if lv >= 2 { a = 2.0 }
+  if lv >= 4 { a = 4.0 }
+  if lv >= 8 { a = 8.0 }
+  if lv >= 16 { a = 16.0 }
   if a == render3d_st.tex_anisotropy { return }
   render3d_st.tex_anisotropy = a
   if render3d_st.gpu_tx == null { return }

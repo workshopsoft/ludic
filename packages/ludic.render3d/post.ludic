@@ -42,6 +42,7 @@ function post_free(render3d_st: mut Render3dState) -> void {
 function post_msaa_live(render3d_st: Render3dState) -> bool { return gpu_msaa_max(render3d_st) > 1 }
 function post_set_msaa(render3d_st: mut Render3dState, n: int) -> void {
   var want = n
+  if r3d_env_has(render3d_st, "R3D_MSAA") { want = Text.to_int(r3d_env(render3d_st, "R3D_MSAA")) }   # the switch wins over the setting
   if want < 1 { want = 1 }
   if not post_msaa_live(render3d_st) { want = 1 }
   if want > gpu_msaa_max(render3d_st) and gpu_msaa_max(render3d_st) >= 1 { want = gpu_msaa_max(render3d_st) }
@@ -103,6 +104,7 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   # are nothing to do with the shadow map or the reflection.
   render3d_st.post_ao = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
   render3d_st.post_ao_blur = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+  if render3d_st.post_neutral == 0 { render3d_st.post_neutral = tex_solid(render3d_st, 0, 0, 0, 255) }
   if render3d_st.post_p_ao == 0 { render3d_st.post_p_ao = r3d_program(render3d_st, "fullscreen.vert", "ssgi.frag", "");  render3d_st.post_p_ao_blur = r3d_program(render3d_st, "fullscreen.vert", "ssao_blur.frag", "") }
   render3d_st.post_ldr = target_new(render3d_st, w, h, post_ldr_fmt(render3d_st), GPU_RGBA, GPU_UNSIGNED_BYTE, false, GPU_LINEAR)
   render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
@@ -372,9 +374,14 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   gpu_use_program(render3d_st, prog)
   r3d_bind_2d(render3d_st, prog, "u_hdr", 0, color_tex)
   r3d_bind_2d(render3d_st, prog, "u_bloom", 1, render3d_st.post_bloom[0].color)
-  r3d_bind_2d(render3d_st, prog, "u_ao", 2, render3d_st.post_ao_blur.color)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ao_strength"), render3d_st.post_ao_strength)
-  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_gi_strength"), render3d_st.post_gi_strength)
+  var ao_tex = render3d_st.post_ao_blur.color
+  if render3d_st.post_no_gi or render3d_st.r3d_env_no_gi { ao_tex = render3d_st.post_neutral }
+  r3d_bind_2d(render3d_st, prog, "u_ao", 2, ao_tex)
+  var ao_strength = render3d_st.post_ao_strength
+  var gi_strength = render3d_st.post_gi_strength
+  if render3d_st.r3d_env_no_gi { ao_strength = 0.0;  gi_strength = 0.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ao_strength"), ao_strength)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_gi_strength"), gi_strength)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_exposure"), render3d_st.post_exposure)
   var auto = 0.0
   if render3d_st.post_auto and render3d_st.post_adapt_t != null { auto = 1.0;  r3d_bind_2d(render3d_st, prog, "u_adapt", 3, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color) }

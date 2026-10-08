@@ -61,6 +61,8 @@ function fog_bind(render3d_st: mut Render3dState, prog: int) -> void {
 const R3D_FOG_MARGIN: float = 8.0
 export function r3d_fog_wall(render3d_st: mut Render3dState, dist: float) -> void {
   var d = dist
+  # R3D_FOG_WALL=<m> wins over what the game asks, apply after apply
+  if r3d_env_has(render3d_st, "R3D_FOG_WALL") { d = float(Text.to_int(r3d_env(render3d_st, "R3D_FOG_WALL"))) }
   if d < 0.0 { d = 0.0 }
   if d == render3d_st.r3d_fog_wall { return }
   render3d_st.r3d_fog_wall = d
@@ -85,6 +87,7 @@ function r3d_env_flags(render3d_st: mut Render3dState) -> void {
   render3d_st.r3d_no_shadow = r3d_env_has(render3d_st, "R3D_NOSHADOW")
   render3d_st.r3d_no_trees = r3d_env_has(render3d_st, "R3D_NOTREES")
   render3d_st.r3d_env_no_refl = r3d_env_has(render3d_st, "R3D_NOREFL")
+  render3d_st.r3d_env_no_gi = r3d_env_has(render3d_st, "R3D_NOGI")
   # R3D_FOG_WALL=<m>: the fog wall at that distance, for a shot (a game sets it with r3d_fog_wall)
   # R3D_TERRAIN_TILES=<dir>: the height field and photograph as tiles in that directory (terrain_tiles_to)
   if r3d_env_has(render3d_st, "R3D_TERRAIN_TILES") and render3d_st.tt_dir == "" { terrain_tiles_to(render3d_st, r3d_env(render3d_st, "R3D_TERRAIN_TILES"), "terrain") }
@@ -345,7 +348,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # should bloom like one.
   prof_begin(render3d_st, "volumetric");  post_volumetric_pass(render3d_st);  prof_end(render3d_st)
   prof_begin(render3d_st, "dof");  post_dof_pass(render3d_st);  prof_end(render3d_st)
-  if not render3d_st.post_no_gi { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }
+  if not render3d_st.post_no_gi and not render3d_st.r3d_env_no_gi { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }
   if render3d_st.r3d_debug_max { tex_max(render3d_st, render3d_st.post_hdr.color, render3d_st.post_hdr.w, render3d_st.post_hdr.h, "hdr") }
   prof_begin(render3d_st, "bloom")
   post_bloom_pass(render3d_st)

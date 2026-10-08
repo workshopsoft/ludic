@@ -1,0 +1,3 @@
+bump: patch
+type: fix
+**`ludic.render3d`: a developer switch wins over the game's setting.** `R3D_NOGI` (its own `r3d_env_no_gi`, read by the SSAO gate and the composite's strengths), `R3D_ANISO`, `R3D_MSAA`, `R3D_FOG_WALL` and `R3D_NOVSYNC` were set once at start-up and written over by the game's next settings apply; `r3d_set_anisotropy`, `post_set_msaa`, `r3d_fog_wall` and `gpu_vsync` now read their switch themselves, as `r3d_dlss` and `r3d_hdr` always did. And a skipped SSAO pass (GI Off, or `R3D_NOGI`) no longer leaves the composite sampling a never-written target, whose NaNs times a zero strength drew a black frame: it reads a 1x1 neutral texture (`post_neutral`) instead.
