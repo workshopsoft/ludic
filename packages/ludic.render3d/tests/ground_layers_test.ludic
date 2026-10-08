@@ -53,9 +53,9 @@ program GroundLayersTest {
     expect_eq(f.wade, 0.05)
   }
 
-  test "no plane, no depth: dry ground is 0 under any wade" (render3d_st: mut Render3dState) {
+  test "no plane, no water: under no plane is -1000, so never over any wade" (render3d_st: mut Render3dState) {
     render3d_st.wb_n = 0
-    expect_eq(ground_water_depth(render3d_st, 10.0, -20.0), 0.0)
+    expect_eq(ground_water_depth(render3d_st, 10.0, -20.0), -1000.0)
   }
 
   test "a layer made from a row grows exactly what the hand-written GroundFill did" (render3d_st: mut Render3dState, layers: mut GroundLayers) {

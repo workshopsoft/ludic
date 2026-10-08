@@ -44,9 +44,9 @@ function gf_trampled(render3d_st: mut Render3dState, keep: float, x: float, z: f
 }
 
 # how deep the water is over (x, z): the greatest of the planes' (level - ground) where it is inside a plane's
-# ellipse, 0 on dry ground
+# ellipse - negative for ground standing above its water - and -1000 outside every plane
 export function ground_water_depth(render3d_st: mut Render3dState, x: float, z: float) -> float {
-  var depth = 0.0
+  var depth = -1000.0
   for b in 0 .. render3d_st.wb_n {
     let qx = (x - render3d_st.wb_cx[b]) / render3d_st.wb_ex[b]
     let qz = (z - render3d_st.wb_cz[b]) / render3d_st.wb_ez[b]
