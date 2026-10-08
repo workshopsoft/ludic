@@ -14,7 +14,11 @@ const CD_LEAVES: int = 256            # leaf patches per side (8192 / 32)
 # The far tier compiled on its own (FAR_ONLY). A patch that lies entirely beyond the
 # near/far split is drawn with it: same pixels, a shader small enough to run wide.
 # 0 dry .. 1 soaked. The game sets it from the weather and lets it dry out.
-function terrain_set_carpet(render3d_st: mut Render3dState, tex: int) -> void { render3d_st.ter_carpet = tex }
+# the distant-grass carpet, the terrain's from now on: one it held before is let go (terrain_unload too)
+function terrain_set_carpet(render3d_st: mut Render3dState, tex: int) -> void {
+  if render3d_st.ter_carpet != 0 and render3d_st.ter_carpet != tex { gpu_tex_free(render3d_st, render3d_st.ter_carpet) }
+  render3d_st.ter_carpet = tex
+}
 # Carve a lake bed below `level` inside the ellipse (cx, cz) ± (ex, ez); call before r3d_init.
 function terrain_lake(render3d_st: mut Render3dState, level: float, cx: float, cz: float, ex: float, ez: float) -> void {
   render3d_st.ter_lake_level = level;  render3d_st.ter_lake_cx = cx;  render3d_st.ter_lake_cz = cz;  render3d_st.ter_lake_ex = ex;  render3d_st.ter_lake_ez = ez
@@ -841,7 +845,9 @@ function terrain_unload(render3d_st: mut Render3dState) -> void {
   }
   # derived from TERRAIN_HALF and cached on first use: stale ones would keep the old size
   render3d_st.ter_h_scale = 0.0;  render3d_st.ter_o_scale = 0.0
-  render3d_st.ter_carpet = 0
+  # the carpet is the terrain's once handed over (terrain_set_carpet): a map loads its own, and dropping the
+  # old one's handle kept a 1024 mipped tile per swap
+  if render3d_st.ter_carpet != 0 { gpu_tex_free(render3d_st, render3d_st.ter_carpet);  render3d_st.ter_carpet = 0 }
   render3d_st.ter_shadow_gen = -1;  render3d_st.ter_shadow_yaw = 1000000000.0
 }
 # Generate another map in place. Call terrain_lake / terrain_coast / terrain_island for it

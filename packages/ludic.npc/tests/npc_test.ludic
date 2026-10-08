@@ -75,7 +75,8 @@ program NpcTest {
     npc_tests_fake_st.fk_hour = 23.0
     npc_tick(npc_st, 0.05)
     expect_eq(npc_count(npc_st), 3)
-    for i in 0 .. len(npc_walkers(npc_st)) { expect_eq(npc_walkers(npc_st)[i].kind, NPCK_CAMPER) }
+    # a cleared census keeps its walkers' records for the next one: who is about is who is active
+    for i in 0 .. len(npc_walkers(npc_st)) { if npc_walkers(npc_st)[i].active { expect_eq(npc_walkers(npc_st)[i].kind, NPCK_CAMPER) } }
   }
 
   test "no name twice, and never one the place keeps" (npc_st: mut NpcState, npc_tests_fake_st: mut NpcTestsFakeState) {

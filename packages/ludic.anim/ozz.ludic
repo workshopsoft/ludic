@@ -22,7 +22,10 @@ export function anim_oz_skel(sk: Skin) -> pointer {
     for k in 0 .. 4 { rest[i * 10 + 3 + k] = sk.rest_r[i * 4 + k] }
     for k in 0 .. 3 { rest[i * 10 + 7 + k] = sk.rest_s[i * 3 + k] }
   }
-  return ozz_skel_new(n, par, rest)
+  let s = ozz_skel_new(n, par, rest)
+  free(rest)
+  free(par)
+  return s
 }
 export function anim_oz_skel_free(s: pointer) -> void { if s != null { ozz_skel_free(s) } }
 export function anim_oz_joints(s: pointer) -> int { return ozz_skel_joints(s) }

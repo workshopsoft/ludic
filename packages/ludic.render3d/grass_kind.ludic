@@ -95,6 +95,7 @@ function grass_kind_set(render3d_st: mut Render3dState, k: GrassKind) -> void {
   let was = grass_kind(render3d_st)
   render3d_st.grass_kind = k
   if not grass_shape_same(was, k) { grass_meshes_build(render3d_st) }
+  if was != null and was != k { free(was) }      # the kind is the renderer's once handed over: a map built makes its own
   grass_derive(render3d_st)
   grass_kind_colours(render3d_st)
 }

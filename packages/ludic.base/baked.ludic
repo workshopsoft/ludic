@@ -11,10 +11,11 @@ export state BakeState {
 }
 
 # a map's bake: assets/baked/maps/<map>/<file>, which ships in that map's own pack (.lmap), never the
-# game's; anything else: assets/baked/<file>, in the game's pack
+# game's; anything else: assets/baked/<file>, in the game's pack. Interned: one string a path however
+# often a map is loaded (a world swap asked for each again), never to be freed
 export function baked_path(map: string, file: string) -> string {
-  if len(map) == 0 { return "assets/baked/" + file }
-  return "assets/baked/maps/" + map + "/" + file
+  if len(map) == 0 { return intern("assets/baked/" + file) }
+  return intern("assets/baked/maps/" + map + "/" + file)
 }
 
 # the payload of a baked file that is this bake at this version, or null (missing, not a baked file,

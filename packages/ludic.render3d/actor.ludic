@@ -47,7 +47,8 @@ property Actor {
   leader_id: int = 0,         # the leader's id when attached: a recycled record is not the same figure
   fmap:      words,           # per joint of this model: the leader's node, or -1
   fbones:    floats,          # 16 per joint: the palette this part skins with
-  fbones_v:  [][]float
+  fbones_v:  [][]float,
+  held:      bool = false     # its owner keeps it across the next actor_release_all (actor_hold)
 }
 const ACTOR_POOL: int = 512
 # a program and its uniform locations
@@ -462,8 +463,30 @@ function ac_caster_count(render3d_st: mut Render3dState, a: Actor) -> void {
   if a.cutout { render3d_st.ac_cc_cut += shown }
 }
 
+# The actor outlives the next actor_release_all: its owner keeps it (a figure that walks onto the next map)
+function actor_hold(a: Actor) -> void { if a != null { a.held = true } }
+
+# For a world being replaced: every actor on the stage released (actor_release - its record back to the
+# pool, its own skin, tint and hidden-part tables freed) but those held, which stay on the stage and
+# are held no longer. An owner that still names a released actor must have let go of it first: the
+# record is the next actor_new's. Off the stage was the old way (actor_clear_all), and every actor
+# nobody kept (a decoration, a world's camp) was a record, a matrix and a skeleton gone per swap.
+function actor_release_all(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.ac_actors
+  if l == null { return }
+  var i = len(l) - 1
+  while i >= 0 {
+    if i < len(l) {
+      let a = l[i]
+      if a.held { a.held = false } else { actor_release(render3d_st, a) }
+    }
+    i -= 1
+  }
+  outline_clear(render3d_st)
+}
+
 # every actor off the stage at once, for a world being replaced. Actors own no GPU objects;
-# their models belong to whoever loaded them.
+# their models belong to whoever loaded them. What is not kept again is lost: actor_release_all.
 function actor_clear_all(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_actors == null { return }
   for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].row = -1 }
@@ -487,7 +510,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   m4_identity(a.mat)
   a.visible = true;  a.cast_hidden = false;  a.casts = true;  a.row = -1
   a.cutout = false;  a.emissive = 0.0;  a.radius = 0.0;  a.cull = 0.0;  a.outline = 0.0
-  a.skin = null;  a.skin_owned = false;  a.ocol = null
+  a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
   return a
 }
 
@@ -503,7 +526,7 @@ function actor_release(render3d_st: mut Render3dState, a: Actor) -> void {
   if a.skin_owned and a.skin != null { skin_clone_free(a.skin) }
   a.skin_owned = false
   actor_unfollow(a)
-  a.model = null;  a.skin = null;  a.ocol = null
+  a.model = null;  a.skin = null;  a.ocol = null;  a.held = false
   a.id = 0
   if render3d_st.ac_spare == null { return }   # made in actor_init, with its room
   @alloc_ok("within the spares' room made at start-up (@max 2048)")

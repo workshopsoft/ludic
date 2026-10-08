@@ -74,6 +74,47 @@ function slot_add(pl: AnimPlayer, m: AnimMachine, clip: string, nbase: int, rby:
   push(m.rby, rby)
 }
 
+# The tables of the binding before, given back before another's are made: a person dressed again in the
+# other body (another rig) bound again and kept every list of the last binding. The names and the clips in
+# them are the sets' and the table's, and stay.
+function as_unbind(pl: AnimPlayer) -> void {
+  if pl.mach != null {
+    for i in 0 .. len(pl.mach) { mach_free(pl.mach[i]) }
+    free(pl.mach)
+  }
+  if pl.pnames != null { free(pl.pnames) }
+  if pl.pkind != null { free(pl.pkind) }
+  if pl.pinit != null { free(pl.pinit) }
+  if pl.vals != null { free(pl.vals) }
+  if pl.lm != null {
+    free(pl.lm)
+    free(pl.lmode)
+    free(pl.lw)
+    free(pl.lwp)
+  }
+  as_masks_free(pl)
+  if pl.it_clip != null {
+    free(pl.it_clip);  free(pl.it_w);  free(pl.it_t);  free(pl.it_ref)
+    free(pl.it_ex);  free(pl.it_rp);  free(pl.it_rr)
+  }
+}
+# the layers' masks, made for the skin it was bound to (animset_bind_skin)
+function as_masks_free(pl: AnimPlayer) -> void {
+  if pl.lmask == null { return }
+  for i in 0 .. len(pl.lmask) { if pl.lmask[i] != null { free(pl.lmask[i]) } }
+  free(pl.lmask)
+  pl.lmask = null
+}
+function mach_free(m: AnimMachine) -> void {
+  free(m.base);  free(m.ncl);  free(m.sub);  free(m.space);  free(m.px);  free(m.py);  free(m.spd);  free(m.dby)
+  free(m.tfrom);  free(m.tto);  free(m.cbase);  free(m.cparam);  free(m.tord)
+  free(m.names);  free(m.clips);  free(m.infos);  free(m.rmp);  free(m.rmr);  free(m.nbase);  free(m.nparam);  free(m.rby)
+  free(m.i_st);  free(m.i_pick);  free(m.i_loops);  free(m.i_tr);  free(m.i_uid);  free(m.i_new);  free(m.i_wr)
+  free(m.i_ph);  free(m.i_p0);  free(m.i_prog);  free(m.i_fdur);  free(m.i_rate);  free(m.i_dur)
+  free(m.i_sn);  free(m.i_si);  free(m.i_sw)
+  free(m)
+}
+
 # the machine for a set (its sub graphs built under it); its number
 @alloc_ok("once per bind")
 function build_machine(pl: AnimPlayer, si: int, depth: int) -> int {
@@ -171,6 +212,7 @@ function build_machine(pl: AnimPlayer, si: int, depth: int) -> int {
 @alloc_ok("a rig's tables, made once when the rig changes")
 function as_names(pl: AnimPlayer, set: int, rig: string) -> void {
   let s = AnimSets[set]
+  as_unbind(pl)
   pl.set = set
   pl.rig = intern(rig)
   pl.mach = new []AnimMachine

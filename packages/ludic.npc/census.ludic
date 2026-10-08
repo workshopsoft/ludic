@@ -96,7 +96,8 @@ export function npc_set_at(p: NpcPerson, x: float, z: float) -> void {
 # somebody fixed at a post (a vendor behind the counter): never walks, never counted, never leaves,
 # turns to a player within its kind's notice and back to `yaw` when they go
 export function npc_place(npc_st: mut NpcState, kind: int, x: float, z: float, yaw: float, name: string, look: int) -> NpcPerson {
-  let p = new NpcPerson
+  var p: NpcPerson = null
+  if len(npc_st.np_post_spare) > 0 { p = List.pop(npc_st.np_post_spare) } else { p = new NpcPerson }
   p.slot = len(npc_st.np_posts)
   np_fresh(p, kind, look)
   p.fixed = true

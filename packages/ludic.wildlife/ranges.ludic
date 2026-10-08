@@ -29,7 +29,7 @@ function wl_range_try(wildlife_st: mut WildlifeState, sp: int, x0: float, z0: fl
     let dx = wildlife_st.wl_px - x0
     let dz = wildlife_st.wl_pz - z0
     if Math.sqrt(dx * dx + dz * dz) < s.keep_away or wl_range_clashes(wildlife_st, sp, wildlife_st.wl_px, wildlife_st.wl_pz) { continue }
-    let r = new WildRange
+    let r = wl_range_new(wildlife_st)
     r.sp = sp
     r.x = wildlife_st.wl_px
     r.z = wildlife_st.wl_pz
@@ -43,10 +43,26 @@ function wl_range_try(wildlife_st: mut WildlifeState, sp: int, x0: float, z0: fl
   return false
 }
 
+# a range record as new: one a cleared valley left, else made
+function wl_range_new(wildlife_st: mut WildlifeState) -> WildRange {
+  let l = wildlife_st.wl_range_spare
+  if len(l) == 0 {
+    @alloc_ok("a range past the most a valley has had")
+    return new WildRange
+  }
+  let r = List.pop(l)
+  r.sp = 0;  r.x = 0.0;  r.z = 0.0;  r.r = 0.0;  r.found = false;  r.sx = 0.0;  r.sz = 0.0;  r.wx = 0.0;  r.wz = 0.0
+  return r
+}
 # every species' ranges about (x0, z0), then the game told of each (WildlifeWorld.placed)
 export function wildlife_ranges_setup(wildlife_st: mut WildlifeState, x0: float, z0: float) -> void {
   wildlife_seed(wildlife_st, 613)
-  wildlife_st.wl_ranges = new []WildRange
+  let old = wildlife_st.wl_ranges
+  for i in 0 .. len(old) {
+    @alloc_ok("the most ranges a valley has had: a swap's are the next one's")
+    push(wildlife_st.wl_range_spare, old[i])
+  }
+  List.clear(old)
   for sp in 0 .. wildlife_species_count(wildlife_st) {
     for k in 0 .. WildlifeWorld.ranges(sp) {
       if wl_range_painted(wildlife_st, sp, k) { continue }

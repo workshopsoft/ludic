@@ -1286,6 +1286,7 @@ function scatter_clear_all(render3d_st: mut Render3dState) -> void {
   if render3d_st.sc_layers == null { return }
   for i in 0 .. len(render3d_st.sc_layers) {
     let l = render3d_st.sc_layers[i]
+    sc_free_card(render3d_st, l)               # before its LOD tables, which say which level is the card
     if l.buf != 0 { gpu_buffer_free(render3d_st, l.buf) }
     if l.imp_buf != 0 { gpu_buffer_free(render3d_st, l.imp_buf) }
     if l.sh_buf != 0 { gpu_buffer_free(render3d_st, l.sh_buf) }
@@ -1302,16 +1303,60 @@ function scatter_clear_all(render3d_st: mut Render3dState) -> void {
     if l.vis != null { free(l.vis) }
     if l.lod_dist != null { free(l.lod_dist);  free(l.lod_card);  free(l.lod_buf);  free(l.n_lod) }
     if l.lvl != null { free(l.lvl) }
-    if l.g_arena != null { for k in 0 .. len(l.g_arena) { mesh_free(render3d_st, l.g_arena[k].mesh) } }
-    # layer_cards built this layer's crossed card and its atlas itself
-    if l.card and l.n_lods == 0 and l.model != null { for k in 0 .. len(l.model.prims) { mesh_free(render3d_st, l.model.prims[k].mesh) } }
-    if l.card and l.atlas != null {
-      gpu_tex_free(render3d_st, l.atlas.albedo)
-      gpu_tex_free(render3d_st, l.atlas.normal)
+    sc_free_gpu_cull(render3d_st, l)
+    if l.imp != null {
+      if l.imp.albedo != 0 { gpu_tex_free(render3d_st, l.imp.albedo);  gpu_tex_free(render3d_st, l.imp.normal) }
+      free(l.imp)
     }
+    # its levels' list was handed over (layer_set_lods); the models in it are the loader's
+    if l.lods != null { free(l.lods) }
+    # its chunk index (layer_chunks_begin) and the record itself: a map swapped kept every layer it had
+    if l.ck_off != null { free(l.ck_off) }
+    if l.ck_cnt != null { free(l.ck_cnt) }
+    if l.lc_rec != null { free(l.lc_rec) }
+    free(l)
   }
-  render3d_st.sc_layers = new []Layer
+  List.clear(render3d_st.sc_layers)
   render3d_st.sc_view_gen += 1
+}
+# layer_cards built this layer's crossed card and its atlas itself: the card is l.model until a LOD chain is
+# set, then the level marked as the card (layer_lod_card), and both were left behind but for their meshes
+function sc_free_card(render3d_st: mut Render3dState, l: Layer) -> void {
+  if not l.card { return }
+  var card: Model = null
+  if l.n_lods == 0 { card = l.model }
+  for k in 0 .. l.n_lods { if l.lod_card != null and l.lod_card[k] == 1 { card = l.lods[k] } }
+  if card != null {
+    for k in 0 .. len(card.prims) {
+      mesh_release(render3d_st, card.prims[k].mesh)
+      free(card.prims[k])
+    }
+    free(card.prims)
+    free(card)
+  }
+  if l.atlas != null {
+    gpu_tex_free(render3d_st, l.atlas.albedo)
+    gpu_tex_free(render3d_st, l.atlas.normal)
+    free(l.atlas)
+  }
+}
+# the GPU cull's side of a layer (layer_arena_build, layer_gpu_prepare): its buffers, its merged meshes and
+# the two models that wear them (the meshes' textures are the source levels', and stay theirs)
+function sc_free_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
+  if l.g_src != 0 {
+    gpu_buffer_free(render3d_st, l.g_src);  gpu_buffer_free(render3d_st, l.g_dst)
+    gpu_buffer_free(render3d_st, l.g_cmds);  gpu_buffer_free(render3d_st, l.g_counts)
+  }
+  if l.g_arena != null {
+    for k in 0 .. len(l.g_arena) {
+      mesh_release(render3d_st, l.g_arena[k].mesh)
+      free(l.g_arena[k])
+    }
+    free(l.g_arena)
+  }
+  if l.g_first != null { free(l.g_first);  free(l.g_base) }
+  if l.g_model != null { free(l.g_model) }
+  if l.g_model_sh != null { free(l.g_model_sh) }
 }
 
 # R3D_DUMP_ATLAS / the LOD debug switch: what a layer holds, printed (text made only then)

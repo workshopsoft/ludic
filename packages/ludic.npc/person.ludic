@@ -10,6 +10,7 @@ export state NpcState {
   np_rnext: int = 0
   @max(64) np_walkers: []NpcPerson = new []NpcPerson
   @max(64) np_posts: []NpcPerson = new []NpcPerson
+  @max(64) np_post_spare: []NpcPerson = new []NpcPerson   # a cleared valley's posts (npc_clear), taken by npc_place
   np_max: int = 10              # walkers at most
   np_n: int = 0                 # walkers about
   np_dice: Rng = rng_new(20260925)

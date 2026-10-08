@@ -35,7 +35,14 @@ function baked_payload(b: []byte, key: string, version: int) -> int {
 @alloc_ok("a load: the baked file read, its samples kept by the caller")
 function baked_png(render3d_st: mut Render3dState, path: pointer) -> pointer {
   let bp = baked_tex_path(path, "png", ".tex")
-  if bp == "" or not Fs.exists(bp) { return null }
+  if bp == "" { return null }
+  let px = baked_png_at(render3d_st, bp, path)
+  free(bp)                                       # its name, made for this load (one a texture, every load)
+  return px
+}
+@alloc_ok("a load: the baked file read, its samples kept by the caller")
+function baked_png_at(render3d_st: mut Render3dState, bp: string, path: pointer) -> pointer {
+  if not Fs.exists(bp) { return null }
   let b = Fs.read_bytes(bp)
   let off = baked_payload(b, BAKED_PNG_KEY, BAKED_PNG_VERSION)
   if off < 0 or off + 16 > len(b) {
@@ -64,7 +71,14 @@ function baked_png(render3d_st: mut Render3dState, path: pointer) -> pointer {
 function baked_cutout(render3d_st: mut Render3dState, path: pointer, srgb: bool) -> int {
   if not render3d_st.gvk_has_bc { return 0 }
   let bp = baked_tex_path(path, "cutouts", ".bc7")
-  if bp == "" or not Fs.exists(bp) { return 0 }
+  if bp == "" { return 0 }
+  let id = baked_cutout_at(render3d_st, bp, path, srgb)
+  free(bp)
+  return id
+}
+@alloc_ok("a load: the baked file read and let go")
+function baked_cutout_at(render3d_st: mut Render3dState, bp: string, path: pointer, srgb: bool) -> int {
+  if not Fs.exists(bp) { return 0 }
   let b = Fs.read_bytes(bp)
   let off = baked_payload(b, BAKED_CUT_KEY, BAKED_CUT_VERSION)
   var id = 0

@@ -1,0 +1,73 @@
+# actor_release_test.ludic - a world replaced: every actor on the stage released but the held ones, which stay; a
+# released figure's own skeleton goes back to its model's skin and is the next clone of it, so a swap makes none
+import "ludic.render3d/r3d.ludic"
+program ActorReleaseTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # a two-node skeleton, one joint each: enough for a clone's pose and matrices
+  function bones2() -> Skin {
+    let n = 2
+    let sk = new Skin
+    sk.n_nodes = n
+    sk.par = words(n);  sk.walk = words(n)
+    sk.rest_t = floats(n * 3);  sk.rest_r = floats(n * 4);  sk.rest_s = floats(n * 3);  sk.rest_g = floats(n * 4)
+    sk.names = ["hips", "spine"]
+    for i in 0 .. n {
+      sk.par[i] = i - 1;  sk.walk[i] = i
+      sk.rest_r[i * 4 + 3] = 1.0;  sk.rest_g[i * 4 + 3] = 1.0
+      sk.rest_s[i * 3] = 1.0;  sk.rest_s[i * 3 + 1] = 1.0;  sk.rest_s[i * 3 + 2] = 1.0
+    }
+    sk.n_joints = n
+    sk.joints = words(n)
+    sk.inv_bind = floats(n * 16)
+    sk.inv_v = m4_views(sk.inv_bind, n)
+    for j in 0 .. n { sk.joints[j] = j;  m4_identity(sk.inv_v[j]) }
+    return sk
+  }
+  function stage(render3d_st: mut Render3dState) -> void {
+    if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
+    if render3d_st.ac_spare == null { render3d_st.ac_spare = new []Actor }
+  }
+
+  test "the held stay on the stage, the rest go back to the pool, and nobody is held after" (render3d_st: mut Render3dState) {
+    stage(render3d_st)
+    let keep = actor_new(render3d_st, null)
+    let a = actor_new(render3d_st, null)
+    let b = actor_new(render3d_st, null)
+    let keep2 = actor_new(render3d_st, null)
+    let spare = len(render3d_st.ac_spare)
+    actor_hold(keep)
+    actor_hold(keep2)
+    actor_release_all(render3d_st)
+    expect_eq(len(render3d_st.ac_actors), 2)
+    expect(keep.row >= 0 and keep2.row >= 0 and keep.id != 0 and keep2.id != 0)
+    expect(render3d_st.ac_actors[keep.row] == keep and render3d_st.ac_actors[keep2.row] == keep2)
+    expect(a.id == 0 and b.id == 0 and a.row == -1 and b.row == -1)
+    expect_eq(len(render3d_st.ac_spare), spare + 2)
+    expect(not keep.held and not keep2.held)
+    actor_release_all(render3d_st)
+    expect_eq(len(render3d_st.ac_actors), 0)
+  }
+
+  test "a released figure's skeleton is its model's next clone, so swapping figures makes none" (render3d_st: mut Render3dState) {
+    stage(render3d_st)
+    let m = new Model
+    m.prims = new []Prim
+    m.skin = bones2()
+    let a = actor_new(render3d_st, m)
+    let first = actor_own_skin(a)
+    expect(first != null and first != m.skin)
+    skin_set_offset(first, 1, 0.0, 2.0, 0.0)
+    actor_release_all(render3d_st)
+    expect_eq(len(m.skin.spares), 1)
+    for k in 0 .. 20 {
+      let b = actor_new(render3d_st, m)
+      let sk = actor_own_skin(b)
+      expect(sk == first)
+      expect_near(sk.pose_t[4], 0.0, 0.0001)        # handed back as new: the last figure's pose is gone
+      actor_release_all(render3d_st)
+      expect_eq(len(m.skin.spares), 1)
+    }
+  }
+}

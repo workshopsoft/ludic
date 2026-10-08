@@ -63,6 +63,22 @@ program ThingsTest {
     expect(thing_by_uid(things_st, b.uid) == b)
   }
 
+  test "a cleared world's records are the next world's, so a swap makes none" (things_st: mut ThingsState, things_test_st: ThingsTestState) {
+    things_clear(things_st)
+    for i in 0 .. 40 { put(things_st, TH_TENT, float(i), 0.0) }
+    var flat = -1
+    for r in 0 .. 10 {
+      let s = things_spare_count(things_st)
+      things_clear(things_st)
+      expect_eq(things_count(things_st), 0)
+      expect_eq(things_spare_count(things_st), s + 40)
+      for i in 0 .. 40 { put(things_st, TH_FIRE, float(i), 1.0) }
+      expect_eq(things_count(things_st), 40)
+      if flat < 0 { flat = things_spare_count(things_st) }
+      expect_eq(things_spare_count(things_st), flat)
+    }
+  }
+
   test "the spatial questions see only what is active" (things_st: mut ThingsState, things_test_st: ThingsTestState) {
     things_clear(things_st)
     let near = put(things_st, TH_BRANCH, 1.0, 0.0)

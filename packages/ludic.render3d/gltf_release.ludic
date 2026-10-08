@@ -70,6 +70,7 @@ function model_release(render3d_st: mut Render3dState, m: Model) -> void {
       gltf_tex_unref(render3d_st, pr.diff);  gltf_tex_unref(render3d_st, pr.nrm);  gltf_tex_unref(render3d_st, pr.arm)
       if pr.mesh != null { mesh_release(render3d_st, pr.mesh) }
       if pr.name != null { free(pr.name) }
+      if pr.fac != null { free(pr.fac) }
       free(pr)
     }
     free(m.prims)

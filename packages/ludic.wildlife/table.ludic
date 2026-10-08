@@ -12,6 +12,7 @@ export property WildTable {
   grid: Grid = null
   species: IntIndex = null          # the living, by species
   nids: IntMap = null
+  spare: []WildAnimal = null        # a cleared valley's records (wildlife_clear), taken again by species
 }
 
 @alloc_ok("a table of animals: a load, or a guest taking the host's")
@@ -22,6 +23,7 @@ function wl__new() -> WildTable {
   w.grid = tb_grid(tb, WA_X, WA_Z, WA_ALIVE, WA_CELL)
   w.species = tb_index(tb, WA_SP, WA_ALIVE)
   w.nids = imap_new()
+  w.spare = new []WildAnimal
   return w
 }
 

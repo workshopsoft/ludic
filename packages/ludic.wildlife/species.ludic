@@ -53,6 +53,7 @@ export state WildlifeState {
   wl_out_x: float = 0.0
   wl_out_z: float = 0.0
   wl_ranges: []WildRange = new []WildRange
+  wl_range_spare: []WildRange = new []WildRange   # a cleared valley's ranges, taken again (wl_range_new)
   wl_found: []int = null      # found flags a load brought before the ranges were set out
   wl_seen: int = 0
   wl_fed: int = 0

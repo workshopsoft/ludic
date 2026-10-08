@@ -70,6 +70,7 @@ function make_mask(pl: AnimPlayer, sk: Skin, mask: int) -> floats {
 export function animset_bind_skin(pl: AnimPlayer, sk: Skin) -> void {
   pl.sk = sk
   animset_release(pl)
+  as_masks_free(pl)
   pl.oz_skel = anim_oz_skel(sk)
   if pl.oz_skel != null {
     pl.oz_n = anim_oz_joints(pl.oz_skel)

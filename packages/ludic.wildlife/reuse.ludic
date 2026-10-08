@@ -67,6 +67,19 @@ function wl_forget(w: WildTable, a: WildAnimal) -> void {
   if a.nid != 0 { imap_del(w.nids, a.nid) }
   wl_blank(a)
 }
+# a cleared valley's record of the species, made as new but for its key; else a record of its own
+function wl_spare_of(wildlife_st: mut WildlifeState, sp: int) -> WildAnimal {
+  let l = wildlife_st.wl.spare
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if a.sp != sp { continue }
+    l[i] = l[len(l) - 1]
+    List.pop(l)
+    wl_blank(a)
+    return a
+  }
+  return wl_record(wildlife_st)
+}
 # a record of its own, with the next key: only when none of its species waits to be reused
 @alloc_ok("an animal record past the most of its species ever at once; a removed one is reused")
 function wl_record(wildlife_st: mut WildlifeState) -> WildAnimal {

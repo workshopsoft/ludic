@@ -64,4 +64,30 @@ program WildReuseTest {
     wildlife_remove(c)
     expect(wildlife_new(wildlife_st, 1, 30.0, 30.0, false) != c)
   }
+  test "a cleared valley's animals are the next valley's of their species, keys and all, and a swap makes none" (wildlife_st: mut WildlifeState, wildlife_tests_fake_st: mut WildlifeTestsFakeState) {
+    fk_setup(wildlife_st, wildlife_tests_fake_st)
+    let a = wildlife_new(wildlife_st, 0, 10.0, 10.0, false)
+    let b = wildlife_new(wildlife_st, 1, 20.0, 20.0, false)
+    let ka = a.key
+    let kb = b.key
+    a.spook = 40.0
+    wildlife_clear(wildlife_st)
+    expect_eq(wildlife_count_all(wildlife_st), 0)
+    let c = wildlife_new(wildlife_st, 1, 30.0, 30.0, false)
+    expect(c == b)
+    expect_eq(c.key, kb)
+    let d = wildlife_new(wildlife_st, 0, 40.0, 40.0, false)
+    expect(d == a)
+    expect_eq(d.key, ka)
+    expect(d.alive and d.shown and d.spook == 0.0)
+    expect(wildlife_nearest(wildlife_st, 0, 40.0, 40.0, 5.0) == d)
+    let e = wildlife_new(wildlife_st, 0, 50.0, 50.0, false)
+    expect(e != a and e.key > kb)
+    for k in 0 .. 50 {
+      wildlife_clear(wildlife_st)
+      expect(wildlife_new(wildlife_st, 0, float(k), 0.0, false).key <= e.key)
+      expect(wildlife_new(wildlife_st, 0, float(k), 9.0, false).key <= e.key)
+      expect(wildlife_new(wildlife_st, 1, float(k), 0.0, false) == b)
+    }
+  }
 }

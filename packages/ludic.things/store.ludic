@@ -59,10 +59,15 @@ export function things_all(things_st: ThingsState) -> []Thing { return things_st
 
 export function things_count(things_st: ThingsState) -> int { return tb_len(things_st.th.tab) }
 
-# a new world: every Thing forgotten, quietly (the game has already dropped its drawings)
+# a new world: every Thing forgotten, quietly (the game has already dropped its drawings), and its
+# record a spare for the next world's, as a removed one's is: dropped, a swap kept every Thing it had
 export function things_clear(things_st: mut ThingsState) -> void {
   let tb = things_st.th.tab
-  for r in 0 .. tb_len(tb) { tb.rec[r].ent = -1 }
+  for r in 0 .. tb_len(tb) {
+    let t = tb.rec[r]
+    t.ent = -1
+    th_spare_put(things_st, t)
+  }
   tb_clear(tb)
   imap_clear(things_st.th_uids)
 }

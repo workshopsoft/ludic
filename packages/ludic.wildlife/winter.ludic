@@ -31,7 +31,7 @@ function wl_range_painted(wildlife_st: mut WildlifeState, sp: int, k: int) -> bo
   let q = wildlife_st.wl_ask_rg
   q.r = 0.0
   if not WildlifeWorld.range_at(sp, k, q) { return false }
-  let r = new WildRange
+  let r = wl_range_new(wildlife_st)
   r.sp = sp
   r.x = q.x
   r.z = q.z

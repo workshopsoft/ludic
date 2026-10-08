@@ -39,7 +39,9 @@ property Skin {
   tmp_a:    floats,
   tmp_b:    floats,
   tmp_c:    floats,
-  tmp_v:    floats
+  tmp_v:    floats,
+  src:      Skin,         # a clone's source (skin_clone): where skin_clone_free puts it back
+  spares:   []Skin        # a source's clones given back, taken again by skin_clone
 }
 
 # a 3-vector of a JSON array (float bits), or a default
@@ -216,7 +218,14 @@ function skin_bind(render3d_st: mut Render3dState, sk: Skin, prog: int) -> void 
 @creates(SkinClone)
 @alloc_ok("one per figure placed (a person, an animal): actor_release frees it with the actor")
 function skin_clone(src: Skin) -> Skin {
+  if src.spares != null and len(src.spares) > 0 {
+    let again = List.pop(src.spares)
+    skin_reset(again)
+    skin_pose(again)
+    return again
+  }
   let sk = new Skin
+  sk.src = src
   sk.n_nodes = src.n_nodes;  sk.par = src.par;  sk.walk = src.walk
   sk.rest_t = src.rest_t;  sk.rest_r = src.rest_r;  sk.rest_s = src.rest_s;  sk.rest_g = src.rest_g
   sk.names = src.names
@@ -248,14 +257,30 @@ function skin_free(sk: Skin) -> void {
   if sk.gmat_v != null { free(sk.gmat_v) }
   if sk.inv_v != null { free(sk.inv_v) }
   if sk.bones_v != null { free(sk.bones_v) }
+  if sk.spares != null {
+    for i in 0 .. len(sk.spares) { skin_clone_drop(sk.spares[i]) }
+    free(sk.spares)
+  }
   free(sk)
 }
 
-# A skin_clone given back: what the clone made for itself (its pose, its matrices and their views, its
-# scratch). The rest data, the joints and the names are its source's and stay.
+# A skin_clone given back to its source, for the next clone of it: a view is a block of its own that only
+# its list's free would take (and the data with it), so a freed clone left one per node and joint behind.
 @releases(SkinClone)
 function skin_clone_free(sk: Skin) -> void {
   if sk == null { return }
+  if sk.src != null {
+    @alloc_ok("a source's spare clones: as many as it ever had out at once")
+    if sk.src.spares == null { sk.src.spares = new []Skin }
+    @alloc_ok("as above")
+    push(sk.src.spares, sk)
+    return
+  }
+  skin_clone_drop(sk)
+}
+# what a clone made for itself (its pose, its matrices and their views' lists, its scratch); the rest
+# data, the joints and the names are its source's and stay
+function skin_clone_drop(sk: Skin) -> void {
   free(sk.pose_r);  free(sk.pose_t);  free(sk.gmat);  free(sk.bones)
   if sk.gmat_v != null { free(sk.gmat_v) }
   if sk.bones_v != null { free(sk.bones_v) }

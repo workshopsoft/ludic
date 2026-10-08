@@ -8,10 +8,17 @@ export function wildlife_all(wildlife_st: WildlifeState) -> []WildAnimal {
 
 export function wildlife_count_all(wildlife_st: WildlifeState) -> int { return tb_len(wildlife_st.wl.tab) }
 
-# a new valley: every animal forgotten, quietly (the game has already let its drawings go)
+# a new valley: every animal forgotten, quietly, its record kept for the next valley's of its species
+# (wildlife_make) with its key, so a drawing kept by key is that species' again; dropped, every swap
+# made each record, and each drawing, anew
 export function wildlife_clear(wildlife_st: mut WildlifeState) -> void {
   let tb = wildlife_st.wl.tab
-  for r in 0 .. tb_len(tb) { tb.rec[r].ent = -1 }
+  for r in 0 .. tb_len(tb) {
+    let a = tb.rec[r]
+    a.ent = -1
+    @alloc_ok("a cleared valley's records: as many as there have ever been at once")
+    push(wildlife_st.wl.spare, a)
+  }
   tb_clear(tb)
   imap_clear(wildlife_st.wl.nids)
 }
@@ -31,7 +38,7 @@ export function wildlife_make(wildlife_st: mut WildlifeState, sp: int, x: float,
   if s == null { return null }
   var a = wl_reusable(wildlife_st.wl, sp)
   let again = a != null
-  if again { wl_forget(wildlife_st.wl, a) } else { a = wl_record(wildlife_st) }
+  if again { wl_forget(wildlife_st.wl, a) } else { a = wl_spare_of(wildlife_st, sp) }
   a.nid = nid
   a.sp = sp
   a.x = x
