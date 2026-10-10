@@ -249,7 +249,9 @@ entry {
   if g_es_report { escape_report() }              # 25.3: which allocations never outlive their frame
   else if g_arena { escape_analyse() }             # 25.3: and they allocate from the frame's scratch
   if g_arena_strict and (getenv_or("LUDIC_DEPS", "") == "") {   # 25.3: the region rule, before anything is emitted
-    let sink = file_open("/dev/null", "wb")
+    var nul = "/dev/null"                         # Windows has no /dev/null: a null sink aborted ludicc there
+    if host_is_windows() { nul = "NUL" }
+    let sink = file_open(nul, "wb")
     deps_reach(sink)
     file_close(sink)
   }
@@ -278,7 +280,6 @@ entry {
   # --emit-llvm, or no binary target: emit IR and stop (stdout when out is null).
   if emit_ir { ir_flush(out);  return }
   if not has_target { ir_flush(null);  return }
-
 
   # a run with no explicit -o lands in a temp file
   if run and (out == null) {

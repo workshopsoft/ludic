@@ -33,8 +33,17 @@ property Actor {
   row:     int = -1,       # where it stands in ac_actors, so it leaves in O(1); -1 off the stage
   cutout:  bool = false,   # alpha-tested (a flame's cards)
   emissive: float = 0.0,       # float bits: self-lit strength
+  # Blended (actor_blend.ludic): 0 opaque (the passes above), ACTOR_ALPHA laid over the scene, ACTOR_ADD
+  # added to it. A blended actor is drawn after the opaque scene, sorted far to near, depth-tested and
+  # writing no depth, and casts no shadow unless blend_casts.
+  blend:   int = 0,
+  alpha:   float = 1.0,        # times the material's alpha (its texture's, its base colour's, its vertices')
+  soft:    float = 0.0,        # metres it fades over in front of what is behind it (0: a hard edge)
+  unlit:   bool = false,       # blended only: base colour x emissive (x 1 at 0), no sun, sky or shadow
+  blend_casts: bool = false,   # a blended actor that still casts, alpha-tested at 0.5
+  blend_d: float = 0.0,        # its squared distance from the camera this frame (the sort's key)
   @owns(SkinClone) skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
-  skin_owned: bool = false, # made by actor_own_skin: actor_release frees it
+  skin_owned: bool = false,  # made by actor_own_skin: actor_release frees it
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
   hide:    words,          # 1 per primitive: skip it (a cap taken off)
   radius:  float = 0.0,        # float bits: bounding radius for culling (0 = never culled)
@@ -66,9 +75,12 @@ property AcProg {
   l_out:    int = -1,
   l_ocol:   int = -1,
   l_mh:     int = -1,
+  l_tr:     int = -1,          # u_tr: alpha, soft, blend, unlit (TRANSLUCENT)
+  l_fbase:  int = -1,          # a primitive's glTF factors (prim_factors, by location)
+  l_fmr:    int = -1,
+  l_femis:  int = -1,
   scene_frame: int = -1    # the frame its scene uniforms were bound
 }
-
 
 function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, defs: string) -> AcProg {
   let a = new AcProg
@@ -79,6 +91,8 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   a.l_tint = gpu_uniform(render3d_st, p, "u_tint");  a.l_rough = gpu_uniform(render3d_st, p, "u_rough_scale");  a.l_emis = gpu_uniform(render3d_st, p, "u_emissive")
   a.l_view = gpu_uniform(render3d_st, p, "u_view");  a.l_proj = gpu_uniform(render3d_st, p, "u_proj");  a.l_mh = gpu_uniform(render3d_st, p, "u_model_h")
   a.l_out = gpu_uniform(render3d_st, p, "u_outline");  a.l_ocol = gpu_uniform(render3d_st, p, "u_outline_col")
+  a.l_tr = gpu_uniform(render3d_st, p, "u_tr")
+  a.l_fbase = gpu_uniform(render3d_st, p, "u_fac_base_inv");  a.l_fmr = gpu_uniform(render3d_st, p, "u_fac_mr_inv");  a.l_femis = gpu_uniform(render3d_st, p, "u_fac_emis")
   # the samplers never move: units 0, 1, 2
   gpu_use_program(render3d_st, p)
   u_i(render3d_st, gpu_uniform(render3d_st, p, "u_diff"), 0);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_nrm"), 1);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_arm"), 2)
@@ -105,6 +119,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
   render3d_st.ac_out = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n")
   render3d_st.ac_out_cut = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
+  actor_blend_init(render3d_st)
   let stage = render3d_st.ac_actors           # made above with its room; a new valley starts empty
   List.clear(stage)
 }
@@ -188,6 +203,7 @@ function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool 
     m4_copy(a.mat, l.mat)
     a.visible = l.visible;  a.cast_hidden = l.cast_hidden;  a.casts = l.casts
     a.cull = l.cull;  a.radius = l.radius;  a.outline = l.outline;  a.emissive = l.emissive
+    a.blend = l.blend;  a.alpha = l.alpha;  a.soft = l.soft;  a.unlit = l.unlit;  a.blend_casts = l.blend_casts
   }
   if not a.visible and not (shadow and a.cast_hidden) { return false }
   if shadow and not a.casts { return false }
@@ -218,17 +234,7 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
   let p = ap.prog
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, ap.l_model, a.mat)
-  var skinned = 0.0
-  if a.leader != null and a.fmap != null {
-    var ls = a.leader.skin
-    if ls == null { ls = a.leader.model.skin }
-    skin_follow_pose(a.model.skin, ls, a.fmap, a.fbones, a.fbones_v)
-    skinned = 1.0
-    u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.fbones)
-  }
-  else if a.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.skin.n_joints, a.skin.bones) }
-  else if a.model.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
-  u_f(render3d_st, ap.l_skin, skinned)
+  ac_bind_pose(render3d_st, a, ap)
   if not shadow {
     u_f(render3d_st, ap.l_emis, a.emissive)
     u_f(render3d_st, ap.l_rough, a.rough)
@@ -250,6 +256,21 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
     }
     mesh_draw(render3d_st, pr.mesh)
   }
+}
+
+# the actor's pose for the program in use: a part's palette from its leader, its own clone's, its model's, or rigid
+function ac_bind_pose(render3d_st: mut Render3dState, a: Actor, ap: AcProg) -> void {
+  var skinned = 0.0
+  if a.leader != null and a.fmap != null {
+    var ls = a.leader.skin
+    if ls == null { ls = a.leader.model.skin }
+    skin_follow_pose(a.model.skin, ls, a.fmap, a.fbones, a.fbones_v)
+    skinned = 1.0
+    u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.fbones)
+  }
+  else if a.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.skin.n_joints, a.skin.bones) }
+  else if a.model.skin != null { skinned = 1.0;  u_mat4n(render3d_st, ap.l_bones, a.model.skin.n_joints, a.model.skin.bones) }
+  u_f(render3d_st, ap.l_skin, skinned)
 }
 
 # ---- outlining something that is not an actor ---------------------------------------------
@@ -336,7 +357,9 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { actor_census(render3d_st) }
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
+    if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
     if not ac_visible(render3d_st, a, false) { continue }
+    if a.blend != 0 { continue }
     var ap = render3d_st.ac_lit
     if a.cutout { ap = render3d_st.ac_lit_cut }
     ac_bind_scene(render3d_st, ap)
@@ -427,7 +450,9 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
   gpu_use_program(render3d_st, render3d_st.ac_sh_cut.prog);  u_mat4(render3d_st, render3d_st.ac_sh_cut.l_lvp, light_vp)
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
+    if a.blend != 0 and not a.blend_casts and a.leader == null { continue }   # smoke and glow cast nothing
     if not ac_visible(render3d_st, a, true) { continue }
+    if a.blend != 0 and not a.blend_casts { continue }
     if a.radius != 0.0 {
       # the radius is the horizontal extent: a person is far taller than wide, so the sphere is
       # centred at half the model's height and reaches the larger of the two, with a margin for
@@ -444,7 +469,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     let ra = a.radius * a.scale
     if not cast_band_reaches(render3d_st, Math.max(da - ra, 0.0), da + ra, a.model.height * a.scale) { continue }
     var ap = render3d_st.ac_sh
-    if a.cutout { ap = render3d_st.ac_sh_cut }
+    if a.cutout or a.blend != 0 { ap = render3d_st.ac_sh_cut }
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }
     if ac_proxy_figure(render3d_st, a) { actor_draw_proxy(render3d_st, a) } else { actor_draw_one(render3d_st, a, ap, true) }
   }
@@ -510,6 +535,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   m4_identity(a.mat)
   a.visible = true;  a.cast_hidden = false;  a.casts = true;  a.row = -1
   a.cutout = false;  a.emissive = 0.0;  a.radius = 0.0;  a.cull = 0.0;  a.outline = 0.0
+  a.blend = 0;  a.alpha = 1.0;  a.soft = 0.0;  a.unlit = false;  a.blend_casts = false;  a.blend_d = 0.0
   a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
   return a
 }

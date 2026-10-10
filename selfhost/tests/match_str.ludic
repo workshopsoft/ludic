@@ -1,0 +1,35 @@
+# `match` on a string compares by content (as `==` does), on a long as i64 and on a double as a
+# double: it was `icmp eq i32` whatever the subject, and a string subject did not assemble.
+program T {
+  function kind(word: string) -> int {
+    match word {
+      "embers" => return 1
+      "petals", "leaves" => return 2
+      _ => return 0
+    }
+    return 9
+  }
+  function big(v: long) -> int {
+    match v { 1000000000000 => { return 1 };  _ => { return 0 } }
+    return 9
+  }
+  function half(v: double) -> int {
+    match v { 0.5 => { return 1 };  _ => { return 0 } }
+    return 9
+  }
+  entry {
+    print(kind("embers"))                 # 1
+    print(kind("petals"))                 # 2
+    print(kind("leaves"))                 # 2
+    print(kind("smoke"))                  # 0
+    let built = `pet{"als"}`             # same content, a different pointer
+    print(kind(built))                    # 2
+    var n = 0
+    match `emb{"ers"}` { "embers" => { n = 7 };  _ => { n = 3 } }
+    print(n)                              # 7 (a subject the match made itself)
+    print(big(1000000000000))             # 1
+    print(big(1))                         # 0
+    print(half(0.5))                      # 1
+    print(half(0.25))                     # 0
+  }
+}

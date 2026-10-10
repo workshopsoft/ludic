@@ -43,6 +43,15 @@ uniform vec4 u_gk_forb_c;
 #ifdef CARD
 uniform float u_cull;        // the layer's cull distance (m); 0 = none
 #endif
+#ifdef TRANSLUCENT
+// a blended actor (actor.ludic, actor_draw_translucent), drawn over the resolved scene with no depth write:
+// x = alpha (times the material's), y = the soft-particle fade in metres (0 = none),
+// z = the blend (1 over, 2 additive), w = 1 when unlit (base colour x emissive, no sun, sky or shadow)
+uniform vec4 u_tr;
+uniform sampler2D u_scene_depth;  // the resolved scene's depth (post_depth_copy), for the soft fade
+uniform mat4 u_inv_vp;
+uniform vec2 u_screen;
+#endif
 
 mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   vec3 dp1 = dFdx(p), dp2 = dFdy(p);
@@ -213,6 +222,11 @@ void main() {
   arm = vec3(0.9, 0.7, 0.0);
 #else
   vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv) * v_col;
+#ifdef TRANSLUCENT
+  // the texture's alpha, the material's base alpha and the vertex colour's, times the actor's
+  meshAlpha = d.a * u_tr.x;
+  if (meshAlpha < 0.002) discard;
+#endif
 #ifdef ALPHA_TEST
   // A needle sprig's alpha averages away in the mips, so a plain 0.5 test strips the
   // crown bare past 50 m. Scale the alpha back up by the mip level (Castano's alpha
@@ -284,6 +298,9 @@ void main() {
   // past arm's length a blade is a pixel or two wide: one tap is what a soft filter averages to
   float shadow = (dist < 8.0) ? sunShadow(v_wpos + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), viewDepth)
                               : sunShadowCheap(v_wpos + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), viewDepth);
+#elif defined(TRANSLUCENT)
+  // an unlit glow looks up no shadow
+  float shadow = (u_tr.w > 0.5) ? 1.0 : sunShadow(v_wpos, N, viewDepth);
 #else
   float shadow = sunShadow(v_wpos, N, viewDepth);
 #endif
@@ -293,7 +310,13 @@ void main() {
 #else
   float roughF = clamp(arm.g * u_rough_scale, 0.35, 1.0);
 #endif
+#ifdef TRANSLUCENT
+  // unlit: the base colour x emissive (added below; the base colour itself when emissive is 0) and the
+  // material's emission, and no light at all
+  vec3 col = (u_tr.w > 0.5) ? ((u_emissive > 0.0) ? vec3(0.0) : alb) : shade(v_wpos, n, alb, roughF, 0.0, arm.r, shadow, viewDepth);
+#else
   vec3 col = shade(v_wpos, n, alb, roughF, 0.0, arm.r, shadow, viewDepth);
+#endif
 #ifdef FOLIAGE
   // thin-leaf translucency: light leaking through toward the viewer, and a wrapped diffuse
   vec3 v = normalize(u_cam_pos - v_wpos);
@@ -337,10 +360,31 @@ void main() {
   col += alb * u_emissive;
   if (any(isnan(col))) col = vec3(0.0);
   col += u_fac_emis;
+#ifdef TRANSLUCENT
+  // Over: the surface is fogged and then laid over what is behind it. Additive: the light it adds is
+  // dimmed by the air between it and the eye and adds no fog of its own (applyFog is linear in the
+  // colour, so fog(c) - fog(0) is c times the air's transmittance), or a far glow would add the sky.
+  if (u_tr.z > 1.5) col = applyFog(col, v_wpos, dist) - applyFog(vec3(0.0), v_wpos, dist);
+  else col = applyFog(col, v_wpos, dist);
+  float a = meshAlpha;
+  // soft particles: fade out over u_tr.y metres in front of the scene behind, so a puff that cuts the
+  // ground or a wall shows no hard line where it does
+  if (u_tr.y > 0.0) {
+    vec2 suv = gl_FragCoord.xy / u_screen;
+    float sd = texture(u_scene_depth, suv).r;
+    vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, sd * 2.0 - 1.0, 1.0);
+    float sceneDist = length(gp.xyz / gp.w - u_cam_pos);
+    a *= clamp((sceneDist - dist) / u_tr.y, 0.0, 1.0);
+  }
+  if (a < 0.002) discard;
+  // premultiplied: over is (ONE, ONE_MINUS_SRC_ALPHA), additive (ONE, ONE), one program for both
+  o_color = vec4(max(sane(col), vec3(0.0)) * a, a);
+#else
   col = applyFog(col, v_wpos, dist);
 #ifdef CARD
   o_color = vec4(sane(col), cardAlpha);
 #else
   o_color = vec4(sane(col), meshAlpha);
+#endif
 #endif
 }

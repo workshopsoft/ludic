@@ -1,0 +1,90 @@
+# actor_blend_test.ludic - what the blended pass and the placement helpers compute without a GPU: the
+# far-to-near sort, the sort key, and the matrices actor_place_rot / actor_billboard write
+import "ludic.render3d/r3d.ludic"
+program ActorBlendTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function actor_with(d: float) -> Actor {
+    let a = new Actor
+    a.mat = m4_new()
+    a.tint = v3_new(1.0, 1.0, 1.0)
+    a.blend_d = d
+    return a
+  }
+
+  test "the over list sorts far to near, in place, keeping equal keys in order" {
+    let l = new []Actor
+    let ds = [4.0, 25.0, 1.0, 25.0, 9.0, 0.0]
+    for i in 0 .. len(ds) { let a = actor_with(ds[i]);  a.id = i + 1;  push(l, a) }
+    ac_sort_far_first(l, len(l))
+    let want = [2, 4, 5, 1, 3, 6]
+    for i in 0 .. len(want) { expect_eq(l[i].id, want[i]) }
+  }
+
+  test "the sort key is the squared distance from the camera to the model's middle" (render3d_st: mut Render3dState) {
+    render3d_st.cam_pos = v3_new(0.0, 0.0, 0.0)
+    let a = actor_with(0.0)
+    let m = new Model
+    m.ymin = 0.0
+    m.height = 2.0
+    a.model = m
+    actor_place_rot(a, 3.0, 0.0, 4.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0)
+    expect_near(ac_blend_key(render3d_st, a), 26.0, 0.0001)       # 3^2 + 1^2 + 4^2
+    # tipped over (pitch 90 degrees) the middle is a metre along +z instead of up
+    actor_place_rot(a, 3.0, 0.0, 4.0, 0.0, PI * 0.5, 0.0, 1.0, 1.0, 1.0)
+    expect_near(ac_blend_key(render3d_st, a), 34.0, 0.0001)       # 3^2 + 0 + 5^2
+  }
+
+  test "no pitch, no roll and one scale is exactly actor_place" {
+    let a = actor_with(0.0)
+    let b = actor_with(0.0)
+    b.scale = 1.5
+    actor_place(b, 1.0, 2.0, 3.0, 0.7)
+    actor_place_rot(a, 1.0, 2.0, 3.0, 0.7, 0.0, 0.0, 1.5, 1.5, 1.5)
+    for i in 0 .. 16 { expect_near(a.mat[i], b.mat[i], 0.00001) }
+    expect_near(a.scale, 1.5, 0.00001)
+    expect_near(a.yaw, 0.7, 0.00001)
+  }
+
+  test "pitch tips +y toward +z, roll turns +x toward +y, each scale its own axis" {
+    let a = actor_with(0.0)
+    actor_place_rot(a, 0.0, 0.0, 0.0, 0.0, PI * 0.5, 0.0, 1.0, 2.0, 3.0)
+    # column 1 (the model's +y, scaled by 2) is now along +z
+    expect_near(a.mat[4], 0.0, 0.0001);  expect_near(a.mat[5], 0.0, 0.0001);  expect_near(a.mat[6], 2.0, 0.0001)
+    # column 2 (+z, scaled by 3) along -y
+    expect_near(a.mat[8], 0.0, 0.0001);  expect_near(a.mat[9], -3.0, 0.0001);  expect_near(a.mat[10], 0.0, 0.0001)
+    expect_near(a.scale, 3.0, 0.00001)
+    actor_place_rot(a, 0.0, 0.0, 0.0, 0.0, 0.0, PI * 0.5, 1.0, 1.0, 1.0)
+    expect_near(a.mat[0], 0.0, 0.0001);  expect_near(a.mat[1], 1.0, 0.0001);  expect_near(a.mat[2], 0.0, 0.0001)
+    # yaw after pitch: tipped forward, then turned a quarter about y, +y ends along +x
+    actor_place_rot(a, 0.0, 0.0, 0.0, PI * 0.5, PI * 0.5, 0.0, 1.0, 1.0, 1.0)
+    expect_near(a.mat[4], 1.0, 0.0001);  expect_near(a.mat[5], 0.0, 0.0001);  expect_near(a.mat[6], 0.0, 0.0001)
+  }
+
+  test "a billboard's +z points at the camera and its +x along the screen's right" (render3d_st: mut Render3dState) {
+    # a camera at (0, 0, 10) looking at the origin: right is +x, up +y, back +z
+    render3d_st.cam_view = m4_new()
+    m4_look_at_xyz(render3d_st.cam_view, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+    let a = actor_with(0.0)
+    actor_billboard(render3d_st, a, 1.0, 2.0, 3.0, 2.0, 0.0)
+    expect_near(a.mat[0], 2.0, 0.0001);  expect_near(a.mat[5], 2.0, 0.0001);  expect_near(a.mat[10], 2.0, 0.0001)
+    expect_near(a.mat[12], 1.0, 0.0001);  expect_near(a.mat[13], 2.0, 0.0001);  expect_near(a.mat[14], 3.0, 0.0001)
+    # a quarter turn of spin: +x goes up the screen
+    actor_billboard(render3d_st, a, 0.0, 0.0, 0.0, 1.0, PI * 0.5)
+    expect_near(a.mat[0], 0.0, 0.0001);  expect_near(a.mat[1], 1.0, 0.0001)
+  }
+
+  test "a released record comes back opaque" (render3d_st: mut Render3dState) {
+    render3d_st.ac_spare = new []Actor
+    let a = actor_with(5.0)
+    a.blend = ACTOR_ADD;  a.alpha = 0.2;  a.soft = 1.0;  a.unlit = true;  a.blend_casts = true
+    push(render3d_st.ac_spare, a)
+    let b = actor_fresh(render3d_st)
+    expect_eq(b.blend, ACTOR_OPAQUE)
+    expect_near(b.alpha, 1.0, 0.0)
+    expect_near(b.soft, 0.0, 0.0)
+    expect(not b.unlit)
+    expect(not b.blend_casts)
+  }
+}

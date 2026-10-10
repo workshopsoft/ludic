@@ -380,3 +380,69 @@ Each frame a follower copies the leader's placement, visibility and cull, and sk
 and the outline pass use the same palette. Releasing the leader hides its followers. The 48-joint cap (`SKIN_MAX_JOINTS`,
 `u_bones[48]`) applies per mesh, so a part skinned to few joints is cheaper than the body. Hiding is per primitive, the unit
 the glTF gives: export the body with one material per region. `actor_show_all` undoes it.
+
+## Blended actors: smoke, a shield's bubble, a glow
+
+An actor is opaque (or alpha-tested with `cutout`) unless its `blend` says otherwise (`actor_blend.ludic`):
+
+| field | |
+| --- | --- |
+| `blend: int = 0` | `ACTOR_OPAQUE` (0): the opaque passes, as before. `ACTOR_ALPHA` (1): laid over what is behind it. `ACTOR_ADD` (2): added to it |
+| `alpha: float = 1.0` | times the material's own alpha: its base-colour texture's, its `baseColorFactor`'s and its vertex colours' (a soft round particle texture works as it is) |
+| `soft: float = 0.0` | metres over which it fades out in front of the scene behind it (a soft particle); 0 is a hard edge |
+| `unlit: bool = false` | its colour is the base colour x tint x `emissive` (x 1 when `emissive` is 0) plus the material's emission, with no sun, sky or shadow |
+| `blend_casts: bool = false` | a blended actor casts no shadow unless this is set (then it casts alpha-tested at 0.5, as a cut-out does) |
+
+```ludic
+let puff = actor_new(render3d_st, smoke_model)       # a card in the x-y plane, facing +z
+puff.blend = ACTOR_ALPHA
+puff.alpha = 0.6
+puff.soft = 0.4
+actor_billboard(render3d_st, puff, x, y, z, 1.2, spin)   # each frame, after the camera is set
+let glow = actor_new(render3d_st, glow_model)
+glow.blend = ACTOR_ADD
+glow.unlit = true
+glow.emissive = 3.0                                   # bloom catches it
+```
+
+- **The pass.** Blended actors are left out of `actor_draw` and drawn once a frame by `r3d_frame` itself, after the
+  opaque scene and the water and before volumetrics, ambient occlusion, bloom and the tonemap, into the HDR target
+  (so an additive glow blooms and the exposure sees it). They are depth-tested against the scene and write no
+  depth. "Over" actors are sorted far to near by their middle's distance from the camera (premultiplied:
+  `ONE, ONE_MINUS_SRC_ALPHA`), then additive ones are drawn in stage order (`ONE, ONE`). A closed shape laid over
+  (a bubble) draws its back faces, then its front faces; a card (two triangles or fewer) draws once, both faces.
+- **Light.** The lit ones are shaded exactly as an opaque actor (sun, cascaded shadow, sky light, fog: model.frag's
+  `TRANSLUCENT` variant). An additive actor's light is dimmed by the air between it and the eye rather than fogged,
+  so a far glow does not add the sky's colour.
+- **Soft particles** read the depth copy `post_resolve` makes (`post_depth_copy`).
+- **Shadows and reflections.** They cast nothing by default, and are not drawn into the water's reflection.
+- **Trade-offs.** The sort is per actor, not per triangle: two blended actors that pass through each other swap
+  at once when their middles do. Additive actors come after every "over" one, so a glow behind smoke is not
+  dimmed by it. Nothing after the pass sees a blended actor's depth (ambient occlusion, depth of field, a DLSS
+  upscale reproject by the surface behind it). render3d has no temporal anti-aliasing (`post.ludic`), so nothing
+  reprojects or smears a blended actor; under DLSS a fast one is moved with what is behind it, the usual cost of
+  drawing effects into the frame an upscaler reads. The pass draws at one sample over the resolved frame, so where
+  a blended surface passes behind a multisampled edge that edge's pixels show the stair-step.
+- **Cost.** Two lists made at start-up with room for 2048 actors each, filled every frame and sorted in place
+  (nothing is made per frame), one program, the frame's light bound once, the blend function set twice. Measured
+  on an M4 Pro at 1080p: about 2 us of CPU an actor, and 2.4 ms of GPU for 200 lit, overlapping 0.9 m puffs (it is
+  fill: a lit puff runs the opaque shading, shadow lookups included; an `unlit` one skips them). A part
+  following a leader (`actor_follow`) takes its leader's `blend`, `alpha`, `soft`, `unlit` and `blend_casts`.
+
+`ACTOR_ALPHA` actors drawn last frame: `render3d_st.ac_blend_over_n`, additive: `ac_blend_add_n`. The lab's
+`packages/ludic.lab/example/blend.ludic` shows all three kinds on the plate.
+
+## Placing an actor turned any way
+
+`actor_place(a, x, y, z, yaw)` turns about +y and scales evenly by `a.scale`. For a thrown star tumbling, a slash
+tilted with the blade or a shard of ice (`actor_place.ludic`; each writes the actor's own matrix, making nothing):
+
+- `actor_place_rot(a, x, y, z, yaw, pitch, roll, sx, sy, sz)`: `translate * rotate_y(yaw) * rotate_x(pitch) *
+  rotate_z(roll) * scale(sx, sy, sz)`, radians. A positive pitch tips the model's +y toward its +z, a positive roll
+  its +x toward its +y; zero pitch and roll and equal scales are `actor_place`.
+- `actor_place_q(a, x, y, z, q, sx, sy, sz)`: a unit quaternion `(x, y, z, w)` (`quat.ludic`).
+- `actor_billboard(render3d_st, a, x, y, z, size, spin)`: the model's +x along the screen's right, +y up the screen,
+  +z toward the eye, turned `spin` radians in the screen's plane; a card modelled in the x-y plane is a sprite.
+  It reads the camera's view, so call it after the frame's camera is set.
+
+Each sets `a.x / y / z` and `a.scale` to the largest of the scales (what culling and an outline measure by).

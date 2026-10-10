@@ -53,25 +53,25 @@ function net__room_answer(net_st: mut NetState) -> void {
     }
     return
   }
+  # the answer read, then let go whole - its text, every node and every string the parser made -
+  # so the host's poll each second keeps nothing (what a stage keeps it copies)
   var v: Val = null
-  if st > 0 and Http.ok(net_st.net__http) { v = Json.parse(Http.text(net_st.net__http)) }
+  if st > 0 and Http.ok(net_st.net__http) {
+    let text = Http.text(net_st.net__http)
+    if text != null {
+      v = Json.parse(text)
+      free(text)
+    }
+  }
   Http.free(net_st.net__http)
   net_st.net__http = 0
+  net__room_read(net_st, v)
+  if v != null { Json.free_all(v) }
+}
+
+function net__room_read(net_st: mut NetState, v: Val) -> void {
   if net_st.net__r_state == NET_R_REGISTER {
-    let code = net__json_str(v, "code")
-    if len(code) == 0 {
-      net__room_fail(net_st, NET_WHY_NO_ROOM_GIVEN)
-      return
-    }
-    net_st.net__room = code
-    @alloc_ok("once per room")
-    net_st.net__watch_url = `{net__conf(net_st).signal_url}/rooms/{code}`
-    net__take_relay(net_st, v)
-    net_st.net__r_state = NET_R_ROOM
-    net_st.net__poll_t = 0.0
-    @alloc_ok("once per room")
-    net__log(`room {code}`)
-    net__fact(net_st, NET_ROOM, -1, 0, 0, code)
+    net__room_given(net_st, v)
     return
   }
   if net_st.net__r_state == NET_R_ASK {
@@ -91,6 +91,24 @@ function net__room_answer(net_st: mut NetState) -> void {
       net__new_guest(net_st, net__json_str(g, "pub"), net__json_str(g, "local"))
     }
   }
+}
+
+# the host's room code, kept past the answer it came in
+@alloc_ok("once per room")
+function net__room_given(net_st: mut NetState, v: Val) -> void {
+  let given = net__json_str(v, "code")
+  if len(given) == 0 {
+    net__room_fail(net_st, NET_WHY_NO_ROOM_GIVEN)
+    return
+  }
+  let code = given[0..len(given)]
+  net_st.net__room = code
+  net_st.net__watch_url = `{net__conf(net_st).signal_url}/rooms/{code}`
+  net__take_relay(net_st, v)
+  net_st.net__r_state = NET_R_ROOM
+  net_st.net__poll_t = 0.0
+  net__log(`room {code}`)
+  net__fact(net_st, NET_ROOM, -1, 0, 0, code)
 }
 
 # the host, registered: its relay address kept fresh, new guests punched for, the room looked at

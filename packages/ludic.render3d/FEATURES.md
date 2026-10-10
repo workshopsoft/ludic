@@ -98,6 +98,8 @@ Characters and moving objects
 68. Weather on the daylight: an overcast factor greys and dims the sun and the sky's light, a fog multiplier thickens the air, a lightning flash — `daylight.ludic` `daylight_weather`
 69. An outline pass: an actor carries a rim width and colour, drawn as an inverted hull depth-tested against the scene, and anything that is not an actor can queue one at a transform (a scatter instance, a tile) — `actor.ludic` `actor_draw_outlines`, `outline_model`, `shaders/outline.frag`
 70. Two ways to make an island out of a survey: a radius from a centre, or the sea put around the survey's own edge with a noise-wobbled coast, both scaling the existing relief into the water and compressing the last few metres of height either side of the line into beach and shallows — `terrain.ludic` `terrain_island`, `terrain_coast`, `shaders/heightgen.frag`
+70a. Blended actors: an actor laid over the scene (alpha, premultiplied) or added to it (additive), in a pass of its own after the opaque scene and the water and before bloom, depth-tested against the scene and writing none, "over" sorted far to near, lit with the sun, shadow, sky light and fog of the opaque actors or unlit (base colour x emissive), an additive one dimmed by the air rather than fogged, a soft-particle fade against the resolved depth, a closed shape drawn inside then outside; no shadow unless asked — `actor_blend.ludic` `actor_draw_blended`, `shaders/model.frag` `TRANSLUCENT`, lab scene `packages/ludic.lab/example/blend.ludic`
+70b. Actors placed with yaw, pitch and roll and a scale per axis, by a quaternion, or as a camera-facing card — `actor_place.ludic` `actor_place_rot`, `actor_place_q`, `actor_billboard`
 
 Large worlds (cities of hundreds of thousands of buildings on 16 km and more; README, "Large worlds")
 71. Floating origin: world positions in double, render space a float offset from an origin snapped to a power-of-two grid, rebased with hysteresis and no jitter (a rebase moves every render number by exactly the shift); integer-cell + float-offset positions - `forg.ludic` `forg_update`, `forg_shift_floats`, `CellPos`
@@ -128,6 +130,7 @@ Large worlds (cities of hundreds of thousands of buildings on 16 km and more; RE
 | Nanite / virtualised geometry | UE5 | not applicable; LOD chain (37) instead |
 | Terrain: height fields, layered materials, real-world data | both | implemented (22–27) |
 | Water with planar reflection | RAGE planar, UE SSR | planar reflection implemented (40); no screen-space reflection |
+| Translucency: sorted blended surfaces, soft particles | both | blended actors (70a): sorted per actor, soft fade; no order-independent transparency, no lit volumetric particles |
 | Post: bloom, exposure, tonemap, grading, DoF, motion blur | both | bloom/exposure/tonemap/grading implemented (44–49); no depth of field, no motion blur |
 | Streaming world | both | chunk streaming of cover (35); terrain is one 8 km tile; cell streaming with HLOD, floating origin and instancing for a city (71-76) |
 | Compute shaders, indirect draw, bindless | both | compute passes and indirect draws implemented (`gpu.ludic`, `shaders/grass_cull.comp`); no bindless |

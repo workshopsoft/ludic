@@ -274,7 +274,7 @@ function emit_match(st: Node) -> void {
       var p = 0
       while p < len(arm.kids) {
         let pv = emit_expr(arm.kids[p])
-        let c = emit_bind(`icmp eq i32 {sv.code}, {pv.code}`)
+        let c = emit_match_eq(sv, pv)
         if first { acc = c;  first = false }
         else { acc = emit_bind(`or i1 {acc}, {c}`) }
         p += 1
@@ -282,15 +282,35 @@ function emit_match(st: Node) -> void {
       let bodyl = lbl("mbody");  let nextl = lbl("marm")
       emit("  br i1 ");  emit(acc);  emit(", label %");  emit(bodyl);  emit(", label %");  emit(nextl);  emit("\n")
       emit(bodyl);  emit(":\n");  g_term = false
+      emit_match_drop(sv)
       emit_block(arm.a)
       if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
       emit(nextl);  emit(":\n");  g_term = false
     }
     i += 1
   }
+  emit_match_drop(sv)
   if (deflt != null) { emit_block(deflt.a) }
   if not g_term { emit("  br label %");  emit(endl);  emit("\n") }
   emit(endl);  emit(":\n");  g_term = false
+}
+
+# One arm's `subject == pattern`, as an i1. Two 32-bit integers (an int, a bool, a plain enum's
+# ordinal) compare with one icmp, as they always have. Anything else goes through the lowering `==`
+# takes (emit_bin_vals): a string compares by content, a long as i64, a float or a double as a
+# floating-point compare. It was `icmp eq i32` whatever the subject was, so a `match` on a string
+# named a ptr as an i32 and the module did not assemble. The subject is evaluated once and compared
+# with every arm, so it goes in as not fresh (the string path frees a fresh side after one compare);
+# a subject the match made itself is freed by emit_match_drop on each way out instead.
+function emit_match_eq(sv: Val, pv: Val) -> pointer {
+  let plain = llty(sv.ty) == "i32" and llty(pv.ty) == "i32" and not is_fp(sv.ty) and not is_fp(pv.ty) and not (sv.ty == "fixed") and not (pv.ty == "fixed")
+  if plain { return emit_bind(`icmp eq i32 {sv.code}, {pv.code}`) }
+  let r = emit_bin_vals("==", val(sv.code, sv.ty), pv, false)
+  return emit_bind(`icmp ne i32 {r.code}, 0`)
+}
+# a subject the match made itself (`match `{a}{b}` { ... }`) is held by nothing once an arm is chosen
+function emit_match_drop(sv: Val) -> void {
+  if sv.fresh { emit(`  call void @lp_free(ptr {sv.code})\n`) }
 }
 
 # emit E(field: v, ...) — evaluate the payload args in the event's declared field

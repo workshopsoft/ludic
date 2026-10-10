@@ -1,0 +1,134 @@
+# ============================================================================
+# water_patch.ludic — small standing water on a plane: puddles on a roof, a wet
+# courtyard. Each patch is a soft organic shape (its outline from a seed) at one
+# shared level, drawn with the still water's mirror: the world rendered mirrored
+# about that level once, at the reflection's half resolution, for every patch
+# together. A ripple (water_patch_ripple) sends rings out through the normal,
+# so a foot in the water bends what it mirrors.
+#
+# It works in plate mode (r3d_plate_mode), where the still-water bodies do not:
+# the patches need no terrain under them, they lie on whatever the scene is.
+# With no patch added nothing of this runs: no pass, no draw.
+#
+#   water_patch_level(st, 0.02)              the plane, a little above the floor
+#   water_patch_add(st, x, z, radius, seed)  one patch (64 at most)
+#   water_patch_ripple(st, x, z, strength)   rings from a point, 0..1 (16 live)
+#   water_patches_clear(st)                  a new map
+# ============================================================================
+const WP_MAX: int = 64
+const WP_RIPPLES: int = 16
+const WP_RIPPLE_LIFE: float = 2.5     # seconds a ring runs before it is let go
+
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function wp_setup(render3d_st: mut Render3dState) -> void {
+  if render3d_st.wp_data != null { return }
+  render3d_st.wp_data = floats(WP_MAX * 4)
+  render3d_st.wp_rip = floats(WP_RIPPLES * 4)
+  for i in 0 .. WP_RIPPLES * 4 { render3d_st.wp_rip[i] = 0.0 }
+}
+
+export function water_patches_clear(render3d_st: mut Render3dState) -> void {
+  render3d_st.wp_n = 0
+  if render3d_st.wp_rip != null { for i in 0 .. WP_RIPPLES { render3d_st.wp_rip[i * 4 + 3] = 0.0 } }
+}
+
+# the plane every patch lies on; the mirror is taken about it
+export function water_patch_level(render3d_st: mut Render3dState, level: float) -> void {
+  render3d_st.wp_level = level
+}
+
+# a patch of water round (x, z), about `radius` across its middle, its outline turned by `seed`;
+# its index, or -1 once WP_MAX are in use
+export function water_patch_add(render3d_st: mut Render3dState, x: float, z: float, radius: float, seed: int) -> int {
+  water_setup(render3d_st)
+  wp_setup(render3d_st)
+  if render3d_st.wp_n >= WP_MAX { return -1 }
+  let i = render3d_st.wp_n
+  let o = i * 4
+  render3d_st.wp_data[o] = x;  render3d_st.wp_data[o + 1] = z;  render3d_st.wp_data[o + 2] = radius
+  render3d_st.wp_data[o + 3] = float(seed % 997)
+  render3d_st.wp_n += 1
+  return i
+}
+
+export function water_patch_count(render3d_st: Render3dState) -> int { return render3d_st.wp_n }
+
+# rings spreading from (x, z), strength 0..1 (a step 0.4, a landing 1); the oldest ring is reused
+export function water_patch_ripple(render3d_st: mut Render3dState, x: float, z: float, strength: float) -> void {
+  if render3d_st.wp_rip == null { return }
+  let o = render3d_st.wp_rip_next * 4
+  render3d_st.wp_rip[o] = x;  render3d_st.wp_rip[o + 1] = z
+  render3d_st.wp_rip[o + 2] = render3d_st.r3d_time
+  render3d_st.wp_rip[o + 3] = Math.clamp(strength, 0.0, 1.0)
+  render3d_st.wp_rip_next = (render3d_st.wp_rip_next + 1) % WP_RIPPLES
+}
+
+# the reflection pass takes the patches' plane when no still-water body is mirrored
+function wp_mirrors(render3d_st: Render3dState) -> bool { return render3d_st.wb_primary < 0 and render3d_st.wp_n > 0 }
+
+# is any patch in view: the reflection pass runs only then
+function wp_any_visible(render3d_st: mut Render3dState) -> bool {
+  for i in 0 .. render3d_st.wp_n {
+    let o = i * 4
+    if cam_sphere_visible(render3d_st, render3d_st.wp_data[o], render3d_st.wp_level, render3d_st.wp_data[o + 1], render3d_st.wp_data[o + 2] * 1.3) { return true }
+  }
+  return false
+}
+
+# over the resolved frame, after the still water: each patch in view, blended
+function water_patches_draw(render3d_st: mut Render3dState) -> void {
+  if render3d_st.wp_n == 0 { return }
+  if render3d_st.wp_prog == 0 { render3d_st.wp_prog = r3d_program(render3d_st, "water.vert", "water_patch.frag", "") }
+  let p = render3d_st.wp_prog
+  if p == 0 { return }
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_screen"), float(render3d_st.post_w), float(render3d_st.post_h))
+  let lv = render3d_st.wp_level
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_level"), lv)
+  # the rings as (x, z, age, strength); a finished one goes to strength 0
+  let now = render3d_st.r3d_time
+  for i in 0 .. WP_RIPPLES {
+    let o = i * 4
+    if render3d_st.wp_rip[o + 3] > 0.0 and now - render3d_st.wp_rip[o + 2] > WP_RIPPLE_LIFE { render3d_st.wp_rip[o + 3] = 0.0 }
+  }
+  let rl = gpu_uniform(render3d_st, p, "u_rip")
+  let tmp = render3d_st.wp_rip_tmp
+  for i in 0 .. WP_RIPPLES {
+    let o = i * 4
+    tmp[o] = render3d_st.wp_rip[o];  tmp[o + 1] = render3d_st.wp_rip[o + 1]
+    tmp[o + 2] = now - render3d_st.wp_rip[o + 2];  tmp[o + 3] = render3d_st.wp_rip[o + 3]
+  }
+  u_f4v(render3d_st, rl, WP_RIPPLES, tmp)
+  var ron = 0.0
+  if render3d_st.water_refl != null and wp_mirrors(render3d_st) {
+    r3d_bind_2d(render3d_st, p, "u_refl", 1, render3d_st.water_refl.color);  ron = 1.0
+    gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.water_refl.color)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_mips(render3d_st, GPU_TEX2D)
+  }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_refl_on"), ron)
+  sky_bind_lighting(render3d_st, p)
+  shadow_bind(render3d_st, p)
+  fog_bind(render3d_st, p)
+  gpu_blend(render3d_st, true)
+  gpu_blend_func(render3d_st, GPU_SRC_ALPHA, GPU_ONE_MINUS_SRC_ALPHA)
+  gpu_depth_write(render3d_st, false)
+  gpu_cull(render3d_st, false)
+  let lc = gpu_uniform(render3d_st, p, "u_center")
+  let le = gpu_uniform(render3d_st, p, "u_extent")
+  let ls = gpu_uniform(render3d_st, p, "u_seed")
+  for i in 0 .. render3d_st.wp_n {
+    let o = i * 4
+    let x = render3d_st.wp_data[o];  let z = render3d_st.wp_data[o + 1];  let r = render3d_st.wp_data[o + 2]
+    if not cam_sphere_visible(render3d_st, x, lv, z, r * 1.3) { continue }
+    u_f2(render3d_st, lc, x, z)
+    # the quad runs to 1.3 radii: the outline swells to 1.25 at its widest
+    u_f2(render3d_st, le, r * 1.3, r * 1.3)
+    u_f(render3d_st, ls, render3d_st.wp_data[o + 3])
+    mesh_draw(render3d_st, render3d_st.water_mesh)
+  }
+  gpu_depth_write(render3d_st, true)
+  gpu_blend(render3d_st, false)
+}

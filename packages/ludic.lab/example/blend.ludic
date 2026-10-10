@@ -1,0 +1,90 @@
+# blend.ludic - blended actors on the plate (ludic.render3d actor_blend.ludic): the probe, opaque, in a
+# translucent bubble laid over the scene; a column of lit smoke puffs, soft where they cut the plate; and
+# unlit additive glows, one sunk into the box. The props are plate/fx.gltf (tools/lab/fx_build.py).
+#   ludic build packages/ludic.lab/example/blend.ludic --headless -o build/lab_blend
+#   yes '' | head -300 | ./build/lab_blend      -> build/lab/blend/{front,side,above}.png
+# At frame 30 it prints what the blended pass drew: `blend: <over> over, <add> additive`.
+import "ludic.lab"
+program LabBlend {
+  numbers float
+  state FxScene { cards: []Actor = null, at: floats = null, size: floats = null, spin: floats = null, said: bool = false }
+
+  # a card on the scene's list, turned to the camera every frame
+  @alloc_ok("lab: the scene is built once, before its shots")
+  function fx_card(fx_scene: mut FxScene, render3d_st: mut Render3dState, m: Model, x: float, y: float, z: float, size: float, spin: float) -> Actor {
+    let a = actor_new(render3d_st, m)
+    a.radius = 0.8
+    a.cull = 0.0
+    push(fx_scene.cards, a)
+    push(fx_scene.at, x);  push(fx_scene.at, y);  push(fx_scene.at, z)
+    push(fx_scene.size, size)
+    push(fx_scene.spin, spin)
+    actor_billboard(render3d_st, a, x, y, z, size, spin)
+    return a
+  }
+
+  @alloc_ok("lab: the scene is built once, before its shots")
+  function blend_setup(fx_scene: mut FxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
+    fx_scene.cards = new []Actor
+    fx_scene.at = new []float
+    fx_scene.size = new []float
+    fx_scene.spin = new []float
+    let dir = lab_plate_dir(lab_st)
+    lab_model(render3d_st, dir, "probe.gltf", "probe", 0.0, 0.0, 0.5)
+    # the shield: a bubble round the probe's ball, laid over (alpha 0.3), lit by the sun and the sky
+    let bubble = gltf_load(render3d_st, dir, "fx.gltf", "bubble")
+    let b = actor_new(render3d_st, bubble)
+    b.blend = ACTOR_ALPHA
+    b.alpha = 0.3
+    b.radius = 1.0
+    actor_place_rot(b, 0.0, 1.05, 0.0, 0.0, 0.0, 0.0, 0.62, 0.62, 0.62)
+    # smoke: grey puffs rising on the left, lit, soft where they meet the plate
+    let puff = gltf_load(render3d_st, dir, "fx.gltf", "puff")
+    for i in 0 .. 9 {
+      let t = float(i)
+      let p = fx_card(fx_scene, render3d_st, puff, -1.6 + 0.12 * Math.sin(t * 1.7), 0.15 + t * 0.32, 0.2 + 0.1 * Math.cos(t * 2.3), 0.9 + t * 0.12, t * 0.9)
+      p.blend = ACTOR_ALPHA
+      p.alpha = 0.75 - t * 0.05
+      p.soft = 0.4
+      p.tint[0] = 0.55;  p.tint[1] = 0.55;  p.tint[2] = 0.58
+    }
+    # glows: unlit and additive, orange over the right, cyan sunk into the box's corner (soft)
+    let glow = gltf_load(render3d_st, dir, "fx.gltf", "glow")
+    for i in 0 .. 5 {
+      let t = float(i)
+      let g = fx_card(fx_scene, render3d_st, glow, 1.5 + 0.25 * Math.cos(t * 2.0), 0.5 + t * 0.28, 0.1 + 0.25 * Math.sin(t * 2.0), 0.7, 0.0)
+      g.blend = ACTOR_ADD
+      g.unlit = true
+      g.emissive = 3.0
+      g.tint[0] = 1.0;  g.tint[1] = 0.45;  g.tint[2] = 0.12
+    }
+    let c = fx_card(fx_scene, render3d_st, glow, 0.35, 0.45, 0.35, 1.2, 0.0)
+    c.blend = ACTOR_ADD
+    c.unlit = true
+    c.emissive = 4.0
+    c.soft = 0.3
+    c.tint[0] = 0.2;  c.tint[1] = 0.8;  c.tint[2] = 1.0
+    lab_note(lab_st, "a bubble laid over, lit smoke, additive glows")
+    lab_shot_at(lab_st, "front", 0.0, 0.9, 0.0, 6.0, 0.0, 10.0)
+    lab_shot_at(lab_st, "side", 0.0, 0.9, 0.0, 6.0, 70.0, 14.0)
+    lab_shot_at(lab_st, "above", 0.0, 0.6, 0.0, 7.5, 20.0, 50.0)
+  }
+
+  # every card faces the camera of the shot being taken
+  function blend_tick(fx_scene: mut FxScene, lab_st: LabState, render3d_st: mut Render3dState, dt: float) -> void {
+    for i in 0 .. len(fx_scene.cards) {
+      actor_billboard(render3d_st, fx_scene.cards[i], fx_scene.at[i * 3], fx_scene.at[i * 3 + 1], fx_scene.at[i * 3 + 2], fx_scene.size[i], fx_scene.spin[i])
+    }
+    if not fx_scene.said and lab_frame(lab_st) >= 30 {
+      fx_scene.said = true
+      blend_say(render3d_st)
+    }
+  }
+  @alloc_ok("lab: one line, said once")
+  function blend_say(render3d_st: Render3dState) -> void { print(`blend: {render3d_st.ac_blend_over_n} over, {render3d_st.ac_blend_add_n} additive`) }
+
+  def LabScenes blend { setup: fn blend_setup, tick: fn blend_tick }
+  handler Boot(lab_st: mut LabState, render3d_st: mut Render3dState) phase Start { lab_boot(lab_st, render3d_st) }
+  handler Look(lab_st: mut LabState, render3d_st: mut Render3dState) phase Input { lab_input(lab_st, render3d_st) }
+  handler Draw(lab_st: mut LabState, render3d_st: mut Render3dState) phase Render { lab_render(lab_st, render3d_st) }
+}

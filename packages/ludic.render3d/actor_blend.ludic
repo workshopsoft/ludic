@@ -1,0 +1,200 @@
+# ============================================================================
+# actor_blend.ludic — the blended actors: a puff of smoke, a shield's bubble, a glow. An actor with
+# `blend` set is left out of the opaque pass, the shadow pass and the outline-free census and is drawn
+# here, once a frame, after the opaque scene and the water and before anything post-processes it:
+#
+#   - into the resolved HDR target (post_hdr), so bloom catches an additive glow and the tonemap and
+#     exposure see what the eye sees;
+#   - depth-tested against the scene's depth and writing none, so whatever stands in front hides it and
+#     two blended actors never cut each other;
+#   - ACTOR_ALPHA ("over", premultiplied: ONE, ONE_MINUS_SRC_ALPHA) sorted far to near by the distance of
+#     each actor's middle from the camera, then ACTOR_ADD (ONE, ONE) in stage order, which needs no sort;
+#   - lit as the opaque actors are (sun, shadow, sky light, fog) by model.frag's TRANSLUCENT variant, or
+#     with `unlit` only its base colour x emissive. An additive actor's light is dimmed by the air
+#     between it and the eye rather than fogged, or a far glow would add the sky's colour;
+#   - with `soft` > 0 its alpha fades over that many metres in front of the scene behind it (the depth
+#     copy post_resolve makes), so a puff that cuts the ground has no hard line where it does.
+#
+# A closed shape laid "over" (a bubble) draws its back faces and then its front faces, so the far side
+# is behind the near one whatever order the triangles are in; a card (two triangles or fewer) draws once,
+# both faces. Additive draws once, both faces: its order changes nothing.
+#
+# Trade-offs, chosen for a fast pass: sorting is by actor, not by triangle, so two blended actors that
+# interpenetrate show the nearer one's centre's order; an additive actor is drawn after every "over"
+# one, so a glow behind smoke is not dimmed by it. A blended actor writes no depth, so whatever reads the
+# scene's depth after this pass (ambient occlusion, depth of field, a DLSS upscale's reprojection) sees
+# the surface behind it: render3d has no temporal anti-aliasing of its own (post.ludic) and so nothing
+# here reprojects or smears; under DLSS a fast blended actor is reprojected with the motion of what is
+# behind it, which is the usual cost of drawing effects into the frame the upscaler reads. Blended
+# actors are not drawn into the water's reflection, and cast no shadow unless `blend_casts` (then
+# alpha-tested at 0.5 like a cut-out).
+#
+# Fast: two lists made at start-up with room for AC_BLEND_ROOM actors each, filled and emptied every
+# frame (nothing made per frame), an insertion sort in place, one program, the scene's lighting bound
+# once per frame and the blend function set twice.
+# ============================================================================
+
+const ACTOR_OPAQUE: int = 0
+const ACTOR_ALPHA: int = 1
+const ACTOR_ADD: int = 2
+const AC_BLEND_ROOM: int = 2048
+const AC_BLEND_DEPTH_UNIT: int = 10      # the scene-depth sampler's unit (0-2 the material, 5-7 and 12-15 the light's)
+
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function actor_blend_init(render3d_st: mut Render3dState) -> void {
+  render3d_st.ac_blend = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define TRANSLUCENT\n")
+  if render3d_st.ac_over == null { render3d_st.ac_over = new []Actor }
+  if render3d_st.ac_add == null { render3d_st.ac_add = new []Actor }
+  actor_room(render3d_st.ac_over, AC_BLEND_ROOM)
+  actor_room(render3d_st.ac_add, AC_BLEND_ROOM)
+}
+
+# The squared distance from the camera to the actor's middle: its matrix's origin moved half the model's
+# height along the matrix's own up, so a tall column of smoke sorts by its middle and not by its foot.
+function ac_blend_key(render3d_st: Render3dState, a: Actor) -> float {
+  let m = a.mat
+  let hy = a.model.ymin + a.model.height * 0.5
+  let dx = m[12] + m[4] * hy - render3d_st.cam_pos[0]
+  let dy = m[13] + m[5] * hy - render3d_st.cam_pos[1]
+  let dz = m[14] + m[6] * hy - render3d_st.cam_pos[2]
+  return dx * dx + dy * dy + dz * dz
+}
+
+# the first n of l by blend_d, largest first (far to near), in place: stable, and nothing is made
+function ac_sort_far_first(l: []Actor, n: int) -> void {
+  var i = 1
+  while i < n {
+    let a = l[i]
+    let d = a.blend_d
+    var j = i - 1
+    while j >= 0 and l[j].blend_d < d {
+      l[j + 1] = l[j]
+      j -= 1
+    }
+    l[j + 1] = a
+    i += 1
+  }
+}
+
+# The frame's blended actors into the two lists: the visible ones (ac_visible: the fog, the cull
+# distance, the frustum), "over" with its sort key, additive in stage order. Answers how many there are.
+function ac_blend_gather(render3d_st: mut Render3dState) -> int {
+  let l = render3d_st.ac_actors
+  let over = render3d_st.ac_over
+  let add = render3d_st.ac_add
+  List.clear(over)
+  List.clear(add)
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if a.blend == 0 and a.leader == null { continue }
+    if not ac_visible(render3d_st, a, false) { continue }      # a part takes its leader's blend here
+    if a.blend == 0 or a.alpha <= 0.0 { continue }
+    if a.blend == ACTOR_ADD {
+      if len(add) < AC_BLEND_ROOM { ac_blend_push(add, a) }
+    } else if len(over) < AC_BLEND_ROOM {
+      a.blend_d = ac_blend_key(render3d_st, a)
+      ac_blend_push(over, a)
+    }
+  }
+  render3d_st.ac_blend_over_n = len(over)
+  render3d_st.ac_blend_add_n = len(add)
+  return len(over) + len(add)
+}
+function ac_blend_push(l: []Actor, a: Actor) -> void {
+  @alloc_ok("within the room made at start-up (AC_BLEND_ROOM, @max 2048)")
+  push(l, a)
+}
+
+# The pass (render.ludic calls it after the water, before post-processing).
+function actor_draw_blended(render3d_st: mut Render3dState) -> void {
+  render3d_st.ac_blend_over_n = 0
+  render3d_st.ac_blend_add_n = 0
+  if render3d_st.ac_actors == null or render3d_st.ac_blend == null or render3d_st.post_hdr == null { return }
+  if ac_blend_gather(render3d_st) == 0 { return }
+  let over = render3d_st.ac_over
+  let add = render3d_st.ac_add
+  ac_sort_far_first(over, len(over))
+  target_bind(render3d_st, render3d_st.post_hdr)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_LEQUAL)
+  gpu_depth_write(render3d_st, false)
+  gpu_alpha_to_coverage(render3d_st, false)
+  gpu_blend(render3d_st, true)
+  let ap = render3d_st.ac_blend
+  let p = ap.prog
+  ap.scene_frame = -1                    # this pass's own binding of the frame's light and camera
+  ac_bind_scene(render3d_st, ap)
+  r3d_bind_2d(render3d_st, p, "u_scene_depth", AC_BLEND_DEPTH_UNIT, render3d_st.post_depth_copy.depth)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_inv_vp"), render3d_st.cam_inv_vp)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_screen"), float(render3d_st.post_w), float(render3d_st.post_h))
+  gpu_blend_func(render3d_st, GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA)
+  for i in 0 .. len(over) {
+    let a = over[i]
+    ac_blend_bind(render3d_st, a, ap)
+    if a.model.tris <= 2 {
+      gpu_cull(render3d_st, false)
+      ac_blend_prims(render3d_st, a, ap)
+    } else {
+      # inside first, then outside: the far half of a bubble lies under its near half
+      gpu_cull(render3d_st, true)
+      gpu_cull_face(render3d_st, GPU_FRONT)
+      ac_blend_prims(render3d_st, a, ap)
+      gpu_cull_face(render3d_st, GPU_BACK)
+      ac_blend_prims(render3d_st, a, ap)
+    }
+  }
+  gpu_blend_func(render3d_st, GPU_ONE, GPU_ONE)
+  gpu_cull(render3d_st, false)
+  for i in 0 .. len(add) {
+    let a = add[i]
+    ac_blend_bind(render3d_st, a, ap)
+    ac_blend_prims(render3d_st, a, ap)
+  }
+  gpu_blend(render3d_st, false)
+  gpu_depth_write(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_LESS)
+  gpu_cull(render3d_st, true)
+  gpu_cull_face(render3d_st, GPU_BACK)
+}
+
+# one actor's placement, pose and look
+function ac_blend_bind(render3d_st: mut Render3dState, a: Actor, ap: AcProg) -> void {
+  gpu_use_program(render3d_st, ap.prog)
+  u_mat4(render3d_st, ap.l_model, a.mat)
+  ac_bind_pose(render3d_st, a, ap)
+  u_f(render3d_st, ap.l_emis, a.emissive)
+  u_f(render3d_st, ap.l_rough, a.rough)
+  var unlit = 0.0
+  if a.unlit { unlit = 1.0 }
+  u_f4(render3d_st, ap.l_tr, Math.min(a.alpha, 1.0), Math.max(a.soft, 0.0), float(a.blend), unlit)
+}
+# its primitives, with the culling the caller set
+function ac_blend_prims(render3d_st: mut Render3dState, a: Actor, ap: AcProg) -> void {
+  let model = a.model
+  for i in 0 .. len(model.prims) {
+    let pr = model.prims[i]
+    if a.hide != null and a.hide[i] != 0 { continue }
+    if a.ptint != null and a.ptint[i * 4] != 0 { u_f3(render3d_st, ap.l_tint, float_from_bits(a.ptint[i * 4 + 1]), float_from_bits(a.ptint[i * 4 + 2]), float_from_bits(a.ptint[i * 4 + 3])) }
+    else { u_v3(render3d_st, ap.l_tint, a.tint) }
+    gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+    ac_prim_factors(render3d_st, ap, pr)
+    gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
+    gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
+    mesh_draw(render3d_st, pr.mesh)
+  }
+}
+
+# prim_factors through the program's locations, looked up once (not three names a primitive). The pass costs
+# about 2 us of CPU an actor on an M4 Pro (187 puffs and glows: 0.35 ms), nearly all of it the draw itself.
+function ac_prim_factors(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {
+  let f = pr.fac
+  if f == null {
+    u_f4(render3d_st, ap.l_fbase, 0.0, 0.0, 0.0, 0.0)
+    u_f2(render3d_st, ap.l_fmr, 0.0, 0.0)
+    u_f3(render3d_st, ap.l_femis, 0.0, 0.0, 0.0)
+    return
+  }
+  u_f4(render3d_st, ap.l_fbase, 1.0 - f[0], 1.0 - f[1], 1.0 - f[2], 1.0 - f[3])
+  u_f2(render3d_st, ap.l_fmr, 1.0 - f[4], 1.0 - f[5])
+  u_f3(render3d_st, ap.l_femis, f[6], f[7], f[8])
+}

@@ -1,0 +1,62 @@
+# ============================================================================
+# actor_place.ludic — placing an actor turned any way, not only about the vertical. actor_place
+# turns a model about +y (yaw) and scales it evenly, which is a person or a crate; a thrown star
+# tumbling, a slash's arc tilted with the blade, a shard of ice or a puff of smoke turned to face the
+# camera need the other two axes and a scale per axis.
+#
+# The matrix is written in place (the actor's own, made with it): nothing is made per call.
+# a.x / y / z and a.yaw keep what actor_place keeps; a.scale becomes the largest of the three scales,
+# which is what the cull radius and an outline's width are measured by.
+# ============================================================================
+
+# m = translate(x, y, z) * rotate_y(yaw) * rotate_x(pitch) * rotate_z(roll) * scale(sx, sy, sz): the
+# model is rolled about its own z, pitched about its own x, then turned about the world's y. Yaw is
+# actor_place's (0 faces -z); a positive pitch tips the model's +y toward its +z, a positive roll its +x
+# toward its +y. Zero pitch and roll and equal scales are exactly actor_place.
+function actor_place_rot(a: Actor, x: float, y: float, z: float, yaw: float, pitch: float, roll: float, sx: float, sy: float, sz: float) -> void {
+  let cy = Math.cos(yaw);  let s_y = Math.sin(yaw)
+  let cp = Math.cos(pitch);  let sp = Math.sin(pitch)
+  let cr = Math.cos(roll);  let sr = Math.sin(roll)
+  # Ry * Rx, by columns
+  let ax = cy;  let ay = 0.0;  let az = -s_y                      # Ry (1, 0, 0)
+  let bx = s_y * sp;  let by = cp;  let bz = cy * sp               # Ry (0, cp, sp)
+  let ex = s_y * cp;  let ey = -sp;  let ez = cy * cp              # Ry (0, -sp, cp)
+  let m = a.mat
+  # (Ry * Rx) * Rz, each column scaled
+  m[0] = (cr * ax + sr * bx) * sx;  m[1] = (cr * ay + sr * by) * sx;  m[2] = (cr * az + sr * bz) * sx;  m[3] = 0.0
+  m[4] = (cr * bx - sr * ax) * sy;  m[5] = (cr * by - sr * ay) * sy;  m[6] = (cr * bz - sr * az) * sy;  m[7] = 0.0
+  m[8] = ex * sz;  m[9] = ey * sz;  m[10] = ez * sz;  m[11] = 0.0
+  m[12] = x;  m[13] = y;  m[14] = z;  m[15] = 1.0
+  ac_place_note(a, x, y, z, yaw, sx, sy, sz)
+}
+
+# m = translate(x, y, z) * rotate(q) * scale(sx, sy, sz), q a unit quaternion (x, y, z, w) as quat.ludic
+# keeps them: a tumble integrated as a quaternion, or a bone's world rotation. a.yaw is left as it was.
+function actor_place_q(a: Actor, x: float, y: float, z: float, q: floats, sx: float, sy: float, sz: float) -> void {
+  m4_trs_q(a.mat, x, y, z, q, sx, sy, sz)
+  ac_place_note(a, x, y, z, a.yaw, sx, sy, sz)
+}
+
+# A card that faces the camera: the model's +x along the screen's right, +y along its up and +z toward
+# the eye, turned `spin` radians in the screen's plane and scaled by `size`. A particle quad modelled in
+# the x-y plane (facing +z) is a camera-facing sprite. It reads the camera's view (cam_set), so call it
+# after the frame's camera is set.
+function actor_billboard(render3d_st: Render3dState, a: Actor, x: float, y: float, z: float, size: float, spin: float) -> void {
+  let v = render3d_st.cam_view
+  # the view's rows are the camera's right, up and back in world space
+  let rx = v[0];  let ry = v[4];  let rz = v[8]
+  let ux = v[1];  let uy = v[5];  let uz = v[9]
+  let bx = v[2];  let by = v[6];  let bz = v[10]
+  let c = Math.cos(spin);  let s = Math.sin(spin)
+  let m = a.mat
+  m[0] = (c * rx + s * ux) * size;  m[1] = (c * ry + s * uy) * size;  m[2] = (c * rz + s * uz) * size;  m[3] = 0.0
+  m[4] = (c * ux - s * rx) * size;  m[5] = (c * uy - s * ry) * size;  m[6] = (c * uz - s * rz) * size;  m[7] = 0.0
+  m[8] = bx * size;  m[9] = by * size;  m[10] = bz * size;  m[11] = 0.0
+  m[12] = x;  m[13] = y;  m[14] = z;  m[15] = 1.0
+  ac_place_note(a, x, y, z, a.yaw, size, size, size)
+}
+
+function ac_place_note(a: Actor, x: float, y: float, z: float, yaw: float, sx: float, sy: float, sz: float) -> void {
+  a.x = x;  a.y = y;  a.z = z;  a.yaw = yaw
+  a.scale = Math.max(Math.max(ac_abs(sx), ac_abs(sy)), ac_abs(sz))
+}

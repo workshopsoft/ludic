@@ -5,7 +5,12 @@
 @alloc_ok("once per guest punched for")
 function net__new_guest(net_st: mut NetState, pub: string, local: string) -> void {
   let key = `{pub}|{local}`
-  for i in 0 .. len(net_st.net__seen) { if net_st.net__seen[i] == key { return } }
+  for i in 0 .. len(net_st.net__seen) {
+    if net_st.net__seen[i] == key {
+      free(key)                                         # a guest listed again: nothing kept
+      return
+    }
+  }
   push(net_st.net__seen, key)
   net__log(`room {net_st.net__room}: a guest at {pub} / {local}`)
   if len(pub) > 0 and net_parse_code(net_st, pub) { net__punch_add(net_st, net_st.net__code_ip, net_st.net__code_port) }

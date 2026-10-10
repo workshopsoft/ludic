@@ -17,7 +17,9 @@ const WATER_MAX: int = 8
 # Render the scene through a camera mirrored in the water plane into water_refl,
 # clipping everything below the surface; terrain, scattered layers and sky.
 function water_reflection_pass(render3d_st: mut Render3dState) -> void {
-  if render3d_st.wb_primary < 0 { return }            # no body reflects: nothing to mirror
+  let patches = wp_mirrors(render3d_st)               # the water patches' plane, when no body reflects
+  if render3d_st.wb_primary < 0 and not patches { return }   # nothing to mirror
+  if patches { render3d_st.water_level = render3d_st.wp_level }
   if render3d_st.water_refl == null {
     if r3d_env_has(render3d_st, "R3D_REFLDIV") { render3d_st.water_refl_div = Text.to_int(r3d_env(render3d_st, "R3D_REFLDIV")) }
     if render3d_st.water_refl != null { target_free(render3d_st, render3d_st.water_refl) }
@@ -54,6 +56,8 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   m4_inverse(render3d_st.cam_inv_vp, render3d_st.cam_vp)
   v3_copy(render3d_st.cam_pos, eye)
   render3d_st.r3d_clip_y = render3d_st.water_level - 0.05
+  # patches lie a hair above a floor: the floor is under the surface and must not be mirrored over it
+  if patches { render3d_st.r3d_clip_y = render3d_st.water_level }
   target_bind(render3d_st, render3d_st.water_refl)
   gpu_depth_test(render3d_st, true)
   gpu_depth_func(render3d_st, GPU_LESS)
@@ -68,7 +72,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.sc_skip_blade = true                    # blades are invisible at this scale in a reflection
   render3d_st.ter_reflect = true
   prof_cpu_mark(render3d_st, "reflection setup")
-  terrain_draw(render3d_st)
+  if not render3d_st.r3d_plate { terrain_draw(render3d_st) }   # a plate has no terrain to mirror
   prof_cpu_mark(render3d_st, "reflection terrain")
   r3d_scene_draw(render3d_st)
   prof_cpu_mark(render3d_st, "reflection scene")
@@ -98,6 +102,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
 # Mac, the five shot viewpoints: looking down at the meadow (c) 225 reflection draws -> none; every view
 # with the lake in it unchanged, byte-identical frames.
 function water_reflect_visible(render3d_st: mut Render3dState) -> bool {
+  if wp_mirrors(render3d_st) { return wp_any_visible(render3d_st) }
   if render3d_st.wb_primary < 0 { return false }
   if render3d_st.wb_refl_always < 0 { render3d_st.wb_refl_always = 0;  if r3d_env_has(render3d_st, "R3D_REFL_ALWAYS") { render3d_st.wb_refl_always = 1 } }
   if render3d_st.wb_refl_always == 1 or not ter_present(render3d_st) { return true }
