@@ -1,6 +1,6 @@
 # tilemap_lock_test.ludic - the terrain LOD lock (tilemap_bake.ludic TmLock) on the lock fixture (tests/maps/lock, made by
 # make_lock.py: one tile of 128 m at 1 m texels, hills, a graded road with sidewalks in cut and fill, a flat pad, a lake with
-# a sand shore; classes shore 1, grass 2, road 3, sidewalk 4, pad 5, lake bed 6). OC-140.I8: read back through the game's
+# a sand shore; classes shore 1, grass 2, road 3, sidewalk 4, pad 5, lake bed 6). Read back through the runtime's
 # reader, every level's drawn surface at every locked texel (its centre and corners) equals level 0 within 1 cm; unlocked
 # texels are free (an unlocked bake moves the road by metres; a locked level is cut only where it must, and every level
 # still covers every texel with no hole); old files (kind word 0) read as before; a locked level wears land-use tones. No device.
@@ -138,7 +138,7 @@ program TileLockTest {
     expect(w > 0.5)
   }
 
-  test "OC-140.I8: locked, every level keeps every locked texel at its level 0 height within 1 cm" (render3d_st: mut Render3dState) {
+  test "locked, every level keeps every locked texel at its level 0 height within 1 cm" (render3d_st: mut Render3dState) {
     let tm = open(render3d_st)
     let k = lock_of(render3d_st)
     bake(render3d_st, tm, "locked", k)

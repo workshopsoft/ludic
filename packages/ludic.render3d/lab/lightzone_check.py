@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""lightzone_check.py - OC-140.I6, the shot test for light zones (lightzone_lab.ludic). Reads build/lab/{zone,zone_nosun,
+"""lightzone_check.py - the shot test for light zones (lightzone_lab.ludic). Reads build/lab/{zone,zone_nosun,
 zone_off}/{above,side}.png (fixed exposure, no bloom, no GI, no shafts, no grain) and checks:
 
   above   the zone covers world x 0 .. 8 (the frame's columns from its left edge, found where the zone and no-zone frames

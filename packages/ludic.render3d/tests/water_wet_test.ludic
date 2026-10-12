@@ -1,6 +1,6 @@
 # water_wet_test.ludic - still water bodies and the wet mask (water.ludic, water_wet.ludic) on the shore fixture
 # (tests/maps/shore, make_shore.py: tile 0 the sea with a dry cut below sea level, tile 1 all dry, tile 2 no wet file).
-# OC-140.I2 on the CPU: 16 bodies are held and a 17th refused; a mesh body keeps its model and is never masked or
+# On the CPU: 16 bodies are held and a 17th refused; a mesh body keeps its model and is never masked or
 # mirrored; the mask reads tiles nearest first within a budget, knows a tile all dry or all wet by one byte, keeps a
 # mixed one's texels, and says dry on the cut's texels and wet on the sea's, the edge halfway between their centres;
 # off the map and on a tile with no file it says wet. The pictures are lab/shore_lab.ludic + lab/shore_check.py. No device.

@@ -1,5 +1,5 @@
 # tilemap_mask_test.ludic - the ground's land-use tones (tilemap_mask.ludic) on the shore fixture (tests/maps/shore, made by
-# make_shore.py: 3 tiles of 64 m at 1 m texels; tiles 0 and 1 have a class mask, tile 2 none). OC-140.I3: every class draws
+# make_shore.py: 3 tiles of 64 m at 1 m texels; tiles 0 and 1 have a class mask, tile 2 none). Every class draws
 # its table tone, a class with no tone and a tile with no mask draw the ground's tint; the far levels read the coarse grid
 # and still draw a region's tone inside it; the skirt wears its edge's colour. No device.
 import "ludic.render3d/r3d.ludic"

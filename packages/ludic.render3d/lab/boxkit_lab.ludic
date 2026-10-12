@@ -1,6 +1,6 @@
 # boxkit_lab.ludic - box kits (kitbox.ludic) drawn by the instancer (kgpu.ludic) on the lab plate: the boxkits fixture's flat
 # kit with a parapet at 3, 12 and 72 floors and its 30 degree gable kit at 3 and 12, each instance its own w, d and h from ONE
-# mesh a kit, and an unscaled door in front of each. OC-140.I4's look (its numbers are tests/kitbox_test.ludic).
+# mesh a kit, and an unscaled door in front of each. The look (the numbers are tests/kitbox_test.ludic).
 #
 #   ludic build packages/ludic.render3d/lab/boxkit_lab.ludic --headless -o build/boxkit_lab
 #   yes '' | head -n 400 | R3D_SCENE=boxkits ./build/boxkit_lab           -> build/lab/boxkits/*.png

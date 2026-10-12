@@ -1,6 +1,6 @@
 # depth_test.ludic - reversed depth (fmath.ludic): the camera's projection is Vulkan clip space with depth 1 at the near
-# plane and 0 at infinity, so a 32-bit float depth buffer resolves a millimetre-scale step a kilometre out (OC-140.I1, from
-# MET.I17: <= 5 mm at 1000 m from a 5 cm near plane); the orthographic and finite forms land on [0, 1] the same way round;
+# plane and 0 at infinity, so a 32-bit float depth buffer resolves a millimetre-scale step a kilometre out (5 mm or
+# better at 1000 m from a 5 cm near plane); the orthographic and finite forms land on [0, 1] the same way round;
 # the culling planes read that clip space (near w - z >= 0, far z >= 0, none at infinity). No device.
 import "ludic.render3d/r3d.ludic"
 program DepthTest {
@@ -55,7 +55,7 @@ program DepthTest {
     expect_near(pl[20], 0.0, 0.0);  expect_near(pl[21], 0.0, 0.0);  expect_near(pl[22], 0.0, 0.0);  expect_near(pl[23], 1.0, 0.0)
   }
 
-  test "MET.I17: the depth buffer resolves 5 mm or better at 1000 m from a 5 cm near plane (the old mapping: about a metre)" {
+  test "the depth buffer resolves 5 mm or better at 1000 m from a 5 cm near plane (the old mapping: about a metre)" {
     let st = camera(0.05)
     let r = resolution(st.cam_proj, 1000.0)
     expect(r <= 0.005)

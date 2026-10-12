@@ -1,5 +1,5 @@
 # lightzone_lab.ludic - light zones (lightzone.ludic) photographed on the lab plate: probes (a box and a ball) on both
-# sides of a zone that covers the plate's +x half, in the plate's sun. OC-140.I6, the shot test (lab/lightzone_check.py):
+# sides of a zone that covers the plate's +x half, in the plate's sun. The shot test (lab/lightzone_check.py):
 # inside the zone the frame is the frame with no sun at all; outside it, the frame with no zone.
 #
 #   ludic build packages/ludic.render3d/lab/lightzone_lab.ludic --headless -o build/lightzone_lab

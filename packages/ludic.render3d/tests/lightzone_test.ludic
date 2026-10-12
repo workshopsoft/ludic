@@ -1,7 +1,7 @@
 # lightzone_test.ludic - light zones (lightzone.ludic) without a device: a box turned by its yaw, the weight 0 outside
 # it, 1 deeper than its feather and smooth between, a hard edge with no feather, the strongest zone winning, the cap,
 # the origin's rebase, and the LZ_MAX zones nearest the camera picked for the shaders (nearest first, the table the
-# shaders read). OC-140.I6's shot test is lab/lightzone_lab.ludic + lab/lightzone_check.py.
+# shaders read). The shot test is lab/lightzone_lab.ludic + lab/lightzone_check.py.
 import "ludic.render3d/r3d.ludic"
 program LightZoneTest {
   numbers float

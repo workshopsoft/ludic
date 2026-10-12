@@ -332,7 +332,7 @@ kitbake_place_box(kb, kitbake_kit(kb, "kits/massing.glb", "flat", 20.0, 15.0, 10
 ```
 
 `city_cells_bake` places a registered model's buildings that way, `h` the eave (floors x the kit's `floor_h`). The renderer reads the
-tuples when it loads a `box: true` kit (`bw_setup_kits`). Tests: `tests/kitbox_test.ludic` (OC-140.I4 on `tests/maps/boxkits`); look:
+tuples when it loads a `box: true` kit (`bw_setup_kits`). Tests: `tests/kitbox_test.ludic` (on `tests/maps/boxkits`); look:
 `lab/boxkit_lab.ludic`.
 
 ### Terrain from the studio's tiles (`tilemap.ludic`, `tilemap_draw.ludic`)

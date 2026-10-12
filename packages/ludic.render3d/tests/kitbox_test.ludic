@@ -1,5 +1,5 @@
 # kitbox_test.ludic - box kits (kitbox.ludic) on the boxkits fixture (tests/maps/boxkits, made by make_boxkits.py: a flat
-# kit with a parapet, a 30 degree gable kit, an ordinary door). OC-140.I4: instances of 3, 12 and 72 floors (3.4 m a storey)
+# kit with a parapet, a 30 degree gable kit, an ordinary door). Instances of 3, 12 and 72 floors (3.4 m a storey)
 # keep the parapet 1.0 m high and 0.25 m thick and the roof's pitch at 30 degrees, the door is 1.0 x 2.2 m unscaled, and the
 # impostor card, the culling sphere and the HLOD box hold exactly what is drawn (within 5 cm). The deformation is the vertex
 # stage's own sum (kit.vert), done here on the kit's vertices as read from the file. Also: the cell file's box columns, the
@@ -71,7 +71,7 @@ program KitBoxTest {
     expect(not kitbox_read(render3d_st, dir(render3d_st), "kits.glb", "no_such_node", kitbox_new(), null, null, null))
   }
 
-  test "OC-140.I4: a flat roof's parapet stays 1.0 m high and 0.25 m thick at 3, 12 and 72 floors" (render3d_st: mut Render3dState) {
+  test "a flat roof's parapet stays 1.0 m high and 0.25 m thick at 3, 12 and 72 floors" (render3d_st: mut Render3dState) {
     let anc = new []float
     let off = new []float
     kit(render3d_st, "flat", new []float, anc, off)
@@ -97,7 +97,7 @@ program KitBoxTest {
     }
   }
 
-  test "OC-140.I4: a gable roof keeps its 30 degree pitch and its ridge d / 2 tan 30 over the eave at 3, 12 and 72 floors" (render3d_st: mut Render3dState) {
+  test "a gable roof keeps its 30 degree pitch and its ridge d / 2 tan 30 over the eave at 3, 12 and 72 floors" (render3d_st: mut Render3dState) {
     let anc = new []float
     let off = new []float
     kit(render3d_st, "gable", new []float, anc, off)
@@ -125,7 +125,7 @@ program KitBoxTest {
     }
   }
 
-  test "OC-140.I4: the door is its own unscaled instance, 1.0 x 2.2 m" (render3d_st: mut Render3dState) {
+  test "the door is its own unscaled instance, 1.0 x 2.2 m" (render3d_st: mut Render3dState) {
     let pos = new []float
     let k = kit(render3d_st, "door", pos, new []float, new []float)
     expect(not k.on)
@@ -149,7 +149,7 @@ program KitBoxTest {
     expect(kc.rec[door * KI_FLOATS + 15] == 0.0)          # the vertex stage draws its mesh as it is
   }
 
-  test "OC-140.I4: the bounds, the impostor card and the culling sphere hold exactly what is drawn" (render3d_st: mut Render3dState) {
+  test "the bounds, the impostor card and the culling sphere hold exactly what is drawn" (render3d_st: mut Render3dState) {
     let names = Text.split("flat gable", " ")
     let b = floats(6)
     let card = floats(5)
@@ -182,7 +182,7 @@ program KitBoxTest {
     }
   }
 
-  test "OC-140.I4: the HLOD box of a box instance is its drawn bounds, turned and moved as it is" (render3d_st: mut Render3dState) {
+  test "the HLOD box of a box instance is its drawn bounds, turned and moved as it is" (render3d_st: mut Render3dState) {
     let anc = new []float
     let off = new []float
     let k = kit(render3d_st, "gable", new []float, anc, off)
