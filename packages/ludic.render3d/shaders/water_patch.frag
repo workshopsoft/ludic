@@ -61,7 +61,7 @@ void main() {
   vec3 hv = normalize(v + u_sun_dir);
   float glint = D_GGX(max(dot(n, hv), 0.0), 0.04) * 0.12;
   float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;
-  float shadow = sunShadow(v_wpos, vec3(0, 1, 0), viewDepth);
+  float shadow = sunShadow(v_wpos, vec3(0, 1, 0), viewDepth) * sunZone(v_wpos);
   vec3 col = mix(body, refl, k) + u_sun_color * glint * F * shadow;
   col = applyFog(col, v_wpos, dist);
   o_color = vec4(sane(col), a);

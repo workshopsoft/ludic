@@ -70,6 +70,13 @@ a pure function of those two - the same on every machine and in the editor's pre
 - **The wet mask** (`water_wet.ludic`): `<tile>.wet.png` beside each height tile, 8-bit, 255 wet. `wet_new`,
   `wet_frame` (tiles read nearest first within a budget, a mixed tile's texels in one of N resident layers),
   `water_wet_use`; `wet_at` answers on the CPU what the water shader reads.
+- **Light zones** (`lightzone.ludic`): boxes the sun does not reach, a tunnel's tube. `lightzone_add(st, x, y, z,
+  yaw, w, h, d, feather)` (a turned box, fading in over `feather` metres from its faces), `lightzone_ambient(st, z,
+  r, g, b, sky)` (the zone's own linear ambient and the share of the sky it still sees), `lightzone_clear`,
+  `lightzone_rebase`, `lightzone_at` (the weight on the CPU). Inside, every lit shader drops the sun's direct light,
+  its bounce, a leaf's glow and sheen, water's glitter and the air's shafts; the 8 zones nearest the camera are
+  bound with the sun (`sky_bind_lighting`). With no zone nothing changes. `tests/lightzone_test.ludic`; the shot
+  test `lab/lightzone_lab.ludic` + `lab/lightzone_check.py` (inside the zone the frame is the no-sun frame).
 - **Conformance**: `tests/ground_fill_test.ludic` holds the package to `tests/ground_fill_golden.json`
   (gf_hash, lerp, yaw, one cover chunk and one solid chunk over a hand-written density, an area and a strip
   cleared with the share at 289 probes, and the solid chunk under five edits and two heroes), which the

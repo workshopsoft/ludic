@@ -252,6 +252,33 @@ vec3 regionTint(vec3 wpos, float strength) {
   return t;
 }
 
+// Light zones (lightzone.ludic): boxes the sun does not reach (a tunnel). Each is 4 vec4s:
+// (centre, feather) (cos yaw, sin yaw, sky, -) (half sizes, -) (ambient rgb, -). The weight is 0 outside the box,
+// 1 deeper than the feather inside, smoothstep between; the strongest zone wins and lends its ambient and sky.
+#define LZ_MAX 8
+uniform vec4 u_lz[LZ_MAX * 4];
+uniform int u_lz_n;
+float lightZone(vec3 p, out vec4 amb) {
+  float w = 0.0;
+  amb = vec4(0.0, 0.0, 0.0, 1.0);
+  for (int i = 0; i < LZ_MAX; i++) {
+    if (i >= u_lz_n) break;
+    vec4 a = u_lz[i * 4];
+    vec4 b = u_lz[i * 4 + 1];
+    vec4 c = u_lz[i * 4 + 2];
+    vec3 d = p - a.xyz;
+    vec3 l = vec3(b.x * d.x - b.y * d.z, d.y, b.y * d.x + b.x * d.z);
+    vec3 e = c.xyz - abs(l);
+    float inside = min(e.x, min(e.y, e.z));
+    float wi = (a.w > 0.0) ? smoothstep(0.0, a.w, inside) : step(0.0, inside);
+    if (wi > w) { w = wi; amb = vec4(u_lz[i * 4 + 3].rgb, b.z); }
+  }
+  return w;
+}
+
+// what is left of the sun at p: 1 outside every light zone, 0 deep inside one
+float sunZone(vec3 p) { vec4 a; return 1.0 - lightZone(p, a); }
+
 // direct + image-based lighting for one surface
 vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, float shadow, float viewDepth) {
   vec3 v = normalize(u_cam_pos - wpos);
@@ -267,23 +294,29 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   vec3 F = F_Schlick(VoH, f0);
   vec3 spec = min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale;   // cap the highlight: no half-float overflow, no fireflies
   vec3 kd = (1.0 - F) * (1.0 - metal);
-  vec3 direct = (kd * albedo / PI + spec) * u_sun_color * NoL * shadow * cloudShadow(wpos);
+  // a light zone takes the sun away (and the sky but its fraction) and adds its own ambient
+  vec4 lzAmb;
+  float lz = lightZone(wpos, lzAmb);
+  float sunK = 1.0 - lz;
+  float skyK = mix(1.0, lzAmb.a, lz);
+  vec3 direct = (kd * albedo / PI + spec) * u_sun_color * NoL * shadow * cloudShadow(wpos) * sunK;
   // IBL
   vec3 Fr = F_SchlickRough(NoV, f0, rough);
   vec3 kdi = (1.0 - Fr) * (1.0 - metal);
   vec3 irr = skyIrradiance(n);
-  vec3 diffuseIBL = kdi * albedo * irr;
+  vec3 diffuseIBL = kdi * albedo * irr * skyK;
   vec3 r = reflect(-v, n);
   vec3 pre = skyPrefiltered(r, rough);
   vec2 brdf = texture(u_brdf, vec2(NoV, rough)).rg;
-  vec3 specIBL = pre * (Fr * brdf.x + brdf.y) * u_spec_scale;
+  vec3 specIBL = pre * (Fr * brdf.x + brdf.y) * u_spec_scale * skyK;
   // one bounce off the sunlit ground onto whatever faces it (a warm fill from below)
   vec3 groundAlb = groundAlbAt(wpos.y) * 0.55;
-  vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI + irr) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5;
+  vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI * sunK + irr * skyK) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5;
+  vec3 zoneAmb = kdi * albedo * lzAmb.rgb * lz;
   // specular occlusion from ao
   float so = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
   // check for NaN before min(): on this GPU min(NaN, x) returns x, which would hide the fault as a hot pixel
-  vec3 c = direct + (diffuseIBL * ao + specIBL * so) + bounce * ao + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
+  vec3 c = direct + (diffuseIBL * ao + specIBL * so) + bounce * ao + zoneAmb * ao + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
   if (any(isnan(direct)) || any(isnan(diffuseIBL)) || any(isnan(specIBL)) || isnan(so)) return vec3(0.0);
   return sane(min(c, vec3(4096.0)));
 }

@@ -330,7 +330,8 @@ void main() {
   float thin = 1.0 - smoothstep(60.0, 260.0, dist);
   // a dense crown of cards is not a thin leaf: much less light comes through it
   if (u_model_h > 2.0) thin *= 0.45;
-  col += alb * u_sun_color * (0.24 * back + 0.07 * wrap) * thin * shadow * cloudShadow(v_wpos);
+  float sunLeft = sunZone(v_wpos);   // a light zone takes the sun's glow through the leaf and its sheen too
+  col += alb * u_sun_color * (0.24 * back + 0.07 * wrap) * thin * shadow * cloudShadow(v_wpos) * sunLeft;
   col += alb * skyIrradiance(vec3(0, 1, 0)) * 0.12 * arm.r;
   // ---- leaf sheen ---------------------------------------------------------------------
   // A LEAF IS NOT MATTE. Foliage roughness is pinned to 1.0 just above and grazing Fresnel
@@ -354,7 +355,7 @@ void main() {
 #ifdef BLADE
     sheen *= 0.2;   // a sward seen from above is tips edge-on to the sun: the leaf's glint frosted them white
 #endif
-    col += u_sun_color * sheen * shadow * cloudShadow(v_wpos) * 0.4 * (0.45 + 0.55 * arm.r);
+    col += u_sun_color * sheen * shadow * cloudShadow(v_wpos) * 0.4 * (0.45 + 0.55 * arm.r) * sunLeft;
   }
 #endif
   col += alb * u_emissive;

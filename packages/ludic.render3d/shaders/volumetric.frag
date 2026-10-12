@@ -78,7 +78,8 @@ void main() {
     vec3 p = u_cam_pos + dir * t;
     float dens = volDensity(p);
     if (dens > 1e-5) {
-      float vis = volShadow(p, t);
+      vec4 lzAmb;
+      float vis = volShadow(p, t) * (1.0 - lightZone(p, lzAmb));   // no sun shafts inside a light zone
       // in-scattering from the sun, and a little from the sky so shadowed air is not black
       // The sky's own contribution is kept SMALL and deliberately so. It is added at every
       // step, so it accumulates into a flat grey wash that lifts lit and shadowed air by the

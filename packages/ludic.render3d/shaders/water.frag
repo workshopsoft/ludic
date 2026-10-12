@@ -269,6 +269,7 @@ void main() {
   // which is true of a sea and is why you could stand at the shore of a lake nine metres
   // deep and never see into it. At 0.70 the bed is there at every angle you actually stand
   // at, and the mirrored Bells are still the thing you see across the water.
+  shadow *= sunZone(v_wpos);   // no glitter or sunlit foam inside a light zone
   vec3 col = mix(through, refl, clamp(F * 0.85 + 0.03, 0.0, 0.70)) + u_sun_color * glitter * F * shadow;
   col = mix(col, vec3(0.7, 0.75, 0.75) * (skyIrradiance(vec3(0, 1, 0)) * 0.5 + u_sun_color * 0.08 * shadow), clamp(foam, 0.0, 1.0));
   col = applyFog(col, v_wpos, dist);
