@@ -292,6 +292,26 @@ program CityTest {
     expect(near(out.w[2], 18.0))
     cityinstances_clear(out)
     expect_eq(len(out.id), 0)
+    expect_eq(len(out.roof), 0)
+  }
+
+  test "a building's roof kind round-trips from its row to the renderer's instances; a row without one is flat" (city_st: mut CityState, bl: mut Buildings) {
+    expect_eq(city_cell_in(city_st, bl, "metro", 0, 0), 12)
+    let c = city_cell_of(city_st, 0, 0)
+    expect_eq(city_building(city_st, bl, c, 0).roof, "")              # no roof written: flat
+    expect_eq(city_building(city_st, bl, c, 1).roof, "gable")         # a kit instance
+    expect_eq(city_building(city_st, bl, c, 2).roof, "sawtooth")      # a generated building
+    let out = new CityInstances
+    expect_eq(city_instances(city_st, bl, c, out), 12)
+    expect_eq(len(out.roof), 12)
+    expect_eq(out.roof[0], "")
+    expect_eq(out.roof[1], "gable")
+    expect_eq(out.roof[2], "sawtooth")
+    var flat = 0
+    for i in 3 .. 12 { if out.roof[i] == "" { flat += 1 } }
+    expect_eq(flat, 9)
+    let d = new CityBuilding
+    expect_eq(d.roof, "")                                             # a new row is flat too
   }
 
   # the block hash, worked out by a second implementation written from the README (Python, the numbers below)
