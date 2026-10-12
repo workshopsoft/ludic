@@ -71,4 +71,4 @@ from the one on screen.
 `ludic test packages/ludic.physics` runs the real library: a box onto a heightfield and a ray to
 it, still things removed, a boulder's top, a push out of a post, a crate floating level and
 drifting, hard and soft landings, a kinematic shove, fixed steps, and a pile run twice to the bit; and
-`tests/ccd_test.ludic`: at 60 m/s a ball and a car-sized box go through a thin wall without `phys_ccd` and stop at it with it, nose first, broadside and at an angle, a fast fall stays above the ground, a body at rest is as still with it, and a run repeats to the bit.
+`tests/ccd_test.ludic`: at 60 m/s a ball and a car-sized box go through a thin wall without `phys_ccd` and stop at it with it, nose first, broadside and at an angle, a fast fall stays above the ground, a body at rest is as still with it, a CCD car does not pass through a car standing in its way (target discrete and target CCD), and a run repeats to the bit. Whether Jolt sweeps a LinearCast body against other dynamic bodies is decided by that test; if the first case fails, set `phys_ccd` on both cars.

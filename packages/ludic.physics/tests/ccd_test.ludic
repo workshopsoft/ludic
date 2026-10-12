@@ -6,6 +6,8 @@ import "ludic.physics"
 import "ludic.base"
 program CcdTest {
   numbers float
+  # MET.I18: the swept test speed must be at least the cars' top_speed 50 x 1.1 = 55 m/s (cars.lres);
+  # 60 m/s is that with margin. If the metric grows, raise this.
   const SPEED: float = 60.0          # m/s, a metre a step
   const WALL_X: float = 30.0         # the wall's centre; it is 0.1 m thick, 4 m tall, 30 m wide
   const CAR_HALF_LEN: float = 2.2    # a compact car: 4.40 x 1.80 x 1.45 m
@@ -144,6 +146,40 @@ program CcdTest {
     expect(Math.abs(pb.y - pa.y) < 0.01)      # the same rest height
     expect(Math.abs(pb.vy) < 0.05)
     expect(Math.abs(pb.vx) < 0.05)
+    phys_close(physics_st)
+  }
+
+  # a car at 60 m/s into a car standing in its way. Which of the two needs the sweep is what Jolt decides
+  # (a LinearCast body may be swept only against bodies that are not LinearCast themselves), so both
+  # settings of the target are measured: the pair must never swap places, whichever way it is set.
+  function crash(physics_st: mut PhysicsState, target_ccd: bool) -> float {
+    expect(phys_open(physics_st, 1024, 1))
+    phys_gravity(physics_st, 0.0)
+    let shape = phys_box(physics_st, CAR_HALF_LEN, CAR_HALF_H, CAR_HALF_W)
+    let target = phys_body_add(physics_st, shape, 30.0, 1.0, 0.0, 0.0, 1500.0)
+    let hitter = phys_body_add(physics_st, shape, -2.0, 1.0, 0.0, 0.0, 1500.0)
+    expect(target >= 0 and hitter >= 0)
+    expect(phys_ccd(physics_st, hitter, true))
+    if target_ccd { expect(phys_ccd(physics_st, target, true)) }
+    phys_set_velocity(physics_st, hitter, SPEED, 0.0, 0.0)
+    var gap = 1000000.0
+    for i in 0 .. 180 {
+      phys_step(physics_st)
+      let g = pose(physics_st, target).x - pose(physics_st, hitter).x
+      if g < gap { gap = g }
+    }
+    return gap
+  }
+
+  test "a ccd car at 60 m/s does not pass through a car standing still" (physics_st: mut PhysicsState) {
+    let gap = crash(physics_st, false)
+    expect(gap > 0.0)               # the hitter's centre never got past the target's centre
+    phys_close(physics_st)
+  }
+
+  test "a ccd car at 60 m/s does not pass through a ccd car standing still" (physics_st: mut PhysicsState) {
+    let gap = crash(physics_st, true)
+    expect(gap > 0.0)
     phys_close(physics_st)
   }
 
