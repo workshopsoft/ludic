@@ -4,7 +4,8 @@
 #
 # The entry has `world`, so it is a world part: merged into every world ("*"), after that world's own entries.
 #   water    each WaterBodies row a plane at its level over (cx, cz) +- (ex, ez): drawn as water in the view, and the
-#            things standing under it counted as under water by the level checks
+#            things standing under it counted as under water by the level checks (a row with an `asset` is a baked
+#            mesh body in the game; the studio still shows its rectangle)
 #   ground   each GroundLayers row a painted density image, grown as ground_fill grows it (`fill: true`: the row's own
 #            step0..3, jitter, scale_lo/hi, scale_var, band_grow, wind_lo/hi, sink, trample, solid, foot, band1..3,
 #            reach and layer), so the brush's preview is the game's

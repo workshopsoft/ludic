@@ -60,11 +60,16 @@ a pure function of those two - the same on every machine and in the editor's pre
   the list once at map open. A game that builds each `GroundFill` by hand still can; that is the older
   way. A game's own registry named `GroundLayers` or `WaterBodies` collides with these and is dropped for
   the package's (its record is a superset).
-- **Still water as a map's data** (`water_bodies.ludic`): one row a plane in `water.lres` (`WaterBodies`,
-  `@PerMap`): `level`, the bounds as a centre `cx`, `cz` and half extents `ex`, `ez`, and `reflect` (only
-  the first reflecting plane is mirrored). `water_bodies_apply(render3d_st, bodies)` replaces the
-  renderer's water with the rows (8 at most) and answers how many it took; `water_init` for one reflecting
-  plane is the older way.
+- **Still water as a map's data** (`water_bodies.ludic`): one row a body in `water.lres` (`WaterBodies`,
+  `@PerMap`). A plane: `level`, the bounds as a centre `cx`, `cz` and half extents `ex`, `ez`, `reflect` (only
+  the first reflecting plane is mirrored) and `masked` (drawn only on the wet mask's wet texels). A mesh: `asset`
+  (a glb) and `node`, its triangles the surface (a baked lake polygon, a river ribbon), moved by (`cx`, `level`,
+  `cz`) and drawn nowhere else. `water_bodies_apply(render3d_st, bodies)` replaces the renderer's water with the
+  rows (16 at most, `WATER_MAX`) and answers how many it took; `water_mesh_add`, `water_body_mask` and
+  `water_rebase` do the same by hand; `water_init` for one reflecting plane is the older way.
+- **The wet mask** (`water_wet.ludic`): `<tile>.wet.png` beside each height tile, 8-bit, 255 wet. `wet_new`,
+  `wet_frame` (tiles read nearest first within a budget, a mixed tile's texels in one of N resident layers),
+  `water_wet_use`; `wet_at` answers on the CPU what the water shader reads.
 - **Conformance**: `tests/ground_fill_test.ludic` holds the package to `tests/ground_fill_golden.json`
   (gf_hash, lerp, yaw, one cover chunk and one solid chunk over a hand-written density, an area and a strip
   cleared with the share at 289 probes, and the solid chunk under five edits and two heroes), which the
@@ -98,6 +103,9 @@ coordinate from integers (`double(40000123) / 1000.0`) or from a computation, ne
 | cell files, index, building kits | `cellfile.ludic` | `tests/cellfile_test.ludic` |
 | kits and cells baked from placed things (a city's buildings) | `kitbake.ludic`, `packages/ludic.city/tools/cells_bake_city.ludic` | `tests/kitbake_test.ludic`, `packages/ludic.city/tests/cells_bake_test.ludic` |
 | the ground from the studio's height tiles: data, bake, stream, draw | `tilemap.ludic`, `tilemap_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic`, `tools/terrain_bake.ludic` | `tests/tilemap_test.ludic` |
+| the ground's land use: a class mask a tile and 8 tones | `tilemap_mask.ludic` | `tests/tilemap_mask_test.ludic`, `lab/shore_lab.ludic` + `lab/shore_check.py` |
+| still water: planes, meshes, the wet mask | `water.ludic`, `water_bodies.ludic`, `water_wet.ludic` | `tests/water_wet_test.ludic`, `lab/shore_lab.ludic` + `lab/shore_check.py` |
+| reversed depth | `fmath.ludic` `m4_perspective_rz`, `m4_ortho_rz` | `tests/depth_test.ludic` |
 | HLOD bake (+ tool) | `hlod.ludic`, `tools/hlod_bake.ludic`, `hlod_gpu.ludic` | `tests/hlod_test.ludic` |
 | instancing: culling, binning, budgets | `kinst.ludic` (CPU), `kgpu.ludic` + `kinst_*.comp` (GPU), `karena.ludic` | `tests/kinst_test.ludic`, `tests/karena_test.ludic`, `tests/bigworld_gpu_test.ludic` |
 | stress benchmarks | `bench/kinst_stress.ludic`, `bench/kgpu_stress.ludic` | (run by a person) |
@@ -329,6 +337,11 @@ function ground_h(x: float, z: float) -> float { return tmap_height(game_tm, x, 
 let holes = tmap_field(game_tm, h, 33, ox, oz, 2.0, PHYS_HOLE)                            # a 64 m chunk of ground
 if holes == 0 { phys_ground_add(physics_st, phys_heightfield(physics_st, h, 33, ox, oz, 2.0)) }
 ```
+
+**Land use** (`tilemap_mask.ludic`): `<tile>.mask.png` beside each height tile (8-bit, one class a texel; `tmd_mask_pattern` to
+point elsewhere or turn it off) and a table of 8 tones (`tmd_tone_set(td, class, r, g, b)` or `GroundTone` rows with
+`tmd_tones_apply`, linear like a tint). The tones go on the patches' vertices as their colour, each the mean tone of the texels its
+cell spans, so a coarser level is the finer one filtered. A class with no tone, and a tile with no mask, draw the ground's tint.
 
 **The ground drawn is baked** (levels of detail are a bake, never made in play). `tools/terrain_bake.ludic` cuts every tile into
 patches (`patch_texels` texels, 128 by default) and every patch into levels (each halves the cells, down to 4), samples heights where

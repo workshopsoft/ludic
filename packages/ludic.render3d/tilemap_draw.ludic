@@ -37,6 +37,23 @@ export property TileDraw {
   tile_budget: int = 1               # tile tables read a frame
   ox: float = 0.0                    # the floating origin the actors stand in render space by
   oz: float = 0.0
+  # the land-use mask and its tones (tilemap_mask.ludic)
+  mask_pattern: string = ""          # the mask tiles ({tx} {tz}); "" none
+  tones: floats = null               # 8 x r g b, linear
+  tone_on: words = null              # 1 where a class has a tone
+  mk_tile: words = null              # per mesh slot: the tile its coarse grid is of, -1 none read
+  mk_has: words = null               # per mesh slot: 1 when that tile has a mask
+  mk_coarse: []byte = null           # per mesh slot: the majority class of each mk_cf x mk_cf block
+  mk_cf: int = 8
+  mk_fine: int = 0                   # the coarsest level that reads the full texels
+  mk_scratch: []byte = null          # a decode's samples, reused
+  mk_tone: floats = floats(3)
+  fk_n: int = 0                      # the pool of full masks: places, their tiles, when last wanted, the texels
+  fk_tile: words = null
+  fk_used: words = null
+  fk_clock: int = 0
+  fk_data: []byte = null
+  cbuf: floats = null                # a patch level's vertex colours, four floats a vertex
   shown: int = 0                     # patches holding a mesh now
   builds: int = 0                    # meshes made, all time
   frees: int = 0
@@ -57,6 +74,7 @@ export function tmd_new(render3d_st: mut Render3dState, tm: TileMap, radius: flo
   for k in 0 .. 6 { td.fac[k] = 1.0 }
   for k in 6 .. 9 { td.fac[k] = 0.0 }
   td.fac[4] = td.rough;  td.fac[5] = 0.0
+  tmk_init(td)
   return td
 }
 
@@ -91,7 +109,7 @@ function tmd_textures(render3d_st: mut Render3dState) -> void {
 # from one interleaved buffer
 @alloc_ok("a patch changing level: its mesh and model are made when it does")
 @creates(Model)
-function tmd_model(render3d_st: mut Render3dState, td: TileDraw) -> Model {
+function tmd_model(render3d_st: mut Render3dState, td: TileDraw, coloured: bool) -> Model {
   let ms = td.ms
   tmd_textures(render3d_st)
   let was = render3d_st.gvk_tag
@@ -101,6 +119,11 @@ function tmd_model(render3d_st: mut Render3dState, td: TileDraw) -> Model {
   gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, TM_VERT * 4, 0, false)
   gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, TM_VERT * 4, 12, false)
   gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, TM_VERT * 4, 24, false)
+  # the land use's tones (tilemap_mask.ludic), as the vertex colour the model pass multiplies in
+  if coloured {
+    gpu_mesh_vertices(render3d_st, m, data_of(td.cbuf), ms.nv * 16, GPU_STATIC)
+    gpu_mesh_attr(render3d_st, m, 7, 4, GPU_F32, 16, 0, false)
+  }
   gpu_mesh_indices(render3d_st, m, data_of(ms.ibuf), ms.ni * 4, 4)
   m.count = ms.ni
   gpu_mesh_done(render3d_st, m)
@@ -139,15 +162,18 @@ function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slo
   let r = Math.sqrt(2.0 * half * half + (y1 - y0) * (y1 - y0) * 0.25) + 1.0
   let lift = (y0 + y1) * 0.5 - r                      # an actor's cull sphere is centred r above its origin
   if not tmm_patch(ms, tm, slot, tx, tz, p.px, p.pz, lod, lift) { return false }
-  let model = tmd_model(render3d_st, td)
+  let coloured = tmk_colours(render3d_st, td, slot, tx, tz, p.px, p.pz, lod)
+  let model = tmd_model(render3d_st, td, coloured)
   let old = p.model
   if p.actor == null {
     p.actor = actor_new(render3d_st, model)
     p.actor.casts = false
     p.actor.cull = 0.0
-    p.actor.tint[0] = td.color[0];  p.actor.tint[1] = td.color[1];  p.actor.tint[2] = td.color[2]
     td.shown += 1
   } else { p.actor.model = model }
+  # a masked patch's colour is the tones alone (they carry the tint where a class has none); else the tint
+  if coloured { p.actor.tint[0] = 1.0;  p.actor.tint[1] = 1.0;  p.actor.tint[2] = 1.0 }
+  else { p.actor.tint[0] = td.color[0];  p.actor.tint[1] = td.color[1];  p.actor.tint[2] = td.color[2] }
   p.actor.radius = r
   p.model = model
   p.lod = lod

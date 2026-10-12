@@ -1,0 +1,252 @@
+# ============================================================================
+# tilemap_mask.ludic - the ground's land use, drawn (tilemap_draw.ludic): a per-tile CLASS mask and a TONE table, so a
+# beach, a park, a yard and a road verge read as different ground instead of one tint.
+#
+#   tile (tx, tz)'s mask is the file the tiles' pattern names with .mask.png for .png (tmap_mask_pattern_of; a game may
+#   point it elsewhere or turn it off with tmd_mask_pattern): an 8-bit grey PNG, res x res, on the height tiles' own
+#   grid (image row 0 the low z), one class a texel. A tile with no mask draws exactly as before: the ground's tint.
+#   The tone table has 8 entries, class 0 .. 7 (tmd_tone_set, or GroundTone rows with tmd_tones_apply), linear r g b
+#   like an actor's tint; a class with no tone, or past 7, draws the ground's tint (TileDraw.color).
+#
+# The tones go on the patch's vertices as a vertex colour (glTF COLOR_0, attribute 7, which the model pass already
+# multiplies in), so no shader or texture is added. A vertex stands on a cell corner; its colour is the mean tone of
+# the texels round the corner over the cell its level spans (2 x 2 at level 0, 2^k x 2^k at level k), what a mip of the
+# mask would show at that distance, so a coarser level is the finer one filtered and nothing pops but detail. A class
+# region's inside draws its tone exactly; the edge between two blends over one cell. A patch with a mask wears a white
+# tint so the colour is the tone alone.
+#
+# Data kept: per mesh slot, a coarse class grid (1/8 of the texels a side, the majority class of each block) the far
+# levels (cells of 8 texels or more) read; and the full mask for the tiles near enough to draw a finer level, in a pool
+# sized for that radius. Both are read when a patch of the tile is first built, then kept with the slot.
+# ============================================================================
+numbers float
+
+const TMK_TONES: int = 8           # classes with a tone of their own: 0 .. 7
+
+# a tone for one class: the game's table (a row a class)
+export property GroundTone {
+  key: string = ""
+  @Range(0, 7) class: int = 0               # the mask's byte
+  @Range(0, 4) r: float = 0.5               # linear, like an actor's tint
+  @Range(0, 4) g: float = 0.5
+  @Range(0, 4) b: float = 0.5
+}
+
+# where a map's mask tiles are kept by default: the tiles' pattern with ".mask.png" for a trailing ".png" (else added)
+@alloc_ok("a map being opened: the pattern, once")
+export function tmap_mask_pattern_of(pattern: string) -> string {
+  let n = len(pattern)
+  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0 .. n - 4] + ".mask.png" }
+  return pattern + ".mask.png"
+}
+
+# the side, in texels, of a coarse cell: 8, or the largest power of two up to it that divides the tile's res
+function tmk_cf(res: int) -> int {
+  var cf = 8
+  while cf > 1 and res % cf != 0 { cf = cf / 2 }
+  return cf
+}
+
+# the mask's state, made with the TileDraw (tmd_new): nothing is allocated until a mask is found
+@alloc_ok("a map being opened: the mask's tables, made once")
+export function tmk_init(td: TileDraw) -> void {
+  let tm = td.tm
+  td.mask_pattern = tmap_mask_pattern_of(tm.pattern)
+  td.tones = floats(TMK_TONES * 3)
+  td.tone_on = words(TMK_TONES)
+  for c in 0 .. TMK_TONES { td.tone_on[c] = 0 }
+  let ms = td.ms
+  td.mk_tile = words(ms.mslots);  td.mk_has = words(ms.mslots)
+  for s in 0 .. ms.mslots { td.mk_tile[s] = -1;  td.mk_has[s] = 0 }
+  td.mk_cf = tmk_cf(tm.res)
+  # the pool of full masks: the tiles within reach of the levels finer than a coarse cell (and a margin)
+  var fine = 0
+  while fine < tm.lod_max and (1 << (fine + 1)) < td.mk_cf { fine += 1 }
+  td.mk_fine = fine
+  let reach = tm.lod_dist * float(1 << (fine + 1)) * 1.1 + tmap_patch_size(tm)
+  let a = reach / tm.tile_size + 1.5
+  td.fk_n = min(int(3.15 * a * a) + 4, ms.mslots)
+  td.fk_tile = words(td.fk_n);  td.fk_used = words(td.fk_n)
+  for k in 0 .. td.fk_n { td.fk_tile[k] = -1;  td.fk_used[k] = 0 }
+}
+
+# the mask files (pattern with {tx} {tz}); "" turns the mask off. Patches drawn already are made again, a few a frame.
+@alloc_ok("a map being opened: the pattern, once")
+export function tmd_mask_pattern(td: TileDraw, pattern: string) -> void {
+  td.mask_pattern = pattern
+  for s in 0 .. td.ms.mslots { td.mk_tile[s] = -1;  td.mk_has[s] = 0 }
+  for k in 0 .. td.fk_n { td.fk_tile[k] = -1 }
+  tmk_redraw(td)
+}
+
+# class `c` (0 .. 7) draws (r, g, b), linear. Patches drawn already are made again, a few a frame.
+export function tmd_tone_set(td: TileDraw, c: int, r: float, g: float, b: float) -> void {
+  if c < 0 or c >= TMK_TONES { return }
+  td.tones[c * 3] = r;  td.tones[c * 3 + 1] = g;  td.tones[c * 3 + 2] = b
+  td.tone_on[c] = 1
+  tmk_redraw(td)
+}
+# the table from rows (a class past 7 is left out); classes no row names keep the ground's tint
+export function tmd_tones_apply(td: TileDraw, rows: []GroundTone) -> void {
+  for c in 0 .. TMK_TONES { td.tone_on[c] = 0 }
+  for i in 0 .. len(rows) {
+    let t = rows[i]
+    if t.class < 0 or t.class >= TMK_TONES { continue }
+    td.tones[t.class * 3] = t.r;  td.tones[t.class * 3 + 1] = t.g;  td.tones[t.class * 3 + 2] = t.b
+    td.tone_on[t.class] = 1
+  }
+  tmk_redraw(td)
+}
+# every patch that holds a mesh asks for its level again (tmd_frame rebuilds within its budget)
+function tmk_redraw(td: TileDraw) -> void {
+  for i in 0 .. len(td.patches) { if td.patches[i].actor != null { td.patches[i].lod = -1 } }
+}
+
+# the tone of class c into out[o .. o + 2]
+function tmk_tone(td: TileDraw, c: int, out: floats, o: int) -> void {
+  if c >= 0 and c < TMK_TONES and td.tone_on[c] == 1 {
+    out[o] = td.tones[c * 3];  out[o + 1] = td.tones[c * 3 + 1];  out[o + 2] = td.tones[c * 3 + 2]
+  } else {
+    out[o] = td.color[0];  out[o + 1] = td.color[1];  out[o + 2] = td.color[2]
+  }
+}
+
+# Read tile t's mask: false when it has none. The full texels land in `full` (res x res, the first channel's high byte),
+# the majority class of each coarse block in the slot's coarse grid.
+@alloc_ok("a tile being read: its mask's decode, once")
+function tmk_read(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: int, full: int) -> bool {
+  let tm = td.tm
+  if td.mask_pattern == "" { return false }
+  let path = Text.replace(Text.replace(td.mask_pattern, "{tx}", string(t % tm.cols)), "{tz}", string(t / tm.cols))
+  if not Fs.exists(path) { return false }
+  let px = png_decode_bytes(render3d_st, path, td.mk_scratch)
+  if px == null { return false }
+  td.mk_scratch = px
+  let ch = render3d_st.tex_channels
+  let bps = render3d_st.tex_depth / 8
+  if render3d_st.tex_w != tm.res or render3d_st.tex_h != tm.res or ch < 1 or ch > 4 or bps < 1 or bps > 2 {
+    tmk_say_size(render3d_st, path, tm.res)
+    return false
+  }
+  let n = tm.res * tm.res
+  let step = ch * bps
+  if full >= 0 {
+    if td.fk_data == null { td.fk_data = buffer(td.fk_n * n) }
+    let o = full * n
+    for i in 0 .. n { td.fk_data[o + i] = px[i * step] }
+  }
+  # the coarse grid: each block's most common class (the lowest wins a tie)
+  let cf = td.mk_cf
+  let cn = tm.res / cf
+  if td.mk_coarse == null { td.mk_coarse = buffer(td.ms.mslots * cn * cn) }
+  let count = words(256)
+  for bj in 0 .. cn {
+    for bi in 0 .. cn {
+      for k in 0 .. 256 { count[k] = 0 }
+      for j in bj * cf .. (bj + 1) * cf { for i in bi * cf .. (bi + 1) * cf { count[int(px[(j * tm.res + i) * step])] += 1 } }
+      var best = 0
+      for k in 1 .. 256 { if count[k] > count[best] { best = k } }
+      td.mk_coarse[slot * cn * cn + bj * cn + bi] = best
+    }
+  }
+  free(count)
+  return true
+}
+
+# a place in the pool of full masks for tile t: the one holding it (and true), else the free or least recently used one
+# (emptied, and false); -1 with no pool
+function tmk_pool(td: TileDraw, t: int) -> int {
+  td.fk_clock += 1
+  var take = -1
+  for k in 0 .. td.fk_n {
+    if td.fk_tile[k] == t { td.fk_used[k] = td.fk_clock;  return k }
+    if take < 0 or (td.fk_tile[take] >= 0 and (td.fk_tile[k] < 0 or td.fk_used[k] < td.fk_used[take])) { take = k }
+  }
+  if take >= 0 { td.fk_tile[take] = -1 }
+  return take
+}
+
+# The masks a patch of tile t (mesh slot `slot`) at a level needs, read when they are not held: the slot's coarse grid
+# (read again once the slot holds another tile) and, for a fine level, the full texels in the pool. The pool index, -1
+# for a far level, -2 when the tile has no mask.
+function tmk_need(render3d_st: mut Render3dState, td: TileDraw, slot: int, t: int, fine: bool) -> int {
+  if td.mk_tile[slot] == t and td.mk_has[slot] == 0 { return -2 }
+  if not fine and td.mk_tile[slot] == t { return -1 }
+  var fk = -1
+  if fine {
+    fk = tmk_pool(td, t)
+    if fk >= 0 and td.fk_tile[fk] == t and td.mk_tile[slot] == t { return fk }
+  }
+  # one read fills what is missing: the coarse grid always, the pool place when there is one
+  td.mk_tile[slot] = t
+  td.mk_has[slot] = 0
+  if not tmk_read(render3d_st, td, t, slot, fk) { return -2 }
+  td.mk_has[slot] = 1
+  if fk >= 0 { td.fk_tile[fk] = t;  td.fk_used[fk] = td.fk_clock }
+  return fk
+}
+
+# Vertex colours for a patch level the reader just expanded (tmm_patch: ms.nv vertices, the grid then the skirt) into
+# td.cbuf, four floats a vertex. False when the tile has no mask (the patch draws the plain tint).
+export function tmk_colours(render3d_st: mut Render3dState, td: TileDraw, slot: int, tx: int, tz: int, px: int, pz: int, lod: int) -> bool {
+  let tm = td.tm
+  let ms = td.ms
+  let t = tz * tm.cols + tx
+  let fk = tmk_need(render3d_st, td, slot, t, lod <= td.mk_fine)
+  if fk == -2 { return false }
+  let c = tm.patch_texels >> lod
+  let n1 = c + 1
+  let cs = 1 << lod                                    # texels a cell
+  let res = tm.res
+  let top = res - 1
+  if td.cbuf == null { td.cbuf = floats(tmap_patch_verts(tm.patch_texels) * 4) }
+  let out = td.cbuf
+  let x0 = px * tm.patch_texels                        # the patch's first texel in the tile
+  let z0 = pz * tm.patch_texels
+  let tone = td.mk_tone
+  let cf = td.mk_cf
+  let cn = res / cf
+  for b in 0 .. n1 {
+    for a in 0 .. n1 {
+      var r = 0.0;  var g = 0.0;  var bl = 0.0;  var w = 0.0
+      if fk >= 0 {
+        # the cs x cs texels centred on the corner (2 x 2 at level 0), clamped to the tile
+        let h = Math.max(cs / 2, 1)
+        let i0 = x0 + a * cs - h;  let j0 = z0 + b * cs - h
+        let o = fk * res * res
+        for j in j0 .. j0 + 2 * h {
+          let jj = min(max(j, 0), top)
+          for i in i0 .. i0 + 2 * h {
+            let ii = min(max(i, 0), top)
+            tmk_tone(td, int(td.fk_data[o + jj * res + ii]), tone, 0)
+            r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
+          }
+        }
+      } else {
+        # far: the coarse blocks the cell spans round the corner (at least 2 x 2)
+        let hc = Math.max(cs / cf / 2, 1)
+        let ci = (x0 + a * cs) / cf;  let cj = (z0 + b * cs) / cf
+        for j in cj - hc .. cj + hc {
+          let jj = min(max(j, 0), cn - 1)
+          for i in ci - hc .. ci + hc {
+            let ii = min(max(i, 0), cn - 1)
+            tmk_tone(td, int(td.mk_coarse[slot * cn * cn + jj * cn + ii]), tone, 0)
+            r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
+          }
+        }
+      }
+      let o = (b * n1 + a) * 4
+      out[o] = r / w;  out[o + 1] = g / w;  out[o + 2] = bl / w;  out[o + 3] = 1.0
+    }
+  }
+  # the skirt hangs from the edge: its vertices wear their edge vertex's colour
+  let sk = n1 * n1
+  for p in 0 .. 4 * c {
+    let e = lwt_perimeter(c, p)
+    for k in 0 .. 4 { out[(sk + p) * 4 + k] = out[e * 4 + k] }
+  }
+  return true
+}
+
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function tmk_say_size(render3d_st: Render3dState, path: string, res: int) -> void { print(`tilemap: {path} is {render3d_st.tex_w} x {render3d_st.tex_h}, {render3d_st.tex_channels} channel, {render3d_st.tex_depth} bit: the row says {res} x {res}; the tile draws its tint`) }

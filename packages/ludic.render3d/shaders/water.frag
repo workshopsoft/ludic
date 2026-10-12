@@ -13,6 +13,25 @@ uniform vec2 u_center;          // this body's centre and half extents (world xz
 uniform vec2 u_extent;
 uniform float u_clip_ellipse;   // 1: the body is the ellipse inside its rectangle (a lake), 0: the whole plane (the sea)
 uniform sampler2D u_scene;       // the scene as drawn before the water: the bed, to refract
+// The wet mask (water_wet.ludic): a plane with u_wet_on draws only on wet texels. A texel a tile in the page says
+// what the tile is - 0 not known (wet, as a plane with no mask), 1 all dry, 2 all wet, 3 + k mixed and resident in
+// layer k of the tiles, one byte a texel (255 wet) on the height tiles' own grid, read bilinear: the edge runs halfway
+// between a wet texel's centre and a dry one's. Off the map, wet.
+uniform float u_wet_on;
+uniform sampler2D u_wet_page;
+uniform sampler2DArray u_wet_tiles;
+uniform vec4 u_wet_grid;          // tile (0, 0)'s corner in render space x, z; metres a tile; tiles a side (cols)
+uniform float u_wet_rows;
+float wetAt(vec2 xz) {
+  vec2 t = (xz - u_wet_grid.xy) / u_wet_grid.z;
+  if (t.x < 0.0 || t.y < 0.0 || t.x >= u_wet_grid.w || t.y >= u_wet_rows) return 1.0;
+  ivec2 ti = ivec2(floor(t));
+  float v = floor(texelFetch(u_wet_page, ti, 0).r * 255.0 + 0.5);
+  if (v < 0.5) return 1.0;
+  if (v < 1.5) return 0.0;
+  if (v < 2.5) return 1.0;
+  return texture(u_wet_tiles, vec3(fract(t), v - 3.0)).r;
+}
 // The ground under a pixel, as the terrain draws it (the shore's terms belong to the bed, and the
 // scene depth can be a fish or a pair of legs standing on it). terpage.glsl, pasted (the reference
 // copy and its rules are there): the height sections, read through u_ts_height.
@@ -106,6 +125,7 @@ void main() {
     vec2 q = (v_wpos.xz - u_center) / max(u_extent, vec2(0.001));
     if (dot(q, q) > 1.0) discard;
   }
+  if (u_wet_on > 0.5 && wetAt(v_wpos.xz) < 0.5) discard;
   vec3 v = normalize(u_cam_pos - v_wpos);
   float dist = length(u_cam_pos - v_wpos);
   vec3 n = rippleNormal(v_wpos.xz, u_time);
