@@ -75,7 +75,7 @@ program KInstStress {
     let proj = m4_new()
     let view = m4_new()
     let vp = m4_new()
-    m4_perspective(proj, Math.deg_to_rad(60.0), 1.78, 0.3, 8000.0)
+    m4_perspective_rz(proj, Math.deg_to_rad(60.0), 1.78, 0.3, 8000.0)
     let ms = floats(frames)
     var visible_sum = 0
     var rebases = 0

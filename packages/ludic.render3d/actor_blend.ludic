@@ -116,7 +116,7 @@ function actor_draw_blended(render3d_st: mut Render3dState) -> void {
   ac_sort_far_first(over, len(over))
   target_bind(render3d_st, render3d_st.post_hdr)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GPU_LEQUAL)
+  gpu_depth_func(render3d_st, GPU_GEQUAL)
   gpu_depth_write(render3d_st, false)
   gpu_alpha_to_coverage(render3d_st, false)
   gpu_blend(render3d_st, true)
@@ -152,7 +152,7 @@ function actor_draw_blended(render3d_st: mut Render3dState) -> void {
   }
   gpu_blend(render3d_st, false)
   gpu_depth_write(render3d_st, true)
-  gpu_depth_func(render3d_st, GPU_LESS)
+  gpu_depth_func(render3d_st, GPU_GREATER)
   gpu_cull(render3d_st, true)
   gpu_cull_face(render3d_st, GPU_BACK)
 }

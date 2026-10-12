@@ -17,7 +17,7 @@ uniform float u_max_coc;      // in pixels, so a wide aperture cannot eat the wh
 
 float viewZ(vec2 uv) {
   float d = texture(u_depth, uv).r;
-  vec4 p = u_inv_proj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  vec4 p = u_inv_proj * vec4(uv * 2.0 - 1.0, depthClip(d), 1.0);
   return -(p.z / p.w);
 }
 

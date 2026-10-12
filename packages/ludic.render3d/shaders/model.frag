@@ -372,7 +372,7 @@ void main() {
   if (u_tr.y > 0.0) {
     vec2 suv = gl_FragCoord.xy / u_screen;
     float sd = texture(u_scene_depth, suv).r;
-    vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, sd * 2.0 - 1.0, 1.0);
+    vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, depthClip(sd), 1.0);
     float sceneDist = length(gp.xyz / gp.w - u_cam_pos);
     a *= clamp((sceneDist - dist) / u_tr.y, 0.0, 1.0);
   }

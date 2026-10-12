@@ -71,9 +71,11 @@ function shadow_make_tex(render3d_st: mut Render3dState) -> void {
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_BORDER)
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_BORDER)
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_MODE, GPU_COMPARE_REF_TO_TEXTURE)
-  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_FUNC, GPU_LEQUAL)
+  # reversed depth (fmath.ludic): lit while the receiver is at least as near the sun as what the map holds, and the
+  # border (the far plane, 0) reads lit
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_FUNC, GPU_GEQUAL)
   let border = fbuf_floats(4)
-  fbuf_put(border, 0, 1.0);  fbuf_put(border, 1, 1.0);  fbuf_put(border, 2, 1.0);  fbuf_put(border, 3, 1.0)
+  fbuf_put(border, 0, 0.0);  fbuf_put(border, 1, 0.0);  fbuf_put(border, 2, 0.0);  fbuf_put(border, 3, 0.0)
   gpu_tex_border(render3d_st, GPU_TEX2D_ARRAY, border)
   free(border)
 }
@@ -130,7 +132,7 @@ function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: fl
   let oy = Math.floor(render3d_st.sh_corner[1] / texel) * texel - render3d_st.sh_corner[1]
   let nr = -radius
   let zfar = back + radius + 100.0
-  m4_ortho(render3d_st.sh_tmp_proj, nr + ox, radius + ox, nr + oy, radius + oy, 1.0, zfar)
+  m4_ortho_rz(render3d_st.sh_tmp_proj, nr + ox, radius + ox, nr + oy, radius + oy, 1.0, zfar)
   render3d_st.sh_range[c] = zfar - 1.0
   render3d_st.sh_texel[c] = texel
   let out = render3d_st.sh_fit_out
@@ -146,8 +148,8 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
   gpu_fb_bind(render3d_st, render3d_st.sh_fbo)
   gpu_viewport(render3d_st, 0, 0, render3d_st.shadow_res, render3d_st.shadow_res)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GPU_LESS)
-  gpu_depth_bias(render3d_st, 2.0, 4.0)
+  gpu_depth_func(render3d_st, GPU_GREATER)
+  gpu_depth_bias(render3d_st, -2.0, -4.0)            # away from the sun: toward 0, reversed depth
   gpu_cull(render3d_st, false)
   # a fog wall: a cascade reaches no further than it, and one that begins past it is only cleared
   let wall = r3d_reach(render3d_st, 0.0)
@@ -192,7 +194,7 @@ function shadow_dump(render3d_st: mut Render3dState) -> void {
     m4_xform_point(q, vp, render3d_st.sh_probe_x, render3d_st.sh_probe_y + 12.0, render3d_st.sh_probe_z)
     let tx = int((q[0] * 0.5 + 0.5) * float(render3d_st.shadow_res))
     let ty = int((q[1] * 0.5 + 0.5) * float(render3d_st.shadow_res))
-    let want = q[2] * 0.5 + 0.5
+    let want = q[2]
     print(`probe (12 m up) texel {tx} {ty} card depth {fixed(want * 1000.0)}/1000`)
     for dy in 0 .. 5 {
       let yy = ty - 40 + dy * 20

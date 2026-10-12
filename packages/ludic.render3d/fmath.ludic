@@ -140,7 +140,43 @@ function m4_trs(m: floats, x: float, y: float, z: float, yaw: float, s: float) -
   for i in 0 .. 12 { m[i] = m[i] * s }
   m[12] = x;  m[13] = y;  m[14] = z
 }
-# OpenGL clip space (z in [-1, 1]); fovy in radians
+# The renderer's depth is REVERSED (D32F, clip z in [0, w], 1 at the near plane, 0 at the far one, compared GREATER,
+# cleared to 0): a float's precision is densest near 0, which reversed puts at the far end, so depth resolves about
+# 0.1 mm at 1000 m from a 5 cm near plane where the OpenGL mapping resolved about a metre. Every matrix the GPU draws
+# with is one of the two below; the OpenGL pair after them is CPU math only (the shadow fit's frustum corners).
+#
+# perspective, reversed, Vulkan clip: z_clip = near * w at the near plane and 0 at `far`; far <= 0 puts it at infinity
+# (z_clip = near, depth = near / distance). fovy in radians
+function m4_perspective_rz(m: floats, fovy: float, aspect: float, near: float, far: float) -> void {
+  for i in 0 .. 16 { m[i] = 0.0 }
+  let f = 1.0 / Math.tan(fovy * 0.5)
+  m[0] = f / aspect
+  m[5] = f
+  m[11] = -1.0
+  if far <= 0.0 {
+    m[14] = near
+  } else {
+    m[10] = near / (far - near)
+    m[14] = far * near / (far - near)
+  }
+}
+# orthographic, reversed, Vulkan clip: depth 1 at view distance n, 0 at f
+function m4_ortho_rz(m: floats, l: float, r: float, b: float, t: float, n: float, f: float) -> void {
+  m4_identity(m)
+  m[0] = 2.0 / (r - l)
+  m[5] = 2.0 / (t - b)
+  m[10] = 1.0 / (f - n)
+  m[12] = -((r + l) / (r - l))
+  m[13] = -((t + b) / (t - b))
+  m[14] = f / (f - n)
+}
+# the depth a point `dist` metres in front of a reversed perspective lands at (what the depth buffer holds)
+function rz_depth(near: float, far: float, dist: float) -> float {
+  if far <= 0.0 { return near / dist }
+  return near * (far - dist) / (dist * (far - near))
+}
+
+# OpenGL clip space (z in [-1, 1]); fovy in radians. CPU math only: nothing draws with it
 function m4_perspective(m: floats, fovy: float, aspect: float, near: float, far: float) -> void {
   for i in 0 .. 16 { m[i] = 0.0 }
   let f = 1.0 / Math.tan(fovy * 0.5)
@@ -150,6 +186,7 @@ function m4_perspective(m: floats, fovy: float, aspect: float, near: float, far:
   m[11] = -1.0
   m[14] = 2.0 * far * near / (near - far)
 }
+# OpenGL orthographic (z in [-1, 1]). CPU math only: nothing draws with it
 function m4_ortho(m: floats, l: float, r: float, b: float, t: float, n: float, f: float) -> void {
   m4_identity(m)
   m[0] = 2.0 / (r - l)

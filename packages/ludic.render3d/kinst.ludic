@@ -216,22 +216,31 @@ export function kinst_rebase(k: KCull, dx: float, dy: float, dz: float) -> void 
 
 # ---- the view ------------------------------------------------------------------------------
 
-# the six frustum planes of a view-projection matrix (column-major, clip depth -w .. w as the renderer's projections
-# have it), each normalised, inside when a x + b y + c z + d >= 0: left, right, bottom, top, near, far
+# the six frustum planes of a view-projection matrix (column-major, Vulkan clip with reversed depth as the renderer's
+# projections have it, fmath.ludic: depth w at the near plane, 0 at the far one), each normalised, inside when
+# a x + b y + c z + d >= 0: left, right, bottom, top, near (w - z >= 0), far (z >= 0). A far plane at infinity has no
+# plane: it is stored as one everything is inside (0, 0, 0, 1)
 export function kinst_planes(vp: floats, out: floats) -> void {
   for p in 0 .. 6 {
     let row = p / 2
     var sg = 1.0
     if p % 2 == 1 { sg = -1.0 }
-    let a = vp[3] + sg * vp[row]
-    let b = vp[7] + sg * vp[4 + row]
-    let c = vp[11] + sg * vp[8 + row]
-    let d = vp[15] + sg * vp[12 + row]
-    let inv = 1.0 / Math.sqrt(a * a + b * b + c * c)
-    out[p * 4] = a * inv
-    out[p * 4 + 1] = b * inv
-    out[p * 4 + 2] = c * inv
-    out[p * 4 + 3] = d * inv
+    var a = vp[3] + sg * vp[row]
+    var b = vp[7] + sg * vp[4 + row]
+    var c = vp[11] + sg * vp[8 + row]
+    var d = vp[15] + sg * vp[12 + row]
+    if p == 4 { a = vp[3] - vp[2];  b = vp[7] - vp[6];  c = vp[11] - vp[10];  d = vp[15] - vp[14] }
+    if p == 5 { a = vp[2];  b = vp[6];  c = vp[10];  d = vp[14] }
+    let l2 = a * a + b * b + c * c
+    if l2 < 0.000000000001 { a = 0.0;  b = 0.0;  c = 0.0;  d = 1.0 }
+    else {
+      let inv = 1.0 / Math.sqrt(l2)
+      a = a * inv;  b = b * inv;  c = c * inv;  d = d * inv
+    }
+    out[p * 4] = a
+    out[p * 4 + 1] = b
+    out[p * 4 + 2] = c
+    out[p * 4 + 3] = d
   }
 }
 

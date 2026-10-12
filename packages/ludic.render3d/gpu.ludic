@@ -66,7 +66,8 @@ function gpu_depth_test(render3d_st: mut Render3dState, on: bool) -> void {
   if v == render3d_st.gpu_s_depth_test { return }
   render3d_st.gpu_s_depth_test = v
 }
-# GPU_LESS, GPU_LEQUAL, GPU_EQUAL, GPU_ALWAYS, ... (the comparison names are the same in every API)
+# GPU_GREATER, GPU_GEQUAL, GPU_EQUAL, GPU_ALWAYS, ... (the comparison names are the same in every API). Depth is
+# reversed (fmath.ludic: 1 near, 0 far, cleared to 0), so nearer is GREATER: the default when nothing was set
 function gpu_depth_func(render3d_st: mut Render3dState, f: int) -> void {
   if f == render3d_st.gpu_s_depth_func { return }
   render3d_st.gpu_s_depth_func = f

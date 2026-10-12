@@ -364,7 +364,7 @@ function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
   gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
   gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GPU_LESS)
+  gpu_depth_func(render3d_st, GPU_GREATER)
   gpu_cull(render3d_st, false)
   gpu_blend(render3d_st, false)
   # the model's prims temporarily take the identity instance
@@ -383,7 +383,7 @@ function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
     # a touch of elevation (the viewer usually looks slightly down at a tree)
     v3_set(eye, Math.sin(a) * (r * 4.0), cy + r * 0.5, -(Math.cos(a) * (r * 4.0)))
     m4_look_at(view, eye, at, up)
-    m4_ortho(proj, -r, r, -hh, hh, 0.1, r * 9.0)
+    m4_ortho_rz(proj, -r, r, -hh, hh, 0.1, r * 9.0)
     u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_view"), view)
     u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_proj"), proj)
     u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_wind"), 0.0)
@@ -991,7 +991,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
     else { mesh_draw_instanced(render3d_st, pr.mesh, cnt) }
   }
   gpu_alpha_to_coverage(render3d_st, false)
-  if p == render3d_st.sc_prog_fol_eq { gpu_depth_func(render3d_st, GPU_LESS) }
+  if p == render3d_st.sc_prog_fol_eq { gpu_depth_func(render3d_st, GPU_GREATER) }
 }
 
 function layer_draw_far(render3d_st: mut Render3dState, l: Layer, shadow: bool, light_vp: floats) -> void {
@@ -1196,7 +1196,7 @@ function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: 
   gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
   gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GPU_LESS)
+  gpu_depth_func(render3d_st, GPU_GREATER)
   gpu_cull(render3d_st, false)
   gpu_blend(render3d_st, false)
   # the clumps, and eight wrapped copies so the tile's edges continue
@@ -1228,7 +1228,7 @@ function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: 
   let view = m4_new();  let proj = m4_new()
   let eye = v3_new(0.0, 6.0, 0.0);  let at = v3_new(0.0, 0.0, 0.0);  let up = v3_new(0.0, 0.0, -1.0)
   m4_look_at(view, eye, at, up)
-  m4_ortho(proj, -half, half, -half, half, 0.1, 12.0)
+  m4_ortho_rz(proj, -half, half, -half, half, 0.1, 12.0)
   # A crossed card is two upright quads, edge-on from straight above: drawn here they covered no
   # texel and the tile came out all zeros. A card layer draws the model its atlas was baked from.
   for li in 0 .. len(layers) {

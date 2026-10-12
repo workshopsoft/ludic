@@ -1,0 +1,106 @@
+# depth_test.ludic - reversed depth (fmath.ludic): the camera's projection is Vulkan clip space with depth 1 at the near
+# plane and 0 at infinity, so a 32-bit float depth buffer resolves a millimetre-scale step a kilometre out (OC-140.I1, from
+# MET.I17: <= 5 mm at 1000 m from a 5 cm near plane); the orthographic and finite forms land on [0, 1] the same way round;
+# the culling planes read that clip space (near w - z >= 0, far z >= 0, none at infinity). No device.
+import "ludic.render3d/r3d.ludic"
+program DepthTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # the depth a 32-bit buffer stores for a view-space point straight ahead at `dist`, through matrix m
+  function depth_of(m: floats, dist: float) -> float {
+    let q = floats(3)
+    let w = m4_xform_point(q, m, 0.0, 0.0, -dist)
+    let d = q[2] / w
+    return d
+  }
+  # the step a 32-bit float depth can resolve at `dist`: one unit in the last place over the depth's rate of change
+  function resolution(m: floats, dist: float) -> float {
+    let d = depth_of(m, dist)
+    let ulp = Math.abs(float_from_bits(float_bits(d) + 1) - d)
+    let slope = Math.abs(depth_of(m, dist + 1.0) - depth_of(m, dist - 1.0)) * 0.5
+    return ulp / slope
+  }
+  # is the point inside all six planes?
+  function inside(pl: floats, x: float, y: float, z: float) -> bool {
+    for p in 0 .. 6 { if pl[p * 4] * x + pl[p * 4 + 1] * y + pl[p * 4 + 2] * z + pl[p * 4 + 3] < 0.0 { return false } }
+    return true
+  }
+  # a camera like a game's: near 5 cm, the default far, aspect 16:9
+  function camera(near: float) -> Render3dState {
+    let st = new Render3dState
+    cam_init(st, 16.0 / 9.0)
+    st.cam_near = near
+    cam_update(st)
+    return st
+  }
+
+  test "the camera's depth is 1 at the near plane, falls toward 0 with distance and never reaches it (far at infinity)" {
+    let st = camera(0.05)
+    expect_near(depth_of(st.cam_proj, 0.05), 1.0, 0.00001)
+    expect_near(depth_of(st.cam_proj, 1000.0), 0.05 / 1000.0, 0.0000001)
+    var last = 2.0
+    var falls = true
+    var dist = 0.05
+    while dist < 1000000.0 {
+      let d = depth_of(st.cam_proj, dist)
+      if not (d < last) or not (d > 0.0) { falls = false }
+      last = d
+      dist = dist * 1.5
+    }
+    expect(falls)
+    # the cull planes: no far plane, the near one at 5 cm
+    let pl = floats(24)
+    kinst_planes(st.cam_vp_clean, pl)
+    expect_near(pl[20], 0.0, 0.0);  expect_near(pl[21], 0.0, 0.0);  expect_near(pl[22], 0.0, 0.0);  expect_near(pl[23], 1.0, 0.0)
+  }
+
+  test "MET.I17: the depth buffer resolves 5 mm or better at 1000 m from a 5 cm near plane (the old mapping: about a metre)" {
+    let st = camera(0.05)
+    let r = resolution(st.cam_proj, 1000.0)
+    expect(r <= 0.005)
+    expect(r < 0.0002)                                   # in fact about 0.07 mm
+    # two points 5 mm apart at 1000 m store different depths through the matrix itself
+    expect(depth_of(st.cam_proj, 1000.0) != depth_of(st.cam_proj, 1000.005))
+    # and at the map's far end, 10 km out, still under 10 mm
+    expect(resolution(st.cam_proj, 10000.0) <= 0.01)
+    # what this replaced: the OpenGL mapping of the same camera, depth (z + 1) / 2, resolves only metres there
+    let gl = m4_new()
+    m4_perspective(gl, st.cam_fov, st.cam_aspect, 0.05, 14000.0)
+    let d0 = depth_of(gl, 1000.0) * 0.5 + 0.5
+    let ulp = float_from_bits(float_bits(d0) + 1) - d0
+    let slope = (depth_of(gl, 1001.0) - depth_of(gl, 999.0)) * 0.25
+    expect(ulp / slope > 0.5)
+  }
+
+  test "a finite reversed perspective and the orthographic form put the near plane at 1 and the far one at 0" {
+    let m = m4_new()
+    m4_perspective_rz(m, Math.deg_to_rad(60.0), 1.5, 0.1, 100.0)
+    expect_near(depth_of(m, 0.1), 1.0, 0.00001)
+    expect_near(depth_of(m, 100.0), 0.0, 0.00001)
+    expect_near(depth_of(m, 10.0), rz_depth(0.1, 100.0, 10.0), 0.000001)
+    expect(depth_of(m, 150.0) < 0.0)                  # past the far plane: clipped
+    let o = m4_new()
+    m4_ortho_rz(o, -10.0, 10.0, -5.0, 5.0, 1.0, 51.0)
+    expect_near(depth_of(o, 1.0), 1.0, 0.00001)
+    expect_near(depth_of(o, 51.0), 0.0, 0.00001)
+    expect_near(depth_of(o, 26.0), 0.5, 0.00001)
+  }
+
+  test "the cull planes of a finite reversed frustum keep what is between near and far and nothing else" {
+    let proj = m4_new();  let view = m4_new();  let vp = m4_new()
+    m4_perspective_rz(proj, Math.deg_to_rad(60.0), 1.5, 0.1, 100.0)
+    m4_look_at_xyz(view, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 1.0, 0.0)
+    m4_mul(vp, proj, view)
+    let pl = floats(24)
+    kinst_planes(vp, pl)
+    expect(inside(pl, 0.0, 0.0, -50.0))
+    expect(not inside(pl, 0.0, 0.0, -0.05))              # before the near plane
+    expect(not inside(pl, 0.0, 0.0, -101.0))             # past the far plane
+    expect(not inside(pl, 0.0, 0.0, 5.0))                # behind
+    expect(not inside(pl, 200.0, 0.0, -50.0))            # off to the side
+    # the near plane is 0.1 m out, the far one 100 m
+    expect_near(pl[19], -0.1, 0.0001)
+    expect_near(pl[23], 100.0, 0.01)
+  }
+}

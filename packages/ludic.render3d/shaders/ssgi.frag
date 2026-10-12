@@ -14,7 +14,7 @@ uniform float u_contact;    // the tight contact pass; 0 switches it off entirel
 uniform float u_frame;
 vec3 viewPos(vec2 uv) {
   float d = texture(u_depth, uv).r;
-  vec4 p = u_inv_proj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  vec4 p = u_inv_proj * vec4(uv * 2.0 - 1.0, depthClip(d), 1.0);
   return p.xyz / p.w;
 }
 void main() {

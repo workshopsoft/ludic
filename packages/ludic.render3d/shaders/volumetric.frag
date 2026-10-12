@@ -25,10 +25,10 @@ float volShadow(vec3 wpos, float viewDepth) {
   int c = CASCADES - 1;
   for (int i = 0; i < CASCADES - 1; i++) { if (viewDepth < u_cascade_split[i]) { c = i; break; } }
   vec4 lp = u_cascade_vp[c] * vec4(wpos, 1.0);
-  vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
+  vec3 p = vec3(lp.xy / lp.w * 0.5 + 0.5, lp.z / lp.w);
   float s = 1.0;
-  if (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0 && p.z <= 1.0) {
-    s = shadowTap(p.xy, c, p.z - 0.0016);
+  if (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0 && p.z >= 0.0) {
+    s = shadowTap(p.xy, c, p.z + 0.0016);
   }
   return min(s, terrainShadow(wpos)) * cloudShadow(wpos);
 }
@@ -53,14 +53,14 @@ float phaseHG(float c, float g) {
 void main() {
   float d = texture(u_depth, v_uv).r;
   // the world point this pixel looks at, and the ray to it
-  vec4 far4 = u_inv_vp * vec4(v_uv * 2.0 - 1.0, 1.0, 1.0);
+  vec4 far4 = u_inv_vp * vec4(v_uv * 2.0 - 1.0, DEPTH_FAR_POINT, 1.0);
   vec3 farP = far4.xyz / far4.w;
   vec3 dir = normalize(farP - u_cam_pos);
   float march;
-  if (d >= 1.0) {
+  if (d <= DEPTH_SKY) {
     march = u_vol_far;                       // sky: march the whole way
   } else {
-    vec4 h4 = u_inv_vp * vec4(v_uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vec4 h4 = u_inv_vp * vec4(v_uv * 2.0 - 1.0, depthClip(d), 1.0);
     march = min(length(h4.xyz / h4.w - u_cam_pos), u_vol_far);
   }
   int steps = int(u_vol_steps);

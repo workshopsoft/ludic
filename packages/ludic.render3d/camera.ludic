@@ -37,7 +37,7 @@ function cam_update(render3d_st: mut Render3dState) -> void {
   let py = render3d_st.cam_pos[1]
   let pz = render3d_st.cam_pos[2]
   m4_look_at_xyz(render3d_st.cam_view, px, py, pz, px + render3d_st.cam_fwd[0], py + render3d_st.cam_fwd[1], pz + render3d_st.cam_fwd[2], 0.0, 1.0, 0.0)
-  m4_perspective(render3d_st.cam_proj, render3d_st.cam_fov, render3d_st.cam_aspect, render3d_st.cam_near, r3d_view_far(render3d_st))
+  cam_proj_clean(render3d_st, render3d_st.cam_proj)
   m4_mul(render3d_st.cam_vp_clean, render3d_st.cam_proj, render3d_st.cam_view)
   m4_inverse(render3d_st.cam_inv_vp_clean, render3d_st.cam_vp_clean)
   # DLSS's sub-pixel jitter (streamline.ludic), in the projection the scene draws with only:
@@ -50,6 +50,11 @@ function cam_update(render3d_st: mut Render3dState) -> void {
   m4_inverse(render3d_st.cam_inv_vp, render3d_st.cam_vp)
   m4_inverse(render3d_st.cam_inv_proj, render3d_st.cam_proj)
   cam_planes_update(render3d_st)
+}
+# the camera's projection without the upscaler's jitter: reversed depth (fmath.ludic), its far plane at infinity
+# (r3d_proj_far)
+function cam_proj_clean(render3d_st: Render3dState, m: floats) -> void {
+  m4_perspective_rz(m, render3d_st.cam_fov, render3d_st.cam_aspect, render3d_st.cam_near, r3d_proj_far(render3d_st))
 }
 function cam_planes_update(render3d_st: mut Render3dState) -> void {
   let m = render3d_st.cam_vp_clean

@@ -10,7 +10,7 @@ program KInstTest {
   function view_of(out_vp: floats, cx: float, cy: float, cz: float, yaw_deg: float) -> void {
     let proj = m4_new()
     let v = m4_new()
-    m4_perspective(proj, Math.deg_to_rad(60.0), 1.5, 0.3, 5000.0)
+    m4_perspective_rz(proj, Math.deg_to_rad(60.0), 1.5, 0.3, 5000.0)
     let a = Math.deg_to_rad(yaw_deg)
     m4_look_at_xyz(v, cx, cy, cz, cx - Math.sin(a), cy, cz - Math.cos(a), 0.0, 1.0, 0.0)
     m4_mul(out_vp, proj, v)

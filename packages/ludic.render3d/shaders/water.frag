@@ -84,7 +84,7 @@ vec3 underBlur(vec2 uv, vec3 c0, float r, float surfY) {
   float clear = 1.0;
   for (int i = 0; i < 4; i++) {
     vec2 tuv = clamp(uv + vec2(i < 2 ? -r : r, (i % 2) == 0 ? -r : r) / u_screen, 0.001, 0.999);
-    vec4 tp = u_inv_vp * vec4(tuv * 2.0 - 1.0, texture(u_depth, tuv).r * 2.0 - 1.0, 1.0);
+    vec4 tp = u_inv_vp * vec4(tuv * 2.0 - 1.0, depthClip(texture(u_depth, tuv).r), 1.0);
     if (tp.y / tp.w > surfY) clear -= 0.25;
   }
   if (clear <= 0.0) return c0;
@@ -131,7 +131,7 @@ void main() {
   // how deep the ground is under this pixel: from the scene depth
   vec2 suv = gl_FragCoord.xy / u_screen;
   float sd = texture(u_depth, suv).r;
-  vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, sd * 2.0 - 1.0, 1.0);
+  vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, depthClip(sd), 1.0);
   vec3 ground = gp.xyz / gp.w;
   float depthBelow = clamp(v_wpos.y - ground.y, 0.0, 10.0);
   float alongRay = length(ground - v_wpos);
@@ -216,7 +216,7 @@ void main() {
   // never refract something that is actually in front of the surface (the near bank),
   // or the grass on the shore smears out over the water
   float rd = texture(u_depth, ruv2).r;
-  vec4 rgp = u_inv_vp * vec4(ruv2 * 2.0 - 1.0, rd * 2.0 - 1.0, 1.0);
+  vec4 rgp = u_inv_vp * vec4(ruv2 * 2.0 - 1.0, depthClip(rd), 1.0);
   vec3 rground = rgp.xyz / rgp.w;
   if (rground.y > v_wpos.y) { ruv2 = suv; }
   vec3 bed = sane(texture(u_scene, ruv2).rgb);

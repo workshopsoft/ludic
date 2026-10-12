@@ -252,21 +252,20 @@ function cmd_shaders() -> int {
     if len(parts) > 2 { defs = parts[2] }
     let id = shd_id(line)
     let defines = Text.replace(defs, ";", "\n")
-    # The renderer's projections put clip-space depth from -w to w, and Vulkan clips
-    # everything below 0 - the near half of every frustum. The vertex stage is wrapped so its own
-    # main runs first and depth is then remapped to [0, w]; the GLSL itself is untouched. No y flip:
-    # a Vulkan target's row 0 is NDC y = -1, so render to texture, sampling and gl_FragCoord
-    # agree; only the present and the screenshot flip.
-    let depth_remap = "\n#undef main\nvoid main() {\n  ludic_gl_main();\n  gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;\n}\n"
+    # The renderer's projections are Vulkan's own, with reversed depth (fmath.ludic: clip z from w at the
+    # near plane to 0 at the far one), so depth goes through untouched: remapping it here would subtract two
+    # nearly equal numbers and throw away the precision reversed depth is for. The vertex stage is still
+    # wrapped (its own main first) for the invariant position. No y flip: a Vulkan target's row 0 is NDC
+    # y = -1, so render to texture, sampling and gl_FragCoord agree; only the present and the screenshot flip.
+    let main_wrap = "\n#undef main\nvoid main() {\n  ludic_gl_main();\n}\n"
     # invariant: the foliage's depth prepass and its lit pass (depth EQUAL) are different variants,
     # and without it the compiler may compute their positions a hair apart and fail the test
     # as programs.ludic: a blade's vertex stage gets the noise its colour field needs
     var vnoise = ""
     if Text.contains(defines, "#define GBLADE") { vnoise = shd_noise }
-    var vsrc = "#version 460\n" + defines + shd_wind + vnoise + "invariant gl_Position;\n#define main ludic_gl_main\n" + shd_file(parts[0]) + depth_remap
+    var vsrc = "#version 460\n" + defines + shd_wind + vnoise + "invariant gl_Position;\n#define main ludic_gl_main\n" + shd_file(parts[0]) + main_wrap
     # A mesh shader stands in for the vertex stage (a variant whose first file is *.mesh): it writes an
-    # array of positions, so it cannot be wrapped for the depth remap or take invariant gl_Position -
-    # it remaps depth itself. Its SPIR-V keeps the .vert name, so the manifest and loader are unchanged.
+    # array of positions, so it cannot be wrapped or take invariant gl_Position. Its SPIR-V keeps the .vert name, so the manifest and loader are unchanged.
     let is_mesh = Text.ends_with(parts[0], ".mesh")
     if is_mesh { vsrc = "#version 460\n#extension GL_EXT_mesh_shader : require\n" + defines + shd_wind + shd_file(parts[0]) }
     let fsrc = "#version 460\n" + defines + shd_wind + shd_noise + shd_lighting + shd_file(parts[1])

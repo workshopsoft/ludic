@@ -316,7 +316,7 @@ function gvk_compute_probe(render3d_st: mut Render3dState) -> void {
 property GvkState {
   depth_test: int = 0,
   depth_write: int = 1,
-  depth_func: int = 0x0201,        # GPU_LESS
+  depth_func: int = 0x0204,        # GPU_GREATER: reversed depth (fmath.ludic)
   blend: int = 0,
   blend_src: int = 1,              # GPU_ONE
   blend_dst: int = 0,              # GPU_ZERO
@@ -1263,7 +1263,7 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
     Vk.put_i32(datt, VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
     if (render3d_st.gvk_clear_bits & GPU_DEPTH_BUFFER_BIT) != 0 {
       Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
-      Vk.put_i32(datt, VkRenderingAttachmentInfo_clearValue, 0x3F800000)
+      Vk.put_i32(datt, VkRenderingAttachmentInfo_clearValue, 0)             # the far plane: reversed depth (fmath.ludic)
     } else { Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
     render3d_st.gvk_pass_dfmt = VK_FORMAT_D32_SFLOAT
     render3d_st.gvk_pass_samples = gvk_tex_samples_of(render3d_st, dtex)
@@ -1314,7 +1314,7 @@ function gvk_clear(render3d_st: mut Render3dState, mask: int, rec: words, rec_o:
   }
   if (mask & GPU_DEPTH_BUFFER_BIT) != 0 and render3d_st.gvk_pass_dep[0] > 0 {
     Vk.put_i32(atts, n * caw + VkClearAttachment_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT)
-    Vk.put_i32(atts, n * caw + VkClearAttachment_clearValue, 0x3F800000)
+    Vk.put_i32(atts, n * caw + VkClearAttachment_clearValue, 0)             # the far plane: reversed depth
     n += 1
   }
   if n == 0 { return }
@@ -1624,7 +1624,7 @@ function gvk_state_now(render3d_st: mut Render3dState) -> GvkState {
   let st = render3d_st.gvk_state
   st.depth_test = 0;  if render3d_st.gpu_s_depth_test == 1 { st.depth_test = 1 }
   st.depth_write = 1;  if render3d_st.gpu_s_depth_write == 0 { st.depth_write = 0 }
-  st.depth_func = GPU_LESS;  if render3d_st.gpu_s_depth_func > 0 { st.depth_func = render3d_st.gpu_s_depth_func }
+  st.depth_func = GPU_GREATER;  if render3d_st.gpu_s_depth_func > 0 { st.depth_func = render3d_st.gpu_s_depth_func }
   st.blend = 0;  if render3d_st.gpu_s_blend == 1 { st.blend = 1 }
   st.blend_src = GPU_ONE;  if render3d_st.gpu_s_blend_src >= 0 { st.blend_src = render3d_st.gpu_s_blend_src }
   st.blend_dst = GPU_ZERO;  if render3d_st.gpu_s_blend_dst >= 0 { st.blend_dst = render3d_st.gpu_s_blend_dst }

@@ -348,7 +348,7 @@ program IntrTest {
     let proj = m4_new()
     let v = m4_new()
     let vp = m4_new()
-    m4_perspective(proj, Math.deg_to_rad(40.0), 1.5, 0.1, 100.0)
+    m4_perspective_rz(proj, Math.deg_to_rad(40.0), 1.5, 0.1, 100.0)
     m4_look_at_xyz(v, -10.0, 1.5, 2.5, 0.0, 1.5, 2.5, 0.0, 1.0, 0.0)
     m4_mul(vp, proj, v)
     let pl = floats(24)

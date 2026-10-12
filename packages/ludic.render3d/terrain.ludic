@@ -588,7 +588,7 @@ function terrain_sun_pass(render3d_st: mut Render3dState, w: int, h: int, depth:
     if st != GPU_FRAMEBUFFER_COMPLETE { terrain_say_sun_fbo(st) }
   }
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GPU_LESS)
+  gpu_depth_func(render3d_st, GPU_GREATER)
   gpu_depth_write(render3d_st, true)
   # the depth is the frame's own and was cleared with it; only the visibility is cleared
   gpu_clear_color(render3d_st, 1.0, 1.0, 1.0, 1.0)      # unshadowed where nothing is drawn
@@ -645,7 +645,7 @@ function terrain_draw(render3d_st: mut Render3dState) -> void {
   gpu_depth_test(render3d_st, true)
   # the prepass already laid this geometry's depth down: only the frontmost fragment of
   # each pixel has anything to shade, and it meets that depth exactly
-  gpu_depth_func(render3d_st, GPU_LEQUAL)
+  gpu_depth_func(render3d_st, GPU_GEQUAL)
   gpu_depth_write(render3d_st, true)
   terrain_bind_prog(render3d_st, render3d_st.ter_prog)
   terrain_bind_prog(render3d_st, render3d_st.ter_prog_far)
@@ -658,7 +658,7 @@ function terrain_draw(render3d_st: mut Render3dState) -> void {
   if render3d_st.ter_wire { gpu_wireframe(render3d_st, true) }
   cdlod_select(render3d_st, CD_LEVELS - 1, 0, 0)
   if render3d_st.ter_wire { gpu_wireframe(render3d_st, false) }
-  gpu_depth_func(render3d_st, GPU_LESS)
+  gpu_depth_func(render3d_st, GPU_GREATER)
   if render3d_st.r3d_debug and not render3d_st.ter_printed { render3d_st.ter_printed = true;  terrain_say_patches(render3d_st) }
 }
 
