@@ -102,7 +102,7 @@ coordinate from integers (`double(40000123) / 1000.0`) or from a computation, ne
 | world partition row, cell streaming scheduler | `wpart.ludic`, `wstream.ludic` | `tests/wstream_test.ludic` |
 | cell files, index, building kits | `cellfile.ludic` | `tests/cellfile_test.ludic` |
 | kits and cells baked from placed things (a city's buildings) | `kitbake.ludic`, `packages/ludic.city/tools/cells_bake_city.ludic` | `tests/kitbake_test.ludic`, `packages/ludic.city/tests/cells_bake_test.ludic` |
-| the ground from the studio's height tiles: data, bake, stream, draw | `tilemap.ludic`, `tilemap_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic`, `tools/terrain_bake.ludic` | `tests/tilemap_test.ludic` |
+| the ground from the studio's height tiles: data, bake (with the LOD lock), stream, draw | `tilemap.ludic`, `tilemap_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic`, `tools/terrain_bake.ludic` | `tests/tilemap_test.ludic`, `tests/tilemap_lock_test.ludic` |
 | the ground's land use: a class mask a tile and 8 tones | `tilemap_mask.ludic` | `tests/tilemap_mask_test.ludic`, `lab/shore_lab.ludic` + `lab/shore_check.py` |
 | still water: planes, meshes, the wet mask | `water.ludic`, `water_bodies.ludic`, `water_wet.ludic` | `tests/water_wet_test.ludic`, `lab/shore_lab.ludic` + `lab/shore_check.py` |
 | reversed depth | `fmath.ludic` `m4_perspective_rz`, `m4_ortho_rz` | `tests/depth_test.ludic` |
@@ -353,6 +353,20 @@ header holding the row's numbers so a file baked for other numbers is refused, n
 ```text
 ludic build packages/ludic.render3d/tools/terrain_bake.ludic
 ./build/terrain_bake "assets/maps/meridian/terrain/{tx}_{tz}.png" 1024 512 16 16 -8192 -8192 -40 600
+```
+
+**The LOD lock** keeps roads, pads and shores where level 0 has them at every distance. A coarse level's vertices stand on level 0's
+and take their heights, but its triangles cut corners between them: across a road in a cut they bridge bank to bank and bury it, at a
+shore they lift the sand over the water. Give the bake the land-use classes that lock (a comma list after `patch_texels`, then the mask
+pattern, default `<tiles>` with `.mask.png`, then the tolerance, default 0.005 m) and each patch level whose triangles would move a
+locked texel's sample by more than that is cut down where they do: cells split in four, as far as level 0's, along the locked
+ground's edges and bends, each cell a fan from its high-x low-z corner over its finer neighbours' corners (no crack; an uncut cell is
+the grid's own two triangles). Such a level is a locked mesh in the file (kind 1, version 2); a patch with nothing locked, or whose
+own grid keeps it, is written byte for byte as before, and unlocked ground is free (`tmb_lock_new`, `tmb_map_locked`;
+`tests/tilemap_lock_test.ludic` on `tests/maps/lock`):
+
+```text
+./build/terrain_bake "assets/maps/meridian/terrain/{tx}_{tz}.png" 1024 512 16 16 -8192 -8192 -40 600 0 "" 128 "3,4,5,1"
 ```
 
 Then `tilemap_draw.ludic`: `tmd_new(st, tm, radius)` and, each frame, `tmd_frame(st, td, cam_x, cam_z, origin_x, origin_z, radius)`: tile tables

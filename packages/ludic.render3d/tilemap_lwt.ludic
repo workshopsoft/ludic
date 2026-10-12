@@ -7,15 +7,19 @@
 # hung from the edge). Nothing is decided here: the heights, the levels and the normals were the bake's.
 #
 #   <tile>.lwt, little-endian
-#   0    magic "LWT1", version 1
+#   0    magic "LWT1", version 1 (2 when a level is a LOCKED mesh, below)
 #   8    res, patch_texels, patches (a tile's side), levels (lod_max + 1), tx, tz          (u32)
 #   32   tile_size, height_min, height_max, height_offset, origin_x, origin_z              (f32: the row's numbers)
 #   56   the table's offset (64), the entry size in words (4)
-#   64   the table: for pz, then px, then lod: { the level's offset in the file, its lowest height and its highest (f32), 0 }
+#   64   the table: for pz, then px, then lod: { the level's offset in the file, its lowest height and its highest (f32), kind }
 #   then each level: (cells + 1)^2 vertices, row by row along +z, each 4 bytes
 #        height u16 (0 = height_offset + height_min, 65535 = height_offset + height_max), nx u8, nz u8 (-1 .. 1 over 0 .. 255)
 #   cells = patch_texels >> lod; the vertex (a, b) is at the patch's corner + (a, b) * (patch size / cells), the normal's y whatever
-#   makes it a unit vector
+#   makes it a unit vector. That is a level of kind 0 (every version 1 file).
+#   A level of kind 1 is a LOCKED mesh (the terrain LOD lock, tilemap_bake.ludic): the level's grid with some cells cut down,
+#   as far as level 0's, where its triangles would move the ground under a locked texel (a road, a pad, a shore):
+#        nv, nt, np (u32); nv vertices { a u16, b u16 (on level 0's grid), height u16, nx u8, nz u8 }; nt triangles (3 u32
+#        vertex indices, wound as the grid's); np perimeter vertices (u32 indices) in the skirt's order (lwt_perimeter's)
 # ============================================================================
 numbers float
 
@@ -41,6 +45,12 @@ export property TmMeshes {
   ni: int = 0
   idx: []words = null               # the index list of each level, made once (the topology: a grid and a skirt)
   idx_n: words = null
+  locked: bool = false              # the level expanded last is a locked mesh: its own indices (lix) and vertex grid places
+  lix: words = null                 # a locked level's indices, grid and skirt
+  vga: words = null                 # a locked level's vertices: their place on level 0's grid (a, b)
+  vgb: words = null
+  per: words = null                 # a locked level's perimeter: its vertex indices in the skirt's order
+  np: int = 0
   stale: int = 0                    # files refused for another row's numbers or another cut
   no_file: int = 0
   reads: int = 0
@@ -63,7 +73,7 @@ export function lwt_head_put(b: []byte, tm: TileMap, tx: int, tz: int) -> void {
 
 # is this header a mesh of tile (tx, tz) baked for this map's numbers and this cut?
 export function lwt_head_ok(b: []byte, tm: TileMap, tx: int, tz: int) -> bool {
-  if len(b) < LWT_HEAD or lw_get32(b, 0) != LWT_MAGIC or lw_get32(b, 4) != 1 { return false }
+  if len(b) < LWT_HEAD or lw_get32(b, 0) != LWT_MAGIC or lw_get32(b, 4) < 1 or lw_get32(b, 4) > 2 { return false }
   if lw_get32(b, 8) != tm.res or lw_get32(b, 12) != tm.patch_texels or lw_get32(b, 16) != tm.patches or lw_get32(b, 20) != tm.lod_max + 1 { return false }
   if lw_get32(b, 24) != tx or lw_get32(b, 28) != tz or lw_get32(b, 56) != LWT_HEAD or lw_get32(b, 60) != LWT_ENTRY { return false }
   return lw_getf(b, 32) == tm.tile_size and lw_getf(b, 36) == tm.h_min and lw_getf(b, 40) == tm.h_max and lw_getf(b, 44) == tm.h_off and lw_getf(b, 48) == tm.origin_x and lw_getf(b, 52) == tm.origin_z
@@ -81,7 +91,7 @@ export function tmm_new(tm: TileMap, slots: int) -> TmMeshes {
   for t in 0 .. tm.cols * tm.rows { ms.slot_of[t] = -1 }
   ms.tab = words(ms.mslots * ms.entries * LWT_ENTRY)
   let c0 = tm.patch_texels
-  ms.raw = buffer((c0 + 1) * (c0 + 1) * 4)
+  ms.raw = buffer(lwt_locked_max(c0))
   ms.vbuf = floats(tmap_patch_verts(c0) * TM_VERT)
   ms.idx = new []words
   ms.idx_n = words(tm.lod_max + 1)
@@ -92,7 +102,19 @@ export function tmm_new(tm: TileMap, slots: int) -> TmMeshes {
     push(ms.idx, ix)
   }
   ms.ibuf = ms.idx[0]
+  ms.lix = words(lwt_locked_tris(c0) * 3)
+  ms.vga = words((c0 + 1) * (c0 + 1));  ms.vgb = words((c0 + 1) * (c0 + 1))
+  ms.per = words(4 * c0)
   return ms
+}
+
+# a locked level of a c0-texel patch at most: its triangles (the grid's, 2 V - B - 2 for V vertices, and the skirt's) and bytes
+export function lwt_locked_tris(c0: int) -> int { return 2 * (c0 + 1) * (c0 + 1) + 8 * c0 }
+export function lwt_locked_max(c0: int) -> int { return 12 + (c0 + 1) * (c0 + 1) * 8 + 2 * (c0 + 1) * (c0 + 1) * 12 + 4 * c0 * 4 }
+
+# is patch (px, pz)'s level `lod` of the tile in `slot` a locked mesh?
+export function tmm_locked(ms: TmMeshes, tm: TileMap, slot: int, px: int, pz: int, lod: int) -> bool {
+  return ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY + 3] == 1
 }
 
 # the grid index of perimeter point p of a c-cell patch: along the low-z edge, up the high-x edge, back along the high-z edge,
@@ -187,6 +209,8 @@ export function tmm_patch(ms: TmMeshes, tm: TileMap, slot: int, tx: int, tz: int
   free(path)
   if f == null { return false }
   file_seek(f, at, 0)
+  if tmm_locked(ms, tm, slot, px, pz, lod) { return tmm_locked_patch(ms, tm, f, tx, tz, px, pz, lod, lift) }
+  ms.locked = false
   let got = file_read(f, data_of(ms.raw), n1 * n1 * 4)
   file_close(f)
   if got != n1 * n1 * 4 { return false }
@@ -218,6 +242,75 @@ export function tmm_patch(ms: TmMeshes, tm: TileMap, slot: int, tx: int, tz: int
   ms.nv = sk + 4 * c
   ms.ibuf = ms.idx[lod]
   ms.ni = ms.idx_n[lod]
+  return true
+}
+
+# a locked level (kind 1) from the open file `f` (at its offset) into the scratch: its vertices where the bake put them on
+# level 0's grid, its own triangles, and the skirt hung from its perimeter. Closes `f`. Allocates nothing.
+function tmm_locked_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: int, px: int, pz: int, lod: int, lift: float) -> bool {
+  let c0 = tm.patch_texels
+  let raw = ms.raw
+  var got = file_read(f, data_of(raw), 12)
+  let nv = lw_get32(raw, 0)
+  let nt = lw_get32(raw, 4)
+  let np = lw_get32(raw, 8)
+  if got != 12 or nv < 3 or nv > (c0 + 1) * (c0 + 1) or np < 4 or np > 4 * c0 or nt < 1 or (nt + 2 * np) > lwt_locked_tris(c0) { file_close(f);  return false }
+  let body = nv * 8 + nt * 12 + np * 4
+  got = file_read(f, data_of(raw), body)
+  file_close(f)
+  if got != body { return false }
+  ms.reads += 1
+  let size = tmap_patch_size(tm)
+  let tex = size / float(c0)
+  let drop = 2.0 * size / float(c0 >> lod) + tm.skirt
+  let v = ms.vbuf
+  for i in 0 .. nv {
+    let o = i * 8
+    let a = int(raw[o]) | (int(raw[o + 1]) << 8)
+    let b = int(raw[o + 2]) | (int(raw[o + 3]) << 8)
+    let q = int(raw[o + 4]) | (int(raw[o + 5]) << 8)
+    if a > c0 or b > c0 { return false }
+    let nx = float(raw[o + 6]) / 255.0 * 2.0 - 1.0
+    let nz = float(raw[o + 7]) / 255.0 * 2.0 - 1.0
+    let ny = Math.sqrt(Math.max(1.0 - nx * nx - nz * nz, 0.0))
+    let x = float(a) * tex - size * 0.5
+    let z = float(b) * tex - size * 0.5
+    let wx = tmap_patch_cx(tm, tx, px) + x
+    let wz = tmap_patch_cz(tm, tz, pz) + z
+    ms.vga[i] = a;  ms.vgb[i] = b
+    lwt_vert(v, i, x, tm.h_off + tm.h_min + float(q) * tm.step - lift, z, nx, ny, nz, (wx - tm.origin_x) / tm.tile_size * ms.uv_per_tile, (wz - tm.origin_z) / tm.tile_size * ms.uv_per_tile)
+  }
+  let ix = ms.lix
+  var k = 0
+  let t0 = nv * 8
+  for t in 0 .. nt * 3 {
+    let vi = lw_get32(raw, t0 + t * 4)
+    if vi < 0 or vi >= nv { return false }
+    ix[k] = vi;  k += 1
+  }
+  let p0 = t0 + nt * 12
+  for p in 0 .. np {
+    let vi = lw_get32(raw, p0 + p * 4)
+    if vi < 0 or vi >= nv { return false }
+    ms.per[p] = vi
+  }
+  for p in 0 .. np {
+    let o = ms.per[p] * TM_VERT
+    lwt_vert(v, nv + p, v[o], v[o + 1] - drop, v[o + 2], v[o + 3], v[o + 4], v[o + 5], v[o + 6], v[o + 7])
+  }
+  for p in 0 .. np {
+    let q = (p + 1) % np
+    let g0 = ms.per[p]
+    let g1 = ms.per[q]
+    ix[k] = g0;  ix[k + 1] = g1;  ix[k + 2] = nv + p
+    ix[k + 3] = g1;  ix[k + 4] = nv + q;  ix[k + 5] = nv + p
+    k += 6
+  }
+  ms.nv = nv + np
+  ms.np = np
+  ms.ibuf = ix
+  ms.ni = k
+  ms.locked = true
   return true
 }
 

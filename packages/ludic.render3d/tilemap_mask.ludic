@@ -187,57 +187,32 @@ function tmk_need(render3d_st: mut Render3dState, td: TileDraw, slot: int, t: in
 }
 
 # Vertex colours for a patch level the reader just expanded (tmm_patch: ms.nv vertices, the grid then the skirt) into
-# td.cbuf, four floats a vertex. False when the tile has no mask (the patch draws the plain tint).
+# td.cbuf, four floats a vertex. False when the tile has no mask (the patch draws the plain tint). A locked level's vertices
+# (ms.locked: on level 0's grid where the bake put them) take the same footprint as the level's own corners.
 export function tmk_colours(render3d_st: mut Render3dState, td: TileDraw, slot: int, tx: int, tz: int, px: int, pz: int, lod: int) -> bool {
   let tm = td.tm
   let ms = td.ms
   let t = tz * tm.cols + tx
   let fk = tmk_need(render3d_st, td, slot, t, lod <= td.mk_fine)
   if fk == -2 { return false }
-  let c = tm.patch_texels >> lod
-  let n1 = c + 1
   let cs = 1 << lod                                    # texels a cell
-  let res = tm.res
-  let top = res - 1
   if td.cbuf == null { td.cbuf = floats(tmap_patch_verts(tm.patch_texels) * 4) }
   let out = td.cbuf
   let x0 = px * tm.patch_texels                        # the patch's first texel in the tile
   let z0 = pz * tm.patch_texels
-  let tone = td.mk_tone
-  let cf = td.mk_cf
-  let cn = res / cf
-  for b in 0 .. n1 {
-    for a in 0 .. n1 {
-      var r = 0.0;  var g = 0.0;  var bl = 0.0;  var w = 0.0
-      if fk >= 0 {
-        # the cs x cs texels centred on the corner (2 x 2 at level 0), clamped to the tile
-        let h = Math.max(cs / 2, 1)
-        let i0 = x0 + a * cs - h;  let j0 = z0 + b * cs - h
-        let o = fk * res * res
-        for j in j0 .. j0 + 2 * h {
-          let jj = min(max(j, 0), top)
-          for i in i0 .. i0 + 2 * h {
-            let ii = min(max(i, 0), top)
-            tmk_tone(td, int(td.fk_data[o + jj * res + ii]), tone, 0)
-            r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
-          }
-        }
-      } else {
-        # far: the coarse blocks the cell spans round the corner (at least 2 x 2)
-        let hc = Math.max(cs / cf / 2, 1)
-        let ci = (x0 + a * cs) / cf;  let cj = (z0 + b * cs) / cf
-        for j in cj - hc .. cj + hc {
-          let jj = min(max(j, 0), cn - 1)
-          for i in ci - hc .. ci + hc {
-            let ii = min(max(i, 0), cn - 1)
-            tmk_tone(td, int(td.mk_coarse[slot * cn * cn + jj * cn + ii]), tone, 0)
-            r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
-          }
-        }
-      }
-      let o = (b * n1 + a) * 4
-      out[o] = r / w;  out[o + 1] = g / w;  out[o + 2] = bl / w;  out[o + 3] = 1.0
+  if ms.locked {
+    let sk = ms.nv - ms.np
+    for v in 0 .. sk { tmk_corner(td, fk, slot, x0 + ms.vga[v], z0 + ms.vgb[v], cs, out, v * 4) }
+    for p in 0 .. ms.np {
+      let e = ms.per[p]
+      for k in 0 .. 4 { out[(sk + p) * 4 + k] = out[e * 4 + k] }
     }
+    return true
+  }
+  let c = tm.patch_texels >> lod
+  let n1 = c + 1
+  for b in 0 .. n1 {
+    for a in 0 .. n1 { tmk_corner(td, fk, slot, x0 + a * cs, z0 + b * cs, cs, out, (b * n1 + a) * 4) }
   }
   # the skirt hangs from the edge: its vertices wear their edge vertex's colour
   let sk = n1 * n1
@@ -246,6 +221,43 @@ export function tmk_colours(render3d_st: mut Render3dState, td: TileDraw, slot: 
     for k in 0 .. 4 { out[(sk + p) * 4 + k] = out[e * 4 + k] }
   }
   return true
+}
+
+# the colour of the corner at texel (ci, cj) of the tile for cells of cs texels into out[o .. o + 3]: the mean tone of the
+# cs x cs texels centred on it (2 x 2 at level 0) from the full mask `fk`, or (fk < 0, far) of the coarse blocks round it
+function tmk_corner(td: TileDraw, fk: int, slot: int, ci: int, cj: int, cs: int, out: floats, o: int) -> void {
+  let tm = td.tm
+  let res = tm.res
+  let top = res - 1
+  let tone = td.mk_tone
+  var r = 0.0;  var g = 0.0;  var bl = 0.0;  var w = 0.0
+  if fk >= 0 {
+    let h = Math.max(cs / 2, 1)
+    let i0 = ci - h;  let j0 = cj - h
+    let fo = fk * res * res
+    for j in j0 .. j0 + 2 * h {
+      let jj = min(max(j, 0), top)
+      for i in i0 .. i0 + 2 * h {
+        let ii = min(max(i, 0), top)
+        tmk_tone(td, int(td.fk_data[fo + jj * res + ii]), tone, 0)
+        r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
+      }
+    }
+  } else {
+    let cf = td.mk_cf
+    let cn = res / cf
+    let hc = Math.max(cs / cf / 2, 1)
+    let bi = ci / cf;  let bj = cj / cf
+    for j in bj - hc .. bj + hc {
+      let jj = min(max(j, 0), cn - 1)
+      for i in bi - hc .. bi + hc {
+        let ii = min(max(i, 0), cn - 1)
+        tmk_tone(td, int(td.mk_coarse[slot * cn * cn + jj * cn + ii]), tone, 0)
+        r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
+      }
+    }
+  }
+  out[o] = r / w;  out[o + 1] = g / w;  out[o + 2] = bl / w;  out[o + 3] = 1.0
 }
 
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")

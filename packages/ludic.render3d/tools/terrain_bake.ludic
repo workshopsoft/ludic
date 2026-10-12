@@ -3,13 +3,17 @@
 # the game streams (tilemap_draw.ludic). The game makes none of it.
 #
 #   ludic build packages/ludic.render3d/tools/terrain_bake.ludic
-#   ./build/terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels]
+#   ./build/terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels] [lock] [mask] [tol]
 #
 #   <tiles>          the row's `tiles` pattern, with {tx} and {tz} ("assets/maps/meridian/terrain/{tx}_{tz}.png")
 #   tile_size ... height_max   the row's fields of those names (tile_cols and tile_rows for <cols> and <rows>)
 #   height_offset    the row's offset, default 0
 #   out              where the files go, with {tx} and {tz}: default <tiles> with .lwt for .png (the game's default, or the row's `tile_mesh`)
 #   patch_texels     the patch size in texels, default 128 (the game's tmap_patches must say the same: the file records its cut)
+#   lock             the land-use classes no level may move the ground under, comma separated ("3,4,5,1": road, sidewalk,
+#                    pad, shore in the game's numbering), default none: the LOD lock (tilemap_bake.ludic TmLock)
+#   mask             the land-use mask tiles, {tx} and {tz}: default <tiles> with .mask.png for .png (tilemap_mask.ludic)
+#   tol              metres a locked texel may move at any level, default 0.005
 #
 # It reads the PNGs and writes files only: no window, no device, nothing of the game runs. A bake over a whole map is heavy
 # work (every tile is read with its neighbours) and is a person's to start, or a package.ludic `hook before build`:
@@ -21,16 +25,24 @@ import "ludic.render3d/r3d.ludic"
 program TerrainBake {
   numbers float
 
-  function num(i: int, fallback: float) -> float {
+  # argument i, "" when it was not given (reading past the count is out of bounds)
+  function given(i: int) -> string {
+    if i >= Os.arg_count() { return "" }
     let s = Os.arg(i)
-    if s == null or s == "" { return fallback }
+    if s == null { return "" }
+    return s
+  }
+
+  function num(i: int, fallback: float) -> float {
+    let s = given(i)
+    if s == "" { return fallback }
     return Text.to_float(s)
   }
 
   handler Boot(render3d_st: mut Render3dState) phase Start {
-    let tiles = Os.arg(1)
-    if tiles == null or Os.arg(9) == null {
-      print("usage: terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels]")
+    let tiles = given(1)
+    if tiles == "" or given(9) == "" {
+      print("usage: terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels] [lock classes] [mask] [tol]")
       exit(2)
       return
     }
@@ -43,10 +55,22 @@ program TerrainBake {
     }
     let tm = tmap_new(tiles, num(2, 0.0), res, int(num(4, 0.0)), int(num(5, 0.0)), num(6, 0.0), num(7, 0.0), num(8, 0.0), num(9, 0.0), num(10, 0.0), 0.0)
     tmap_patches(tm, int(num(12, 128.0)))
-    var out = Os.arg(11)
-    if out == null or out == "" { out = tm.mesh_pattern }
-    let n = tmb_map(render3d_st, tm, out)
+    var out = given(11)
+    if out == "" { out = tm.mesh_pattern }
+    var lock: TmLock = null
+    let classes = given(13)
+    if classes != "" {
+      let cs = new []int
+      let parts = Text.split(classes, ",")
+      for i in 0 .. len(parts) { if Text.trim(parts[i]) != "" { push(cs, int(Text.to_float(Text.trim(parts[i])))) } }
+      var mask = given(14)
+      if mask == "" { mask = tmap_mask_pattern_of(tiles) }
+      lock = tmb_lock_new(mask, cs)
+      lock.tol = num(15, 0.005)
+    }
+    let n = tmb_map_locked(render3d_st, tm, out, lock)
     print(`terrain_bake: {n} tiles baked ({tm.patches} x {tm.patches} patches of {tm.patch_texels} texels, {tm.lod_max + 1} levels) into {out}; {tm.no_file} tiles have no usable PNG`)
+    if lock != null { print(`terrain_bake: lock: {lock.locked} locked texels; {lock.locked_levels} patch levels cut down where they would move one ({lock.tris} triangles where their own grids had {lock.tris_own})`) }
     if n == 0 { exit(1) }
     quit()
   }

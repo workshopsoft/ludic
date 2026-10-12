@@ -14,19 +14,292 @@ function tmb_q(tm: TileMap, h: float) -> int { return min(max(int(Math.floor((h 
 # a normal component -1 .. 1 as a byte
 function tmb_n8(v: float) -> int { return min(max(int(Math.floor((v * 0.5 + 0.5) * 255.0 + 0.5)), 0), 255) }
 
+# The LOD LOCK: a tile's land-use mask (tilemap_mask.ludic: one class a texel on the height tiles' grid) and the classes
+# under which no level may move the ground (a road, a sidewalk, a pad, a shoreline: the game's numbers, a bake argument).
+# A coarse level's vertices stand on level 0 vertices and take their heights, but between them its triangles cut corners:
+# across a road in a cut they bridge from bank to bank and bury the road, at a shore they lift the sand over the water.
+# With a lock, a patch level whose triangles would move a locked texel (its sample, at its centre) more than `tol` from
+# level 0 is cut down where they do: each such cell is split in four, as far as level 0's cells, and the level is written
+# as a LOCKED mesh (tilemap_lwt.ludic, kind 1): the level's cells where they keep the ground, finer cells along the locked
+# ground's edges and bends, every cell a fan from its high-x low-z corner over the corners of its finer neighbours (so the
+# mesh has no crack and an uncut cell is exactly the grid's two triangles). A patch with no locked texel, or whose own grid
+# keeps them all, is written as before, byte for byte. Unlocked ground is free.
+export property TmLock {
+  pattern: string = ""              # the mask tiles, {tx} and {tz} (tmap_mask_pattern_of the tiles' pattern by default)
+  on: words = null                  # 256: 1 for a class that locks
+  tol: float = 0.005                # metres a locked texel may move (half the 1 cm promise)
+  bits: []byte = null               # the tile being baked: 1 a locked texel (res x res), null when it has no mask
+  scratch: []byte = null            # the decode's buffer, kept
+  h0: floats = null                 # a patch's level 0 heights, quantized ((patch_texels + 1)^2)
+  here: words = null                # a level being cut: 1 for a level 0 grid point that is a vertex
+  vid: words = null                 # and its vertex index once written
+  lx: []int = null                  # its cells: corner (x, z) on level 0's grid and side, 0 for a cell split away
+  lz: []int = null
+  ls: []int = null
+  ring: words = null                # a cell's boundary points, one cell at a time (grid indices)
+  locked_levels: int = 0            # patch levels written as locked meshes, over the bake
+  locked: int = 0                   # locked texels seen, over the bake
+  tris: int = 0                     # grid triangles of the locked levels written, over the bake
+  tris_own: int = 0                 # what those levels had as plain grids
+}
+
+# a lock on mask tiles `pattern` for the classes in `classes` (each 0 .. 255)
+@alloc_ok("a bake: the lock's tables, once")
+export function tmb_lock_new(pattern: string, classes: []int) -> TmLock {
+  let k = new TmLock
+  k.pattern = pattern
+  k.on = words(256)
+  for c in 0 .. 256 { k.on[c] = 0 }
+  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { k.on[classes[i]] = 1 } }
+  k.lx = new []int;  k.lz = new []int;  k.ls = new []int
+  return k
+}
+
+# tile (tx, tz)'s locked texels into k.bits: false (and bits null) when it has no mask or one of another size
+@alloc_ok("a bake: the mask's decode and bits, once a tile")
+export function tmb_lock_read(render3d_st: mut Render3dState, tm: TileMap, k: TmLock, tx: int, tz: int) -> bool {
+  k.bits = null
+  if k.pattern == "" { return false }
+  let path = Text.replace(Text.replace(k.pattern, "{tx}", string(tx)), "{tz}", string(tz))
+  if not Fs.exists(path) { return false }
+  let px = png_decode_bytes(render3d_st, path, k.scratch)
+  if px == null { return false }
+  k.scratch = px
+  let ch = render3d_st.tex_channels
+  let bps = render3d_st.tex_depth / 8
+  if render3d_st.tex_w != tm.res or render3d_st.tex_h != tm.res or ch < 1 or ch > 4 or bps < 1 or bps > 2 {
+    print(`tilemap: {path} is {render3d_st.tex_w} x {render3d_st.tex_h}: the row says {tm.res} x {tm.res}; the tile is baked unlocked`)
+    return false
+  }
+  let n = tm.res * tm.res
+  let step = ch * bps
+  let bits = buffer(n)
+  for i in 0 .. n { bits[i] = k.on[int(px[i * step])] }
+  k.bits = bits
+  return true
+}
+
+# is texel (i, j) of patch (px, pz) locked?
+function tmb_is_locked(tm: TileMap, k: TmLock, px: int, pz: int, i: int, j: int) -> bool {
+  return k.bits[(pz * tm.patch_texels + j) * tm.res + px * tm.patch_texels + i] != 0
+}
+
+# cell `c`'s boundary points into k.ring, from its high-x low-z corner up the high-x edge, back along the high-z edge, down
+# the low-x edge and along the low-z edge (every grid point on an edge that is a vertex); how many
+function tmb_ring(k: TmLock, n0: int, c: int) -> int {
+  let x0 = k.lx[c];  let z0 = k.lz[c];  let s = k.ls[c]
+  var n = 0
+  for t in 0 .. s { let g = (z0 + t) * n0 + x0 + s;  if k.here[g] == 1 { k.ring[n] = g;  n += 1 } }
+  for t in 0 .. s { let g = (z0 + s) * n0 + x0 + s - t;  if k.here[g] == 1 { k.ring[n] = g;  n += 1 } }
+  for t in 0 .. s { let g = (z0 + s - t) * n0 + x0;  if k.here[g] == 1 { k.ring[n] = g;  n += 1 } }
+  for t in 0 .. s { let g = z0 * n0 + x0 + t;  if k.here[g] == 1 { k.ring[n] = g;  n += 1 } }
+  return n
+}
+
+# twice the signed area of the triangle of grid points g0 g1 g2 in (x, z): negative is the grid's winding, 0 degenerate
+function tmb_cross(n0: int, g0: int, g1: int, g2: int) -> int {
+  let ax = g1 % n0 - g0 % n0;  let az = g1 / n0 - g0 / n0
+  let bx = g2 % n0 - g0 % n0;  let bz = g2 / n0 - g0 / n0
+  return ax * bz - az * bx
+}
+
+# the height of the fan over a ring of n points at (u, v) (level 0 grid units), or -1e9 when the point is in none of its
+# triangles
+function tmb_fan_at(k: TmLock, n0: int, n: int, u: float, v: float) -> float {
+  let g0 = k.ring[0]
+  let x0 = float(g0 % n0);  let z0 = float(g0 / n0)
+  for i in 1 .. n - 1 {
+    let g1 = k.ring[i];  let g2 = k.ring[i + 1]
+    if tmb_cross(n0, g0, g1, g2) == 0 { continue }
+    let x1 = float(g1 % n0);  let z1 = float(g1 / n0)
+    let x2 = float(g2 % n0);  let z2 = float(g2 / n0)
+    let d = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2)
+    let w0 = ((z1 - z2) * (u - x2) + (x2 - x1) * (v - z2)) / d
+    let w1 = ((z2 - z0) * (u - x2) + (x0 - x2) * (v - z2)) / d
+    let w2 = 1.0 - w0 - w1
+    if w0 >= -0.000001 and w1 >= -0.000001 and w2 >= -0.000001 { return w0 * k.h0[g0] + w1 * k.h0[g1] + w2 * k.h0[g2] }
+  }
+  return -1000000000.0
+}
+
+# does cell `c`, as a fan over its ring, move a locked texel of patch (px, pz) more than tol from level 0?
+function tmb_cell_moves(tm: TileMap, k: TmLock, px: int, pz: int, n0: int, c: int) -> bool {
+  let x0 = k.lx[c];  let z0 = k.lz[c];  let s = k.ls[c]
+  var n = -1
+  for j in z0 .. z0 + s {
+    for i in x0 .. x0 + s {
+      if not tmb_is_locked(tm, k, px, pz, i, j) { continue }
+      if n < 0 { n = tmb_ring(k, n0, c) }
+      # level 0 at the texel's centre: on its cell's diagonal, from (i + 1, j) to (i, j + 1)
+      let want = (k.h0[j * n0 + i + 1] + k.h0[(j + 1) * n0 + i]) * 0.5
+      let got = tmb_fan_at(k, n0, n, float(i) + 0.5, float(j) + 0.5)
+      if Math.abs(got - want) > k.tol { return true }
+    }
+  }
+  return false
+}
+
+# Cut patch (px, pz)'s level `lod` for the lock: its cells in k.lx/lz/ls and its vertices in k.here. True when a cell was
+# split (the level is a locked mesh), false when the level's own grid keeps every locked texel (or none is locked).
+@alloc_ok("a bake: a patch's heights and the cut's tables, made once and kept with the lock")
+function tmb_lock_cut(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int, lod: int) -> bool {
+  if k == null or k.bits == null or lod == 0 { return false }
+  let pt = tm.patch_texels
+  let n0 = pt + 1
+  var any = false
+  for j in 0 .. pt { for i in 0 .. pt { if tmb_is_locked(tm, k, px, pz, i, j) { any = true } } }
+  if not any { return false }
+  if k.h0 == null or len(k.h0) < n0 * n0 {
+    k.h0 = floats(n0 * n0);  k.here = words(n0 * n0);  k.vid = words(n0 * n0);  k.ring = words(4 * pt + 4)
+  }
+  let ps = tmap_patch_size(tm)
+  let cell = ps / float(pt)
+  let xw = tmap_patch_cx(tm, tx, px) - ps * 0.5
+  let zw = tmap_patch_cz(tm, tz, pz) - ps * 0.5
+  for j in 0 .. n0 {
+    for i in 0 .. n0 { k.h0[j * n0 + i] = tm.base + float(tmb_q(tm, tmap_height(tm, xw + float(i) * cell, zw + float(j) * cell))) * tm.step }
+  }
+  for g in 0 .. n0 * n0 { k.here[g] = 0 }
+  List.clear(k.lx);  List.clear(k.lz);  List.clear(k.ls)
+  let s0 = 1 << lod
+  for b in 0 .. pt / s0 {
+    for a in 0 .. pt / s0 {
+      push(k.lx, a * s0);  push(k.lz, b * s0);  push(k.ls, s0)
+      k.here[b * s0 * n0 + a * s0] = 1;  k.here[b * s0 * n0 + (a + 1) * s0] = 1
+      k.here[(b + 1) * s0 * n0 + a * s0] = 1;  k.here[(b + 1) * s0 * n0 + (a + 1) * s0] = 1
+    }
+  }
+  # split every cell that moves a locked texel, again until none does: a split puts vertices on its neighbours' edges, so they
+  # are looked at again. A cell of one texel is level 0's own two triangles and moves nothing.
+  var split = false
+  var again = true
+  while again {
+    again = false
+    let n = len(k.ls)
+    for c in 0 .. n {
+      let s = k.ls[c]
+      if s <= 1 { continue }
+      if not tmb_cell_moves(tm, k, px, pz, n0, c) { continue }
+      let x0 = k.lx[c];  let z0 = k.lz[c];  let h = s / 2
+      k.ls[c] = h
+      push(k.lx, x0 + h);  push(k.lz, z0);  push(k.ls, h)
+      push(k.lx, x0);  push(k.lz, z0 + h);  push(k.ls, h)
+      push(k.lx, x0 + h);  push(k.lz, z0 + h);  push(k.ls, h)
+      k.here[z0 * n0 + x0 + h] = 1;  k.here[(z0 + h) * n0 + x0] = 1;  k.here[(z0 + h) * n0 + x0 + h] = 1
+      k.here[(z0 + h) * n0 + x0 + s] = 1;  k.here[(z0 + s) * n0 + x0 + h] = 1
+      split = true
+      again = true
+    }
+  }
+  return split
+}
+
+# the bytes of the locked level k holds (tmb_lock_cut said true), written at b[at ..] when b is not null; how many.
+# Vertices in grid order with their height and normal (central differences a level cell apart, as the plain grid's), the
+# cells' fans wound as the grid's triangles, the perimeter in the skirt's order; the table entry at `e` gets the lowest and
+# highest height and kind 1.
+function tmb_locked_bytes(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int, lod: int, b: []byte, at: int, e: int) -> int {
+  let pt = tm.patch_texels
+  let n0 = pt + 1
+  var nv = 0
+  for g in 0 .. n0 * n0 { if k.here[g] == 1 { k.vid[g] = nv;  nv += 1 } else { k.vid[g] = -1 } }
+  var nt = 0
+  for c in 0 .. len(k.ls) {
+    let n = tmb_ring(k, n0, c)
+    for i in 1 .. n - 1 { if tmb_cross(n0, k.ring[0], k.ring[i], k.ring[i + 1]) != 0 { nt += 1 } }
+  }
+  var np = 0
+  for p in 0 .. 4 * pt { if k.here[lwt_perimeter(pt, p)] == 1 { np += 1 } }
+  let size = 12 + nv * 8 + nt * 12 + np * 4
+  if b == null { return size }
+  lw_put32(b, at, nv);  lw_put32(b, at + 4, nt);  lw_put32(b, at + 8, np)
+  let ps = tmap_patch_size(tm)
+  let tex = ps / float(pt)
+  let cell = ps / float(pt >> lod)
+  let xw = tmap_patch_cx(tm, tx, px) - ps * 0.5
+  let zw = tmap_patch_cz(tm, tz, pz) - ps * 0.5
+  var o = at + 12
+  var y0 = 1000000000.0
+  var y1 = -1000000000.0
+  for g in 0 .. n0 * n0 {
+    if k.here[g] != 1 { continue }
+    let a = g % n0;  let bb = g / n0
+    let x = xw + float(a) * tex
+    let z = zw + float(bb) * tex
+    let gx = (tmap_height(tm, x + cell, z) - tmap_height(tm, x - cell, z)) / (2.0 * cell)
+    let gz = (tmap_height(tm, x, z + cell) - tmap_height(tm, x, z - cell)) / (2.0 * cell)
+    let l = Math.sqrt(gx * gx + 1.0 + gz * gz)
+    let q = tmb_q(tm, tmap_height(tm, x, z))
+    let hq = tm.base + float(q) * tm.step
+    y0 = Math.min(y0, hq);  y1 = Math.max(y1, hq)
+    b[o] = a & 255;  b[o + 1] = a >> 8;  b[o + 2] = bb & 255;  b[o + 3] = bb >> 8
+    b[o + 4] = q & 255;  b[o + 5] = q >> 8
+    b[o + 6] = tmb_n8(-gx / l);  b[o + 7] = tmb_n8(-gz / l)
+    o += 8
+  }
+  for c in 0 .. len(k.ls) {
+    let n = tmb_ring(k, n0, c)
+    let g0 = k.ring[0]
+    for i in 1 .. n - 1 {
+      let g1 = k.ring[i];  let g2 = k.ring[i + 1]
+      let w = tmb_cross(n0, g0, g1, g2)
+      if w == 0 { continue }
+      # wound as the grid's triangles are (negative in x, z)
+      if w > 0 { lw_put32(b, o, k.vid[g0]);  lw_put32(b, o + 4, k.vid[g2]);  lw_put32(b, o + 8, k.vid[g1]) }
+      else { lw_put32(b, o, k.vid[g0]);  lw_put32(b, o + 4, k.vid[g1]);  lw_put32(b, o + 8, k.vid[g2]) }
+      o += 12
+    }
+  }
+  for p in 0 .. 4 * pt {
+    let g = lwt_perimeter(pt, p)
+    if k.here[g] == 1 { lw_put32(b, o, k.vid[g]);  o += 4 }
+  }
+  lw_putf(b, e + 4, y0);  lw_putf(b, e + 8, y1)
+  lw_put32(b, e + 12, 1)
+  k.tris += nt
+  return size
+}
+
 # Tile (tx, tz)'s file as bytes, sampled from the tiles in the cache (the tile and its neighbours must be loaded: tmap_ensure);
 # every patch, every level: heights where tmap_height reads the ground (so what is drawn is what a body stands on), normals from
 # central differences one cell apart. null when the tile has no file of its own.
+export function tmb_tile(tm: TileMap, tx: int, tz: int) -> []byte { return tmb_tile_locked(tm, tx, tz, null) }
+
+# The same, with a lock (null: none; its bits read for this tile by tmb_lock_read, or null when the tile has no mask): a level
+# whose own grid would move a locked texel is written as a locked mesh (and the file is version 2).
 @alloc_ok("a bake: the file's bytes are made once a tile")
-export function tmb_tile(tm: TileMap, tx: int, tz: int) -> []byte {
+export function tmb_tile_locked(tm: TileMap, tx: int, tz: int, k: TmLock) -> []byte {
   if tm.slot_of[tz * tm.cols + tx] < 0 { return null }
   let levels = tm.lod_max + 1
   let entries = tm.patches * tm.patches * levels
+  # first the sizes: a plain level is its grid, a locked one what its cut holds
+  let sizes = words(entries)
+  let cut = words(entries)
+  var any = false
   var size = LWT_HEAD + entries * LWT_ENTRY * 4
-  for l in 0 .. levels { let c = tm.patch_texels >> l;  size += tm.patches * tm.patches * (c + 1) * (c + 1) * 4 }
+  for pz in 0 .. tm.patches {
+    for px in 0 .. tm.patches {
+      if k != null and k.bits != null {
+        for j in 0 .. tm.patch_texels { for i in 0 .. tm.patch_texels { if tmb_is_locked(tm, k, px, pz, i, j) { k.locked += 1 } } }
+      }
+      for lod in 0 .. levels {
+        let e = lwt_entry(tm, px, pz, lod)
+        let c = tm.patch_texels >> lod
+        cut[e] = 0
+        sizes[e] = (c + 1) * (c + 1) * 4
+        if tmb_lock_cut(tm, k, tx, tz, px, pz, lod) {
+          cut[e] = 1
+          sizes[e] = tmb_locked_bytes(tm, k, tx, tz, px, pz, lod, null, 0, 0)
+          any = true
+        }
+        size += sizes[e]
+      }
+    }
+  }
   let b = buffer(size)
   for i in 0 .. size { b[i] = 0 }
   lwt_head_put(b, tm, tx, tz)
+  if any { lw_put32(b, 4, 2) }
   var at = LWT_HEAD + entries * LWT_ENTRY * 4
   let ps = tmap_patch_size(tm)
   for pz in 0 .. tm.patches {
@@ -36,8 +309,17 @@ export function tmb_tile(tm: TileMap, tx: int, tz: int) -> []byte {
       for lod in 0 .. levels {
         let c = tm.patch_texels >> lod
         let cell = ps / float(c)
-        let e = LWT_HEAD + lwt_entry(tm, px, pz, lod) * LWT_ENTRY * 4
+        let en = lwt_entry(tm, px, pz, lod)
+        let e = LWT_HEAD + en * LWT_ENTRY * 4
         lw_put32(b, e, at)
+        if cut[en] == 1 {
+          # cut again (the cut of one level is kept at a time) and written
+          tmb_lock_cut(tm, k, tx, tz, px, pz, lod)
+          at += tmb_locked_bytes(tm, k, tx, tz, px, pz, lod, b, at, e)
+          k.locked_levels += 1
+          k.tris_own += 2 * c * c
+          continue
+        }
         var y0 = 1000000000.0
         var y1 = -1000000000.0
         for j in 0 .. c + 1 {
@@ -60,13 +342,19 @@ export function tmb_tile(tm: TileMap, tx: int, tz: int) -> []byte {
       }
     }
   }
+  free(sizes)
+  free(cut)
   return b
 }
 
 # Every tile of the map that has a PNG baked into `pattern` ("{tx}" and "{tz}": tm.mesh_pattern is the default); how many files
 # were written. Each tile's neighbours are read first (the pool is made a tile and its eight for this), and the files' folder made.
+export function tmb_map(render3d_st: mut Render3dState, tm: TileMap, pattern: string) -> int { return tmb_map_locked(render3d_st, tm, pattern, null) }
+
+# The same with the LOD lock `k` (null: none): each tile's mask is read before its file is made; a tile with no mask is baked
+# unlocked.
 @alloc_ok("a bake: the pool, the tiles and the files")
-export function tmb_map(render3d_st: mut Render3dState, tm: TileMap, pattern: string) -> int {
+export function tmb_map_locked(render3d_st: mut Render3dState, tm: TileMap, pattern: string, k: TmLock) -> int {
   tmap_pool(tm, 12)
   let was = tm.mesh_pattern
   tm.mesh_pattern = pattern
@@ -75,7 +363,8 @@ export function tmb_map(render3d_st: mut Render3dState, tm: TileMap, pattern: st
     for tx in 0 .. tm.cols {
       tm.clock += 1
       tmap_ensure(render3d_st, tm, tmap_patch_cx(tm, tx, 0) - tmap_patch_size(tm) * 0.5 + tm.tile_size * 0.5, tmap_patch_cz(tm, tz, 0) - tmap_patch_size(tm) * 0.5 + tm.tile_size * 0.5, tm.tile_size * 0.75)
-      let b = tmb_tile(tm, tx, tz)
+      if k != null { tmb_lock_read(render3d_st, tm, k, tx, tz) }
+      let b = tmb_tile_locked(tm, tx, tz, k)
       if b == null { continue }
       let path = tmap_mesh_path(tm, tx, tz)
       Fs.mkdir(Path.dir(path))
