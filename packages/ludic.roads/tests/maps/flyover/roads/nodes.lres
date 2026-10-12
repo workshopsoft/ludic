@@ -1,0 +1,7 @@
+# a ground road crossing under a flyover, a ramp with two heights, and a road with one anchor that has a height
+a { x: 0.0, z: 0.0 }
+b { x: 200.0, z: 0.0 }
+c { x: 100.0, z: -100.0 }
+d { x: 100.0, z: 100.0 }
+e { x: 400.0, z: 0.0 }
+f { x: 600.0, z: 0.0 }

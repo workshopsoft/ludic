@@ -1,0 +1,7 @@
+# ab has no heights: it follows the ground. cd is the flyover over it (8 m up in the middle, 0 at its ends, where
+# the ground under ab at x 100 is 1 m, the test's ground being x / 100). be climbs from 2 m to 10 m. ef has a height at
+# its middle anchor only
+ab { from: "a", to: "b", speed: 15.0, name: "Ground Road" }
+cd { from: "c", to: "d", speed: 15.0, pts: [{ x: 100.0, z: 0.0 }], level: "structure", heights: [{ y: 0.0 }, { y: 8.0 }, { y: 0.0 }], name: "Flyover" }
+be { from: "b", to: "e", speed: 15.0, heights: [{ y: 2.0 }, { y: 10.0 }] }
+ef { from: "e", to: "f", speed: 15.0, pts: [{ x: 500.0, z: 0.0 }], heights: [{ free: true }, { y: 5.0 }, { free: true }] }

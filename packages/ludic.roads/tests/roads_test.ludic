@@ -11,6 +11,7 @@ program RoadsTest {
     frame: int = 0
     placed: int = 0
     last_id: int = 0
+    last_y: float = 0.0
     block_id: int = -1
     block_x: float = 1000000.0
     sealed: bool = false
@@ -21,6 +22,7 @@ program RoadsTest {
   function fake_place(roads_test_st: mut RoadsTestState, id: int, kind: int, x: float, y: float, z: float, yaw: float, speed: float) -> void {
     roads_test_st.placed += 1
     roads_test_st.last_id = id
+    roads_test_st.last_y = y
   }
   function fake_probe(roads_test_st: RoadsTestState, id: int, x: float, z: float, yaw: float, look: float) -> float {
     let d = roads_test_st.block_x - x
@@ -420,7 +422,7 @@ program RoadsTest {
     expect_eq(roads_spawn(roads_st, 2 * ab, 500.0, 0, RCK_CAR, -1, false), -1)
     expect(roads_spawn(roads_st, 2 * ab, 5.0, 0, RCK_CAR, -1, false) >= 0)
     expect_eq(roads_spawn(roads_st, 2 * ab, 8.0, 0, RCK_CAR, -1, false), -1)         # no room: a car's length and two metres
-    expect_eq(roads_spawn(roads_st, 2 * ab, 30.0, 0, RCK_CAR, 2 * ab + 1, false), -1) # no way to a road that is not there
+    expect_eq(roads_spawn(roads_st, 2 * ab, 30.0, 0, RCK_CAR, 2 * ab + 1, false), -1)  # no way to a road that is not there
     q_clear(roads_facts(roads_st))
     expect(load_map(roads_st, nodes, segs, turns, "ring"))
     expect_eq(roads_car_count(roads_st), 0)
@@ -567,6 +569,245 @@ program RoadsTest {
     expect_eq(segs.rows[road_segs_find(segs, "pa")].name, "Plaza Street")
     expect_eq(segs.rows[road_segs_find(segs, "plain")].name, "")
     expect(near(segs.rows[road_segs_find(segs, "plain")].taper, 1.0, 0.0001))
+  }
+
+  test "the level and the design heights of a road, between its anchors, held beyond the ones that have one" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "flyover"))
+    let ab = roads_seg_find(roads_st, "ab")
+    let cd = roads_seg_find(roads_st, "cd")
+    let be = roads_seg_find(roads_st, "be")
+    let ef = roads_seg_find(roads_st, "ef")
+    expect_eq(roads_seg_level(roads_st, ab), ROAD_LEVEL_GROUND)
+    expect_eq(roads_seg_level(roads_st, cd), ROAD_LEVEL_STRUCTURE)
+    expect(not roads_seg_designed(roads_st, ab))
+    expect(roads_seg_designed(roads_st, cd))
+    # no design: the game's ground under it (the test's ground is x / 100)
+    expect(near(roads_seg_height(roads_st, ab, 150.0), 1.5, 0.001))
+    # the flyover: 0 at its ends, 8 in the middle, straight between
+    expect(near(roads_seg_height(roads_st, cd, 0.0), 0.0, 0.001))
+    expect(near(roads_seg_height(roads_st, cd, roads_seg_length(roads_st, cd)), 0.0, 0.001))
+    let half = roads_seg_length(roads_st, cd) * 0.5
+    expect(near(roads_seg_height(roads_st, cd, half), 8.0, 0.05))
+    expect(near(roads_seg_height(roads_st, cd, half * 0.5), 4.0, 0.2))
+    # a ramp: 2 m to 10 m over 200 m
+    expect(near(roads_seg_height(roads_st, be, 0.0), 2.0, 0.001))
+    expect(near(roads_seg_height(roads_st, be, 100.0), 6.0, 0.01))
+    expect(near(roads_seg_height(roads_st, be, 200.0), 10.0, 0.001))
+    # one anchor with a height: every point of the road is at it
+    expect(near(roads_seg_height(roads_st, ef, 0.0), 5.0, 0.001))
+    expect(near(roads_seg_height(roads_st, ef, 150.0), 5.0, 0.001))
+    expect(near(roads_seg_height(roads_st, ef, 200.0), 5.0, 0.001))
+  }
+
+  test "the nearest road at a height: under a flyover the road below, on it the road above; with no height the first" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "flyover"))
+    let ab = roads_seg_find(roads_st, "ab")
+    let cd = roads_seg_find(roads_st, "cd")
+    # where they cross, (100, 0): ab is at 1 m (the ground), the deck at 8 m
+    expect_eq(roads_nearest_y(roads_st, 100.0, 1.0, 0.5), ab)
+    expect(near(roads_near_y(roads_st), 1.0, 0.01))
+    expect(near(roads_near_d(roads_st), 0.5, 0.01))
+    expect(near(roads_near_s(roads_st), 100.0, 0.5))
+    expect_eq(roads_nearest_y(roads_st, 100.0, 8.0, 0.5), cd)
+    expect(near(roads_near_y(roads_st), 8.0, 0.05))
+    expect_eq(roads_nearest_y(roads_st, 100.0, 7.0, -0.5), cd)
+    expect_eq(roads_nearest_y(roads_st, 100.0, 2.0, 0.0), ab)
+    # the plan alone takes the first road of a tie (ab, the lower index)
+    expect_eq(roads_nearest(roads_st, 100.0, 0.0), ab)
+    # off the crossing there is only one road to take, whatever the height
+    expect_eq(roads_nearest_y(roads_st, 100.0, 0.0, 60.0), cd)
+    expect_eq(roads_nearest_y(roads_st, 20.0, 40.0, 3.0), ab)
+  }
+
+  test "a car on a road with design heights is placed at its height, and on one without at the ground" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "flyover"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let be = roads_seg_find(roads_st, "be")
+    let ab = roads_seg_find(roads_st, "ab")
+    expect(roads_spawn(roads_st, 2 * be, 100.0, 0, RCK_CAR, -1, false) >= 0)
+    expect(near(roads_test_st.last_y, 6.0, 0.05))
+    expect(roads_spawn(roads_st, 2 * ab, 150.0, 0, RCK_CAR, -1, false) >= 0)
+    expect(near(roads_test_st.last_y, 1.5, 0.05))
+  }
+
+  test "a list of heights that is not one row an anchor is no design, and said" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(not load_map(roads_st, nodes, segs, turns, "badheights"))
+    expect(roads_error(roads_st) != "")
+    expect_eq(roads_seg_count(roads_st), 1)
+    expect(not roads_seg_designed(roads_st, 0))
+    expect(roads_seg_length(roads_st, 0) > 100.0)
+    expect(near(roads_seg_height(roads_st, 0, 10.0), 0.1, 0.05))
+  }
+
+  test "the structures, the profile's median, shoulder and max grade, and their defaults load" (structures: mut RoadStructures, profiles: mut RoadProfiles) {
+    expect(road_structures_load(structures, "flyover"))
+    expect_eq(len(structures.rows), 2)
+    let f = structures.rows[road_structures_find(structures, "flyover_cd")]
+    expect_eq(f.seg, "cd")
+    expect_eq(f.kind, "flyover")
+    expect_eq(f.type, "beam")
+    expect_eq(f.over, "road")
+    expect(near(f.from, 40.0, 0.0001))
+    expect(near(f.to, 160.0, 0.0001))
+    expect(near(f.deck_w, 12.0, 0.0001))
+    expect(near(f.deck_t, 1.2, 0.0001))
+    expect(near(f.parapet, 1.1, 0.0001))
+    expect(near(f.pier_spacing, 30.0, 0.0001))
+    expect_eq(len(f.gaps), 1)
+    expect(near(f.gaps[0].to, 80.0, 0.0001))
+    let t = structures.rows[road_structures_find(structures, "plain_tunnel")]
+    expect_eq(t.kind, "tunnel")
+    expect_eq(t.type, "box")
+    expect(near(t.deck_t, 1.0, 0.0001))
+    expect(near(t.parapet, 1.0, 0.0001))
+    expect(near(t.to, 0.0, 0.0001))
+    expect_eq(len(t.gaps), 0)
+    expect(road_profiles_load(profiles, "flyover"))
+    let m = profiles.rows[road_profiles_find(profiles, "motorway")]
+    expect(near(m.median, 1.0, 0.0001))
+    expect(near(m.shoulder, 2.25, 0.0001))
+    expect(near(m.max_grade, 0.04, 0.0001))
+    let st = profiles.rows[road_profiles_find(profiles, "street")]
+    expect(near(st.median, 0.0, 0.0001))
+    expect(near(st.shoulder, 0.0, 0.0001))
+    expect(near(st.max_grade, 0.08, 0.0001))
+  }
+
+  # the nearest road by looking at every step of every road: what roads_nearest answered before it had a grid
+  function brute_nearest(roads_st: mut RoadsState, x: float, y: float, z: float, use_y: bool) -> int {
+    var best = -1
+    var bscore = 0.0
+    for seg in 0 .. len(roads_st.rd_skey) {
+      for i in roads_st.rd_sp0[seg] .. roads_st.rd_sp1[seg] - 1 {
+        let ax = roads_st.rd_px[i]
+        let az = roads_st.rd_pz[i]
+        let dx = roads_st.rd_px[i + 1] - ax
+        let dz = roads_st.rd_pz[i + 1] - az
+        let l2 = dx * dx + dz * dz
+        var t = 0.0
+        if l2 > 0.000001 { t = Math.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0.0, 1.0) }
+        let qx = ax + dx * t
+        let qz = az + dz * t
+        var score = (qx - x) * (qx - x) + (qz - z) * (qz - z)
+        if use_y {
+          var hy = fake_ground(qx, qz)
+          if roads_st.rd_sdesign[seg] == 1 { hy = roads_st.rd_py[i] + (roads_st.rd_py[i + 1] - roads_st.rd_py[i]) * t }
+          score += (y - hy) * (y - hy)
+        }
+        if best < 0 or score < bscore {
+          best = seg
+          bscore = score
+        }
+      }
+    }
+    return best
+  }
+  # points over and beyond a map, by a fixed sequence: how many the grid and the scan answer differently
+  function differ_nearest(roads_st: mut RoadsState, extent: float, count: int, use_y: bool) -> int {
+    var seed = 12345
+    var wrong = 0
+    for i in 0 .. count {
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      let x = (float(seed % 100000) / 100000.0 * 1.4 - 0.2) * extent
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      let z = (float(seed % 100000) / 100000.0 * 1.4 - 0.2) * extent
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      let y = float(seed % 1000) / 1000.0 * 12.0 - 2.0
+      let want = brute_nearest(roads_st, x, y, z, use_y)
+      var got = -1
+      if use_y { got = roads_nearest_y(roads_st, x, y, z) } else { got = roads_nearest(roads_st, x, z) }
+      if got != want { wrong += 1 }
+    }
+    return wrong
+  }
+
+  test "the grid finds the road a scan of every step finds, in the plan and at a height, on the maps" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    expect_eq(differ_nearest(roads_st, 220.0, 1500, false), 0)
+    expect_eq(differ_nearest(roads_st, 220.0, 1500, true), 0)
+    expect(load_map(roads_st, nodes, segs, turns, "curved"))
+    expect_eq(differ_nearest(roads_st, 400.0, 1500, false), 0)
+    expect(load_map(roads_st, nodes, segs, turns, "flyover"))
+    expect_eq(differ_nearest(roads_st, 600.0, 1500, false), 0)
+    expect_eq(differ_nearest(roads_st, 600.0, 1500, true), 0)
+    expect(load_map(roads_st, nodes, segs, turns, "ring"))
+    expect_eq(differ_nearest(roads_st, 250.0, 500, false), 0)
+  }
+
+  test "with no road there is no nearest one, and a graph emptied has none either" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    expect(roads_nearest(roads_st, 10.0, 10.0) >= 0)
+    roads_clear(roads_st)
+    expect_eq(roads_nearest(roads_st, 10.0, 10.0), -1)
+    expect_eq(roads_nearest_y(roads_st, 10.0, 0.0, 10.0), -1)
+    expect(near(roads_near_d(roads_st), 0.0, 0.0001))
+  }
+
+  # a snake of 128 x 128 nodes joined in order (the last closing the ring when `count` is 16,384): written as the files
+  # of a map, `big`, beside the others, and left out of git (the map is made by the test and removed by it)
+  function write_big(nodes: mut RoadNodes, count: int, turn: bool) -> void {
+    expect(road_nodes_load(nodes, "town"))
+    let root = Path.dir(Path.dir(Path.dir(road_nodes_path(nodes, "roads/nodes.lres"))))
+    let dir = Path.join(Path.join(root, "big"), "roads")
+    Fs.mkdir(Path.join(root, "big"))
+    Fs.mkdir(dir)
+    let lines = new []string
+    for i in 0 .. 16384 {
+      var col = i % 128
+      if (i / 128) % 2 == 1 { col = 127 - col }
+      push(lines, `n{i} \{ x: {float(col) * 20.0}, z: {float(i / 128) * 20.0} }`)
+    }
+    expect(Fs.write_text(Path.join(dir, "nodes.lres"), Text.join(lines, "\n")))
+    let segs = new []string
+    for i in 0 .. count {
+      push(segs, `s{i} \{ from: "n{i % 16384}", to: "n{(i + 1) % 16384}", speed: 15.0 }`)
+    }
+    expect(Fs.write_text(Path.join(dir, "segs.lres"), Text.join(segs, "\n")))
+    var rule = "# no turn rules"
+    if turn { rule = "t0 \{ node: \"n12000\", from: \"s11999\", to: \"s12000\", rule: \"forbid\" }" }
+    expect(Fs.write_text(Path.join(dir, "turns.lres"), rule))
+  }
+  function remove_big(nodes: mut RoadNodes) -> void {
+    let root = Path.dir(Path.dir(Path.dir(road_nodes_path(nodes, "roads/nodes.lres"))))
+    let dir = Path.join(Path.join(root, "big"), "roads")
+    Fs.remove(Path.join(dir, "nodes.lres"))
+    Fs.remove(Path.join(dir, "segs.lres"))
+    Fs.remove(Path.join(dir, "turns.lres"))
+    Fs.remove(dir)
+    Fs.remove(Path.join(root, "big"))
+  }
+
+  test "16,384 roads build, a turn rule on a high edge is its own, and one road more is left out and said" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    write_big(nodes, 16384, true)
+    expect(road_nodes_load(nodes, "big"))
+    expect(road_segs_load(segs, "big"))
+    expect(road_turns_load(turns, "big"))
+    let t0 = Time.now_us()
+    expect(roads_build(roads_st, nodes, segs, turns))
+    let t1 = Time.now_us()
+    for i in 0 .. 1000 { roads_nearest(roads_st, float(i * 37 % 2560), float(i * 91 % 2560)) }
+    let t2 = Time.now_us()
+    # a guard against a slide back to scans (it takes about 20 ms and 1 ms here)
+    expect((t1 - t0) / 1000 < 3000)
+    expect((t2 - t1) / 1000 < 2000)
+    expect_eq(roads_seg_count(roads_st), 16384)
+    expect_eq(roads_edge_count(roads_st), 32768)
+    let e_in = 2 * 11999
+    let e_out = 2 * 12000
+    expect_eq(roads_turn_rule(roads_st, e_in, e_out), ROAD_RULE_FORBID)
+    # the pairs that the old key (in * 8192 + out) put on the same number are untouched
+    expect_eq(roads_turn_rule(roads_st, e_in + 1, e_out - 8192), ROAD_RULE_FREE)
+    expect_eq(roads_turn_rule(roads_st, e_in + 2, e_out - 16384), ROAD_RULE_FREE)
+    expect_eq(roads_turn_rule(roads_st, e_in, e_out + 2), ROAD_RULE_FREE)
+    # the nearest road anywhere on it, from the grid
+    expect_eq(roads_nearest(roads_st, 20.0 * 64.0 + 3.0, 20.0 * 50.0 + 4.0), roads_seg_find(roads_st, "s6464"))
+    expect_eq(differ_nearest(roads_st, 2560.0, 300, false), 0)
+    write_big(nodes, 16385, false)
+    expect(not load_map(roads_st, nodes, segs, turns, "big"))
+    expect_eq(roads_seg_count(roads_st), 16384)
+    expect(roads_error(roads_st) != "")
+    remove_big(nodes)
   }
 
   test "the system is declared with its own key" {

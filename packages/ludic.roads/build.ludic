@@ -6,7 +6,11 @@ const RD_SUB: int = 8                 # samples a Catmull-Rom span is cut into
 const RD_BEZ_STEP: float = 4.0        # a Bezier span is cut into about one sample per this many metres of control polygon
 const RD_BEZ_MIN: int = 8             # ... at least this many samples a span
 const RD_BEZ_MAX: int = 64            # ... at most this many
-const RD_MAX_SEGS: int = 4000         # an edge number stays under 8192, so a turn is one int key
+const RD_MAX_SEGS: int = 16384        # an edge number stays under RD_TURN_KEY (2 an edge a road), so a turn is one int key
+const RD_TURN_KEY: int = 32768        # a turn is in * RD_TURN_KEY + out
+const RD_GRID: float = 32.0           # metres a cell of the grid over the polylines is wide (roads_nearest looks cell by cell)
+const RD_GRID_BIAS: int = 1048576     # a cell's two numbers are made positive by this, then packed into one key
+const RD_GRID_SPAN: int = 2097152
 
 function rd_clear_lists(roads_st: mut RoadsState) -> void {
   List.clear(roads_st.rd_nkey)
@@ -31,6 +35,19 @@ function rd_clear_lists(roads_st: mut RoadsState) -> void {
   List.clear(roads_st.rd_px)
   List.clear(roads_st.rd_pz)
   List.clear(roads_st.rd_ps)
+  List.clear(roads_st.rd_slevel)
+  List.clear(roads_st.rd_sdesign)
+  List.clear(roads_st.rd_py)
+  List.clear(roads_st.rd_gstep)
+  List.clear(roads_st.rd_gseg)
+  List.clear(roads_st.rd_gnext)
+  imap_clear(roads_st.rd_gcell)
+  roads_st.rd_gx0 = 0
+  roads_st.rd_gx1 = 0
+  roads_st.rd_gz0 = 0
+  roads_st.rd_gz1 = 0
+  roads_st.rd_near_seg = -1
+  roads_st.rd_pose_seg = -1
   List.clear(roads_st.rd_efrom)
   List.clear(roads_st.rd_eto)
   List.clear(roads_st.rd_elanes)
@@ -133,11 +150,13 @@ function rd_sample_bezier(roads_st: mut RoadsState, seg: RoadSeg, n0: int) -> vo
         let dz = z - roads_st.rd_pz[n - 1]
         run += Math.sqrt(dx * dx + dz * dz)
       }
+      if k == 0 { kept_push(roads_st.rd_cs, run) }
       kept_push(roads_st.rd_px, x)
       kept_push(roads_st.rd_pz, z)
       kept_push(roads_st.rd_ps, run)
     }
   }
+  kept_push(roads_st.rd_cs, run)
   kept_push(roads_st.rd_sp1, len(roads_st.rd_px))
   kept_push(roads_st.rd_slen, run)
 }
@@ -150,6 +169,7 @@ function rd_sample_seg(roads_st: mut RoadsState, seg: RoadSeg, a: int, b: int) -
   kept_push(roads_st.rd_sp0, n0)
   List.clear(roads_st.rd_cx)
   List.clear(roads_st.rd_cz)
+  List.clear(roads_st.rd_cs)
   kept_push(roads_st.rd_cx, roads_st.rd_nx[a])
   kept_push(roads_st.rd_cz, roads_st.rd_nz[a])
   for i in 0 .. len(seg.pts) {
@@ -181,13 +201,63 @@ function rd_sample_seg(roads_st: mut RoadsState, seg: RoadSeg, a: int, b: int) -
         let dz = z - roads_st.rd_pz[n - 1]
         run += Math.sqrt(dx * dx + dz * dz)
       }
+      if k == 0 { kept_push(roads_st.rd_cs, run) }
       kept_push(roads_st.rd_px, x)
       kept_push(roads_st.rd_pz, z)
       kept_push(roads_st.rd_ps, run)
     }
   }
+  kept_push(roads_st.rd_cs, run)
   kept_push(roads_st.rd_sp1, len(roads_st.rd_px))
   kept_push(roads_st.rd_slen, run)
+}
+
+function rd_level_of(word: string) -> int {
+  if word == "structure" { return ROAD_LEVEL_STRUCTURE }
+  if word == "tunnel" { return ROAD_LEVEL_TUNNEL }
+  return ROAD_LEVEL_GROUND
+}
+
+# the segment's design heights onto the points just sampled (rd_cs holds where its anchors are along it): between two
+# anchors that have one the height runs straight, before the first and after the last it stays at theirs. A road
+# with no anchor that has one has none (rd_sdesign 0, every height 0). False when `heights` is a list that does not have
+# a row for every anchor: the road is then built with no design
+function rd_design_seg(roads_st: mut RoadsState, s: RoadSeg, n0: int) -> bool {
+  let n1 = len(roads_st.rd_px)
+  let m = len(roads_st.rd_cs)
+  let fa = new []int
+  var right = true
+  if len(s.heights) > 0 {
+    if len(s.heights) == m {
+      for k in 0 .. m { if not s.heights[k].free { push(fa, k) } }
+    } else {
+      right = false
+    }
+  }
+  kept_push(roads_st.rd_slevel, rd_level_of(s.level))
+  if len(fa) == 0 {
+    kept_push(roads_st.rd_sdesign, 0)
+    for i in n0 .. n1 { kept_push(roads_st.rd_py, 0.0) }
+    return right
+  }
+  kept_push(roads_st.rd_sdesign, 1)
+  var j = 0
+  for i in n0 .. n1 {
+    let at = roads_st.rd_ps[i]
+    while j + 1 < len(fa) and roads_st.rd_cs[fa[j + 1]] <= at { j += 1 }
+    var y = s.heights[fa[j]].y
+    if at <= roads_st.rd_cs[fa[0]] {
+      y = s.heights[fa[0]].y
+    } else if j + 1 < len(fa) {
+      let s0 = roads_st.rd_cs[fa[j]]
+      let span = roads_st.rd_cs[fa[j + 1]] - s0
+      var t = 0.0
+      if span > 0.0001 { t = (at - s0) / span }
+      y = s.heights[fa[j]].y + (s.heights[fa[j + 1]].y - s.heights[fa[j]].y) * t
+    }
+    kept_push(roads_st.rd_py, y)
+  }
+  return true
 }
 
 function rd_skip_seg(roads_st: mut RoadsState, seg: RoadSeg) -> void {
@@ -199,6 +269,8 @@ function rd_skip_seg(roads_st: mut RoadsState, seg: RoadSeg) -> void {
   kept_push(roads_st.rd_sspeed, seg.speed)
   kept_push(roads_st.rd_sprio, seg.priority)
   kept_push(roads_st.rd_sphase, seg.phase)
+  kept_push(roads_st.rd_slevel, rd_level_of(seg.level))
+  kept_push(roads_st.rd_sdesign, 0)
   kept_push(roads_st.rd_sp0, len(roads_st.rd_px))
   kept_push(roads_st.rd_sp1, len(roads_st.rd_px))
   kept_push(roads_st.rd_slen, 0.0)
@@ -280,6 +352,61 @@ function rd_edge_at(roads_st: RoadsState, seg: int, n: int, entering: bool) -> i
   return -1
 }
 
+# the cell of a coordinate, and the key of a cell
+function rd_cell(v: float) -> int { return int(Math.floor(v / RD_GRID)) }
+function rd_cell_key(cx: int, cz: int) -> int { return (cx + RD_GRID_BIAS) * RD_GRID_SPAN + (cz + RD_GRID_BIAS) }
+
+function rd_grid_add(roads_st: mut RoadsState, step: int, seg: int, cx: int, cz: int) -> void {
+  let key = rd_cell_key(cx, cz)
+  let e = len(roads_st.rd_gstep)
+  kept_push(roads_st.rd_gstep, step)
+  kept_push(roads_st.rd_gseg, seg)
+  kept_push(roads_st.rd_gnext, imap_get(roads_st.rd_gcell, key, -1))
+  imap_put(roads_st.rd_gcell, key, e)
+}
+
+# every polyline step into each cell its box touches, so a point only looks at the steps near it
+function rd_grid_build(roads_st: mut RoadsState) -> void {
+  var first = true
+  for seg in 0 .. len(roads_st.rd_skey) {
+    let p0 = roads_st.rd_sp0[seg]
+    let p1 = roads_st.rd_sp1[seg]
+    for i in p0 .. p1 - 1 {
+      let ax = roads_st.rd_px[i]
+      let az = roads_st.rd_pz[i]
+      let bx = roads_st.rd_px[i + 1]
+      let bz = roads_st.rd_pz[i + 1]
+      var x0 = rd_cell(ax)
+      var x1 = rd_cell(bx)
+      if x1 < x0 {
+        x0 = rd_cell(bx)
+        x1 = rd_cell(ax)
+      }
+      var z0 = rd_cell(az)
+      var z1 = rd_cell(bz)
+      if z1 < z0 {
+        z0 = rd_cell(bz)
+        z1 = rd_cell(az)
+      }
+      for cx in x0 .. x1 + 1 {
+        for cz in z0 .. z1 + 1 { rd_grid_add(roads_st, i, seg, cx, cz) }
+      }
+      if first {
+        roads_st.rd_gx0 = x0
+        roads_st.rd_gx1 = x1
+        roads_st.rd_gz0 = z0
+        roads_st.rd_gz1 = z1
+        first = false
+      } else {
+        if x0 < roads_st.rd_gx0 { roads_st.rd_gx0 = x0 }
+        if x1 > roads_st.rd_gx1 { roads_st.rd_gx1 = x1 }
+        if z0 < roads_st.rd_gz0 { roads_st.rd_gz0 = z0 }
+        if z1 > roads_st.rd_gz1 { roads_st.rd_gz1 = z1 }
+      }
+    }
+  }
+}
+
 # the graph of a map's three tables (loaded with road_nodes_load, road_segs_load, road_turns_load). False, with
 # roads_error saying the first fault, when a road names a node that is not there or there are too many roads;
 # such a road is left out and the rest is built. Cars are taken off first (their roads are gone)
@@ -327,6 +454,10 @@ export function roads_build(roads_st: mut RoadsState, nodes: RoadNodes, segs: Ro
     kept_push(roads_st.rd_sprio, s.priority)
     kept_push(roads_st.rd_sphase, s.phase)
     rd_sample_seg(roads_st, s, a, b)
+    if not rd_design_seg(roads_st, s, roads_st.rd_sp0[len(roads_st.rd_sp0) - 1]) {
+      if ok { roads_st.rd_err = `road {s.key}: heights has {len(s.heights)} rows and the road {len(roads_st.rd_cs)} anchors (from, each point, to): built with no design heights` }
+      ok = false
+    }
     roads_st.rd_nroads[a] += 1
     roads_st.rd_nroads[b] += 1
     if s.phase + 1 > roads_st.rd_nphases[a] { roads_st.rd_nphases[a] = s.phase + 1 }
@@ -354,8 +485,9 @@ export function roads_build(roads_st: mut RoadsState, nodes: RoadNodes, segs: Ro
       ok = false
       continue
     }
-    imap_put(roads_st.rd_turns, e_in * 8192 + e_out, rd_rule_of(t.rule))
+    imap_put(roads_st.rd_turns, e_in * RD_TURN_KEY + e_out, rd_rule_of(t.rule))
   }
+  rd_grid_build(roads_st)
   let ne = len(roads_st.rd_efrom)
   List.clear(roads_st.rd_dist)
   List.clear(roads_st.rd_prev)

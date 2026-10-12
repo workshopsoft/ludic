@@ -27,9 +27,13 @@ export function roads_seg_find(roads_st: RoadsState, key: string) -> int {
   return -1
 }
 export function roads_seg_length(roads_st: RoadsState, seg: int) -> float { return roads_st.rd_slen[seg] }
+# a road's level: ROAD_LEVEL_GROUND, ROAD_LEVEL_STRUCTURE (a deck) or ROAD_LEVEL_TUNNEL
+export function roads_seg_level(roads_st: RoadsState, seg: int) -> int { return roads_st.rd_slevel[seg] }
+# whether the road has design heights (else it follows the ground: RoadsWorld.ground)
+export function roads_seg_designed(roads_st: RoadsState, seg: int) -> bool { return roads_st.rd_sdesign[seg] == 1 }
 # the turn rule coming in by edge `e_in` and leaving by `e_out`: ROAD_RULE_*
 export function roads_turn_rule(roads_st: RoadsState, e_in: int, e_out: int) -> int {
-  return imap_get(roads_st.rd_turns, e_in * 8192 + e_out, ROAD_RULE_FREE)
+  return imap_get(roads_st.rd_turns, e_in * RD_TURN_KEY + e_out, ROAD_RULE_FREE)
 }
 
 # the point `s` metres along segment `seg` (from its `from` end) into rd_pose_x / z, and its heading there
@@ -41,6 +45,7 @@ function rd_seg_at(roads_st: mut RoadsState, seg: int, s: float) -> void {
     roads_st.rd_pose_x = 0.0
     roads_st.rd_pose_z = 0.0
     roads_st.rd_pose_yaw = 0.0
+    roads_st.rd_pose_seg = -1
     return
   }
   var d = s
@@ -60,6 +65,24 @@ function rd_seg_at(roads_st: mut RoadsState, seg: int, s: float) -> void {
   roads_st.rd_pose_x = roads_st.rd_px[lo] + dx * t
   roads_st.rd_pose_z = roads_st.rd_pz[lo] + dz * t
   roads_st.rd_pose_yaw = Math.atan2(dx, dz)
+  roads_st.rd_pose_seg = seg
+  roads_st.rd_pose_i = lo
+  roads_st.rd_pose_t = t
+}
+
+# the height of the road at the last pose (roads_pose, roads_seg_height): its design height there, or where it has none
+# the game's ground under it (RoadsWorld.ground)
+export function roads_pose_y(roads_st: RoadsState) -> float {
+  let seg = roads_st.rd_pose_seg
+  if seg < 0 or roads_st.rd_sdesign[seg] == 0 { return RoadsWorld.ground(roads_st.rd_pose_x, roads_st.rd_pose_z) }
+  let i = roads_st.rd_pose_i
+  return roads_st.rd_py[i] + (roads_st.rd_py[i + 1] - roads_st.rd_py[i]) * roads_st.rd_pose_t
+}
+
+# the height of segment `seg` `s` metres from its `from` end: its design height there, or the ground under it
+export function roads_seg_height(roads_st: mut RoadsState, seg: int, s: float) -> float {
+  rd_seg_at(roads_st, seg, s)
+  return roads_pose_y(roads_st)
 }
 
 # how far from the centre line lane `lane` of edge `e` runs, to the right of travel (a one way road
@@ -100,38 +123,98 @@ export function roads_pose_x(roads_st: RoadsState) -> float { return roads_st.rd
 export function roads_pose_z(roads_st: RoadsState) -> float { return roads_st.rd_pose_z }
 export function roads_pose_yaw(roads_st: RoadsState) -> float { return roads_st.rd_pose_yaw }
 
-# the segment nearest (x, z): its index (-1 with no road), and in roads_near_s the metres along it, roads_near_d the
-# distance from its centre line. Every polyline step is looked at: for a game's occasional question, not a frame's
-export function roads_nearest(roads_st: mut RoadsState, x: float, z: float) -> int {
-  var best = -1
-  var bd = 0.0
-  var bs = 0.0
-  for seg in 0 .. len(roads_st.rd_skey) {
-    let p0 = roads_st.rd_sp0[seg]
-    let p1 = roads_st.rd_sp1[seg]
-    for i in p0 .. p1 - 1 {
-      let ax = roads_st.rd_px[i]
-      let az = roads_st.rd_pz[i]
-      let dx = roads_st.rd_px[i + 1] - ax
-      let dz = roads_st.rd_pz[i + 1] - az
-      let l2 = dx * dx + dz * dz
-      var t = 0.0
-      if l2 > 0.000001 { t = Math.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0.0, 1.0) }
-      let qx = ax + dx * t - x
-      let qz = az + dz * t - z
-      let d = qx * qx + qz * qz
-      if best < 0 or d < bd {
-        best = seg
-        bd = d
-        bs = roads_st.rd_ps[i] + (roads_st.rd_ps[i + 1] - roads_st.rd_ps[i]) * t
+# the step of the polyline that starts at point i of segment `seg`, as a candidate for the nearest search at (x, z), and
+# at height y when `use_y`: its score is the planar distance squared, plus the gap in height squared (the road's design
+# height there, else the game's ground) when asked. The lowest score wins, a tie going to the lower segment, then step
+function rd_try_step(roads_st: mut RoadsState, seg: int, i: int, x: float, y: float, z: float, use_y: bool) -> void {
+  let ax = roads_st.rd_px[i]
+  let az = roads_st.rd_pz[i]
+  let dx = roads_st.rd_px[i + 1] - ax
+  let dz = roads_st.rd_pz[i + 1] - az
+  let l2 = dx * dx + dz * dz
+  var t = 0.0
+  if l2 > 0.000001 { t = Math.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0.0, 1.0) }
+  let qx = ax + dx * t
+  let qz = az + dz * t
+  let d2 = (qx - x) * (qx - x) + (qz - z) * (qz - z)
+  let have = roads_st.rd_near_seg >= 0
+  if have and d2 > roads_st.rd_bscore { return }
+  var score = d2
+  var hy = 0.0
+  if use_y {
+    if roads_st.rd_sdesign[seg] == 1 { hy = roads_st.rd_py[i] + (roads_st.rd_py[i + 1] - roads_st.rd_py[i]) * t } else { hy = RoadsWorld.ground(qx, qz) }
+    score = d2 + (y - hy) * (y - hy)
+  }
+  var better = not have or score < roads_st.rd_bscore
+  if not better and score == roads_st.rd_bscore {
+    better = seg < roads_st.rd_near_seg or (seg == roads_st.rd_near_seg and i < roads_st.rd_bstep)
+  }
+  if not better { return }
+  roads_st.rd_near_seg = seg
+  roads_st.rd_bstep = i
+  roads_st.rd_bscore = score
+  roads_st.rd_bd2 = d2
+  roads_st.rd_near_s = roads_st.rd_ps[i] + (roads_st.rd_ps[i + 1] - roads_st.rd_ps[i]) * t
+  roads_st.rd_near_y = hy
+}
+
+function rd_try_cell(roads_st: mut RoadsState, cx: int, cz: int, x: float, y: float, z: float, use_y: bool) -> void {
+  if cx < roads_st.rd_gx0 or cx > roads_st.rd_gx1 or cz < roads_st.rd_gz0 or cz > roads_st.rd_gz1 { return }
+  var e = imap_get(roads_st.rd_gcell, rd_cell_key(cx, cz), -1)
+  while e >= 0 {
+    rd_try_step(roads_st, roads_st.rd_gseg[e], roads_st.rd_gstep[e], x, y, z, use_y)
+    e = roads_st.rd_gnext[e]
+  }
+}
+
+# the nearest search: the cells round (x, z), ring by ring outwards, until a ring is farther than the best found
+function rd_nearest(roads_st: mut RoadsState, x: float, y: float, z: float, use_y: bool) -> int {
+  roads_st.rd_near_seg = -1
+  roads_st.rd_bstep = -1
+  roads_st.rd_bscore = 0.0
+  roads_st.rd_bd2 = 0.0
+  roads_st.rd_near_s = 0.0
+  roads_st.rd_near_d = 0.0
+  roads_st.rd_near_y = 0.0
+  if imap_len(roads_st.rd_gcell) == 0 { return -1 }
+  let c0x = rd_cell(x)
+  let c0z = rd_cell(z)
+  var rmax = c0x - roads_st.rd_gx0
+  if roads_st.rd_gx1 - c0x > rmax { rmax = roads_st.rd_gx1 - c0x }
+  if c0z - roads_st.rd_gz0 > rmax { rmax = c0z - roads_st.rd_gz0 }
+  if roads_st.rd_gz1 - c0z > rmax { rmax = roads_st.rd_gz1 - c0z }
+  for r in 0 .. rmax + 1 {
+    if r == 0 {
+      rd_try_cell(roads_st, c0x, c0z, x, y, z, use_y)
+    } else {
+      for k in 0 - r .. r + 1 {
+        rd_try_cell(roads_st, c0x + k, c0z - r, x, y, z, use_y)
+        rd_try_cell(roads_st, c0x + k, c0z + r, x, y, z, use_y)
+      }
+      for k in 1 - r .. r {
+        rd_try_cell(roads_st, c0x - r, c0z + k, x, y, z, use_y)
+        rd_try_cell(roads_st, c0x + r, c0z + k, x, y, z, use_y)
       }
     }
+    if roads_st.rd_near_seg >= 0 {
+      let reach = float(r) * RD_GRID
+      if reach * reach >= roads_st.rd_bscore { break }
+    }
   }
-  roads_st.rd_near_seg = best
-  roads_st.rd_near_s = bs
-  roads_st.rd_near_d = Math.sqrt(bd)
-  return best
+  roads_st.rd_near_d = Math.sqrt(roads_st.rd_bd2)
+  return roads_st.rd_near_seg
 }
+
+# the segment nearest (x, z), looking at the plan only: its index (-1 with no road), and in roads_near_s the metres along
+# it, roads_near_d the distance from its centre line. A grid over the polylines answers in a few cells, so it may be asked every
+# frame. Where roads cross at different heights this takes the first: use roads_nearest_y
+export function roads_nearest(roads_st: mut RoadsState, x: float, z: float) -> int { return rd_nearest(roads_st, x, 0.0, z, false) }
+
+# the segment nearest the point (x, y, z): the plan distance and the gap in height between y and the road's design height
+# there (else the game's ground) count together, so under a flyover it is the road below, on it the road above. The
+# same answers as roads_nearest: roads_near_s, roads_near_d (the plan distance), and roads_near_y, the road's height there
+export function roads_nearest_y(roads_st: mut RoadsState, x: float, y: float, z: float) -> int { return rd_nearest(roads_st, x, y, z, true) }
+export function roads_near_y(roads_st: RoadsState) -> float { return roads_st.rd_near_y }
 export function roads_near_s(roads_st: RoadsState) -> float { return roads_st.rd_near_s }
 export function roads_near_d(roads_st: RoadsState) -> float { return roads_st.rd_near_d }
 

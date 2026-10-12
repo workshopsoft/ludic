@@ -13,6 +13,10 @@ export const ROADS_WHY_REBUILT: int = 3   # the map changed under it
 export const ROADS_SHORTEST: int = 0    # routes by length
 export const ROADS_FASTEST: int = 1     # routes by time: length over the limit, and a wait at each stop, yield and signal
 
+export const ROAD_LEVEL_GROUND: int = 0       # RoadSeg.level
+export const ROAD_LEVEL_STRUCTURE: int = 1    # a bridge, viaduct or flyover deck
+export const ROAD_LEVEL_TUNNEL: int = 2
+
 export const ROAD_RULE_FREE: int = 0
 export const ROAD_RULE_YIELD: int = 1
 export const ROAD_RULE_STOP: int = 2
@@ -80,6 +84,20 @@ export state RoadsState {
   rd_ps: []float = new []float           # metres along the segment at each point
   rd_cx: []float = new []float           # scratch: one spline's control points
   rd_cz: []float = new []float
+  rd_cs: []float = new []float           # scratch: metres along the road of each control point
+  rd_slevel: []int = new []int           # per segment: ROAD_LEVEL_*
+  rd_sdesign: []int = new []int          # per segment: 1 when its design heights are given (rd_py holds them)
+  rd_py: []float = new []float           # the design height at each point (0 where the segment has none)
+  # a grid over the polyline steps (cells of RD_GRID metres): rd_gcell maps a cell to the first entry, each entry
+  # being a step (rd_gstep: the index of its first point), its segment and the next entry of the cell
+  rd_gcell: IntMap = imap_new()
+  rd_gstep: []int = new []int
+  rd_gseg: []int = new []int
+  rd_gnext: []int = new []int
+  rd_gx0: int = 0                        # the cells that hold anything: rd_gx0 .. rd_gx1, rd_gz0 .. rd_gz1
+  rd_gx1: int = 0
+  rd_gz0: int = 0
+  rd_gz1: int = 0
   # directed edges, 2 a segment; an edge that does not exist has no lanes
   rd_efrom: []int = new []int
   rd_eto: []int = new []int
@@ -92,7 +110,7 @@ export state RoadsState {
   rd_out: []int = new []int
   rd_in_start: []int = new []int
   rd_in: []int = new []int
-  rd_turns: IntMap = imap_new()          # in * 8192 + out -> ROAD_RULE_*
+  rd_turns: IntMap = imap_new()          # in * RD_TURN_KEY + out -> ROAD_RULE_*
   # routing scratch
   rd_dist: []float = new []float
   rd_prev: []int = new []int
@@ -103,6 +121,13 @@ export state RoadsState {
   rd_near_seg: int = -1
   rd_near_s: float = 0.0
   rd_near_d: float = 0.0
+  rd_near_y: float = 0.0
+  rd_bscore: float = 0.0                 # scratch of the nearest search: the best score so far (distance squared, plus the height gap squared when asked), its step and planar distance squared
+  rd_bstep: int = -1
+  rd_bd2: float = 0.0
+  rd_pose_seg: int = -1
+  rd_pose_i: int = 0                     # the polyline step the last pose was on and how far along it (0..1): the design height reads them
+  rd_pose_t: float = 0.0
   rd_pose_x: float = 0.0
   rd_pose_z: float = 0.0
   rd_pose_yaw: float = 0.0

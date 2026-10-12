@@ -1,0 +1,2 @@
+motorway { lanes_fwd: 3, lanes_back: 3, lane_width: 3.75, kind: "highway", median: 1.0, shoulder: 2.25, max_grade: 0.04 }
+street { }
