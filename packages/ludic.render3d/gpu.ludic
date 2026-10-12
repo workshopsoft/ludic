@@ -349,7 +349,7 @@ const GPU_U16: int = 3
 const GPU_STATIC: int = 0
 const GPU_DYNAMIC: int = 1
 const GPU_STREAM: int = 2
-const GPU_MAX_ATTRS: int = 8
+const GPU_MAX_ATTRS: int = 12       # 0 .. 7 the model and instance inputs, 8 and 9 a box kit's anchors (kitbox.ludic)
 const GPU_ATTR_W: int = 7         # per attribute index: buffer, comps, type, stride, offset, normalized, per instance
 const GPU_MAX_VBUFS: int = 8
 

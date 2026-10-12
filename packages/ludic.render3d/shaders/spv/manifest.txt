@@ -4740,6 +4740,9 @@ U 7a775c12 vert u_proj 64 mat4 1 0
 U 7a775c12 vert u_light_vp 128 mat4 1 0
 U 7a775c12 vert u_cam_pos 192 vec3 1 0
 I 7a775c12 i_rot 4 vec4
+I 7a775c12 i_box 6 vec4
+I 7a775c12 a_anchor 8 vec4
+I 7a775c12 a_offset 9 vec3
 I 7a775c12 a_pos 0 vec3
 I 7a775c12 i_pos 3 vec4
 I 7a775c12 a_nrm 1 vec3
@@ -4811,6 +4814,9 @@ U 52a2400e vert u_proj 64 mat4 1 0
 U 52a2400e vert u_light_vp 128 mat4 1 0
 U 52a2400e vert u_cam_pos 192 vec3 1 0
 I 52a2400e i_rot 4 vec4
+I 52a2400e i_box 6 vec4
+I 52a2400e a_anchor 8 vec4
+I 52a2400e a_offset 9 vec3
 I 52a2400e a_pos 0 vec3
 I 52a2400e i_pos 3 vec4
 I 52a2400e a_nrm 1 vec3
@@ -4886,6 +4892,9 @@ U f9937a6d vert u_proj 64 mat4 1 0
 U f9937a6d vert u_light_vp 128 mat4 1 0
 U f9937a6d vert u_cam_pos 192 vec3 1 0
 I f9937a6d i_rot 4 vec4
+I f9937a6d i_box 6 vec4
+I f9937a6d a_anchor 8 vec4
+I f9937a6d a_offset 9 vec3
 I f9937a6d a_pos 0 vec3
 I f9937a6d i_pos 3 vec4
 I f9937a6d a_nrm 1 vec3
@@ -4943,15 +4952,19 @@ T f9937a6d u_tershadow 7
 T f9937a6d u_tershadow_aux 8
 T f9937a6d u_ts_height 9
 P ff7742fc oimp.vert oimp.frag 
-B ff7742fc vert 0 152
+B ff7742fc vert 0 956
 U ff7742fc vert u_view 0 mat4 1 0
 U ff7742fc vert u_proj 64 mat4 1 0
 U ff7742fc vert u_cam_pos 128 vec3 1 0
 U ff7742fc vert u_radius 140 float 1 0
 U ff7742fc vert u_centre_y 144 float 1 0
 U ff7742fc vert u_frames 148 float 1 0
+U ff7742fc vert u_box_ref 160 vec4 1 0
+U ff7742fc vert u_kt 176 vec4 48 16
+U ff7742fc vert u_kn 944 vec3 1 0
 I ff7742fc i_rot 4 vec4
 I ff7742fc i_pos 3 vec4
+I ff7742fc i_box 6 vec4
 I ff7742fc a_xy 0 vec2
 I ff7742fc i_tint 5 vec4
 I ff7742fc a_uv 1 vec2
@@ -5075,6 +5088,9 @@ U 14b79603 vert u_proj 64 mat4 1 0
 U 14b79603 vert u_light_vp 128 mat4 1 0
 U 14b79603 vert u_cam_pos 192 vec3 1 0
 I 14b79603 i_rot 4 vec4
+I 14b79603 i_box 6 vec4
+I 14b79603 a_anchor 8 vec4
+I 14b79603 a_offset 9 vec3
 I 14b79603 a_pos 0 vec3
 I 14b79603 i_pos 3 vec4
 I 14b79603 a_nrm 1 vec3

@@ -7,7 +7,8 @@
 # The bake is a task for a person, not a frame: `tools/hlod_bake.ludic` runs it over a map's cells (README,
 # "World partition and streaming"). The code lives here so it is tested on a tiny input.
 #
-# Simplification. Each building is a box (kit footprint x height, rotated by yaw, scaled). Buildings are then
+# Simplification. Each building is a box (kit footprint x height, rotated by yaw, scaled; a box kit's instance its own
+# drawn bounds, cellfile.ludic's box columns: footprint x0 .. x1 by z0 .. z1, from y0 to y1, the roof's rise included). Buildings are then
 # clustered by a ground grid of `cluster_m` metres and a height band of `height_band` metres, and each cluster of
 # two or more is replaced by ONE axis-aligned box over all of them - provided the merged box is not more than
 # `max_growth` times the volume of the buildings it replaces, which keeps a skyscraper from swallowing the
@@ -117,6 +118,38 @@ export function hlod_prism(m: HlodMesh, px: floats, pz: floats, y0: float, y1: f
   m.boxes += 1
 }
 
+# a box instance's drawn footprint corners (x0 .. x1 by z0 .. z1 in the kit's frame), turned and moved as the renderer
+# turns an instance
+export function hlod_box_corners(x: float, z: float, x0: float, x1: float, z0: float, z1: float, yaw: float, px: floats, pz: floats) -> void {
+  let s = Math.sin(yaw)
+  let c = Math.cos(yaw)
+  for k in 0 .. 4 {
+    var lx = x0
+    var lz = z0
+    if k == 1 or k == 2 { lx = x1 }
+    if k == 2 or k == 3 { lz = z1 }
+    px[k] = x + c * lx + s * lz
+    pz[k] = z - s * lx + c * lz
+  }
+}
+
+# thing i's drawn box: its footprint corners into px, pz and its bottom and top into yy (2 floats); its volume
+function hlod_thing(c: CellContent, i: int, k: RenderKit, px: floats, pz: floats, yy: floats) -> float {
+  let o = i * CELL_XF
+  if cell_is_box(c, i) {
+    let b = i * CELL_BOX + 3
+    hlod_box_corners(c.xf[o], c.xf[o + 2], c.box[b], c.box[b + 1], c.box[b + 4], c.box[b + 5], c.xf[o + 3], px, pz)
+    yy[0] = c.xf[o + 1] + c.box[b + 2]
+    yy[1] = c.xf[o + 1] + c.box[b + 3]
+    return (c.box[b + 1] - c.box[b]) * (c.box[b + 5] - c.box[b + 4]) * (c.box[b + 3] - c.box[b + 2])
+  }
+  let sc = c.xf[o + 4]
+  hlod_corners(c.xf[o], c.xf[o + 2], k.w * sc * 0.5, k.d * sc * 0.5, c.xf[o + 3], px, pz)
+  yy[0] = c.xf[o + 1]
+  yy[1] = c.xf[o + 1] + k.h * sc
+  return k.w * k.d * sc * sc * k.h * sc
+}
+
 # a building's footprint corners, rotated as the renderer rotates an instance (x' = c x + s z, z' = -s x + c z)
 export function hlod_corners(x: float, z: float, hw: float, hd: float, yaw: float, px: floats, pz: floats) -> void {
   let s = Math.sin(yaw)
@@ -143,7 +176,9 @@ function hlod_key(c: CellContent, i: int, k: RenderKit, cluster_m: float, band: 
   var gz = int(Math.floor(c.xf[o + 2] / cluster_m))
   gx = min(max(gx, 0), 63)
   gz = min(max(gz, 0), 63)
-  let hb = min(max(int(Math.floor(k.h * sc / band)), 0), 255)
+  var tall = k.h * sc
+  if cell_is_box(c, i) { tall = c.box[i * CELL_BOX + 6] }
+  let hb = min(max(int(Math.floor(tall / band)), 0), 255)
   return (gz * 64 + gx) * 256 + hb
 }
 
@@ -206,11 +241,12 @@ export function hlod_bake(c: CellContent, kits: []RenderKit, cluster_m: float, h
 }
 
 # one building as its own box
+@alloc_ok("a bake: two floats a building")
 function hlod_single(c: CellContent, i: int, k: RenderKit, px: floats, pz: floats, out: HlodMesh) -> void {
-  let o = i * CELL_XF
-  let sc = c.xf[o + 4]
-  hlod_corners(c.xf[o], c.xf[o + 2], k.w * sc * 0.5, k.d * sc * 0.5, c.xf[o + 3], px, pz)
-  hlod_prism(out, px, pz, c.xf[o + 1], c.xf[o + 1] + k.h * sc, hlod_tinted(k, c.tint[i]))
+  let yy = floats(2)
+  hlod_thing(c, i, k, px, pz, yy)
+  hlod_prism(out, px, pz, yy[0], yy[1], hlod_tinted(k, c.tint[i]))
+  free(yy)
   out.source += 1
 }
 
@@ -219,6 +255,7 @@ function hlod_tinted(k: RenderKit, tint: int) -> int {
 }
 
 # the buildings order[at .. end) share a group: one merged box if it is not too much bigger than they are, else each alone
+@alloc_ok("a bake: two floats a group")
 function hlod_group(c: CellContent, kits: []RenderKit, order: words, at: int, end: int, max_growth: float, px: floats, pz: floats, out: HlodMesh) -> void {
   if end - at < 2 {
     hlod_single(c, order[at], kits[c.kit[order[at]]], px, pz, out)
@@ -234,23 +271,22 @@ function hlod_group(c: CellContent, kits: []RenderKit, order: words, at: int, en
   var sr = 0.0
   var sg = 0.0
   var sb = 0.0
+  let yy = floats(2)
   for a in at .. end {
     let i = order[a]
     let k = kits[c.kit[i]]
-    let o = i * CELL_XF
-    let sc = c.xf[o + 4]
-    hlod_corners(c.xf[o], c.xf[o + 2], k.w * sc * 0.5, k.d * sc * 0.5, c.xf[o + 3], px, pz)
+    vol = vol + hlod_thing(c, i, k, px, pz, yy)
     for q in 0 .. 4 {
       minx = Math.min(minx, px[q]);  maxx = Math.max(maxx, px[q])
       minz = Math.min(minz, pz[q]);  maxz = Math.max(maxz, pz[q])
     }
-    y0 = Math.min(y0, c.xf[o + 1])
-    y1 = Math.max(y1, c.xf[o + 1] + k.h * sc)
-    vol = vol + k.w * k.d * sc * sc * k.h * sc
+    y0 = Math.min(y0, yy[0])
+    y1 = Math.max(y1, yy[1])
     sr = sr + k.proxy_r * cell_rgba_r(c.tint[i])
     sg = sg + k.proxy_g * cell_rgba_g(c.tint[i])
     sb = sb + k.proxy_b * cell_rgba_b(c.tint[i])
   }
+  free(yy)
   let merged = (maxx - minx) * (maxz - minz) * (y1 - y0)
   if merged > max_growth * vol {
     for a in at .. end { hlod_single(c, order[a], kits[c.kit[order[a]]], px, pz, out) }

@@ -4,10 +4,12 @@
 # and planes - no device - so the culling is tested exactly; kgpu.ludic does the same walk in a compute shader for
 # the whole set, and uploads what this produces when the GPU path is off.
 #
-# An INSTANCE is 12 floats (three vec4s), the layout the vertex stage reads and kinst_cull.comp writes:
+# An INSTANCE is 16 floats (four vec4s), the layout the vertex stage reads and kinst_cull.comp writes:
 #     [0..3]  x y z scale            the position (the cell's frame in a cell's own records, render space in a bin)
 #     [4..7]  sin yaw, cos yaw, seed, flags      seed is the variation as 0..1; flags are the game's bits
 #     [8..11] tint r g b, variation  the variation is the facade/room variant as a whole number
+#     [12..15] w d h r               a box kit's instance (kitbox.ludic): its own width, depth, height and the radius of the
+#                                    sphere round its base that holds what it draws; all 0 for an ordinary instance
 # A KIT is the model those instances share; each has a near distance (full mesh inside it), a far distance (an
 # impostor card out to it, nothing past it) and a bounding radius per unit of scale.
 #
@@ -25,7 +27,7 @@
 # ============================================================================
 numbers float
 
-export const KI_FLOATS: int = 12
+export const KI_FLOATS: int = 16
 export const KI_MESH: int = 0         # levels
 export const KI_CARD: int = 1
 
@@ -154,11 +156,18 @@ export function kinst_add_cell(k: KCull, slot: int, c: CellContent, ox: float, o
     kc.rec[o + 9] = cell_rgba_g(c.tint[i])
     kc.rec[o + 10] = cell_rgba_b(c.tint[i])
     kc.rec[o + 11] = float(c.vari[i])
+    kc.rec[o + 12] = 0.0;  kc.rec[o + 13] = 0.0;  kc.rec[o + 14] = 0.0;  kc.rec[o + 15] = 0.0
     var rad = 10.0
     var far = 2000.0
     if id >= 0 and id < k.n_kits {
       rad = k.kit_rad[id] * sc
       far = k.kit_far[id]
+    }
+    if cell_is_box(c, i) {
+      let bo = i * CELL_BOX
+      kc.rec[o + 12] = c.box[bo];  kc.rec[o + 13] = c.box[bo + 1];  kc.rec[o + 14] = c.box[bo + 2]
+      rad = kinst_box_radius(c, i)
+      kc.rec[o + 15] = rad
     }
     minx = Math.min(minx, x - rad);  maxx = Math.max(maxx, x + rad)
     miny = Math.min(miny, y - rad);  maxy = Math.max(maxy, y + rad)
@@ -169,6 +178,15 @@ export function kinst_add_cell(k: KCull, slot: int, c: CellContent, ox: float, o
   kc.reach = reach
   push(k.cells, kc)
   return kc
+}
+
+# the radius of the sphere round a box instance's base that holds its drawn bounds (cell_add_box's), whatever its yaw
+export function kinst_box_radius(c: CellContent, i: int) -> float {
+  let o = i * CELL_BOX + 3
+  let x = Math.max(Math.abs(c.box[o]), Math.abs(c.box[o + 1]))
+  let y = Math.max(Math.abs(c.box[o + 2]), Math.abs(c.box[o + 3]))
+  let z = Math.max(Math.abs(c.box[o + 4]), Math.abs(c.box[o + 5]))
+  return Math.sqrt(x * x + y * y + z * z)
 }
 
 # Drop a cell by its slot; true if it was there.
@@ -349,7 +367,8 @@ export function kinst_cull(k: KCull) -> int {
       let d2 = dx * dx + dy * dy + dz * dz
       let far = k.kit_far[id] * sc
       if d2 > far * far { continue }
-      let r = k.kit_rad[id] * s
+      var r = k.kit_rad[id] * s
+      if c.rec[o + 15] > 0.0 { r = c.rec[o + 15] }                 # a box instance: its own drawn bounds
       if not kinst_sphere_in(k.planes, x, y, z, r) { continue }
       var lv = KI_MESH
       let near = k.kit_near[id] * sc

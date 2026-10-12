@@ -1,0 +1,143 @@
+# ============================================================================
+# kitbox.ludic - BOX KITS: one unit mesh drawn at every instance's own width, depth and height, so a handful of kits
+# draws a whole city of differently sized buildings without stretching what must keep its size. Each vertex of such a
+# kit carries ANCHORS (sx, sz, sh, sd) and a fixed OFFSET (ox, oy, oz) in metres (glTF attributes _ANCHOR, a VEC4, and
+# _OFFSET, a VEC3, beside POSITION), and an instance of width w, depth d and height h puts it at
+#
+#     x = sx w + ox        z = sz d + oz        y = sh h + sd d + oy
+#
+# A parapet's top is (sh 1, oy 1.0): always 1 m over the roof, however tall the building; its inner face is (sx 0.5,
+# ox -0.25): always 0.25 m thick. A pitched roof's ridge is (sh 1, sd tan 30 / 2, sz 0): it rises d / 2 x tan 30 over the
+# eave, so the pitch is 30 degrees at any depth. A wall's storey lines come from its material by height, not geometry.
+# Normals are the mesh's own, turned by the yaw only: a kit is drawn so its slopes do not depend on w, d, h (that is what
+# the anchors are for). sh is 0 .. 1 and sd >= 0 (a vertex never sinks as a building grows).
+#
+# A kit without the attributes is an ordinary kit (uniform scale). A box kit's instance has scale 1 and carries (w, d, h)
+# (cellfile.ludic's box columns, kinst.ludic's fourth vec4, kit.vert). Its drawn bounds - the culling sphere, the impostor
+# card, the HLOD box - come from the kit's distinct anchor tuples (kitbox_bounds), exactly what the vertex stage draws.
+# Doors and other things that must not deform are their own unscaled instances.
+# ============================================================================
+numbers float
+
+export const KB_TUPLES: int = 16   # distinct anchor tuples an axis keeps (more: the last two become a safe envelope)
+
+export property KitBox {
+  on: bool = false                 # the mesh has anchors
+  nx: int = 0                      # distinct (sx, ox)
+  tx: floats = null                # 2 a tuple
+  nz: int = 0                      # distinct (sz, oz)
+  tz: floats = null
+  ny: int = 0                      # distinct (sh, sd, oy)
+  ty: floats = null                # 3 a tuple
+  env: floats = null               # every tuple's envelope: max |sx| |ox| |sz| |oz|, min and max sh sd oy
+  over: bool = false               # more tuples than KB_TUPLES on an axis: its last two are the envelope (safe, not exact)
+  verts: int = 0
+}
+
+@alloc_ok("a kit being read: its tuples, once")
+export function kitbox_new() -> KitBox {
+  let k = new KitBox
+  k.tx = floats(KB_TUPLES * 2)
+  k.tz = floats(KB_TUPLES * 2)
+  k.ty = floats(KB_TUPLES * 3)
+  k.env = floats(10)
+  for i in 0 .. 4 { k.env[i] = 0.0 }
+  for i in 4 .. 7 { k.env[i] = 1000000000.0 }
+  for i in 7 .. 10 { k.env[i] = -1000000000.0 }
+  return k
+}
+
+function kb_near(a: float, b: float) -> bool { return Math.abs(a - b) < 0.0005 }
+
+# one vertex's anchors (sx, sz, sh, sd) and offset (ox, oy, oz) added to the kit's tuples
+export function kitbox_add(k: KitBox, sx: float, sz: float, sh: float, sd: float, ox: float, oy: float, oz: float) -> void {
+  k.on = true
+  k.verts += 1
+  let e = k.env
+  e[0] = Math.max(e[0], Math.abs(sx));  e[1] = Math.max(e[1], Math.abs(ox));  e[2] = Math.max(e[2], Math.abs(sz));  e[3] = Math.max(e[3], Math.abs(oz))
+  e[4] = Math.min(e[4], sh);  e[5] = Math.min(e[5], sd);  e[6] = Math.min(e[6], oy)
+  e[7] = Math.max(e[7], sh);  e[8] = Math.max(e[8], sd);  e[9] = Math.max(e[9], oy)
+  k.nx = kb_add2(k, k.tx, k.nx, sx, ox, e[0], e[1])
+  k.nz = kb_add2(k, k.tz, k.nz, sz, oz, e[2], e[3])
+  for i in 0 .. k.ny { if kb_near(k.ty[i * 3], sh) and kb_near(k.ty[i * 3 + 1], sd) and kb_near(k.ty[i * 3 + 2], oy) { return } }
+  if k.ny < KB_TUPLES {
+    k.ty[k.ny * 3] = sh;  k.ty[k.ny * 3 + 1] = sd;  k.ty[k.ny * 3 + 2] = oy
+    k.ny += 1
+    return
+  }
+  # full: the last two become the lowest and the highest any tuple could reach (sh, sd >= 0, so each sum is bounded)
+  k.over = true
+  let a = (KB_TUPLES - 2) * 3
+  k.ty[a] = e[4];  k.ty[a + 1] = e[5];  k.ty[a + 2] = e[6]
+  k.ty[a + 3] = e[7];  k.ty[a + 4] = e[8];  k.ty[a + 5] = e[9]
+}
+# a distinct (s, o) into t (n kept); when full, the last two become -(S, O) and (S, O), the envelope: |s w + o| <= S w + O
+function kb_add2(k: KitBox, t: floats, n: int, s: float, o: float, es: float, eo: float) -> int {
+  for i in 0 .. n { if kb_near(t[i * 2], s) and kb_near(t[i * 2 + 1], o) { return n } }
+  if n < KB_TUPLES {
+    t[n * 2] = s;  t[n * 2 + 1] = o
+    return n + 1
+  }
+  k.over = true
+  let a = (KB_TUPLES - 2) * 2
+  t[a] = -es;  t[a + 1] = -eo;  t[a + 2] = es;  t[a + 3] = eo
+  return n
+}
+
+# where a box kit's vertex is drawn for an instance of (w, d, h), in the kit's frame before the yaw (kit.vert, the same sum)
+export function kitbox_x(sx: float, ox: float, w: float) -> float { return sx * w + ox }
+export function kitbox_z(sz: float, oz: float, d: float) -> float { return sz * d + oz }
+export function kitbox_y(sh: float, sd: float, oy: float, h: float, d: float) -> float { return sh * h + sd * d + oy }
+
+# The drawn bounds of an instance of (w, d, h) in the kit's frame (before yaw), into out: x0 x1 y0 y1 z0 z1
+export function kitbox_bounds(k: KitBox, w: float, d: float, h: float, out: floats) -> void {
+  var x0 = 1000000000.0;  var x1 = -1000000000.0
+  for i in 0 .. k.nx {
+    let v = kitbox_x(k.tx[i * 2], k.tx[i * 2 + 1], w)
+    x0 = Math.min(x0, v);  x1 = Math.max(x1, v)
+  }
+  var z0 = 1000000000.0;  var z1 = -1000000000.0
+  for i in 0 .. k.nz {
+    let v = kitbox_z(k.tz[i * 2], k.tz[i * 2 + 1], d)
+    z0 = Math.min(z0, v);  z1 = Math.max(z1, v)
+  }
+  var y0 = 1000000000.0;  var y1 = -1000000000.0
+  for i in 0 .. k.ny {
+    let v = kitbox_y(k.ty[i * 3], k.ty[i * 3 + 1], k.ty[i * 3 + 2], h, d)
+    y0 = Math.min(y0, v);  y1 = Math.max(y1, v)
+  }
+  if k.nx == 0 { x0 = 0.0;  x1 = 0.0 }
+  if k.nz == 0 { z0 = 0.0;  z1 = 0.0 }
+  if k.ny == 0 { y0 = 0.0;  y1 = 0.0 }
+  out[0] = x0;  out[1] = x1;  out[2] = y0;  out[3] = y1;  out[4] = z0;  out[5] = z1
+}
+
+# the radius of the sphere round the instance's base point (its position) that holds its drawn bounds, whatever its yaw
+export function kitbox_radius_of(b: floats) -> float {
+  let x = Math.max(Math.abs(b[0]), Math.abs(b[1]))
+  let y = Math.max(Math.abs(b[2]), Math.abs(b[3]))
+  let z = Math.max(Math.abs(b[4]), Math.abs(b[5]))
+  return Math.sqrt(x * x + y * y + z * z)
+}
+
+# the kit's tuples as the card shader takes them (oimp.vert u_kx, u_kz: vec2 each in a vec4's xy; u_ky: vec4 sh sd oy -):
+# KB_TUPLES vec4 an axis, x then z then y, into out (KB_TUPLES * 12 floats); the counts into n (3 words)
+export function kitbox_uniforms(k: KitBox, out: floats, n: words) -> void {
+  for i in 0 .. KB_TUPLES * 12 { out[i] = 0.0 }
+  for i in 0 .. k.nx { out[i * 4] = k.tx[i * 2];  out[i * 4 + 1] = k.tx[i * 2 + 1] }
+  for i in 0 .. k.nz { out[(KB_TUPLES + i) * 4] = k.tz[i * 2];  out[(KB_TUPLES + i) * 4 + 1] = k.tz[i * 2 + 1] }
+  for i in 0 .. k.ny { let o = (2 * KB_TUPLES + i) * 4;  out[o] = k.ty[i * 3];  out[o + 1] = k.ty[i * 3 + 1];  out[o + 2] = k.ty[i * 3 + 2] }
+  n[0] = k.nx;  n[1] = k.nz;  n[2] = k.ny
+}
+
+# The impostor card of an instance of (w, d, h), as oimp.vert sizes it: out = the drawn width, top and depth it stands for
+# (twice the farthest |x|, the highest y, twice the farthest |z|), the card's half side and its centre's height
+export function kitbox_card(k: KitBox, w: float, d: float, h: float, out: floats) -> void {
+  var hx = 0.0;  var hz = 0.0;  var top = 0.0
+  for i in 0 .. k.nx { hx = Math.max(hx, Math.abs(kitbox_x(k.tx[i * 2], k.tx[i * 2 + 1], w))) }
+  for i in 0 .. k.nz { hz = Math.max(hz, Math.abs(kitbox_z(k.tz[i * 2], k.tz[i * 2 + 1], d))) }
+  for i in 0 .. k.ny { top = Math.max(top, kitbox_y(k.ty[i * 3], k.ty[i * 3 + 1], k.ty[i * 3 + 2], h, d)) }
+  out[0] = 2.0 * hx;  out[1] = top;  out[2] = 2.0 * hz
+  out[3] = 0.5 * Math.sqrt(out[0] * out[0] + out[1] * out[1] + out[2] * out[2])
+  out[4] = 0.5 * top
+}

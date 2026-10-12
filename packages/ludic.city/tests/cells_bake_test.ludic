@@ -149,4 +149,47 @@ program CellsBakeTest {
     expect_eq(n, 6)
     expect(Fs.exists(cell_path(dir, 0, 0, "lwh")))
   }
+
+  # a flat box kit's tuples by hand (ludic.render3d kitbox.ludic): walls to the eave and a parapet 1 m over it, 0.25 m in
+  function flat_box() -> KitBox {
+    let k = kitbox_new()
+    for sx in 0 .. 2 {
+      let x = float(sx) - 0.5
+      kitbox_add(k, x, x, 0.0, 0.0, 0.0, 0.0, 0.0)
+      kitbox_add(k, x, x, 1.0, 0.0, 0.0, 1.0, 0.0)
+      kitbox_add(k, x, x, 1.0, 0.0, -x * 0.5, 0.0, -x * 0.5)
+    }
+    return k
+  }
+
+  test "a registered box kit's buildings are placed at their own w and d and their eave height, the rest as before" (city_st: mut CityState, bl: mut Buildings) {
+    let kb = kitbake_new(256.0)
+    expect(kitbake_box(kb, "models/tower.glb", "Tower", flat_box()))
+    expect_eq(city_cells_bake(city_st, bl, "metro", "packages/ludic.city/tests/maps", kb), 72)
+    var boxes = 0
+    var plain = 0
+    for i in 0 .. kitbake_cell_count(kb) {
+      let c = kb.cells[i]
+      for j in 0 .. c.n {
+        let k = kb.kits[c.kit[j]]
+        if k.model == "models/tower.glb" {
+          expect(k.box and cell_is_box(c, j))
+          let o = j * CELL_BOX
+          expect(c.box[o] > 0.0 and c.box[o + 1] > 0.0)
+          # the eave: floors x the kit's floor_h (12 x 3.5 for the fixture's towers), the parapet drawn 1 m over it
+          expect_near(c.box[o + 2] / 3.5, Math.floor(c.box[o + 2] / 3.5 + 0.5), 0.001)
+          expect_near(c.box[o + 6], c.box[o + 2] + 1.0, 0.001)
+          expect_near(c.box[o + 4] - c.box[o + 3], c.box[o], 0.001)        # the drawn width is the row's w
+          expect(c.xf[j * CELL_XF + 4] == 1.0)
+          boxes += 1
+        } else {
+          expect(not cell_is_box(c, j))
+          plain += 1
+        }
+      }
+    }
+    expect(boxes > 0)
+    expect_eq(boxes + plain, 72)
+    expect(Text.contains(kitbake_rows(kb, 0), "box: true"))
+  }
 }

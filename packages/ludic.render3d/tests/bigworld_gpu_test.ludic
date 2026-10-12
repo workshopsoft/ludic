@@ -25,13 +25,15 @@ program BigWorldGpuTest {
   }
 
   test "the records the CPU writes are the sizes the compute shaders read" {
-    # kinst_cull.comp: a source instance is 4 vec4s, an output instance 3 vec4s; kinst_args.comp: 9 indirect records a kit
-    expect_eq(KG_SRC_FLOATS, 16)
-    expect_eq(KG_DST_FLOATS, 12)
+    # kinst_cull.comp: a source instance is 5 vec4s (its box last), an output instance 4 vec4s; kinst_args.comp: 9 indirect records a kit
+    expect_eq(KG_SRC_FLOATS, 20)
+    expect_eq(KG_DST_FLOATS, 16)
     expect_eq(KI_FLOATS, KG_DST_FLOATS)           # what the CPU culler lists and what the GPU writes are one layout
     let src = Fs.read_text("packages/ludic.render3d/shaders/kinst_cull.comp")
-    expect(Text.contains(src, "src[i * 4u + 3u]"))
-    expect(Text.contains(src, "(offs[bin] + at) * 3u"))
+    expect(Text.contains(src, "src[i * 5u + 3u]"))
+    expect(Text.contains(src, "src[i * 5u + 4u]"))
+    expect(Text.contains(src, "(offs[bin] + at) * 4u"))
+    expect(Text.contains(src, "dst[o + 3u] = box"))
     let args = Fs.read_text("packages/ludic.render3d/shaders/kinst_args.comp")
     expect(Text.contains(args, "k * 9u + j"))
   }

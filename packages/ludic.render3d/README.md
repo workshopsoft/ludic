@@ -316,6 +316,25 @@ impostor atlas (`kgpu_bake_kit`).
 
 The order is: rows change, then `city_cells_bake`, then `hlod_bake`; the game's `package.ludic` can run them as `hook before build`.
 
+**Box kits** (`kitbox.ludic`): one unit mesh drawn at every instance's own width, depth and height, so a handful of kits draws a city of
+differently sized buildings without stretching what must keep its size. Each vertex carries anchors (glTF `_ANCHOR`, VEC4: `sx`, `sz`,
+`sh`, `sd`) and an offset (`_OFFSET`, VEC3: `ox`, `oy`, `oz`, metres), drawn at `x = sx w + ox`, `z = sz d + oz`, `y = sh h + sd d + oy`:
+a parapet keeps 1 m and 0.25 m, a ridge at `sd = tan 30 / 2` keeps a 30 degree pitch, at any size (`sh` 0 .. 1, `sd` >= 0; normals are
+the mesh's, turned by the yaw). A box instance has scale 1 and carries `w d h` (the cell file's box columns, version 2, with its drawn
+bounds; `kinst` and `kgpu` records' fourth vec4 `w d h r`, `r` the sphere round its base that holds what it draws). Its card is sized
+from the kit's anchor tuples (`oimp.vert`), the HLOD box is its drawn bounds. Doors and other things that must not deform are ordinary
+unscaled instances. In the bake:
+
+```text
+let box = kitbox_new();  kitbox_read(st, "assets/kits", "massing.glb", "flat", box, null, null, null)   # CPU, no device
+kitbake_box(kb, "kits/massing.glb", "flat", box)          # every kit of that model and node is a box kit (row: box: true)
+kitbake_place_box(kb, kitbake_kit(kb, "kits/massing.glb", "flat", 20.0, 15.0, 10.2, ""), x, y, z, yaw, w, d, h, tint, variation, flags)
+```
+
+`city_cells_bake` places a registered model's buildings that way, `h` the eave (floors x the kit's `floor_h`). The renderer reads the
+tuples when it loads a `box: true` kit (`bw_setup_kits`). Tests: `tests/kitbox_test.ludic` (OC-140.I4 on `tests/maps/boxkits`); look:
+`lab/boxkit_lab.ludic`.
+
 ### Terrain from the studio's tiles (`tilemap.ludic`, `tilemap_draw.ludic`)
 
 The studio writes a map's ground as 16-bit greyscale PNG tiles (`world_create`, `terrain_sculpt`); the map's row says how. One

@@ -150,7 +150,8 @@ bind CityPhysics { add: fn city_add_piece, remove: fn city_drop_piece }
 
 **For the renderer, baked.** The instanced kits and the cell files the large world streams come from the rows by `tools/cells_bake_city.ludic`
 (`city_cells_bake`): one kit a (model, node, atlas) so every building of a model shares one mesh, drawn instanced per cell; see ludic.render3d's README,
-"Kits and cells from placed things". `tests/cells_bake_test.ludic` runs it on the fixture city.
+"Kits and cells from placed things". `tests/cells_bake_test.ludic` runs it on the fixture city. A model and node registered as a box kit (`kitbake_box`) is placed at each
+building's own `w` and `d` and its eave, floors times its kit's `floor_h`, the kit's parapet or roof drawn on top.
 
 ### The block hash
 
