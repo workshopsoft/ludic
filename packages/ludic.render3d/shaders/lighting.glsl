@@ -5,6 +5,12 @@ uniform sampler2D u_brdf;                // split-sum BRDF LUT
 #define CASCADES 5
 uniform sampler2DArrayShadow u_shadow;   // CASCADES layers
 float shadowTap(vec2 uv, int c, float ref) { return texture(u_shadow, vec4(uv, float(c), ref)); }
+// Depth is REVERSED everywhere (fmath.ludic): clip z runs 0 .. w, the buffer holds 1 at the near plane and 0 at the far
+// one (infinity for the camera), cleared to 0, nearer is GREATER. A depth read back is clip z as it is; the sky's 0 is
+// raised to a hair above so an inverse projection gives a point very far off rather than a division by zero.
+float depthClip(float d) { return max(d, 1e-9); }
+const float DEPTH_SKY = 0.0;          // what the cleared buffer holds where nothing was drawn
+const float DEPTH_FAR_POINT = 1e-6;   // a clip z for a point far down a pixel's ray (50 km from a 5 cm near plane)
 uniform mat4 u_cascade_vp[CASCADES];
 uniform float u_cascade_split[CASCADES];  // view-space far distance of each cascade
 uniform float u_cascade_range[CASCADES];  // light-frustum depth extent of each cascade (m)
@@ -129,8 +135,8 @@ float cascadeTexel(int c) { return u_cascade_texel[c]; }
 // biasWorld in metres; the receiver is pushed along its normal by a texel first
 float shadowSample(int c, vec3 wpos, float biasWorld) {
   vec4 lp = u_cascade_vp[c] * vec4(wpos, 1.0);
-  vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
-  if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) return 1.0;
+  vec3 p = vec3(lp.xy / lp.w * 0.5 + 0.5, lp.z / lp.w);
+  if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z < 0.0) return 1.0;
   float bias = biasWorld / cascadeRange(c);
   float texel = 1.0 / float(textureSize(u_shadow, 0).x);   // the shadow resolution setting
   float r = ign(gl_FragCoord.xy) * 6.2831853;
@@ -143,7 +149,7 @@ float shadowSample(int c, vec3 wpos, float biasWorld) {
   float rad = texel * ((c >= 4) ? 2.6 : (c == 3) ? 2.0 : 1.5);
   for (int i = 0; i < 8; i++) {
     vec2 off = rot * taps[i] * rad;
-    s += shadowTap(p.xy + off, c, p.z - bias);
+    s += shadowTap(p.xy + off, c, p.z + bias);     // reversed: toward the sun is up
   }
   return s / 8.0;
 }
@@ -192,9 +198,9 @@ float sunShadowCheap(vec3 wpos, vec3 n, float viewDepth) {
   for (int i = 0; i < CASCADES - 1; i++) { if (viewDepth < u_cascade_split[i]) { c = i; break; } }
   float tx = cascadeTexel(c);
   vec4 lp = u_cascade_vp[c] * vec4(wpos + n * tx * 2.5, 1.0);
-  vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
+  vec3 p = vec3(lp.xy / lp.w * 0.5 + 0.5, lp.z / lp.w);
   float s = 1.0;
-  if (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0 && p.z <= 1.0) s = shadowTap(p.xy, c, p.z - (tx * 2.0 + 0.02) / cascadeRange(c));
+  if (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0 && p.z >= 0.0) s = shadowTap(p.xy, c, p.z + (tx * 2.0 + 0.02) / cascadeRange(c));
   return min(s, terrainShadow(wpos));
 }
 float sunShadow(vec3 wpos, vec3 n, float viewDepth) {
@@ -246,6 +252,33 @@ vec3 regionTint(vec3 wpos, float strength) {
   return t;
 }
 
+// Light zones (lightzone.ludic): boxes the sun does not reach (a tunnel). Each is 4 vec4s:
+// (centre, feather) (cos yaw, sin yaw, sky, -) (half sizes, -) (ambient rgb, -). The weight is 0 outside the box,
+// 1 deeper than the feather inside, smoothstep between; the strongest zone wins and lends its ambient and sky.
+#define LZ_MAX 8
+uniform vec4 u_lz[LZ_MAX * 4];
+uniform int u_lz_n;
+float lightZone(vec3 p, out vec4 amb) {
+  float w = 0.0;
+  amb = vec4(0.0, 0.0, 0.0, 1.0);
+  for (int i = 0; i < LZ_MAX; i++) {
+    if (i >= u_lz_n) break;
+    vec4 a = u_lz[i * 4];
+    vec4 b = u_lz[i * 4 + 1];
+    vec4 c = u_lz[i * 4 + 2];
+    vec3 d = p - a.xyz;
+    vec3 l = vec3(b.x * d.x - b.y * d.z, d.y, b.y * d.x + b.x * d.z);
+    vec3 e = c.xyz - abs(l);
+    float inside = min(e.x, min(e.y, e.z));
+    float wi = (a.w > 0.0) ? smoothstep(0.0, a.w, inside) : step(0.0, inside);
+    if (wi > w) { w = wi; amb = vec4(u_lz[i * 4 + 3].rgb, b.z); }
+  }
+  return w;
+}
+
+// what is left of the sun at p: 1 outside every light zone, 0 deep inside one
+float sunZone(vec3 p) { vec4 a; return 1.0 - lightZone(p, a); }
+
 // direct + image-based lighting for one surface
 vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, float shadow, float viewDepth) {
   vec3 v = normalize(u_cam_pos - wpos);
@@ -261,23 +294,29 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   vec3 F = F_Schlick(VoH, f0);
   vec3 spec = min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale;   // cap the highlight: no half-float overflow, no fireflies
   vec3 kd = (1.0 - F) * (1.0 - metal);
-  vec3 direct = (kd * albedo / PI + spec) * u_sun_color * NoL * shadow * cloudShadow(wpos);
+  // a light zone takes the sun away (and the sky but its fraction) and adds its own ambient
+  vec4 lzAmb;
+  float lz = lightZone(wpos, lzAmb);
+  float sunK = 1.0 - lz;
+  float skyK = mix(1.0, lzAmb.a, lz);
+  vec3 direct = (kd * albedo / PI + spec) * u_sun_color * NoL * shadow * cloudShadow(wpos) * sunK;
   // IBL
   vec3 Fr = F_SchlickRough(NoV, f0, rough);
   vec3 kdi = (1.0 - Fr) * (1.0 - metal);
   vec3 irr = skyIrradiance(n);
-  vec3 diffuseIBL = kdi * albedo * irr;
+  vec3 diffuseIBL = kdi * albedo * irr * skyK;
   vec3 r = reflect(-v, n);
   vec3 pre = skyPrefiltered(r, rough);
   vec2 brdf = texture(u_brdf, vec2(NoV, rough)).rg;
-  vec3 specIBL = pre * (Fr * brdf.x + brdf.y) * u_spec_scale;
+  vec3 specIBL = pre * (Fr * brdf.x + brdf.y) * u_spec_scale * skyK;
   // one bounce off the sunlit ground onto whatever faces it (a warm fill from below)
   vec3 groundAlb = groundAlbAt(wpos.y) * 0.55;
-  vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI + irr) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5;
+  vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI * sunK + irr * skyK) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5;
+  vec3 zoneAmb = kdi * albedo * lzAmb.rgb * lz;
   // specular occlusion from ao
   float so = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
   // check for NaN before min(): on this GPU min(NaN, x) returns x, which would hide the fault as a hot pixel
-  vec3 c = direct + (diffuseIBL * ao + specIBL * so) + bounce * ao + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
+  vec3 c = direct + (diffuseIBL * ao + specIBL * so) + bounce * ao + zoneAmb * ao + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
   if (any(isnan(direct)) || any(isnan(diffuseIBL)) || any(isnan(specIBL)) || isnan(so)) return vec3(0.0);
   return sane(min(c, vec3(4096.0)));
 }

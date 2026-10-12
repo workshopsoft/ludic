@@ -1,0 +1,314 @@
+# kitbox_test.ludic - box kits (kitbox.ludic) on the boxkits fixture (tests/maps/boxkits, made by make_boxkits.py: a flat
+# kit with a parapet, a 30 degree gable kit, an ordinary door). Instances of 3, 12 and 72 floors (3.4 m a storey)
+# keep the parapet 1.0 m high and 0.25 m thick and the roof's pitch at 30 degrees, the door is 1.0 x 2.2 m unscaled, and the
+# impostor card, the culling sphere and the HLOD box hold exactly what is drawn (within 5 cm). The deformation is the vertex
+# stage's own sum (kit.vert), done here on the kit's vertices as read from the file. Also: the cell file's box columns, the
+# culler's records and the bake's rows. No device.
+import "ludic.render3d/r3d.ludic"
+program KitBoxTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  const STOREY: float = 3.4
+
+  function dir(render3d_st: Render3dState) -> string { return render3d_st.r3d_root + "/tests/maps/boxkits" }
+
+  # node `node` of the fixture: its tuples, and its vertices' positions, anchors and offsets
+  function kit(render3d_st: mut Render3dState, node: string, pos: []float, anc: []float, off: []float) -> KitBox {
+    let k = kitbox_new()
+    expect(kitbox_read(render3d_st, dir(render3d_st), "kits.glb", node, k, pos, anc, off))
+    return k
+  }
+  # vertex v drawn for an instance of (w, d, h): x y z into out
+  function draw(anc: []float, off: []float, v: int, w: float, d: float, h: float, out: floats) -> void {
+    out[0] = kitbox_x(anc[v * 4], off[v * 3], w)
+    out[1] = kitbox_y(anc[v * 4 + 2], anc[v * 4 + 3], off[v * 3 + 1], h, d)
+    out[2] = kitbox_z(anc[v * 4 + 1], off[v * 3 + 2], d)
+  }
+  # the drawn bounds of every vertex: x0 x1 y0 y1 z0 z1
+  function drawn(anc: []float, off: []float, w: float, d: float, h: float) -> floats {
+    let b = floats(6)
+    b[0] = 1000000.0;  b[1] = -1000000.0;  b[2] = 1000000.0;  b[3] = -1000000.0;  b[4] = 1000000.0;  b[5] = -1000000.0
+    let p = floats(3)
+    for v in 0 .. len(anc) / 4 {
+      draw(anc, off, v, w, d, h, p)
+      b[0] = Math.min(b[0], p[0]);  b[1] = Math.max(b[1], p[0])
+      b[2] = Math.min(b[2], p[1]);  b[3] = Math.max(b[3], p[1])
+      b[4] = Math.min(b[4], p[2]);  b[5] = Math.max(b[5], p[2])
+    }
+    return b
+  }
+
+  # the three buildings of I4: floors, and a footprint each (w the long side)
+  function floors_of(i: int) -> int {
+    if i == 0 { return 3 }
+    if i == 1 { return 12 }
+    return 72
+  }
+  function w_of(i: int) -> float { return 14.0 + 13.0 * float(i) }
+  function d_of(i: int) -> float { return 9.0 + 7.5 * float(i) }
+
+  test "the box kits have anchors, the door none; the file's positions are the kits drawn at the reference instance" (render3d_st: mut Render3dState) {
+    let pos = new []float
+    let anc = new []float
+    let off = new []float
+    let flat = kit(render3d_st, "flat", pos, anc, off)
+    expect(flat.on)
+    expect(not flat.over)
+    expect_eq(flat.verts, 52)
+    # POSITION was written at w 20, d 10, h 10: the vertex stage's sum gives it back from the anchors
+    let p = floats(3)
+    var worst = 0.0
+    for v in 0 .. len(pos) / 3 {
+      draw(anc, off, v, 20.0, 10.0, 10.0, p)
+      for k in 0 .. 3 { worst = Math.max(worst, Math.abs(p[k] - pos[v * 3 + k])) }
+    }
+    expect(worst < 0.0001)
+    let g = kit(render3d_st, "gable", new []float, new []float, new []float)
+    expect(g.on)
+    let d = kit(render3d_st, "door", new []float, new []float, new []float)
+    expect(not d.on)
+    expect(not kitbox_read(render3d_st, dir(render3d_st), "kits.glb", "no_such_node", kitbox_new(), null, null, null))
+  }
+
+  test "a flat roof's parapet stays 1.0 m high and 0.25 m thick at 3, 12 and 72 floors" (render3d_st: mut Render3dState) {
+    let anc = new []float
+    let off = new []float
+    kit(render3d_st, "flat", new []float, anc, off)
+    let p = floats(3)
+    for i in 0 .. 3 {
+      let w = w_of(i);  let d = d_of(i);  let h = float(floors_of(i)) * STOREY
+      # the deck (sh 1, oy 0, inset) and the parapet's top (oy 1): every vertex is on the ground, at the eave or 1 m over it
+      var top = -1.0;  var deck = 1000000.0;  var inner = -1000000.0;  var outer = -1000000.0;  var odd = 0
+      for v in 0 .. len(anc) / 4 {
+        draw(anc, off, v, w, d, h, p)
+        let y = p[1]
+        if Math.abs(y) > 0.001 and Math.abs(y - h) > 0.001 and Math.abs(y - h - 1.0) > 0.001 { odd += 1 }
+        top = Math.max(top, y)
+        if Math.abs(y - h) < 0.001 { deck = Math.min(deck, y) }
+        outer = Math.max(outer, p[0])
+        if p[0] < w * 0.5 - 0.001 and Math.abs(p[2]) < d * 0.5 - 0.1 { inner = Math.max(inner, p[0]) }
+      }
+      expect_eq(odd, 0)
+      expect_near(top - deck, 1.0, 0.01)                   # the parapet over the roof
+      expect_near(top, h + 1.0, 0.01)                      # the drawn top: floors x 3.4 + 1.0
+      expect_near(outer - inner, 0.25, 0.01)               # its thickness
+      expect_near(outer, w * 0.5, 0.001)                   # the footprint is the instance's
+    }
+  }
+
+  test "a gable roof keeps its 30 degree pitch and its ridge d / 2 tan 30 over the eave at 3, 12 and 72 floors" (render3d_st: mut Render3dState) {
+    let anc = new []float
+    let off = new []float
+    kit(render3d_st, "gable", new []float, anc, off)
+    let p = floats(3)
+    let q = floats(3)
+    for i in 0 .. 3 {
+      let w = w_of(i);  let d = d_of(i);  let h = float(floors_of(i)) * STOREY
+      var ridge = -1.0
+      for v in 0 .. len(anc) / 4 { draw(anc, off, v, w, d, h, p);  ridge = Math.max(ridge, p[1]) }
+      expect_near(ridge - h, d * 0.5 * Math.tan(Math.deg_to_rad(30.0)), 0.01)
+      # every edge from an eave vertex (y = h, |z| = d / 2) to a ridge vertex (z = 0) of the same x rises at 30 degrees
+      var slopes = 0
+      for a in 0 .. len(anc) / 4 {
+        draw(anc, off, a, w, d, h, p)
+        if Math.abs(p[1] - h) > 0.001 or Math.abs(Math.abs(p[2]) - d * 0.5) > 0.001 { continue }
+        for b in 0 .. len(anc) / 4 {
+          draw(anc, off, b, w, d, h, q)
+          if Math.abs(q[1] - ridge) > 0.001 or Math.abs(q[0] - p[0]) > 0.001 { continue }
+          let pitch = Math.rad_to_deg(Math.atan2(q[1] - p[1], Math.abs(q[2] - p[2])))
+          expect_near(pitch, 30.0, 0.5)
+          slopes += 1
+        }
+      }
+      expect(slopes >= 4)
+    }
+  }
+
+  test "the door is its own unscaled instance, 1.0 x 2.2 m" (render3d_st: mut Render3dState) {
+    let pos = new []float
+    let k = kit(render3d_st, "door", pos, new []float, new []float)
+    expect(not k.on)
+    var x0 = 1000.0;  var x1 = -1000.0;  var y0 = 1000.0;  var y1 = -1000.0
+    for v in 0 .. len(pos) / 3 {
+      x0 = Math.min(x0, pos[v * 3]);  x1 = Math.max(x1, pos[v * 3])
+      y0 = Math.min(y0, pos[v * 3 + 1]);  y1 = Math.max(y1, pos[v * 3 + 1])
+    }
+    expect_near(x1 - x0, 1.0, 0.001)
+    expect_near(y1 - y0, 2.2, 0.001)
+    # placed beside a 72 floor building it is an ordinary instance: scale 1, no box columns
+    let c = cell_content_new(0, 0, 256.0, 4)
+    let b = floats(6)
+    let flat = kit(render3d_st, "flat", new []float, new []float, new []float)
+    kitbox_bounds(flat, 40.0, 24.0, 72.0 * STOREY, b)
+    cell_add_box(c, 0, 50.0, 0.0, 50.0, 0.0, 40.0, 24.0, 72.0 * STOREY, b, 0xffffffff, 1, 0)
+    let door = cell_add(c, 1, 50.0, 0.0, 62.05, 0.0, 1.0, 0xffffffff, 2, 0)
+    expect(not cell_is_box(c, door))
+    expect(c.xf[door * CELL_XF + 4] == 1.0)
+    let kc = kinst_add_cell(kinst_new(2), 0, c, 0.0, 0.0, 0.0)
+    expect(kc.rec[door * KI_FLOATS + 15] == 0.0)          # the vertex stage draws its mesh as it is
+  }
+
+  test "the bounds, the impostor card and the culling sphere hold exactly what is drawn" (render3d_st: mut Render3dState) {
+    let names = Text.split("flat gable", " ")
+    let b = floats(6)
+    let card = floats(5)
+    let p = floats(3)
+    for n in 0 .. len(names) {
+      let anc = new []float
+      let off = new []float
+      let k = kit(render3d_st, names[n], new []float, anc, off)
+      for i in 0 .. 3 {
+        let w = w_of(i);  let d = d_of(i);  let h = float(floors_of(i)) * STOREY
+        let want = drawn(anc, off, w, d, h)
+        kitbox_bounds(k, w, d, h, b)
+        for j in 0 .. 6 { expect_near(b[j], want[j], 0.05) }
+        # the card stands for the drawn width, top and depth, and its square holds every vertex round its centre
+        kitbox_card(k, w, d, h, card)
+        expect_near(card[0], 2.0 * Math.max(Math.abs(want[0]), Math.abs(want[1])), 0.05)
+        expect_near(card[1], want[3], 0.05)
+        expect_near(card[2], 2.0 * Math.max(Math.abs(want[4]), Math.abs(want[5])), 0.05)
+        let r = kitbox_radius_of(b)
+        var far = 0.0
+        var farc = 0.0
+        for v in 0 .. len(anc) / 4 {
+          draw(anc, off, v, w, d, h, p)
+          far = Math.max(far, Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]))
+          farc = Math.max(farc, Math.sqrt(p[0] * p[0] + (p[1] - card[4]) * (p[1] - card[4]) + p[2] * p[2]))
+        }
+        expect(far <= r + 0.0001)                           # the culling sphere round the base holds every vertex
+        expect(farc <= card[3] + 0.0001)                    # the card's half side round its centre
+      }
+    }
+  }
+
+  test "the HLOD box of a box instance is its drawn bounds, turned and moved as it is" (render3d_st: mut Render3dState) {
+    let anc = new []float
+    let off = new []float
+    let k = kit(render3d_st, "gable", new []float, anc, off)
+    let rows = new []RenderKit
+    let rk = new RenderKit
+    rk.box = true
+    push(rows, rk)
+    let b = floats(6)
+    let p = floats(3)
+    for i in 0 .. 3 {
+      let w = w_of(i);  let d = d_of(i);  let h = float(floors_of(i)) * STOREY
+      let yaw = 0.3 * float(i)
+      kitbox_bounds(k, w, d, h, b)
+      let c = cell_content_new(0, 0, 256.0, 1)
+      cell_add_box(c, 0, 128.0, 2.0, 120.0, yaw, w, d, h, b, 0xffffffff, 1, 0)
+      let m = hlod_new(0, 0, 256.0, 1)
+      hlod_bake(c, rows, 0.0, 30.0, 4.0, m)
+      expect_eq(m.boxes, 1)
+      # every drawn vertex, turned as the vertex stage turns it, is inside the box's footprint and under its roof; and the box is
+      # no wider or taller than they reach (5 cm)
+      var hy = -1000.0
+      var wx0 = 1000000.0;  var wx1 = -1000000.0
+      for q in 0 .. m.nv {
+        hy = Math.max(hy, m.vtx[q * HLOD_V + 1])
+        wx0 = Math.min(wx0, m.vtx[q * HLOD_V]);  wx1 = Math.max(wx1, m.vtx[q * HLOD_V])
+      }
+      let s = Math.sin(yaw);  let co = Math.cos(yaw)
+      var top = -1000.0
+      var vx0 = 1000000.0;  var vx1 = -1000000.0
+      for v in 0 .. len(anc) / 4 {
+        draw(anc, off, v, w, d, h, p)
+        top = Math.max(top, 2.0 + p[1])
+        let x = 128.0 + co * p[0] + s * p[2]
+        vx0 = Math.min(vx0, x);  vx1 = Math.max(vx1, x)
+      }
+      expect_near(hy, top, 0.05)
+      expect(wx0 <= vx0 + 0.0001 and wx1 >= vx1 - 0.0001)
+      if i == 0 { expect_near(wx1 - wx0, vx1 - vx0, 0.05) }     # unturned, the footprint is exactly the drawn one
+    }
+  }
+
+  test "the cell file keeps box columns (version 2) and reads version 1 as before" (render3d_st: mut Render3dState) {
+    let c = cell_content_new(3, -2, 256.0, 1)
+    cell_add(c, 0, 1.0, 2.0, 3.0, 0.1, 1.5, 0xffffffff, 5, 0)
+    let b1 = cell_encode(c)
+    expect_eq(lw_get32(b1, 4), 1)
+    expect_eq(len(b1), 32 + (CELL_XF * 4 + 16))
+    let back1 = cell_decode(b1)
+    expect(back1 != null and back1.n == 1 and back1.boxes == 0 and not cell_is_box(back1, 0))
+    let b = floats(6)
+    for k in 0 .. 6 { b[k] = float(k) - 2.5 }
+    for i in 0 .. 20 { cell_add_box(c, 1, float(i), 0.0, 4.0, 0.2, 10.0 + float(i), 8.0, 30.0, b, 0xffffffff, i, 0) }
+    expect_eq(c.boxes, 20)
+    let b2 = cell_encode(c)
+    expect_eq(lw_get32(b2, 4), 2)
+    let back = cell_decode(b2)
+    expect(back != null)
+    expect_eq(back.n, 21)
+    expect_eq(back.boxes, 20)
+    expect(not cell_is_box(back, 0))
+    expect(cell_is_box(back, 20))
+    expect_near(back.box[20 * CELL_BOX], 29.0, 0.0001)
+    expect_near(back.box[20 * CELL_BOX + 2], 30.0, 0.0001)
+    expect_near(back.box[20 * CELL_BOX + 8], 2.5, 0.0001)
+    expect_near(back.xf[20 * CELL_XF + 4], 1.0, 0.0001)      # a box instance has scale 1
+    let cut = buffer(len(b2) - 4)
+    for i in 0 .. len(b2) - 4 { cut[i] = b2[i] }
+    expect(cell_decode(cut) == null)                         # cut short
+  }
+
+  test "the culler carries a box instance's w, d, h and the sphere of what it draws, and keeps it by that sphere" (render3d_st: mut Render3dState) {
+    let k = kit(render3d_st, "flat", new []float, new []float, new []float)
+    let b = floats(6)
+    let h = 72.0 * STOREY
+    kitbox_bounds(k, 40.0, 24.0, h, b)
+    let c = cell_content_new(0, 0, 256.0, 1)
+    cell_add_box(c, 0, 0.0, 0.0, 0.0, 0.0, 40.0, 24.0, h, b, 0xffffffff, 1, 0)
+    let kc0 = kinst_new(1)
+    kinst_kit(kc0, 0, 1000.0, 3000.0, 2.0, true)       # the kit's own radius (the unit mesh's) is small
+    let kc = kinst_add_cell(kc0, 0, c, 0.0, 0.0, 0.0)
+    expect_near(kc.rec[12], 40.0, 0.0001)
+    expect_near(kc.rec[13], 24.0, 0.0001)
+    expect_near(kc.rec[14], h, 0.0001)
+    expect_near(kc.rec[15], kitbox_radius_of(b), 0.0001)
+    expect(kc.maxy >= h + 1.0 - 0.0001)                   # the cell's box holds the tower
+    # a camera looking along +z far above the tower's base (which is behind the near plane's view below it): only the tower's
+    # top is in view, and it is kept, by its own sphere
+    let view = m4_new()
+    let proj = m4_new()
+    let vp = m4_new()
+    m4_perspective_rz(proj, 1.0, 1.0, 0.1, 5000.0)
+    m4_look_at_xyz(view, 0.0, h, -200.0, 0.0, h, 0.0, 0.0, 1.0, 0.0)
+    m4_mul(vp, proj, view)
+    kinst_begin(kc0, vp, 0.0, h, -200.0)
+    expect_eq(kinst_cull(kc0), 1)
+    expect_near(kinst_bin(kc0, 0, KI_MESH)[15], kitbox_radius_of(b), 0.0001)
+    kc.rec[15] = 0.0                                      # by the kit's own small radius the base alone would be tested: culled
+    kinst_begin(kc0, vp, 0.0, h, -200.0)
+    expect_eq(kinst_cull(kc0), 0)
+  }
+
+  test "the bake makes a box kit of a registered model and node, its rows say so, and its instances keep their own size" (render3d_st: mut Render3dState) {
+    let flat = kit(render3d_st, "flat", new []float, new []float, new []float)
+    let kb = kitbake_new(256.0)
+    let plain = kitbake_kit(kb, "boxkits/kits.glb", "door", 1.0, 0.1, 2.2, "")
+    expect(not kitbake_is_box(kb, plain))
+    let id = kitbake_kit_box(kb, "boxkits/kits.glb", "flat", flat, 20.0, 10.0, 10.0, "")
+    expect(kitbake_is_box(kb, id))
+    expect(kb.kits[id].box)
+    expect_eq(kitbake_kit_box(kb, "boxkits/kits.glb", "door", kitbox_new(), 1.0, 1.0, 1.0, ""), -1)   # no anchors: not a box kit
+    # the same model and node with an interior atlas is a second kit, a box kit too
+    let id2 = kitbake_kit(kb, "boxkits/kits.glb", "flat", 20.0, 10.0, 10.0, "windows_a")
+    expect(id2 != id and kitbake_is_box(kb, id2))
+    expect(kitbake_place_box(kb, id, 300.0, 0.0, 40.0, 0.0, 30.0, 20.0, 12.0 * STOREY, 0xffffffff, 7, 0))
+    expect(not kitbake_place_box(kb, plain, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0xffffffff, 0, 0))
+    expect(kitbake_place(kb, plain, 310.0, 0.0, 50.05, 0.0, 1.0, 0xffffffff, 0, 0))
+    expect(Text.contains(kitbake_rows(kb, 0), "box: true"))
+    let c = kb.cells[0]
+    expect_eq(c.cx, 1)
+    expect_eq(c.n, 2)
+    expect(cell_is_box(c, 0) and not cell_is_box(c, 1))
+    expect_near(c.box[2], 12.0 * STOREY, 0.0001)
+    expect_near(c.box[3 + 3], 12.0 * STOREY + 1.0, 0.001)    # its drawn top, the parapet included
+    let dir = Os.temp_dir() + "/r3d_kitbox_bake"
+    expect_eq(kitbake_write(kb, dir), 1)
+    let back = cell_load(dir, 1, 0)
+    expect(back != null and back.boxes == 1)
+  }
+}

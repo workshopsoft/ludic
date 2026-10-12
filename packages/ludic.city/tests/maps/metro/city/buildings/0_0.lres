@@ -22,6 +22,7 @@ b0_0_01 {
   w: 14.0
   d: 10.0
   floors: 3
+  roof: "gable"
   interior: "fake"
   atlas: "windows_a"
   lot: "lot-0-0-1"
@@ -40,6 +41,7 @@ b0_0_02 {
   d: 16.0
   floors: 5
   height: 19.0
+  roof: "sawtooth"
   lot: "lot-0-0-2"
   address: "102 Side St"
   footprint: [{ x: -9.0, z: -8.0 }, { x: 9.0, z: -8.0 }, { x: 9.0, z: 0.0 }, { x: 0.0, z: 0.0 }, { x: 0.0, z: 8.0 }, { x: -9.0, z: 8.0 }]

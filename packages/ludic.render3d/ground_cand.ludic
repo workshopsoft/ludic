@@ -53,6 +53,9 @@ function gf_trampled(render3d_st: mut Render3dState, keep: float, solid: bool, x
 export function ground_water_depth(render3d_st: mut Render3dState, x: float, z: float) -> float {
   var depth = -1000.0
   for b in 0 .. render3d_st.wb_n {
+    # a mesh body's ellipse is not its shape, and a masked plane is not over a dry texel
+    if render3d_st.wb_kind != null and render3d_st.wb_kind[b] != WATER_PLANE { continue }
+    if render3d_st.wb_masked != null and render3d_st.wb_masked[b] == 1 and render3d_st.water_wet != null and wet_at(render3d_st.water_wet, x, z) < 0.5 { continue }
     let qx = (x - render3d_st.wb_cx[b]) / render3d_st.wb_ex[b]
     let qz = (z - render3d_st.wb_cz[b]) / render3d_st.wb_ez[b]
     if qx * qx + qz * qz >= 1.0 { continue }

@@ -9,7 +9,7 @@ uniform float u_radius;       // world metres
 uniform float u_intensity;
 vec3 viewPos(vec2 uv) {
   float d = texture(u_depth, uv).r;
-  vec4 p = u_inv_proj * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+  vec4 p = u_inv_proj * vec4(uv * 2.0 - 1.0, depthClip(d), 1.0);
   return p.xyz / p.w;
 }
 void main() {

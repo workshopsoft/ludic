@@ -14,6 +14,8 @@
 #   kitbake_seed(kb, existing_kits.rows)              # rows already written keep their ids (kits are only ever appended)
 #   let id = kitbake_kit(kb, "city/block_3.glb", "tower_a", 30.0, 30.0, 120.0, "")
 #   kitbake_place(kb, id, x, y, z, yaw_radians, 1.0, cell_rgba(255, 255, 255, 255), variation, flags)
+#   let b = kitbake_kit_box(kb, "kits/massing.glb", "flat", box, 20.0, 15.0, 10.2, "")   # a box kit (kitbox.ludic): box = kitbox_read's
+#   kitbake_place_box(kb, b, x, y, z, yaw_radians, w, d, h, cell_rgba(255, 255, 255, 255), variation, flags)
 #   kitbake_write(kb, "assets/maps/meridian/cells")   # cells.lwi and the cell files
 #   Fs.write_text("assets/maps/meridian/render_kits.lres", kitbake_rows(kb, 0))
 # ============================================================================
@@ -22,6 +24,9 @@ numbers float
 export property KitBake {
   size: float = 256.0                # the cell's side, metres (the map's WorldPartition.cell_size)
   kits: []RenderKit = null
+  boxes: []KitBox = null             # a box kit's anchor tuples by kit id, null for an ordinary kit (or a seeded box kit not asked for again)
+  box_tuples: []KitBox = null        # the tuples kitbake_box registered, and ...
+  box_of: Dict = null                # ... "model|node" -> their index: every kit of that model and node is a box kit
   kit_of: Dict = null                # "model|node|interior" -> kit id
   seeded: int = 0                    # kits that came from rows already written
   cells: []CellContent = null
@@ -38,6 +43,9 @@ export function kitbake_new(size: float) -> KitBake {
   let kb = new KitBake
   kb.size = size
   kb.kits = new []RenderKit
+  kb.boxes = new []KitBox
+  kb.box_tuples = new []KitBox
+  kb.box_of = Dict.new()
   kb.kit_of = Dict.new()
   kb.cells = new []CellContent
   kb.cell_of = Dict.new()
@@ -53,6 +61,7 @@ function kb_id(model: string, node: string, interior: string) -> string { return
 export function kitbake_seed(kb: KitBake, rows: []RenderKit) -> void {
   for i in 0 .. len(rows) {
     push(kb.kits, rows[i])
+    push(kb.boxes, null)
     Dict.set(kb.kit_of, kb_id(rows[i].model, rows[i].node, rows[i].interior), i)
   }
   kb.seeded = len(rows)
@@ -97,8 +106,54 @@ export function kitbake_kit(kb: KitBake, model: string, node: string, w: float, 
   k.far = Math.max(r * kb.far_scale, Math.max(kb.far_min, k.near * 2.0))
   k.interior = interior
   push(kb.kits, k)
+  push(kb.boxes, null)
   Dict.set(kb.kit_of, id, len(kb.kits) - 1)
+  kb_box_mark(kb, len(kb.kits) - 1)
   return len(kb.kits) - 1
+}
+
+# kit `id` made a box kit when its model and node were registered (kitbake_box): its row says so, its distances come from its
+# reference instance's drawn bounds
+@alloc_ok("a bake: once a kit")
+function kb_box_mark(kb: KitBake, id: int) -> void {
+  let k = kb.kits[id]
+  let key = `{k.model}|{k.node}`
+  if not Dict.has(kb.box_of, key) { return }
+  let box = kb.box_tuples[Dict.get(kb.box_of, key)]
+  kb.boxes[id] = box
+  k.box = true
+  if id < kb.seeded { return }
+  let b = floats(6)
+  kitbox_bounds(box, k.w, k.d, k.h, b)
+  let r = kitbox_radius_of(b)
+  k.near = Math.max(r * kb.near_scale, kb.near_min)
+  k.far = Math.max(r * kb.far_scale, Math.max(kb.far_min, k.near * 2.0))
+  free(b)
+}
+
+# Register a model's node as a BOX kit (kitbox.ludic): `box` its anchor tuples as kitbox_read gave them. Every kit made of that
+# model and node, before or after, is a box kit whose instances are placed with kitbake_place_box. false when `box` has no anchors.
+@alloc_ok("a bake: a box kit is registered once")
+export function kitbake_box(kb: KitBake, model: string, node: string, box: KitBox) -> bool {
+  if box == null or not box.on { return false }
+  let key = `{model}|{node}`
+  if Dict.has(kb.box_of, key) { kb.box_tuples[Dict.get(kb.box_of, key)] = box } else {
+    push(kb.box_tuples, box)
+    Dict.set(kb.box_of, key, len(kb.box_tuples) - 1)
+  }
+  for i in 0 .. len(kb.kits) { if kb.kits[i].model == model and kb.kits[i].node == node { kb_box_mark(kb, i) } }
+  return true
+}
+
+# is kit `id` a box kit of this bake (its tuples known)?
+export function kitbake_is_box(kb: KitBake, id: int) -> bool { return id >= 0 and id < len(kb.boxes) and kb.boxes[id] != null }
+
+# The BOX kit of a model's node (kitbox.ludic: its vertices carry anchors), its tuples `box` as kitbox_read gave them: every
+# instance is placed with its own w, d, h (kitbake_place_box). `w`, `d`, `h` here are the instance its impostor is baked at (a
+# typical building of the kit); the row says `box: true`. -1 when `box` has no anchors.
+export function kitbake_kit_box(kb: KitBake, model: string, node: string, box: KitBox, w: float, d: float, h: float, interior: string) -> int {
+  if not kitbake_box(kb, model, node, box) { return -1 }
+  return kitbake_kit(kb, model, node, w, d, h, interior)
 }
 
 # the cell (cx, cz)'s content, made on the first placement
@@ -120,6 +175,22 @@ export function kitbake_place(kb: KitBake, kit: int, x: float, y: float, z: floa
   let cx = int(Math.floor(x / kb.size))
   let cz = int(Math.floor(z / kb.size))
   cell_add(kb_cell(kb, cx, cz), kit, x - float(cx) * kb.size, y, z - float(cz) * kb.size, yaw, scale, tint, variation & 65535, flags)
+  kb.placed += 1
+  return true
+}
+
+# One box instance at world (x, y, z) of kit `kit` (kitbake_kit_box), its own width `w` (along its x), depth `d` and height `h`
+# (kitbox.ludic): its drawn bounds are worked out from the kit's tuples and kept with it (the culling sphere, the HLOD box).
+# false for a kit that is not a box kit of this bake.
+@alloc_ok("a bake: the cell's columns grow while it is filled")
+export function kitbake_place_box(kb: KitBake, kit: int, x: float, y: float, z: float, yaw: float, w: float, d: float, h: float, tint: int, variation: int, flags: int) -> bool {
+  if kit < 0 or kit >= len(kb.kits) or kb.boxes[kit] == null { return false }
+  let b = floats(6)
+  kitbox_bounds(kb.boxes[kit], w, d, h, b)
+  let cx = int(Math.floor(x / kb.size))
+  let cz = int(Math.floor(z / kb.size))
+  cell_add_box(kb_cell(kb, cx, cz), kit, x - float(cx) * kb.size, y, z - float(cz) * kb.size, yaw, w, d, h, b, tint, variation & 65535, flags)
+  free(b)
   kb.placed += 1
   return true
 }
@@ -156,6 +227,7 @@ export function kitbake_rows(kb: KitBake, from: int) -> string {
     let k = kb.kits[i]
     out = out + `{k.key} \{\n  model: "{k.model}", node: "{k.node}"\n  w: {kb_num(k.w)}, d: {kb_num(k.d)}, h: {kb_num(k.h)}\n  near: {kb_num(k.near)}, far: {kb_num(k.far)}\n`
     if k.interior != "" { out = out + `  interior: "{k.interior}"\n  win_w: {kb_num(k.win_w)}, win_h: {kb_num(k.win_h)}\n` }
+    if k.box { out = out + "  box: true\n" }
     out = out + "}\n"
   }
   return out

@@ -1,0 +1,316 @@
+# ============================================================================
+# water_wet.ludic - the wet mask: where a still-water PLANE may show. A plane is drawn wherever the ground lies
+# below its level, which is right for the open sea and wrong for every dry hollow inside its extent: a cut below
+# sea level behind a wall, a dry dock, a quarry. The mask says, texel by texel on the height tiles' own grid, which
+# ground is wet; a plane marked for it (water_body_mask) draws nothing on a dry texel.
+#
+#   tile (tx, tz) is the file `pattern` with {tx} and {tz} filled in (the tiles' pattern with .wet.png for .png:
+#   wet_pattern_of): an 8-bit grey PNG, res x res, image row 0 the low z, a sample above 127 wet. Texel (i, j)'s
+#   centre is at origin + (tile * res + i + 0.5) * texel, the height tiles' own (tilemap.ludic). Between centres the
+#   mask is bilinear and the edge runs where it crosses one half: halfway between a wet texel and a dry one.
+#   A tile with no file is wet (a plane draws there as it would with no mask); off the map is wet too.
+#
+# Tiles are read round the camera within a budget a frame (wet_frame), nearest first. A tile all wet or all dry is
+# known from then on by one byte; a MIXED tile (a shore with a dry cut in it) keeps its texels in one of `layers`
+# resident layers, the nearest mixed tiles first. A mixed tile without a layer reads wet, so far off past the budget
+# the plane falls back to the depth test alone. The GPU copy (a page texel a tile, an R8 array of the layers) is
+# made and refreshed when the water draws (water_wet_bind); wet_at answers the same question on the CPU.
+#
+#   let wm = wet_new(wet_pattern_of(row.tiles), row.tile_size, row.tile_res, cols, rows, ox, oz, 24)
+#   water_wet_use(render3d_st, wm)
+#   water_body_mask(render3d_st, sea, true)
+#   each frame: wet_frame(render3d_st, wm, cam_x, cam_z, origin_x, origin_z, 3000.0, 2)
+# ============================================================================
+numbers float
+
+const WET_UNKNOWN: int = -1         # not read yet
+const WET_NONE: int = 0             # no usable file: wet
+const WET_DRY: int = 1              # every texel dry
+const WET_WET: int = 2              # every texel wet
+const WET_MIXED: int = 3            # some of each: needs its texels
+
+export property WetMask {
+  pattern: string = ""
+  tile_size: float = 0.0
+  res: int = 0
+  cols: int = 0
+  rows: int = 0
+  origin_x: float = 0.0             # world x, z of tile (0, 0)'s corner
+  origin_z: float = 0.0
+  layers: int = 0                   # resident mixed tiles at most
+  cls: words = null                 # per tile: WET_*
+  layer_of: words = null            # per tile: its layer, -1 none
+  layer_tile: words = null          # per layer: its tile, -1 free
+  layer_used: words = null          # per layer: the clock it was last wanted at
+  layer_dirty: words = null         # per layer: 1 while the GPU copy is behind
+  data: []byte = null               # layers x res x res: the resident texels (255 wet, 0 dry)
+  page: []byte = null               # cols x rows: what the shader reads (0 unknown, 1 dry, 2 wet, 3 + layer)
+  page_dirty: bool = true
+  tex_page: int = 0
+  tex_tiles: int = 0
+  ox: float = 0.0                   # the floating origin the render space is shifted by
+  oz: float = 0.0
+  clock: int = 0
+  reads: int = 0                    # tiles decoded, all time
+  scratch: []byte = null            # a decode's samples, reused
+}
+
+# where a map's wet tiles are kept: the tiles' pattern with ".wet.png" for a trailing ".png" (else ".wet.png" added)
+@alloc_ok("a map being opened: the pattern, once")
+export function wet_pattern_of(pattern: string) -> string {
+  let n = len(pattern)
+  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0 .. n - 4] + ".wet.png" }
+  return pattern + ".wet.png"
+}
+
+# A wet mask over the height tiles' grid (the map row's numbers), holding at most `layers` mixed tiles' texels. No device.
+@alloc_ok("a map being opened: the mask's tables and its resident layers, made once")
+export function wet_new(pattern: string, tile_size: float, res: int, cols: int, rows: int, origin_x: float, origin_z: float, layers: int) -> WetMask {
+  if res < 1 or cols < 1 or rows < 1 or tile_size <= 0.0 { return null }
+  let wm = new WetMask
+  wm.pattern = pattern
+  wm.tile_size = tile_size;  wm.res = res;  wm.cols = cols;  wm.rows = rows
+  wm.origin_x = origin_x;  wm.origin_z = origin_z
+  wm.layers = min(max(layers, 1), 252)
+  wm.cls = words(cols * rows);  wm.layer_of = words(cols * rows)
+  for t in 0 .. cols * rows { wm.cls[t] = WET_UNKNOWN;  wm.layer_of[t] = -1 }
+  wm.layer_tile = words(wm.layers);  wm.layer_used = words(wm.layers);  wm.layer_dirty = words(wm.layers)
+  for l in 0 .. wm.layers { wm.layer_tile[l] = -1;  wm.layer_used[l] = 0;  wm.layer_dirty[l] = 0 }
+  wm.data = buffer(wm.layers * res * res)
+  wm.page = buffer(cols * rows)
+  return wm
+}
+
+# the file of tile (tx, tz)
+@alloc_ok("a tile being read: its path, once")
+export function wet_path(wm: WetMask, tx: int, tz: int) -> string {
+  return Text.replace(Text.replace(wm.pattern, "{tx}", string(tx)), "{tz}", string(tz))
+}
+
+export function wet_tile_x(wm: WetMask, x: float) -> int { return int(Math.floor((x - wm.origin_x) / wm.tile_size)) }
+export function wet_tile_z(wm: WetMask, z: float) -> int { return int(Math.floor((z - wm.origin_z) / wm.tile_size)) }
+# what tile (tx, tz) is known to be (WET_*); off the map: WET_NONE
+export function wet_class(wm: WetMask, tx: int, tz: int) -> int {
+  if tx < 0 or tz < 0 or tx >= wm.cols or tz >= wm.rows { return WET_NONE }
+  return wm.cls[tz * wm.cols + tx]
+}
+export function wet_resident(wm: WetMask, tx: int, tz: int) -> bool {
+  if tx < 0 or tz < 0 or tx >= wm.cols or tz >= wm.rows { return false }
+  return wm.layer_of[tz * wm.cols + tx] >= 0
+}
+# metres from a point to tile (tx, tz)'s square (0 inside it)
+function wet_tile_dist(wm: WetMask, tx: int, tz: int, x: float, z: float) -> float {
+  let x0 = wm.origin_x + float(tx) * wm.tile_size
+  let z0 = wm.origin_z + float(tz) * wm.tile_size
+  let dx = Math.max(Math.max(x0 - x, x - (x0 + wm.tile_size)), 0.0)
+  let dz = Math.max(Math.max(z0 - z, z - (z0 + wm.tile_size)), 0.0)
+  return Math.sqrt(dx * dx + dz * dz)
+}
+# the page's byte for tile t
+function wet_page_byte(wm: WetMask, t: int) -> int {
+  let c = wm.cls[t]
+  if c == WET_DRY { return 1 }
+  if c == WET_WET { return 2 }
+  if c == WET_MIXED and wm.layer_of[t] >= 0 { return 3 + wm.layer_of[t] }
+  return 0
+}
+function wet_page_set(wm: WetMask, t: int) -> void {
+  let b = wet_page_byte(wm, t)
+  if int(wm.page[t]) != b { wm.page[t] = b;  wm.page_dirty = true }
+}
+
+# a layer for a mixed tile at distance d: a free one, else the one wanted longest ago and not this frame; -1 none
+function wet_take_layer(wm: WetMask) -> int {
+  var best = -1
+  for l in 0 .. wm.layers {
+    if wm.layer_tile[l] < 0 { return l }
+    if wm.layer_used[l] != wm.clock and (best < 0 or wm.layer_used[l] < wm.layer_used[best]) { best = l }
+  }
+  return best
+}
+
+# Read tile (tx, tz): its class from now on, and for a mixed one its texels into a layer when one can be had. A load,
+# not a frame's work: the PNG is decoded here. Returns the class.
+@alloc_ok("a tile being read: its decode, once")
+export function wet_read(render3d_st: mut Render3dState, wm: WetMask, tx: int, tz: int) -> int {
+  if tx < 0 or tz < 0 or tx >= wm.cols or tz >= wm.rows { return WET_NONE }
+  let t = tz * wm.cols + tx
+  let path = wet_path(wm, tx, tz)
+  var px: []byte = null
+  if Fs.exists(path) { px = png_decode_bytes(render3d_st, path, wm.scratch) }
+  wm.reads += 1
+  if px == null {
+    wm.cls[t] = WET_NONE
+    wet_page_set(wm, t)
+    return WET_NONE
+  }
+  wm.scratch = px
+  let ch = render3d_st.tex_channels
+  let bps = render3d_st.tex_depth / 8
+  if render3d_st.tex_w != wm.res or render3d_st.tex_h != wm.res or ch < 1 or ch > 4 or bps < 1 or bps > 2 {
+    wet_say_size(render3d_st, path, wm.res)
+    wm.cls[t] = WET_NONE
+    wet_page_set(wm, t)
+    return WET_NONE
+  }
+  # the first channel's (high) byte of each texel: wet above 127
+  let n = wm.res * wm.res
+  var wet = 0
+  for i in 0 .. n { if int(px[i * ch * bps]) > 127 { wet += 1 } }
+  var c = WET_MIXED
+  if wet == 0 { c = WET_DRY }
+  if wet == n { c = WET_WET }
+  wm.cls[t] = c
+  if c == WET_MIXED and wm.layer_of[t] < 0 {
+    let l = wet_take_layer(wm)
+    if l >= 0 {
+      let was = wm.layer_tile[l]
+      if was >= 0 { wm.layer_of[was] = -1;  wet_page_set(wm, was) }
+      wm.layer_tile[l] = t
+      wm.layer_of[t] = l
+      let o = l * n
+      for i in 0 .. n {
+        var v = 0
+        if int(px[i * ch * bps]) > 127 { v = 255 }
+        wm.data[o + i] = v
+      }
+      wm.layer_dirty[l] = 1
+    }
+  }
+  if wm.layer_of[t] >= 0 { wm.layer_used[wm.layer_of[t]] = wm.clock }
+  wet_page_set(wm, t)
+  return c
+}
+
+# One frame of the mask round the camera (world x, z; the floating origin ox, oz: zero without one): the resident
+# tiles within `radius` marked wanted, then up to `budget` tiles read, the nearest first - those never read, and mixed
+# tiles that have no layer while one can be had (a nearer one never loses its layer to a farther one).
+export function wet_frame(render3d_st: mut Render3dState, wm: WetMask, cam_x: float, cam_z: float, ox: float, oz: float, radius: float, budget: int) -> void {
+  wm.clock += 1
+  wm.ox = ox;  wm.oz = oz
+  let tx0 = max(wet_tile_x(wm, cam_x - radius), 0);  let tx1 = min(wet_tile_x(wm, cam_x + radius), wm.cols - 1)
+  let tz0 = max(wet_tile_z(wm, cam_z - radius), 0);  let tz1 = min(wet_tile_z(wm, cam_z + radius), wm.rows - 1)
+  if tx1 < tx0 or tz1 < tz0 { return }
+  for tz in tz0 .. tz1 + 1 {
+    for tx in tx0 .. tx1 + 1 {
+      let l = wm.layer_of[tz * wm.cols + tx]
+      if l >= 0 and wet_tile_dist(wm, tx, tz, cam_x, cam_z) <= radius { wm.layer_used[l] = wm.clock }
+    }
+  }
+  for n in 0 .. budget {
+    var bx = -1;  var bz = -1;  var bd = 1000000000.0
+    for tz in tz0 .. tz1 + 1 {
+      for tx in tx0 .. tx1 + 1 {
+        let t = tz * wm.cols + tx
+        let c = wm.cls[t]
+        let want = c == WET_UNKNOWN or (c == WET_MIXED and wm.layer_of[t] < 0)
+        if not want { continue }
+        let d = wet_tile_dist(wm, tx, tz, cam_x, cam_z)
+        if d <= radius and d < bd { bx = tx;  bz = tz;  bd = d }
+      }
+    }
+    if bx < 0 { break }
+    let t = bz * wm.cols + bx
+    # a mixed tile again only when a layer can be had: else it would be decoded every frame for nothing
+    if wm.cls[t] == WET_MIXED and wet_take_layer(wm) < 0 { break }
+    wet_read(render3d_st, wm, bx, bz)
+  }
+}
+
+# Is (x, z) (world) wet: 1 or 0, and between texel centres of a resident mixed tile the bilinear value the shader
+# thresholds at one half. What the water shader reads, on the CPU.
+export function wet_at(wm: WetMask, x: float, z: float) -> float {
+  let tx = wet_tile_x(wm, x)
+  let tz = wet_tile_z(wm, z)
+  if tx < 0 or tz < 0 or tx >= wm.cols or tz >= wm.rows { return 1.0 }
+  let t = tz * wm.cols + tx
+  let b = wet_page_byte(wm, t)
+  if b == 1 { return 0.0 }
+  if b < 3 { return 1.0 }
+  let o = (b - 3) * wm.res * wm.res
+  let texel = wm.tile_size / float(wm.res)
+  let u = (x - (wm.origin_x + float(tx) * wm.tile_size)) / texel - 0.5
+  let v = (z - (wm.origin_z + float(tz) * wm.tile_size)) / texel - 0.5
+  let i0 = int(Math.floor(u));  let j0 = int(Math.floor(v))
+  let fu = u - float(i0);  let fv = v - float(j0)
+  let top = wm.res - 1
+  let a0 = min(max(i0, 0), top);  let a1 = min(max(i0 + 1, 0), top)
+  let b0 = min(max(j0, 0), top);  let b1 = min(max(j0 + 1, 0), top)
+  let s00 = float(int(wm.data[o + b0 * wm.res + a0]));  let s10 = float(int(wm.data[o + b0 * wm.res + a1]))
+  let s01 = float(int(wm.data[o + b1 * wm.res + a0]));  let s11 = float(int(wm.data[o + b1 * wm.res + a1]))
+  let s = (s00 * (1.0 - fu) + s10 * fu) * (1.0 - fv) + (s01 * (1.0 - fu) + s11 * fu) * fv
+  return s / 255.0
+}
+
+# the mask a masked plane reads from now on (null: none, every plane draws as it would without one)
+export function water_wet_use(render3d_st: mut Render3dState, wm: WetMask) -> void { render3d_st.water_wet = wm }
+
+# the GPU copy brought up to date: the textures made once, the page when it changed, every layer read since
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the mask's textures, made once")
+function wet_upload(render3d_st: mut Render3dState, wm: WetMask) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_WATER
+  if wm.tex_page == 0 {
+    wm.tex_page = gpu_tex_new(render3d_st)
+    gpu_tex_bind(render3d_st, GPU_TEX2D, wm.tex_page)
+    gpu_pixel_store(render3d_st, GPU_UNPACK_ALIGNMENT, 1)
+    gpu_tex_image2d(render3d_st, GPU_R8, wm.cols, wm.rows, GPU_RED, GPU_UNSIGNED_BYTE, data_of(wm.page))
+    wet_tex_params(render3d_st, GPU_TEX2D, GPU_NEAREST)
+    wm.page_dirty = false
+    wm.tex_tiles = gpu_tex_new(render3d_st)
+    gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, wm.tex_tiles)
+    gpu_tex_image3d(render3d_st, GPU_R8, wm.res, wm.res, wm.layers, GPU_RED, GPU_UNSIGNED_BYTE, data_of(wm.data))
+    wet_tex_params(render3d_st, GPU_TEX2D_ARRAY, GPU_LINEAR)
+    for l in 0 .. wm.layers { wm.layer_dirty[l] = 0 }
+  }
+  if wm.page_dirty {
+    gpu_tex_fill(render3d_st, wm.tex_page, GPU_R8, wm.cols, wm.rows, GPU_RED, GPU_UNSIGNED_BYTE, data_of(wm.page))
+    wm.page_dirty = false
+  }
+  let n = wm.res * wm.res
+  for l in 0 .. wm.layers {
+    if wm.layer_dirty[l] == 0 { continue }
+    gpu_tex_layer_fill(render3d_st, wm.tex_tiles, l, wm.res, wm.res, 1, mem_off(data_of(wm.data), l * n))
+    wm.layer_dirty[l] = 0
+  }
+  render3d_st.gvk_tag = was
+}
+function wet_tex_params(render3d_st: mut Render3dState, kind: int, filter: int) -> void {
+  gpu_tex_param(render3d_st, kind, GPU_TEXTURE_MIN_FILTER, filter)
+  gpu_tex_param(render3d_st, kind, GPU_TEXTURE_MAG_FILTER, filter)
+  gpu_tex_param(render3d_st, kind, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, kind, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+}
+
+# The mask's uniforms and textures on program p (water.frag): the mask in use, or stand-ins that read wet everywhere
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the stand-ins, made once")
+function water_wet_bind(render3d_st: mut Render3dState, p: int) -> void {
+  let wm = render3d_st.water_wet
+  if wm == null {
+    if render3d_st.water_wet_page0 == 0 {
+      let z = buffer(4)
+      render3d_st.water_wet_page0 = gpu_tex_new(render3d_st)
+      gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.water_wet_page0)
+      gpu_pixel_store(render3d_st, GPU_UNPACK_ALIGNMENT, 1)
+      gpu_tex_image2d(render3d_st, GPU_R8, 1, 1, GPU_RED, GPU_UNSIGNED_BYTE, data_of(z))
+      wet_tex_params(render3d_st, GPU_TEX2D, GPU_NEAREST)
+      render3d_st.water_wet_tiles0 = gpu_tex_new(render3d_st)
+      gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.water_wet_tiles0)
+      gpu_tex_image3d(render3d_st, GPU_R8, 1, 1, 1, GPU_RED, GPU_UNSIGNED_BYTE, data_of(z))
+      wet_tex_params(render3d_st, GPU_TEX2D_ARRAY, GPU_NEAREST)
+    }
+    r3d_bind_2d(render3d_st, p, "u_wet_page", 24, render3d_st.water_wet_page0)
+    r3d_bind_tex(render3d_st, p, "u_wet_tiles", 25, GPU_TEX2D_ARRAY, render3d_st.water_wet_tiles0)
+    u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_wet_grid"), 0.0, 0.0, 1.0, 0.0)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet_rows"), 0.0)
+    return
+  }
+  wet_upload(render3d_st, wm)
+  r3d_bind_2d(render3d_st, p, "u_wet_page", 24, wm.tex_page)
+  r3d_bind_tex(render3d_st, p, "u_wet_tiles", 25, GPU_TEX2D_ARRAY, wm.tex_tiles)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_wet_grid"), wm.origin_x - wm.ox, wm.origin_z - wm.oz, wm.tile_size, float(wm.cols))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet_rows"), float(wm.rows))
+}
+
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function wet_say_size(render3d_st: Render3dState, path: string, res: int) -> void { print(`water_wet: {path} is {render3d_st.tex_w} x {render3d_st.tex_h}, {render3d_st.tex_channels} channel, {render3d_st.tex_depth} bit: the row says {res} x {res}; read as wet`) }

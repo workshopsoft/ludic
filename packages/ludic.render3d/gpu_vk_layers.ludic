@@ -92,3 +92,33 @@ function gpu_tex_fill(render3d_st: mut Render3dState, tex: int, ifmt: int, w: in
   gvk_flush(render3d_st)
   return gvk_tex_upload(render3d_st, tex, ifmt, w, h, 1, fmt, ty, data)
 }
+
+# One layer of an array texture's level 0 from tightly packed texels of its own format (w x h, the
+# bytes it stores: R8 one a texel), at once: a staging copy and a submit of its own. For an upload
+# made on a load (a streamed tile), not the frame's own work.
+function gpu_tex_layer_fill(render3d_st: mut Render3dState, tex: int, layer: int, w: int, h: int, bpt: int, data: pointer) -> bool {
+  if tex <= 0 or layer < 0 or layer >= render3d_st.gvk_tex_layers[tex] { return false }
+  gvk_flush(render3d_st)
+  let n = w * h * bpt
+  let dst = gvk_staging(render3d_st, n, VK_BUFFER_USAGE_TRANSFER_SRC_BIT)
+  if dst == null { return false }
+  mem_copy(dst, data, n)
+  let image = render3d_st.gvk_tex_image[tex]
+  let levels = render3d_st.gvk_tex_levels[tex]
+  let all = render3d_st.gvk_tex_layers[tex]
+  let cb = gvk_once_begin(render3d_st)
+  gvk_barrier(render3d_st, cb, image, false, 0, levels, all, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let bic = gvk_tmp(render3d_st, VkBufferImageCopy_sizeof)
+  Vk.zero(bic, VkBufferImageCopy_sizeof)
+  Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
+  Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_baseArrayLayer, layer)
+  Vk.put_i32(bic, VkBufferImageCopy_imageSubresource + VkImageSubresourceLayers_layerCount, 1)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_width, w)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
+  Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
+  Vk.cmd_copy_buffer_to_image(cb, render3d_st.gvk_st_buf, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, bic)
+  gvk_barrier(render3d_st, cb, image, false, 0, levels, all, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  let ok = gvk_once_end(render3d_st, cb)
+  gvk_staging_free(render3d_st)
+  return ok
+}

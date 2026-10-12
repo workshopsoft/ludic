@@ -235,6 +235,8 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
   gltf_attrib(render3d_st, m, attrs, "NORMAL", 1)
   gltf_attrib(render3d_st, m, attrs, "TEXCOORD_0", 2)
   gltf_colour(render3d_st, m, attrs)                     # COLOR_0 onto 7, when the mesh has it
+  gltf_attrib(render3d_st, m, attrs, "_ANCHOR", 8)       # a box kit's anchors (sx, sz, sh, sd) and offset (kitbox.ludic, kit.vert)
+  gltf_attrib(render3d_st, m, attrs, "_OFFSET", 9)
   skin_attribs(render3d_st, m, attrs)                    # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
   let idx = gltf_accessor(render3d_st, value_as_int(value_get(p, "indices")))
   var isz = 4

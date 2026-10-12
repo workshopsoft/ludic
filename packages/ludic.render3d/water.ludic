@@ -7,12 +7,17 @@
 
 # Where a body is standing in the water and how hard it is disturbing it. The game sets it;
 # strength 0 means nobody is in the water and the whole term is skipped.
-# Several still-water planes, each at its own level over its own bounds: the sea round an
-# island and a lake a hundred metres above it cannot be one surface. Each draws the same way;
-# only one - the first added with `reflect` - gets the planar reflection pass, because every
-# mirrored plane is another full scene pass. water_level / water_cx ... mirror that one, so
-# code written against a single plane still reads the surface that reflects.
-const WATER_MAX: int = 8
+# Several still-water bodies, each with the same material: the sea round an island and a lake a
+# hundred metres above it cannot be one surface. A body is a PLANE at its own level over its own
+# bounds (drawn wherever the ground lies below it, and with a wet mask only on wet texels,
+# water_wet.ludic) or a MESH (water_mesh_add: a baked lake polygon or a river ribbon, drawn on its
+# own triangles and nowhere else). Only one plane - the first added with `reflect` - gets the
+# planar reflection pass, because every mirrored plane is another full scene pass. water_level /
+# water_cx ... mirror that one, so code written against a single plane still reads the surface
+# that reflects.
+const WATER_MAX: int = 16
+const WATER_PLANE: int = 0
+const WATER_MESH: int = 1
 
 # Render the scene through a camera mirrored in the water plane into water_refl,
 # clipping everything below the surface; terrain, scattered layers and sky.
@@ -60,7 +65,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   if patches { render3d_st.r3d_clip_y = render3d_st.water_level }
   target_bind(render3d_st, render3d_st.water_refl)
   gpu_depth_test(render3d_st, true)
-  gpu_depth_func(render3d_st, GPU_LESS)
+  gpu_depth_func(render3d_st, GPU_GREATER)
   gpu_depth_write(render3d_st, true)
   gpu_cull(render3d_st, true)
   gpu_cull_face(render3d_st, GPU_BACK)
@@ -291,10 +296,28 @@ function water_setup(render3d_st: mut Render3dState) -> void {
   if render3d_st.water_prog != 0 { return }
   render3d_st.water_mesh = mesh_grid(render3d_st, 2, 0.5)
   render3d_st.water_prog = r3d_program(render3d_st, "water.vert", "water.frag", "")
-  render3d_st.wb_level = floats(WATER_MAX);  render3d_st.wb_cx = floats(WATER_MAX);  render3d_st.wb_cz = floats(WATER_MAX)
-  render3d_st.wb_ex = floats(WATER_MAX);  render3d_st.wb_ez = floats(WATER_MAX);  render3d_st.wb_reflect = words(WATER_MAX)
+  render3d_st.water_mesh_prog = r3d_program(render3d_st, "water.vert", "water.frag", "#define WATER_MESH\n")
+  water_state_make(render3d_st)
+}
+# the bodies' arrays, made once (no device: a test holds bodies without one)
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function water_state_make(render3d_st: mut Render3dState) -> void {
+  if render3d_st.wb_level == null {
+    render3d_st.wb_level = floats(WATER_MAX);  render3d_st.wb_cx = floats(WATER_MAX);  render3d_st.wb_cz = floats(WATER_MAX)
+    render3d_st.wb_ex = floats(WATER_MAX);  render3d_st.wb_ez = floats(WATER_MAX);  render3d_st.wb_reflect = words(WATER_MAX)
+  }
+  if render3d_st.wb_kind != null { return }
+  render3d_st.wb_kind = words(WATER_MAX);  render3d_st.wb_masked = words(WATER_MAX);  render3d_st.wb_owned = words(WATER_MAX)
+  render3d_st.wb_model = new []Model
+  for i in 0 .. WATER_MAX { push(render3d_st.wb_model, null) }
 }
 function water_planes_clear(render3d_st: mut Render3dState) -> void {
+  # the models loaded for mesh bodies go with them; a model the game handed in stays the game's
+  water_state_make(render3d_st)
+  for i in 0 .. render3d_st.wb_n {
+    if render3d_st.wb_model[i] != null and render3d_st.wb_owned[i] == 1 { model_release(render3d_st, render3d_st.wb_model[i]) }
+    render3d_st.wb_model[i] = null
+  }
   render3d_st.wb_n = 0
   render3d_st.wb_primary = -1
   render3d_st.wb_ncells = -1
@@ -304,9 +327,15 @@ function water_planes_clear(render3d_st: mut Render3dState) -> void {
 # if none is yet. Returns its index, or -1 once WATER_MAX are in use.
 function water_body_add(render3d_st: mut Render3dState, level: float, cx: float, cz: float, ex: float, ez: float, reflect: bool) -> int {
   water_setup(render3d_st)
+  return water_body_put(render3d_st, level, cx, cz, ex, ez, reflect)
+}
+# the body's slot filled as a plane, without the device (water_setup is the caller's)
+function water_body_put(render3d_st: mut Render3dState, level: float, cx: float, cz: float, ex: float, ez: float, reflect: bool) -> int {
+  water_state_make(render3d_st)
   if render3d_st.wb_n >= WATER_MAX { return -1 }
   let i = render3d_st.wb_n
   render3d_st.wb_level[i] = level;  render3d_st.wb_cx[i] = cx;  render3d_st.wb_cz[i] = cz;  render3d_st.wb_ex[i] = ex;  render3d_st.wb_ez[i] = ez
+  render3d_st.wb_kind[i] = WATER_PLANE;  render3d_st.wb_masked[i] = 0;  render3d_st.wb_owned[i] = 0;  render3d_st.wb_model[i] = null
   render3d_st.wb_reflect[i] = 0
   if reflect { render3d_st.wb_reflect[i] = 1 }
   render3d_st.wb_n += 1
@@ -318,6 +347,41 @@ function water_body_add(render3d_st: mut Render3dState, level: float, cx: float,
   }
   return i
 }
+# A body that is a MESH: `model`'s triangles are the surface (a baked lake polygon, a river or canal ribbon stepped at
+# its locks), drawn with the water material at (x, y, z) - zero for a mesh baked where it lies - and nowhere else, so no
+# rectangle's corner ever shows water. It is never mirrored (only a plane can be), and the model stays the caller's.
+# Its index, or -1 once WATER_MAX bodies are in use or there is no model.
+function water_mesh_add(render3d_st: mut Render3dState, model: Model, x: float, y: float, z: float) -> int {
+  if model == null { return -1 }
+  water_setup(render3d_st)
+  return water_mesh_put(render3d_st, model, x, y, z)
+}
+function water_mesh_put(render3d_st: mut Render3dState, model: Model, x: float, y: float, z: float) -> int {
+  let i = water_body_put(render3d_st, y, x, z, Math.max(model.radius, 0.001), Math.max(model.radius, 0.001), false)
+  if i < 0 { return -1 }
+  render3d_st.wb_kind[i] = WATER_MESH
+  render3d_st.wb_model[i] = model
+  return i
+}
+# Body i draws only where the wet mask (water_wet_use) says wet (on), or wherever its plane is over the ground (off,
+# the default). A mesh body ignores it: its triangles are its extent.
+function water_body_mask(render3d_st: mut Render3dState, i: int, on: bool) -> void {
+  if i < 0 or i >= render3d_st.wb_n { return }
+  render3d_st.wb_masked[i] = 0
+  if on and render3d_st.wb_kind[i] == WATER_PLANE { render3d_st.wb_masked[i] = 1 }
+}
+# Every body moved by (-dx, -dy, -dz): the floating origin moved by (dx, dy, dz) (forg_on's callback shape)
+function water_rebase(render3d_st: mut Render3dState, dx: float, dy: float, dz: float) -> void {
+  for i in 0 .. render3d_st.wb_n {
+    render3d_st.wb_cx[i] = render3d_st.wb_cx[i] - dx;  render3d_st.wb_cz[i] = render3d_st.wb_cz[i] - dz;  render3d_st.wb_level[i] = render3d_st.wb_level[i] - dy
+  }
+  if render3d_st.wb_primary >= 0 {
+    let p = render3d_st.wb_primary
+    render3d_st.water_level = render3d_st.wb_level[p];  render3d_st.water_cx = render3d_st.wb_cx[p];  render3d_st.water_cz = render3d_st.wb_cz[p]
+    render3d_st.wb_ncells = -1
+  }
+}
+
 # one reflecting plane: what this function always meant, without a new mesh and program
 # every time it is called
 # the GPU memory it makes is counted as VKM_WATER (R3D_VKMEM)
@@ -390,7 +454,10 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
   gpu_cull(render3d_st, false)
   # every body is the same plane at its own level and bounds; only the mirrored one samples
   # the reflection - another body reading it would show the wrong world upside down
+  water_wet_bind(render3d_st, p)
   for i in 0 .. render3d_st.wb_n {
+    if render3d_st.wb_kind[i] != WATER_PLANE { continue }
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet_on"), float(render3d_st.wb_masked[i]))
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_level"), render3d_st.wb_level[i])
     u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_center"), render3d_st.wb_cx[i], render3d_st.wb_cz[i])
     u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_extent"), render3d_st.wb_ex[i], render3d_st.wb_ez[i])
@@ -406,7 +473,45 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_ellipse"), clip)
     mesh_draw(render3d_st, render3d_st.water_mesh)
   }
+  water_meshes_draw(render3d_st, depth_tex)
   gpu_blend(render3d_st, false)
+}
+
+# The mesh bodies: the same material through the mesh program (water.vert's WATER_MESH: the model's own positions,
+# moved by the body's offset), never clipped to an ellipse, never mirrored, never masked
+function water_meshes_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
+  var any = false
+  for i in 0 .. render3d_st.wb_n { if render3d_st.wb_kind[i] == WATER_MESH { any = true } }
+  if not any { return }
+  let p = render3d_st.water_mesh_prog
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_inv_vp"), render3d_st.cam_inv_vp)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_screen"), float(render3d_st.post_w), float(render3d_st.post_h))
+  let wx = render3d_st.wt_wade_x
+  let wz = render3d_st.wt_wade_z
+  let ws = render3d_st.wt_wade_s
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_wade"), wx, wz, ws)
+  r3d_bind_2d(render3d_st, p, "u_scene", 2, render3d_st.post_scene.color)
+  r3d_bind_2d(render3d_st, p, "u_depth", 0, depth_tex)
+  if render3d_st.water_refl != null { r3d_bind_2d(render3d_st, p, "u_refl", 1, render3d_st.water_refl.color) } else { r3d_bind_2d(render3d_st, p, "u_refl", 1, render3d_st.post_scene.color) }
+  sky_bind_lighting(render3d_st, p)
+  shadow_bind(render3d_st, p)
+  fog_bind(render3d_st, p)
+  water_wet_bind(render3d_st, p)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet_on"), 0.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_refl_on"), 0.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_ellipse"), 0.0)
+  for i in 0 .. render3d_st.wb_n {
+    if render3d_st.wb_kind[i] != WATER_MESH { continue }
+    let m = render3d_st.wb_model[i]
+    if m == null { continue }
+    u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_offset"), render3d_st.wb_cx[i], render3d_st.wb_level[i], render3d_st.wb_cz[i])
+    u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_center"), render3d_st.wb_cx[i], render3d_st.wb_cz[i])
+    u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_extent"), render3d_st.wb_ex[i], render3d_st.wb_ez[i])
+    for k in 0 .. len(m.prims) { mesh_draw(render3d_st, m.prims[k].mesh) }
+  }
 }
 
 # messages, each built in a function of its own so the path that says it holds no allocation

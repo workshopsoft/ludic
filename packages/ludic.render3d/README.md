@@ -60,11 +60,23 @@ a pure function of those two - the same on every machine and in the editor's pre
   the list once at map open. A game that builds each `GroundFill` by hand still can; that is the older
   way. A game's own registry named `GroundLayers` or `WaterBodies` collides with these and is dropped for
   the package's (its record is a superset).
-- **Still water as a map's data** (`water_bodies.ludic`): one row a plane in `water.lres` (`WaterBodies`,
-  `@PerMap`): `level`, the bounds as a centre `cx`, `cz` and half extents `ex`, `ez`, and `reflect` (only
-  the first reflecting plane is mirrored). `water_bodies_apply(render3d_st, bodies)` replaces the
-  renderer's water with the rows (8 at most) and answers how many it took; `water_init` for one reflecting
-  plane is the older way.
+- **Still water as a map's data** (`water_bodies.ludic`): one row a body in `water.lres` (`WaterBodies`,
+  `@PerMap`). A plane: `level`, the bounds as a centre `cx`, `cz` and half extents `ex`, `ez`, `reflect` (only
+  the first reflecting plane is mirrored) and `masked` (drawn only on the wet mask's wet texels). A mesh: `asset`
+  (a glb) and `node`, its triangles the surface (a baked lake polygon, a river ribbon), moved by (`cx`, `level`,
+  `cz`) and drawn nowhere else. `water_bodies_apply(render3d_st, bodies)` replaces the renderer's water with the
+  rows (16 at most, `WATER_MAX`) and answers how many it took; `water_mesh_add`, `water_body_mask` and
+  `water_rebase` do the same by hand; `water_init` for one reflecting plane is the older way.
+- **The wet mask** (`water_wet.ludic`): `<tile>.wet.png` beside each height tile, 8-bit, 255 wet. `wet_new`,
+  `wet_frame` (tiles read nearest first within a budget, a mixed tile's texels in one of N resident layers),
+  `water_wet_use`; `wet_at` answers on the CPU what the water shader reads.
+- **Light zones** (`lightzone.ludic`): boxes the sun does not reach, a tunnel's tube. `lightzone_add(st, x, y, z,
+  yaw, w, h, d, feather)` (a turned box, fading in over `feather` metres from its faces), `lightzone_ambient(st, z,
+  r, g, b, sky)` (the zone's own linear ambient and the share of the sky it still sees), `lightzone_clear`,
+  `lightzone_rebase`, `lightzone_at` (the weight on the CPU). Inside, every lit shader drops the sun's direct light,
+  its bounce, a leaf's glow and sheen, water's glitter and the air's shafts; the 8 zones nearest the camera are
+  bound with the sun (`sky_bind_lighting`). With no zone nothing changes. `tests/lightzone_test.ludic`; the shot
+  test `lab/lightzone_lab.ludic` + `lab/lightzone_check.py` (inside the zone the frame is the no-sun frame).
 - **Conformance**: `tests/ground_fill_test.ludic` holds the package to `tests/ground_fill_golden.json`
   (gf_hash, lerp, yaw, one cover chunk and one solid chunk over a hand-written density, an area and a strip
   cleared with the share at 289 probes, and the solid chunk under five edits and two heroes), which the
@@ -97,7 +109,10 @@ coordinate from integers (`double(40000123) / 1000.0`) or from a computation, ne
 | world partition row, cell streaming scheduler | `wpart.ludic`, `wstream.ludic` | `tests/wstream_test.ludic` |
 | cell files, index, building kits | `cellfile.ludic` | `tests/cellfile_test.ludic` |
 | kits and cells baked from placed things (a city's buildings) | `kitbake.ludic`, `packages/ludic.city/tools/cells_bake_city.ludic` | `tests/kitbake_test.ludic`, `packages/ludic.city/tests/cells_bake_test.ludic` |
-| the ground from the studio's height tiles: data, bake, stream, draw | `tilemap.ludic`, `tilemap_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic`, `tools/terrain_bake.ludic` | `tests/tilemap_test.ludic` |
+| the ground from the studio's height tiles: data, bake (with the LOD lock), stream, draw | `tilemap.ludic`, `tilemap_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic`, `tools/terrain_bake.ludic` | `tests/tilemap_test.ludic`, `tests/tilemap_lock_test.ludic` |
+| the ground's land use: a class mask a tile and 8 tones | `tilemap_mask.ludic` | `tests/tilemap_mask_test.ludic`, `lab/shore_lab.ludic` + `lab/shore_check.py` |
+| still water: planes, meshes, the wet mask | `water.ludic`, `water_bodies.ludic`, `water_wet.ludic` | `tests/water_wet_test.ludic`, `lab/shore_lab.ludic` + `lab/shore_check.py` |
+| reversed depth | `fmath.ludic` `m4_perspective_rz`, `m4_ortho_rz` | `tests/depth_test.ludic` |
 | HLOD bake (+ tool) | `hlod.ludic`, `tools/hlod_bake.ludic`, `hlod_gpu.ludic` | `tests/hlod_test.ludic` |
 | instancing: culling, binning, budgets | `kinst.ludic` (CPU), `kgpu.ludic` + `kinst_*.comp` (GPU), `karena.ludic` | `tests/kinst_test.ludic`, `tests/karena_test.ludic`, `tests/bigworld_gpu_test.ludic` |
 | stress benchmarks | `bench/kinst_stress.ludic`, `bench/kgpu_stress.ludic` | (run by a person) |
@@ -301,6 +316,25 @@ impostor atlas (`kgpu_bake_kit`).
 
 The order is: rows change, then `city_cells_bake`, then `hlod_bake`; the game's `package.ludic` can run them as `hook before build`.
 
+**Box kits** (`kitbox.ludic`): one unit mesh drawn at every instance's own width, depth and height, so a handful of kits draws a city of
+differently sized buildings without stretching what must keep its size. Each vertex carries anchors (glTF `_ANCHOR`, VEC4: `sx`, `sz`,
+`sh`, `sd`) and an offset (`_OFFSET`, VEC3: `ox`, `oy`, `oz`, metres), drawn at `x = sx w + ox`, `z = sz d + oz`, `y = sh h + sd d + oy`:
+a parapet keeps 1 m and 0.25 m, a ridge at `sd = tan 30 / 2` keeps a 30 degree pitch, at any size (`sh` 0 .. 1, `sd` >= 0; normals are
+the mesh's, turned by the yaw). A box instance has scale 1 and carries `w d h` (the cell file's box columns, version 2, with its drawn
+bounds; `kinst` and `kgpu` records' fourth vec4 `w d h r`, `r` the sphere round its base that holds what it draws). Its card is sized
+from the kit's anchor tuples (`oimp.vert`), the HLOD box is its drawn bounds. Doors and other things that must not deform are ordinary
+unscaled instances. In the bake:
+
+```text
+let box = kitbox_new();  kitbox_read(st, "assets/kits", "massing.glb", "flat", box, null, null, null)   # CPU, no device
+kitbake_box(kb, "kits/massing.glb", "flat", box)          # every kit of that model and node is a box kit (row: box: true)
+kitbake_place_box(kb, kitbake_kit(kb, "kits/massing.glb", "flat", 20.0, 15.0, 10.2, ""), x, y, z, yaw, w, d, h, tint, variation, flags)
+```
+
+`city_cells_bake` places a registered model's buildings that way, `h` the eave (floors x the kit's `floor_h`). The renderer reads the
+tuples when it loads a `box: true` kit (`bw_setup_kits`). Tests: `tests/kitbox_test.ludic` (on `tests/maps/boxkits`); look:
+`lab/boxkit_lab.ludic`.
+
 ### Terrain from the studio's tiles (`tilemap.ludic`, `tilemap_draw.ludic`)
 
 The studio writes a map's ground as 16-bit greyscale PNG tiles (`world_create`, `terrain_sculpt`); the map's row says how. One
@@ -330,6 +364,11 @@ let holes = tmap_field(game_tm, h, 33, ox, oz, 2.0, PHYS_HOLE)                  
 if holes == 0 { phys_ground_add(physics_st, phys_heightfield(physics_st, h, 33, ox, oz, 2.0)) }
 ```
 
+**Land use** (`tilemap_mask.ludic`): `<tile>.mask.png` beside each height tile (8-bit, one class a texel; `tmd_mask_pattern` to
+point elsewhere or turn it off) and a table of 8 tones (`tmd_tone_set(td, class, r, g, b)` or `GroundTone` rows with
+`tmd_tones_apply`, linear like a tint). The tones go on the patches' vertices as their colour, each the mean tone of the texels its
+cell spans, so a coarser level is the finer one filtered. A class with no tone, and a tile with no mask, draw the ground's tint.
+
 **The ground drawn is baked** (levels of detail are a bake, never made in play). `tools/terrain_bake.ludic` cuts every tile into
 patches (`patch_texels` texels, 128 by default) and every patch into levels (each halves the cells, down to 4), samples heights where
 `tmap_height` reads the ground and normals one cell apart, and writes one `.lwt` file a tile beside the PNG (`tiles` with `.lwt`, or the
@@ -340,6 +379,20 @@ header holding the row's numbers so a file baked for other numbers is refused, n
 ```text
 ludic build packages/ludic.render3d/tools/terrain_bake.ludic
 ./build/terrain_bake "assets/maps/meridian/terrain/{tx}_{tz}.png" 1024 512 16 16 -8192 -8192 -40 600
+```
+
+**The LOD lock** keeps roads, pads and shores where level 0 has them at every distance. A coarse level's vertices stand on level 0's
+and take their heights, but its triangles cut corners between them: across a road in a cut they bridge bank to bank and bury it, at a
+shore they lift the sand over the water. Give the bake the land-use classes that lock (a comma list after `patch_texels`, then the mask
+pattern, default `<tiles>` with `.mask.png`, then the tolerance, default 0.005 m) and each patch level whose triangles would move a
+locked texel's sample by more than that is cut down where they do: cells split in four, as far as level 0's, along the locked
+ground's edges and bends, each cell a fan from its high-x low-z corner over its finer neighbours' corners (no crack; an uncut cell is
+the grid's own two triangles). Such a level is a locked mesh in the file (kind 1, version 2); a patch with nothing locked, or whose
+own grid keeps it, is written byte for byte as before, and unlocked ground is free (`tmb_lock_new`, `tmb_map_locked`;
+`tests/tilemap_lock_test.ludic` on `tests/maps/lock`):
+
+```text
+./build/terrain_bake "assets/maps/meridian/terrain/{tx}_{tz}.png" 1024 512 16 16 -8192 -8192 -40 600 0 "" 128 "3,4,5,1"
 ```
 
 Then `tilemap_draw.ludic`: `tmd_new(st, tm, radius)` and, each frame, `tmd_frame(st, td, cam_x, cam_z, origin_x, origin_z, radius)`: tile tables

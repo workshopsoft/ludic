@@ -1,0 +1,104 @@
+# water_wet_test.ludic - still water bodies and the wet mask (water.ludic, water_wet.ludic) on the shore fixture
+# (tests/maps/shore, make_shore.py: tile 0 the sea with a dry cut below sea level, tile 1 all dry, tile 2 no wet file).
+# On the CPU: 16 bodies are held and a 17th refused; a mesh body keeps its model and is never masked or
+# mirrored; the mask reads tiles nearest first within a budget, knows a tile all dry or all wet by one byte, keeps a
+# mixed one's texels, and says dry on the cut's texels and wet on the sea's, the edge halfway between their centres;
+# off the map and on a tile with no file it says wet. The pictures are lab/shore_lab.ludic + lab/shore_check.py. No device.
+import "ludic.render3d/r3d.ludic"
+program WaterWetTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function mask(render3d_st: Render3dState, layers: int) -> WetMask {
+    let pattern = render3d_st.r3d_root + "/tests/maps/shore/{tx}_{tz}.png"
+    return wet_new(wet_pattern_of(pattern), 64.0, 64, 3, 1, -96.0, -32.0, layers)
+  }
+  function surface(r: float) -> Model {
+    let m = new Model
+    m.prims = new []Prim
+    m.radius = r
+    return m
+  }
+
+  test "16 bodies are held and a 17th refused; planes and meshes share them" (render3d_st: mut Render3dState) {
+    var n = 0
+    for i in 0 .. 8 { if water_body_put(render3d_st, float(i), 0.0, 0.0, 10.0, 10.0, false) >= 0 { n += 1 } }
+    for i in 0 .. 8 { if water_mesh_put(render3d_st, surface(5.0), float(i), 1.0, 2.0) >= 0 { n += 1 } }
+    expect_eq(n, 16)
+    expect_eq(water_body_count(render3d_st), 16)
+    expect_eq(water_body_put(render3d_st, 0.0, 0.0, 0.0, 1.0, 1.0, false), -1)
+    expect_eq(water_mesh_put(render3d_st, surface(1.0), 0.0, 0.0, 0.0), -1)
+    expect_eq(render3d_st.wb_kind[0], WATER_PLANE)
+    expect_eq(render3d_st.wb_kind[15], WATER_MESH)
+    expect(render3d_st.wb_model[15] != null)
+    # the mesh's offset is its (cx, level, cz); it is never the mirrored body
+    expect_near(render3d_st.wb_cx[15], 7.0, 0.0001);  expect_near(render3d_st.wb_level[15], 1.0, 0.0001);  expect_near(render3d_st.wb_cz[15], 2.0, 0.0001)
+    expect_eq(render3d_st.wb_primary, -1)
+    # a plane takes the mask, a mesh does not
+    water_body_mask(render3d_st, 0, true)
+    water_body_mask(render3d_st, 15, true)
+    expect_eq(render3d_st.wb_masked[0], 1)
+    expect_eq(render3d_st.wb_masked[15], 0)
+    # the floating origin moves every body
+    water_rebase(render3d_st, 100.0, 1.0, -50.0)
+    expect_near(render3d_st.wb_cx[15], -93.0, 0.0001);  expect_near(render3d_st.wb_level[15], 0.0, 0.0001);  expect_near(render3d_st.wb_cz[15], 52.0, 0.0001)
+    water_planes_clear(render3d_st)
+    expect_eq(water_body_count(render3d_st), 0)
+    expect(render3d_st.wb_model[15] == null)
+  }
+
+  test "the wet tiles are found by the tiles' pattern" {
+    expect_eq(wet_pattern_of("m/{tx}_{tz}.png"), "m/{tx}_{tz}.wet.png")
+  }
+
+  test "tiles are read nearest first within the budget, and each is known from then on" (render3d_st: mut Render3dState) {
+    let wm = mask(render3d_st, 4)
+    expect(wm != null)
+    # unknown reads wet: a plane draws as it would without a mask until its tile is read
+    expect_near(wet_at(wm, -46.0, 0.0), 1.0, 0.0)
+    wet_frame(render3d_st, wm, -46.0, 0.0, 0.0, 0.0, 1000.0, 1)
+    expect_eq(wet_class(wm, 0, 0), WET_MIXED)              # the camera's own tile first
+    expect_eq(wet_class(wm, 1, 0), WET_UNKNOWN)
+    wet_frame(render3d_st, wm, -46.0, 0.0, 0.0, 0.0, 1000.0, 5)
+    expect_eq(wet_class(wm, 1, 0), WET_DRY)
+    expect_eq(wet_class(wm, 2, 0), WET_NONE)               # no file
+    expect(wet_resident(wm, 0, 0))
+    expect(not wet_resident(wm, 1, 0))                     # all dry: one byte, no texels
+    let reads = wm.reads
+    wet_frame(render3d_st, wm, -46.0, 0.0, 0.0, 0.0, 1000.0, 5)
+    expect_eq(wm.reads, reads)                             # nothing read again
+    # the page the shader reads: tile 0 in layer 0, tile 1 dry, tile 2 as no mask
+    expect_eq(int(wm.page[0]), 3)
+    expect_eq(int(wm.page[1]), 1)
+    expect_eq(int(wm.page[2]), 0)
+  }
+
+  test "dry on the cut's texels and wet on the sea's; the edge halfway between; wet off the map and with no file" (render3d_st: mut Render3dState) {
+    let wm = mask(render3d_st, 4)
+    wet_frame(render3d_st, wm, 0.0, 0.0, 0.0, 0.0, 1000.0, 8)
+    expect_near(wet_at(wm, -46.0, 0.0), 0.0, 0.0)           # the dry cut, 2 m below sea level
+    expect_near(wet_at(wm, -85.0, 5.0), 1.0, 0.0)           # the open sea
+    expect_near(wet_at(wm, 0.0, 0.0), 0.0, 0.0)             # tile 1, all dry (its lake is a mesh)
+    expect_near(wet_at(wm, 60.0, 0.0), 1.0, 0.0)            # tile 2, no file
+    expect_near(wet_at(wm, -200.0, 0.0), 1.0, 0.0)          # off the map
+    # the sea is wet for x < -61: texel centres -61.5 (wet) and -60.5 (dry), the edge at -61
+    expect(wet_at(wm, -61.2, 0.0) > 0.5)
+    expect(wet_at(wm, -60.8, 0.0) < 0.5)
+    expect_near(wet_at(wm, -61.0, 0.0), 0.5, 0.01)
+    # on every cut texel centre the mask is dry and the fixture's ground is below the sea's level: what I2 needs
+    var dry = 0
+    for j in 0 .. 20 { for i in 0 .. 12 { if wet_at(wm, -51.5 + float(i), -9.5 + float(j)) < 0.5 { dry += 1 } } }
+    expect_eq(dry, 240)
+  }
+
+  test "with fewer layers than mixed tiles the nearest keeps one and a farther one reads wet" (render3d_st: mut Render3dState) {
+    # one layer: tile 0 takes it; a mask whose only layer is taken never decodes a mixed tile for nothing
+    let wm = mask(render3d_st, 1)
+    wet_frame(render3d_st, wm, -46.0, 0.0, 0.0, 0.0, 1000.0, 8)
+    expect(wet_resident(wm, 0, 0))
+    expect_near(wet_at(wm, -46.0, 0.0), 0.0, 0.0)
+    let reads = wm.reads
+    for k in 0 .. 3 { wet_frame(render3d_st, wm, -46.0, 0.0, 0.0, 0.0, 1000.0, 8) }
+    expect_eq(wm.reads, reads)
+  }
+}

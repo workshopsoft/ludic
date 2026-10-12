@@ -536,6 +536,8 @@ function gvk_address(wrap: int) -> int {
   return VK_SAMPLER_ADDRESS_MODE_REPEAT
 }
 function gvk_compare_op(f: int) -> int {
+  if f == GPU_GEQUAL { return VK_COMPARE_OP_GREATER_OR_EQUAL }
+  if f == GPU_GREATER { return VK_COMPARE_OP_GREATER }
   if f == GPU_LESS { return VK_COMPARE_OP_LESS }
   if f == GPU_EQUAL { return VK_COMPARE_OP_EQUAL }
   if f == GPU_ALWAYS { return VK_COMPARE_OP_ALWAYS }
@@ -618,7 +620,10 @@ function gvk_sampler(render3d_st: mut Render3dState, min_f: int, mag_f: int, wra
     Vk.put_i32(sci, VkSamplerCreateInfo_compareEnable, 1)
     Vk.put_i32(sci, VkSamplerCreateInfo_compareOp, gvk_compare_op(compare))
   }
-  Vk.put_i32(sci, VkSamplerCreateInfo_borderColor, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE)
+  # a depth compared past the border reads as the far plane, which reversed depth puts at 0 (fmath.ludic): a shadow
+  # tap off the map's edge is lit, as it was when the far plane was 1 and the border white
+  if compare != 0 { Vk.put_i32(sci, VkSamplerCreateInfo_borderColor, VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK) }
+  else { Vk.put_i32(sci, VkSamplerCreateInfo_borderColor, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE) }
   let out = bytes(8)
   let zero: long = 0
   render3d_st.gvk_mk_smp += 1

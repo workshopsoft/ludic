@@ -28,6 +28,14 @@ function r3d_view_far(render3d_st: Render3dState) -> float {
   return r3d_reach(render3d_st, render3d_st.cam_far)
 }
 
+# The far plane the projection clips at (0: none, at infinity). With reversed depth a far plane buys no precision, so
+# the camera's own far (cam_far) bounds what is culled and streamed, never what is clipped; only a wall that hides the
+# land too (R3D_FOG_LAND=0) clips at its reach, which is what that wall is for.
+function r3d_proj_far(render3d_st: Render3dState) -> float {
+  if render3d_st.r3d_fog_wall > 0.0 and not render3d_st.r3d_fog_land_on { return r3d_reach(render3d_st, render3d_st.cam_far) }
+  return 0.0
+}
+
 # a sphere of the land in view: the side planes alone when the land draws through the wall
 function cam_sphere_land(render3d_st: Render3dState, x: float, y: float, z: float, r: float) -> bool {
   if r3d_fog_land(render3d_st) { return cam_sphere_in_view(render3d_st, x, y, z, r) }

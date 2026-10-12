@@ -1,0 +1,47 @@
+# kitbox_read.ludic - a box kit's anchors (kitbox.ludic) read from its glTF on the CPU: the renderer's own reader, no device,
+# so a bake program reads them as the game's set-up does (bigworld_gpu.ludic bw_setup_kits).
+numbers float
+
+# The anchors of node `node`'s mesh in dir/file read on the CPU (no device: a bake reads them too) into `out`, also its
+# positions, anchors and offsets when `pos` is not null (3, 4 and 3 floats a vertex, every primitive in turn, anchors 0 on a
+# mesh without them: a test's reference). false when the file or node cannot be read; out.on false when the mesh has no _ANCHOR (an ordinary kit).
+@alloc_ok("a kit being read: the file's accessors, once")
+export function kitbox_read(render3d_st: mut Render3dState, dir: string, file: string, node: string, out: KitBox, pos: []float, anc: []float, off: []float) -> bool {
+  if not gltf_open(render3d_st, dir, file) { return false }
+  let nodes = value_get(render3d_st.gltf_doc, "nodes")
+  var mi = -1
+  for i in 0 .. value_count(nodes) {
+    let nd = value_at(nodes, i)
+    if value_has(nd, "name") != 0 and value_as_str(value_get(nd, "name")) == node { mi = jint(nd, "mesh", -1) }
+  }
+  if mi < 0 { file_close(render3d_st.gltf_bin);  render3d_st.gltf_bin = null;  return false }
+  let prims = value_get(value_at(value_get(render3d_st.gltf_doc, "meshes"), mi), "primitives")
+  for p in 0 .. value_count(prims) {
+    let attrs = value_get(value_at(prims, p), "attributes")
+    if value_has(attrs, "POSITION") == 0 { continue }
+    let ps = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "POSITION")))
+    let nv = render3d_st.gltf_count
+    var a: floats = null
+    var o: floats = null
+    if value_has(attrs, "_ANCHOR") != 0 { a = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "_ANCHOR"))) }
+    if a != null and value_has(attrs, "_OFFSET") != 0 { o = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "_OFFSET"))) }
+    for v in 0 .. nv {
+      var sx = 0.0;  var sz = 0.0;  var sh = 0.0;  var sd = 0.0
+      var ox = 0.0;  var oy = 0.0;  var oz = 0.0
+      if a != null {
+        sx = a[v * 4];  sz = a[v * 4 + 1];  sh = a[v * 4 + 2];  sd = a[v * 4 + 3]
+        if o != null { ox = o[v * 3];  oy = o[v * 3 + 1];  oz = o[v * 3 + 2] }
+        kitbox_add(out, sx, sz, sh, sd, ox, oy, oz)
+      }
+      if pos != null {
+        push(pos, ps[v * 3]);  push(pos, ps[v * 3 + 1]);  push(pos, ps[v * 3 + 2])
+        push(anc, sx);  push(anc, sz);  push(anc, sh);  push(anc, sd)
+        push(off, ox);  push(off, oy);  push(off, oz)
+      }
+    }
+  }
+  file_close(render3d_st.gltf_bin)
+  render3d_st.gltf_bin = null
+  return true
+}
+

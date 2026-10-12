@@ -222,7 +222,6 @@ void main() {
         if (tilt) p = p * ck + cross(k, p) * sk + k * dot(k, p) * (1.0 - ck);
         vec3 w = vec3(xz.x, h - 0.02, xz.y) + p;
         vec4 clip = u_proj * u_view * vec4(w, 1.0);
-        clip.z = (clip.z + clip.w) * 0.5;               // OpenGL's depth range to Vulkan's, as the vertex wrapper does
         int o = nv + r * 2 + sd;
         gl_MeshVerticesEXT[o].gl_Position = clip;
         v_wpos[o] = w;

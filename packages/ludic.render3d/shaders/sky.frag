@@ -116,7 +116,7 @@ vec3 sunColour(vec3 dir) {
 }
 
 void main() {
-  vec4 a = u_inv_vp * vec4(v_uv * 2.0 - 1.0, 1.0, 1.0);
+  vec4 a = u_inv_vp * vec4(v_uv * 2.0 - 1.0, DEPTH_FAR_POINT, 1.0);
   vec3 dir = normalize(a.xyz / a.w - u_cam_pos);
   // level 0: the equirect seam (atan wraps) would otherwise pick the smallest mip along one column
   vec3 col = photoSky(dir) * u_sky_gain;

@@ -1,0 +1,93 @@
+# tilemap_mask_test.ludic - the ground's land-use tones (tilemap_mask.ludic) on the shore fixture (tests/maps/shore, made by
+# make_shore.py: 3 tiles of 64 m at 1 m texels; tiles 0 and 1 have a class mask, tile 2 none). Every class draws
+# its table tone, a class with no tone and a tile with no mask draw the ground's tint; the far levels read the coarse grid
+# and still draw a region's tone inside it; the skirt wears its edge's colour. No device.
+import "ludic.render3d/r3d.ludic"
+program TileMaskTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function open(render3d_st: mut Render3dState) -> TileDraw {
+    let pattern = render3d_st.r3d_root + "/tests/maps/shore/{tx}_{tz}.png"
+    let tm = tmap_new(pattern, 64.0, 64, 3, 1, -96.0, -32.0, -10.0, 10.0, 0.0, 200.0)
+    tmap_patches(tm, 128)
+    tmap_mesh_pattern(tm, tmap_mesh_pattern_of(pattern))
+    let td = tmd_new(render3d_st, tm, 400.0)
+    tmd_tone_set(td, 1, 0.6, 0.5, 0.3)        # sand
+    tmd_tone_set(td, 2, 0.2, 0.3, 0.1)        # grass
+    tmd_tone_set(td, 3, 0.05, 0.05, 0.06)     # road
+    tmd_tone_set(td, 5, 0.4, 0.4, 0.4)        # pad; park (4) and seabed (6) have none
+    return td
+  }
+  # the patch (tile tx's only one) at `lod` expanded and coloured: true when it has a mask
+  function colour(render3d_st: mut Render3dState, td: TileDraw, tx: int, lod: int) -> bool {
+    let s = tmm_load(td.ms, td.tm, tx, 0)
+    expect(s >= 0)
+    expect(tmm_patch(td.ms, td.tm, s, tx, 0, 0, 0, lod, 0.0))
+    return tmk_colours(render3d_st, td, s, tx, 0, 0, 0, lod)
+  }
+  # is grid vertex (a, b) of a level with n1 vertices a side (r, g, b)?
+  function is(td: TileDraw, n1: int, a: int, b: int, r: float, g: float, bl: float) -> bool {
+    let o = (b * n1 + a) * 4
+    return Math.abs(td.cbuf[o] - r) < 0.0001 and Math.abs(td.cbuf[o + 1] - g) < 0.0001 and Math.abs(td.cbuf[o + 2] - bl) < 0.0001 and td.cbuf[o + 3] == 1.0
+  }
+
+  test "the mask beside a tile is found by the tiles' pattern" {
+    expect_eq(tmap_mask_pattern_of("a/{tx}_{tz}.png"), "a/{tx}_{tz}.mask.png")
+    expect_eq(tmap_mask_pattern_of("a/{tx}_{tz}"), "a/{tx}_{tz}.mask.png")
+  }
+
+  test "every class draws its table tone inside its region, a class with no tone the ground's tint" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    expect(colour(render3d_st, td, 1, 0))
+    let n1 = 65
+    # tile 1 starts at x -32, z -32 and a vertex stands every metre: vertex (a, b) is at (-32 + a, -32 + b)
+    expect(is(td, n1, 32, 49, 0.05, 0.05, 0.06))              # the road, z 14 .. 20
+    expect(is(td, n1, 5, 5, 0.2, 0.3, 0.1))                   # grass
+    expect(is(td, n1, 32, 32, 0.6, 0.5, 0.3))                 # the lake bed: sand
+    expect(is(td, n1, 52, 10, 0.5, 0.5, 0.5))                 # the park has no tone: the tint (mid grey)
+    # where two classes meet the vertex takes the mean of the four texels round its corner
+    let o = (46 * n1 + 32) * 4                                # z 14: two road texels, two grass
+    expect_near(td.cbuf[o], (0.05 + 0.2) * 0.5, 0.0001)
+    # a tone set later is drawn by the next build
+    tmd_tone_set(td, 4, 0.1, 0.5, 0.1)
+    expect(colour(render3d_st, td, 1, 0))
+    expect(is(td, n1, 52, 10, 0.1, 0.5, 0.1))
+  }
+
+  test "a tile with no mask, or the mask turned off, draws the tint as before" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    expect(not colour(render3d_st, td, 2, 0))
+    tmd_mask_pattern(td, "")
+    expect(not colour(render3d_st, td, 1, 0))
+  }
+
+  test "the coarser levels are the finer one filtered: a region's inside keeps its tone, the far levels from the coarse grid" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    expect_eq(td.mk_cf, 8)
+    expect_eq(td.mk_fine, 2)
+    # level 2 (4 m cells, full texels): the lake bed's middle, and grass in the far corner
+    expect(colour(render3d_st, td, 1, 2))
+    expect(is(td, 17, 8, 8, 0.6, 0.5, 0.3))
+    expect(is(td, 17, 1, 1, 0.2, 0.3, 0.1))
+    # level 3 (8 m cells, the coarse grid): grass where the coarse blocks round the corner are all grass
+    expect(colour(render3d_st, td, 1, 3))
+    expect(is(td, 9, 1, 1, 0.2, 0.3, 0.1))
+    # tile 0's seabed (class 6, no tone) is the tint at every level
+    expect(colour(render3d_st, td, 0, 4))
+    expect(is(td, 5, 0, 2, 0.5, 0.5, 0.5))
+  }
+
+  test "the skirt wears its edge vertex's colour" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    expect(colour(render3d_st, td, 1, 1))
+    let c = 32
+    let sk = (c + 1) * (c + 1)
+    var same = true
+    for p in 0 .. 4 * c {
+      let e = lwt_perimeter(c, p)
+      for k in 0 .. 4 { if td.cbuf[(sk + p) * 4 + k] != td.cbuf[e * 4 + k] { same = false } }
+    }
+    expect(same)
+  }
+}

@@ -66,6 +66,7 @@ is `(map, key)`, stable because it is data. A `Buildings` row:
 | `kit` | a `BuildingKits` key when it is an instance of a kit, else `model` + `node` (a generated block's glTF and the node in it) |
 | `x`, `y`, `z`, `yaw`, `scale` | the transform (metres, degrees, 0 faces +z) |
 | `w`, `d`, `floors`, `height` | footprint, floors, height (0: floors times the kit's `floor_h`, 3.5 m without a kit) |
+| `roof` | the roof's kind, a word the game's kits know (`gable`, `hip`, ...); `""` is flat |
 | `interior` | `none`; `fake` (a ludic.render3d `InteriorAtlases` key in `atlas`); `enterable` (the map whose key is `interior_map` holds the inside) |
 | `lot`, `address` | the tags a property can be bought by |
 | `residents`, `jobs` | capacity; -1: worked out from the floor area and zoning |
@@ -122,7 +123,7 @@ residents = A * res_pct / 100 / m2_per_person         jobs = A * (100 - res_pct)
 | `city_census_cell(...)`, `city_census(st, bl, districts, map, cx0, cz0, cx1, cz1, out)` | a `CityCensus` (`buildings`, `homes`, `workplaces`, `residents`, `jobs`, `floor_area`) of a cell, or of a range of the map, one cell in memory at a time (a cell already loaded stays; no facts): an offline check that an authored city holds what its designers meant |
 
 **For the renderer, interiors and property.** `city_instances(st, bl, cell, out)` appends a cell's buildings to a
-`CityInstances` (`id`, `kit`, `model`, `node`, `x`, `y`, `z`, `yaw`, `scale`, `w`, `d`, `h`, `floors`; a kit's model and node stand in
+`CityInstances` (`id`, `kit`, `model`, `node`, `x`, `y`, `z`, `yaw`, `scale`, `w`, `d`, `h`, `floors`, `roof`; a kit's model and node stand in
 when the row names none), and with the `CITY_LOADED` / `CITY_UNLOADED` facts that is a batch per cell. `city_interior_class(b)`
 is 0 none, 1 fake, 2 enterable; `city_entrances(b, out)` the doors (for `ludic.property`: a lot is bought by its `lot` / `address`,
 entered by these); `city_kit_of(b)`, `city_height(b)`.
@@ -149,7 +150,8 @@ bind CityPhysics { add: fn city_add_piece, remove: fn city_drop_piece }
 
 **For the renderer, baked.** The instanced kits and the cell files the large world streams come from the rows by `tools/cells_bake_city.ludic`
 (`city_cells_bake`): one kit a (model, node, atlas) so every building of a model shares one mesh, drawn instanced per cell; see ludic.render3d's README,
-"Kits and cells from placed things". `tests/cells_bake_test.ludic` runs it on the fixture city.
+"Kits and cells from placed things". `tests/cells_bake_test.ludic` runs it on the fixture city. A model and node registered as a box kit (`kitbake_box`) is placed at each
+building's own `w` and `d` and its eave, floors times its kit's `floor_h`, the kit's parapet or roof drawn on top.
 
 ### The block hash
 

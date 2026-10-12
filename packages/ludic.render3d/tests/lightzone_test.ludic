@@ -1,0 +1,96 @@
+# lightzone_test.ludic - light zones (lightzone.ludic) without a device: a box turned by its yaw, the weight 0 outside
+# it, 1 deeper than its feather and smooth between, a hard edge with no feather, the strongest zone winning, the cap,
+# the origin's rebase, and the LZ_MAX zones nearest the camera picked for the shaders (nearest first, the table the
+# shaders read). The shot test is lab/lightzone_lab.ludic + lab/lightzone_check.py.
+import "ludic.render3d/r3d.ludic"
+program LightZoneTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "a zone weighs 0 outside its box, 1 deeper than its feather inside, smoothly between" (render3d_st: mut Render3dState) {
+    let z = lightzone_add(render3d_st, 10.0, 2.0, -5.0, 0.0, 8.0, 4.0, 20.0, 1.0)
+    expect_eq(z, 0)
+    expect_eq(lightzone_count(render3d_st), 1)
+    expect_near(lightzone_at(render3d_st, 10.0, 2.0, -5.0), 1.0, 0.000001)         # the middle
+    expect_near(lightzone_at(render3d_st, 13.0, 2.0, -5.0), 1.0, 0.000001)         # 1 m in from the x face: the feather's end
+    expect_near(lightzone_at(render3d_st, 13.5, 2.0, -5.0), 0.5, 0.000001)         # half the feather
+    expect_near(lightzone_at(render3d_st, 14.0, 2.0, -5.0), 0.0, 0.000001)         # on the face
+    expect_near(lightzone_at(render3d_st, 14.5, 2.0, -5.0), 0.0, 0.000001)         # outside
+    expect_near(lightzone_at(render3d_st, 10.0, 4.5, -5.0), 0.0, 0.000001)         # above its roof (y 0 .. 4)
+    expect_near(lightzone_at(render3d_st, 10.0, 3.5, -5.0), 0.5, 0.000001)
+    expect_near(lightzone_at(render3d_st, 10.0, 2.0, 5.5), 0.0, 0.000001)          # past its far end (z -15 .. 5)
+    expect_near(lightzone_at(render3d_st, 10.0, 2.0, 4.75), 0.15625, 0.000001)     # a quarter of the feather: 3t^2 - 2t^3
+  }
+
+  test "a zone turned by its yaw is the box actor_place would turn" (render3d_st: mut Render3dState) {
+    # 2 wide, 2 tall, 20 deep, turned a quarter: its depth now runs along world x (local z -> world (sin, 0, cos) = (1, 0, 0))
+    lightzone_add(render3d_st, 0.0, 0.0, 0.0, PI * 0.5, 2.0, 2.0, 20.0, 0.0)
+    expect_eq(lightzone_at(render3d_st, 9.0, 0.0, 0.0), 1.0)
+    expect_eq(lightzone_at(render3d_st, -9.0, 0.0, 0.0), 1.0)
+    expect_eq(lightzone_at(render3d_st, 0.0, 0.0, 9.0), 0.0)
+    expect_eq(lightzone_at(render3d_st, 9.0, 0.0, 1.5), 0.0)
+    # 30 degrees: a point 5 m along the turned depth axis is inside, 5 m along world z is not
+    lightzone_clear(render3d_st)
+    let a = PI / 6.0
+    lightzone_add(render3d_st, 0.0, 0.0, 0.0, a, 2.0, 2.0, 20.0, 0.0)
+    expect_eq(lightzone_at(render3d_st, 5.0 * Math.sin(a), 0.0, 5.0 * Math.cos(a)), 1.0)
+    expect_eq(lightzone_at(render3d_st, 0.0, 0.0, 5.0), 0.0)
+    expect_eq(lightzone_at(render3d_st, 0.9 * Math.cos(a), 0.0, -0.9 * Math.sin(a)), 1.0)      # 0.9 m along its local x
+    expect_eq(lightzone_at(render3d_st, 1.1 * Math.cos(a), 0.0, -1.1 * Math.sin(a)), 0.0)
+  }
+
+  test "no feather is a hard edge; the strongest zone wins; an empty box is refused; the cap holds" (render3d_st: mut Render3dState) {
+    let a = lightzone_add(render3d_st, 0.0, 0.0, 0.0, 0.0, 4.0, 4.0, 4.0, 0.0)
+    let b = lightzone_add(render3d_st, 3.0, 0.0, 0.0, 0.0, 4.0, 4.0, 4.0, 2.0)
+    expect_eq(lightzone_at(render3d_st, 1.99, 0.0, 0.0), 1.0)        # a's hard edge holds over b's feather
+    expect_near(lightzone_at(render3d_st, 2.5, 0.0, 0.0), lightzone_weight(render3d_st, b, 2.5, 0.0, 0.0), 0.000001)
+    expect_eq(lightzone_add(render3d_st, 0.0, 0.0, 0.0, 0.0, 0.0, 4.0, 4.0, 1.0), -1)
+    expect_eq(lightzone_add(render3d_st, 0.0, 0.0, 0.0, 0.0, 4.0, -1.0, 4.0, 1.0), -1)
+    while lightzone_count(render3d_st) < LZ_CAP { lightzone_add(render3d_st, 1000.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0) }
+    expect_eq(lightzone_add(render3d_st, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0), -1)
+    lightzone_clear(render3d_st)
+    expect_eq(lightzone_count(render3d_st), 0)
+    expect_eq(lightzone_at(render3d_st, 0.0, 0.0, 0.0), 0.0)
+    expect_eq(a, 0)
+  }
+
+  test "the floating origin moves the zones with the world" (render3d_st: mut Render3dState) {
+    lightzone_add(render3d_st, 100.0, 0.0, 100.0, 0.0, 10.0, 10.0, 10.0, 0.0)
+    lightzone_rebase(render3d_st, -100.0, 0.0, -100.0)
+    expect_eq(lightzone_at(render3d_st, 0.0, 0.0, 0.0), 1.0)
+    expect_eq(lightzone_at(render3d_st, 100.0, 0.0, 100.0), 0.0)
+  }
+
+  test "the shaders get the LZ_MAX zones nearest the camera, nearest first, with their ambient and sky" (render3d_st: mut Render3dState) {
+    # twelve 2 m boxes along x at 10 m steps; the camera at x = 57: nearest are 60, 50, 70, 40, ...
+    for i in 0 .. 12 {
+      let z = lightzone_add(render3d_st, float(i) * 10.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 0.5)
+      lightzone_ambient(render3d_st, z, 0.1 * float(i), 0.2, 0.3, 0.25)
+    }
+    lightzone_pick(render3d_st, 57.0, 0.0, 0.0)
+    expect_eq(render3d_st.lz_un, LZ_MAX)
+    expect_eq(lightzone_slot(render3d_st, 0), 6)
+    expect_eq(lightzone_slot(render3d_st, 1), 5)
+    expect_eq(lightzone_slot(render3d_st, 2), 7)
+    expect_eq(lightzone_slot(render3d_st, 3), 4)
+    var seen = 0
+    for k in 0 .. LZ_MAX { let i = lightzone_slot(render3d_st, k);  if i >= 2 and i <= 9 { seen += 1 } }
+    expect_eq(seen, LZ_MAX)                                          # 2 .. 9; 0, 1, 10, 11 are the farthest
+    expect_eq(lightzone_slot(render3d_st, LZ_MAX), -1)
+    let u = render3d_st.lz_u
+    expect_near(u[0], 60.0, 0.0001)                                  # slot 0: zone 6's centre, feather
+    expect_near(u[3], 0.5, 0.0001)
+    expect_near(u[4], 1.0, 0.0001);  expect_near(u[5], 0.0, 0.0001)  # cos, sin of yaw 0
+    expect_near(u[6], 0.25, 0.0001)                                  # sky
+    expect_near(u[8], 1.0, 0.0001);  expect_near(u[9], 1.0, 0.0001);  expect_near(u[10], 1.0, 0.0001)   # half sizes
+    expect_near(u[12], 0.6, 0.0001);  expect_near(u[13], 0.2, 0.0001);  expect_near(u[14], 0.3, 0.0001) # ambient
+    # inside a box the distance is 0: that zone comes first
+    lightzone_pick(render3d_st, 30.5, 0.0, 0.0)
+    expect_eq(lightzone_slot(render3d_st, 0), 3)
+    # fewer zones than slots: all of them, the rest unread
+    lightzone_clear(render3d_st)
+    lightzone_add(render3d_st, 0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 0.5)
+    lightzone_pick(render3d_st, 0.0, 0.0, 0.0)
+    expect_eq(render3d_st.lz_un, 1)
+  }
+}

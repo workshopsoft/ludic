@@ -3,9 +3,12 @@
 # editor draws the same rows. water_bodies_apply hands them to the renderer; the older way, water_init for one
 # reflecting plane, still works and is what a game with no rows calls.
 
-# one plane: its surface at `level` over (cx, cz) +- (ex, ez); only the first row with `reflect` is mirrored
-# (every mirrored plane is another full scene pass), so a sea a player sees from afar and a pond beside them
-# are two rows and one reflection
+# one body. A PLANE (no `asset`): its surface at `level` over (cx, cz) +- (ex, ez); only the first row with `reflect`
+# is mirrored (every mirrored plane is another full scene pass), so a sea a player sees from afar and a pond beside
+# them are two rows and one reflection; with `masked` it draws only on the wet mask's wet texels (water_wet.ludic). A
+# MESH (`asset`, a glb, and the `node` in it): the node's triangles are the surface (a baked lake polygon, a river
+# ribbon), moved by (cx, level, cz) - zero for a mesh baked where it lies - and drawn nowhere else; ex, ez, reflect
+# and masked are a plane's and do nothing here
 export property WaterBody {
   key: string = ""
   @Unit("m") level: float = 0.0            # the surface's height
@@ -14,13 +17,16 @@ export property WaterBody {
   @Unit("m") @Range(0, 100000) ex: float = 256.0   # and their half width along x
   @Unit("m") @Range(0, 100000) ez: float = 256.0   # and along z
   reflect: bool = false                    # the sky and the land mirrored in it
+  masked: bool = false                     # a plane drawn only on wet texels of the wet mask in use
+  @Asset("gltf") asset: string = ""        # a mesh body: the glb whose node is the surface ("" a plane)
+  node: string = "water"                   # the node of `asset` that holds the surface
 }
 
 @PerMap @ByKey
 export registry WaterBodies of WaterBody from "water.lres"
 
-# replace the renderer's water with a loaded map's rows; how many planes it took (the renderer holds 8, so
-# a row past them is left out)
+# replace the renderer's water with a loaded map's rows; how many bodies it took (the renderer holds WATER_MAX, 16,
+# so a row past them is left out, and so is a mesh whose asset cannot be read, which says so)
 export function water_bodies_apply(render3d_st: mut Render3dState, w: WaterBodies) -> int {
   let was = render3d_st.gvk_tag
   render3d_st.gvk_tag = VKM_WATER
@@ -28,7 +34,21 @@ export function water_bodies_apply(render3d_st: mut Render3dState, w: WaterBodie
   var n = 0
   for i in 0 .. len(w.rows) {
     let b = w.rows[i]
-    if water_body_add(render3d_st, b.level, b.cx, b.cz, b.ex, b.ez, b.reflect) >= 0 { n += 1 }
+    if b.asset != "" {
+      if water_body_count(render3d_st) >= WATER_MAX { continue }
+      let m = water_asset_load(render3d_st, b.asset, b.node)
+      if m == null { continue }
+      let k = water_mesh_add(render3d_st, m, b.cx, b.level, b.cz)
+      if k < 0 { model_release(render3d_st, m);  continue }
+      render3d_st.wb_owned[k] = 1
+      n += 1
+      continue
+    }
+    let k = water_body_add(render3d_st, b.level, b.cx, b.cz, b.ex, b.ez, b.reflect)
+    if k >= 0 {
+      water_body_mask(render3d_st, k, b.masked)
+      n += 1
+    }
   }
   render3d_st.gvk_tag = was
   return n
@@ -36,3 +56,18 @@ export function water_bodies_apply(render3d_st: mut Render3dState, w: WaterBodie
 
 # the planes the renderer holds now
 export function water_body_count(render3d_st: Render3dState) -> int { return render3d_st.wb_n }
+
+# a mesh body's model: node `node` of the glb at `path` (relative to where the game runs, as every asset path is)
+@alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
+function water_asset_load(render3d_st: mut Render3dState, path: string, node: string) -> Model {
+  var cut = -1
+  for i in 0 .. len(path) { if path[i] == '/' { cut = i } }
+  var dir = "."
+  var file = path
+  if cut >= 0 { dir = path[0 .. cut];  file = path[cut + 1 .. len(path)] }
+  let m = gltf_load(render3d_st, dir, file, node)
+  if m == null { water_say_asset(path, node) }
+  return m
+}
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function water_say_asset(path: string, node: string) -> void { print(`water_bodies: no surface: node {node} of {path} cannot be read; the body is left out`) }

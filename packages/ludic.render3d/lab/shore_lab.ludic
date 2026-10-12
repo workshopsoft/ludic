@@ -1,0 +1,74 @@
+# shore_lab.ludic - the `shore` fixture (tests/maps/shore, made by make_shore.py) photographed: still water as planes and
+# meshes, the wet mask and the ground's land-use tones, on tile ground (tilemap_draw.ludic) in the lab's light.
+#
+#   ludic build packages/ludic.render3d/lab/shore_lab.ludic --headless -o build/shore_lab
+#   yes '' | head -n 2000 | R3D_SCENE=shore ./build/shore_lab        -> build/lab/shore/*.png
+#
+# Scenes: `shore` (the sea plane masked by the wet mask, the lake and fourteen pads as meshes: 16 bodies, the land-use
+# tones), `shore_nomask` (the same sea plane with no mask: the phantom water the mask removes, in the dry cut and the
+# lake basin), `shore_plain` (no land-use mask: the old single tint everywhere).
+import "ludic.lab"
+program ShoreLab {
+  numbers float
+  state ShoreScene { td: TileDraw = null, wm: WetMask = null, bodies: int = 0, said: bool = false, frames: int = 0 }
+
+  const SH_SEA: int = 0
+
+  @alloc_ok("lab: the scene is built once, before its shots")
+  function shore_build(sh: mut ShoreScene, lab_st: mut LabState, render3d_st: mut Render3dState, masked: bool, tones: bool) -> void {
+    # the lab's plate disc stands at y = 0, inside this ground: sent far below it
+    if lab_st.lb_plate != null { actor_place(lab_st.lb_plate, 0.0, -500.0, 0.0, 0.0) }
+    let dir = render3d_st.r3d_root + "/tests/maps/shore"
+    let pattern = dir + "/{tx}_{tz}.png"
+    let tm = tmap_new(pattern, 64.0, 64, 3, 1, -96.0, -32.0, -10.0, 10.0, 0.0, 200.0)
+    tmap_patches(tm, 128)
+    tmap_mesh_pattern(tm, tmap_mesh_pattern_of(pattern))
+    if not Fs.exists(tmap_mesh_path(tm, 0, 0)) { print(`shore: baked {tmb_map(render3d_st, tm, tm.mesh_pattern)} tiles`) }
+    sh.td = tmd_new(render3d_st, tm, 400.0)
+    sh.td.build_budget = 8
+    if tones {
+      tmd_tone_set(sh.td, 1, 0.62, 0.52, 0.30)         # sand
+      tmd_tone_set(sh.td, 2, 0.16, 0.30, 0.10)         # grass
+      tmd_tone_set(sh.td, 3, 0.05, 0.05, 0.055)        # road
+      tmd_tone_set(sh.td, 4, 0.08, 0.42, 0.06)         # park
+      tmd_tone_set(sh.td, 5, 0.42, 0.42, 0.40)         # pad
+      tmd_tone_set(sh.td, 6, 0.25, 0.20, 0.12)         # seabed
+    } else { tmd_mask_pattern(sh.td, "") }
+    # the water: the sea plane over everything at 0 m, the lake and the pads as meshes
+    let sea = water_body_add(render3d_st, 0.0, 0.0, 0.0, 400.0, 400.0, false)
+    sh.wm = wet_new(wet_pattern_of(pattern), 64.0, 64, 3, 1, -96.0, -32.0, 4)
+    water_wet_use(render3d_st, sh.wm)
+    wet_frame(render3d_st, sh.wm, 0.0, 0.0, 0.0, 0.0, 1000.0, 8)
+    water_body_mask(render3d_st, sea, masked)
+    water_mesh_add(render3d_st, gltf_load(render3d_st, dir, "lake.glb", "water"), 0.0, 0.0, 0.0)
+    for k in 0 .. 14 { water_mesh_add(render3d_st, gltf_load(render3d_st, dir, "pads.glb", `pad{k}`), 0.0, 0.0, 0.0) }
+    sh.bodies = water_body_count(render3d_st)
+    print(`shore: {sh.bodies} water bodies; a 17th: {water_body_add(render3d_st, 5.0, 0.0, 0.0, 1.0, 1.0, false)}`)
+    lab_settle(lab_st, 40)
+    lab_shot_at(lab_st, "overview", -8.0, 0.0, 0.0, 150.0, 180.0, 50.0)
+    lab_shot_at(lab_st, "cut", -50.0, 0.0, 0.0, 34.0, 200.0, 38.0)
+    lab_shot_at(lab_st, "lake", 0.0, 1.0, 0.0, 34.0, 160.0, 40.0)
+    lab_shot_at(lab_st, "pads", 61.0, 2.0, 0.0, 34.0, 180.0, 45.0)
+    lab_shot_at(lab_st, "top", -8.0, 0.0, 0.0, 190.0, 180.0, 89.0)
+  }
+  function shore_setup(sh: mut ShoreScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { shore_build(sh, lab_st, render3d_st, true, true) }
+  function nomask_setup(sh: mut ShoreScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { shore_build(sh, lab_st, render3d_st, false, true) }
+  function plain_setup(sh: mut ShoreScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { shore_build(sh, lab_st, render3d_st, true, false) }
+  function shore_tick(sh: mut ShoreScene, render3d_st: mut Render3dState) -> void {
+    if sh.td == null { return }
+    tmd_frame(render3d_st, sh.td, render3d_st.cam_pos[0], render3d_st.cam_pos[2], 0.0, 0.0, 400.0)
+    wet_frame(render3d_st, sh.wm, render3d_st.cam_pos[0], render3d_st.cam_pos[2], 0.0, 0.0, 400.0, 2)
+    sh.frames += 1
+    if sh.frames == 30 and not sh.said {
+      sh.said = true
+      print(`shore: ground patches {sh.td.shown}; wet tiles: {wet_class(sh.wm, 0, 0)} {wet_class(sh.wm, 1, 0)} {wet_class(sh.wm, 2, 0)}`)
+    }
+  }
+  def LabScenes shore { setup: fn shore_setup }
+  def LabScenes shore_nomask { setup: fn nomask_setup }
+  def LabScenes shore_plain { setup: fn plain_setup }
+  handler Boot(lab_st: mut LabState, render3d_st: mut Render3dState) phase Start { lab_boot(lab_st, render3d_st) }
+  handler Stream(sh: mut ShoreScene, render3d_st: mut Render3dState) phase Update { shore_tick(sh, render3d_st) }
+  handler Look(lab_st: mut LabState, render3d_st: mut Render3dState) phase Input { lab_input(lab_st, render3d_st) }
+  handler Draw(lab_st: mut LabState, render3d_st: mut Render3dState) phase Render { lab_render(lab_st, render3d_st) }
+}

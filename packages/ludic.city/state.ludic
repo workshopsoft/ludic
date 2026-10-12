@@ -52,6 +52,7 @@ export property CityInstances {
   d: []float = new []float
   h: []float = new []float
   floors: []int = new []int
+  roof: []string = new []string       # the row's roof kind, "" for flat
 }
 
 # the doors of a building
@@ -606,10 +607,11 @@ export function cityinstances_clear(out: CityInstances) -> void {
   List.clear(out.d)
   List.clear(out.h)
   List.clear(out.floors)
+  List.clear(out.roof)
 }
 
 # the instances of loaded cell `i` appended to `out`: per building its id, the kit (or the asset and node), the transform
-# (position, yaw, scale), the footprint and the height. A kit's model and node stand in for an empty `model`
+# (position, yaw, scale), the footprint, the height and the roof kind. A kit's model and node stand in for an empty `model`
 export function city_instances(city_st: CityState, bl: Buildings, i: int, out: CityInstances) -> int {
   let s = buildings_slot(bl, city_st.ci_cx[i], city_st.ci_cz[i])
   let rows = bl.chunks[s].rows
@@ -634,6 +636,7 @@ export function city_instances(city_st: CityState, bl: Buildings, i: int, out: C
     kept_push(out.d, b.d)
     kept_push(out.h, city_height(b))
     kept_push(out.floors, b.floors)
+    kept_push(out.roof, b.roof)
   }
   return len(rows)
 }

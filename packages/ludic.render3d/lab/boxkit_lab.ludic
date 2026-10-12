@@ -1,0 +1,102 @@
+# boxkit_lab.ludic - box kits (kitbox.ludic) drawn by the instancer (kgpu.ludic) on the lab plate: the boxkits fixture's flat
+# kit with a parapet at 3, 12 and 72 floors and its 30 degree gable kit at 3 and 12, each instance its own w, d and h from ONE
+# mesh a kit, and an unscaled door in front of each. The look (the numbers are tests/kitbox_test.ludic).
+#
+#   ludic build packages/ludic.render3d/lab/boxkit_lab.ludic --headless -o build/boxkit_lab
+#   yes '' | head -n 400 | R3D_SCENE=boxkits ./build/boxkit_lab           -> build/lab/boxkits/*.png
+#
+# Scenes: `boxkits` (meshes, culled and binned on the GPU), `boxkits_cpu` (the same culled on the CPU: kinst.ludic's lists),
+# `boxkits_far` (every instance past its near distance: its impostor card, baked once from the kit at its reference size and
+# stretched to each instance's own bounds).
+import "ludic.lab"
+program BoxKitLab {
+  numbers float
+  def InteriorAtlases from "../tests/interior_atlases.lres"
+  state BoxScene { g: KGpu = null, k: KCull = null, o: ForgOrigin = null, cpu: bool = false, said: bool = false }
+
+  const STOREY: float = 3.4
+
+  function bx_prepare(bs: BoxScene, render3d_st: mut Render3dState) -> void { if bs.g != null and not bs.cpu { kgpu_frame(render3d_st, bs.g, bs.o) } }
+  function bx_draw(bs: BoxScene, render3d_st: mut Render3dState) -> void {
+    if bs.g == null { return }
+    if bs.cpu {
+      kinst_begin(bs.k, render3d_st.cam_vp_clean, render3d_st.cam_pos[0], render3d_st.cam_pos[1], render3d_st.cam_pos[2])
+      kinst_cull(bs.k)
+      kgpu_draw_lists(render3d_st, bs.g, bs.k)
+    } else { kgpu_draw(render3d_st, bs.g) }
+  }
+  function bx_casters(bs: BoxScene, render3d_st: mut Render3dState, light_vp: floats) -> void {
+    actor_draw_casters(render3d_st, light_vp)
+    if bs.g != null and not bs.cpu { kgpu_draw_casters(render3d_st, bs.g, light_vp) }
+  }
+
+  # one box instance of kit `kit` into c: its bounds from the kit's tuples
+  function place(c: CellContent, box: KitBox, kit: int, x: float, z: float, yaw: float, w: float, d: float, floors: int, tint: int) -> void {
+    let b = floats(6)
+    kitbox_bounds(box, w, d, float(floors) * STOREY, b)
+    cell_add_box(c, kit, x, 0.0, z, yaw, w, d, float(floors) * STOREY, b, tint, floors, 0)
+  }
+
+  @alloc_ok("lab: the scene is built once, before its shots")
+  function bx_build(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState, cpu: bool, far: bool) -> void {
+    let dir = render3d_st.r3d_root + "/tests/maps/boxkits"
+    let flat = kitbox_new()
+    let gable = kitbox_new()
+    kitbox_read(render3d_st, dir, "kits.glb", "flat", flat, null, null, null)
+    kitbox_read(render3d_st, dir, "kits.glb", "gable", gable, null, null, null)
+    bs.cpu = cpu
+    bs.o = forg_new(256.0, 1024.0)
+    bs.g = kgpu_new(render3d_st, 3, 4096, 4096, 16, cpu)
+    bs.k = kinst_new(3)
+    var near = 3000.0
+    if far { near = 1.0 }
+    let nodes = Text.split("flat gable door", " ")
+    for id in 0 .. 3 {
+      let m = gltf_load(render3d_st, dir, "kits.glb", nodes[id])
+      kgpu_kit(render3d_st, bs.g, id, m, near, 6000.0, 15.0, true)
+      kinst_kit(bs.k, id, near, 6000.0, 15.0, far)
+    }
+    kgpu_kit_box(bs.g, 0, flat)
+    kgpu_kit_box(bs.g, 1, gable)
+    if far {
+      kgpu_bake_kit(render3d_st, bs.g, 0, 20.0, 10.0, 10.0, 8, 128)
+      kgpu_bake_kit(render3d_st, bs.g, 1, 20.0, 10.0, 10.0, 8, 128)
+      kgpu_bake_kit(render3d_st, bs.g, 2, 1.0, 0.1, 2.2, 8, 64)
+    }
+    # the city: flat 3, 12, 72 floors along x; gable 3 and 12 behind; a door in front of each, unscaled
+    let c = cell_content_new(0, 0, 256.0, 16)
+    let white = cell_rgba(225, 222, 214, 255)
+    let warm = cell_rgba(214, 170, 140, 255)
+    place(c, flat, 0, -40.0, 0.0, 0.0, 14.0, 9.0, 3, white)
+    place(c, flat, 0, -8.0, 0.0, 0.0, 27.0, 16.5, 12, white)
+    place(c, flat, 0, 42.0, 0.0, 0.0, 40.0, 24.0, 72, white)
+    place(c, gable, 1, -36.0, 40.0, 0.0, 16.0, 10.0, 3, warm)
+    place(c, gable, 1, 4.0, 40.0, 0.0, 30.0, 18.0, 12, warm)
+    let doors_x = floats(5)
+    let doors_z = floats(5)
+    doors_x[0] = -40.0;  doors_z[0] = -4.5
+    doors_x[1] = -8.0;  doors_z[1] = -8.25
+    doors_x[2] = 42.0;  doors_z[2] = -12.0
+    doors_x[3] = -36.0;  doors_z[3] = 35.0
+    doors_x[4] = 4.0;  doors_z[4] = 31.0
+    for i in 0 .. 5 { cell_add(c, 2, doors_x[i], 0.0, doors_z[i] - 0.06, 0.0, 1.0, cell_rgba(70, 60, 50, 255), i, 0) }
+    if cpu { kinst_add_cell(bs.k, 0, c, 0.0, 0.0, 0.0) } else { kgpu_add_cell(render3d_st, bs.g, 0, c, bs.o) }
+    print(`boxkits: {c.n} instances ({c.boxes} box) of 3 kits; flat {flat.nx} x {flat.nz} z {flat.ny} y tuples, gable {gable.nx} {gable.nz} {gable.ny}`)
+    r3d_on_prepare(render3d_st, fn bx_prepare)
+    r3d_on_casters(render3d_st, fn bx_casters)
+    lab_settle(lab_st, 40)
+    lab_shot_at(lab_st, "street", 0.0, 30.0, 10.0, 210.0, 200.0, 12.0)
+    lab_shot_at(lab_st, "roofs", -10.0, 30.0, 15.0, 120.0, 160.0, 38.0)
+    lab_shot_at(lab_st, "tower", 42.0, 200.0, 0.0, 120.0, 205.0, 30.0)
+    lab_shot_at(lab_st, "doors", -24.0, 2.0, -6.0, 26.0, 180.0, 6.0)
+  }
+  function gpu_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, false, false) }
+  function cpu_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, true, false) }
+  function far_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, false, true) }
+  def LabScenes boxkits { setup: fn gpu_setup, draw: fn bx_draw }
+  def LabScenes boxkits_cpu { setup: fn cpu_setup, draw: fn bx_draw }
+  def LabScenes boxkits_far { setup: fn far_setup, draw: fn bx_draw }
+  handler Boot(lab_st: mut LabState, render3d_st: mut Render3dState) phase Start { lab_boot(lab_st, render3d_st) }
+  handler Look(lab_st: mut LabState, render3d_st: mut Render3dState) phase Input { lab_input(lab_st, render3d_st) }
+  handler Draw(lab_st: mut LabState, render3d_st: mut Render3dState) phase Render { lab_render(lab_st, render3d_st) }
+}

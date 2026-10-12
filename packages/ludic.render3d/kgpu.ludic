@@ -2,7 +2,7 @@
 # kgpu.ludic - instancing at scale on the GPU: every resident cell's instances in one buffer, culled and binned in
 # parallel by compute, drawn by indirect calls. No CPU work is proportional to the number of instances.
 #
-#   cells load   kgpu_add_cell writes the cell's 16-float records into a range of the SRC arena (karena.ludic)
+#   cells load   kgpu_add_cell writes the cell's 20-float records into a range of the SRC arena (karena.ludic)
 #   each frame   kgpu_frame:  reset counters -> kinst_cull.comp (count) -> kinst_args.comp (scan, draw records) -> kinst_cull.comp (scatter)
 #                  a thread an instance: frustum + distance test against the cell's render-space offset, LOD level by
 #                  distance, survivors packed per (kit, level) in render space into DST
@@ -14,14 +14,15 @@
 # table: a rebase changes `origin.serial`, kgpu_frame rewrites the table's offsets (a few kilobytes), and no instance
 # is touched.
 #
-# A kit's Model is its own: it is given instance attributes of this file's layout (three vec4s), so it must not also be
-# a scatter Layer's model. Load it again for that.
+# A kit's Model is its own: it is given instance attributes of this file's layout (four vec4s), so it must not also be
+# a scatter Layer's model. Load it again for that. A BOX kit (kitbox.ludic: anchors on its vertices) is declared with
+# kgpu_kit_box; its instances carry their own w, d, h (the fourth vec4) and its card is sized from them.
 #
 # Compile-checked here; the culling it does is tested on the CPU twin (kinst_test.ludic), record for record.
 # ============================================================================
 
-export const KG_SRC_FLOATS: int = 16       # a source record: 4 vec4s
-export const KG_DST_FLOATS: int = 12       # an output record: 3 vec4s
+export const KG_SRC_FLOATS: int = 20       # a source record: 5 vec4s (the instance's 4 and its kit and cell)
+export const KG_DST_FLOATS: int = 16       # an output record: 4 vec4s (kinst.ludic's KI_FLOATS)
 const KG_PRIMS: int = 8                    # material primitives a kit's mesh may have
 const KG_REC: int = 9                      # indirect records a kit: 8 prims + its card
 
@@ -37,7 +38,9 @@ property KGpuKit {
   ia: InteriorAtlas,        # the atlas row
   win_w: float = 3.0,
   win_h: float = 3.2,
-  casts: bool = true
+  casts: bool = true,
+  box: KitBox,              # a box kit's anchor tuples (kitbox.ludic), null for an ordinary kit
+  box_ref: floats           # the instance its card was baked at: drawn width, depth, top (oimp_bake's w, d, h)
 }
 
 export property KGpu {
@@ -64,6 +67,9 @@ export property KGpu {
   b_dst: int = 0,
   b_cmds: int = 0,
   b_ident: int = 0,
+  b_ident_box: int = 0,     # an identity instance with a box kit's reference w, d, h, for its impostor bake
+  kt_u: floats,             # a box kit's tuples as the card shader takes them (kitbox_uniforms)
+  kt_n: words,
   card_mesh: Mesh,
   cell_tab: floats,         # a vec4 a resident cell: render-space offset xyz, hidden
   cell_cx: words,
@@ -128,6 +134,8 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
     g.cell_tab[i * 4 + 3] = 1.0                 # hidden until a cell takes the place
   }
   g.prm = words(32)
+  g.kt_u = floats(KB_TUPLES * 12)
+  g.kt_n = words(3)
   g.pa = words(4)
   g.pr = words(4)
   g.bufs = words(8)
@@ -196,6 +204,7 @@ function kgpu_ident(render3d_st: mut Render3dState, g: KGpu) -> void {
   one[0] = 0.0;  one[1] = 0.0;  one[2] = 0.0;  one[3] = 1.0
   one[4] = 0.0;  one[5] = 1.0;  one[6] = 0.0;  one[7] = 0.0
   one[8] = 1.0;  one[9] = 1.0;  one[10] = 1.0;  one[11] = 0.0
+  for i in 12 .. KG_DST_FLOATS { one[i] = 0.0 }
   gpu_buffer_upload(render3d_st, g.b_ident, KG_DST_FLOATS * 4, data_of(one), GPU_STATIC)
 }
 
@@ -204,6 +213,7 @@ function kgpu_fill_dead(render3d_st: mut Render3dState, g: KGpu, first: int, n: 
   let map = gpu_buffer_map(render3d_st, g.b_src)
   if map == null { return }
   let dead = floats(KG_SRC_FLOATS * 256)
+  for i in 0 .. 256 * KG_SRC_FLOATS { dead[i] = 0.0 }
   for i in 0 .. 256 { dead[i * KG_SRC_FLOATS + 12] = -1.0 }
   var done = 0
   while done < n {
@@ -214,12 +224,14 @@ function kgpu_fill_dead(render3d_st: mut Render3dState, g: KGpu, first: int, n: 
   free(dead)
 }
 
-# feed a mesh its instances from `buf` in this file's layout: attribute 3 = position + scale, 4 = sin, cos, seed, flags, 5 = tint + variation
+# feed a mesh its instances from `buf` in this file's layout: attribute 3 = position + scale, 4 = sin, cos, seed, flags, 5 = tint +
+# variation, 6 = a box instance's w, d, h and radius (0 for an ordinary one)
 export function kgpu_attach(render3d_st: Render3dState, m: Mesh, buf: int) -> void {
   gpu_mesh_bind_instances(render3d_st, m, buf)
   gpu_mesh_attr_inst(render3d_st, m, 3, 4, GPU_F32, KG_DST_FLOATS * 4, 0)
   gpu_mesh_attr_inst(render3d_st, m, 4, 4, GPU_F32, KG_DST_FLOATS * 4, 16)
   gpu_mesh_attr_inst(render3d_st, m, 5, 4, GPU_F32, KG_DST_FLOATS * 4, 32)
+  gpu_mesh_attr_inst(render3d_st, m, 6, 4, GPU_F32, KG_DST_FLOATS * 4, 48)
   gpu_mesh_done(render3d_st, m)
 }
 
@@ -255,6 +267,12 @@ export function kgpu_kit(render3d_st: mut Render3dState, g: KGpu, id: int, model
   g.tab_dirty = true
 }
 
+# kit `id` is a box kit (kitbox.ludic): its instances carry their own w, d, h, and its card is sized from them by `box`
+export function kgpu_kit_box(g: KGpu, id: int, box: KitBox) -> void {
+  if box == null or not box.on { g.kits[id].box = null;  return }
+  g.kits[id].box = box
+}
+
 # the kit's windows show rooms from `ia`'s atlas (a texture made from its image), window cells of win_w x win_h metres
 export function kgpu_kit_interior(g: KGpu, id: int, ia: InteriorAtlas, rooms_tex: int, win_w: float, win_h: float) -> void {
   let k = g.kits[id]
@@ -266,12 +284,31 @@ export function kgpu_kit_interior(g: KGpu, id: int, ia: InteriorAtlas, rooms_tex
 
 # Bake the kit's impostor frames (n x n of frame_px texels) from its model and give it a card. A person's click: it renders
 # n * n views of the model into one atlas.
+# A box kit is baked as its instance of (w, d, h): the frames hold its drawn bounds, and a card stretches them to each
+# instance's own (oimp.vert).
 export function kgpu_bake_kit(render3d_st: mut Render3dState, g: KGpu, id: int, w: float, d: float, h: float, n: int, frame_px: int) -> void {
   if not g.ready { return }
   let k = g.kits[id]
   let was = render3d_st.gvk_tag
   render3d_st.gvk_tag = VKM_IMPOSTOR
-  k.atlas = oimp_bake(render3d_st, g.p_bake, g.b_ident, k.model, w, d, h, n, frame_px)
+  if k.box != null {
+    let b = floats(6)
+    kitbox_bounds(k.box, w, d, h, b)
+    let one = floats(KG_DST_FLOATS)
+    for i in 0 .. KG_DST_FLOATS { one[i] = 0.0 }
+    one[3] = 1.0;  one[5] = 1.0;  one[8] = 1.0;  one[9] = 1.0;  one[10] = 1.0
+    one[12] = w;  one[13] = d;  one[14] = h;  one[15] = kitbox_radius_of(b)
+    if g.b_ident_box == 0 { g.b_ident_box = gpu_buffer_new(render3d_st) }
+    gpu_buffer_upload(render3d_st, g.b_ident_box, KG_DST_FLOATS * 4, data_of(one), GPU_STATIC)
+    k.box_ref = floats(3)
+    k.box_ref[0] = 2.0 * Math.max(Math.abs(b[0]), Math.abs(b[1]))
+    k.box_ref[1] = 2.0 * Math.max(Math.abs(b[4]), Math.abs(b[5]))
+    k.box_ref[2] = b[3]
+    k.atlas = oimp_bake(render3d_st, g.p_bake, g.b_ident_box, k.model, k.box_ref[0], k.box_ref[1], k.box_ref[2], n, frame_px)
+    free(one);  free(b)
+  } else {
+    k.atlas = oimp_bake(render3d_st, g.p_bake, g.b_ident, k.model, w, d, h, n, frame_px)
+  }
   render3d_st.gvk_tag = was
   k.card = true
   # the card record, now that there is a card
@@ -304,7 +341,7 @@ export function kgpu_add_cell(render3d_st: mut Render3dState, g: KGpu, slot: int
   kgpu_cell_offset(g, ix, o)
   g.cell_tab[ix * 4 + 3] = 0.0
   g.tab_dirty = true
-  # the records: 16 floats each, straight into the buffer's mapping
+  # the records: 20 floats each, straight into the buffer's mapping
   let rec = floats(KG_SRC_FLOATS * 256)
   let map = gpu_buffer_map(render3d_st, g.b_src)
   var at = 0
@@ -329,6 +366,11 @@ export function kgpu_add_cell(render3d_st: mut Render3dState, g: KGpu, slot: int
       rec[r + 13] = float(ix)
       rec[r + 14] = 0.0
       rec[r + 15] = 0.0
+      rec[r + 16] = 0.0;  rec[r + 17] = 0.0;  rec[r + 18] = 0.0;  rec[r + 19] = 0.0
+      if cell_is_box(c, i) {
+        rec[r + 16] = c.box[i * CELL_BOX];  rec[r + 17] = c.box[i * CELL_BOX + 1];  rec[r + 18] = c.box[i * CELL_BOX + 2]
+        rec[r + 19] = kinst_box_radius(c, i)
+      }
     }
     if map != null { mem_copy(mem_off(map, (first + at) * KG_SRC_FLOATS * 4), data_of(rec), k * KG_SRC_FLOATS * 4) }
     at += k
@@ -507,6 +549,7 @@ function kgpu_draw_cards(render3d_st: mut Render3dState, g: KGpu) -> void {
     if not k.card or k.atlas == null or k.atlas.albedo == 0 { continue }
     let a = k.atlas
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), a.radius)
+    kgpu_card_box(render3d_st, g, p, k)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_centre_y"), a.centre_y)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frames"), float(a.n))
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frame_px"), float(a.px))
@@ -514,6 +557,20 @@ function kgpu_draw_cards(render3d_st: mut Render3dState, g: KGpu) -> void {
     r3d_bind_2d(render3d_st, p, "u_atlas_normal", 1, a.normal)
     gpu_draw_mesh_indirect(render3d_st, g.card_mesh, g.b_cmds, (id * KG_REC + KG_PRIMS) * 20, 1, 0, 0)
   }
+}
+
+# a card's box uniforms: the kit's anchor tuples and the instance its frames were baked at (u_box_ref.w 0: an ordinary kit)
+function kgpu_card_box(render3d_st: mut Render3dState, g: KGpu, p: int, k: KGpuKit) -> void {
+  if k.box == null or k.box_ref == null {
+    u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_box_ref"), 0.0, 0.0, 0.0, 0.0)
+    return
+  }
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_box_ref"), k.box_ref[0], k.box_ref[1], k.box_ref[2], 1.0)
+  kitbox_uniforms(k.box, g.kt_u, g.kt_n)
+  var loc = gpu_uniform(render3d_st, p, "u_kt[0]")
+  if loc < 0 { loc = gpu_uniform(render3d_st, p, "u_kt") }
+  u_f4v(render3d_st, loc, KB_TUPLES * 3, g.kt_u)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_kn"), float(g.kt_n[0]), float(g.kt_n[1]), float(g.kt_n[2]))
 }
 
 # the kits' meshes into a shadow cascade (their cards cast nothing: a far building's shadow is the cascades' terrain-scale
@@ -552,7 +609,7 @@ export function kgpu_instances(g: KGpu) -> int { return g.instances }
 
 # ---- the CPU path's draw ----------------------------------------------------------------------------
 
-# The lists kinst_cull made (kinst.ludic, same 12-float records) drawn the way the GPU path draws its output: each
+# The lists kinst_cull made (kinst.ludic, the same 16-float records) drawn the way the GPU path draws its output: each
 # (kit, level) list uploaded to a buffer of its own, one instanced draw a material and one for the card.
 export function kgpu_draw_lists(render3d_st: mut Render3dState, g: KGpu, k: KCull) -> void {
   if not g.ready { return }
@@ -602,6 +659,7 @@ export function kgpu_draw_lists(render3d_st: mut Render3dState, g: KGpu, k: KCul
     gpu_buffer_upload(render3d_st, buf, n * KG_DST_FLOATS * 4, data_of(kinst_bin(k, id, KI_CARD)), GPU_DYNAMIC)
     let a = kit.atlas
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), a.radius)
+    kgpu_card_box(render3d_st, g, p, kit)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_centre_y"), a.centre_y)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frames"), float(a.n))
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frame_px"), float(a.px))

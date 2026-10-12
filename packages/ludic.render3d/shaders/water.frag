@@ -13,6 +13,25 @@ uniform vec2 u_center;          // this body's centre and half extents (world xz
 uniform vec2 u_extent;
 uniform float u_clip_ellipse;   // 1: the body is the ellipse inside its rectangle (a lake), 0: the whole plane (the sea)
 uniform sampler2D u_scene;       // the scene as drawn before the water: the bed, to refract
+// The wet mask (water_wet.ludic): a plane with u_wet_on draws only on wet texels. A texel a tile in the page says
+// what the tile is - 0 not known (wet, as a plane with no mask), 1 all dry, 2 all wet, 3 + k mixed and resident in
+// layer k of the tiles, one byte a texel (255 wet) on the height tiles' own grid, read bilinear: the edge runs halfway
+// between a wet texel's centre and a dry one's. Off the map, wet.
+uniform float u_wet_on;
+uniform sampler2D u_wet_page;
+uniform sampler2DArray u_wet_tiles;
+uniform vec4 u_wet_grid;          // tile (0, 0)'s corner in render space x, z; metres a tile; tiles a side (cols)
+uniform float u_wet_rows;
+float wetAt(vec2 xz) {
+  vec2 t = (xz - u_wet_grid.xy) / u_wet_grid.z;
+  if (t.x < 0.0 || t.y < 0.0 || t.x >= u_wet_grid.w || t.y >= u_wet_rows) return 1.0;
+  ivec2 ti = ivec2(floor(t));
+  float v = floor(texelFetch(u_wet_page, ti, 0).r * 255.0 + 0.5);
+  if (v < 0.5) return 1.0;
+  if (v < 1.5) return 0.0;
+  if (v < 2.5) return 1.0;
+  return texture(u_wet_tiles, vec3(fract(t), v - 3.0)).r;
+}
 // The ground under a pixel, as the terrain draws it (the shore's terms belong to the bed, and the
 // scene depth can be a fish or a pair of legs standing on it). terpage.glsl, pasted (the reference
 // copy and its rules are there): the height sections, read through u_ts_height.
@@ -84,7 +103,7 @@ vec3 underBlur(vec2 uv, vec3 c0, float r, float surfY) {
   float clear = 1.0;
   for (int i = 0; i < 4; i++) {
     vec2 tuv = clamp(uv + vec2(i < 2 ? -r : r, (i % 2) == 0 ? -r : r) / u_screen, 0.001, 0.999);
-    vec4 tp = u_inv_vp * vec4(tuv * 2.0 - 1.0, texture(u_depth, tuv).r * 2.0 - 1.0, 1.0);
+    vec4 tp = u_inv_vp * vec4(tuv * 2.0 - 1.0, depthClip(texture(u_depth, tuv).r), 1.0);
     if (tp.y / tp.w > surfY) clear -= 0.25;
   }
   if (clear <= 0.0) return c0;
@@ -106,6 +125,7 @@ void main() {
     vec2 q = (v_wpos.xz - u_center) / max(u_extent, vec2(0.001));
     if (dot(q, q) > 1.0) discard;
   }
+  if (u_wet_on > 0.5 && wetAt(v_wpos.xz) < 0.5) discard;
   vec3 v = normalize(u_cam_pos - v_wpos);
   float dist = length(u_cam_pos - v_wpos);
   vec3 n = rippleNormal(v_wpos.xz, u_time);
@@ -131,7 +151,7 @@ void main() {
   // how deep the ground is under this pixel: from the scene depth
   vec2 suv = gl_FragCoord.xy / u_screen;
   float sd = texture(u_depth, suv).r;
-  vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, sd * 2.0 - 1.0, 1.0);
+  vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, depthClip(sd), 1.0);
   vec3 ground = gp.xyz / gp.w;
   float depthBelow = clamp(v_wpos.y - ground.y, 0.0, 10.0);
   float alongRay = length(ground - v_wpos);
@@ -216,7 +236,7 @@ void main() {
   // never refract something that is actually in front of the surface (the near bank),
   // or the grass on the shore smears out over the water
   float rd = texture(u_depth, ruv2).r;
-  vec4 rgp = u_inv_vp * vec4(ruv2 * 2.0 - 1.0, rd * 2.0 - 1.0, 1.0);
+  vec4 rgp = u_inv_vp * vec4(ruv2 * 2.0 - 1.0, depthClip(rd), 1.0);
   vec3 rground = rgp.xyz / rgp.w;
   if (rground.y > v_wpos.y) { ruv2 = suv; }
   vec3 bed = sane(texture(u_scene, ruv2).rgb);
@@ -249,6 +269,7 @@ void main() {
   // which is true of a sea and is why you could stand at the shore of a lake nine metres
   // deep and never see into it. At 0.70 the bed is there at every angle you actually stand
   // at, and the mirrored Bells are still the thing you see across the water.
+  shadow *= sunZone(v_wpos);   // no glitter or sunlit foam inside a light zone
   vec3 col = mix(through, refl, clamp(F * 0.85 + 0.03, 0.0, 0.70)) + u_sun_color * glitter * F * shadow;
   col = mix(col, vec3(0.7, 0.75, 0.75) * (skyIrradiance(vec3(0, 1, 0)) * 0.5 + u_sun_color * 0.08 * shadow), clamp(foam, 0.0, 1.0));
   col = applyFog(col, v_wpos, dist);
