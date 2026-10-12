@@ -41,6 +41,7 @@ Ludic gives no allocation back.
 | `phys_remove(st, id)`, `phys_count(st)` | gone for good |
 | `phys_pose(st, id, p) -> bool`, `phys_yaw_of(p)` | position, rotation, velocity |
 | `phys_place`, `phys_impulse`, `phys_set_velocity`, `phys_set_kinematic_target`, `phys_awake` | moving a body |
+| `phys_ccd(st, id, on) -> bool`, `phys_is_ccd(st, id) -> bool` | continuous collision detection for one dynamic body (Jolt's `LinearCast` motion quality): its shape is swept over each step and stopped at what it would skip - a car at 60 m/s moves a metre a step, more than a wall is thick. Off by default (a sweep costs; turn it on for what is fast: a car, a thrown thing). A still or kinematic body, a removed id or no world: `false` |
 | `phys_ray(st, o, d, mask, h) -> bool` | the first thing along a ray |
 | `phys_top_at(st, x, z, r, from_y, depth, mask) -> float` | what a foot would land on (`CharacterGround.top_at`), `PHYS_NONE` if nothing |
 | `phys_push(st, x, z, r, y0, y1, mask, p) -> int` | the move that stands an upright body clear (`CharacterGround.push`) |
@@ -69,4 +70,5 @@ from the one on screen.
 
 `ludic test packages/ludic.physics` runs the real library: a box onto a heightfield and a ray to
 it, still things removed, a boulder's top, a push out of a post, a crate floating level and
-drifting, hard and soft landings, a kinematic shove, fixed steps, and a pile run twice to the bit.
+drifting, hard and soft landings, a kinematic shove, fixed steps, and a pile run twice to the bit; and
+`tests/ccd_test.ludic`: at 60 m/s a ball and a car-sized box go through a thin wall without `phys_ccd` and stop at it with it, nose first, broadside and at an angle, a fast fall stays above the ground, a body at rest is as still with it, and a run repeats to the bit.

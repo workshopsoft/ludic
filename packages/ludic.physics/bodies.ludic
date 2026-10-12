@@ -34,6 +34,23 @@ export function phys_kinematic_add(physics_st: mut PhysicsState, shape: int, x: 
 @creates(PhysBody)
 export function phys_body_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float, mass: float) -> int { return ph_add(physics_st, shape, x, y, z, yaw, 2, 2, mass) }
 
+# continuous collision detection for one dynamic body: its shape is swept over each step and stopped at
+# what it would otherwise skip (a car at 60 m/s moves a metre a step, more than a wall is thick). Off by
+# default - a sweep costs, so a game turns it on for what is fast: a car, a thrown thing. Returns whether
+# the body now has it; false for a still or kinematic body (nothing to sweep), a removed id or no world
+export function phys_ccd(physics_st: mut PhysicsState, id: int, on: bool) -> bool {
+  if physics_st.ph_world == null or id < 0 { return false }
+  var flag = 0
+  if on { flag = 1 }
+  return jph_body_ccd(physics_st.ph_world, id, flag) == 1
+}
+
+# does the body sweep over its steps (phys_ccd)? false for a still or kinematic body, a removed id or no world
+export function phys_is_ccd(physics_st: PhysicsState, id: int) -> bool {
+  if physics_st.ph_world == null or id < 0 { return false }
+  return jph_body_ccd_of(physics_st.ph_world, id) == 1
+}
+
 # after many still things are added at once, before the first query
 export function phys_settle(physics_st: mut PhysicsState) -> void { if physics_st.ph_world != null { jph_world_optimize(physics_st.ph_world) } }
 

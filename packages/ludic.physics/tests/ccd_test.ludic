@@ -1,0 +1,187 @@
+# ccd_test.ludic - continuous collision detection on the real Jolt: a body at 60 m/s (a car's 50 m/s top
+# speed x 1.1) moves a metre every 1/60 s step, more than a thin wall is thick, so a discrete step skips
+# the wall and a swept one stops at it. A control proves the test could fail; then a small ball, a
+# car-sized box, an angled shot, a fall onto the ground, the body at rest, the switch, and a run twice.
+import "ludic.physics"
+import "ludic.base"
+program CcdTest {
+  numbers float
+  const SPEED: float = 60.0          # m/s, a metre a step
+  const WALL_X: float = 30.0         # the wall's centre; it is 0.1 m thick, 4 m tall, 30 m wide
+  const CAR_HALF_LEN: float = 2.2    # a compact car: 4.40 x 1.80 x 1.45 m
+  const CAR_HALF_W: float = 0.9
+  const CAR_HALF_H: float = 0.725
+
+  function pose(physics_st: mut PhysicsState, id: int) -> PhysPose {
+    let p = new PhysPose
+    if not phys_pose(physics_st, id, p) { return null }
+    return p
+  }
+
+  # no gravity: the body keeps the speed it is given, so only the wall can stop it
+  function space(physics_st: mut PhysicsState) -> void {
+    expect(phys_open(physics_st, 1024, 1))
+    phys_gravity(physics_st, 0.0)
+    expect(phys_static_add(physics_st, phys_box(physics_st, 0.05, 2.0, 15.0), WALL_X, 2.0, 0.0, 0.0) >= 0)
+    phys_settle(physics_st)
+  }
+
+  # steps the world for `seconds`; the furthest the body's front (x + reach) was, step by step
+  function fly(physics_st: mut PhysicsState, id: int, reach: float, seconds: float) -> float {
+    var front = -1000000.0
+    for i in 0 .. int(seconds * 60.0) {
+      phys_step(physics_st)
+      let p = pose(physics_st, id)
+      if p.x + reach > front { front = p.x + reach }
+    }
+    return front
+  }
+
+  # a 0.25 m ball starts half a metre short of the wall's face on a whole-metre grid: one step ends
+  # 0.5 m before the wall and the next 0.5 m past it, never touching a wall 0.1 m thick
+  function ball(physics_st: mut PhysicsState, ccd: bool) -> int {
+    let id = phys_body_add(physics_st, phys_sphere(physics_st, 0.25), 0.5, 1.0, 0.0, 0.0, 20.0)
+    expect(id >= 0)
+    if ccd { expect(phys_ccd(physics_st, id, true)) }
+    phys_set_velocity(physics_st, id, SPEED, 0.0, 0.0)
+    return id
+  }
+
+  function car(physics_st: mut PhysicsState, x: float, yaw: float, ccd: bool) -> int {
+    let shape = phys_box(physics_st, CAR_HALF_LEN, CAR_HALF_H, CAR_HALF_W)
+    let id = phys_body_add(physics_st, shape, x, 1.0, 0.0, yaw, 1500.0)
+    expect(id >= 0)
+    if ccd { expect(phys_ccd(physics_st, id, true)) }
+    phys_set_velocity(physics_st, id, SPEED, 0.0, 0.0)
+    return id
+  }
+
+  test "control: a fast ball without ccd skips a thin wall" (physics_st: mut PhysicsState) {
+    space(physics_st)
+    let id = ball(physics_st, false)
+    expect(not phys_is_ccd(physics_st, id))
+    fly(physics_st, id, 0.0, 1.0)
+    let p = pose(physics_st, id)
+    expect(p.x > WALL_X + 5.0)     # it went through and kept going
+    phys_close(physics_st)
+  }
+
+  test "a fast ball with ccd stops at a thin wall" (physics_st: mut PhysicsState) {
+    space(physics_st)
+    let id = ball(physics_st, true)
+    expect(phys_is_ccd(physics_st, id))
+    let front = fly(physics_st, id, 0.25, 2.0)
+    expect(front < WALL_X)         # its leading edge never got past the wall's middle
+    let p = pose(physics_st, id)
+    expect(p.x < WALL_X - 0.25)
+    expect(p.vx < 10.0)            # it stopped or bounced back, it did not keep its speed
+    phys_close(physics_st)
+  }
+
+  test "a car-sized box at 60 m/s does not go through a thin wall, nose first" (physics_st: mut PhysicsState) {
+    space(physics_st)
+    let id = car(physics_st, -2.0, 0.0, true)
+    let front = fly(physics_st, id, CAR_HALF_LEN, 2.0)
+    expect(front < WALL_X)
+    let p = pose(physics_st, id)
+    expect(p.x + CAR_HALF_LEN < WALL_X)
+    expect(p.vx < 10.0)
+    phys_close(physics_st)
+  }
+
+  test "a car-sized box at 60 m/s does not go through a thin wall, broadside" (physics_st: mut PhysicsState) {
+    space(physics_st)
+    let id = car(physics_st, 2.0, 1.5707964, true)     # turned a quarter: its 1.8 m side meets the wall
+    let front = fly(physics_st, id, CAR_HALF_W, 2.0)
+    expect(front < WALL_X)
+    expect(pose(physics_st, id).x + CAR_HALF_W < WALL_X)
+    phys_close(physics_st)
+  }
+
+  test "an angled shot at 60 m/s is stopped too" (physics_st: mut PhysicsState) {
+    space(physics_st)
+    let id = phys_body_add(physics_st, phys_sphere(physics_st, 0.25), 0.0, 1.0, -10.0, 0.0, 20.0)
+    expect(phys_ccd(physics_st, id, true))
+    phys_set_velocity(physics_st, id, 52.0, 0.0, 30.0)  # 60 m/s, 30 deg off the wall's normal
+    let front = fly(physics_st, id, 0.25, 1.5)
+    expect(front < WALL_X)
+    expect(pose(physics_st, id).x < WALL_X)
+    phys_close(physics_st)
+  }
+
+  test "a fast ball falling onto the ground stays above it" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 1024, 1))
+    let h = floats(256)
+    for i in 0 .. 256 { h[i] = 0.0 }
+    expect(phys_ground_add(physics_st, phys_heightfield(physics_st, h, 16, -8.0, -8.0, 1.0)) >= 0)
+    # 0.25 m ball, 60 m/s down: 1 m a step, a ground with no thickness at all
+    let id = phys_body_add(physics_st, phys_sphere(physics_st, 0.25), 0.0, 20.5, 0.0, 0.0, 20.0)
+    expect(phys_ccd(physics_st, id, true))
+    phys_set_velocity(physics_st, id, 0.0, -SPEED, 0.0)
+    var low = 1000.0
+    for i in 0 .. 180 {
+      phys_step(physics_st)
+      let p = pose(physics_st, id)
+      if p.y < low { low = p.y }
+    }
+    expect(low > 0.0)               # its centre never went under the ground
+    phys_close(physics_st)
+  }
+
+  test "a body at rest on the ground is as still with ccd as without" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 1024, 1))
+    let h = floats(256)
+    for i in 0 .. 256 { h[i] = 0.0 }
+    expect(phys_ground_add(physics_st, phys_heightfield(physics_st, h, 16, -8.0, -8.0, 1.0)) >= 0)
+    let shape = phys_box(physics_st, CAR_HALF_LEN, CAR_HALF_H, CAR_HALF_W)
+    let a = phys_body_add(physics_st, shape, -4.0, 1.5, 0.0, 0.0, 1500.0)
+    let b = phys_body_add(physics_st, shape, 4.0, 1.5, 0.0, 0.0, 1500.0)
+    expect(phys_ccd(physics_st, b, true))
+    for i in 0 .. 240 { phys_step(physics_st) }
+    let pa = pose(physics_st, a)
+    let pb = pose(physics_st, b)
+    expect(Math.abs(pb.y - CAR_HALF_H) < 0.05)
+    expect(Math.abs(pb.y - pa.y) < 0.01)      # the same rest height
+    expect(Math.abs(pb.vy) < 0.05)
+    expect(Math.abs(pb.vx) < 0.05)
+    phys_close(physics_st)
+  }
+
+  test "ccd can be switched off again, and is refused for what cannot move" (physics_st: mut PhysicsState) {
+    space(physics_st)
+    let id = ball(physics_st, true)
+    expect(phys_is_ccd(physics_st, id))
+    expect(not phys_ccd(physics_st, id, false))
+    expect(not phys_is_ccd(physics_st, id))
+    fly(physics_st, id, 0.0, 1.0)
+    expect(pose(physics_st, id).x > WALL_X + 5.0)    # off, it skips the wall as the control does
+    let still = phys_static_add(physics_st, phys_box(physics_st, 1.0, 1.0, 1.0), 0.0, 1.0, 20.0, 0.0)
+    expect(not phys_ccd(physics_st, still, true))
+    expect(not phys_is_ccd(physics_st, still))
+    let kin = phys_kinematic_add(physics_st, phys_box(physics_st, 1.0, 1.0, 1.0), 0.0, 1.0, -20.0, 0.0)
+    expect(not phys_ccd(physics_st, kin, true))
+    expect(not phys_ccd(physics_st, -1, true))
+    expect(not phys_ccd(physics_st, 123456789, true))
+    phys_remove(physics_st, id)
+    expect(not phys_ccd(physics_st, id, true))     # removed: no such body
+    expect(not phys_is_ccd(physics_st, id))
+    phys_close(physics_st)
+    expect(not phys_ccd(physics_st, id, true))     # no world
+    expect(not phys_is_ccd(physics_st, id))
+  }
+
+  test "a ccd run repeats to the bit" (physics_st: mut PhysicsState) {
+    var xs = floats(4)
+    for round in 0 .. 2 {
+      space(physics_st)
+      let id = car(physics_st, -2.0, 0.3, true)
+      fly(physics_st, id, CAR_HALF_LEN, 2.0)
+      let p = pose(physics_st, id)
+      xs[round * 2] = p.x
+      xs[round * 2 + 1] = p.qy
+      phys_close(physics_st)
+    }
+    expect(xs[0] == xs[2])
+    expect(xs[1] == xs[3])
+  }
+}
