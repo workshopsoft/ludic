@@ -735,6 +735,72 @@ program RoadsTest {
     expect_eq(differ_nearest(roads_st, 250.0, 500, false), 0)
   }
 
+  # how many of the far points the grid and the scan answer differently, with the time of the grid's answers in microseconds
+  function far_differ(roads_st: mut RoadsState, dist: float, use_y: bool) -> int {
+    var wrong = 0
+    for i in 0 .. 24 {
+      let ang = float(i) * 0.2618
+      let x = Math.cos(ang) * dist + float(i % 5) * 7.0
+      let z = Math.sin(ang) * dist - float(i % 3) * 11.0
+      let y = float(i % 7) * 2.0 - 3.0
+      let want = brute_nearest(roads_st, x, y, z, use_y)
+      var got = -1
+      if use_y { got = roads_nearest_y(roads_st, x, y, z) } else { got = roads_nearest(roads_st, x, z) }
+      if got != want { wrong += 1 }
+    }
+    return wrong
+  }
+
+  test "a point far off the map is answered as fast as one at its edge, and the same as a scan; one that is NaN or infinite has no road" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    for m in 0 .. 3 {
+      var map = "town"
+      if m == 1 { map = "flyover" }
+      if m == 2 { map = "curved" }
+      expect(load_map(roads_st, nodes, segs, turns, map))
+      for k in 0 .. 5 {
+        var dist = 100000.0
+        if k == 1 { dist = 10000000.0 }
+        if k == 2 { dist = 1000000000.0 }
+        if k == 3 { dist = 1000000000000.0 }
+        if k == 4 { dist = 100000000000000.0 }
+        expect_eq(far_differ(roads_st, dist, false), 0)
+        expect_eq(far_differ(roads_st, dist, true), 0)
+      }
+    }
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    # 2000 calls from 1e7 m to 1e38 m (about the greatest float) must take a few ms in all, not the minutes of a walk through every empty ring
+    let t0 = Time.now_us()
+    var found = 0
+    for i in 0 .. 1000 {
+      var far = 10000000.0
+      if i % 4 == 1 { far = -1000000000000.0 }
+      if i % 4 == 2 { far = 1000000000000000.0 * 1000000.0 * 1000000.0 }
+      if i % 4 == 3 { far = 1000000000000000.0 * 100000000000000.0 * 100000000.0 }
+      if roads_nearest(roads_st, far, float(i)) >= 0 { found += 1 }
+      if roads_nearest_y(roads_st, float(i), 5.0, far) >= 0 { found += 1 }
+    }
+    let t1 = Time.now_us()
+    expect_eq(found, 2000)
+    expect((t1 - t0) / 1000 < 50)
+    # NaN and the two infinities, in each place of the call, leave -1 and no half answer behind
+    let zero = 0.0
+    let inf = 1.0 / zero
+    let nan = zero / zero
+    expect_eq(roads_nearest(roads_st, inf, 0.0), -1)
+    expect_eq(roads_nearest(roads_st, 0.0, 0.0 - inf), -1)
+    expect_eq(roads_nearest(roads_st, nan, 0.0), -1)
+    expect_eq(roads_nearest(roads_st, 0.0, nan), -1)
+    expect_eq(roads_nearest_y(roads_st, inf, 0.0, 0.0), -1)
+    expect_eq(roads_nearest_y(roads_st, 0.0, inf, 0.0), -1)
+    expect_eq(roads_nearest_y(roads_st, 0.0, 0.0 - inf, 0.0), -1)
+    expect_eq(roads_nearest_y(roads_st, 0.0, nan, 0.0), -1)
+    expect_eq(roads_nearest_y(roads_st, 0.0, 0.0, 0.0 - inf), -1)
+    expect_eq(roads_nearest_y(roads_st, 0.0, 0.0, nan), -1)
+    expect(near(roads_near_d(roads_st), 0.0, 0.0001))
+    # and the next ordinary call is right
+    expect(roads_nearest(roads_st, 10.0, 10.0) >= 0)
+  }
+
   test "with no road there is no nearest one, and a graph emptied has none either" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
     expect(load_map(roads_st, nodes, segs, turns, "town"))
     expect(roads_nearest(roads_st, 10.0, 10.0) >= 0)
@@ -788,6 +854,10 @@ program RoadsTest {
     let t1 = Time.now_us()
     for i in 0 .. 1000 { roads_nearest(roads_st, float(i * 37 % 2560), float(i * 91 % 2560)) }
     let t2 = Time.now_us()
+    # the worst case for a far point: the whole box of the grid is searched, as there is no ring where it can stop
+    for i in 0 .. 100 { roads_nearest(roads_st, 1000000000000.0, float(i * 91 % 2560)) }
+    let t3 = Time.now_us()
+    expect((t3 - t2) / 1000 < 1500)
     # a guard against a slide back to scans (it takes about 20 ms and 1 ms here)
     expect((t1 - t0) / 1000 < 3000)
     expect((t2 - t1) / 1000 < 2000)

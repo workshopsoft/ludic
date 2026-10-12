@@ -166,7 +166,7 @@ An **edge** is a directed road: `2 * segment` goes from -> to, `2 * segment + 1`
 `roads_seg_find`, `roads_turn_rule(in, out)`, `roads_pose(edge, s, lane)` into `roads_pose_x/_z/_yaw`
 (lanes lie on the right of travel, a one way road is centred), `roads_nearest(x, z)` (a road, `roads_near_s`,
 `roads_near_d`) and `roads_edge_for(seg, x, z)` (the edge on the side of the road a point is on). `roads_nearest` looks at the plan only, through
-a grid of 32 m cells over the polylines (it answers in a few cells, so it may be asked every frame); `roads_nearest_y(x, y,
+a grid of 32 m cells over the polylines (it answers in a few cells, so it may be asked every frame; a point far off the map costs at most a search of the grid's whole box, however far it is, and a NaN or infinite one has no road, -1); `roads_nearest_y(x, y,
 z)` also counts how far y is from the road's height there (its design height, else the game's ground), so under a flyover it
 is the road below and on it the road above: the road's height at the hit is `roads_near_y`, the plan distance `roads_near_d`.
 

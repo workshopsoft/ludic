@@ -167,7 +167,29 @@ function rd_try_cell(roads_st: mut RoadsState, cx: int, cz: int, x: float, y: fl
   }
 }
 
-# the nearest search: the cells round (x, z), ring by ring outwards, until a ring is farther than the best found
+# the cells of one row (fixed cz) or column (fixed cx) of a ring, only those inside the box of the grid
+function rd_try_row(roads_st: mut RoadsState, cz: int, xa: int, xb: int, x: float, y: float, z: float, use_y: bool) -> void {
+  if cz < roads_st.rd_gz0 or cz > roads_st.rd_gz1 { return }
+  let a = Math.max(xa, roads_st.rd_gx0)
+  let b = Math.min(xb, roads_st.rd_gx1)
+  for cx in a .. b + 1 { rd_try_cell(roads_st, cx, cz, x, y, z, use_y) }
+}
+function rd_try_col(roads_st: mut RoadsState, cx: int, za: int, zb: int, x: float, y: float, z: float, use_y: bool) -> void {
+  if cx < roads_st.rd_gx0 or cx > roads_st.rd_gx1 { return }
+  let a = Math.max(za, roads_st.rd_gz0)
+  let b = Math.min(zb, roads_st.rd_gz1)
+  for cz in a .. b + 1 { rd_try_cell(roads_st, cx, cz, x, y, z, use_y) }
+}
+
+# a number that is not NaN or infinite (x - x is 0 only for those)
+function rd_finite(v: float) -> bool { return v - v == 0.0 }
+
+# the nearest search: the cells round the cell of the box of the grid that is nearest (x, z), ring by ring outwards,
+# until a ring is farther than the best found. For a point inside the box that is its own cell. For one outside, the
+# cell it is clamped to has the same bound: a cell r + 1 rings off is at least r cells from the point, on the clamped
+# side because the box lies the other way and on the others because the point is within the cell's span. So the rings
+# stay inside the box, and a point a million kilometres off the map costs what one at its edge does, with no big cell
+# numbers to overflow. A point that is NaN or infinite has no nearest road
 function rd_nearest(roads_st: mut RoadsState, x: float, y: float, z: float, use_y: bool) -> int {
   roads_st.rd_near_seg = -1
   roads_st.rd_bstep = -1
@@ -177,28 +199,33 @@ function rd_nearest(roads_st: mut RoadsState, x: float, y: float, z: float, use_
   roads_st.rd_near_d = 0.0
   roads_st.rd_near_y = 0.0
   if imap_len(roads_st.rd_gcell) == 0 { return -1 }
-  let c0x = rd_cell(x)
-  let c0z = rd_cell(z)
-  var rmax = c0x - roads_st.rd_gx0
-  if roads_st.rd_gx1 - c0x > rmax { rmax = roads_st.rd_gx1 - c0x }
-  if c0z - roads_st.rd_gz0 > rmax { rmax = c0z - roads_st.rd_gz0 }
-  if roads_st.rd_gz1 - c0z > rmax { rmax = roads_st.rd_gz1 - c0z }
+  if not rd_finite(x) or not rd_finite(z) { return -1 }
+  if use_y and not rd_finite(y) { return -1 }
+  # the point is held to the box before it is made a cell number: an int is 32 bits, and a point 1e11 m off would overflow it
+  let gx0 = roads_st.rd_gx0
+  let gx1 = roads_st.rd_gx1
+  let gz0 = roads_st.rd_gz0
+  let gz1 = roads_st.rd_gz1
+  let c0x = Math.clamp(rd_cell(Math.clamp(x, float(gx0) * RD_GRID, float(gx1 + 1) * RD_GRID)), gx0, gx1)
+  let c0z = Math.clamp(rd_cell(Math.clamp(z, float(gz0) * RD_GRID, float(gz1 + 1) * RD_GRID)), gz0, gz1)
+  var rmax = c0x - gx0
+  if gx1 - c0x > rmax { rmax = gx1 - c0x }
+  if c0z - gz0 > rmax { rmax = c0z - gz0 }
+  if gz1 - c0z > rmax { rmax = gz1 - c0z }
   for r in 0 .. rmax + 1 {
     if r == 0 {
       rd_try_cell(roads_st, c0x, c0z, x, y, z, use_y)
     } else {
-      for k in 0 - r .. r + 1 {
-        rd_try_cell(roads_st, c0x + k, c0z - r, x, y, z, use_y)
-        rd_try_cell(roads_st, c0x + k, c0z + r, x, y, z, use_y)
-      }
-      for k in 1 - r .. r {
-        rd_try_cell(roads_st, c0x - r, c0z + k, x, y, z, use_y)
-        rd_try_cell(roads_st, c0x + r, c0z + k, x, y, z, use_y)
-      }
+      rd_try_row(roads_st, c0z - r, c0x - r, c0x + r, x, y, z, use_y)
+      rd_try_row(roads_st, c0z + r, c0x - r, c0x + r, x, y, z, use_y)
+      rd_try_col(roads_st, c0x - r, c0z - r + 1, c0z + r - 1, x, y, z, use_y)
+      rd_try_col(roads_st, c0x + r, c0z - r + 1, c0z + r - 1, x, y, z, use_y)
     }
     if roads_st.rd_near_seg >= 0 {
+      # the cells beyond this ring are at least r cells away; the margin (a float has 7 digits) keeps a tie, or a
+      # score rounded the other way at a great distance, from ending the search before the scan's answer is found
       let reach = float(r) * RD_GRID
-      if reach * reach >= roads_st.rd_bscore { break }
+      if reach * reach > roads_st.rd_bscore * 1.00001 { break }
     }
   }
   roads_st.rd_near_d = Math.sqrt(roads_st.rd_bd2)
