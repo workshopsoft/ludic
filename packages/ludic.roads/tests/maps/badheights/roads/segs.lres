@@ -1,0 +1,2 @@
+# three anchors and two height rows: built with no design heights, and said
+bent { from: "a", to: "b", pts: [{ x: 50.0, z: 20.0 }], heights: [{ y: 1.0 }, { y: 2.0 }] }

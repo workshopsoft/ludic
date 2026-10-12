@@ -14,6 +14,10 @@
 # whose result the studio writes into the `props` world table (RoadProps, a point table), and `bakes` the RoadBakes
 # registry that holds the glTF of the baked road surfaces (ludic.roads draws nothing, the studio bakes them offline).
 #
+# Heights: `heights` is the list of a road's design heights (one record per anchor, as `handles`: `height_y` the metres,
+# `height_free` true for an anchor with none), `level` the road's level (ground, structure, tunnel) and `structures` the
+# RoadStructures registry (bridges, viaducts, flyovers, tunnels). A road with no heights is graded on the terrain.
+#
 # Junction rules: `rules` is the values of RoadTurn.rule, the first being what a junction does when no turn row
 # says otherwise. A turn with no row runs by its node's control (free: priority, then first come). A row that
 # names no rule is RoadTurn's own default, yield: the safer reading of an unfinished row.
@@ -25,6 +29,7 @@ roads_world {
       lanes_fwd: "lanes_fwd", lanes_back: "lanes_back", lane_width: "lane_width", speed: "speed", priority: "priority", phase: "phase", kind: "kind",
       handles: "handles", handle_ix: "ix", handle_iz: "iz", handle_ox: "ox", handle_oz: "oz", handle_smooth: "smooth",
       taper: "taper", profile: "profile", street_name: "name", node_kind: "kind", node_radius: "radius",
+      heights: "heights", height_y: "y", height_free: "free", level: "level", structures: "RoadStructures",
       profiles: "RoadProfiles", furniture_rules: "RoadFurnitureRules", props: "props", bakes: "RoadBakes",
       turns: "RoadTurns", rules: "free yield stop forbid", blocks: "blocks", block_source: "source", districts: "districts", sidewalk: 2.0, snap: 4.0,
       presets: [

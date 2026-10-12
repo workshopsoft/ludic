@@ -111,7 +111,7 @@ export function roads_spawn(roads_st: mut RoadsState, edge: int, s: float, lane:
   c.x = roads_st.rd_pose_x
   c.z = roads_st.rd_pose_z
   c.yaw = roads_st.rd_pose_yaw
-  c.y = RoadsWorld.ground(c.x, c.z)
+  c.y = roads_pose_y(roads_st)
   rd_say(roads_st, ROADS_SPAWNED, c.id, kind, edge, 0, c.x, c.z)
   RoadsBody.place(c.id, kind, c.x, c.y, c.z, c.yaw, 0.0)
   if wander and len(c.route) <= 1 { rd_replan(roads_st, c) }

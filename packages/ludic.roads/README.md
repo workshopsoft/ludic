@@ -43,12 +43,38 @@ no_ne { node: "c", from: "nc", to: "ce", rule: "forbid" }
 - **Road** (`RoadSeg`): `from`, `to` (`@Ref(RoadNodes)`), `pts` (control points between), `handles`, `lanes_fwd`
   (from -> to) and `lanes_back` (0 is one way), `lane_width`, `speed` (the limit, m/s), `priority` (higher
   goes first at a free junction), `phase` (the signal phase that lets it through), `kind` (`street`, `highway`,
-  `track`, `lane`, `alley`, `pedestrian`, `stairs`), `profile` (a `RoadProfiles` key, `""` for none), `taper`, `name`.
-  Its shape is the curve below.
+  `track`, `lane`, `alley`, `pedestrian`, `stairs`), `profile` (a `RoadProfiles` key, `""` for none), `taper`, `name`,
+  `level` and `heights` (below). Its shape is the curve below.
 - **Turn** (`RoadTurn`): at `node`, coming in along `from` and leaving along `to`: `free`, `yield`, `stop` or
   `forbid` (routes avoid it too).
 - **Car kinds**, a game table `RoadCarKinds` (open, `RCK_*`): `length`, `max_speed`, `accel`, `brake`, `headway`,
   `gap`, `pace` (the share of the limit it drives at), `weight` (its odds when traffic is made).
+
+A map holds at most **16,384 roads** (`RD_MAX_SEGS`); a turn is keyed `in * 32768 + out` over the edge numbers
+(`RD_TURN_KEY`).
+
+### Heights, levels and structures
+
+`ludic.roads` drives on a plan; a map with flyovers, bridges and tunnels tells its roads apart by height:
+
+- `RoadSeg.heights`: the **design height** of each anchor, listed as `handles` are (row `k` is anchor `k`: 0 the `from`
+  node, then each of `pts`, last the `to` node), each `{ y: 12.5 }` (metres, y up, sea level 0) or `{ free: true }`
+  for an anchor with none. Empty is no design: the road follows the ground, which is how every map worked before.
+  A list that does not have a row for every anchor is a fault (`roads_build` says it and builds the road with no
+  design). Between two anchors that have a height the road runs straight from one to the other, and beyond the
+  first and last it stays at theirs. Ludic Studio grades the roads that have none on the terrain, up to the
+  profile's `max_grade`, and keeps these heights exactly.
+- `RoadSeg.level`: `ground`, `structure` (a bridge, viaduct or flyover deck) or `tunnel`. `roads_seg_level` reads it.
+- `roads_seg_designed(seg)`, `roads_seg_height(seg, s)` (the design height `s` metres along, or the game's ground under
+  it where there is none), `roads_pose_y()` after a `roads_pose` (a car's height: the cars are placed at it).
+- `RoadStructures` (`roads/structures.lres`, keyed): a stretch of one road that is a bridge, viaduct, flyover or tunnel:
+  `seg` (`@Ref(RoadSegs)`), `from` and `to` (metres along it, `to` 0: to its end), `kind` (`bridge`, `viaduct`,
+  `flyover`, `tunnel`), `type` (`beam`, `arch`, `cable`, `box`), `over` (what it crosses: `water`, `road`, `rail`,
+  `valley` ... the game's word), `deck_w` (0: the road's own width), `deck_t`, `parapet`, `pier_spacing` (0: none) and
+  `gaps` (`{ from, to }` ranges in metres from `from` that keep clear of piers). Driving ignores it; the studio
+  bakes the structure from it.
+- `RoadProfile` also has `median` (a strip down the middle: half of it is added to each side), `shoulder` (added to
+  each side beside the outer lane) and `max_grade` (rise over run, default 0.08; stairs are exempt).
 
 `ludicc --check` reads every map's files against these records, including that a road's nodes and profile exist.
 `roads_build(roads, nodes, segs, turns)` turns the loaded tables into the graph; it returns false, and
@@ -139,7 +165,10 @@ An **edge** is a directed road: `2 * segment` goes from -> to, `2 * segment + 1`
 (`roads_edge_ok`) is not there. `roads_edge_from/_to/_lanes/_length/_speed/_seg`, `roads_node_*`,
 `roads_seg_find`, `roads_turn_rule(in, out)`, `roads_pose(edge, s, lane)` into `roads_pose_x/_z/_yaw`
 (lanes lie on the right of travel, a one way road is centred), `roads_nearest(x, z)` (a road, `roads_near_s`,
-`roads_near_d`) and `roads_edge_for(seg, x, z)` (the edge on the side of the road a point is on).
+`roads_near_d`) and `roads_edge_for(seg, x, z)` (the edge on the side of the road a point is on). `roads_nearest` looks at the plan only, through
+a grid of 32 m cells over the polylines (it answers in a few cells, so it may be asked every frame; a point far off the map costs at most a search of the grid's whole box, however far it is, and a NaN or infinite one has no road, -1); `roads_nearest_y(x, y,
+z)` also counts how far y is from the road's height there (its design height, else the game's ground), so under a flyover it
+is the road below and on it the road above: the road's height at the hit is `roads_near_y`, the plan distance `roads_near_d`.
 
 ## Routes
 
@@ -181,10 +210,11 @@ on load; ambient traffic is made again to the target.
 `ludic test packages/ludic.roads`, on the maps under `tests/maps` (a crossroads with a fast bypass and a one way
 road, a signalled crossing, a one way ring, a map with a turn that does not fit, and `curved`: handles, the same road
 with and without automatic handles, a plaza, a dead end, a roundabout ring, a zero-length road, and the starter
-profiles and furniture rules).
+profiles and furniture rules), `flyover` (a ground road under a deck, a ramp and a road with one height; its structures
+and a profile with median, shoulder and max grade), `badheights`, and a 16,384 road map the test writes, builds and removes.
 
 ## v2
 
-A spatial index for `roads_nearest`; several cars through a junction at once when their paths do not cross
+Several cars through a junction at once when their paths do not cross
 (platoons); lane changes and overtaking; curvature-limited speed; per-lane turn restrictions; pedestrians
 crossing (a port); parked cars; routing with avoided roads (a wanted level closing a bridge).
