@@ -43,7 +43,7 @@ program TileLockTest {
 
   # The expanded patch (the reader's scratch: ms.vbuf, ms.ibuf) drawn at every texel centre of the patch into out[j * 64 + i]:
   # every grid triangle (the skirt's left out) rasterised; how many centres no triangle covers (a hole) plus how many two
-  # triangles disagree on (more than 1 mm) plus how many triangles are wound unlike the grid's.
+  # triangles disagree on (more than 1 mm) plus how many triangles are wound unlike the grid's or are slivers.
   function draw(ms: TmMeshes, size: float, out: floats) -> int {
     let tex = size / 64.0
     let hit = words(64 * 64)
@@ -65,6 +65,11 @@ program TileLockTest {
       let x2 = (ms.vbuf[i2 * 8] + size * 0.5) / tex;  let z2 = (ms.vbuf[i2 * 8 + 2] + size * 0.5) / tex
       let cr = (x1 - x0) * (z2 - z0) - (z1 - z0) * (x2 - x0)
       if cr >= 0.0 { bad += 1;  continue }
+      # no sliver: twice the area over the longest side squared is at least 0.2 (a graded fan's thinnest is 0.25)
+      let e0 = (x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0)
+      let e1 = (x2 - x1) * (x2 - x1) + (z2 - z1) * (z2 - z1)
+      let e2 = (x0 - x2) * (x0 - x2) + (z0 - z2) * (z0 - z2)
+      if -cr / Math.max(e0, Math.max(e1, e2)) < 0.2 { bad += 1 }
       let d = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2)
       let ia = max(int(Math.floor(Math.min(x0, Math.min(x1, x2)))), 0);  let ib = min(int(Math.ceil(Math.max(x0, Math.max(x1, x2)))), 64)
       let ja = max(int(Math.floor(Math.min(z0, Math.min(z1, z2)))), 0);  let jb = min(int(Math.ceil(Math.max(z0, Math.max(z1, z2)))), 64)

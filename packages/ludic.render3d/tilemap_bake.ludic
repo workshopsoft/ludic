@@ -21,8 +21,9 @@ function tmb_n8(v: float) -> int { return min(max(int(Math.floor((v * 0.5 + 0.5)
 # With a lock, a patch level whose triangles would move a locked texel (its sample, at its centre) more than `tol` from
 # level 0 is cut down where they do: each such cell is split in four, as far as level 0's cells, and the level is written
 # as a LOCKED mesh (tilemap_lwt.ludic, kind 1): the level's cells where they keep the ground, finer cells along the locked
-# ground's edges and bends, every cell a fan from its high-x low-z corner over the corners of its finer neighbours (so the
-# mesh has no crack and an uncut cell is exactly the grid's two triangles). A patch with no locked texel, or whose own grid
+# ground's edges and bends, graded so a cell's neighbour is at most one step finer, every cell a fan from its high-x low-z
+# corner over the corners of its finer neighbours (so the mesh has no crack and no sliver, and an uncut cell is exactly the
+# grid's two triangles). A patch with no locked texel, or whose own grid
 # keeps them all, is written as before, byte for byte. Unlocked ground is free.
 export property TmLock {
   pattern: string = ""              # the mask tiles, {tx} and {tz} (tmap_mask_pattern_of the tiles' pattern by default)
@@ -139,6 +140,21 @@ function tmb_cell_moves(tm: TileMap, k: TmLock, px: int, pz: int, n0: int, c: in
   return false
 }
 
+# has cell `c` a vertex on an edge closer than half its side to a corner or the edge's middle (a neighbour more than one
+# step finer)? Such a cell is split too, so the cut stays graded (2:1) and no fan has more than one point an edge: no
+# slivers
+function tmb_cell_steep(k: TmLock, n0: int, c: int) -> bool {
+  let x0 = k.lx[c];  let z0 = k.lz[c];  let s = k.ls[c]
+  let h = s / 2
+  if h < 1 { return false }
+  for t in 1 .. s {
+    if t % h == 0 { continue }
+    if k.here[z0 * n0 + x0 + t] == 1 or k.here[(z0 + s) * n0 + x0 + t] == 1 { return true }
+    if k.here[(z0 + t) * n0 + x0] == 1 or k.here[(z0 + t) * n0 + x0 + s] == 1 { return true }
+  }
+  return false
+}
+
 # Cut patch (px, pz)'s level `lod` for the lock: its cells in k.lx/lz/ls and its vertices in k.here. True when a cell was
 # split (the level is a locked mesh), false when the level's own grid keeps every locked texel (or none is locked).
 @alloc_ok("a bake: a patch's heights and the cut's tables, made once and kept with the lock")
@@ -169,8 +185,9 @@ function tmb_lock_cut(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int
       k.here[(b + 1) * s0 * n0 + a * s0] = 1;  k.here[(b + 1) * s0 * n0 + (a + 1) * s0] = 1
     }
   }
-  # split every cell that moves a locked texel, again until none does: a split puts vertices on its neighbours' edges, so they
-  # are looked at again. A cell of one texel is level 0's own two triangles and moves nothing.
+  # split every cell that moves a locked texel or borders one more than a step finer, again until none does: a split puts
+  # vertices on its neighbours' edges, so they are looked at again. A cell of one texel is level 0's own two triangles and
+  # moves nothing.
   var split = false
   var again = true
   while again {
@@ -179,7 +196,7 @@ function tmb_lock_cut(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int
     for c in 0 .. n {
       let s = k.ls[c]
       if s <= 1 { continue }
-      if not tmb_cell_moves(tm, k, px, pz, n0, c) { continue }
+      if not tmb_cell_steep(k, n0, c) and not tmb_cell_moves(tm, k, px, pz, n0, c) { continue }
       let x0 = k.lx[c];  let z0 = k.lz[c];  let h = s / 2
       k.ls[c] = h
       push(k.lx, x0 + h);  push(k.lz, z0);  push(k.ls, h)
