@@ -1,0 +1,3 @@
+bump: patch
+type: fix
+**Ambient occlusion no longer draws the ground's triangles.** The occlusion and contact passes (`ssgi.frag`) take a pixel's normal from the depth, so on a ground of 1 m triangles curved by a few degrees from one to the next, a sample taken across a triangle's edge was covered by the neighbouring triangle and the near side of every triangle came out darker: a pattern of the mesh in smooth ground, in sight at close range on any gentle slope. A sample now has to be behind the surface by more than four tenths of its sideways distance (about 22 degrees) to count, so creases (a wall on a floor, a step) keep their occlusion and a curve of a few degrees has none. Only the compiled `ssgi` fragment stage changes.
