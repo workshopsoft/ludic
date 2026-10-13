@@ -49,3 +49,61 @@ function gltf_points(render3d_st: mut Render3dState, dir: string, file: string, 
 function gp_put(at: []int, i: int, v: int) -> void {
   if i < len(at) { at[i] = v } else { push(at, v) }
 }
+
+# The triangles of every node whose name starts with `prefix` ("" for all), in document order, for a physics mesh or a nav
+# ground: the points of all their triangle primitives (mode 4) as x, y, z into `v` from its start and the triangles as three point
+# numbers each into `t` (numbers count from v's first point, so the nodes' meshes share one list). Both grow when they are too
+# short and are never shrunk, so one scratch serves every file; `n` (two words at least) answers how many points and triangles
+# were written: n[0], n[1]. Returns the triangles found, or -1 when the file cannot be read. Node transforms are not applied (a
+# collision glb holds world metres, or the model's own); a primitive with no indices is read as a list of triangles in order.
+@alloc_ok("loading a chunk: a collision glb's triangles, once")
+function gltf_tris(render3d_st: mut Render3dState, dir: string, file: string, prefix: string, v: []float, t: []int, n: words) -> int {
+  let path = dir + "/" + file
+  var open = false
+  if render3d_st.gltf_doc != null and render3d_st.gltf_bin_path != null and render3d_st.gltf_bin_path == path {
+    open = gltf_bin_reopen(render3d_st, dir)
+  }
+  free(path)
+  if not open { open = gltf_open(render3d_st, dir, file) }
+  if not open { return -1 }
+  let nodes = value_get(render3d_st.gltf_doc, "nodes")
+  let meshes = value_get(render3d_st.gltf_doc, "meshes")
+  var nv = 0
+  var nt = 0
+  for i in 0 .. value_count(nodes) {
+    let nd = value_at(nodes, i)
+    if prefix != "" {
+      if value_has(nd, "name") == 0 { continue }
+      if not Text.starts_with(value_as_str(value_get(nd, "name")), prefix) { continue }
+    }
+    let mi = jint(nd, "mesh", -1)
+    if mi < 0 { continue }
+    let prims = value_get(value_at(meshes, mi), "primitives")
+    for k in 0 .. value_count(prims) {
+      let pr = value_at(prims, k)
+      if jint(pr, "mode", 4) != 4 { continue }
+      let attrs = value_get(pr, "attributes")
+      if value_has(attrs, "POSITION") == 0 { continue }
+      let ps = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "POSITION")))
+      let np = len(ps) / 3
+      var ix = words(0)
+      if value_has(pr, "indices") != 0 { ix = gltf_accessor_ints(render3d_st, value_as_int(value_get(pr, "indices"))) }
+      for j in 0 .. np * 3 { gp_putf(v, nv * 3 + j, ps[j]) }
+      var m = len(ix) / 3
+      if value_has(pr, "indices") == 0 { m = np / 3 }
+      for j in 0 .. m * 3 {
+        if value_has(pr, "indices") != 0 { gp_put(t, nt * 3 + j, ix[j] + nv) } else { gp_put(t, nt * 3 + j, j + nv) }
+      }
+      nv += np
+      nt += m
+    }
+  }
+  file_close(render3d_st.gltf_bin)
+  render3d_st.gltf_bin = null
+  n[0] = nv
+  n[1] = nt
+  return nt
+}
+function gp_putf(a: []float, i: int, x: float) -> void {
+  if i < len(a) { a[i] = x } else { push(a, x) }
+}

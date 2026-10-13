@@ -64,6 +64,26 @@ program GlbTest {
     expect_eq(gltf_points(render3d_st, models(render3d_st), "missing.glb", "", pts, at), -1)
   }
 
+  test "gltf_tris reads the triangles of the nodes a prefix names into shared lists, and grows them only" (render3d_st: mut Render3dState) {
+    let v = new []float
+    let t = new []int
+    let n = words(2)
+    expect_eq(gltf_tris(render3d_st, models(render3d_st), "tri.glb", "", v, t, n), 1)
+    expect_eq(n[0], 3)
+    expect_eq(n[1], 1)
+    expect_eq(len(v), 9)
+    expect_eq(len(t), 3)
+    expect(v[3] == 2.0 and v[7] == 3.0)
+    expect(t[0] == 0 and t[1] == 1 and t[2] == 2)
+    # a second ask writes from the start again: nothing is appended, and the lists are not shrunk
+    expect_eq(gltf_tris(render3d_st, models(render3d_st), "tri.glb", "", v, t, n), 1)
+    expect_eq(len(v), 9)
+    expect_eq(len(t), 3)
+    expect_eq(gltf_tris(render3d_st, models(render3d_st), "tri.glb", "COL_", v, t, n), 0)
+    expect_eq(n[1], 0)
+    expect_eq(gltf_tris(render3d_st, models(render3d_st), "missing.glb", "", v, t, n), -1)
+  }
+
   test "a glb is told by its first bytes, not its name" (render3d_st: mut Render3dState) {
     let at = Os.temp_dir() + "/r3d_glb_name"
     Fs.mkdir(at)
