@@ -1,14 +1,18 @@
 # run.ludic - time passing: the rate, bloom and recoil coming back, the sights, a reload or equip running
 # out, the trigger's rounds, and the bodies in flight
 function wp__run_shooter(weapons_st: mut WeaponsState, s: Shooter, h: int, dt: float) -> void {
+  # the rate's carry: a round that leaves late (the tick found the cool-down over a little earlier) pays the difference on the next, for as
+  # long as the run of fire goes on - a round within the last interval. A run ends when a tick finds the cool-down over and no round left
   s.cool -= dt
-  if not s.streak and s.cool < 0.0 { s.cool = 0.0 }
-  if s.cool < -dt { s.cool = -dt }
-  s.streak = false
+  if s.cool < 0.0 {
+    if s.streak { s.cool = Math.max(s.cool, -dt) } else { s.cool = 0.0 }
+  }
+  let shots0 = s.shots
   s.idle += dt
   let g = wp__gun(s, s.cur)
   if g == null {
     s.trig_prev = s.trigger
+    s.streak = false
     return
   }
   let w = Weapons[g.weapon]
@@ -42,6 +46,7 @@ function wp__run_shooter(weapons_st: mut WeaponsState, s: Shooter, h: int, dt: f
     if s.busy_t <= WP_EPS { wp__busy_done(weapons_st, s, h) }
   }
   wp__trigger_step(weapons_st, s, h, dt)
+  if s.shots == shots0 and s.cool <= WP_EPS { s.streak = false }
 }
 
 export function weapons_run(weapons_st: mut WeaponsState, dt: float) -> void {

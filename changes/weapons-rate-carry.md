@@ -1,0 +1,3 @@
+bump: patch
+type: fix
+ludic.weapons: a weapon's rate is exact at any tick rate. The carry between rounds (a round that leaves a little late pays the difference on the next) was kept only when rounds left on two ticks in a row, so a rate below the tick rate was rounded up to whole ticks: 650 a minute fired 600 a minute at 30 and 60 ticks a second (100 rounds in 10 s instead of 109) and 617 at 144. The carry now lasts for the whole run of fire, and a run ends when a tick finds the cool-down over and no round left. The test fires a 650-a-minute weapon for 10 s at 30, 60, 144 and 240 ticks a second.
