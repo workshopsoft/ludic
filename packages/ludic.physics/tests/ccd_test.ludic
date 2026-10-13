@@ -149,19 +149,22 @@ program CcdTest {
     phys_close(physics_st)
   }
 
-  # a car at 60 m/s into a car standing in its way. Which of the two needs the sweep is what Jolt decides
-  # (a LinearCast body may be swept only against bodies that are not LinearCast themselves), so both
-  # settings of the target are measured: the pair must never swap places, whichever way it is set.
-  function crash(physics_st: mut PhysicsState, target_ccd: bool) -> float {
+  # a car at 60 m/s into something standing in its way (a car, or a thin free-standing barrier). Which of the
+  # two needs the sweep is what Jolt decides (a LinearCast body may be swept only against bodies that are not
+  # LinearCast themselves), so every setting of the pair is measured. Returns the closest the centres got in x
+  # (negative: the hitter's centre got past the target's centre); the target's half length is `half`
+  function crash(physics_st: mut PhysicsState, half: float, hitter_ccd: bool, target_ccd: bool, speed: float, target_speed: float) -> float {
     expect(phys_open(physics_st, 1024, 1))
     phys_gravity(physics_st, 0.0)
-    let shape = phys_box(physics_st, CAR_HALF_LEN, CAR_HALF_H, CAR_HALF_W)
-    let target = phys_body_add(physics_st, shape, 30.0, 1.0, 0.0, 0.0, 1500.0)
-    let hitter = phys_body_add(physics_st, shape, -2.0, 1.0, 0.0, 0.0, 1500.0)
+    let car_shape = phys_box(physics_st, CAR_HALF_LEN, CAR_HALF_H, CAR_HALF_W)
+    let target_shape = phys_box(physics_st, half, CAR_HALF_H, 3.0)
+    let target = phys_body_add(physics_st, target_shape, 30.0, 1.0, 0.0, 0.0, 1500.0)
+    let hitter = phys_body_add(physics_st, car_shape, -2.0, 1.0, 0.0, 0.0, 1500.0)
     expect(target >= 0 and hitter >= 0)
-    expect(phys_ccd(physics_st, hitter, true))
+    if hitter_ccd { expect(phys_ccd(physics_st, hitter, true)) }
     if target_ccd { expect(phys_ccd(physics_st, target, true)) }
-    phys_set_velocity(physics_st, hitter, SPEED, 0.0, 0.0)
+    phys_set_velocity(physics_st, hitter, speed, 0.0, 0.0)
+    phys_set_velocity(physics_st, target, target_speed, 0.0, 0.0)
     var gap = 1000000.0
     for i in 0 .. 180 {
       phys_step(physics_st)
@@ -171,16 +174,45 @@ program CcdTest {
     return gap
   }
 
-  test "a ccd car at 60 m/s does not pass through a car standing still" (physics_st: mut PhysicsState) {
-    let gap = crash(physics_st, false)
-    expect(gap > 0.0)               # the hitter's centre never got past the target's centre
+  # measured on Jolt 5.6.0 (the numbers in changes/physics-ccd.md); the asserts keep wide margins around them
+  test "control: two cars head-on at 55 m/s each pass through one another without ccd" (physics_st: mut PhysicsState) {
+    let gap = crash(physics_st, CAR_HALF_LEN, false, false, 55.0, -55.0)
+    expect(gap < 0.0)               # measured -271: they swap places and drive on
     phys_close(physics_st)
   }
 
-  test "a ccd car at 60 m/s does not pass through a ccd car standing still" (physics_st: mut PhysicsState) {
-    let gap = crash(physics_st, true)
-    expect(gap > 0.0)
+  test "two ccd cars head-on at 55 m/s each stop at one another" (physics_st: mut PhysicsState) {
+    let gap = crash(physics_st, CAR_HALF_LEN, true, true, 55.0, -55.0)
+    expect(gap > 2.0 * CAR_HALF_LEN - 0.2)    # measured 4.38 of 4.40: at most 0.2 m of overlap, never a swap
     phys_close(physics_st)
+  }
+
+  test "one ccd car and one plain car head-on at 55 m/s do not swap places, but overlap deeper" (physics_st: mut PhysicsState) {
+    let one = crash(physics_st, CAR_HALF_LEN, true, false, 55.0, -55.0)
+    expect(one > 0.0)               # measured 3.76: no swap ...
+    phys_close(physics_st)
+    let both = crash(physics_st, CAR_HALF_LEN, true, true, 55.0, -55.0)
+    expect(one < both)              # ... but about 0.6 m of overlap against 0.02: both cars should set phys_ccd
+    phys_close(physics_st)
+  }
+
+  test "a ccd car at 60 m/s into a standing car: no swap, hardly any overlap, whether the target has ccd or not" (physics_st: mut PhysicsState) {
+    let plain = crash(physics_st, CAR_HALF_LEN, true, false, SPEED, 0.0)
+    phys_close(physics_st)
+    let swept = crash(physics_st, CAR_HALF_LEN, true, true, SPEED, 0.0)
+    phys_close(physics_st)
+    expect(plain > 2.0 * CAR_HALF_LEN - 0.2)
+    expect(swept > 2.0 * CAR_HALF_LEN - 0.2)
+  }
+
+  test "a ccd car at 60 m/s into a thin barrier stops at its face; without ccd its nose goes deep inside" (physics_st: mut PhysicsState) {
+    let face = CAR_HALF_LEN + 0.05            # the nose on the barrier's face: centre gap 2.25
+    let swept = crash(physics_st, 0.05, true, false, SPEED, 0.0)
+    phys_close(physics_st)
+    expect(swept > face - 0.1)                # measured 2.23
+    let plain = crash(physics_st, 0.05, false, false, SPEED, 0.0)
+    phys_close(physics_st)
+    expect(plain < face - 0.5)                # measured 1.41: 0.8 m of the nose inside the barrier
   }
 
   test "ccd can be switched off again, and is refused for what cannot move" (physics_st: mut PhysicsState) {
