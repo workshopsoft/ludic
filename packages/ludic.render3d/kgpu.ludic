@@ -38,7 +38,7 @@ property KGpuKit {
   ia: InteriorAtlas,        # the atlas row
   win_w: float = 3.0,
   win_h: float = 3.2,
-  storey_h: float = 0.0,     # a line across the walls every storey_h metres from the instance's base, 0 for none (kit.frag's u_storey)
+  storey_h: float = 0.0,     # a line across the walls every storey_h metres, from a box instance's top (its eave) down and from another's base up, 0 for none (kit.frag's u_storey)
   storey_line: float = 0.12,
   casts: bool = true,
   box: KitBox,              # a box kit's anchor tuples (kitbox.ludic), null for an ordinary kit
@@ -284,7 +284,8 @@ export function kgpu_kit_interior(g: KGpu, id: int, ia: InteriorAtlas, rooms_tex
   k.win_h = win_h
 }
 
-# the kit's walls carry a line every `h` metres of height from each instance's base, `line` metres thick (0: none); the doors and props of
+# the kit's walls carry a line every `h` metres, `line` metres thick (0: none): from the top of a box instance (its eave) down, so a plinth shifts
+# nothing, and from the base of an ordinary one up; the doors and props of
 # a game have none, a building's body has its storeys
 export function kgpu_kit_storey(g: KGpu, id: int, h: float, line: float) -> void {
   let k = g.kits[id]

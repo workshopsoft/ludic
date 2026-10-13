@@ -336,7 +336,9 @@ tuples when it loads a `box: true` kit (`bw_setup_kits`). Tests: `tests/kitbox_t
 `lab/boxkit_lab.ludic`.
 
 A kit row with `storey_h` above 0 draws a thin line (`storey_line` metres thick, 0.12 by default) across every upright wall each
-`storey_h` metres up from the instance's base, not at the base itself, and none on a face that looks up or down (`kit.frag`'s
+`storey_h` metres, and none on a face that looks up or down. A box instance's lines hang from its top (its own `h`, the eave) down to
+its base, so a building standing on a plinth (its base under its pad) has them every storey up from its pad, the last at the eave; an ordinary
+kit's count up from its base, the first not within half a storey of it (`kit.frag`'s
 `u_storey`, set per kit by `kgpu_kit_storey`, which `bw_setup_kits` calls from the row; `kitbake_storey` writes it into the rows a
 bake produces). It counts metres of height, so it is the same on a box instance of 3 floors and of 72, whatever its own scale; the line
 is as wide as a pixel is at its edges and fades out where it would be thinner than a pixel, so a far wall shows none. The far layers (a

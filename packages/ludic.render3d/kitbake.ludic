@@ -156,7 +156,7 @@ export function kitbake_kit_box(kb: KitBake, model: string, node: string, box: K
   return kitbake_kit(kb, model, node, w, d, h, interior)
 }
 
-# kit `id`'s walls carry a line every `h` metres of height from each instance's base, `line` metres thick (0: none): the RenderKits row
+# kit `id`'s walls carry a line every `h` metres (from a box instance's eave down, from an ordinary instance's base up), `line` metres thick (0: none): the RenderKits row
 # says `storey_h` and `storey_line`, and kit.frag draws them
 export function kitbake_storey(kb: KitBake, id: int, h: float, line: float) -> void {
   if id < 0 or id >= len(kb.kits) { return }

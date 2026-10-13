@@ -86,6 +86,12 @@ program BoxKitLab {
     doors_x[3] = -36.0;  doors_z[3] = 35.0
     doors_x[4] = 4.0;  doors_z[4] = 31.0
     for i in 0 .. 5 { cell_add(c, 2, doors_x[i], 0.0, doors_z[i] - 0.06, 0.0, 1.0, cell_rgba(70, 60, 50, 255), i, 0) }
+    if storeys != 0 {
+      # a 3 floor flat on a plinth: its base 0.5 m under its pad (its h the eave over the base), the lines still every storey up from the pad
+      let b = floats(6)
+      kitbox_bounds(flat, 14.0, 9.0, 3.0 * STOREY + 0.5, b)
+      cell_add_box(c, 0, -70.0, -0.5, 0.0, 0.0, 14.0, 9.0, 3.0 * STOREY + 0.5, b, white, 3, 0)
+    }
     if cpu { kinst_add_cell(bs.k, 0, c, 0.0, 0.0, 0.0) } else { kgpu_add_cell(render3d_st, bs.g, 0, c, bs.o) }
     print(`boxkits: {c.n} instances ({c.boxes} box) of 3 kits; flat {flat.nx} x {flat.nz} z {flat.ny} y tuples, gable {gable.nx} {gable.nz} {gable.ny}`)
     r3d_on_prepare(render3d_st, fn bx_prepare)
@@ -93,8 +99,9 @@ program BoxKitLab {
     lab_settle(lab_st, 40)
     if storeys != 0 {
       # straight on to the front walls (the camera on the horizontal, the wall square to it): the lines are horizontal rows of the picture.
-      # The 3 floor flat (door in its middle), the 12 floor flat, the 3 floor gable (its back wall: the flats stand in front of its door), the 72 floor shaft low and at its top
+      # The 3 floor flat (door in its middle), the same on a plinth, the 12 floor flat, the 3 floor gable (its back wall: the flats stand in front of its door), the 72 floor shaft low and at its top
       lab_shot_at(lab_st, "wall3", -40.0, 5.6, -4.5, 40.0, 180.0, 0.0)
+      lab_shot_at(lab_st, "wall3p", -70.0, 5.6, -4.5, 40.0, 180.0, 0.0)
       lab_shot_at(lab_st, "wall12", -8.0, 20.9, -8.25, 90.0, 180.0, 0.0)
       lab_shot_at(lab_st, "gable3", -36.0, 5.6, 45.0, 40.0, 0.0, 0.0)
       lab_shot_at(lab_st, "wall72", 42.0, 15.0, -12.0, 40.0, 180.0, 0.0)

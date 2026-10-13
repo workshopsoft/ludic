@@ -24,8 +24,10 @@ out vec2 v_uv;
 out vec4 v_tint;
 out vec4 v_col;
 out float v_seed;
-// the height above the instance's base (its origin), in metres: where the storey lines of kit.frag count from
+// the height above the instance's base (its origin), in metres, and a box instance's own height h (the eave; -1 for an ordinary
+// kit): where the storey lines of kit.frag count from
 out float v_h;
+out float v_top;
 #ifdef INTERIOR_MAP
 // the model's own frame, where the facade's window grid lives: nothing in it moves when the origin does, and a
 // turned or scaled instance carries its windows with it
@@ -49,6 +51,7 @@ void main() {
   v_col = (a_col == vec4(0.0)) ? vec4(1.0) : a_col;
   v_seed = i_rot.z;
   v_h = p.y;
+  v_top = boxed ? i_box.z : -1.0;
 #ifdef INTERIOR_MAP
   v_lpos = lp;
   v_lnrm = a_nrm;

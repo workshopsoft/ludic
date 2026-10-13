@@ -9,6 +9,7 @@ in vec4 v_tint;
 in vec4 v_col;
 in float v_seed;
 in float v_h;
+in float v_top;
 out vec4 o_color;
 uniform sampler2D u_diff;
 uniform vec4 u_fac_base_inv;
@@ -20,17 +21,21 @@ uniform mat4 u_view;
 uniform float u_rough_scale;
 uniform vec2 u_storey;           // a line every x metres up the walls from the instance's base (0: none), y metres thick
 
-// 1 on a storey line of an upright face, 0 between them: the line is u_storey.y thick at every multiple of u_storey.x above the
-// base (not at the base itself: the foot is the plinth's or the ground's edge, not a floor), so it counts the same on a building
-// of 3 floors or of 72, whatever the instance's own scale. Roofs and floors (faces that look up or down) have none. The edge is
-// as wide as a pixel is (fwidth), and a line thinner than a pixel fades out rather than shimmers.
-float storeyLine(float h, float ny) {
+// 1 on a storey line of an upright face, 0 between them. A box instance's lines hang from its top (its own h, the eave) every u_storey.x
+// metres down to its base, so a plinth under the building (its base lower than its pad) shifts nothing: the lines are every storey up from
+// the pad and the last one is the eave. Another kit's count from its base. A line is u_storey.y thick, the first is not within half a storey
+// of the foot (that is the ground's edge, not a floor), and faces that look up or down (roofs) have none. The edge is as wide as a pixel is
+// (fwidth), and a line thinner than a pixel fades out rather than shimmers.
+float storeyLine(float h, float top, float ny) {
   float s = u_storey.x;
   if (s <= 0.0 || abs(ny) > 0.5) return 0.0;
-  float k = max(floor(h / s + 0.5), 1.0);
-  float aa = max(fwidth(h), 1e-4);
+  bool boxed = top >= 0.0;
+  float down = boxed ? top - h : h;
   float line = u_storey.y;
-  float edge = 1.0 - smoothstep(0.5 * line - aa, 0.5 * line + aa, abs(h - k * s));
+  if (boxed && down < -0.5 * line) return 0.0;
+  float k = max(floor(down / s + 0.5), boxed ? 0.0 : 1.0);
+  float aa = max(fwidth(h), 1e-4);
+  float edge = 1.0 - smoothstep(0.5 * line - aa, 0.5 * line + aa, abs(down - k * s));
   float seen = 1.0 - smoothstep(line, 2.0 * line, aa);
   return edge * seen * step(0.5 * s, h);
 }
@@ -174,7 +179,7 @@ void main() {
   arm.gb *= vec2(1.0) - u_fac_mr_inv;
   n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
   vec3 alb = d.rgb * v_tint.rgb * (0.92 + 0.16 * fract(v_seed * 7.13));
-  alb *= 1.0 - 0.45 * storeyLine(v_h, N.y);
+  alb *= 1.0 - 0.45 * storeyLine(v_h, v_top, N.y);
   float shadow = sunShadow(v_wpos, N, viewDepth);
   float roughF = clamp(arm.g * u_rough_scale, 0.35, 1.0);
   float ao = arm.r;

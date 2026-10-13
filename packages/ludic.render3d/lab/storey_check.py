@@ -3,7 +3,7 @@
 build/lab/{storeys,storeys_cpu,storeys_off}/*.png, shots taken straight on to a front wall (the camera on the horizontal at the
 wall's picture centre, the wall square to it, so a picture row is a height and a metre is the same number of rows all the way up):
 
-  lines      on the walls of the 3 floor flat, the 12 floor flat, the 3 floor gable and the 72 floor shaft (low, and at 230 m) the
+  lines      on the walls of the 3 floor flat (also on a plinth: counted from the pad, the eave being the last), the 12 floor flat, the 3 floor gable and the 72 floor shaft (low, and at 230 m) the
              rows that are darker than the wall around them sit at every multiple of 3.4 m above the base, none missing, none extra
   spacing    a line is 0.12 m thick (0.06 .. 0.30 m measured: the line's 0.12 m and a row's blur) at every height, whatever the instance's own height
   control    the same shots with no storey set (storeys_off) hold no line at all: what the others measure is the lines
@@ -39,6 +39,7 @@ def load(scene, shot):
 # the wall shows [bottom, top] clear of the foot's shading and the parapet's top edge, how many floors the wall has)
 SHOTS = {
     "wall3": (40.0, 5.6, (1.5, 6.0), (1.0, 10.9), 3),
+    "wall3p": (40.0, 5.6, (1.5, 6.0), (1.0, 10.9), 3),   # the same on a plinth 0.5 m: the lines are every storey up from its PAD, not its base
     "wall12": (90.0, 20.9, (2.0, 7.0), (1.0, 41.5), 12),
     "gable3": (40.0, 5.6, (1.0, 4.0), (1.0, 10.1), 3),
     "wall72": (40.0, 15.0, (3.0, 12.0), (1.0, 29.5), 72),
