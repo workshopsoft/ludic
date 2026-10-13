@@ -148,7 +148,7 @@ program JunctionsTest {
     expect(turned)
   }
 
-  test "a car's place is continuous through turns, U-turns round a dead end's circle and a merge: no step over its speed" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+  test "a car's place is continuous through turns, U-turns round a dead end's circle and a merge: no step over its speed, its body its own length" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
     load_grid(roads_st, nodes, segs, turns)
     grid_setbacks(roads_st)
     roads_config_conflict(roads_st, 3.0)
@@ -165,6 +165,7 @@ program JunctionsTest {
     var worst_turn = 0.0
     var uturned = false
     var merged_lane = -1
+    var bad_body = 0
     for k in 0 .. 2400 {
       tick(roads_st, js, 0.05)
       let ids = [a, b]
@@ -185,14 +186,59 @@ program JunctionsTest {
         pz[q] = c.z
         pyaw[q] = c.yaw
         have[q] = true
+        # the body keeps its length on the ground: its rear's place is its length behind its front along the way, never more
+        roads_car_point(roads_st, slot, RoadCarKinds[c.kind].length)
+        let bl = Math.sqrt((roads_pose_x(roads_st) - c.x) * (roads_pose_x(roads_st) - c.x) + (roads_pose_z(roads_st) - c.z) * (roads_pose_z(roads_st) - c.z))
+        if bl > RoadCarKinds[c.kind].length + 0.03 or bl < RoadCarKinds[c.kind].length * 0.7 { bad_body += 1 }
         if q == 0 and c.edge == edge_of(roads_st, "g22_dd", true) { uturned = true }
         if q == 1 and c.edge == edge_of(roads_st, "hm_he", false) and merged_lane < 0 { merged_lane = c.lane }
       }
     }
     expect(uturned)
+    expect_eq(bad_body, 0)
     expect_eq(merged_lane, 1)                       # the slip road joins from the right: the kerb lane of two
     expect(worst_step < 0.05)                       # metres more than its speed in a tick, anywhere
     expect(worst_turn < 0.35)                       # radians a tick at the sharpest
+  }
+
+  test "a car behind one in a U-turn's loop keeps its distance on the ground and its pace: gaps are measured along the way, not in road metres" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    roads_config_conflict(roads_st, 3.0)
+    roads_config_turn_accel(roads_st, 2.5)
+    let into = edge_of(roads_st, "g22_dd", false)
+    let back = edge_of(roads_st, "g22_dd", true)
+    let a = roads_spawn(roads_st, into, 70.0, 0, RCK_CAR, back, false)
+    let b = roads_spawn(roads_st, into, 58.9, 0, RCK_CAR, back, false)
+    expect(a >= 0 and b >= 0)
+    var least_ground = 1000.0
+    var slowest_b = 1000.0
+    var looped = 0
+    for k in 0 .. 900 {
+      tick(roads_st, js, 0.05)
+      let sa = roads_car_slot(roads_st, a)
+      let sb = roads_car_slot(roads_st, b)
+      if sa < 0 or sb < 0 { break }
+      let ca = roads_car_at(roads_st, sa)
+      let cb = roads_car_at(roads_st, sb)
+      # while a is round the loop and b comes up behind it on the straight
+      let s0 = roads_edge_length(roads_st, into) - roads_edge_mouth_end(roads_st, into)
+      let a_looping = (ca.edge == into and ca.s > s0) or (ca.edge == back and ca.pin >= 0 and ca.s < roads_edge_mouth_start(roads_st, back))
+      if a_looping and cb.edge == into and cb.s < s0 - 1.0 {
+        looped += 1
+        slowest_b = Math.min(slowest_b, cb.v)
+      }
+      roads_car_point(roads_st, sa, RoadCarKinds[ca.kind].length)
+      let rx = roads_pose_x(roads_st)
+      let rz = roads_pose_z(roads_st)
+      let dx = rx - cb.x
+      let dz = rz - cb.z
+      if cb.edge == into and ca.edge == into and cb.s < s0 { least_ground = Math.min(least_ground, Math.sqrt(dx * dx + dz * dz)) }
+    }
+    print(`looped {looped} slowest {slowest_b} least {least_ground}`)
+    expect(looped > 10)
+    expect(slowest_b > 1.5)                      # not crawling at the loop's pace in road metres
+    expect(least_ground > 1.5)                   # and never on a's back bumper
   }
 
   test "with a conflict width two cars straight on from opposite sides cross together; a car turning across them waits" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {

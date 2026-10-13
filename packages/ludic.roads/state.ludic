@@ -52,6 +52,10 @@ export property RoadCar {
   hold: int = -1                # the node it holds (-1 none): it was let in, and is not yet clear of it
   pin: int = -1                 # the edge it came by, while it is still turning off it into this one (-1 none)
   plane: int = 0                # the lane it came by
+  ka: float = 0.0               # the turn path ahead (into the next road): its length over its span in road metres (0: none near)
+  kka: float = 0.0              # ... its sharpest bend (1 / radius)
+  kb: float = 0.0               # the turn path it is still on off the road it came by: its length over its span (0: none)
+  kkb: float = 0.0
   x: float = 0.0
   y: float = 0.0
   z: float = 0.0
@@ -157,7 +161,8 @@ export state RoadsState {
   rd_nuturn: []float = new []float       # per node: the radius a U-turn there loops round it on (0: a hairpin between the two lanes)
   rd_conflict_w: float = 0.0             # 0: a node lets one car in at a time; more: cars whose turn paths stay this far apart go together
   rd_turn_acc: float = 0.0               # m/s2 across a turn path a car keeps under (0: no limit)
-  rd_jam_limit: float = 90.0             # seconds standing before a car is taken off (0: never)
+  rd_jam_limit: float = 90.0
+  rd_debug_id: int = -1   # DEBUG-TEMP             # seconds standing before a car is taken off (0: never)
   # one turn path (rd_path_build): up to 4 cubic Bezier pieces, 8 numbers each (p0, c1, c2, p3 as x, z), its length and its sharpest bend
   rd_tp: []float = new []float
   rd_tpn: int = 0

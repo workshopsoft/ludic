@@ -293,53 +293,73 @@ export function roads_turn_bend(roads_st: RoadsState) -> float { return roads_st
 export function roads_turn_at(roads_st: mut RoadsState, d: float) -> void { rd_tp_at(roads_st, d) }
 
 # the place `back` metres behind car `slot`'s front along the way it drives - its lane, the turn path it is on, the lane it came
-# by - into roads_pose_x / z / yaw (and roads_pose_y). Behind where a car was made, its lane is carried straight back
+# by - into roads_pose_x / z / yaw (and roads_pose_y). `back` is in metres on the ground: through a turn path a car's body keeps
+# its length (the path's metres, not the road metres its span stands for). Behind where a car was made, its lane is carried
+# straight back
 export function roads_car_point(roads_st: mut RoadsState, slot: int, back: float) -> void {
   let c = roads_st.rd_cars[slot]
   let e = c.edge
-  let d = c.s - back
   let len_e = roads_st.rd_elen[e]
   let next = rd_next_edge(roads_st, c)
-  # ahead: into the next road's turn
+  # the turn ahead: from s0 on, its span in road metres is the path's length on the ground
+  let me = roads_st.rd_emouth_end[e]
+  let s0 = len_e - me
+  var ka = c.ka
+  var span_a = 0.0
   if next >= 0 {
-    let me = roads_st.rd_emouth_end[e]
-    let span = me + roads_st.rd_emouth_start[next]
-    if span > 0.0 and d > len_e - me {
-      let lo = roads_lane_onto(roads_st, e, c.lane, next)
-      rd_path_build(roads_st, e, c.lane, next, lo)
-      rd_tp_at(roads_st, (d - (len_e - me)) / span * roads_st.rd_tplen)
-      rd_turn_y(roads_st, e, len_e, next, d - len_e)
-      return
+    span_a = me + roads_st.rd_emouth_start[next]
+    if span_a > 0.0 and ka <= 0.0 and c.s > s0 {
+      rd_path_build(roads_st, e, c.lane, next, roads_lane_onto(roads_st, e, c.lane, next))
+      ka = roads_st.rd_tplen / span_a
     }
   }
-  # behind: off the road it came by
+  if span_a <= 0.0 { ka = 0.0 }
+  # the turn behind: the path off the road it came by ends at the mouth ms
+  let ms = roads_st.rd_emouth_start[e]
+  var kb = c.kb
+  var span_b = 0.0
   if c.pin >= 0 {
-    let ms = roads_st.rd_emouth_start[e]
-    if d < ms {
-      let mp = roads_st.rd_emouth_end[c.pin]
-      let span = mp + ms
-      let u = mp + d
-      if span > 0.0 and u >= 0.0 {
-        rd_path_build(roads_st, c.pin, c.plane, e, c.lane)
-        rd_tp_at(roads_st, u / span * roads_st.rd_tplen)
-        rd_turn_y(roads_st, c.pin, roads_st.rd_elen[c.pin], e, d)
-        return
-      }
-      if d < 0.0 {
-        roads_pose(roads_st, c.pin, Math.max(roads_st.rd_elen[c.pin] + d, 0.0), c.plane)
-        return
-      }
+    span_b = roads_st.rd_emouth_end[c.pin] + ms
+    if span_b > 0.0 and kb <= 0.0 {
+      rd_path_build(roads_st, c.pin, c.plane, e, c.lane)
+      kb = roads_st.rd_tplen / span_b
     }
   }
-  if d >= 0.0 {
-    roads_pose(roads_st, e, Math.min(d, len_e), c.lane)
+  if span_b <= 0.0 { kb = 0.0 }
+  # where the front is on the way (ground metres on this road's axis), and where the asked point is
+  var w = c.s
+  if ka > 0.0 and c.s > s0 { w = s0 + (c.s - s0) * ka }
+  else if kb > 0.0 and c.s < ms { w = ms - (ms - c.s) * kb }
+  let t = w - back
+  if ka > 0.0 and t > s0 {
+    let lo = roads_lane_onto(roads_st, e, c.lane, next)
+    rd_path_build(roads_st, e, c.lane, next, lo)
+    rd_tp_at(roads_st, t - s0)
+    rd_turn_y(roads_st, e, len_e, next, (t - s0) / ka - me)
     return
   }
-  roads_pose(roads_st, e, 0.0, c.lane)
-  let hx = Math.sin(roads_st.rd_pose_yaw)
-  let hz = Math.cos(roads_st.rd_pose_yaw)
-  roads_st.rd_pose_x = roads_st.rd_pose_x + hx * d
-  roads_st.rd_pose_z = roads_st.rd_pose_z + hz * d
+  if c.pin < 0 or t >= ms {
+    if t >= 0.0 {
+      roads_pose(roads_st, e, Math.min(t, len_e), c.lane)
+      return
+    }
+    roads_pose(roads_st, e, 0.0, c.lane)
+    let hx = Math.sin(roads_st.rd_pose_yaw)
+    let hz = Math.cos(roads_st.rd_pose_yaw)
+    roads_st.rd_pose_x = roads_st.rd_pose_x + hx * t
+    roads_st.rd_pose_z = roads_st.rd_pose_z + hz * t
+    return
+  }
+  # behind the mouth, on the road it came by: its turn path, then its lane
+  let path_start = ms - span_b * kb
+  if kb > 0.0 and t >= path_start {
+    rd_path_build(roads_st, c.pin, c.plane, e, c.lane)
+    rd_tp_at(roads_st, t - path_start)
+    rd_turn_y(roads_st, c.pin, roads_st.rd_elen[c.pin], e, (t - path_start) / kb - roads_st.rd_emouth_end[c.pin])
+    return
+  }
+  let lp = roads_st.rd_elen[c.pin]
+  roads_pose(roads_st, c.pin, Math.max(lp - roads_st.rd_emouth_end[c.pin] - (path_start - t), 0.0), c.plane)
 }
 
 # a point on a turn path takes the height of whichever of its two roads it is nearer (`past` metres past the end of `ei`: below
