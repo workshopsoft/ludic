@@ -1,0 +1,45 @@
+# model_build.ludic - a model made in code: the vertices, their colours and the triangles of a shape a game works out itself (a muzzle's star, a
+# decal laid on the triangles of a wall, a streak) become a Model the actor pass draws like one read from a glTF. One primitive, in the plain
+# white material (rough, not metal), so an actor's tint is its colour and the vertex colour shapes it (and, for a blended actor, its alpha).
+# A game reaches the GPU only through this: it holds no pointers. model_release gives the mesh and the model back.
+
+# v: 8 numbers a vertex (position, normal, uv); c: 4 a vertex (r, g, b, a: multiplied into the base colour and the alpha), or null for white;
+# ix: the triangles' corners; radius: how far the shape reaches from its origin (culling reads it)
+@alloc_ok("a model made by the program that asks for it: a load, not a frame")
+@creates(Model)
+function model_from_arrays(render3d_st: mut Render3dState, v: floats, c: floats, nv: int, ix: words, ni: int, radius: float) -> Model {
+  if render3d_st.gltf_white == 0 {
+    render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255)
+    render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255)
+  }
+  if render3d_st.gltf_pure == 0 { render3d_st.gltf_pure = tex_solid(render3d_st, 255, 255, 255, 255) }
+  let m = gpu_mesh_new(render3d_st)
+  gpu_mesh_vertices(render3d_st, m, data_of(v), nv * 32, GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, 32, 0, false)
+  gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, 32, 12, false)
+  gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, 32, 24, false)
+  if c != null {
+    gpu_mesh_vertices(render3d_st, m, data_of(c), nv * 16, GPU_STATIC)
+    gpu_mesh_attr(render3d_st, m, 7, 4, GPU_F32, 16, 0, false)
+  }
+  gpu_mesh_indices(render3d_st, m, data_of(ix), ni * 4, 4)
+  m.count = ni
+  gpu_mesh_done(render3d_st, m)
+  let pr = new Prim
+  pr.mesh = m
+  pr.verts = nv
+  pr.diff = render3d_st.gltf_pure
+  pr.nrm = render3d_st.gltf_flat
+  pr.arm = render3d_st.gltf_pure
+  pr.fac = floats(9)
+  for k in 0 .. 6 { pr.fac[k] = 1.0 }
+  pr.fac[5] = 0.0
+  for k in 6 .. 9 { pr.fac[k] = 0.0 }
+  let model = new Model
+  model.prims = new []Prim
+  push(model.prims, pr)
+  model.tris = ni / 3
+  model.radius = radius
+  model.height = radius
+  return model
+}
