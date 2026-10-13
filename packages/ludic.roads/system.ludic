@@ -4,7 +4,8 @@ export function roads_reset(roads_st: mut RoadsState) -> void {
   roads_take_all(roads_st, ROADS_WHY_REBUILT)
   roads_st.rd_time = 0.0
   roads_st.rd_spawn_t = 0.0
-  roads_st.rd_dice = rng_new(RoadsWorld.seed())
+  rng_seed(roads_st.rd_dice, RoadsWorld.seed())
+  roads_st.rd_dice_ok = true
   q_clear(roads_st.rd_facts)
 }
 
@@ -13,7 +14,7 @@ export function roads_save(roads_st: RoadsState) -> Val {
   sv_put_float(v, "time", roads_st.rd_time)
   sv_put_int(v, "target", roads_st.rd_target)
   sv_put_int(v, "next_id", roads_st.rd_next_id)
-  if roads_st.rd_dice != null { sv_put_int(v, "dice", roads_st.rd_dice.s) }
+  if roads_st.rd_dice_ok { sv_put_int(v, "dice", roads_st.rd_dice.s) }
   return v
 }
 

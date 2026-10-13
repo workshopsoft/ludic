@@ -65,6 +65,7 @@ function car_get_verb(cars_st: CarsState, c: DevCall) -> int {
   let nid = dv_int(c, 0)
   let car = car_by_nid(cars_st, nid)
   if car == null {
+    @alloc_ok("a dev verb's refusal: typed by a person or a script, not a frame of play")
     c.why = `no car {nid}`
     return DV_BAD
   }
