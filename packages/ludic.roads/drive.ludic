@@ -5,7 +5,7 @@
 
 const RD_LOOK: float = 25.0              # metres the game's physics is asked to look ahead
 const RD_STOP_MARGIN: float = 1.5        # metres short of a junction's end a car waits
-const RD_JAM_LIMIT: float = 90.0         # seconds standing before a car is taken off (a long red, a long queue, is not a jam)
+const RD_TURN_MIN_V: float = 2.0         # m/s: the least speed a turn is taken at, however sharp
 const RD_SPAWN_EVERY: float = 0.4        # seconds between cars made to reach the target
 const RD_NONE: float = 1000000.0
 
@@ -27,6 +27,54 @@ function rd_leader(roads_st: mut RoadsState, slot: int, c: RoadCar, edge: int, l
   }
 }
 
+# `move` metres of a car's way from where it is: road metres on a plain lane, but along a turn path (from the mouth of its road
+# into the next, or still off the road it came by) the path's own metres, which cover the turn's span in road metres (its two
+# mouths) at span / length of the path (a turn cuts its corner, a U-turn loops). The new `s` (it may be past the road's end)
+function rd_advance(roads_st: mut RoadsState, c: RoadCar, next: int, move: float) -> float {
+  let e = c.edge
+  var s = c.s
+  var left = move
+  # still turning off the road it came by: the path's rest, then plain lane
+  if c.pin >= 0 {
+    let ms = roads_st.rd_emouth_start[e]
+    let span = roads_st.rd_emouth_end[c.pin] + ms
+    if span > 0.0 and s < ms {
+      rd_path_build(roads_st, c.pin, c.plane, e, c.lane)
+      var k = 1.0
+      if roads_st.rd_tplen > 0.01 { k = span / roads_st.rd_tplen }
+      let room = (ms - s) / k
+      if left <= room { return s + left * k }
+      s = ms
+      left -= room
+    }
+  }
+  if next >= 0 {
+    let len_e = roads_st.rd_elen[e]
+    let me = roads_st.rd_emouth_end[e]
+    let span = me + roads_st.rd_emouth_start[next]
+    let s0 = len_e - me
+    if span > 0.0 and s + left > s0 {
+      var k = 1.0
+      rd_path_build(roads_st, e, c.lane, next, roads_lane_onto(roads_st, e, c.lane, next))
+      if roads_st.rd_tplen > 0.01 { k = span / roads_st.rd_tplen }
+      if s < s0 {
+        left -= s0 - s
+        s = s0
+      }
+      return s + left * k
+    }
+  }
+  return s + left
+}
+
+# the speed a car may have `d` metres short of a turn whose sharpest bend is `k` (1 / radius): under the turn accel across it,
+# and slowing to it at half the kind's braking
+function rd_turn_cap(roads_st: RoadsState, k: float, d: float, brake: float) -> float {
+  if roads_st.rd_turn_acc <= 0.0 or k < 0.0001 { return RD_NONE }
+  let vt = Math.max(Math.sqrt(roads_st.rd_turn_acc / k), RD_TURN_MIN_V)
+  return Math.sqrt(vt * vt + brake * Math.max(d, 0.0))
+}
+
 function rd_step_car(roads_st: mut RoadsState, slot: int, dt: float) -> void {
   let c = roads_st.rd_cars[slot]
   if not RoadsWorld.active(c.x, c.z) { return }
@@ -35,22 +83,42 @@ function rd_step_car(roads_st: mut RoadsState, slot: int, dt: float) -> void {
   let len_e = roads_st.rd_elen[e]
   let d_end = len_e - c.s
   let next = rd_next_edge(roads_st, c)
-  let v0 = Math.min(roads_st.rd_espeed[e] * kind.pace, kind.max_speed)
+  var v0 = Math.min(roads_st.rd_espeed[e] * kind.pace, kind.max_speed)
+  # a turn ahead, or the one it is on, slows it
+  if roads_st.rd_turn_acc > 0.0 {
+    if next >= 0 {
+      let me = roads_st.rd_emouth_end[e]
+      if me + roads_st.rd_emouth_start[next] > 0.0 {
+        let d_in = len_e - me - c.s
+        if d_in < c.v * c.v / kind.brake + 5.0 {
+          rd_path_build(roads_st, e, c.lane, next, roads_lane_onto(roads_st, e, c.lane, next))
+          v0 = Math.min(v0, rd_turn_cap(roads_st, roads_st.rd_tpk, d_in, kind.brake))
+        }
+      }
+    }
+    if c.pin >= 0 and c.s < roads_st.rd_emouth_start[e] {
+      rd_path_build(roads_st, c.pin, c.plane, e, c.lane)
+      v0 = Math.min(v0, rd_turn_cap(roads_st, roads_st.rd_tpk, 0.0, kind.brake))
+    }
+  }
   roads_st.rd_gap = RD_NONE
   roads_st.rd_dv = 0.0
-  # the car in front, here and on the road it goes on to
+  # the car in front, here and on the road it goes on to (in the lane it will take)
   rd_leader(roads_st, slot, c, e, c.lane, c.s, c.s, 0.0)
   if next >= 0 and roads_st.rd_gap > d_end {
-    var nl = c.lane
-    if nl > roads_st.rd_elanes[next] - 1 { nl = roads_st.rd_elanes[next] - 1 }
+    let nl = roads_lane_onto(roads_st, e, c.lane, next)
     rd_leader(roads_st, slot, c, next, nl, -1.0, 0.0, d_end)
   }
-  # a junction it may not enter yet: a wall at its stop line
+  # a junction it may not enter yet: a wall at its waiting line (the old rule: 1.5 m short of the node)
+  let set = roads_st.rd_estop[e] >= 0.0
+  var d_line = d_end
+  if set { d_line = d_end - roads_st.rd_estop[e] }
   if next >= 0 or roads_node_controlled(roads_st, roads_st.rd_eto[e]) {
-    if d_end < c.v * c.v / (2.0 * kind.brake) + RD_QUEUE_LOOK and next >= 0 {
-      if c.waited < 0.0 and d_end < RD_QUEUE_LOOK * 2.0 { c.waited = roads_st.rd_time }
+    if d_line < c.v * c.v / (2.0 * kind.brake) + RD_QUEUE_LOOK and next >= 0 {
+      if c.waited < 0.0 and d_line < RD_QUEUE_LOOK * 2.0 { c.waited = roads_st.rd_time }
       if not rd_may_enter(roads_st, slot) {
-        let g = Math.max(d_end - RD_STOP_MARGIN, 0.0)
+        var g = Math.max(d_end - RD_STOP_MARGIN, 0.0)
+        if set { g = Math.max(d_line, 0.0) }
         if g < roads_st.rd_gap {
           roads_st.rd_gap = g
           roads_st.rd_dv = c.v
@@ -68,7 +136,7 @@ function rd_step_car(roads_st: mut RoadsState, slot: int, dt: float) -> void {
     }
   }
   # the drive
-  let r = c.v / v0
+  let r = c.v / Math.max(v0, 0.1)
   var a = kind.accel * (1.0 - r * r * r * r)
   if roads_st.rd_gap < RD_NONE {
     let want = kind.gap + Math.max(0.0, c.v * kind.headway + c.v * roads_st.rd_dv / (2.0 * Math.sqrt(kind.accel * kind.brake)))
@@ -79,8 +147,13 @@ function rd_step_car(roads_st: mut RoadsState, slot: int, dt: float) -> void {
   c.v = c.v + a * dt
   if c.v < 0.0 { c.v = 0.0 }
   if roads_st.rd_gap < RD_NONE and c.v * dt > roads_st.rd_gap { c.v = Math.max(roads_st.rd_gap, 0.0) / dt }
-  c.s = c.s + c.v * dt
-  if c.v < 0.3 and d_end < 4.0 { c.stopped += dt } else if c.v > 0.5 { c.stopped = 0.0 }
+  # along a turn path the road metres go by at the path's own pace (its speed is the car's), never past what is ahead
+  var ns = rd_advance(roads_st, c, next, c.v * dt)
+  if roads_st.rd_gap < RD_NONE and ns - c.s > roads_st.rd_gap { ns = c.s + Math.max(roads_st.rd_gap, 0.0) }
+  c.s = ns
+  var near_line = d_end < 4.0
+  if set { near_line = d_line < 4.0 + kind.gap }
+  if c.v < 0.3 and near_line { c.stopped += dt } else if c.v > 0.5 { c.stopped = 0.0 }
   if c.v < 0.1 { c.jam += dt } else { c.jam = 0.0 }
   # the end of the road: on to the next, arrive, or wait at the line
   if c.s >= len_e {
@@ -90,25 +163,29 @@ function rd_step_car(roads_st: mut RoadsState, slot: int, dt: float) -> void {
       return
     }
     let n = roads_st.rd_eto[e]
-    if roads_node_controlled(roads_st, n) and roads_st.rd_node_car[n] != slot {
+    if roads_node_controlled(roads_st, n) and c.hold != n {
       c.s = len_e - 0.05
       c.v = 0.0
     } else {
       c.s = c.s - len_e
+      c.pin = e
+      c.plane = c.lane
+      c.lane = roads_lane_onto(roads_st, e, c.lane, next)
       c.edge = next
       c.at += 1
-      if c.lane > roads_st.rd_elanes[next] - 1 { c.lane = roads_st.rd_elanes[next] - 1 }
       c.waited = -1.0
       c.stopped = 0.0
       if c.wander and c.at >= len(c.route) - 1 { rd_replan(roads_st, c) }
     }
   }
-  if c.jam > RD_JAM_LIMIT {
+  # the road it came by is forgotten once its rear is past the turn
+  if c.pin >= 0 and c.s > kind.length + Math.max(roads_st.rd_emouth_start[c.edge], roads_st.rd_eclear[c.edge]) + 1.0 { c.pin = -1 }
+  if roads_st.rd_jam_limit > 0.0 and c.jam > roads_st.rd_jam_limit {
     rd_say(roads_st, ROADS_JAMMED, c.id, c.kind, c.edge, 0, c.x, c.z)
     rd_take(roads_st, slot, ROADS_WHY_JAM)
     return
   }
-  roads_pose(roads_st, c.edge, c.s, c.lane)
+  roads_car_point(roads_st, slot, 0.0)
   c.x = roads_st.rd_pose_x
   c.z = roads_st.rd_pose_z
   c.yaw = roads_st.rd_pose_yaw

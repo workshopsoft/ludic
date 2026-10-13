@@ -86,17 +86,29 @@ export function roads_seg_height(roads_st: mut RoadsState, seg: int, s: float) -
 }
 
 # how far from the centre line lane `lane` of edge `e` runs, to the right of travel (a one way road
-# is centred on its line, and a game that drives on the left mirrors it)
+# is centred on its line, and a game that drives on the left mirrors it), unless the game set where its lanes begin
+# (roads_edge_lane_base). A lane below 0 is the centre line itself
 function rd_lane_offset(roads_st: RoadsState, e: int, lane: int) -> float {
+  if lane < 0 { return 0.0 }
   let seg = e / 2
   let w = roads_st.rd_sw[seg]
-  var other = roads_st.rd_slb[seg]
-  if e % 2 == 1 { other = roads_st.rd_slf[seg] }
   var off = (float(lane) + 0.5) * w
-  if other == 0 { off = (float(lane) - float(roads_st.rd_elanes[e] - 1) * 0.5) * w }
+  if roads_st.rd_ebase[e] > RD_BASE_OLD + 1.0 {
+    off = roads_st.rd_ebase[e] + off
+  } else {
+    var other = roads_st.rd_slb[seg]
+    if e % 2 == 1 { other = roads_st.rd_slf[seg] }
+    if other == 0 { off = (float(lane) - float(roads_st.rd_elanes[e] - 1) * 0.5) * w }
+  }
   if roads_st.rd_drive_left { off = -off }
   return off
 }
+
+# where a road's junction ends reach (roads_edge_setbacks): its front's waiting line short of the end, its turn path's mouths, its clear line
+export function roads_edge_stop(roads_st: RoadsState, e: int) -> float { return roads_st.rd_estop[e] }
+export function roads_edge_mouth_end(roads_st: RoadsState, e: int) -> float { return roads_st.rd_emouth_end[e] }
+export function roads_edge_mouth_start(roads_st: RoadsState, e: int) -> float { return roads_st.rd_emouth_start[e] }
+export function roads_edge_clear(roads_st: RoadsState, e: int) -> float { return roads_st.rd_eclear[e] }
 
 # the pose of a car `s` metres along edge `e` in `lane`, into roads_pose_x / z / yaw (yaw faces along the edge)
 export function roads_pose(roads_st: mut RoadsState, e: int, s: float, lane: int) -> void {

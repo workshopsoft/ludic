@@ -1,0 +1,352 @@
+# junctions_test.ludic - junctions with a size (roads_edge_setbacks): a car waits before its line and turns on a path from
+# mouth to mouth, its place continuous through turns, U-turns round a dead end's circle and a merge; with a conflict width
+# cars whose paths keep apart go together and the others wait; the lane taken by the side turned to; a junction kept clear;
+# lanes that begin where the game says; and ten minutes of traffic on a grid with no two cars ever overlapping
+import "ludic.roads"
+import "ludic.base"
+program JunctionsTest {
+  numbers float
+  state JunctionsTestState {
+    frame: int = 0
+  }
+  function flat(x: float, z: float) -> float { return 0.0 }
+  function seed9() -> int { return 9 }
+  bind RoadsWorld { ground: fn flat, seed: fn seed9 }
+
+  def RoadCarKinds car { weight: 4 }
+  def RoadCarKinds van { length: 6.0, pace: 0.9, accel: 2.0, weight: 1 }
+
+  function load_grid(roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) -> void {
+    expect(road_nodes_load(nodes, "grid"))
+    expect(road_segs_load(segs, "grid"))
+    road_turns_load(turns, "grid")
+    expect(roads_build(roads_st, nodes, segs, turns))
+    roads_reset(roads_st)
+    roads_cars_reserve(roads_st, 64)
+  }
+
+  # every junction a size: 8 m mouths and an 11 m line where three or more roads meet (12 m at the highway's merge), 6 m at a bend,
+  # at a dead end room to swing out to its circle, which a U-turn loops round; every lane starting at the centre line (a one way road's on its right)
+  function grid_setbacks(roads_st: mut RoadsState) -> void {
+    for e in 0 .. roads_edge_count(roads_st) {
+      if not roads_edge_ok(roads_st, e) { continue }
+      let a = roads_edge_from(roads_st, e)
+      let b = roads_edge_to(roads_st, e)
+      roads_edge_setbacks(roads_st, e, line_at(roads_st, b), mouth_at(roads_st, b), mouth_at(roads_st, a), line_at(roads_st, a))
+      roads_edge_lane_base(roads_st, e, 0.0)
+    }
+    roads_node_uturn(roads_st, roads_node_find(roads_st, "dd"), 7.8)
+    roads_node_uturn(roads_st, roads_node_find(roads_st, "hw"), 12.8)
+    roads_node_uturn(roads_st, roads_node_find(roads_st, "he"), 12.8)
+  }
+  function mouth_at(roads_st: RoadsState, n: int) -> float {
+    let k = roads_node_roads(roads_st, n)
+    if roads_node_find(roads_st, "hm") == n { return 10.0 }
+    if k >= 3 { return 8.0 }
+    if k == 2 { return 6.0 }
+    # a dead end: room to swing out to the circle at 1 across in 1.6 along (the circle less the kerb lane's offset)
+    if roads_node_find(roads_st, "dd") == n { return 1.6 * (7.8 - 1.75) }
+    return 1.6 * (12.8 - 5.625)
+  }
+  function line_at(roads_st: RoadsState, n: int) -> float {
+    if roads_node_find(roads_st, "hm") == n { return 12.0 }
+    if roads_node_roads(roads_st, n) >= 3 { return 11.0 }
+    return mouth_at(roads_st, n)
+  }
+
+  function tick(roads_st: mut RoadsState, js: mut JunctionsTestState, dt: float) -> void {
+    js.frame += 1
+    roads_tick(roads_st, tick_new(dt, js.frame, 12.0))
+  }
+  function edge_of(roads_st: RoadsState, seg: string, back: bool) -> int {
+    let s = roads_seg_find(roads_st, seg)
+    if back { return 2 * s + 1 }
+    return 2 * s
+  }
+
+  # a car's body seen from above: the rectangle from its rear to its front, 1.8 m wide; into out[0 .. 8] its four corners
+  function body(roads_st: mut RoadsState, slot: int, out: []float) -> void {
+    let c = roads_car_at(roads_st, slot)
+    roads_car_point(roads_st, slot, 0.0)
+    let fx = roads_pose_x(roads_st)
+    let fz = roads_pose_z(roads_st)
+    roads_car_point(roads_st, slot, RoadCarKinds[c.kind].length)
+    let rx = roads_pose_x(roads_st)
+    let rz = roads_pose_z(roads_st)
+    var hx = fx - rx
+    var hz = fz - rz
+    let l = Math.max(Math.sqrt(hx * hx + hz * hz), 0.001)
+    hx = hx / l
+    hz = hz / l
+    let sx = -hz * 0.9
+    let sz = hx * 0.9
+    out[0] = fx + sx
+    out[1] = fz + sz
+    out[2] = fx - sx
+    out[3] = fz - sz
+    out[4] = rx - sx
+    out[5] = rz - sz
+    out[6] = rx + sx
+    out[7] = rz + sz
+  }
+  # do two convex quads overlap: no separating axis among their edges' normals
+  function quads_overlap(a: []float, b: []float) -> bool {
+    for pass in 0 .. 2 {
+      var p = a
+      if pass == 1 { p = b }
+      for i in 0 .. 4 {
+        let j = (i + 1) % 4
+        let nx = -(p[j * 2 + 1] - p[i * 2 + 1])
+        let nz = p[j * 2] - p[i * 2]
+        var amin = 1000000000.0
+        var amax = -1000000000.0
+        var bmin = 1000000000.0
+        var bmax = -1000000000.0
+        for k in 0 .. 4 {
+          let pa = a[k * 2] * nx + a[k * 2 + 1] * nz
+          let pb = b[k * 2] * nx + b[k * 2 + 1] * nz
+          amin = Math.min(amin, pa)
+          amax = Math.max(amax, pa)
+          bmin = Math.min(bmin, pb)
+          bmax = Math.max(bmax, pb)
+        }
+        if amax < bmin or bmax < amin { return false }
+      }
+    }
+    return true
+  }
+
+  test "a junction with a size: a car waits with its front short of its line until it is let in, then turns from mouth to mouth" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    # into the cross g11 from the west (g01 -> g11) on to the south (g11 -> g12): a right turn; a car on the north road
+    # (g10 -> g11, priority 2) going straight on takes the node first
+    let west = edge_of(roads_st, "g01_g11", false)
+    let south = edge_of(roads_st, "g11_g12", false)
+    let north = edge_of(roads_st, "g10_g11", false)
+    let n_south = edge_of(roads_st, "g11_g12", false)
+    let first = roads_spawn(roads_st, north, 92.0, 0, RCK_CAR, n_south, false)
+    let car = roads_spawn(roads_st, west, 90.0, 0, RCK_CAR, south, false)
+    expect(first >= 0 and car >= 0)
+    expect_eq(roads_edge_stop(roads_st, west), 11.0)
+    var worst_past = -100.0
+    var turned = false
+    var max_off = 0.0
+    for k in 0 .. 400 {
+      tick(roads_st, js, 0.05)
+      let slot = roads_car_slot(roads_st, car)
+      if slot < 0 { break }
+      let c = roads_car_at(roads_st, slot)
+      if c.edge == west and c.hold < 0 {
+        let past = c.s - (roads_edge_length(roads_st, west) - 11.0)
+        if past > worst_past { worst_past = past }
+      }
+      if c.edge == south { turned = true }
+    }
+    expect(worst_past <= 0.0)                       # never past its line before it held the node
+    expect(worst_past > -3.5)                       # and it came up to it (its gap short)
+    expect(turned)
+  }
+
+  test "a car's place is continuous through turns, U-turns round a dead end's circle and a merge: no step over its speed" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    roads_config_conflict(roads_st, 3.0)
+    roads_config_turn_accel(roads_st, 2.5)
+    # one car round the dead end (g12 -> g22 -> dd and back), one up the slip road on to the highway and round its far end
+    let a = roads_spawn(roads_st, edge_of(roads_st, "g12_g22", false), 10.0, 0, RCK_CAR, edge_of(roads_st, "g12_g22", true), false)
+    let b = roads_spawn(roads_st, edge_of(roads_st, "hr_hm", false), 5.0, 0, RCK_CAR, edge_of(roads_st, "hm_he", true), false)
+    expect(a >= 0 and b >= 0)
+    var px: []float = [0.0, 0.0]
+    var pz: []float = [0.0, 0.0]
+    var pyaw: []float = [0.0, 0.0]
+    var have: []bool = [false, false]
+    var worst_step = 0.0
+    var worst_turn = 0.0
+    var uturned = false
+    var merged_lane = -1
+    for k in 0 .. 2400 {
+      tick(roads_st, js, 0.05)
+      let ids = [a, b]
+      for q in 0 .. 2 {
+        let slot = roads_car_slot(roads_st, ids[q])
+        if slot < 0 { continue }
+        let c = roads_car_at(roads_st, slot)
+        if have[q] {
+          let d = Math.sqrt((c.x - px[q]) * (c.x - px[q]) + (c.z - pz[q]) * (c.z - pz[q]))
+          let over = d - c.v * 0.05
+          if over > worst_step { worst_step = over }
+          var dy = c.yaw - pyaw[q]
+          while dy > 3.1415927 { dy -= 6.2831853 }
+          while dy < -3.1415927 { dy += 6.2831853 }
+          if Math.abs(dy) > worst_turn { worst_turn = Math.abs(dy) }
+        }
+        px[q] = c.x
+        pz[q] = c.z
+        pyaw[q] = c.yaw
+        have[q] = true
+        if q == 0 and c.edge == edge_of(roads_st, "g22_dd", true) { uturned = true }
+        if q == 1 and c.edge == edge_of(roads_st, "hm_he", false) and merged_lane < 0 { merged_lane = c.lane }
+      }
+    }
+    expect(uturned)
+    expect_eq(merged_lane, 1)                       # the slip road joins from the right: the kerb lane of two
+    expect(worst_step < 0.05)                       # metres more than its speed in a tick, anywhere
+    expect(worst_turn < 0.35)                       # radians a tick at the sharpest
+  }
+
+  test "with a conflict width two cars straight on from opposite sides cross together; a car turning across them waits" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    roads_config_conflict(roads_st, 3.0)
+    let n_in = edge_of(roads_st, "g10_g11", false)
+    let s_in = edge_of(roads_st, "g11_g12", true)
+    let n_out = edge_of(roads_st, "g10_g11", true)
+    let s_out = edge_of(roads_st, "g11_g12", false)
+    let w_in = edge_of(roads_st, "g01_g11", false)
+    let a = roads_spawn(roads_st, n_in, 100.0, 0, RCK_CAR, s_out, false)
+    let b = roads_spawn(roads_st, s_in, 100.0, 0, RCK_CAR, n_out, false)
+    let c = roads_spawn(roads_st, w_in, 100.0, 0, RCK_CAR, n_out, false)     # a left turn across both
+    expect(a >= 0 and b >= 0 and c >= 0)
+    let g11 = roads_node_find(roads_st, "g11")
+    var most = 0
+    var c_with_ab = 0
+    var a_ok = false
+    var b_ok = false
+    var c_ok = false
+    for k in 0 .. 600 {
+      tick(roads_st, js, 0.05)
+      if roads_car_edge(roads_st, a) == s_out { a_ok = true }
+      if roads_car_edge(roads_st, b) == n_out { b_ok = true }
+      if roads_car_edge(roads_st, c) == n_out { c_ok = true }
+      let h = roads_node_holders(roads_st, g11)
+      if h > most { most = h }
+      let sa = roads_car_slot(roads_st, a)
+      let sb = roads_car_slot(roads_st, b)
+      let sc = roads_car_slot(roads_st, c)
+      if sc >= 0 and roads_car_at(roads_st, sc).hold == g11 {
+        if sa >= 0 and roads_car_at(roads_st, sa).hold == g11 { c_with_ab += 1 }
+        if sb >= 0 and roads_car_at(roads_st, sb).hold == g11 { c_with_ab += 1 }
+      }
+    }
+    expect_eq(most, 2)
+    expect_eq(c_with_ab, 0)
+    expect(a_ok and b_ok and c_ok)
+  }
+
+  test "the lane taken: a right turn keeps the kerb lane, a left turn the middle one, a slip road merges into the kerb lane" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    let ramp = edge_of(roads_st, "hr_hm", false)
+    let east = edge_of(roads_st, "hm_he", false)
+    let west_in = edge_of(roads_st, "hw_hm", false)
+    expect_eq(roads_lane_onto(roads_st, ramp, 0, east), 1)          # from the right: the kerb lane
+    expect_eq(roads_lane_onto(roads_st, west_in, 0, east), 0)       # the same lanes straight on: the same lane
+    expect_eq(roads_lane_onto(roads_st, west_in, 1, east), 1)
+    # a two lane road turning on to a one lane road keeps lane 0 either way; a one lane road on to the two lane highway's
+    # far end from the left side would take the middle lane: the ramp seen the other way (a U-turn's lanes) is the same count
+    let back = edge_of(roads_st, "hm_he", true)
+    expect_eq(roads_lane_onto(roads_st, east, 1, back), 1)          # a U-turn keeps its lane counted from the middle
+  }
+
+  test "a junction is kept clear: no car is let in while the lane beyond has no room for it" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    let w_in = edge_of(roads_st, "g01_g11", false)
+    let e_out = edge_of(roads_st, "g11_g21", false)
+    # a car standing just past the clear line beyond the cross (nowhere to go: its route ends far on, and it is held by a stop)
+    let blocker = roads_spawn(roads_st, e_out, 11.0 + 4.5 + 1.0, 0, RCK_CAR, -1, false)
+    let car = roads_spawn(roads_st, w_in, 95.0, 0, RCK_CAR, e_out, false)
+    expect(blocker >= 0 and car >= 0)
+    # keep the blocker standing: it is despawned and remade at its place every tick (a car that does not move)
+    let g11 = roads_node_find(roads_st, "g11")
+    var let_in = 0
+    for k in 0 .. 200 {
+      let sb = roads_car_slot(roads_st, blocker)
+      if sb >= 0 {
+        let b = roads_car_at(roads_st, sb)
+        b.s = 11.0 + 4.5 + 1.0
+        b.v = 0.0
+      }
+      tick(roads_st, js, 0.05)
+      let sc = roads_car_slot(roads_st, car)
+      if sc >= 0 and roads_car_at(roads_st, sc).hold == g11 { let_in += 1 }
+    }
+    expect_eq(let_in, 0)
+    roads_despawn(roads_st, blocker)
+    var went = false
+    for k in 0 .. 300 {
+      tick(roads_st, js, 0.05)
+      if roads_car_edge(roads_st, car) == e_out { went = true }
+    }
+    expect(went)
+  }
+
+  test "a one way road's lane with its base set lies right of its line; a lane below 0 is the centre line" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    load_grid(roads_st, nodes, segs, turns)
+    let ramp = edge_of(roads_st, "hr_hm", false)
+    roads_pose(roads_st, ramp, 50.0, -1)
+    let cx = roads_pose_x(roads_st)
+    let cz = roads_pose_z(roads_st)
+    roads_pose(roads_st, ramp, 50.0, 0)
+    expect(Math.abs(roads_pose_x(roads_st) - cx) + Math.abs(roads_pose_z(roads_st) - cz) < 0.001)     # the old rule: centred
+    roads_edge_lane_base(roads_st, ramp, 0.0)
+    roads_pose(roads_st, ramp, 50.0, 0)
+    let dx = roads_pose_x(roads_st) - cx
+    let dz = roads_pose_z(roads_st) - cz
+    expect(Math.abs(Math.sqrt(dx * dx + dz * dz) - 2.0) < 0.001)                                        # half its 4 m lane
+    let hx = Math.sin(roads_pose_yaw(roads_st))
+    let hz = Math.cos(roads_pose_yaw(roads_st))
+    expect((-hz) * dx + hx * dz > 1.99)                                                                  # on its right
+    let hwy = edge_of(roads_st, "hw_hm", false)
+    roads_edge_lane_base(roads_st, hwy, 0.5)                                                             # a 1 m median
+    roads_pose(roads_st, hwy, 50.0, -1)
+    let mx = roads_pose_x(roads_st)
+    let mz = roads_pose_z(roads_st)
+    roads_pose(roads_st, hwy, 50.0, 1)
+    let ox = roads_pose_x(roads_st) - mx
+    let oz = roads_pose_z(roads_st) - mz
+    expect(Math.abs(Math.sqrt(ox * ox + oz * oz) - (0.5 + 1.5 * 3.75)) < 0.001)
+  }
+
+  test "ten minutes of traffic on the grid with junctions of a size: no two cars ever overlap, none stands a minute" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    roads_config_conflict(roads_st, 3.0)
+    roads_config_turn_accel(roads_st, 2.5)
+    roads_config_jam(roads_st, 0.0)
+    roads_traffic_target(roads_st, 40)
+    let qa: []float = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    let qb: []float = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    var overlaps = 0
+    var longest = 0.0
+    var turns_done = 0
+    var most_cars = 0
+    let slots = roads_car_slots(roads_st)
+    for k in 0 .. 12000 {
+      tick(roads_st, js, 0.05)
+      if roads_car_count(roads_st) > most_cars { most_cars = roads_car_count(roads_st) }
+      if k % 2 == 0 {
+        for i in 0 .. roads_car_slots(roads_st) {
+          let ci = roads_car_at(roads_st, i)
+          if not ci.alive { continue }
+          if ci.jam > longest { longest = ci.jam }
+          if ci.pin >= 0 { turns_done += 1 }
+          body(roads_st, i, qa)
+          for j in i + 1 .. roads_car_slots(roads_st) {
+            let cj = roads_car_at(roads_st, j)
+            if not cj.alive { continue }
+            if Math.abs(cj.x - ci.x) > 20.0 or Math.abs(cj.z - ci.z) > 20.0 { continue }
+            body(roads_st, j, qb)
+            if quads_overlap(qa, qb) { overlaps += 1 }
+          }
+        }
+      }
+    }
+    expect(most_cars >= 38)
+    expect(turns_done > 1000)
+    expect_eq(overlaps, 0)
+    expect(longest < 60.0)
+    expect(slots >= 0)
+  }
+}

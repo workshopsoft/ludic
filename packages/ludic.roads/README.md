@@ -193,7 +193,43 @@ three or more roads end, or any signal, admits one car at a time. The car at the
 rules allow (the signal's green, a stop done - standing a full second - and, for a yield, no higher road within
 30 m) and whose road has the higher priority, then whoever waited longest, then the lower id, takes the node
 and holds it until it is a car's length into the next road. A car first in line that is made ahead of the holder
-takes over the node. A car that stands 90 s is taken off (`ROADS_JAMMED`).
+takes over the node. A car that stands 90 s is taken off (`ROADS_JAMMED`; `roads_config_jam`).
+
+### Junctions with a size
+
+A node is a point in the plan, but its junction on the ground reaches metres along each road. By default a car goes from
+one road's lane to the next at the node, waits 1.5 m short of it and holds it until a metre past it, as above. A game that
+knows its junctions' sizes (the bake's setbacks) sets them per edge:
+
+- `roads_edge_setbacks(e, stop, mouth_end, mouth_start, clear)`: at the end of `e` its cars never pass the line `stop`
+  metres short of it before they are let in (they stand their `gap` short of it), and their **turn path** begins
+  `mouth_end` short of it; at its start the path ends `mouth_start` in, and a car that came through the node holds it until
+  its rear is `clear` in. A stop is never short of the mouth nor a clear inside it; a road too short for both ends is
+  shared between them. `roads_edge_stop/_mouth_end/_mouth_start/_clear(e)` read them back.
+- The turn path (`turn.ludic`) runs from the mouth of the lane a car leaves to the mouth of the lane it takes: one cubic
+  Bezier with its handles along the two lanes (a circle's handles for the angle turned, a third of the chord straight on).
+  A U-turn at a node with `roads_node_uturn(n, r)` loops round the node: out to the circle on the kerb side, half way round
+  it, back in to the other lane (each lane of a road of several a lane width inside the next); without it a hairpin
+  between the two lanes. The car's place along it (`roads_car_point(slot, back)`: any point `back` metres behind its front
+  along its way: lane, turn, the lane it came by) is continuous, and it moves along it at its own speed (the road metres of
+  the span go by at span / length of the path).
+- `roads_lane_onto(ei, lane, eo)`: the lane taken. The same number of lanes keeps the lane; otherwise a turn towards the
+  kerb keeps it counted from the kerb, away from it from the middle, and nearly straight on (under 30 degrees) it is counted
+  from the side the road it comes by joins from (a slip road on the right merges into the kerb lane).
+- `roads_edge_lane_base(e, base)`: lane 0's inner edge `base` metres right of the centre line (half a median; 0 for a one way
+  road painted on the right of its line). Unset: the old rule (a one way road centred). `roads_pose(e, s, -1)` is the centre line.
+- `roads_config_conflict(width)`: a junction lets in every car whose turn path stays `width` metres from the paths of the
+  cars in it (`roads_paths_meet`; two paths ending in one lane always meet; a car behind another in its lane follows it). 0,
+  the default, is one at a time. `roads_node_holders(n)` counts them. A dead end with a U-turn circle on a road of several
+  lanes a way is arbitrated too (its lanes' loops cross each other's lanes).
+- A car is not let in while the lane it would take has no room for its whole length and gap beyond the clear line (the cars
+  let in ahead of it bound for the same lane counted): a junction is kept clear. A car that has waited 25 s goes before any
+  priority.
+- `roads_config_turn_accel(a)`: a car slows for a turn path so that it stays under `a` m/s2 across its sharpest bend, braking
+  to it at half its kind's brake (at least 2 m/s). 0, the default, is no limit.
+- `roads_config_jam(seconds)`: when a standing car is taken off (default 90; 0 never: the game decides).
+- A wandering car that finds no place to go to takes a random road on from the node ahead (never a forbidden turn, a U-turn
+  only where the road ends) instead of arriving.
 
 Ports: `RoadsWorld { ground(x, z), active(x, z), spawn_ok(x, z), seed() }` and `RoadsBody { place(id, kind, x, y,
 z, yaw, speed), probe(id, x, z, yaw, look) -> distance or negative }`, all defaulted (flat, everywhere,
@@ -207,7 +243,9 @@ on load; ambient traffic is made again to the target.
 
 ## Tests
 
-`ludic test packages/ludic.roads`, on the maps under `tests/maps` (a crossroads with a fast bypass and a one way
+`ludic test packages/ludic.roads`, on the maps under `tests/maps` (`junctions_test.ludic` on `grid`: a 3 x 3 street grid,
+a dead end with a turning circle, a two lane highway with a slip road: lines, turn paths, U-turns, the lane taken,
+conflicts, a junction kept clear, lane bases, and ten minutes of 40 cars with no two bodies ever overlapping), and `roads_test.ludic` (a crossroads with a fast bypass and a one way
 road, a signalled crossing, a one way ring, a map with a turn that does not fit, and `curved`: handles, the same road
 with and without automatic handles, a plaza, a dead end, a roundabout ring, a zero-length road, and the starter
 profiles and furniture rules), `flyover` (a ground road under a deck, a ramp and a road with one height; its structures

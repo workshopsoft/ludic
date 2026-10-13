@@ -10,6 +10,8 @@ const RD_MAX_SEGS: int = 16384        # an edge number stays under RD_TURN_KEY (
 const RD_TURN_KEY: int = 32768        # a turn is in * RD_TURN_KEY + out
 const RD_GRID: float = 32.0           # metres a cell of the grid over the polylines is wide (roads_nearest looks cell by cell)
 const RD_CELL_MASK: int = 32767       # a cell's two numbers are cut to their low 15 bits each, then packed into one key
+const RD_CLEAR_OLD: float = 1.0       # metres into the next road a car's rear must be to let go of a node, by the old rule
+const RD_BASE_OLD: float = -1000.0    # an edge's lane base not set: the old rule
 
 function rd_clear_lists(roads_st: mut RoadsState) -> void {
   List.clear(roads_st.rd_nkey)
@@ -58,9 +60,12 @@ function rd_clear_lists(roads_st: mut RoadsState) -> void {
   List.clear(roads_st.rd_out)
   List.clear(roads_st.rd_in_start)
   List.clear(roads_st.rd_in)
-  List.clear(roads_st.rd_node_car)
-  List.clear(roads_st.rd_node_id)
-  List.clear(roads_st.rd_node_in)
+  List.clear(roads_st.rd_estop)
+  List.clear(roads_st.rd_emouth_end)
+  List.clear(roads_st.rd_emouth_start)
+  List.clear(roads_st.rd_eclear)
+  List.clear(roads_st.rd_ebase)
+  List.clear(roads_st.rd_nuturn)
   imap_clear(roads_st.rd_turns)
 }
 
@@ -292,6 +297,11 @@ function rd_edge_row(roads_st: mut RoadsState, seg: int, back: bool) -> void {
   kept_push(roads_st.rd_espeed, roads_st.rd_sspeed[seg])
   kept_push(roads_st.rd_eprio, roads_st.rd_sprio[seg])
   kept_push(roads_st.rd_ephase, roads_st.rd_sphase[seg])
+  kept_push(roads_st.rd_estop, -1.0)
+  kept_push(roads_st.rd_emouth_end, 0.0)
+  kept_push(roads_st.rd_emouth_start, 0.0)
+  kept_push(roads_st.rd_eclear, RD_CLEAR_OLD)
+  kept_push(roads_st.rd_ebase, RD_BASE_OLD)
 }
 
 # out[]: the edges leaving each node, and in[]: the edges entering it (compressed rows)
@@ -426,9 +436,7 @@ export function roads_build(roads_st: mut RoadsState, nodes: RoadNodes, segs: Ro
     kept_push(roads_st.rd_ncycle, n.cycle)
     kept_push(roads_st.rd_nphases, 1)
     kept_push(roads_st.rd_nroads, 0)
-    kept_push(roads_st.rd_node_car, -1)
-    kept_push(roads_st.rd_node_id, -1)
-    kept_push(roads_st.rd_node_in, -1)
+    kept_push(roads_st.rd_nuturn, 0.0)
   }
   var nsegs = len(segs.rows)
   if nsegs > RD_MAX_SEGS {
@@ -513,3 +521,56 @@ export function roads_clear(roads_st: mut RoadsState) -> void {
 
 # which side of the road the game drives on (the lanes are mirrored)
 export function roads_config_drive_left(roads_st: mut RoadsState, left: bool) -> void { roads_st.rd_drive_left = left }
+
+# Junctions with a size. A node in the plan is a point, but its junction on the ground reaches some metres along each road:
+# where a car's turn path begins and ends (the mouths), where it waits to be let in (its front `stop` metres short of the end,
+# so before a crossing at the mouth) and where its rear has left the node behind (`clear` metres into the road it turned onto).
+# Edge e's `stop` and `mouth_end` are at its end (its `to` node), `mouth_start` and `clear` at its start (its `from` node).
+# A stop is never short of the mouth, nor a clear inside it; the two ends of a short road are scaled down to fit it (each end
+# gets at most its share of the road, less a metre between). Before this is set a road keeps the old rule: no turn path (a
+# car goes from one road's lane to the next at the node), a wall 1.5 m short of the end, clear a metre in
+export function roads_edge_setbacks(roads_st: mut RoadsState, e: int, stop: float, mouth_end: float, mouth_start: float, clear: float) -> void {
+  if e < 0 or e >= len(roads_st.rd_efrom) { return }
+  let len_e = roads_st.rd_elen[e]
+  var me = Math.max(mouth_end, 0.0)
+  var st = Math.max(stop, me)
+  var ms = Math.max(mouth_start, 0.0)
+  var cl = Math.max(clear, ms)
+  let room = Math.max(len_e - 1.0, 0.0)
+  if st + cl > room and st + cl > 0.0 {
+    let k = room / (st + cl)
+    st = st * k
+    cl = cl * k
+    me = Math.min(me, st)
+    ms = Math.min(ms, cl)
+  }
+  roads_st.rd_estop[e] = st
+  roads_st.rd_emouth_end[e] = me
+  roads_st.rd_emouth_start[e] = ms
+  roads_st.rd_eclear[e] = cl
+}
+
+# where lane 0 of edge e begins: `base` metres right of the centre line (seen along e), each lane `lane_width` wide beyond it.
+# A road painted with a median has half of it here; a one way road painted on the right of its line has 0 (the old rule
+# centres a one way road on its line and starts a two way road's lanes at the line)
+export function roads_edge_lane_base(roads_st: mut RoadsState, e: int, base: float) -> void {
+  if e < 0 or e >= len(roads_st.rd_efrom) { return }
+  roads_st.rd_ebase[e] = base
+}
+
+# a U-turn at node n (a dead end) loops round the node at radius r: a turning circle's round, kept inside its kerb by the game.
+# 0 (and any radius not wider than the lanes) is a hairpin between the two lanes
+export function roads_node_uturn(roads_st: mut RoadsState, n: int, r: float) -> void {
+  if n < 0 or n >= len(roads_st.rd_nuturn) { return }
+  roads_st.rd_nuturn[n] = Math.max(r, 0.0)
+}
+
+# 0 (the default): a junction lets one car in at a time. More: it lets in every car whose turn path stays `width` metres from
+# the paths of the cars in it (two paths that end in the same lane always meet)
+export function roads_config_conflict(roads_st: mut RoadsState, width: float) -> void { roads_st.rd_conflict_w = Math.max(width, 0.0) }
+
+# a car slows for a turn path so that it keeps under `acc` m/s2 across it (0, the default: no limit)
+export function roads_config_turn_accel(roads_st: mut RoadsState, acc: float) -> void { roads_st.rd_turn_acc = Math.max(acc, 0.0) }
+
+# seconds a car may stand before it is taken off with ROADS_JAMMED (default 90; 0: never, the game decides)
+export function roads_config_jam(roads_st: mut RoadsState, seconds: float) -> void { roads_st.rd_jam_limit = Math.max(seconds, 0.0) }
