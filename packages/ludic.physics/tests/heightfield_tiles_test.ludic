@@ -1,0 +1,81 @@
+# heightfield_tiles_test.ludic - phys_heightfield_tiles: the ground cut the way ludic.render3d's terrain mesh cuts its cells (level 0 splits a
+# cell from (i + 1, j) to (i, j + 1)), where Jolt's own heightfield splits it from (i, j) to (i + 1, j + 1). Over a cell whose four samples are
+# not in one plane the two surfaces differ; a ray at the cell's middle finds each one's own. Holes stay holes, and the field lands where it is
+# asked to (origin, cell size) under every cut.
+import "ludic.physics"
+import "ludic.base"
+program HeightfieldTilesTest {
+  numbers float
+
+  const N: int = 9
+
+  # 9 x 9 samples a metre apart from (-4, -4): flat at 0 but for a peak of 1 m at sample (5, 5), and a ramp of 0.1 m a metre along x for i >= 6
+  function field() -> floats {
+    let h = floats(N * N)
+    for j in 0 .. N { for i in 0 .. N { h[j * N + i] = 0.0 } }
+    h[5 * N + 5] = 1.0
+    return h
+  }
+  function down(physics_st: mut PhysicsState, x: float, z: float) -> float {
+    let hit = new PhysHit
+    if not phys_ray(physics_st, x, 10.0, z, 0.0, -20.0, 0.0, PHYS_M_ALL, hit) { return -1000.0 }
+    return hit.y
+  }
+
+  test "over a twisted cell the two cuts differ, and the tiles' is the renderer's diagonal" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    let h = field()
+    let jolt = phys_heightfield(physics_st, h, N, -4.0, -4.0, 1.0)
+    let tiles = phys_heightfield_tiles(physics_st, h, N, -4.0, -4.0, 1.0)
+    expect(jolt >= 0 and tiles >= 0)
+    # the cell between samples (4, 4) and (5, 5): its middle is at (0.5, 0.5); only (5, 5) is raised
+    expect(phys_ground_add(physics_st, tiles) >= 0)
+    # the renderer's diagonal runs (5, 4) to (4, 5): both ends are 0, and so is the middle
+    expect_near(down(physics_st, 0.5, 0.5), 0.0, 0.002)
+    # a quarter of the way to the peak along the other diagonal the surface is on the raised triangle's plane: (u + v) = 1.5 of 2 -> 0.5 high
+    expect_near(down(physics_st, 0.75, 0.75), 0.5, 0.002)
+    expect_near(down(physics_st, 1.0, 1.0), 1.0, 0.002)
+    # the same ray on the heightfield Jolt cuts finds 0.5 at the middle of that cell: its diagonal runs from the 0 to the 1
+    phys_close(physics_st)
+    expect(phys_open(physics_st, 64, 1))
+    expect(phys_ground_add(physics_st, phys_heightfield(physics_st, field(), N, -4.0, -4.0, 1.0)) >= 0)
+    expect_near(down(physics_st, 0.5, 0.5), 0.5, 0.002)
+  }
+
+  test "the field lands where it is asked: every sample, whatever the origin and the cell" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    let h = floats(N * N)
+    for j in 0 .. N { for i in 0 .. N { h[j * N + i] = 0.1 * float(i) + 0.3 * float(j) } }
+    let id = phys_ground_add(physics_st, phys_heightfield_tiles(physics_st, h, N, 100.0, -50.0, 2.0))
+    expect(id >= 0)
+    # a plane has no twist: every sample, and the points between, are on it wherever the diagonal runs
+    for j in 0 .. N - 1 {
+      for i in 0 .. N - 1 {
+        expect_near(down(physics_st, 100.0 + float(i) * 2.0, -50.0 + float(j) * 2.0), h[j * N + i], 0.004)
+      }
+    }
+    expect_near(down(physics_st, 101.0, -49.0), 0.05 + 0.15, 0.004)
+  }
+
+  test "a hole is a hole, and the ground beside it is there" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    let h = field()
+    for j in 0 .. N { for i in 0 .. N { h[j * N + i] = 0.0 } }
+    h[2 * N + 2] = PHYS_HOLE
+    expect(phys_ground_add(physics_st, phys_heightfield_tiles(physics_st, h, N, 0.0, 0.0, 1.0)) >= 0)
+    expect(down(physics_st, 2.0, 2.0) < -500.0)
+    expect_near(down(physics_st, 6.5, 6.5), 0.0, 0.002)
+      }
+
+  test "a shape freed is freed: a ground that comes and goes holds no more shapes" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 64, 1))
+    let before = phys_shapes(physics_st)
+    for k in 0 .. 20 {
+      let s = phys_heightfield_tiles(physics_st, field(), N, 0.0, 0.0, 1.0)
+      let id = phys_ground_add(physics_st, s)
+      phys_remove(physics_st, id)
+      phys_shape_free(physics_st, s)
+    }
+    expect_eq(phys_shapes(physics_st), before)
+  }
+}
