@@ -18,6 +18,23 @@ JPH_SHIM int jph_body_add(void *w, void *shape, float x, float y, float z, float
   return int(id.GetIndexAndSequenceNumber());
 }
 
+// continuous collision detection: a dynamic body's motion quality, 0 discrete (a step is a jump) or 1 linear cast
+// (Jolt's EMotionQuality::LinearCast: the shape is swept over the step and stopped at what it would pass
+// through). A still or kinematic body has nothing to sweep and is refused. Returns the quality now set,
+// -1 when there is no such body or it is not dynamic.
+JPH_SHIM int jph_body_ccd(void *w, int id, int on) {
+  BodyInterface &bi = static_cast<World *>(w)->sys.GetBodyInterface();
+  if (!bi.IsAdded(bid(id)) || bi.GetMotionType(bid(id)) != EMotionType::Dynamic) return -1;
+  bi.SetMotionQuality(bid(id), on != 0 ? EMotionQuality::LinearCast : EMotionQuality::Discrete);
+  return bi.GetMotionQuality(bid(id)) == EMotionQuality::LinearCast ? 1 : 0;
+}
+// the quality a body has: 0 discrete, 1 linear cast, -1 when there is no such body or it is not dynamic
+JPH_SHIM int jph_body_ccd_of(void *w, int id) {
+  BodyInterface &bi = static_cast<World *>(w)->sys.GetBodyInterface();
+  if (!bi.IsAdded(bid(id)) || bi.GetMotionType(bid(id)) != EMotionType::Dynamic) return -1;
+  return bi.GetMotionQuality(bid(id)) == EMotionQuality::LinearCast ? 1 : 0;
+}
+
 JPH_SHIM void jph_body_remove(void *w, int id) {
   BodyInterface &bi = static_cast<World *>(w)->sys.GetBodyInterface();
   bi.RemoveBody(bid(id));
