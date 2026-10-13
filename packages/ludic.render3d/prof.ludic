@@ -14,7 +14,6 @@
 const PROF_SLOTS: int = 16
 const PROF_RING:  int = 4            # frames of latency before a result is read
 
-
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function prof_init(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_on = r3d_env_has(render3d_st, "R3D_PROF")
@@ -80,6 +79,17 @@ function prof_collect(render3d_st: mut Render3dState) -> void {
       render3d_st.prof_ns[s] = render3d_st.prof_ns[s] + render3d_st.prof_scratch[0]
       render3d_st.prof_hits[s] = render3d_st.prof_hits[s] + 1
     }
+    s += 1
+  }
+}
+
+# a fresh count: the means start again from the next frame (a lab holds one view, then the next)
+function prof_reset(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.prof_on { return }
+  var s = 0
+  while s < render3d_st.prof_n {
+    render3d_st.prof_ns[s] = 0
+    render3d_st.prof_hits[s] = 0
     s += 1
   }
 }

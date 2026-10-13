@@ -1,0 +1,26 @@
+ok   foam noon: the swash zone (water under 50 cm) is foam: texture 2.5 times the open water's  4.22 against 1.37
+ok   foam noon: lace lies between 50 cm and a metre  2.02 against 1.37
+ok   foam noon: no texture of foam where the water is a metre deep or more  1.36 against 1.37
+ok   foam noon: and no pale pixel there (water luminance 105)  0 of 2952 samples
+ok   foam dusk: the swash zone (water under 50 cm) is foam: texture 2.5 times the open water's  4.34 against 1.40
+ok   foam dusk: lace lies between 50 cm and a metre  2.02 against 1.40
+ok   foam dusk: no texture of foam where the water is a metre deep or more  1.39 against 1.40
+ok   foam dusk: and no pale pixel there (water luminance 100)  0 of 2952 samples
+ok   foam (the old plane): its shallows are not foam  1.23 against 1.35
+ok   dry: the platform in the sea draws what it does with no water (no water, no foam on it)  105 points, worst 10.0
+ok   dry: water right up to the tile border outside the platform (no strip of ground showing)  0 of 90 points
+ok   dry: no water over the border inside the platform's edge  0 of 90 points
+ok   dry: the dock 3 m under the sea's level draws what it does with no water  worst 2.0
+ok   dry: the land draws what it does with no water  worst 2.0
+ok   horizon horizon: the sea is darker than the sky just under the horizon line (row 540)  sky 192 sea 134
+ok   horizon horizon: no step in the rows below the horizon (no edge of the surface)  largest 4.1
+ok   horizon horizon: the sea just under the line has no seam across the frame  largest change over 8 pixels 4.2
+ok   horizon horizon_corner: the sea is darker than the sky just under the horizon line (row 515)  sky 192 sea 126
+ok   horizon horizon_corner: no step in the rows below the horizon (no edge of the surface)  largest 2.7
+ok   horizon horizon_corner: the sea just under the line has no seam across the frame  largest change over 8 pixels 3.8
+ok   flicker: the sea adds under 0.6/255 of change between two frames to the frame's own  2.081 against 1.897 with no water (the old plane 1.964)
+ok   flicker: and no more than the old still-water plane does  2.081 against 1.964
+ok   flicker: 99.9 % of pixels change by under 14/255  10.0
+ok   mouth: where the river meets the sea plane it draws as the river does  mean differs by 9.8
+ok   mouth: and as smoothly (no fight between the two surfaces)  std 1.9 against 2.3
+sea_check: 0 failed

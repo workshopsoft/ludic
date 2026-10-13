@@ -4487,7 +4487,9 @@ U 46e2325c frag u_clip_ellipse 1632 float 1 0
 U 46e2325c frag u_wet_on 1636 float 1 0
 U 46e2325c frag u_wet_grid 1648 vec4 1 0
 U 46e2325c frag u_wet_rows 1664 float 1 0
-U 46e2325c frag u_tp_on 1668 float 1 0
+U 46e2325c frag u_sea 1668 float 1 0
+U 46e2325c frag u_wash 1672 float 1 0
+U 46e2325c frag u_tp_on 1676 float 1 0
 U 46e2325c frag u_tp_dims 1680 vec4 1 0
 T 46e2325c u_brdf 2
 T 46e2325c u_depth 3
@@ -4566,7 +4568,9 @@ U 1ebf3a80 frag u_clip_ellipse 1632 float 1 0
 U 1ebf3a80 frag u_wet_on 1636 float 1 0
 U 1ebf3a80 frag u_wet_grid 1648 vec4 1 0
 U 1ebf3a80 frag u_wet_rows 1664 float 1 0
-U 1ebf3a80 frag u_tp_on 1668 float 1 0
+U 1ebf3a80 frag u_sea 1668 float 1 0
+U 1ebf3a80 frag u_wash 1672 float 1 0
+U 1ebf3a80 frag u_tp_on 1676 float 1 0
 U 1ebf3a80 frag u_tp_dims 1680 vec4 1 0
 T 1ebf3a80 u_brdf 2
 T 1ebf3a80 u_depth 3

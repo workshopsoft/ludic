@@ -1,0 +1,25 @@
+GPU time of the water pass (R3D_PROF=1, 1080p, Apple M4 Pro 16-core; lab/sea_lab.ludic scenes sea_prof and sea_prof_old; mean of 300 frames a view, microseconds)
+views: open_sea = camera 6 m up looking 35 deg down (the sea fills the frame), horizon = 5 m up looking level, coast = the beach_low bookmark
+'water capture' is the scene copy the pass reads (shared by both)
+
+sea style:
+prof: shot prof_open_sea
+  water capture               47 us   0%
+  water surface             1456 us   25%
+prof: shot prof_horizon
+  water capture               50 us   1%
+  water surface              888 us   20%
+prof: shot prof_coast
+  water capture               52 us   0%
+  water surface             1203 us   22%
+
+old still-water plane, same scene:
+prof: shot prof_open_sea
+  water capture               48 us   0%
+  water surface             4484 us   49%
+prof: shot prof_horizon
+  water capture               41 us   0%
+  water surface             2002 us   40%
+prof: shot prof_coast
+  water capture               44 us   0%
+  water surface             2217 us   36%

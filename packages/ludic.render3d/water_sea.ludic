@@ -1,0 +1,63 @@
+# ============================================================================
+# water_sea.ludic - the open sea: a still-water PLANE in sea style. The surface is flat and the light bent by long
+# swells (water.frag's seaNormal), so no shore, quay or hull ever meets a moving surface; the colour deepens with the
+# water under it; and where the water over the bed is under a metre deep a foam band lies along the shore (seaFoam),
+# drawn on the sea only: a lake or a river keeps its own thin wash (water_body_wash turns that off).
+#
+#   let sea = water_sea_add(render3d_st, 0.0, map_cx, map_cz, map_half_x, map_half_z)
+#   water_wet_use(render3d_st, wm)             # optional: a dry cut below the level is no sea
+#
+# The sea is its rectangle, and the rectangle reaches past the map by WATER_SEA_REACH (or the camera's far distance when
+# that is more), so from anywhere on the map the sea runs to the horizon and its edge is never in view. It draws on the
+# wet mask's wet texels only (a map with no mask: everywhere the ground lies below the level), has no planar
+# reflection (the sky is read from the prefiltered sky; a body asks for the mirror with `reflect`, one pass for the one
+# body), and costs one quad.
+# ============================================================================
+numbers float
+
+# how far the sea's rectangle reaches past the map's own bounds: 100 km, a camera 400 m up sees the horizon of a flat
+# sea 70 km off, and the edge of a rectangle 100 km past it is below the fog's last visible metre
+const WATER_SEA_REACH: float = 100000.0
+
+# half the side of the sea's square for a map of half extents (ex, ez)
+export function water_sea_half(render3d_st: Render3dState, ex: float, ez: float) -> float {
+  return Math.max(ex, ez) + Math.max(WATER_SEA_REACH, render3d_st.cam_far)
+}
+
+# Body i in sea style (on) or still-water style (off). Only a plane has one.
+export function water_body_sea(render3d_st: mut Render3dState, i: int, on: bool) -> void {
+  if i < 0 or i >= render3d_st.wb_n { return }
+  render3d_st.wb_sea[i] = 0
+  if on and render3d_st.wb_kind[i] == WATER_PLANE { render3d_st.wb_sea[i] = 1 }
+}
+
+# The thin lapping wash on a still body's edge (a lake, a river; the default): off for a body that has none. The sea
+# has its foam band instead and ignores this.
+export function water_body_wash(render3d_st: mut Render3dState, i: int, on: bool) -> void {
+  if i < 0 or i >= render3d_st.wb_n { return }
+  render3d_st.wb_wash[i] = 0
+  if on { render3d_st.wb_wash[i] = 1 }
+}
+
+# The sea at `level` over a map of half extents (ex, ez) centred at (cx, cz), drawn on the wet mask's wet texels, with no
+# reflection pass. Its index, or -1 once WATER_MAX bodies are in use.
+export function water_sea_add(render3d_st: mut Render3dState, level: float, cx: float, cz: float, ex: float, ez: float) -> int {
+  water_setup(render3d_st)
+  return water_sea_put(render3d_st, level, cx, cz, ex, ez)
+}
+# the same without the device (water_setup is the caller's)
+export function water_sea_put(render3d_st: mut Render3dState, level: float, cx: float, cz: float, ex: float, ez: float) -> int {
+  let h = water_sea_half(render3d_st, ex, ez)
+  let i = water_body_put(render3d_st, level, cx, cz, h, h, false)
+  if i < 0 { return -1 }
+  water_body_sea(render3d_st, i, true)
+  water_body_mask(render3d_st, i, true)
+  return i
+}
+
+# Does body i's surface lie over (x, z)? The sea's rectangle: a test that a camera anywhere on a map sees water out to
+# `reach` metres has four corners to ask.
+export function water_body_covers(render3d_st: Render3dState, i: int, x: float, z: float) -> bool {
+  if i < 0 or i >= render3d_st.wb_n or render3d_st.wb_kind[i] != WATER_PLANE { return false }
+  return Math.abs(x - render3d_st.wb_cx[i]) <= render3d_st.wb_ex[i] and Math.abs(z - render3d_st.wb_cz[i]) <= render3d_st.wb_ez[i]
+}

@@ -1,0 +1,105 @@
+# water_sea_test.ludic - the open sea (water_sea.ludic): a plane in sea style that reaches the horizon from anywhere on a
+# map, is drawn on the wet mask's wet texels, has no reflection pass, and leaves a lake's wash alone. The pictures (the
+# foam band by depth, nothing on dry texels, the horizon, no flicker, the river mouth) are lab/sea_lab.ludic +
+# lab/sea_check.py. No device.
+import "ludic.render3d/r3d.ludic"
+program WaterSeaTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function surface(r: float) -> Model {
+    let m = new Model
+    m.prims = new []Prim
+    m.radius = r
+    return m
+  }
+
+  test "no planar reflection in the default setting: the sea is not the mirrored body and no pass is asked for" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    let sea = water_sea_put(render3d_st, 0.0, 0.0, 0.0, 5120.0, 4096.0)
+    expect_eq(sea, 0)
+    expect_eq(render3d_st.wb_reflect[sea], 0)
+    expect_eq(render3d_st.wb_primary, -1)
+    expect(not water_reflect_visible(render3d_st))
+    expect_eq(render3d_st.wb_sea[sea], 1)
+    expect_eq(render3d_st.wb_kind[sea], WATER_PLANE)
+    # drawn only on wet texels: with a mask in use that is the mask's, with none the plane's own depth test
+    expect_eq(render3d_st.wb_masked[sea], 1)
+    # a lake beside it: a mesh, never sea style, and the mirror stays with whoever asks for it
+    let lake = water_mesh_put(render3d_st, surface(50.0), 100.0, 1.0, 100.0)
+    water_body_sea(render3d_st, lake, true)
+    expect_eq(render3d_st.wb_sea[lake], 0)
+    expect_eq(render3d_st.wb_wash[lake], 1)
+    water_body_wash(render3d_st, lake, false)
+    expect_eq(render3d_st.wb_wash[lake], 0)
+    water_body_wash(render3d_st, lake, true)
+    expect_eq(render3d_st.wb_wash[lake], 1)
+    water_planes_clear(render3d_st)
+  }
+
+  test "the sea covers the map and runs to the far distance on every side from anywhere on it" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    let sea = water_sea_put(render3d_st, 0.0, 0.0, 0.0, 5120.0, 4096.0)
+    # the map's own corners, and every corner pushed out by the camera's far distance: a camera on the map's edge sees as
+    # far as that in any direction, and the sea is under all of it
+    for sx in 0 .. 2 {
+      for sz in 0 .. 2 {
+        let cx = (float(sx) * 2.0 - 1.0) * 5120.0
+        let cz = (float(sz) * 2.0 - 1.0) * 4096.0
+        expect(water_body_covers(render3d_st, sea, cx, cz))
+        expect(water_body_covers(render3d_st, sea, cx + (float(sx) * 2.0 - 1.0) * 14000.0, cz + (float(sz) * 2.0 - 1.0) * 14000.0))
+        expect(water_body_covers(render3d_st, sea, cx + (float(sx) * 2.0 - 1.0) * 14000.0, cz))
+        expect(water_body_covers(render3d_st, sea, cx, cz + (float(sz) * 2.0 - 1.0) * 14000.0))
+      }
+    }
+    # past the far distance too, out to the horizon of a flat sea seen from a tall building (a camera 400 m up, 70 km)
+    expect(water_body_covers(render3d_st, sea, 5120.0 + 70000.0, 0.0))
+    expect(water_body_covers(render3d_st, sea, -5120.0 - 70000.0, 4096.0 + 70000.0))
+    # and the rectangle is not endless: nothing is claimed far outside it
+    expect(not water_body_covers(render3d_st, sea, 5120.0 + 2.0 * WATER_SEA_REACH, 0.0))
+    # a farther far distance widens it
+    water_planes_clear(render3d_st)
+    render3d_st.cam_far = 300000.0
+    let wide = water_sea_put(render3d_st, 0.0, 0.0, 0.0, 5120.0, 4096.0)
+    expect(water_body_covers(render3d_st, wide, 5120.0 + 299999.0, 0.0))
+    # a mesh body covers nothing by rectangle
+    let lake = water_mesh_put(render3d_st, surface(50.0), 0.0, 0.0, 0.0)
+    expect(not water_body_covers(render3d_st, lake, 0.0, 0.0))
+    water_planes_clear(render3d_st)
+    render3d_st.cam_far = 14000.0
+  }
+
+  test "the sea follows the floating origin and keeps its level" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    let sea = water_sea_put(render3d_st, 0.0, 10.0, 20.0, 100.0, 100.0)
+    water_rebase(render3d_st, 4000.0, 0.0, -2000.0)
+    expect_near(render3d_st.wb_cx[sea], -3990.0, 0.0001)
+    expect_near(render3d_st.wb_cz[sea], 2020.0, 0.0001)
+    expect_near(render3d_st.wb_level[sea], 0.0, 0.0001)
+    expect(water_body_covers(render3d_st, sea, 0.0, 0.0))
+    expect_eq(render3d_st.wb_sea[sea], 1)
+    water_planes_clear(render3d_st)
+  }
+
+  test "the sea is one of sixteen bodies, and a seventeenth is refused" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    var n = 0
+    for i in 0 .. 16 { if water_sea_put(render3d_st, float(i), 0.0, 0.0, 10.0, 10.0) >= 0 { n += 1 } }
+    expect_eq(n, 16)
+    expect_eq(water_sea_put(render3d_st, 0.0, 0.0, 0.0, 10.0, 10.0), -1)
+    expect_eq(water_body_count(render3d_st), 16)
+    water_planes_clear(render3d_st)
+    expect_eq(water_body_count(render3d_st), 0)
+  }
+
+  test "a body added after a sea starts as still water with its wash on" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    water_sea_put(render3d_st, 0.0, 0.0, 0.0, 10.0, 10.0)
+    water_planes_clear(render3d_st)
+    let plain = water_body_put(render3d_st, 3.0, 0.0, 0.0, 50.0, 50.0, false)
+    expect_eq(render3d_st.wb_sea[plain], 0)
+    expect_eq(render3d_st.wb_wash[plain], 1)
+    expect_eq(render3d_st.wb_masked[plain], 0)
+    water_planes_clear(render3d_st)
+  }
+}

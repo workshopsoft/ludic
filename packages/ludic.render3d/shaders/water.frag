@@ -22,15 +22,28 @@ uniform sampler2D u_wet_page;
 uniform sampler2DArray u_wet_tiles;
 uniform vec4 u_wet_grid;          // tile (0, 0)'s corner in render space x, z; metres a tile; tiles a side (cols)
 uniform float u_wet_rows;
-float wetAt(vec2 xz) {
-  vec2 t = (xz - u_wet_grid.xy) / u_wet_grid.z;
-  if (t.x < 0.0 || t.y < 0.0 || t.x >= u_wet_grid.w || t.y >= u_wet_rows) return 1.0;
-  ivec2 ti = ivec2(floor(t));
+uniform float u_sea;              // 1: the open sea (swell, deep colour, the shore foam band); 0: still water as before
+uniform float u_wash;             // 1: the thin lapping wash on a still body's edge (the sea has its foam band instead)
+// One texel of the mask by its global index, read across tile borders: a tile of the page says what the tile is, an
+// array layer holds a mixed tile's texels. Off the map and a tile with no file read wet.
+float wetTexel(ivec2 g, int res) {
+  ivec2 ti = ivec2(floor(vec2(g) / float(res)));
+  if (ti.x < 0 || ti.y < 0 || ti.x >= int(u_wet_grid.w) || ti.y >= int(u_wet_rows)) return 1.0;
   float v = floor(texelFetch(u_wet_page, ti, 0).r * 255.0 + 0.5);
   if (v < 0.5) return 1.0;
   if (v < 1.5) return 0.0;
   if (v < 2.5) return 1.0;
-  return texture(u_wet_tiles, vec3(fract(t), v - 3.0)).r;
+  return texelFetch(u_wet_tiles, ivec3(g - ti * res, int(v) - 3), 0).r;
+}
+// Bilinear between texel centres, each neighbour found through the page on its own: a border between two tiles is not
+// a seam (a layer's own sampler clamps at its edge, which put a half-texel step of the mask on every tile border).
+float wetAt(vec2 xz) {
+  int res = textureSize(u_wet_tiles, 0).x;
+  vec2 g = (xz - u_wet_grid.xy) / u_wet_grid.z * float(res) - 0.5;
+  ivec2 g0 = ivec2(floor(g));
+  vec2 f = g - vec2(g0);
+  return mix(mix(wetTexel(g0, res), wetTexel(g0 + ivec2(1, 0), res), f.x),
+             mix(wetTexel(g0 + ivec2(0, 1), res), wetTexel(g0 + ivec2(1, 1), res), f.x), f.y);
 }
 // The ground under a pixel, as the terrain draws it (the shore's terms belong to the bed, and the
 // scene depth can be a fish or a pair of legs standing on it). terpage.glsl, pasted (the reference
@@ -117,6 +130,69 @@ vec3 rippleNormal(vec2 p, float t) {
   // whole or shivered into pieces
   return normalize(vec3(-(hx - h) * 0.15 / e, 1.0, -(hz - h) * 0.15 / e));
 }
+// ---- the open sea ---------------------------------------------------------------------------------------
+// A calm sea is the surface flat and the light bent by long swells. The swells are plane waves, so a slope is exact (no
+// differences of a height), and each one fades out as its wavelength comes within a few pixels: a wave the screen cannot
+// resolve averages to flat instead of crawling as glitter. Nothing is displaced, so no shore, quay or hull ever meets a
+// moving surface.
+void swell(vec2 p, float t, float lam, vec2 d, float steep, float seed, float pixG, inout vec2 s) {
+  float vis = smoothstep(2.0, 8.0, lam / pixG);
+  if (vis <= 0.0) return;
+  float k = 6.2831853 / lam;
+  float w = 0.8 * sqrt(9.81 * k);                       // deep-water speed, a little slower: a calm day
+  float u = dot(d, p);                                  // along the swell's travel
+  float c = dot(vec2(-d.y, d.x), p);                    // along its crest
+  // crests are not ruled lines: the phase wanders along the crest, and each swell comes and goes across the bay
+  if (lam < 2.0) { s += d * (steep * vis * cos(k * u - w * t)); return; }      // the short ones are too small to wander
+  float q = 1.0 / (lam * 3.0);
+  float wob = 0.14 * lam * (sin(c * q + seed) + 0.6 * sin(c * q * 2.37 + 1.7 * seed + u * q * 0.5));
+  float amp = 0.75 + 0.5 * sin(c * q * 0.35 + 2.1 * seed) * sin(u * q * 0.22 + seed);
+  s += d * (steep * amp * vis * cos(k * (u + wob) - w * t));
+}
+// pixG: metres of the surface one pixel spans along the view
+vec3 seaNormal(vec2 p, float t, float pixG) {
+  vec2 s = vec2(0.0);
+  swell(p, t, 71.0, vec2(0.9394, 0.3429), 0.020, 1.0, pixG, s);
+  swell(p, t, 29.0, vec2(0.4976, 0.8674), 0.026, 2.0, pixG, s);
+  swell(p, t, 11.5, vec2(0.8776, -0.4794), 0.030, 3.0, pixG, s);
+  swell(p, t, 4.3, vec2(-0.5885, 0.8085), 0.030, 4.0, pixG, s);
+  swell(p, t, 1.7, vec2(0.6967, 0.7174), 0.025, 5.0, pixG, s);
+  swell(p, t, 0.75, vec2(-0.9365, -0.3508), 0.020, 6.0, pixG, s);
+  swell(p, t, 0.32, vec2(-0.3233, -0.9463), 0.012, 7.0, pixG, s);
+  return normalize(vec3(-s.x, 1.0, -s.y));
+}
+// The point of the plane under this pixel from its view ray. The interpolated position across a quad a hundred
+// kilometres wide carries a few millimetres of error: nothing a wave would show, but the ray is exact at any size.
+vec3 seaPos(float level) {
+  vec2 q = gl_FragCoord.xy / u_screen * 2.0 - 1.0;
+  vec4 nr = u_inv_vp * vec4(q, 1.0, 1.0);
+  vec3 dir = normalize(nr.xyz / nr.w - u_cam_pos);
+  if (abs(dir.y) < 1e-4) return v_wpos;
+  float s = (level - u_cam_pos.y) / dir.y;
+  if (s <= 0.0) return v_wpos;
+  return u_cam_pos + dir * s;
+}
+// The shore foam: a band where the water over the bed is under a metre deep, white where the swash has just been, lace
+// beyond it to the band's edge, nothing at or past a metre. `d` is the water's depth under the pixel; `rayLen` the
+// distance along the view to the bed (zero where the surface meets the ground). The pattern fades to its mean once a
+// pixel spans more than it can show.
+float seaFoam(float d, float fwD, float rayLen, vec2 p, float t, float pixG) {
+  float band = 1.0 - smoothstep(0.55, 1.0, d);
+  if (band <= 0.0) return 0.0;
+  // the swash runs up the shore and back, out of step along the coast
+  float run = 0.5 + 0.5 * sin(t * 0.5 + 5.0 * gnoise(p * 0.02));
+  float front = mix(0.04, 0.16, run);
+  float solid = 1.0 - smoothstep(0.4 * front, front, d);
+  float b = fbm(p * 1.6 + vec2(t * 0.07, 0.0), 3) * 0.5 + 0.5;
+  float lines = 0.5 + 0.5 * sin(d * 8.0 - t * 0.8 - 3.0 * b);
+  float lace = smoothstep(0.55, 0.95, lines) * smoothstep(0.30, 0.68, b);
+  float fine = (1.0 - smoothstep(0.12, 0.5, pixG)) * (1.0 - smoothstep(0.7, 1.6, 8.0 * fwD));
+  lace = mix(0.22, lace, fine);
+  float foam = max(solid, 0.9 * lace * smoothstep(0.5 * front, front + 0.08, d)) * band;
+  // the line where the plane meets the ground is two surfaces a few millimetres apart (a few centimetres of the view ray):
+  // no foam on it, so it cannot flicker between white and the bank
+  return foam * smoothstep(0.0, 0.03, rayLen);
+}
 void main() {
   // A lake is an ellipse - the carved bed, the grass and a game's own water test all use
   // one - but its plane is the rectangle around it, and the corners between the two hold
@@ -125,11 +201,30 @@ void main() {
     vec2 q = (v_wpos.xz - u_center) / max(u_extent, vec2(0.001));
     if (dot(q, q) > 1.0) discard;
   }
-  if (u_wet_on > 0.5 && wetAt(v_wpos.xz) < 0.5) discard;
-  vec3 v = normalize(u_cam_pos - v_wpos);
-  float dist = length(u_cam_pos - v_wpos);
-  vec3 n = rippleNormal(v_wpos.xz, u_time);
-  n = normalize(mix(n, vec3(0, 1, 0), smoothstep(60.0, 400.0, dist)));   // flat sooner: past a few tens of metres a still lake has no texture at all
+  bool sea = u_sea > 0.5;
+  vec3 wp = sea ? seaPos(v_wpos.y) : v_wpos;
+  vec3 v = normalize(u_cam_pos - wp);
+  float dist = length(u_cam_pos - wp);
+  // metres of the surface a pixel spans along the view (a swell shorter than a few of them is not drawn)
+  float pixG = min(dist / (0.5 * u_screen.y * u_proj[1][1]) / max(abs(v.y), 0.04), 400.0);
+  // how deep the ground is under this pixel: from the scene depth
+  vec2 suv = gl_FragCoord.xy / u_screen;
+  float sd = texture(u_depth, suv).r;
+  vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, depthClip(sd), 1.0);
+  vec3 ground = gp.xyz / gp.w;
+  float depthBelow = clamp(wp.y - ground.y, 0.0, 10.0);
+  float fwD = fwidth(depthBelow);                 // before any discard: a pixel's neighbours are all still running
+  float alongRay = length(ground - wp);
+  if (u_wet_on > 0.5 && wetAt(wp.xz) < 0.5) discard;
+  vec3 n;
+  if (sea) {
+    n = seaNormal(wp.xz, u_time, pixG);
+    // seen along the surface a swell is foreshortened to a line, and a line is flicker: flat toward the horizon
+    n = normalize(mix(n, vec3(0.0, 1.0, 0.0), smoothstep(0.10, 0.015, v.y)));
+  } else {
+    n = rippleNormal(wp.xz, u_time);
+    n = normalize(mix(n, vec3(0, 1, 0), smoothstep(60.0, 400.0, dist)));   // flat sooner: past a few tens of metres a still lake has no texture at all
+  }
   // ---- A BODY IN THE WATER ------------------------------------------------------------
   // You waded into a mountain lake and the surface did not notice. Rings spreading from the
   // legs and a patch of churn around them is the whole of it, and it is the difference
@@ -139,22 +234,15 @@ void main() {
   // sheltered lake really is glass at forty metres, but what you yourself are doing to the
   // water is by definition within arm's reach, and it must not be flattened away.
   if (u_wade.z > 0.0) {
-    float rd = length(v_wpos.xz - u_wade.xy);
+    float rd = length(wp.xz - u_wade.xy);
     // rings travelling outward, dying off within a few metres
     float ring = sin(rd * 6.5 - u_time * 8.0) * exp(-rd * 0.5);
     // and the disturbed patch right at the body, which is not a ring but a mess
     float churn = exp(-rd * 1.8) * (sin(u_time * 13.0 + rd * 9.0) * 0.5 + 0.5);
-    vec2 away = (rd > 1e-3) ? (v_wpos.xz - u_wade.xy) / rd : vec2(1.0, 0.0);
+    vec2 away = (rd > 1e-3) ? (wp.xz - u_wade.xy) / rd : vec2(1.0, 0.0);
     float amp = u_wade.z * (ring * 0.9 + churn * 0.7);
     n = normalize(n + vec3(away.x * amp, 0.0, away.y * amp) * 0.55);
   }
-  // how deep the ground is under this pixel: from the scene depth
-  vec2 suv = gl_FragCoord.xy / u_screen;
-  float sd = texture(u_depth, suv).r;
-  vec4 gp = u_inv_vp * vec4(suv * 2.0 - 1.0, depthClip(sd), 1.0);
-  vec3 ground = gp.xyz / gp.w;
-  float depthBelow = clamp(v_wpos.y - ground.y, 0.0, 10.0);
-  float alongRay = length(ground - v_wpos);
   // What the depth found may not be the bed: a fish, or the legs of someone wading, stands
   // clear of the ground it is over. The light to it still crosses depthBelow of water, but
   // the shore's terms - the wash, the lap and the soft edge, which exist to hide where the
@@ -162,17 +250,18 @@ void main() {
   // laid the shoreline's foam over every fish within 35 cm of the top and the wader's hips,
   // and faded the surface away over a shallow fish, which then lay on the water unreflected.
   // Past half a metre of water to what was hit, neither term reaches it, so nothing is read.
+  // (The sea has no fish, and reads depth as it is: the bed is the scene's.)
   float body = 0.0;
   float standing = 0.0;      // the same test at any depth the water lets anything through: the veil below
   float shoreBelow = depthBelow;
   float shoreRay = alongRay;
-  if (dist < 250.0 && depthBelow < 3.0 && ground.y < v_wpos.y) {
+  if (!sea && dist < 250.0 && depthBelow < 3.0 && ground.y < wp.y) {
     float lift = ground.y - terHeightSmooth(terUV(ground.xz));
     standing = smoothstep(0.15, 0.35, lift) * smoothstep(250.0, 200.0, dist);
   }
   if (depthBelow < 0.5 && standing > 0.0) {
     body = standing;
-    float bedBelow = clamp(v_wpos.y - terHeightSmooth(terUV(v_wpos.xz)), 0.0, 10.0);
+    float bedBelow = clamp(wp.y - terHeightSmooth(terUV(wp.xz)), 0.0, 10.0);
     shoreBelow = mix(depthBelow, bedBelow, body);
     shoreRay = mix(alongRay, max(alongRay, bedBelow), body);
   }
@@ -185,7 +274,7 @@ void main() {
 
   vec3 r = reflect(-v, n);
   r.y = abs(r.y);
-  vec3 refl = skyPrefiltered(r, 0.12);
+  vec3 refl = skyPrefiltered(r, sea ? 0.06 : 0.12);
   if (u_refl_on > 0.5) {
     // the mirrored render lines up with the screen; the ripples nudge and soften the lookup.
     // The nudge is halved with the ripples that drive it - at the old strength a calm
@@ -202,29 +291,36 @@ void main() {
   const float REFL_DIM = 0.72;
   refl *= REFL_DIM;
   // wind-blown foam streaks and shoreline wash
-  float foam = smoothstep(0.62, 0.9, gnoise(vec2(v_wpos.x * 0.25 + u_time * 0.24, v_wpos.z * 1.5) ) * 0.5 + 0.5) * 0.014 * smoothstep(200.0, 30.0, dist);
-  // Wash: the shallows lapping the shore. Built from fbm rather than one gnoise octave —
-  // a single octave is a blobby lattice that magnifies into visible squares when you
-  // stand next to it, which is what made the wash read as cartoon cut-outs. Several
-  // octaves plus a fine breakup term give it structure at every range it is seen from.
-  float lap = 0.5 + 0.5 * sin(shoreBelow * 9.0 - u_time * 1.6 + 2.0 * gnoise(v_wpos.xz * 0.8 + u_time * 0.2));
-  float fdet = fbm(v_wpos.xz * 7.0 - u_time * 0.35, 3) * 0.5 + 0.5;      // fine bubbles
-  float fmid = fbm(v_wpos.xz * 2.6 + u_time * 0.5, 3) * 0.5 + 0.5;
-  float fedge = fbm(v_wpos.xz * 1.4 - u_time * 0.3, 2) * 0.5 + 0.5;
-  // a still alpine lake has a wet line, not surf: the wash is thin (the last 0.35 m of
-  // depth) and faint, and the terrain runs the same fields at the same strength
-  foam += smoothstep(0.35, 0.0, shoreBelow) * (0.12 * smoothstep(0.30, 0.72, fmid) + 0.10 * smoothstep(0.55, 0.95, lap) * smoothstep(0.22, 0.6, fedge)) * (0.55 + 0.75 * fdet);
-  // the lap is a near-field detail: from a distance a lake's edge is a line, not a surf
-  foam *= smoothstep(120.0, 15.0, dist);
-  // the wash dies where the surface meets the ground, so it cannot end on a hard line
-  foam *= smoothstep(0.0, 0.5, shoreRay);
+  float foam = 0.0;
+  if (!sea) {
+    foam = u_wash * smoothstep(0.62, 0.9, gnoise(vec2(wp.x * 0.25 + u_time * 0.24, wp.z * 1.5) ) * 0.5 + 0.5) * 0.014 * smoothstep(200.0, 30.0, dist);
+    // Wash: the shallows lapping the shore. Built from fbm rather than one gnoise octave —
+    // a single octave is a blobby lattice that magnifies into visible squares when you
+    // stand next to it, which is what made the wash read as cartoon cut-outs. Several
+    // octaves plus a fine breakup term give it structure at every range it is seen from.
+    float lap = 0.5 + 0.5 * sin(shoreBelow * 9.0 - u_time * 1.6 + 2.0 * gnoise(wp.xz * 0.8 + u_time * 0.2));
+    float fdet = fbm(wp.xz * 7.0 - u_time * 0.35, 3) * 0.5 + 0.5;      // fine bubbles
+    float fmid = fbm(wp.xz * 2.6 + u_time * 0.5, 3) * 0.5 + 0.5;
+    float fedge = fbm(wp.xz * 1.4 - u_time * 0.3, 2) * 0.5 + 0.5;
+    // a still alpine lake has a wet line, not surf: the wash is thin (the last 0.35 m of
+    // depth) and faint, and the terrain runs the same fields at the same strength
+    foam += u_wash * smoothstep(0.35, 0.0, shoreBelow) * (0.12 * smoothstep(0.30, 0.72, fmid) + 0.10 * smoothstep(0.55, 0.95, lap) * smoothstep(0.22, 0.6, fedge)) * (0.55 + 0.75 * fdet);
+    // the lap is a near-field detail: from a distance a lake's edge is a line, not a surf
+    foam *= smoothstep(120.0, 15.0, dist);
+    // the wash dies where the surface meets the ground, so it cannot end on a hard line
+    foam *= smoothstep(0.0, 0.5, shoreRay);
+  }
   float NoV = max(dot(n, v), 0.0);
   float F = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
   vec3 hv = normalize(v + u_sun_dir);
   float NoH = max(dot(n, hv), 0.0);
-  float glitter = D_GGX(NoH, 0.06) * 0.17;   // a narrower sun track: glitter is spread by ripples, and there are fewer
-  float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;
-  float shadow = sunShadow(v_wpos, vec3(0, 1, 0), viewDepth) * cloudShadow(v_wpos);
+  float glitter = D_GGX(NoH, sea ? 0.07 : 0.06) * (sea ? 0.2 : 0.17);   // a narrower sun track: glitter is spread by ripples, and there are fewer
+  float viewDepth = -(u_view * vec4(wp, 1.0)).z;
+  float shadow = 1.0;
+  // the sea's own shadows (a hull, a quay) matter in the near field only, and under glitter and foam one tap is enough:
+  // the lake takes the full filter, the sea one tap out to 250 m and none past it
+  if (!sea) { shadow = sunShadow(wp, vec3(0, 1, 0), viewDepth); } else if (dist < 250.0) { shadow = sunShadowCheap(wp, vec3(0, 1, 0), viewDepth); }
+  shadow *= cloudShadow(wp);
   // ---- what is under the surface -------------------------------------------------
   // The bed is sampled from the scene as it was drawn before the water, nudged by the
   // ripple normal (refraction), then attenuated per channel over the path the light
@@ -232,28 +328,38 @@ void main() {
   // then green, so shallows stay bright and readable and depth turns blue-green and
   // dark on its own. This is what makes it a body of water rather than a tinted sheet:
   // the ground is seen through it, not behind it.
-  vec2 ruv2 = clamp(suv + n.xz * 0.03 * smoothstep(0.0, 2.0, depthBelow), 0.001, 0.999);
-  // never refract something that is actually in front of the surface (the near bank),
-  // or the grass on the shore smears out over the water
-  float rd = texture(u_depth, ruv2).r;
-  vec4 rgp = u_inv_vp * vec4(ruv2 * 2.0 - 1.0, depthClip(rd), 1.0);
-  vec3 rground = rgp.xyz / rgp.w;
-  if (rground.y > v_wpos.y) { ruv2 = suv; }
-  vec3 bed = sane(texture(u_scene, ruv2).rgb);
-  float pathLen = depthBelow * (1.0 + 1.0 / max(NoV, 0.25));
-  // Per metre: red first, then green — a cold blue-teal depth. Pulled down by a third, so
-  // the light reaches about half as far again into the water as it did: at the old rates a
-  // metre and a half of a clear mountain lake was already opaque, which is a pond, and the
-  // gravel of the shelf went out before the bank did.
-  vec3 absorb = vec3(0.34, 0.15, 0.09);
-  vec3 trans = exp(-absorb * pathLen);
-  // the ripples' spread, SPREAD metres a metre of depth, in pixels at this distance; only where
-  // any of the bed still comes through (past that the read would soften what is not seen)
-  const float SPREAD = 0.04;
-  float vd = -(u_view * vec4(v_wpos, 1.0)).z;
-  float spreadPx = min(SPREAD * depthBelow * 0.5 * u_screen.y * u_proj[1][1] / max(vd, 0.5), 3.0);
-  if (spreadPx > 0.75 && trans.b > 0.03) { bed = underBlur(ruv2, bed, spreadPx, v_wpos.y); }
-  vec3 tint = vec3(0.030, 0.085, 0.105) * skyIrradiance(vec3(0, 1, 0)) * 1.15;   // Maroon Lake: deep, dark blue-green, not turquoise
+  // Deep sea shows no bed: the light never comes back, so none of the bed's reads is made (and over the map's edge, where
+  // there is no ground at all, the sea is the same colour as over a bed ten metres down)
+  bool deep = sea && depthBelow > 9.0;
+  vec2 ruv2 = suv;
+  vec3 bed = vec3(0.0);
+  vec3 trans = vec3(0.0);
+  float pathLen = 0.0;
+  if (!deep) {
+    ruv2 = clamp(suv + n.xz * 0.03 * smoothstep(0.0, 2.0, depthBelow), 0.001, 0.999);
+    // never refract something that is actually in front of the surface (the near bank),
+    // or the grass on the shore smears out over the water
+    float rd = textureLod(u_depth, ruv2, 0.0).r;
+    vec4 rgp = u_inv_vp * vec4(ruv2 * 2.0 - 1.0, depthClip(rd), 1.0);
+    vec3 rground = rgp.xyz / rgp.w;
+    if (rground.y > wp.y) { ruv2 = suv; }
+    bed = sane(sea ? textureLod(u_scene, ruv2, 0.0).rgb : texture(u_scene, ruv2).rgb);
+    pathLen = depthBelow * (1.0 + 1.0 / max(NoV, 0.25));
+    // Per metre: red first, then green — a cold blue-teal depth. Pulled down by a third, so
+    // the light reaches about half as far again into the water as it did: at the old rates a
+    // metre and a half of a clear mountain lake was already opaque, which is a pond, and the
+    // gravel of the shelf went out before the bank did.
+    vec3 absorb = sea ? vec3(0.40, 0.12, 0.06) : vec3(0.34, 0.15, 0.09);
+    trans = exp(-absorb * pathLen);
+    if (sea) trans *= 1.0 - smoothstep(4.0, 9.0, depthBelow);          // by nine metres the sea is its own colour
+    // the ripples' spread, SPREAD metres a metre of depth, in pixels at this distance; only where
+    // any of the bed still comes through (past that the read would soften what is not seen)
+    const float SPREAD = 0.04;
+    float vd = -(u_view * vec4(wp, 1.0)).z;
+    float spreadPx = min(SPREAD * depthBelow * 0.5 * u_screen.y * u_proj[1][1] / max(vd, 0.5), 3.0);
+    if (spreadPx > 0.75 && trans.b > 0.03) { bed = underBlur(ruv2, bed, spreadPx, wp.y); }
+  }
+  vec3 tint = (sea ? vec3(0.018, 0.075, 0.115) : vec3(0.030, 0.085, 0.105)) * skyIrradiance(vec3(0, 1, 0)) * 1.15;   // Maroon Lake: deep, dark blue-green, not turquoise
   // The bed comes here already wet (terrain.frag's `wet`, about 0.6) and under a film of the lake's
   // colour (`film`, about half its albedo); a fish, a wader's legs or a rock on the bed come lit as
   // if in air, and absorption alone left a trout half a metre down brighter than the gravel round
@@ -269,16 +375,30 @@ void main() {
   // which is true of a sea and is why you could stand at the shore of a lake nine metres
   // deep and never see into it. At 0.70 the bed is there at every angle you actually stand
   // at, and the mirrored Bells are still the thing you see across the water.
-  shadow *= sunZone(v_wpos);   // no glitter or sunlit foam inside a light zone
+  shadow *= sunZone(wp);   // no glitter or sunlit foam inside a light zone
   vec3 col = mix(through, refl, clamp(F * 0.85 + 0.03, 0.0, 0.70)) + u_sun_color * glitter * F * shadow;
-  col = mix(col, vec3(0.7, 0.75, 0.75) * (skyIrradiance(vec3(0, 1, 0)) * 0.5 + u_sun_color * 0.08 * shadow), clamp(foam, 0.0, 1.0));
-  col = applyFog(col, v_wpos, dist);
+  float sf = 0.0;
+  if (sea) {
+    // the shore foam is lit as the ground is and goes through the same fog as the water it lies on
+    sf = clamp(seaFoam(depthBelow, fwD, alongRay, wp.xz, u_time, pixG), 0.0, 1.0);
+    if (sf > 0.0 && u_wet_on > 0.5) {
+      // where the sea's own region ends over ground that is still under the water (a river mouth, a dock's wall) the mask
+      // is an edge in the water, not a shore: the foam fades out over the two metres before it
+      float wmin = min(min(wetAt(wp.xz + vec2(2.0, 0.0)), wetAt(wp.xz - vec2(2.0, 0.0))), min(wetAt(wp.xz + vec2(0.0, 2.0)), wetAt(wp.xz - vec2(0.0, 2.0))));
+      sf *= smoothstep(0.45, 0.9, wmin);
+    }
+    col = mix(col, vec3(1.15, 1.18, 1.18) * (skyIrradiance(vec3(0, 1, 0)) + u_sun_color * (max(u_sun_dir.y, 0.0) / 3.14159) * shadow), sf);
+  } else {
+    col = mix(col, vec3(0.7, 0.75, 0.75) * (skyIrradiance(vec3(0, 1, 0)) * 0.5 + u_sun_color * 0.08 * shadow), clamp(foam, 0.0, 1.0));
+  }
+  col = applyFog(col, wp, dist);
   // Soft edge measured ALONG THE VIEW RAY, not vertically. Vertical depth collapses to
   // zero over a fraction of a pixel when the surface is seen edge-on, which is exactly
   // the low, near-the-waterline view where the plane's silhouette turns into a hard
   // glassy line. The distance from the surface to the bed along the ray stays a smooth
   // quantity at any angle, so the water dissolves into the ground it meets instead.
+  // The sea's foam is the one thing that stays white where the water ends.
   float soft = smoothstep(0.0, 0.5, shoreRay);
-  col = mix(bed, col, soft);
+  col = mix(bed, col, max(soft, sf));
   o_color = vec4(sane(col), 1.0);
 }
