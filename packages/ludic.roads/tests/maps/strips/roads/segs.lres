@@ -1,0 +1,5 @@
+strip_a { from: "sw", to: "se", speed: 11.0 }
+strip_b { from: "lw", to: "le", speed: 8.0 }
+strip_c { from: "nw", to: "ne", speed: 11.0 }
+strip_d { from: "dw", to: "de", speed: 15.0 }
+strip_e { from: "gw", to: "ge", speed: 15.0 }

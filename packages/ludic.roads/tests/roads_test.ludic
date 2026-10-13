@@ -880,6 +880,49 @@ program RoadsTest {
     remove_big(nodes)
   }
 
+  test "the nearest road on a long straight road with no inner points, at negative and at positive coordinates" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "strips"))
+    let a = roads_seg_find(roads_st, "strip_a")
+    let b = roads_seg_find(roads_st, "strip_b")
+    let c = roads_seg_find(roads_st, "strip_c")
+    expect_eq(roads_nearest(roads_st, -50.0, -94.0), a)
+    expect(near(roads_near_s(roads_st), 10.0, 0.05))
+    expect_eq(roads_nearest(roads_st, 20.0, -96.0), a)
+    expect(near(roads_near_s(roads_st), 80.0, 0.05))
+    expect_eq(roads_nearest(roads_st, -50.0, -63.0), b)
+    expect(near(roads_near_s(roads_st), 10.0, 0.05))
+    expect_eq(roads_nearest(roads_st, 20.0, -61.0), b)
+    expect(near(roads_near_s(roads_st), 80.0, 0.05))
+    expect_eq(roads_nearest_y(roads_st, 20.0, 0.0, -61.0), b)
+    expect(near(roads_near_s(roads_st), 80.0, 0.05))
+    expect_eq(roads_nearest(roads_st, 150.0, 41.0), c)
+    expect(near(roads_near_s(roads_st), 50.0, 0.05))
+  }
+
+  test "the nearest road in the negative quarter of a grid that has grown: every point of a long road finds its own road and place" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "strips"))
+    let d = roads_seg_find(roads_st, "strip_d")
+    let e = roads_seg_find(roads_st, "strip_e")
+    # strip_d runs along z -500 from x -3000 to -100: 2,900 m, about 90 cells of the grid, a table that must grow to hold them
+    for i in 0 .. 29 {
+      let along = 50.0 + float(i) * 100.0
+      expect_eq(roads_nearest(roads_st, -3000.0 + along, -498.0), d)
+      expect(near(roads_near_s(roads_st), along, 0.5))
+      expect(near(roads_near_d(roads_st), 2.0, 0.05))
+      expect_eq(roads_nearest_y(roads_st, -3000.0 + along, 0.0, -498.0), d)
+      expect(near(roads_near_s(roads_st), along, 0.5))
+    }
+    # strip_e runs diagonally from (-1500, -1500) to (-200, -300), 1,769 m
+    let len_e = roads_seg_length(roads_st, e)
+    for i in 1 .. 9 {
+      let t = float(i) / 9.0
+      let px = -1500.0 + 1300.0 * t
+      let pz = -1500.0 + 1200.0 * t
+      expect_eq(roads_nearest(roads_st, px + 3.0, pz - 3.0), e)
+      expect(near(roads_near_s(roads_st), len_e * t, 1.0))
+    }
+  }
+
   test "the system is declared with its own key" {
     let s = roads_system()
     expect(s.key == "roads")

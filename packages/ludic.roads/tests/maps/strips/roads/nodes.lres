@@ -1,0 +1,11 @@
+# a few long straight roads with no inner points: short ones at negative and positive coordinates, and long ones in the negative quarter, whose cells fill the grid past the size its table starts at
+sw { x: -60.0, z: -95.0 }
+se { x: 35.0, z: -95.0 }
+lw { x: -60.0, z: -62.0 }
+le { x: 35.0, z: -62.0 }
+nw { x: 100.0, z: 40.0 }
+ne { x: 260.0, z: 40.0 }
+dw { x: -3000.0, z: -500.0 }
+de { x: -100.0, z: -500.0 }
+gw { x: -1500.0, z: -1500.0 }
+ge { x: -200.0, z: -300.0 }
