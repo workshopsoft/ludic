@@ -574,3 +574,10 @@ export function roads_config_turn_accel(roads_st: mut RoadsState, acc: float) ->
 
 # seconds a car may stand before it is taken off with ROADS_JAMMED (default 90; 0: never, the game decides)
 export function roads_config_jam(roads_st: mut RoadsState, seconds: float) -> void { roads_st.rd_jam_limit = Math.max(seconds, 0.0) }
+
+# a movement the game knows cannot be made (it would cross something the roads' rows do not say: a median barrier the bake runs
+# through a merge): forbidden from edge e_in into e_out as a RoadTurns row would forbid it, until the next roads_build
+export function roads_turn_forbid(roads_st: mut RoadsState, e_in: int, e_out: int) -> void {
+  if e_in < 0 or e_out < 0 or e_in >= len(roads_st.rd_efrom) or e_out >= len(roads_st.rd_efrom) { return }
+  imap_put(roads_st.rd_turns, e_in * RD_TURN_KEY + e_out, ROAD_RULE_FORBID)
+}

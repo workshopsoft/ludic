@@ -395,4 +395,23 @@ program JunctionsTest {
     expect(longest < 60.0)
     expect(slots >= 0)
   }
+
+  test "a movement the game forbids (roads_turn_forbid) is a forbidden turn: routes go round it, a car never takes it" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    let ramp = edge_of(roads_st, "hr_hm", false)
+    let east = edge_of(roads_st, "hm_he", false)
+    expect(roads_turn_rule(roads_st, ramp, east) != ROAD_RULE_FORBID)
+    roads_turn_forbid(roads_st, ramp, east)
+    expect_eq(roads_turn_rule(roads_st, ramp, east), ROAD_RULE_FORBID)
+    # out of range is ignored
+    roads_turn_forbid(roads_st, -1, east)
+    roads_turn_forbid(roads_st, ramp, 100000)
+    let out = new []int
+    let n = roads_route_edges(roads_st, ramp, east, ROADS_FASTEST, out)
+    for i in 0 .. n - 1 { expect(not (out[i] == ramp and out[i + 1] == east)) }
+    # built again, the game's word is gone
+    expect(roads_build(roads_st, nodes, segs, turns))
+    expect(roads_turn_rule(roads_st, ramp, east) != ROAD_RULE_FORBID)
+  }
 }
