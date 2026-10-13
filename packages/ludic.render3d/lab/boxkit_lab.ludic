@@ -5,7 +5,8 @@
 #   ludic build packages/ludic.render3d/lab/boxkit_lab.ludic --headless -o build/boxkit_lab
 #   yes '' | head -n 400 | R3D_SCENE=boxkits ./build/boxkit_lab           -> build/lab/boxkits/*.png
 #
-# Scenes: `boxkits` (meshes, culled and binned on the GPU), `boxkits_cpu` (the same culled on the CPU: kinst.ludic's lists),
+# Scenes: `storeys` and `storeys_cpu` (the same kits with a storey line every 3.4 m up the walls: kit.frag's u_storey, straight-on shots
+# measured by lab/storey_check.py), `storeys_off` (the control: no line anywhere), `boxkits` (meshes, culled and binned on the GPU), `boxkits_cpu` (the same culled on the CPU: kinst.ludic's lists),
 # `boxkits_far` (every instance past its near distance: its impostor card, baked once from the kit at its reference size and
 # stretched to each instance's own bounds).
 import "ludic.lab"
@@ -38,7 +39,7 @@ program BoxKitLab {
   }
 
   @alloc_ok("lab: the scene is built once, before its shots")
-  function bx_build(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState, cpu: bool, far: bool) -> void {
+  function bx_build(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState, cpu: bool, far: bool, storeys: int) -> void {
     let dir = render3d_st.r3d_root + "/tests/maps/boxkits"
     let flat = kitbox_new()
     let gable = kitbox_new()
@@ -58,6 +59,11 @@ program BoxKitLab {
     }
     kgpu_kit_box(bs.g, 0, flat)
     kgpu_kit_box(bs.g, 1, gable)
+    # the bodies carry storey lines, the door (kit 2) none
+    if storeys == 1 {
+      kgpu_kit_storey(bs.g, 0, STOREY, 0.12)
+      kgpu_kit_storey(bs.g, 1, STOREY, 0.12)
+    }
     if far {
       kgpu_bake_kit(render3d_st, bs.g, 0, 20.0, 10.0, 10.0, 8, 128)
       kgpu_bake_kit(render3d_st, bs.g, 1, 20.0, 10.0, 10.0, 8, 128)
@@ -85,17 +91,35 @@ program BoxKitLab {
     r3d_on_prepare(render3d_st, fn bx_prepare)
     r3d_on_casters(render3d_st, fn bx_casters)
     lab_settle(lab_st, 40)
+    if storeys != 0 {
+      # straight on to the front walls (the camera on the horizontal, the wall square to it): the lines are horizontal rows of the picture.
+      # The 3 floor flat (door in its middle), the 12 floor flat, the 3 floor gable (its back wall: the flats stand in front of its door), the 72 floor shaft low and at its top
+      lab_shot_at(lab_st, "wall3", -40.0, 5.6, -4.5, 40.0, 180.0, 0.0)
+      lab_shot_at(lab_st, "wall12", -8.0, 20.9, -8.25, 90.0, 180.0, 0.0)
+      lab_shot_at(lab_st, "gable3", -36.0, 5.6, 45.0, 40.0, 0.0, 0.0)
+      lab_shot_at(lab_st, "wall72", 42.0, 15.0, -12.0, 40.0, 180.0, 0.0)
+      lab_shot_at(lab_st, "wall72top", 42.0, 230.0, -12.0, 40.0, 180.0, 0.0)
+      # straight down on the gable's roof and the flat's parapeted roof: nothing facing up has a line
+      lab_shot_at(lab_st, "roofs", -36.0, 12.0, 40.0, 60.0, 180.0, 89.0)
+      return
+    }
     lab_shot_at(lab_st, "street", 0.0, 30.0, 10.0, 210.0, 200.0, 12.0)
     lab_shot_at(lab_st, "roofs", -10.0, 30.0, 15.0, 120.0, 160.0, 38.0)
     lab_shot_at(lab_st, "tower", 42.0, 200.0, 0.0, 120.0, 205.0, 30.0)
     lab_shot_at(lab_st, "doors", -24.0, 2.0, -6.0, 26.0, 180.0, 6.0)
   }
-  function gpu_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, false, false) }
-  function cpu_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, true, false) }
-  function far_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, false, true) }
+  function gpu_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, false, false, 0) }
+  function cpu_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, true, false, 0) }
+  function far_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, false, true, 0) }
+  function storeys_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, false, false, 1) }
+  function storeys_cpu_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, true, false, 1) }
+  function storeys_off_setup(bs: mut BoxScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { bx_build(bs, lab_st, render3d_st, false, false, 2) }
   def LabScenes boxkits { setup: fn gpu_setup, draw: fn bx_draw }
   def LabScenes boxkits_cpu { setup: fn cpu_setup, draw: fn bx_draw }
   def LabScenes boxkits_far { setup: fn far_setup, draw: fn bx_draw }
+  def LabScenes storeys { setup: fn storeys_setup, draw: fn bx_draw }
+  def LabScenes storeys_cpu { setup: fn storeys_cpu_setup, draw: fn bx_draw }
+  def LabScenes storeys_off { setup: fn storeys_off_setup, draw: fn bx_draw }
   handler Boot(lab_st: mut LabState, render3d_st: mut Render3dState) phase Start { lab_boot(lab_st, render3d_st) }
   handler Look(lab_st: mut LabState, render3d_st: mut Render3dState) phase Input { lab_input(lab_st, render3d_st) }
   handler Draw(lab_st: mut LabState, render3d_st: mut Render3dState) phase Render { lab_render(lab_st, render3d_st) }

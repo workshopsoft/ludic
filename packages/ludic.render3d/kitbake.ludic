@@ -156,6 +156,14 @@ export function kitbake_kit_box(kb: KitBake, model: string, node: string, box: K
   return kitbake_kit(kb, model, node, w, d, h, interior)
 }
 
+# kit `id`'s walls carry a line every `h` metres of height from each instance's base, `line` metres thick (0: none): the RenderKits row
+# says `storey_h` and `storey_line`, and kit.frag draws them
+export function kitbake_storey(kb: KitBake, id: int, h: float, line: float) -> void {
+  if id < 0 or id >= len(kb.kits) { return }
+  kb.kits[id].storey_h = Math.max(h, 0.0)
+  kb.kits[id].storey_line = line
+}
+
 # the cell (cx, cz)'s content, made on the first placement
 function kb_cell(kb: KitBake, cx: int, cz: int) -> CellContent {
   let key = `{cx},{cz}`
@@ -227,6 +235,7 @@ export function kitbake_rows(kb: KitBake, from: int) -> string {
     let k = kb.kits[i]
     out = out + `{k.key} \{\n  model: "{k.model}", node: "{k.node}"\n  w: {kb_num(k.w)}, d: {kb_num(k.d)}, h: {kb_num(k.h)}\n  near: {kb_num(k.near)}, far: {kb_num(k.far)}\n`
     if k.interior != "" { out = out + `  interior: "{k.interior}"\n  win_w: {kb_num(k.win_w)}, win_h: {kb_num(k.win_h)}\n` }
+    if k.storey_h > 0.0 { out = out + `  storey_h: {kb_num(k.storey_h)}, storey_line: {kb_num(k.storey_line)}\n` }
     if k.box { out = out + "  box: true\n" }
     out = out + "}\n"
   }

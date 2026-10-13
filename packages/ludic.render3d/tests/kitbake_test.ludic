@@ -88,4 +88,21 @@ program KitBakeTest {
     expect(Text.contains(kitbake_rows(next, next.seeded), "c {"))
     expect(not Text.contains(kitbake_rows(next, next.seeded), "a {"))
   }
+
+  test "a kit's storey lines go into its row, and only the kits that have them" {
+    let kb = kitbake_new(256.0)
+    let body = kitbake_kit(kb, "m/b.glb", "body", 10.0, 10.0, 10.0, "")
+    let door = kitbake_kit(kb, "m/b.glb", "door", 1.0, 0.1, 2.2, "")
+    expect_eq(kb.kits[body].storey_h, 0.0)                    # none unless asked
+    kitbake_storey(kb, body, 3.4, 0.12)
+    kitbake_storey(kb, 99, 3.4, 0.12)                          # no such kit: nothing happens
+    kitbake_storey(kb, body, -1.0, 0.12)                       # below 0 is none
+    expect_eq(kb.kits[body].storey_h, 0.0)
+    kitbake_storey(kb, body, 3.4, 0.12)
+    let rows = kitbake_rows(kb, 0)
+    expect(Text.contains(rows, "storey_h: 3.4, storey_line: 0.12"))
+    let at = Text.index_of(rows, "storey_h")
+    expect(at > Text.index_of(rows, "body {") and at < Text.index_of(rows, "door {"))   # in the body's row, not the door's
+    expect_eq(door, 1)
+  }
 }

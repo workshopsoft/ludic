@@ -335,6 +335,15 @@ kitbake_place_box(kb, kitbake_kit(kb, "kits/massing.glb", "flat", 20.0, 15.0, 10
 tuples when it loads a `box: true` kit (`bw_setup_kits`). Tests: `tests/kitbox_test.ludic` (on `tests/maps/boxkits`); look:
 `lab/boxkit_lab.ludic`.
 
+A kit row with `storey_h` above 0 draws a thin line (`storey_line` metres thick, 0.12 by default) across every upright wall each
+`storey_h` metres up from the instance's base, not at the base itself, and none on a face that looks up or down (`kit.frag`'s
+`u_storey`, set per kit by `kgpu_kit_storey`, which `bw_setup_kits` calls from the row; `kitbake_storey` writes it into the rows a
+bake produces). It counts metres of height, so it is the same on a box instance of 3 floors and of 72, whatever its own scale; the line
+is as wide as a pixel is at its edges and fades out where it would be thinner than a pixel, so a far wall shows none. The far layers (a
+kit's impostor card, the cell's HLOD proxy) are baked without it. Test: `lab/storey_check.py` on the lab's `storeys`, `storeys_cpu`
+and `storeys_off` scenes (rows of a straight-on picture are heights: every multiple of the storey is a line, none missing or extra, the
+same on the GPU and the CPU path, none in the control, none on a roof); `tests/cellfile_test.ludic` and `tests/kitbake_test.ludic` for the row.
+
 ### Terrain from the studio's tiles (`tilemap.ludic`, `tilemap_draw.ludic`)
 
 The studio writes a map's ground as 16-bit greyscale PNG tiles (`world_create`, `terrain_sculpt`); the map's row says how. One

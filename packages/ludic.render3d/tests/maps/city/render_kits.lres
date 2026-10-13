@@ -11,6 +11,7 @@ block {
   near: 500.0, far: 3500.0
   interior: "office"
   win_w: 3.0, win_h: 3.6
+  storey_h: 3.4, storey_line: 0.15
 }
 tower {
   model: "models/tower.glb", node: "tower"
