@@ -8,10 +8,16 @@ program JunctionsTest {
   numbers float
   state JunctionsTestState {
     frame: int = 0
+    hold_id: int = -1          # a car the game's world keeps standing (a wall right at its front)
   }
   function flat(x: float, z: float) -> float { return 0.0 }
   function seed9() -> int { return 9 }
   bind RoadsWorld { ground: fn flat, seed: fn seed9 }
+  function wall_for(js: JunctionsTestState, id: int, x: float, z: float, yaw: float, look: float) -> float {
+    if id == js.hold_id { return 2.7 }
+    return -1.0
+  }
+  bind RoadsBody { probe: fn wall_for }
 
   def RoadCarKinds car { weight: 4 }
   def RoadCarKinds van { length: 6.0, pace: 0.9, accel: 2.0, weight: 1 }
@@ -241,7 +247,7 @@ program JunctionsTest {
     expect(least_ground > 1.5)                   # and never on a's back bumper
   }
 
-  test "with a conflict width two cars straight on from opposite sides cross together; a car turning across them waits" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+  test "with a conflict width two cars straight on from opposite sides cross together; a car turning across them waits for the one it crosses and merges behind or ahead of the one whose lane it joins" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
     load_grid(roads_st, nodes, segs, turns)
     grid_setbacks(roads_st)
     roads_config_conflict(roads_st, 3.0)
@@ -256,7 +262,8 @@ program JunctionsTest {
     expect(a >= 0 and b >= 0 and c >= 0)
     let g11 = roads_node_find(roads_st, "g11")
     var most = 0
-    var c_with_ab = 0
+    var c_with_a = 0
+    var c_near_b = 100.0
     var a_ok = false
     var b_ok = false
     var c_ok = false
@@ -271,12 +278,18 @@ program JunctionsTest {
       let sb = roads_car_slot(roads_st, b)
       let sc = roads_car_slot(roads_st, c)
       if sc >= 0 and roads_car_at(roads_st, sc).hold == g11 {
-        if sa >= 0 and roads_car_at(roads_st, sa).hold == g11 { c_with_ab += 1 }
-        if sb >= 0 and roads_car_at(roads_st, sb).hold == g11 { c_with_ab += 1 }
+        if sa >= 0 and roads_car_at(roads_st, sa).hold == g11 { c_with_a += 1 }
+        if sb >= 0 and roads_car_at(roads_st, sb).hold == g11 {
+          # merging into one lane: never side by side (fronts a car and its gap apart at least)
+          let dx = roads_car_x(roads_st, b) - roads_car_x(roads_st, c)
+          let dz = roads_car_z(roads_st, b) - roads_car_z(roads_st, c)
+          c_near_b = Math.min(c_near_b, Math.sqrt(dx * dx + dz * dz))
+        }
       }
     }
     expect_eq(most, 2)
-    expect_eq(c_with_ab, 0)
+    expect_eq(c_with_a, 0)
+    expect(c_near_b > 4.4)
     expect(a_ok and b_ok and c_ok)
   }
 
@@ -413,5 +426,102 @@ program JunctionsTest {
     # built again, the game's word is gone
     expect(roads_build(roads_st, nodes, segs, turns))
     expect(roads_turn_rule(roads_st, ramp, east) != ROAD_RULE_FORBID)
+  }
+
+  # the highway's merge given a long gore: the slip road and the highway's lanes take 40 m to come together before the node
+  function long_gore(roads_st: mut RoadsState, ramp: int, hw_in: int, east: int) -> void {
+    roads_edge_setbacks(roads_st, ramp, 42.0, 40.0, roads_edge_mouth_start(roads_st, ramp), roads_edge_clear(roads_st, ramp))
+    roads_edge_setbacks(roads_st, hw_in, 42.0, 40.0, roads_edge_mouth_start(roads_st, hw_in), roads_edge_clear(roads_st, hw_in))
+  }
+
+  # one run of the merge: the slip road's car waiting at its line, a highway car in the kerb lane `behind` metres short of its own line
+  # at its pace; the highway car's least speed, both through, and 0 in out[1] if their bodies ever overlapped
+  function merge_run(roads_st: mut RoadsState, js: mut JunctionsTestState, behind: float, out: []float) -> void {
+    let ramp = edge_of(roads_st, "hr_hm", false)
+    let hw_in = edge_of(roads_st, "hw_hm", false)
+    let east = edge_of(roads_st, "hm_he", false)
+    let hm = roads_node_find(roads_st, "hm")
+    let r = roads_spawn(roads_st, ramp, roads_edge_length(roads_st, ramp) - roads_edge_stop(roads_st, ramp) - 0.5, 0, RCK_CAR, east, false)
+    let h = roads_spawn(roads_st, hw_in, roads_edge_length(roads_st, hw_in) - roads_edge_stop(roads_st, hw_in) - behind, 1, RCK_CAR, east, false)
+    let sh = roads_car_slot(roads_st, h)
+    let v0 = roads_edge_speed(roads_st, hw_in) * RoadCarKinds[RCK_CAR].pace
+    roads_car_at(roads_st, sh).v = v0
+    var least = v0
+    var near = 1000.0
+    let qa = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    let qb = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    var r_through = false
+    var h_through = false
+    for k in 0 .. 600 {
+      tick(roads_st, js, 0.05)
+      let a = roads_car_slot(roads_st, h)
+      let b = roads_car_slot(roads_st, r)
+      if a >= 0 and roads_car_at(roads_st, a).edge != east { least = Math.min(least, roads_car_at(roads_st, a).v) }
+      if a >= 0 and roads_car_at(roads_st, a).edge == east { h_through = true }
+      if b >= 0 and roads_car_at(roads_st, b).edge == east { r_through = true }
+      if a >= 0 and b >= 0 {
+        body(roads_st, a, qa)
+        body(roads_st, b, qb)
+        if quads_overlap(qa, qb) { near = 0.0 }
+      }
+      if a < 0 and b < 0 { break }
+    }
+    out[0] = least / v0
+    out[1] = near
+    out[2] = 0.0
+    if r_through and h_through { out[2] = 1.0 }
+  }
+
+  test "a merge with a long gore: a highway car is never held at the gore's start for a slip road car in it - it follows it in, or the slip road car gives way short of the merge zone; their bodies never overlap" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+    let out = [0.0, 0.0, 0.0]
+    # far behind: the slip road car goes first, the highway car follows it into the lane
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    roads_config_conflict(roads_st, 3.0)
+    long_gore(roads_st, edge_of(roads_st, "hr_hm", false), edge_of(roads_st, "hw_hm", false), edge_of(roads_st, "hm_he", false))
+    merge_run(roads_st, js, 110.0, out)
+    print(`merge, highway car 110 m back: its least speed {out[0]} of its pace, bodies apart {out[1] > 0.0}, both through {out[2]}`)
+    expect(out[0] > 0.5)
+    expect(out[1] > 0.0)
+    expect(out[2] > 0.5)
+    # close: the slip road car waits for it to pass, then goes
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    roads_config_conflict(roads_st, 3.0)
+    long_gore(roads_st, edge_of(roads_st, "hr_hm", false), edge_of(roads_st, "hw_hm", false), edge_of(roads_st, "hm_he", false))
+    merge_run(roads_st, js, 25.0, out)
+    print(`merge, highway car 25 m back: its least speed {out[0]} of its pace, bodies apart {out[1] > 0.0}, both through {out[2]}`)
+    expect(out[0] > 0.9)
+    expect(out[1] > 0.0)
+    expect(out[2] > 0.5)
+  }
+
+  test "a car that goes first but has no room beyond the junction does not hold back a car whose path crosses its own (a full stub would lock the junction)" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, js: mut JunctionsTestState) {
+    load_grid(roads_st, nodes, segs, turns)
+    grid_setbacks(roads_st)
+    roads_config_conflict(roads_st, 3.0)
+    # at the cross: d from the west straight on east, b from the south straight on north, across d's path
+    let d_in = edge_of(roads_st, "g01_g11", false)
+    let d_out = edge_of(roads_st, "g11_g21", false)
+    let b_in = edge_of(roads_st, "g10_g11", false)
+    let b_out_e = edge_of(roads_st, "g11_g12", false)
+    expect(roads_paths_meet(roads_st, d_in, 0, d_out, roads_lane_onto(roads_st, d_in, 0, d_out), b_in, 0, b_out_e, roads_lane_onto(roads_st, b_in, 0, b_out_e)))
+    # the start of d's way out is taken by a car the world keeps standing: d has no room beyond
+    let x = roads_spawn(roads_st, d_out, roads_edge_clear(roads_st, d_out) + 6.0, 0, RCK_CAR, -1, true)
+    js.hold_id = x
+    # d waits first at its line; then b comes to its own
+    let d = roads_spawn(roads_st, d_in, roads_edge_length(roads_st, d_in) - roads_edge_stop(roads_st, d_in) - 2.5, 0, RCK_CAR, d_out, false)
+    for k in 0 .. 40 { tick(roads_st, js, 0.05) }
+    let b = roads_spawn(roads_st, b_in, roads_edge_length(roads_st, b_in) - roads_edge_stop(roads_st, b_in) - 2.5, 0, RCK_CAR, b_out_e, false)
+    expect(x >= 0 and d >= 0 and b >= 0)
+    var b_through = false
+    for k in 0 .. 400 {
+      tick(roads_st, js, 0.05)
+      if roads_car_edge(roads_st, b) == b_out_e { b_through = true }
+    }
+    print(`no room: b through {b_through}; d still at its line on edge {roads_car_edge(roads_st, d)}, why {roads_enter_why(roads_st, roads_car_slot(roads_st, d))}`)
+    expect(b_through)
+    expect_eq(roads_car_edge(roads_st, d), d_in)
+    expect_eq(roads_enter_why(roads_st, roads_car_slot(roads_st, d)), ROADS_ENTER_ROOM)
   }
 }

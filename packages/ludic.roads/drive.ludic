@@ -146,6 +146,8 @@ function rd_step_car(roads_st: mut RoadsState, slot: int, dt: float) -> void {
     let nl = roads_lane_onto(roads_st, e, c.lane, next)
     rd_leader(roads_st, slot, c, next, nl, true)
   }
+  # a car of a merging movement nearer the lane's mouth (merge.ludic)
+  if c.hold >= 0 { rd_merge_leader(roads_st, slot, c.hold) }
   # a junction it may not enter yet: a wall at its waiting line (the old rule: 1.5 m short of the node)
   let set = roads_st.rd_estop[e] >= 0.0
   var d_line = d_end

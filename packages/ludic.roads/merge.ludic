@@ -1,0 +1,161 @@
+# merge.ludic - two movements through a node that end in one lane and come together without crossing: a slip road into a highway's
+# kerb lane, a side road turning into the near lane of the road it joins. They meet only in their last metres (the merge zone, where
+# their paths are nearer than the conflict width), and there the two cars are in one lane: they go in the order they reach the lane, the
+# one behind following the one ahead. So neither waits for the other's whole path (a long gore would hold a highway car at its start
+# for as long as a car of the slip road was anywhere in it):
+#
+# * a car may be let in when, measured on the ground to the lane's mouth, it will be wholly behind the other with its gap and can brake
+#   to that at twice its comfortable braking at most, or wholly ahead of it with the other's gap and the other need only brake
+#   comfortably to fall in behind (the slip road's gap acceptance);
+# * once in, a car follows any car of the other movement that is nearer the mouth than it is (its IDM leader, gap measured on the ground).
+# Movements whose paths cross, or that come near each other before their last metres, keep to one at a time (roads_paths_meet).
+
+# the merge zone of two movements (ea, la) onto (oa, ma) and (eb, lb) onto (ob, mb): the metres before the lane's mouth within which
+# their paths are nearer than the conflict width; -1 when they are not a merge (another lane, the same lane in, no conflict width, or
+# paths that cross before they come together)
+function rd_merge_zone(roads_st: mut RoadsState, ea: int, la: int, oa: int, ma: int, eb: int, lb: int, ob: int, mb: int) -> float {
+  if roads_st.rd_conflict_w <= 0.0 { return -1.0 }
+  if oa != ob or ma != mb or oa < 0 or ea < 0 or eb < 0 { return -1.0 }
+  if ea == eb and la == lb { return -1.0 }
+  rd_path_build(roads_st, ea, la, oa, ma)
+  let len_a = roads_st.rd_tplen
+  rd_tp_sample(roads_st, false)
+  rd_path_build(roads_st, eb, lb, ob, mb)
+  let len_b = roads_st.rd_tplen
+  rd_tp_sample(roads_st, true)
+  if len_a < 0.01 or len_b < 0.01 { return -1.0 }
+  let n = RD_CMP_STEPS
+  # no crossing before their common end (the last segments share the mouth)
+  for i in 0 .. n {
+    for j in 0 .. n {
+      if i == n - 1 and j == n - 1 { continue }
+      if rd_seg_cross(roads_st.rd_sax[i], roads_st.rd_saz[i], roads_st.rd_sax[i + 1], roads_st.rd_saz[i + 1], roads_st.rd_sbx[j], roads_st.rd_sbz[j], roads_st.rd_sbx[j + 1], roads_st.rd_sbz[j + 1]) { return -1.0 }
+    }
+  }
+  # the zone: the farthest from the mouth either of two near points is, and half a sample more
+  let w2 = roads_st.rd_conflict_w * roads_st.rd_conflict_w
+  var zone = 0.0
+  for i in 0 .. n + 1 {
+    for j in 0 .. n + 1 {
+      let dx = roads_st.rd_sax[i] - roads_st.rd_sbx[j]
+      let dz = roads_st.rd_saz[i] - roads_st.rd_sbz[j]
+      if dx * dx + dz * dz < w2 {
+        let ra = len_a * float(n - i) / float(n)
+        let rb = len_b * float(n - j) / float(n)
+        zone = Math.max(zone, Math.max(ra, rb))
+      }
+    }
+  }
+  return zone + Math.max(len_a, len_b) * 0.5 / float(n)
+}
+
+# the movement of car `slot` through node n is a merge with car `other`'s: the zone (metres), else -1
+function rd_merge_with(roads_st: mut RoadsState, slot: int, other: int, n: int) -> float {
+  let a = roads_st.rd_mg_a
+  let b = roads_st.rd_mg_b
+  rd_movement(roads_st, roads_st.rd_cars[slot], n, a)
+  rd_movement(roads_st, roads_st.rd_cars[other], n, b)
+  return rd_merge_zone(roads_st, a[0], a[1], a[2], a[3], b[0], b[1], b[2], b[3])
+}
+
+# metres on the ground from car c's front to the mouth of the lane it takes at node n (below 0: past it, on that lane)
+function rd_out_left(roads_st: mut RoadsState, c: RoadCar, n: int) -> float {
+  let e = c.edge
+  if roads_st.rd_eto[e] == n {
+    let next = rd_next_edge(roads_st, c)
+    if next < 0 { return RD_BIG }
+    let me = roads_st.rd_emouth_end[e]
+    let span = me + roads_st.rd_emouth_start[next]
+    var k = c.ka
+    if k <= 0.0 {
+      rd_path_build(roads_st, e, c.lane, next, roads_lane_onto(roads_st, e, c.lane, next))
+      k = 1.0
+      if span > 0.0 { k = roads_st.rd_tplen / span }
+    }
+    let s0 = roads_st.rd_elen[e] - me
+    if c.s <= s0 { return (s0 - c.s) + span * k }
+    return (roads_st.rd_elen[e] - c.s + roads_st.rd_emouth_start[next]) * k
+  }
+  if c.pin >= 0 and roads_st.rd_efrom[e] == n {
+    let ms = roads_st.rd_emouth_start[e]
+    if c.s < ms and c.kb > 0.0 { return (ms - c.s) * c.kb }
+    return ms - c.s
+  }
+  return RD_BIG
+}
+
+# may car `slot` go through node n beside car `other`, whose movement merges with its own: wholly behind it, or wholly ahead of it,
+# or - from the higher priority road - beside it while the other can still stop short of the merge zone (it yields: rd_merge_leader)
+function rd_merge_order_ok(roads_st: mut RoadsState, slot: int, other: int, n: int, zone: float) -> bool {
+  let c = roads_st.rd_cars[slot]
+  let o = roads_st.rd_cars[other]
+  let kc = RoadCarKinds[c.kind]
+  let ko = RoadCarKinds[o.kind]
+  let dc = rd_out_left(roads_st, c, n)
+  let dob = rd_out_left(roads_st, o, n)
+  # behind: its front its gap behind the other's rear, braking to the other's pace at twice its comfortable braking at most
+  let behind = dc - dob - ko.length - kc.gap
+  if behind >= Math.max(0.0, (c.v * c.v - o.v * o.v) / (4.0 * kc.brake)) { return true }
+  # ahead: the other falls in behind it braking comfortably, with half a second to spare
+  let ahead = dob - dc - kc.length - ko.gap
+  if ahead >= Math.max(0.0, (o.v * o.v - c.v * c.v) / (2.0 * ko.brake)) + o.v * 0.5 { return true }
+  # the other gives way: it comes from a lower priority road and can still stop short of the zone
+  return rd_yields_to(roads_st, o, c, dob, zone)
+}
+
+# does car o (dob metres short of the lane's mouth) give way to car c at a merge: c's road has the higher priority and o can still stop
+# comfortably short of the zone
+function rd_yields_to(roads_st: RoadsState, o: RoadCar, c: RoadCar, dob: float, zone: float) -> bool {
+  if roads_st.rd_eprio[rd_in_edge(roads_st, c)] <= roads_st.rd_eprio[rd_in_edge(roads_st, o)] { return false }
+  let ko = RoadCarKinds[o.kind]
+  return dob - zone - 1.0 >= o.v * o.v / (2.0 * ko.brake)
+}
+
+# the edge a car comes into its node by: its own, or the one it is still turning off
+function rd_in_edge(roads_st: RoadsState, c: RoadCar) -> int {
+  if c.pin >= 0 { return c.pin }
+  return c.edge
+}
+
+# car `slot`, let into node n, follows every car of a merging movement nearer the lane's mouth than it is: the gap on the ground into
+# rd_gap when nearer than what is there, and how much faster it is into rd_dv. And it gives way to a car of a higher priority road coming
+# to the same lane beside or behind it, unless it is well ahead of it: it waits short of the merge zone until that car is by
+function rd_merge_leader(roads_st: mut RoadsState, slot: int, n: int) -> void {
+  let c = roads_st.rd_cars[slot]
+  if n < 0 or c.hold != n or roads_st.rd_conflict_w <= 0.0 { return }
+  let mine = roads_st.rd_mg_c
+  rd_movement(roads_st, c, n, mine)
+  var dc = -1.0
+  let kc = RoadCarKinds[c.kind]
+  for j in 0 .. len(roads_st.rd_cars) {
+    let o = roads_st.rd_cars[j]
+    if j == slot or not o.alive { continue }
+    let holding = o.hold == n and rd_holder_valid(roads_st, j)
+    # coming: on its way to the node, first in its lane, and moving (a car standing at its line, held back by something else, is not
+    # given way to: two cars waiting on each other would stand for ever)
+    let coming = not holding and roads_st.rd_eto[o.edge] == n and o.v > 1.0 and rd_front(roads_st, j)
+    if not holding and not coming { continue }
+    let b = roads_st.rd_mg_b
+    rd_movement(roads_st, o, n, b)
+    if b[2] != mine[2] or b[3] != mine[3] or (b[0] == mine[0] and b[1] == mine[1]) { continue }
+    let zone = rd_merge_zone(roads_st, mine[0], mine[1], mine[2], mine[3], b[0], b[1], b[2], b[3])
+    if zone < 0.0 { continue }
+    if dc < 0.0 { dc = rd_out_left(roads_st, c, n) }
+    let dob = rd_out_left(roads_st, o, n)
+    let ko = RoadCarKinds[o.kind]
+    var g = RD_BIG
+    if dob < dc {
+      # ahead of it: followed, unless it is giving way to this car (it waits short of the zone while this one goes by)
+      if dob <= zone or not rd_yields_to(roads_st, o, c, dob, zone) { g = dc - dob - ko.length }
+    } else if rd_yields_to(roads_st, c, o, dc, zone) {
+      # not well ahead of it: wait short of the zone
+      let ahead = dob - dc - kc.length - ko.gap
+      if ahead < Math.max(0.0, (o.v * o.v - c.v * c.v) / (2.0 * ko.brake)) + o.v * 0.5 { g = Math.max(dc - zone - 1.0, 0.0) }
+    }
+    if g < roads_st.rd_gap {
+      roads_st.rd_gap = g
+      roads_st.rd_dv = c.v
+      if dob < dc { roads_st.rd_dv = c.v - o.v }
+    }
+  }
+}

@@ -188,7 +188,9 @@ export function rd_path_build(roads_st: mut RoadsState, ei: int, li: int, eo: in
     let rx = sg * (-ahz)
     let rz = sg * ahx
     let w = roads_st.rd_sw[ei / 2]
-    let r = roads_st.rd_nuturn[n] - float(Math.max(roads_st.rd_elanes[ei] - 1 - li, 0)) * w
+    # several lanes loop on concentric circles a lane's width and a metre apart (their paths keep clear of each other: they go round
+    # together)
+    let r = roads_st.rd_nuturn[n] - float(Math.max(roads_st.rd_elanes[ei] - 1 - li, 0)) * (w + 1.0)
     let off_a = rd_lane_offset(roads_st, ei, li) * sg
     let off_d = rd_lane_offset(roads_st, eo, lo) * sg
     if r > Math.max(off_a, off_d) + 0.5 {

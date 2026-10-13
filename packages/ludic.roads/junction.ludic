@@ -155,14 +155,26 @@ function rd_room_beyond(roads_st: mut RoadsState, slot: int, n: int, eo: int, lo
 
 # may the car in `slot` go on from the end of its edge: true at once where nothing is arbitrated, else when it holds the node,
 # or no car in it has a path its path meets, there is room beyond, and no car that goes before it waits with a path that
-# meets its own. Choosing is claiming: the node is the car's
-function rd_may_enter(roads_st: mut RoadsState, slot: int) -> bool {
+# meets its own; a car whose movement merges with its own (merge.ludic) only has to be wholly behind or ahead of it.
+# Choosing is claiming: the node is the car's
+function rd_may_enter(roads_st: mut RoadsState, slot: int) -> bool { return rd_enter_check(roads_st, slot, true) == ROADS_ENTER_OK }
+
+# why car `slot` may not go on from the end of its edge now (ROADS_ENTER_*; ROADS_ENTER_OK: it may), without claiming the node: what a
+# game shows when a car has stood long
+export function roads_enter_why(roads_st: mut RoadsState, slot: int) -> int {
+  if slot < 0 or slot >= len(roads_st.rd_cars) or not roads_st.rd_cars[slot].alive { return ROADS_ENTER_OK }
+  if rd_next_edge(roads_st, roads_st.rd_cars[slot]) < 0 { return ROADS_ENTER_OK }
+  return rd_enter_check(roads_st, slot, false)
+}
+
+function rd_enter_check(roads_st: mut RoadsState, slot: int, claim: bool) -> int {
   let c = roads_st.rd_cars[slot]
   let e = c.edge
   let n = roads_st.rd_eto[e]
-  if not roads_node_controlled(roads_st, n) { return true }
-  if c.hold == n { return true }
-  if not rd_front(roads_st, slot) or not rd_eligible(roads_st, slot, n) { return false }
+  if not roads_node_controlled(roads_st, n) { return ROADS_ENTER_OK }
+  if c.hold == n { return ROADS_ENTER_OK }
+  if not rd_front(roads_st, slot) { return ROADS_ENTER_NOT_FRONT }
+  if not rd_eligible(roads_st, slot, n) { return ROADS_ENTER_RULE }
   let mine = roads_st.rd_mv_a
   rd_movement(roads_st, c, n, mine)
   let other = roads_st.rd_mv_b
@@ -170,9 +182,15 @@ function rd_may_enter(roads_st: mut RoadsState, slot: int) -> bool {
     let o = roads_st.rd_cars[j]
     if j == slot or not o.alive or o.hold != n or not rd_holder_valid(roads_st, j) { continue }
     rd_movement(roads_st, o, n, other)
-    if roads_paths_meet(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3]) { return false }
+    # a merge (merge.ludic): in the order they reach the lane, not one at a time
+    let zone_h = rd_merge_zone(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3])
+    if zone_h >= 0.0 {
+      if not rd_merge_order_ok(roads_st, slot, j, n, zone_h) { return ROADS_ENTER_HOLDER }
+      continue
+    }
+    if roads_paths_meet(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3]) { return ROADS_ENTER_HOLDER }
   }
-  if not rd_room_beyond(roads_st, slot, n, mine[2], mine[3]) { return false }
+  if not rd_room_beyond(roads_st, slot, n, mine[2], mine[3]) { return ROADS_ENTER_ROOM }
   for j in 0 .. len(roads_st.rd_cars) {
     let o = roads_st.rd_cars[j]
     if j == slot or not o.alive or o.hold == n or roads_st.rd_eto[o.edge] != n { continue }
@@ -181,11 +199,21 @@ function rd_may_enter(roads_st: mut RoadsState, slot: int) -> bool {
     if not rd_front(roads_st, j) or not rd_eligible(roads_st, j, n) { continue }
     if not rd_ranks_before(roads_st, j, slot) { continue }
     rd_movement(roads_st, o, n, other)
-    if roads_paths_meet(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3]) { return false }
+    # a car that goes before it but has no room beyond the junction is going nowhere: it does not hold this one back (a dead end's
+    # stub full both ways would otherwise lock the junction: the stub's cars wait for this one, this one for that car)
+    if not rd_room_beyond(roads_st, j, n, other[2], other[3]) { continue }
+    let zone_w = rd_merge_zone(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3])
+    if zone_w >= 0.0 {
+      if not rd_merge_order_ok(roads_st, slot, j, n, zone_w) { return ROADS_ENTER_FIRST }
+      continue
+    }
+    if roads_paths_meet(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3]) { return ROADS_ENTER_FIRST }
   }
-  c.hold = n
-  c.holds = true
-  return true
+  if claim {
+    c.hold = n
+    c.holds = true
+  }
+  return ROADS_ENTER_OK
 }
 
 # who holds node n (a car id; the lowest when several do), -1 nobody

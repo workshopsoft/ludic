@@ -209,7 +209,7 @@ knows its junctions' sizes (the bake's setbacks) sets them per edge:
 - The turn path (`turn.ludic`) runs from the mouth of the lane a car leaves to the mouth of the lane it takes: one cubic
   Bezier with its handles along the two lanes (a circle's handles for the angle turned, a third of the chord straight on).
   A U-turn at a node with `roads_node_uturn(n, r)` loops round the node: out to the circle on the kerb side, half way round
-  it, back in to the other lane (each lane of a road of several a lane width inside the next); without it a hairpin
+  it, back in to the other lane (each lane of a road of several a lane width and a metre inside the next); without it a hairpin
   between the two lanes. The car's place along it (`roads_car_point(slot, back)`: any point `back` metres behind its front
   along its way: lane, turn, the lane it came by) is continuous, and it moves along it at its own speed (the road metres of
   the span go by at span / length of the path).
@@ -221,7 +221,18 @@ knows its junctions' sizes (the bake's setbacks) sets them per edge:
 - `roads_config_conflict(width)`: a junction lets in every car whose turn path stays `width` metres from the paths of the
   cars in it (`roads_paths_meet`; two paths ending in one lane always meet; a car behind another in its lane follows it). 0,
   the default, is one at a time. `roads_node_holders(n)` counts them. A dead end with a U-turn circle on a road of several
-  lanes a way is arbitrated too (its lanes' loops cross each other's lanes).
+  lanes a way is arbitrated too; its lanes' loops keep clear of each other and go round together.
+- **Merges** (`merge.ludic`): two movements that end in one lane and come together without crossing (a slip road into a
+  highway's kerb lane, a side road turning into the near lane) meet only in their merge zone, their last metres. A car is
+  let in beside a car of the other movement when, measured on the ground to the lane's mouth, it will be wholly behind it
+  (braking at most twice its comfortable rate) or wholly ahead of it (the other braking comfortably), or when it comes from
+  the higher priority road and the other can still stop short of the zone; once in, it follows the cars of the other
+  movement nearer the mouth, and a car of the lower priority road gives way short of the zone to a moving car of the higher
+  one beside or behind it. A long gore no longer holds a highway car at its start for a slip road car anywhere in it.
+- A car that goes first at a junction but has no room beyond it does not hold back the cars whose paths meet its own (a dead
+  end's stub full both ways would otherwise lock the junction). `roads_enter_why(slot)` says why a car may not go on now
+  (`ROADS_ENTER_*`: a car ahead in its lane, a rule, a car in the junction, no room, a car that goes first).
+- `roads_turn_forbid(e_in, e_out)`: the game forbids a movement the rows allow (until the next `roads_build`).
 - A car is not let in while the lane it would take has no room for its whole length and gap beyond the clear line (the cars
   let in ahead of it bound for the same lane counted): a junction is kept clear. A car that has waited 25 s goes before any
   priority.
