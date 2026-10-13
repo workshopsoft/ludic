@@ -12,6 +12,12 @@ uniform float u_radius;
 uniform float u_intensity;
 uniform float u_contact;    // the tight contact pass; 0 switches it off entirely
 uniform float u_frame;
+// A sample must be behind the surface by more than this much of its sideways distance from the pixel (the tangent of the
+// angle, 0.4 about 22 degrees) before it counts as occluded. The pixel's normal is its triangle's, so a ground of 1 m
+// triangles, curved by a few degrees from one to the next, has the neighbouring triangle rise over a sample taken across
+// the edge and darkens the near side of every triangle: a pattern of the mesh, in a smooth ground. A real crease (a wall
+// on a floor, a step) is far steeper and is kept.
+const float ANGLE_BIAS = 0.4;
 vec3 viewPos(vec2 uv) {
   float d = texture(u_depth, uv).r;
   vec4 p = u_inv_proj * vec4(uv * 2.0 - 1.0, depthClip(d), 1.0);
@@ -49,7 +55,7 @@ void main() {
     if (suv.x < 0.0 || suv.x > 1.0 || suv.y < 0.0 || suv.y > 1.0) continue;
     vec3 sp = viewPos(suv);
     float rangeCheck = smoothstep(0.0, 1.0, radius / max(abs(P.z - sp.z), 1e-3));
-    bool occluded = sp.z >= s.z + 0.02 * radius;
+    bool occluded = sp.z >= s.z + 0.02 * radius + ANGLE_BIAS * r * radius * (0.2 + 0.8 * r);
     ao += (occluded ? 1.0 : 0.0) * rangeCheck;
     // the occluder's lit colour bounces back toward P (weighted by how squarely it faces P)
     if (occluded) {
@@ -87,7 +93,7 @@ void main() {
       // a tight range check: only something genuinely touching counts, or a wall across the
       // room darkens the floor in front of it
       float rc2 = smoothstep(0.0, 1.0, crad / max(abs(P.z - sz2), 1e-4));
-      cao += (sz2 >= s2.z + 0.004 * crad ? 1.0 : 0.0) * rc2;
+      cao += (sz2 >= s2.z + 0.004 * crad + ANGLE_BIAS * r2 * crad ? 1.0 : 0.0) * rc2;
     }
     cao = 1.0 - u_contact * cao / float(CS);
     ao = min(ao, clamp(cao, 0.0, 1.0));
