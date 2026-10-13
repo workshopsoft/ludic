@@ -121,7 +121,10 @@ export function roads_tick(roads_st: mut RoadsState, t: Tick) -> void {
   if dt > 0.1 { dt = 0.1 }
   if dt <= 0.0 { return }
   roads_st.rd_time += dt
-  if roads_st.rd_dice == null { roads_st.rd_dice = rng_new(RoadsWorld.seed()) }
+  if not roads_st.rd_dice_ok {
+    rng_seed(roads_st.rd_dice, RoadsWorld.seed())
+    roads_st.rd_dice_ok = true
+  }
   rd_release_nodes(roads_st)
   if roads_st.rd_ncars < roads_st.rd_target {
     roads_st.rd_spawn_t -= dt

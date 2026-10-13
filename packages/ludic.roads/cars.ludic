@@ -22,7 +22,10 @@ function rd_kind_pick(roads_st: mut RoadsState) -> int {
 }
 
 function rd_below(roads_st: mut RoadsState, n: int) -> int {
-  if roads_st.rd_dice == null { roads_st.rd_dice = rng_new(RoadsWorld.seed()) }
+  if not roads_st.rd_dice_ok {
+    rng_seed(roads_st.rd_dice, RoadsWorld.seed())
+    roads_st.rd_dice_ok = true
+  }
   if n <= 1 { return 0 }
   return rng_between(roads_st.rd_dice, 0, n - 1)
 }

@@ -138,7 +138,8 @@ export state RoadsState {
   rd_target: int = 0
   rd_spawn_t: float = 0.0
   rd_time: float = 0.0
-  rd_dice: Rng = null
+  rd_dice: Rng = rng_new(1)
+  rd_dice_ok: bool = false                 # seeded from RoadsWorld.seed() (the first time traffic needs it, or a reset)
   rd_head: []int = new []int             # per edge: the first car on it this tick, linked through rd_link
   rd_link: []int = new []int
   rd_node_car: []int = new []int         # per node: the slot of the car holding it, -1 none
