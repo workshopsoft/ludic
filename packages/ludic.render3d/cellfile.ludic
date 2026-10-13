@@ -39,6 +39,8 @@ export property RenderKit {
   @Ref(InteriorAtlases) interior: string = ""          # the InteriorAtlases row its windows show (imi.ludic); "" = plain glass
   @Unit("m") @Range(0, 20) win_w: float = 3.0          # window cell size on the facade (interior mapping)
   @Unit("m") @Range(0, 20) win_h: float = 3.2
+  @Unit("m") @Range(0, 20) storey_h: float = 0.0        # a line across every wall each storey_h metres (kit.frag): from the top of a box instance (its eave) down, from the base of another; 0 = none. The count is metres, so it is the same on an instance of 3 floors or of 72
+  @Unit("m") @Range(0.01, 1) storey_line: float = 0.12  # how thick a storey line is
   casts_shadow: bool = true
 }
 

@@ -101,6 +101,15 @@ program CellFileTest {
     expect_eq(IA_COUNT, 2)
   }
 
+  test "a kit's storey lines load from its row, and a kit without them has none" {
+    let kits = new RenderKits
+    expect(render_kits_load(kits, "city"))
+    expect_near(kits.rows[1].storey_h, 3.4, 0.0001)
+    expect_near(kits.rows[1].storey_line, 0.15, 0.0001)
+    expect_eq(kits.rows[0].storey_h, 0.0)
+    expect_near(kits.rows[0].storey_line, 0.12, 0.0001)      # the thickness a kit that asks for lines and says no more gets
+  }
+
   test "colours pack and unpack" {
     let t = cell_rgba(255, 128, 0, 255)
     expect_near(cell_rgba_r(t), 1.0, 0.001)

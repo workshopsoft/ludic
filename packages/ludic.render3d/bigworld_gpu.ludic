@@ -89,6 +89,7 @@ export function bw_setup_kits(render3d_st: mut Render3dState, bw: BigWorld, impo
         if kitbox_read(render3d_st, `{bw.assets}/{bw_dir_of(k.model)}`, bw_file_of(k.model), k.node, box, null, null, null) and box.on { kgpu_kit_box(bw.gpu, id, box) }
         else { print(`r3d: kit {k.key} says box but {k.model} {k.node} has no _ANCHOR: drawn as an ordinary kit`) }
       }
+      if k.storey_h > 0.0 { kgpu_kit_storey(bw.gpu, id, k.storey_h, k.storey_line) }
       if k.impostor and impostor_n > 0 { kgpu_bake_kit(render3d_st, bw.gpu, id, k.w, k.d, k.h, impostor_n, frame_px) }
       if k.interior != "" {
         let ai = interioratlases_find(k.interior)
