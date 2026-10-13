@@ -9,8 +9,7 @@ const RD_BEZ_MAX: int = 64            # ... at most this many
 const RD_MAX_SEGS: int = 16384        # an edge number stays under RD_TURN_KEY (2 an edge a road), so a turn is one int key
 const RD_TURN_KEY: int = 32768        # a turn is in * RD_TURN_KEY + out
 const RD_GRID: float = 32.0           # metres a cell of the grid over the polylines is wide (roads_nearest looks cell by cell)
-const RD_GRID_BIAS: int = 1048576     # a cell's two numbers are made positive by this, then packed into one key
-const RD_GRID_SPAN: int = 2097152
+const RD_CELL_MASK: int = 32767       # a cell's two numbers are cut to their low 15 bits each, then packed into one key
 
 function rd_clear_lists(roads_st: mut RoadsState) -> void {
   List.clear(roads_st.rd_nkey)
@@ -354,7 +353,10 @@ function rd_edge_at(roads_st: RoadsState, seg: int, n: int, entering: bool) -> i
 
 # the cell of a coordinate, and the key of a cell
 function rd_cell(v: float) -> int { return int(Math.floor(v / RD_GRID)) }
-function rd_cell_key(cx: int, cz: int) -> int { return (cx + RD_GRID_BIAS) * RD_GRID_SPAN + (cz + RD_GRID_BIAS) }
+# The key is 30 bits and never negative: an IntMap keeps keys of 0 or more only (a negative key is one of its markers, and a
+# table that grows drops it), and a key made by a product of two biased cell numbers wrapped negative in 32 bits on a map of any size.
+# Two cells 2^15 cells (1,048 km) apart share a key, which only means a few more steps are scored: the score is exact
+function rd_cell_key(cx: int, cz: int) -> int { return (cx & RD_CELL_MASK) * (RD_CELL_MASK + 1) + (cz & RD_CELL_MASK) }
 
 function rd_grid_add(roads_st: mut RoadsState, step: int, seg: int, cx: int, cz: int) -> void {
   let key = rd_cell_key(cx, cz)
