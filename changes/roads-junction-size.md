@@ -10,8 +10,10 @@ it turns to (`roads_lane_onto`: a slip road merges into the kerb lane); is not l
 junction kept clear); and, with `roads_config_conflict(width)`, goes through together with every car whose path keeps
 apart from its own. Lanes can begin where the bake paints them (`roads_edge_lane_base`: half a median, a one way road on
 the right of its line), `roads_config_jam(0)` leaves standing cars to the game, a car that waited 25 s goes first, and a
-wandering car with no place to go takes a road on instead of arriving. Every default keeps the old behaviour (the 37
-tests stand unchanged); `junctions_test.ludic` adds 7, among them ten minutes of 40 cars on a street grid, a dead end and a
+wandering car with no place to go takes a road on instead of arriving. Along a turn path a car's gaps and body points are in ground metres (each car's road metres stretched through its turn paths to their
+own length: a follower behind a car in a U-turn's loop no longer crawls at the loop's pace, and `roads_car_point(slot, back)` keeps a
+body its length); each car's turn paths are measured once a tick (`RoadCar.ka/kka/kb/kkb`). Every default keeps the old behaviour (the 37
+tests stand unchanged); `junctions_test.ludic` adds 8, among them ten minutes of 40 cars on a street grid, a dead end and a
 highway merge with no two car bodies ever overlapping. The per-node holder lists (`rd_node_car`, `rd_node_id`,
 `rd_node_in`) are gone: a car holds the node it was let into (`RoadCar.hold`), and `RoadCar.pin`/`plane` are the road and
 lane it is turning off.
