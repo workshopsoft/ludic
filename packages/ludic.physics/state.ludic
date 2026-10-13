@@ -51,6 +51,7 @@ export state PhysicsState {
   ph_float_k: floats = floats(256 * 4)  # and theirs: buoyancy, linear drag, angular drag, wet
   ph_nf: int = 0
   ph_prism: floats = floats(192 * 3)    # phys_prism's points (x, y, z) for 2n of them
+  ph_hf: floats = floats(1)             # phys_heightfield_tiles' re-laid samples
   ph_rx: float = 0.0               # where the last phys_resolve put a body
   ph_rz: float = 0.0
   @max(64) ph_walkers: []pointer = new []pointer   # a walker id is its place here; null once removed

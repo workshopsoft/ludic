@@ -12,6 +12,29 @@ function gltf_accessor_floats(render3d_st: mut Render3dState, idx: int) -> float
   free(p)
   return out
 }
+# an accessor's integer components (unsigned or signed bytes, shorts or ints; gltf_count elements of gltf_comps each), as words:
+# a triangle list's indices. A float accessor answers an empty list.
+function gltf_accessor_ints(render3d_st: mut Render3dState, idx: int) -> words {
+  let p = gltf_accessor(render3d_st, idx)
+  let n = render3d_st.gltf_count * render3d_st.gltf_comps
+  let ct = render3d_st.gltf_ctype
+  if ct == 5126 or n <= 0 {
+    free(p)
+    return words(0)
+  }
+  let out = words(n)
+  for i in 0 .. n {
+    var v = 0
+    if ct == 5121 { v = int(p[i]) }
+    else if ct == 5120 { v = int(p[i]);  if v > 127 { v -= 256 } }
+    else if ct == 5123 { v = int(p[i * 2]) | (int(p[i * 2 + 1]) << 8) }
+    else if ct == 5122 { v = int(p[i * 2]) | (int(p[i * 2 + 1]) << 8);  if v > 32767 { v -= 65536 } }
+    else { v = int(p[i * 4]) | (int(p[i * 4 + 1]) << 8) | (int(p[i * 4 + 2]) << 16) | (int(p[i * 4 + 3]) << 24) }
+    out[i] = v
+  }
+  free(p)
+  return out
+}
 # how many elements an accessor holds, without reading them
 function gltf_accessor_count(render3d_st: Render3dState, idx: int) -> int {
   let acc = value_at(value_get(render3d_st.gltf_doc, "accessors"), idx)
