@@ -34,6 +34,16 @@ program GlbTest {
     file_close(render3d_st.gltf_bin)
   }
 
+  test "gltf_accessor_ints reads a triangle list's indices, a float accessor answers none" (render3d_st: mut Render3dState) {
+    let dir = models(render3d_st)
+    expect(gltf_open(render3d_st, dir, "tri.glb"))
+    let ix = gltf_accessor_ints(render3d_st, 2)
+    expect_eq(len(ix), 3)
+    expect(ix[0] == 0 and ix[1] == 1 and ix[2] == 2)
+    expect_eq(len(gltf_accessor_ints(render3d_st, 0)), 0)
+    file_close(render3d_st.gltf_bin)
+  }
+
   test "gltf_points reads the positions of the nodes a prefix names, piece by piece, and nothing else" (render3d_st: mut Render3dState) {
     let pts = new []float
     let at = new []int
