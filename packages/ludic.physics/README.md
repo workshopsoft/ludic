@@ -41,6 +41,7 @@ Ludic gives no allocation back.
 | `phys_remove(st, id)`, `phys_count(st)` | gone for good |
 | `phys_pose(st, id, p) -> bool`, `phys_yaw_of(p)` | position, rotation, velocity |
 | `phys_place`, `phys_impulse`, `phys_set_velocity`, `phys_set_kinematic_target`, `phys_awake` | moving a body |
+| `phys_ccd(st, id, on) -> bool`, `phys_is_ccd(st, id) -> bool` | continuous collision detection for one dynamic body (Jolt's `LinearCast` motion quality): its shape is swept over each step and stopped at what it would skip - a car at 60 m/s moves a metre a step, more than a wall is thick. Off by default (a sweep costs; turn it on for what is fast: a car, a thrown thing). A still or kinematic body, a removed id or no world: `false` |
 | `phys_ray(st, o, d, mask, h) -> bool` | the first thing along a ray |
 | `phys_top_at(st, x, z, r, from_y, depth, mask) -> float` | what a foot would land on (`CharacterGround.top_at`), `PHYS_NONE` if nothing |
 | `phys_push(st, x, z, r, y0, y1, mask, p) -> int` | the move that stands an upright body clear (`CharacterGround.push`) |
@@ -69,4 +70,7 @@ from the one on screen.
 
 `ludic test packages/ludic.physics` runs the real library: a box onto a heightfield and a ray to
 it, still things removed, a boulder's top, a push out of a post, a crate floating level and
-drifting, hard and soft landings, a kinematic shove, fixed steps, and a pile run twice to the bit.
+drifting, hard and soft landings, a kinematic shove, fixed steps, and a pile run twice to the bit;
+and `tests/ccd_test.ludic` (Jolt 5.6.0, 60 Hz): at 60 m/s a ball goes through a thin wall without `phys_ccd` and stops at it with it; a car-sized box stops at the wall nose first, broadside and at an angle; a fast fall stays above the ground; a body at rest is as still with it; a run repeats to the bit.
+
+**Cars: set `phys_ccd` on both bodies.** Measured, two 4.4 m cars head-on at 55 m/s each: without it they swap places and drive on (centre gap -271 m after 3 s); with it on one car only they do not swap but overlap 0.64 m (gap 3.76 of 4.40); with it on both they overlap 0.02 m (gap 4.38). Jolt sweeps a `LinearCast` body against bodies that are not `LinearCast` themselves, so a pair of fast bodies each needs it. Against a standing car or a thin barrier the car's own flag is enough (gaps 4.38 and 2.23 of 4.40 and 2.25, the target's flag changes nothing; without it the nose goes 0.8 m into a 0.1 m barrier). A car is 4.4 m long, so unlike a ball it cannot skip a wall whole at 1 m a step, but without the sweep it ends each step deep inside it.

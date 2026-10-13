@@ -26,6 +26,8 @@ extern function jph_body_place(w: pointer, id: int, x: float, y: float, z: float
 extern function jph_body_impulse(w: pointer, id: int, x: float, y: float, z: float) -> void = "jph_body_impulse"
 extern function jph_body_velocity(w: pointer, id: int, x: float, y: float, z: float) -> void = "jph_body_velocity"
 extern function jph_body_target(w: pointer, id: int, x: float, y: float, z: float, yaw: float, dt: float) -> void = "jph_body_target"
+extern function jph_body_ccd(w: pointer, id: int, on: int) -> int = "jph_body_ccd"
+extern function jph_body_ccd_of(w: pointer, id: int) -> int = "jph_body_ccd_of"
 extern function jph_body_awake(w: pointer, id: int) -> int = "jph_body_awake"
 extern function jph_body_buoyancy(w: pointer, id: int, sy: float, nx: float, ny: float, nz: float, buoy: float, lin: float, ang: float, cx: float, cz: float, dt: float) -> int = "jph_body_buoyancy"
 extern function jph_ray(w: pointer, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, mask: int, out: pointer) -> int = "jph_ray"
