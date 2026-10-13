@@ -296,6 +296,7 @@ function water_setup(render3d_st: mut Render3dState) -> void {
   if render3d_st.water_prog != 0 { return }
   render3d_st.water_mesh = mesh_grid(render3d_st, 2, 0.5)
   render3d_st.water_prog = r3d_program(render3d_st, "water.vert", "water.frag", "")
+  render3d_st.water_sea_prog = r3d_program(render3d_st, "water.vert", "water.frag", "#define WATER_SEA\n")
   render3d_st.water_mesh_prog = r3d_program(render3d_st, "water.vert", "water.frag", "#define WATER_MESH\n")
   water_state_make(render3d_st)
 }
@@ -398,10 +399,31 @@ function water_init__t(render3d_st: mut Render3dState, level: float, cx: float, 
   water_body_add(render3d_st, level, cx, cz, ex, ez, true)
 }
 
-# call after the opaque pass, before the sky: blends over the resolved depth
+# call after the opaque pass, before the sky: blends over the resolved depth. The planes of still water (lakes) go through
+# water.frag as it is, the sea's through the same file with WATER_SEA defined, which is the sea alone: every branch of the
+# lake's (a wader, the fish, the wash) is gone from it and the sea's from the lake's, so neither carries the other's
+# registers.
 function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
   if not render3d_st.water_on or render3d_st.wb_n == 0 { return }
-  let p = render3d_st.water_prog
+  var seas = false
+  var lakes = false
+  for i in 0 .. render3d_st.wb_n {
+    if render3d_st.wb_kind[i] != WATER_PLANE { continue }
+    if render3d_st.wb_sea[i] == 1 { seas = true } else { lakes = true }
+  }
+  # the first pass makes the mip chains the planes and the meshes both read; with no lake and no sea it is the lake's, empty
+  var first = true
+  if lakes or not seas {
+    water_draw_planes(render3d_st, depth_tex, render3d_st.water_prog, false, first)
+    first = false
+  }
+  if seas { water_draw_planes(render3d_st, depth_tex, render3d_st.water_sea_prog, true, first) }
+  water_meshes_draw(render3d_st, depth_tex)
+  gpu_blend(render3d_st, false)
+}
+
+# the planes of one kind through program p: the sea's (sea) or the others'
+function water_draw_planes(render3d_st: mut Render3dState, depth_tex: int, p: int, sea: bool, first: bool) -> void {
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
@@ -431,16 +453,20 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
     # the parameter and the chain are the BOUND texture's, and binding a sampler by name does not
     # bind it: without this they went to whatever was bound last - a BC7 kit texture since 23.3,
     # which the mip blits then drew into (Metal: "BC7 is not color renderable")
-    gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.water_refl.color)
-    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
-    gpu_tex_mips(render3d_st, GPU_TEX2D)
+    if first {
+      gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.water_refl.color)
+      gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
+      gpu_tex_mips(render3d_st, GPU_TEX2D)
+    }
   }
   # the bed is read through its mips too (water.frag's underBlur: what is under the surface softens
   # with its depth), so its chain is made the same way, on its own unit, before the depth binds
   r3d_bind_2d(render3d_st, p, "u_scene", 2, render3d_st.post_scene.color)
-  gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_scene.color)
-  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
-  gpu_tex_mips(render3d_st, GPU_TEX2D)
+  if first {
+    gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_scene.color)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
+    gpu_tex_mips(render3d_st, GPU_TEX2D)
+  }
   r3d_bind_2d(render3d_st, p, "u_depth", 0, depth_tex)
   sky_bind_lighting(render3d_st, p)
   shadow_bind(render3d_st, p)
@@ -457,11 +483,13 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
   # every body is the same plane at its own level and bounds; only the mirrored one samples
   # the reflection - another body reading it would show the wrong world upside down
   water_wet_bind(render3d_st, p)
+  sea_swell_bind(render3d_st, p)
   # a plane lies a hair behind a mesh at its own height: where a river mouth or a lake runs into the sea the two surfaces
   # are one height, and the mesh (drawn after) wins every pixel instead of fighting the plane for it
   gpu_depth_bias(render3d_st, -1.0, -2.0)
   for i in 0 .. render3d_st.wb_n {
     if render3d_st.wb_kind[i] != WATER_PLANE { continue }
+    if (render3d_st.wb_sea[i] == 1) != sea { continue }
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet_on"), float(render3d_st.wb_masked[i]))
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sea"), float(render3d_st.wb_sea[i]))
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wash"), float(render3d_st.wb_wash[i]))
@@ -482,8 +510,6 @@ function water_draw(render3d_st: mut Render3dState, depth_tex: int) -> void {
     mesh_draw(render3d_st, render3d_st.water_mesh)
   }
   gpu_depth_bias(render3d_st, 0.0, 0.0)
-  water_meshes_draw(render3d_st, depth_tex)
-  gpu_blend(render3d_st, false)
 }
 
 # The mesh bodies: the same material through the mesh program (water.vert's WATER_MESH: the model's own positions,
@@ -509,6 +535,7 @@ function water_meshes_draw(render3d_st: mut Render3dState, depth_tex: int) -> vo
   shadow_bind(render3d_st, p)
   fog_bind(render3d_st, p)
   water_wet_bind(render3d_st, p)
+  sea_swell_bind(render3d_st, p)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet_on"), 0.0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_refl_on"), 0.0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_ellipse"), 0.0)

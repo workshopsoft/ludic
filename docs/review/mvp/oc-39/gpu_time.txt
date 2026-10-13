@@ -1,25 +1,49 @@
-GPU time of the water pass (R3D_PROF=1, 1080p, Apple M4 Pro 16-core; lab/sea_lab.ludic scenes sea_prof and sea_prof_old; mean of 300 frames a view, microseconds)
-views: open_sea = camera 6 m up looking 35 deg down (the sea fills the frame), horizon = 5 m up looking level, coast = the beach_low bookmark
-'water capture' is the scene copy the pass reads (shared by both)
+GPU time of the sea pass: R3D_PROF=1, 1080p, Apple M4 Pro 16-core, `water surface` of lab/sea_lab.ludic's sea_prof (and sea_prof_deep)
+scenes, the least over 3-4 runs a view (lab/sea_budget.py <sea_lab> runs them; the old and the new sea's labs were also run alternately,
+so the machine's load, which varied from 1 to 10 while this was measured, is the same to both).
 
-sea style:
-prof: shot prof_open_sea
-  water capture               47 us   0%
-  water surface             1456 us   25%
-prof: shot prof_horizon
-  water capture               50 us   1%
-  water surface              888 us   20%
-prof: shot prof_coast
-  water capture               52 us   0%
-  water surface             1203 us   22%
+views: open_sea = camera 6 m up looking 35 deg down, the sea fills the frame, bed 8 m down; horizon = 5 m up looking level;
+       coast = the beach_low bookmark (0.5 m up); land = the same beach turned to the land (the plane lies under all of it);
+       deep = the same scene with the sea 3 m up: the bed 11 m down, deeper than the light reaches.
 
-old still-water plane, same scene:
-prof: shot prof_open_sea
-  water capture               48 us   0%
-  water surface             4484 us   49%
-prof: shot prof_horizon
-  water capture               41 us   0%
-  water surface             2002 us   40%
-prof: shot prof_coast
-  water capture               44 us   0%
-  water surface             2217 us   36%
+                        open_sea   horizon    coast     land      (ms, M4 Pro)
+the first sea (41ea51a1)   1.46      0.74      1.17       -        one session, the two checkouts' runs interleaved, least of 4
+this sea                   0.47      0.27      0.45      0.19      the same session (the script alone, on a busier machine: 0.51, 0.31, 0.50, 0.19)
+this sea, deep bed         0.48      0.29      0.59      0.15
+the old still-water plane  3.9       2.0       2.2        -        for scale (sea_prof_old, an earlier session)
+
+Three times cheaper than the first sea (68 %, 63 % and 61 % off).
+Where it went, in the order it was done (open sea; ms each, measured by stopping the shader at each step and by taking each piece out):
+  the swell: seven trigonometric swells a pixel (0.32 ms, and the striping) -> two reads of one baked tile and one of another (0.05)
+  the sky: four fetches for the reflection (up and ground, two levels each) and four for the haze, and an atan and acos each -> one fetch
+           of the nearest level, serving both, and polynomial arc functions (0.2 -> 0.1)
+  the shadow: a cascade tap, the terrain's and the clouds' reads a pixel -> only where the sun's glitter or the foam is there to be lit (0.13 -> 0)
+  the bed: refraction, six depth reads and a blurred read -> under four metres of water one read of the scene's mips, and none at all
+           where the bed cannot come through (under a hundredth)
+  the program: the sea's code alone in its own program (WATER_SEA), the lake's in the other: 20 % off, from the registers the other's
+           branches held
+  the foam: the lace's noise is not computed where a pixel could not show it
+Not worth doing (measured, none moved a view by more than the noise): a flat reflection direction, one coarse read instead of two,
+half precision for the shading, a box round the wet mask's non-wet tiles to skip its read outside it (it is in the history of this work, not
+in the code). What is left is a floor of 0.11-0.13 ms (raster, the colour and depth writes of 2 M pixels on this machine's bandwidth) and
+about twenty small pieces of 0.01-0.08 ms each.
+
+THE BUDGET. The contract's line is "at most 1.0 ms GPU at 1080p on M1". It was NOT run on an M1 (none here). An M1 draws these views about
+3 times slower than this machine (8 GPU cores against 16, the clock and the memory bandwidth, 68 GB/s against 273, up with them), so the
+same line is 1.0 / 3 = 0.33 ms here, and the pass against it is:
+  horizon (the camera at the water's edge looking out, half the frame sea)   0.27-0.31   meets it  (about 0.8-0.9 ms on an M1)
+  land (the plane under the land the camera faces)                           0.17-0.19   meets it
+  coast                                                                      0.45-0.50   over it by 35-50 %  (about 1.4-1.5 ms on an M1)
+  open sea, the sea filling the whole frame                                  0.47-0.51   over it by 40-50 %  (about 1.4-1.5 ms on an M1)
+The floor alone (writing colour and depth for 2 M pixels, a shader that does nothing) is 0.11-0.13 ms here, an estimated 0.35-0.4 ms on
+an M1: a sea that fills the frame leaves 0.6 ms of an M1's 1.0 for everything else. So the line cannot be kept for a full-frame sea or a
+foam-filled beach at 1080p with the features the contract asks for (swell, depth colour, foam band, a horizon at the far plane), and is
+kept for the views a player has most of the time. This is for the owner to settle by amending OC-39's budget line in
+docs/tech/mvp-contracts.md and docs/plan/decisions.md, not left as 'deferred'; the text proposed is at the end of this file.
+lab/sea_budget.py is the guard until then: it fails over 0.60 ms (open sea, coast), 0.40 (horizon) and 0.30 (land), which the first sea
+(1.46, 0.74, 1.17) did, and prints each view against the scaled budget.
+
+Proposed text for the owner to put in the OC-39 budget line (docs/tech/mvp-contracts.md) and decisions.md in place of the present one:
+  "Budget: the sea pass at most 1.0 ms GPU at 1080p on M1 in a view where the sea is at most half the frame (a camera at the water looking
+   out; the land under the plane), and at most 1.6 ms where it fills the frame or a foam-filled beach; measured on an M4 Pro at a third of
+   those (0.33 ms and 0.53 ms) with lab/sea_budget.py until a run on an M1 replaces the factor of 3."

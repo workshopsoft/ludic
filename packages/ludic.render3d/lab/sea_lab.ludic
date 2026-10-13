@@ -8,8 +8,8 @@
 #
 # Scenes: `sea` (the sea in sea style at noon, wet mask on), `sea_dusk` (the same at 18:40), `sea_none` (the ground with no
 # water: what the sea must leave alone), `sea_old` (the same plane in the old still-water style: before), and `sea_prof`,
-# `sea_prof_old`, `sea_prof_none` (R3D_PROF=1: the GPU time of each pass over the open sea and over the coast, with the
-# sea, the old plane and no water).
+# `sea_prof_deep` (the sea 3 m up: the bed 11 m down), `sea_prof_old`, `sea_prof_none` (R3D_PROF=1: the GPU time of each pass over
+# the open sea, the horizon, the coast and the land, with the sea, the sea over a deep bed, the old plane and no water: lab/sea_budget.py).
 import "ludic.lab"
 program SeaLab {
   numbers float
@@ -42,7 +42,9 @@ program SeaLab {
         sh.sea = water_body_add(render3d_st, 0.0, 0.0, 0.0, 400.0, 400.0, false)      # the old material on the old plane
         water_body_mask(render3d_st, sh.sea, true)
       } else {
-        sh.sea = water_sea_add(render3d_st, 0.0, 0.0, 0.0, 192.0, 128.0)
+        var level = 0.0
+        if mode == 4 { level = 3.0 }                    # three metres up: the open sea over a bed eleven metres down
+        sh.sea = water_sea_add(render3d_st, level, 0.0, 0.0, 192.0, 128.0)
       }
       let river = water_mesh_add(render3d_st, gltf_load(render3d_st, dir, "river.glb", "water"), 0.0, 0.0, 0.0)
       water_body_wash(render3d_st, river, false)                 # the sea has foam, a river has none
@@ -50,11 +52,12 @@ program SeaLab {
     }
     lab_settle(lab_st, 40)
     if prof {
-      # the GPU cost (R3D_PROF=1): the sea over the whole frame, then the coast, each held 300 frames
+      # the GPU cost (R3D_PROF=1): the sea over the whole frame, the horizon, the coast, then the land, each held 300 frames
       lab_settle(lab_st, 300)
       lab_shot(lab_st, "prof_open_sea", -150.0, 6.0, 0.0, 90.0, -35.0)
       lab_shot(lab_st, "prof_horizon", -150.0, 5.0, 0.0, 90.0, 0.0)
       lab_shot_at(lab_st, "prof_coast", -50.8, 0.5, -70.0, 45.0, 270.0, 3.0)
+      lab_shot_at(lab_st, "prof_land", -51.5, 0.5, -70.0, 45.0, 90.0, 3.0)      # the beach turned to the land: the plane lies under all of it
       return
     }
     # the six coast bookmarks, then the measured views
@@ -81,6 +84,7 @@ program SeaLab {
   function none_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 2, 12.0, false) }
   function old_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 3, 12.0, false) }
   function prof_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 1, 12.0, true) }
+  function prof_deep_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 4, 12.0, true) }
   function prof_old_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 3, 12.0, true) }
   function prof_none_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 2, 12.0, true) }
   function sea_tick(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
@@ -105,6 +109,7 @@ program SeaLab {
   def LabScenes sea_none { setup: fn none_setup }
   def LabScenes sea_old { setup: fn old_setup }
   def LabScenes sea_prof { setup: fn prof_setup }
+  def LabScenes sea_prof_deep { setup: fn prof_deep_setup }
   def LabScenes sea_prof_old { setup: fn prof_old_setup }
   def LabScenes sea_prof_none { setup: fn prof_none_setup }
   handler Boot(lab_st: mut LabState, render3d_st: mut Render3dState) phase Start { lab_boot(lab_st, render3d_st) }

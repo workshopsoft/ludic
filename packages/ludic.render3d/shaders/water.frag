@@ -24,6 +24,8 @@ uniform vec4 u_wet_grid;          // tile (0, 0)'s corner in render space x, z; 
 uniform float u_wet_rows;
 uniform float u_sea;              // 1: the open sea (swell, deep colour, the shore foam band); 0: still water as before
 uniform float u_wash;             // 1: the thin lapping wash on a still body's edge (the sea has its foam band instead)
+uniform sampler2D u_swell_a;      // the sea's swell as slopes (water_sea.ludic's bake), tiling every SEA_TILE_A metres
+uniform sampler2D u_swell_b;      // the same for the short ripples, tiling every SEA_TILE_B metres
 // One texel of the mask by its global index, read across tile borders: a tile of the page says what the tile is, an
 // array layer holds a mixed tile's texels. Off the map and a tile with no file read wet.
 float wetTexel(ivec2 g, int res) {
@@ -42,6 +44,17 @@ float wetAt(vec2 xz) {
   vec2 g = (xz - u_wet_grid.xy) / u_wet_grid.z * float(res) - 0.5;
   ivec2 g0 = ivec2(floor(g));
   vec2 f = g - vec2(g0);
+  // nearly everywhere the four texels are one tile's: one read of the page says all dry or all wet, and a mixed tile's
+  // layer is read bilinear by the sampler (the same blend of the same four texels)
+  ivec2 t0 = ivec2(floor(vec2(g0) / float(res)));
+  if (t0 == ivec2(floor(vec2(g0 + 1) / float(res)))) {
+    if (t0.x < 0 || t0.y < 0 || t0.x >= int(u_wet_grid.w) || t0.y >= int(u_wet_rows)) return 1.0;
+    float v = floor(texelFetch(u_wet_page, t0, 0).r * 255.0 + 0.5);
+    if (v < 0.5) return 1.0;
+    if (v < 1.5) return 0.0;
+    if (v < 2.5) return 1.0;
+    return textureLod(u_wet_tiles, vec3((vec2(g0 - t0 * res) + f + 0.5) / float(res), float(int(v) - 3)), 0.0).r;
+  }
   return mix(mix(wetTexel(g0, res), wetTexel(g0 + ivec2(1, 0), res), f.x),
              mix(wetTexel(g0 + ivec2(0, 1), res), wetTexel(g0 + ivec2(1, 1), res), f.x), f.y);
 }
@@ -131,35 +144,51 @@ vec3 rippleNormal(vec2 p, float t) {
   return normalize(vec3(-(hx - h) * 0.15 / e, 1.0, -(hz - h) * 0.15 / e));
 }
 // ---- the open sea ---------------------------------------------------------------------------------------
-// A calm sea is the surface flat and the light bent by long swells. The swells are plane waves, so a slope is exact (no
-// differences of a height), and each one fades out as its wavelength comes within a few pixels: a wave the screen cannot
-// resolve averages to flat instead of crawling as glitter. Nothing is displaced, so no shore, quay or hull ever meets a
-// moving surface.
-void swell(vec2 p, float t, float lam, vec2 d, float steep, float seed, float pixG, inout vec2 s) {
-  float vis = smoothstep(2.0, 8.0, lam / pixG);
-  if (vis <= 0.0) return;
-  float k = 6.2831853 / lam;
-  float w = 0.8 * sqrt(9.81 * k);                       // deep-water speed, a little slower: a calm day
-  float u = dot(d, p);                                  // along the swell's travel
-  float c = dot(vec2(-d.y, d.x), p);                    // along its crest
-  // crests are not ruled lines: the phase wanders along the crest, and each swell comes and goes across the bay
-  if (lam < 2.0) { s += d * (steep * vis * cos(k * u - w * t)); return; }      // the short ones are too small to wander
-  float q = 1.0 / (lam * 3.0);
-  float wob = 0.14 * lam * (sin(c * q + seed) + 0.6 * sin(c * q * 2.37 + 1.7 * seed + u * q * 0.5));
-  float amp = 0.75 + 0.5 * sin(c * q * 0.35 + 2.1 * seed) * sin(u * q * 0.22 + seed);
-  s += d * (steep * amp * vis * cos(k * (u + wob) - w * t));
-}
+// A calm sea is the surface flat and the light bent by swells. The swells are baked once (water_sea.ludic: a few dozen plane
+// waves of whole wavenumbers, spread over a cone of directions, summed into slopes that tile): the long tile is read twice,
+// the second time turned and stretched so no repeat shows, and the ripple tile once, nudged by the long swell. A swell that
+// the screen cannot resolve is averaged by the mips and faded out, so it averages to flat instead of crawling as glitter.
+// Nothing is displaced, so no shore, quay or hull ever meets a moving surface.
+const float SEA_TILE_A = 256.0;
+const float SEA_TILE_B = 16.0;
+vec2 swellRead(sampler2D s, vec2 uv) { return (texture(s, uv, 0.5).rg - 0.5) * 0.5; }
 // pixG: metres of the surface one pixel spans along the view
 vec3 seaNormal(vec2 p, float t, float pixG) {
-  vec2 s = vec2(0.0);
-  swell(p, t, 71.0, vec2(0.9394, 0.3429), 0.020, 1.0, pixG, s);
-  swell(p, t, 29.0, vec2(0.4976, 0.8674), 0.026, 2.0, pixG, s);
-  swell(p, t, 11.5, vec2(0.8776, -0.4794), 0.030, 3.0, pixG, s);
-  swell(p, t, 4.3, vec2(-0.5885, 0.8085), 0.030, 4.0, pixG, s);
-  swell(p, t, 1.7, vec2(0.6967, 0.7174), 0.025, 5.0, pixG, s);
-  swell(p, t, 0.75, vec2(-0.9365, -0.3508), 0.020, 6.0, pixG, s);
-  swell(p, t, 0.32, vec2(-0.3233, -0.9463), 0.012, 7.0, pixG, s);
+  vec2 pa = p - vec2(0.9394, 0.3429) * (1.9 * t);
+  vec2 pb = mat2(0.7986, -0.6018, 0.6018, 0.7986) * (p - vec2(-0.5, 0.866) * (1.1 * t)) * 0.63;
+  vec2 s = (swellRead(u_swell_a, pa * (1.0 / SEA_TILE_A)) + swellRead(u_swell_a, pb * (1.0 / SEA_TILE_A))) * (1.0 - smoothstep(0.3, 1.0, pixG));
+  // the ripples, nudged by the long swell, only where a pixel is under 12 cm (a ripple is not drawn past it: the fetch is not
+  // made, which is most of a frame's sea). Explicit gradients, taken outside the branch, so the mips are right at its edge.
+  vec2 uvb = (p - vec2(0.6967, 0.7174) * (0.8 * t) + s * 6.0) * (1.0 / SEA_TILE_B);
+  vec2 gx = dFdx(uvb) * 1.41, gy = dFdy(uvb) * 1.41;
+  if (pixG < 0.12) { s += (textureGrad(u_swell_b, uvb, gx, gy).rg - 0.5) * (0.5 * (1.0 - smoothstep(0.03, 0.12, pixG))); }
   return normalize(vec3(-s.x, 1.0, -s.y));
+}
+// equirectUV with the arc functions as polynomials (Abramowitz and Stegun 4.4.49 and 4.4.45): the error is 1e-5 and 7e-5 of a
+// radian, a fiftieth of a texel of the sky's maps, and the two calls this pass makes a pixel are a fifth of what it costs.
+vec2 equirectFast(vec3 d) {
+  float ax = abs(d.x), az = abs(d.z);
+  float mn = min(ax, az) / max(max(ax, az), 1e-8);
+  float s = mn * mn;
+  float a = mn * (0.99997726 + s * (-0.33262347 + s * (0.19354346 + s * (-0.11643287 + s * (0.05265332 + s * -0.01172120)))));
+  if (ax > az) { a = 1.5707963 - a; }                                   // atan(|x| / |z|): the ratio was the smaller over the larger
+  if (-d.z < 0.0) { a = 3.1415927 - a; }                                // atan(x, -z): the far half is past a quarter turn
+  a = d.x < 0.0 ? -a : a;
+  float y = clamp(d.y, -1.0, 1.0);
+  float ay = abs(y);
+  float ac = sqrt(1.0 - ay) * (1.5707288 + ay * (-0.2121144 + ay * (0.0742610 + ay * -0.0187293)));
+  if (y < 0.0) { ac = 3.1415927 - ac; }
+  return vec2(a * 0.15915494 + 0.5, ac * 0.31830989);
+}
+// The prefiltered sky at one roughness: one fetch at the nearest roughness level (the sea's roughness is a constant, so every
+// pixel reads the same two levels; the blend between them is not worth a second fetch). One read serves the reflection and the
+// haze of the fog both: the swell scatters a reflection over a cone wider than the blur of the level read, and the fog's colour
+// is the sky a few degrees over the horizon, which is where every pixel far enough to be fogged reflects. Toward the ground the
+// sky's lower half is the ground's colour (skyPrefiltered's mix, with the ground's own blurred read taken to be the sky's
+// at the same direction: they differ by a blur nothing here can see).
+vec3 seaSkyRaw(vec3 d, float rough) {
+  float lv = floor(rough * (u_prefilter_levels - 1.0) + 0.5);
+  return texture(u_prefilter, vec3(equirectFast(d), lv)).rgb * u_ibl_scale;
 }
 // The point of the plane under this pixel from its view ray. The interpolated position across a quad a hundred
 // kilometres wide carries a few millimetres of error: nothing a wave would show, but the ray is exact at any size.
@@ -183,25 +212,35 @@ float seaFoam(float d, float fwD, float rayLen, vec2 p, float t, float pixG) {
   float run = 0.5 + 0.5 * sin(t * 0.5 + 5.0 * gnoise(p * 0.02));
   float front = mix(0.04, 0.16, run);
   float solid = 1.0 - smoothstep(0.4 * front, front, d);
-  float b = fbm(p * 1.6 + vec2(t * 0.07, 0.0), 3) * 0.5 + 0.5;
-  float lines = 0.5 + 0.5 * sin(d * 8.0 - t * 0.8 - 3.0 * b);
-  float lace = smoothstep(0.55, 0.95, lines) * smoothstep(0.30, 0.68, b);
+  // the lace is drawn where a pixel can show it (under half a metre, and the depth not changing faster than a pixel); past
+  // that it is its mean and the noise is not computed
   float fine = (1.0 - smoothstep(0.12, 0.5, pixG)) * (1.0 - smoothstep(0.7, 1.6, 8.0 * fwD));
-  lace = mix(0.22, lace, fine);
+  float lace = 0.22;
+  if (fine > 0.0) {
+    float b = fbm(p * 1.6 + vec2(t * 0.07, 0.0), 3) * 0.5 + 0.5;
+    float lines = 0.5 + 0.5 * sin(d * 8.0 - t * 0.8 - 3.0 * b);
+    lace = mix(0.22, smoothstep(0.55, 0.95, lines) * smoothstep(0.30, 0.68, b), fine);
+  }
   float foam = max(solid, 0.9 * lace * smoothstep(0.5 * front, front + 0.08, d)) * band;
   // the line where the plane meets the ground is two surfaces a few millimetres apart (a few centimetres of the view ray):
   // no foam on it, so it cannot flicker between white and the bank
   return foam * smoothstep(0.0, 0.03, rayLen);
 }
+// Which program this is: the sea's (WATER_SEA) is the sea's code alone, the others' (lakes, rivers, meshes) their own, so
+// neither carries the other's registers. The test is a constant in both.
+#ifdef WATER_SEA
+const bool sea = true;
+#else
+const bool sea = false;
+#endif
 void main() {
   // A lake is an ellipse - the carved bed, the grass and a game's own water test all use
   // one - but its plane is the rectangle around it, and the corners between the two hold
   // ground below the lake's level. Without this they show as sheets of water on dry land.
-  if (u_clip_ellipse > 0.5) {
+  if (!sea && u_clip_ellipse > 0.5) {
     vec2 q = (v_wpos.xz - u_center) / max(u_extent, vec2(0.001));
     if (dot(q, q) > 1.0) discard;
   }
-  bool sea = u_sea > 0.5;
   vec3 wp = sea ? seaPos(v_wpos.y) : v_wpos;
   vec3 v = normalize(u_cam_pos - wp);
   float dist = length(u_cam_pos - wp);
@@ -220,7 +259,7 @@ void main() {
   if (sea) {
     n = seaNormal(wp.xz, u_time, pixG);
     // seen along the surface a swell is foreshortened to a line, and a line is flicker: flat toward the horizon
-    n = normalize(mix(n, vec3(0.0, 1.0, 0.0), smoothstep(0.10, 0.015, v.y)));
+    if (v.y < 0.10) { n = normalize(mix(n, vec3(0.0, 1.0, 0.0), smoothstep(0.10, 0.015, v.y))); }
   } else {
     n = rippleNormal(wp.xz, u_time);
     n = normalize(mix(n, vec3(0, 1, 0), smoothstep(60.0, 400.0, dist)));   // flat sooner: past a few tens of metres a still lake has no texture at all
@@ -274,7 +313,14 @@ void main() {
 
   vec3 r = reflect(-v, n);
   r.y = abs(r.y);
-  vec3 refl = skyPrefiltered(r, sea ? 0.06 : 0.12);
+  vec3 skyRaw = vec3(0.0);
+  vec3 refl;
+  if (sea) {
+    skyRaw = seaSkyRaw(vec3(r.x, max(r.y, 0.02), r.z), 0.4);
+    refl = skyRaw * mix(u_ground_alb, vec3(1.0), smoothstep(-0.2, 0.15, r.y));
+  } else {
+    refl = skyPrefiltered(r, 0.12);
+  }
   if (u_refl_on > 0.5) {
     // the mirrored render lines up with the screen; the ripples nudge and soften the lookup.
     // The nudge is halved with the ripples that drive it - at the old strength a calm
@@ -315,12 +361,32 @@ void main() {
   vec3 hv = normalize(v + u_sun_dir);
   float NoH = max(dot(n, hv), 0.0);
   float glitter = D_GGX(NoH, sea ? 0.07 : 0.06) * (sea ? 0.2 : 0.17);   // a narrower sun track: glitter is spread by ripples, and there are fewer
-  float viewDepth = -(u_view * vec4(wp, 1.0)).z;
+  // The sea's foam is found first, since it and the sun's glitter are all the shadow is asked for: over most of the sea
+  // neither is there (the glitter is a track, the foam a band along the shore), and the shadow is not read at all.
+  float sf = 0.0;
+  if (sea) {
+    // the shore foam is lit as the ground is and goes through the same fog as the water it lies on
+    sf = clamp(seaFoam(depthBelow, fwD, alongRay, wp.xz, u_time, pixG), 0.0, 1.0);
+    if (sf > 0.0 && u_wet_on > 0.5) {
+      // where the sea's own region ends over ground that is still under the water (a river mouth, a dock's wall) the mask
+      // is an edge in the water, not a shore: the foam fades out over the two metres before it
+      float wmin = min(min(wetAt(wp.xz + vec2(2.0, 0.0)), wetAt(wp.xz - vec2(2.0, 0.0))), min(wetAt(wp.xz + vec2(0.0, 2.0)), wetAt(wp.xz - vec2(0.0, 2.0))));
+      sf *= smoothstep(0.45, 0.9, wmin);
+    }
+  }
   float shadow = 1.0;
+  bool sunSeen = !sea;
   // the sea's own shadows (a hull, a quay) matter in the near field only, and under glitter and foam one tap is enough:
-  // the lake takes the full filter, the sea one tap out to 250 m and none past it
-  if (!sea) { shadow = sunShadow(wp, vec3(0, 1, 0), viewDepth); } else if (dist < 250.0) { shadow = sunShadowCheap(wp, vec3(0, 1, 0), viewDepth); }
-  shadow *= cloudShadow(wp);
+  // the lake takes the full filter, the sea one tap out to 250 m and none past it, and none where there is no glitter
+  // (under three thousandths of the sun) or foam to light
+  if (!sea) {
+    float viewDepth = -(u_view * vec4(wp, 1.0)).z;
+    shadow = sunShadow(wp, vec3(0, 1, 0), viewDepth) * cloudShadow(wp);
+  } else if (sf > 0.0 || max(u_sun_color.r, max(u_sun_color.g, u_sun_color.b)) * glitter * F > 0.003) {
+    sunSeen = true;
+    if (dist < 250.0) { shadow = sunShadowCheap(wp, vec3(0, 1, 0), -(u_view * vec4(wp, 1.0)).z); }
+    shadow *= cloudShadow(wp);
+  }
   // ---- what is under the surface -------------------------------------------------
   // The bed is sampled from the scene as it was drawn before the water, nudged by the
   // ripple normal (refraction), then attenuated per channel over the path the light
@@ -328,38 +394,51 @@ void main() {
   // then green, so shallows stay bright and readable and depth turns blue-green and
   // dark on its own. This is what makes it a body of water rather than a tinted sheet:
   // the ground is seen through it, not behind it.
-  // Deep sea shows no bed: the light never comes back, so none of the bed's reads is made (and over the map's edge, where
-  // there is no ground at all, the sea is the same colour as over a bed ten metres down)
-  bool deep = sea && depthBelow > 9.0;
+  // Deep sea shows no bed: the light never comes back, so none of the bed's reads is made (the sea over the map's edge, where
+  // there is no ground at all, is the same colour as over a bed far down). The most of the bed that can come through is
+  // the blue's, which the water takes least of; where that is under a hundredth the bed is not read.
+  float pathLen = depthBelow * (1.0 + 1.0 / max(NoV, 0.25));
+  float blueLeft = exp(-0.06 * pathLen);
+  bool deep = sea && blueLeft * (1.0 - smoothstep(4.0, 9.0, depthBelow)) < 0.012;
   vec2 ruv2 = suv;
   vec3 bed = vec3(0.0);
   vec3 trans = vec3(0.0);
-  float pathLen = 0.0;
   if (!deep) {
-    ruv2 = clamp(suv + n.xz * 0.03 * smoothstep(0.0, 2.0, depthBelow), 0.001, 0.999);
-    // never refract something that is actually in front of the surface (the near bank),
-    // or the grass on the shore smears out over the water
-    float rd = textureLod(u_depth, ruv2, 0.0).r;
-    vec4 rgp = u_inv_vp * vec4(ruv2 * 2.0 - 1.0, depthClip(rd), 1.0);
-    vec3 rground = rgp.xyz / rgp.w;
-    if (rground.y > wp.y) { ruv2 = suv; }
-    bed = sane(sea ? textureLod(u_scene, ruv2, 0.0).rgb : texture(u_scene, ruv2).rgb);
-    pathLen = depthBelow * (1.0 + 1.0 / max(NoV, 0.25));
     // Per metre: red first, then green — a cold blue-teal depth. Pulled down by a third, so
     // the light reaches about half as far again into the water as it did: at the old rates a
     // metre and a half of a clear mountain lake was already opaque, which is a pond, and the
     // gravel of the shelf went out before the bank did.
     vec3 absorb = sea ? vec3(0.40, 0.12, 0.06) : vec3(0.34, 0.15, 0.09);
-    trans = exp(-absorb * pathLen);
+    trans = sea ? vec3(exp(-0.40 * pathLen), exp(-0.12 * pathLen), blueLeft) : exp(-absorb * pathLen);
     if (sea) trans *= 1.0 - smoothstep(4.0, 9.0, depthBelow);          // by nine metres the sea is its own colour
     // the ripples' spread, SPREAD metres a metre of depth, in pixels at this distance; only where
     // any of the bed still comes through (past that the read would soften what is not seen)
     const float SPREAD = 0.04;
     float vd = -(u_view * vec4(wp, 1.0)).z;
     float spreadPx = min(SPREAD * depthBelow * 0.5 * u_screen.y * u_proj[1][1] / max(vd, 0.5), 3.0);
-    if (spreadPx > 0.75 && trans.b > 0.03) { bed = underBlur(ruv2, bed, spreadPx, wp.y); }
+    if (sea && depthBelow > 4.0) {
+      // the sea past four metres: the bed is a dim veil under the swell, seen through the spread as one read of the scene's
+      // mips - no refraction, none of the guards against the bank (a hull's edge is not within reach of a pixel's spread of
+      // this much water), the same read the guarded one comes to wherever no bank is near
+      bed = sane(textureLod(u_scene, suv, trans.b > 0.03 ? log2(max(spreadPx, 1.0)) : 0.0).rgb);
+    } else {
+      // the refraction fades out over the sea's last metre and a half to four, where the plain read takes over
+      float rfr = 1.0;
+      if (sea) { rfr = 1.0 - smoothstep(2.5, 4.0, depthBelow); }
+      ruv2 = clamp(suv + n.xz * 0.03 * smoothstep(0.0, 2.0, depthBelow) * rfr, 0.001, 0.999);
+      // never refract something that is actually in front of the surface (the near bank),
+      // or the grass on the shore smears out over the water
+      float rd = textureLod(u_depth, ruv2, 0.0).r;
+      vec4 rgp = u_inv_vp * vec4(ruv2 * 2.0 - 1.0, depthClip(rd), 1.0);
+      vec3 rground = rgp.xyz / rgp.w;
+      if (rground.y > wp.y) { ruv2 = suv; }
+      bed = sane(sea ? textureLod(u_scene, ruv2, 0.0).rgb : texture(u_scene, ruv2).rgb);
+      if (spreadPx > 0.75 && trans.b > 0.03) { bed = underBlur(ruv2, bed, spreadPx, wp.y); }
+    }
   }
-  vec3 tint = (sea ? vec3(0.018, 0.075, 0.115) : vec3(0.030, 0.085, 0.105)) * skyIrradiance(vec3(0, 1, 0)) * 1.15;   // Maroon Lake: deep, dark blue-green, not turquoise
+  // (skyIrradiance of straight up is the sky's irradiance map read once there: the ground's read is mixed out entirely)
+  vec3 skyUp = textureLod(u_irradiance, vec2(0.5, 0.0), 0.0).rgb * u_ibl_scale;
+  vec3 tint = (sea ? vec3(0.018, 0.075, 0.115) : vec3(0.030, 0.085, 0.105)) * skyUp * 1.15;   // Maroon Lake: deep, dark blue-green, not turquoise
   // The bed comes here already wet (terrain.frag's `wet`, about 0.6) and under a film of the lake's
   // colour (`film`, about half its albedo); a fish, a wader's legs or a rock on the bed come lit as
   // if in air, and absorption alone left a trout half a metre down brighter than the gravel round
@@ -375,23 +454,16 @@ void main() {
   // which is true of a sea and is why you could stand at the shore of a lake nine metres
   // deep and never see into it. At 0.70 the bed is there at every angle you actually stand
   // at, and the mirrored Bells are still the thing you see across the water.
-  shadow *= sunZone(wp);   // no glitter or sunlit foam inside a light zone
+  if (sunSeen) { shadow *= sunZone(wp); }   // no glitter or sunlit foam inside a light zone
   vec3 col = mix(through, refl, clamp(F * 0.85 + 0.03, 0.0, 0.70)) + u_sun_color * glitter * F * shadow;
-  float sf = 0.0;
   if (sea) {
-    // the shore foam is lit as the ground is and goes through the same fog as the water it lies on
-    sf = clamp(seaFoam(depthBelow, fwD, alongRay, wp.xz, u_time, pixG), 0.0, 1.0);
-    if (sf > 0.0 && u_wet_on > 0.5) {
-      // where the sea's own region ends over ground that is still under the water (a river mouth, a dock's wall) the mask
-      // is an edge in the water, not a shore: the foam fades out over the two metres before it
-      float wmin = min(min(wetAt(wp.xz + vec2(2.0, 0.0)), wetAt(wp.xz - vec2(2.0, 0.0))), min(wetAt(wp.xz + vec2(0.0, 2.0)), wetAt(wp.xz - vec2(0.0, 2.0))));
-      sf *= smoothstep(0.45, 0.9, wmin);
-    }
-    col = mix(col, vec3(1.15, 1.18, 1.18) * (skyIrradiance(vec3(0, 1, 0)) + u_sun_color * (max(u_sun_dir.y, 0.0) / 3.14159) * shadow), sf);
+    col = mix(col, vec3(1.15, 1.18, 1.18) * (skyUp + u_sun_color * (max(u_sun_dir.y, 0.0) / 3.14159) * shadow), sf);
+    // the haze is the sky a few degrees above the horizon: the one read, as the ground mixes it in there
+    col = applyFogSky(col, -v, dist, skyRaw * mix(u_ground_alb, vec3(1.0), smoothstep(-0.2, 0.15, 0.02)));
   } else {
-    col = mix(col, vec3(0.7, 0.75, 0.75) * (skyIrradiance(vec3(0, 1, 0)) * 0.5 + u_sun_color * 0.08 * shadow), clamp(foam, 0.0, 1.0));
+    col = mix(col, vec3(0.7, 0.75, 0.75) * (skyUp * 0.5 + u_sun_color * 0.08 * shadow), clamp(foam, 0.0, 1.0));
+    col = applyFog(col, wp, dist);
   }
-  col = applyFog(col, wp, dist);
   // Soft edge measured ALONG THE VIEW RAY, not vertically. Vertical depth collapses to
   // zero over a fraction of a pixel when the surface is seen edge-on, which is exactly
   // the low, near-the-waterline view where the plane's silhouette turns into a hard

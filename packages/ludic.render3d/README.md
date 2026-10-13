@@ -68,14 +68,16 @@ a pure function of those two - the same on every machine and in the editor's pre
   rows (16 at most, `WATER_MAX`) and answers how many it took; `water_mesh_add`, `water_body_mask` and
   `water_rebase` do the same by hand; `water_init` for one reflecting plane is the older way.
 - **The open sea** (`water_sea.ludic`): a plane in sea style (`sea: true` on a row, or `water_sea_add(render3d_st, level, cx, cz,
-  ex, ez)`). The surface stays flat and long swells bend the light (seven plane waves, a slope of 0.19 at most, fading out as a
-  wave comes within a few pixels so none can crawl as glitter, and flat toward the horizon); the colour deepens with the
+  ex, ez)`). The surface stays flat and swells bend the light (read from two small tiling textures of slopes, baked once from a few
+  dozen plane waves spread over a cone of directions - no parallel stripes - and mipped, so a wave a pixel cannot resolve
+  averages to flat instead of crawling as glitter; flat toward the horizon); the colour deepens with the
   water under it and is plain deep sea from nine metres down (and over the edge of the map, where there is no ground); and a
   foam band lies where the water over the bed is under a metre deep - white where the swash has just been, lace out to
   the band's edge, nothing at a metre - on the sea only: a lake or a river keeps its thin wash (`wash: false` or
   `water_body_wash` turns it off). The rectangle is the map's `ex`, `ez` plus `WATER_SEA_REACH` (100 km, or the camera's far
-  distance if more), so the sea runs to the horizon from anywhere on the map. It is masked, has no reflection pass (the sky is
-  read from the prefiltered sky; `reflect` on a row still mirrors it) and a mesh body drawn at the same height wins over
+  distance if more), so the sea runs to the horizon from anywhere on the map. It is masked, has no reflection pass (the sky,
+  and the haze of the fog, are one read of the prefiltered sky; `reflect` on a row still mirrors it), and its planes are drawn
+  by their own program (`WATER_SEA`: the sea's code alone, so neither it nor a lake carries the other's registers) and a mesh body drawn at the same height wins over
   it (a river mouth), so the two never fight. `water_body_covers` answers whether a body's rectangle is over a point.
 - **The wet mask** (`water_wet.ludic`): `<tile>.wet.png` beside each height tile, 8-bit, 255 wet. `wet_new`,
   `wet_frame` (tiles read nearest first within a budget, a mixed tile's texels in one of N resident layers),
@@ -122,7 +124,7 @@ coordinate from integers (`double(40000123) / 1000.0`) or from a computation, ne
 | the ground from the studio's height tiles: data, bake (with the LOD lock), stream, draw | `tilemap.ludic`, `tilemap_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic`, `tools/terrain_bake.ludic` | `tests/tilemap_test.ludic`, `tests/tilemap_lock_test.ludic` |
 | the ground's land use: a class mask a tile and 8 tones | `tilemap_mask.ludic` | `tests/tilemap_mask_test.ludic`, `lab/shore_lab.ludic` + `lab/shore_check.py` |
 | still water: planes, meshes, the wet mask | `water.ludic`, `water_bodies.ludic`, `water_wet.ludic` | `tests/water_wet_test.ludic`, `lab/shore_lab.ludic` + `lab/shore_check.py` |
-| the open sea: swell, deep colour, shore foam | `water_sea.ludic`, `shaders/water.frag` | `tests/water_sea_test.ludic`, `lab/sea_lab.ludic` + `lab/sea_check.py` |
+| the open sea: baked swell, deep colour, shore foam | `water_sea.ludic`, `shaders/water.frag` | `tests/water_sea_test.ludic`, `lab/sea_lab.ludic` + `lab/sea_check.py` (pictures), `lab/sea_budget.py` (GPU time), `lab/sea_proof.py` (the review sheets) |
 | reversed depth | `fmath.ludic` `m4_perspective_rz`, `m4_ortho_rz` | `tests/depth_test.ludic` |
 | HLOD bake (+ tool) | `hlod.ludic`, `tools/hlod_bake.ludic`, `hlod_gpu.ludic` | `tests/hlod_test.ludic` |
 | instancing: culling, binning, budgets | `kinst.ludic` (CPU), `kgpu.ludic` + `kinst_*.comp` (GPU), `karena.ludic` | `tests/kinst_test.ludic`, `tests/karena_test.ludic`, `tests/bigworld_gpu_test.ludic` |

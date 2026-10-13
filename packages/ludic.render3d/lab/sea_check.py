@@ -15,6 +15,8 @@ row 0 at the top) and reads pixels there. The ground truth is the fixture's own 
             below the horizon line (no edge of the surface, no gap of sky).
   flicker   (flick_a, flick_b: the same view a frame apart) what moved between two frames is small, and no more than the old
             still-water plane's.
+  seam      (flick_a, noon and dusk) no step across the deep water under the foam: the sky is one read of the maps by direction, and
+            a wrong one on one side of a direction is a line down the frame.
   mouth     (top_mouth) where a river mesh and the sea plane share a height the mesh draws every pixel: the overlap has the
             river's colour and its smoothness.
 Prints one line a check and exits 1 when any fails.
@@ -218,6 +220,18 @@ def check_flicker(lab):
     report(p <= 14.0, "flicker: 99.9 % of pixels change by under 14/255", f"{p:.1f}")
 
 
+def check_seam(lab, scene, label):
+    """flick_a looks along the sea at the camera's own row of the world: the view direction where the sky's longitude has its
+    ends (z = 0 of the direction) is the middle of the frame. Deep water just under the foam is smooth across the frame, and a
+    step in it is a seam in what reads the sky (the reflection and the haze are one read of the sky maps' longitude and
+    latitude, from the view direction and the swell's normal): the columns' mean over those rows changes by about a level
+    over four pixels, and a sky read that was wrong on one side of a direction changed by four."""
+    img = load(lab, scene, "flick_a")
+    band = img[int(H * 0.90):int(H * 0.99)].mean(axis=0)
+    jump = float(np.max(np.abs(band[4:] - band[:-4])))
+    report(jump <= 2.5, f"seam {label}: the deep water under the foam has no step across the frame", f"largest change over 4 pixels {jump:.2f}")
+
+
 def check_mouth(lab):
     img = load(lab, "sea", "top_mouth")
     pose = pose_at(-57.0, 0.0, -45.0, 20.0, 0.0, 89.0)
@@ -250,6 +264,8 @@ def main():
     check_horizon(lab, "horizon", 0.0)
     check_horizon(lab, "horizon_corner", -1.0)
     check_flicker(lab)
+    check_seam(lab, "sea", "noon")
+    check_seam(lab, "sea_dusk", "dusk")
     check_mouth(lab)
     print(f"sea_check: {len(FAILED)} failed")
     return 1 if FAILED else 0

@@ -61,3 +61,130 @@ export function water_body_covers(render3d_st: Render3dState, i: int, x: float, 
   if i < 0 or i >= render3d_st.wb_n or render3d_st.wb_kind[i] != WATER_PLANE { return false }
   return Math.abs(x - render3d_st.wb_cx[i]) <= render3d_st.wb_ex[i] and Math.abs(z - render3d_st.wb_cz[i]) <= render3d_st.wb_ez[i]
 }
+
+# ---- the swell, baked --------------------------------------------------------------------------------------------------
+# The sea's normal is not computed per pixel: it is read from two small tiling textures of slopes, baked here once. A tile is
+# the sum of a few dozen plane waves with WHOLE wavenumbers (so the tile repeats exactly, edge to edge), their directions
+# spread over a cone about the wind and their wavelengths spaced evenly in the logarithm (no band is missing and none a
+# stripe: the direction spread is what keeps a long swell from drawing parallel lines across the view). water.frag reads the
+# long tile twice, the second time turned and stretched so no repeat shows, and the ripple tile once.
+#
+# Texels are RGBA8; red and green are the slope along x and along z, (byte / 255 - 0.5) * 0.5, so a slope of up to 0.25
+# either way is held (the baked tiles reach about 0.12) to 0.002.
+const SEA_TILE_A: float = 256.0          # metres the long tile spans (water.frag's SEA_TILE_A)
+const SEA_TILE_B: float = 16.0           # and the ripple tile's (SEA_TILE_B)
+const SEA_RES_A: int = 512               # texels a side: 0.5 m (a 3.2 m wave is six texels)
+const SEA_RES_B: int = 256               # 6 cm (a 0.32 m ripple is five texels)
+const SEA_RMS_A: float = 0.030           # the root mean square slope of one read of the long tile (two are summed)
+const SEA_RMS_B: float = 0.022
+const SEA_SLOPE_MAX: float = 0.25
+
+# a repeatable number in [0, 1) from a seed
+function sea_hash(x: float) -> float {
+  let v = Math.sin(x * 12.9898 + 78.233) * 43758.5453
+  return v - Math.floor(v)
+}
+
+# One tile of the swell: res x res RGBA8 texels spanning `tile` metres, of `comps` plane waves from `lmin` to `lmax` metres
+# long, their directions spread +- `spread` radians (a triangular spread, most near the middle) about `wind`, scaled so the
+# slope's root mean square (over both components) is `rms`. Row z, column x is the world point (x, z) * tile / res.
+@alloc_ok("the sea's swell, baked once when the sea is first drawn")
+export function sea_swell_bake(res: int, tile: float, lmin: float, lmax: float, wind: float, spread: float, rms: float, comps: int, seed: float) -> []byte {
+  let n = res * res
+  let sx = floats(n)
+  let sz = floats(n)
+  for i in 0 .. n { sx[i] = 0.0;  sz[i] = 0.0 }
+  let ca = floats(res);  let sa = floats(res);  let cb = floats(res);  let sb = floats(res)
+  let tau = 6.2831853
+  for c in 0 .. comps {
+    let fc = float(c)
+    let u = (fc + sea_hash(seed + fc * 3.1)) / float(comps)
+    let lam = lmin * Math.exp(Math.log(lmax / lmin) * u)
+    let ang = wind + spread * (sea_hash(seed + fc * 7.7 + 1.0) + sea_hash(seed + fc * 5.3 + 2.0) - 1.0)
+    let kmag = tile / lam
+    var wi = int(Math.floor(kmag * Math.cos(ang) + 0.5))
+    var wj = int(Math.floor(kmag * Math.sin(ang) + 0.5))
+    if wi == 0 and wj == 0 { wi = 1 }
+    let kk = Math.sqrt(float(wi * wi + wj * wj))
+    let dx = float(wi) / kk
+    let dz = float(wj) / kk
+    let ph = tau * sea_hash(seed + fc * 11.3 + 3.0)
+    for x in 0 .. res {
+      let a = tau * float((wi * x) % res) / float(res) + ph
+      ca[x] = Math.cos(a);  sa[x] = Math.sin(a)
+    }
+    for z in 0 .. res {
+      let b = tau * float((wj * z) % res) / float(res)
+      cb[z] = Math.cos(b);  sb[z] = Math.sin(b)
+    }
+    # cos(a + b) from the two tables: the plane wave of this component at every texel
+    for z in 0 .. res {
+      let czv = cb[z]
+      let szv = sb[z]
+      let o = z * res
+      for x in 0 .. res {
+        let v = ca[x] * czv - sa[x] * szv
+        sx[o + x] += dx * v
+        sz[o + x] += dz * v
+      }
+    }
+  }
+  var sum = 0.0
+  for i in 0 .. n { sum += sx[i] * sx[i] + sz[i] * sz[i] }
+  let scale = rms / Math.max(Math.sqrt(sum / float(n)), 0.000001)
+  let px = buffer(n * 4)
+  for i in 0 .. n {
+    px[i * 4] = sea_slope_byte(sx[i] * scale)
+    px[i * 4 + 1] = sea_slope_byte(sz[i] * scale)
+    px[i * 4 + 2] = 0
+    px[i * 4 + 3] = 255
+  }
+  free(sx);  free(sz);  free(ca);  free(sa);  free(cb);  free(sb)
+  return px
+}
+# a slope as a byte, and back
+function sea_slope_byte(s: float) -> int {
+  let v = int(Math.floor((s / (2.0 * SEA_SLOPE_MAX) + 0.5) * 255.0 + 0.5))
+  return Math.max(0, Math.min(v, 255))
+}
+export function sea_slope_of(b: int) -> float { return (float(b) / 255.0 - 0.5) * 2.0 * SEA_SLOPE_MAX }
+
+# the long tile and the ripple tile, as the game draws them (the wind at 20 degrees, the ripples crossing it)
+@alloc_ok("the sea's swell, baked once when the sea is first drawn")
+export function sea_swell_long() -> []byte { return sea_swell_bake(SEA_RES_A, SEA_TILE_A, 3.2, 90.0, 0.35, 1.2, SEA_RMS_A, 56, 1.0) }
+@alloc_ok("the sea's swell, baked once when the sea is first drawn")
+export function sea_swell_ripple() -> []byte { return sea_swell_bake(SEA_RES_B, SEA_TILE_B, 0.32, 1.9, 0.9, 1.4, SEA_RMS_B, 36, 2.0) }
+
+# the two textures, made once on the device (RGBA8, repeating, trilinear)
+@alloc_ok("the sea's swell textures, made once when the sea is first drawn")
+function sea_swell_make(render3d_st: mut Render3dState) -> void {
+  if render3d_st.water_swell_a != 0 { return }
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_WATER
+  let a = sea_swell_long()
+  render3d_st.water_swell_a = sea_swell_tex(render3d_st, a, SEA_RES_A)
+  free(a)
+  let b = sea_swell_ripple()
+  render3d_st.water_swell_b = sea_swell_tex(render3d_st, b, SEA_RES_B)
+  free(b)
+  render3d_st.gvk_tag = was
+}
+@alloc_ok("the sea's swell textures, made once when the sea is first drawn")
+function sea_swell_tex(render3d_st: mut Render3dState, px: []byte, res: int) -> int {
+  let id = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+  gpu_pixel_store(render3d_st, GPU_UNPACK_ALIGNMENT, 1)
+  gpu_tex_image2d(render3d_st, GPU_RGBA8, res, res, GPU_RGBA, GPU_UNSIGNED_BYTE, data_of(px))
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_NEAREST)
+  gpu_tex_mips(render3d_st, GPU_TEX2D)
+  return id
+}
+# the swell on water.frag's program p (every body's draw: the shader declares them, the mesh program too)
+function sea_swell_bind(render3d_st: mut Render3dState, p: int) -> void {
+  sea_swell_make(render3d_st)
+  r3d_bind_2d(render3d_st, p, "u_swell_a", 26, render3d_st.water_swell_a)
+  r3d_bind_2d(render3d_st, p, "u_swell_b", 27, render3d_st.water_swell_b)
+}

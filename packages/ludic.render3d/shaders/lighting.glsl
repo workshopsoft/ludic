@@ -359,8 +359,15 @@ vec3 fogWallCol(vec3 dir) {
   vec3 c = mix(amb, sk * (la / ls), u_sky_relight);
   return c + u_sun_color * u_fog_inscatter * pow(max(dot(dir, u_sun_dir), 0.0), 8.0);
 }
+vec3 applyFogSky(vec3 col, vec3 dir, float dist, vec3 skyCol);
 vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   vec3 dir = normalize(wpos - u_cam_pos);
+  return applyFogSky(col, dir, dist, skyPrefiltered(vec3(dir.x, max(dir.y, 0.02), dir.z), 0.6));
+}
+// the same with the haze's sky colour (what skyPrefiltered gives toward the view direction, raised to a few degrees
+// above the horizon, at roughness 0.6) read by the caller: a surface that reads the sky anyway, or that can do it
+// with fewer fetches, does not pay for the full filter twice
+vec3 applyFogSky(vec3 col, vec3 dir, float dist, vec3 skyCol) {
   float hf = u_fog_height_falloff;
   float t = dir.y * hf;
   float integ = (abs(t) > 1e-4) ? (1.0 - exp(-dist * t)) / t : dist * (1.0 - 0.5 * dist * t);
@@ -368,7 +375,7 @@ vec3 applyFog(vec3 col, vec3 wpos, float dist) {
   // would otherwise have that one's air exp(falloff * 1000) times thicker
   float fogAmt = u_fog_density * exp(-(u_cam_pos.y - u_fog_base) * hf) * integ;
   float f = clamp(1.0 - exp(-fogAmt), 0.0, 1.0);
-  vec3 fogCol = skyPrefiltered(vec3(dir.x, max(dir.y, 0.02), dir.z), 0.6);
+  vec3 fogCol = skyCol;
   float sunAmt = pow(max(dot(dir, u_sun_dir), 0.0), 8.0);
   fogCol += u_sun_color * u_fog_inscatter * sunAmt;
   // DISTANCE TAKES SATURATION BEFORE IT TAKES CONTRAST, and the mix below cannot do that on
