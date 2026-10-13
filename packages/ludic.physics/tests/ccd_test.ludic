@@ -6,8 +6,8 @@ import "ludic.physics"
 import "ludic.base"
 program CcdTest {
   numbers float
-  # MET.I18: the swept test speed must be at least the cars' top_speed 50 x 1.1 = 55 m/s (cars.lres);
-  # 60 m/s is that with margin. If the metric grows, raise this.
+  # The swept test speed must be at least the fastest car's top speed x 1.1 (50 x 1.1 = 55 m/s today);
+  # 60 m/s is that with margin. If the fastest car gets faster, raise this.
   const SPEED: float = 60.0          # m/s, a metre a step
   const WALL_X: float = 30.0         # the wall's centre; it is 0.1 m thick, 4 m tall, 30 m wide
   const CAR_HALF_LEN: float = 2.2    # a compact car: 4.40 x 1.80 x 1.45 m
