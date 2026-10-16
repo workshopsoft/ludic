@@ -58,6 +58,27 @@ float wetAt(vec2 xz) {
   return mix(mix(wetTexel(g0, res), wetTexel(g0 + ivec2(1, 0), res), f.x),
              mix(wetTexel(g0 + ivec2(0, 1), res), wetTexel(g0 + ivec2(1, 1), res), f.x), f.y);
 }
+// The least of the mask at the four points r metres from xz (east, west, north, south). Nearly always the texels the four reads
+// need lie in one tile, and then one read of the page serves all four; near a tile's border each is found on its own.
+float wetMin4(vec2 xz, float r) {
+  int res = textureSize(u_wet_tiles, 0).x;
+  float k = float(res) / u_wet_grid.z;
+  vec2 g = (xz - u_wet_grid.xy) * k - 0.5;
+  vec2 gr = vec2(r * k);
+  ivec2 t0 = ivec2(floor(floor(g - gr) / float(res)));
+  ivec2 t1 = ivec2(floor((floor(g + gr) + 1.0) / float(res)));
+  if (t0 == t1 && t0.x >= 0 && t0.y >= 0 && t0.x < int(u_wet_grid.w) && t0.y < int(u_wet_rows)) {
+    float v = floor(texelFetch(u_wet_page, t0, 0).r * 255.0 + 0.5);
+    if (v < 0.5 || (v > 1.5 && v < 2.5)) return 1.0;
+    if (v < 1.5) return 0.0;
+    vec2 uv = (xz - u_wet_grid.xy) / u_wet_grid.z - vec2(t0);
+    float dr = r / u_wet_grid.z;
+    float layer = float(int(v) - 3);
+    return min(min(textureLod(u_wet_tiles, vec3(uv + vec2(dr, 0.0), layer), 0.0).r, textureLod(u_wet_tiles, vec3(uv - vec2(dr, 0.0), layer), 0.0).r),
+               min(textureLod(u_wet_tiles, vec3(uv + vec2(0.0, dr), layer), 0.0).r, textureLod(u_wet_tiles, vec3(uv - vec2(0.0, dr), layer), 0.0).r));
+  }
+  return min(min(wetAt(xz + vec2(r, 0.0)), wetAt(xz - vec2(r, 0.0))), min(wetAt(xz + vec2(0.0, r)), wetAt(xz - vec2(0.0, r))));
+}
 // The ground under a pixel, as the terrain draws it (the shore's terms belong to the bed, and the
 // scene depth can be a fish or a pair of legs standing on it). terpage.glsl, pasted (the reference
 // copy and its rules are there): the height sections, read through u_ts_height.
@@ -209,7 +230,7 @@ float seaFoam(float d, float fwD, float rayLen, vec2 p, float t, float pixG) {
   float band = 1.0 - smoothstep(0.55, 1.0, d);
   if (band <= 0.0) return 0.0;
   // the swash runs up the shore and back, out of step along the coast
-  float run = 0.5 + 0.5 * sin(t * 0.5 + 5.0 * gnoise(p * 0.02));
+  float run = 0.5 + 0.5 * sin(t * 0.5 + 2.5 * (sin(p.x * 0.0231 + 1.7) + sin(p.y * 0.0187 - 0.9)));      // two slow sines, not a noise: a lattice's hash and blend cost more than the whole swash
   float front = mix(0.04, 0.16, run);
   float solid = 1.0 - smoothstep(0.4 * front, front, d);
   // the lace is drawn where a pixel can show it (under half a metre, and the depth not changing faster than a pixel); past
@@ -370,7 +391,7 @@ void main() {
     if (sf > 0.0 && u_wet_on > 0.5) {
       // where the sea's own region ends over ground that is still under the water (a river mouth, a dock's wall) the mask
       // is an edge in the water, not a shore: the foam fades out over the two metres before it
-      float wmin = min(min(wetAt(wp.xz + vec2(2.0, 0.0)), wetAt(wp.xz - vec2(2.0, 0.0))), min(wetAt(wp.xz + vec2(0.0, 2.0)), wetAt(wp.xz - vec2(0.0, 2.0))));
+      float wmin = wetMin4(wp.xz, 2.0);
       sf *= smoothstep(0.45, 0.9, wmin);
     }
   }
@@ -378,11 +399,11 @@ void main() {
   bool sunSeen = !sea;
   // the sea's own shadows (a hull, a quay) matter in the near field only, and under glitter and foam one tap is enough:
   // the lake takes the full filter, the sea one tap out to 250 m and none past it, and none where there is no glitter
-  // (under three thousandths of the sun) or foam to light
+  // (a hundredth of the sun's colour or less, which a shadow could dim by that much and no more) or foam to light
   if (!sea) {
     float viewDepth = -(u_view * vec4(wp, 1.0)).z;
     shadow = sunShadow(wp, vec3(0, 1, 0), viewDepth) * cloudShadow(wp);
-  } else if (sf > 0.0 || max(u_sun_color.r, max(u_sun_color.g, u_sun_color.b)) * glitter * F > 0.003) {
+  } else if (sf > 0.0 || max(u_sun_color.r, max(u_sun_color.g, u_sun_color.b)) * glitter * F > 0.01) {
     sunSeen = true;
     if (dist < 250.0) { shadow = sunShadowCheap(wp, vec3(0, 1, 0), -(u_view * vec4(wp, 1.0)).z); }
     shadow *= cloudShadow(wp);
