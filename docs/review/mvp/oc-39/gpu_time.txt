@@ -40,8 +40,19 @@ an M1: a sea that fills the frame leaves 0.6 ms of an M1's 1.0 for everything el
 foam-filled beach at 1080p with the features the contract asks for (swell, depth colour, foam band, a horizon at the far plane), and is
 kept for the views a player has most of the time. This is for the owner to settle by amending OC-39's budget line in
 docs/tech/mvp-contracts.md and docs/plan/decisions.md, not left as 'deferred'; the text proposed is at the end of this file.
-lab/sea_budget.py is the guard until then: it fails over 0.60 ms (open sea, coast), 0.40 (horizon) and 0.30 (land), which the first sea
-(1.46, 0.74, 1.17) did, and prints each view against the scaled budget.
+lab/sea_budget.py is the guard until then. It FAILS when the pass costs more than a share of the old still-water plane's time in the same
+view (0.35 open sea and horizon, 0.40 coast, 0.65 land), the two run interleaved in one session so the machine's load (other jobs share
+this GPU: the same pass read 0.45 and 0.70 ms on the coast, an absolute ceiling of 0.60 ms failed an unchanged shader) is the same to
+both; the first sea (1.46, 0.74, 1.17 ms) is over every share. Milliseconds are printed against the scaled line and never fail it.
+lab/sea_budget_test.py tests the guard (shipped pass in, load-scaled pass in, first sea out, a view that did not report out).
+EVERY M1 FIGURE IN THIS FILE IS AN ESTIMATE (this machine's time times 3); no M1 run exists. At HEAD bf1d4667, M4 Pro, least of 4, loaded
+machine: coast 0.45, horizon 0.27, open sea 0.49, land 0.17, deep bed 0.30-0.58 ms.
+Tried and not kept: a second sea program for rectangles that are wet at every pixel (no mask read, no discard), a baked foam-lace field
+instead of the fbm, a cheaper fog pow and one wet-mask read for the four foam taps. Together they read 0.31 (coast), 0.18 (horizon), 0.31
+(open sea) on a loaded machine, but the baked lace drew crisp cellular blotches instead of the soft lace (flick_a shot) and failed
+sea_check's flicker line (0.1 % of pixels moved by up to 55/255 between frames, 19 against a limit of 14, head 11); with the fbm put
+back the split alone measured 0.52 / 0.25 / 0.50, no gain over HEAD within the load's noise. The work was dropped uncommitted, not
+shipped half-measured; the next saving to try is a lace field that matches the fbm's soft edge, with sea_check's flicker line as its test.
 
 Proposed text for the owner to put in the OC-39 budget line (docs/tech/mvp-contracts.md) and decisions.md in place of the present one:
   "Budget: the sea pass at most 1.0 ms GPU at 1080p on M1 in a view where the sea is at most half the frame (a camera at the water looking
