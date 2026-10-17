@@ -20,6 +20,14 @@
 #   as far as level 0's, where its triangles would move the ground under a locked texel (a road, a pad, a shore):
 #        nv, nt, np (u32); nv vertices { a u16, b u16 (on level 0's grid), height u16, nx u8, nz u8 }; nt triangles (3 u32
 #        vertex indices, wound as the grid's); np perimeter vertices (u32 indices) in the skirt's order (lwt_perimeter's)
+#   A level of kind 2 is the same locked mesh, COMPACT (version 3 files): the cut as a quadtree and the heights alone, so a
+#   locked level costs what a grid does a vertex. nv, nbits, nhole (u32); the split bits, one a cell of more than one texel,
+#   depth first: for each of the level's own cells (row by row along +z) 1 when it is split (then its quarters at low x low z,
+#   high x low z, low x high z, high x high z, each the same way) or 0 when it is a cell of the mesh, bit k in byte k / 8 at
+#   (k % 8), the bytes padded to a word; then, when nhole is not 0, a bit for each cell of the mesh in the same order, 1 for a
+#   HOLE (no triangles: tilemap_bake.ludic's hole classes), padded to a word; then nv vertices { height u16, nx u8, nz u8 },
+#   every corner of a cell of the mesh, in level 0's grid order (row by row along +z). The reader makes the triangles as the bake did: each cell a fan from its
+#   high-x low-z corner over the corners of its finer neighbours on its edges (lwt_ring), the perimeter in the skirt's order.
 # ============================================================================
 numbers float
 
@@ -51,6 +59,13 @@ export property TmMeshes {
   vgb: words = null
   per: words = null                 # a locked level's perimeter: its vertex indices in the skirt's order
   np: int = 0
+  here: words = null                # a compact level (kind 2) being read: 1 for a level 0 grid point that is a vertex
+  vid: words = null                 # its vertex index
+  cx: words = null                  # its cells: low corner on level 0's grid and side
+  cz: words = null
+  cs: words = null
+  chole: words = null               # its cells' hole flags
+  ring: words = null                # one cell's boundary points
   stale: int = 0                    # files refused for another row's numbers or another cut
   no_file: int = 0
   reads: int = 0
@@ -73,7 +88,7 @@ export function lwt_head_put(b: []byte, tm: TileMap, tx: int, tz: int) -> void {
 
 # is this header a mesh of tile (tx, tz) baked for this map's numbers and this cut?
 export function lwt_head_ok(b: []byte, tm: TileMap, tx: int, tz: int) -> bool {
-  if len(b) < LWT_HEAD or lw_get32(b, 0) != LWT_MAGIC or lw_get32(b, 4) < 1 or lw_get32(b, 4) > 2 { return false }
+  if len(b) < LWT_HEAD or lw_get32(b, 0) != LWT_MAGIC or lw_get32(b, 4) < 1 or lw_get32(b, 4) > 3 { return false }
   if lw_get32(b, 8) != tm.res or lw_get32(b, 12) != tm.patch_texels or lw_get32(b, 16) != tm.patches or lw_get32(b, 20) != tm.lod_max + 1 { return false }
   if lw_get32(b, 24) != tx or lw_get32(b, 28) != tz or lw_get32(b, 56) != LWT_HEAD or lw_get32(b, 60) != LWT_ENTRY { return false }
   return lw_getf(b, 32) == tm.tile_size and lw_getf(b, 36) == tm.h_min and lw_getf(b, 40) == tm.h_max and lw_getf(b, 44) == tm.h_off and lw_getf(b, 48) == tm.origin_x and lw_getf(b, 52) == tm.origin_z
@@ -105,8 +120,34 @@ export function tmm_new(tm: TileMap, slots: int) -> TmMeshes {
   ms.lix = words(lwt_locked_tris(c0) * 3)
   ms.vga = words((c0 + 1) * (c0 + 1));  ms.vgb = words((c0 + 1) * (c0 + 1))
   ms.per = words(4 * c0)
+  ms.here = words((c0 + 1) * (c0 + 1));  ms.vid = words((c0 + 1) * (c0 + 1))
+  ms.cx = words(c0 * c0 + 64);  ms.cz = words(c0 * c0 + 64);  ms.cs = words(c0 * c0 + 64)   # the cells, and a stack at the top
+  ms.chole = words(c0 * c0 + 64)
+  ms.ring = words(4 * c0 + 4)
   return ms
 }
+
+# Cell (x0, z0, side s)'s boundary points on a grid n0 points a side into `ring`: every point that is a vertex (here[g] == 1),
+# from its high-x low-z corner up the high-x edge, back along the high-z edge, down the low-x edge and along the low-z edge;
+# how many. The bake and the reader of a locked level fan each cell over these, from ring[0].
+export function lwt_ring(here: words, n0: int, x0: int, z0: int, s: int, ring: words) -> int {
+  var n = 0
+  for t in 0 .. s { let g = (z0 + t) * n0 + x0 + s;  if here[g] == 1 { ring[n] = g;  n += 1 } }
+  for t in 0 .. s { let g = (z0 + s) * n0 + x0 + s - t;  if here[g] == 1 { ring[n] = g;  n += 1 } }
+  for t in 0 .. s { let g = (z0 + s - t) * n0 + x0;  if here[g] == 1 { ring[n] = g;  n += 1 } }
+  for t in 0 .. s { let g = z0 * n0 + x0 + t;  if here[g] == 1 { ring[n] = g;  n += 1 } }
+  return n
+}
+
+# twice the signed area of the triangle of grid points g0 g1 g2 in (x, z): negative is the grid's winding, 0 degenerate
+export function lwt_cross(n0: int, g0: int, g1: int, g2: int) -> int {
+  let ax = g1 % n0 - g0 % n0;  let az = g1 / n0 - g0 / n0
+  let bx = g2 % n0 - g0 % n0;  let bz = g2 / n0 - g0 / n0
+  return ax * bz - az * bx
+}
+
+# the bytes of a compact level's split bits for `nbits` bits: padded to a word
+export function lwt_bits_bytes(nbits: int) -> int { return ((nbits + 31) / 32) * 4 }
 
 # a locked level of a c0-texel patch at most: its triangles (the grid's, 2 V - B - 2 for V vertices, and the skirt's) and bytes
 export function lwt_locked_tris(c0: int) -> int { return 2 * (c0 + 1) * (c0 + 1) + 8 * c0 }
@@ -114,7 +155,7 @@ export function lwt_locked_max(c0: int) -> int { return 12 + (c0 + 1) * (c0 + 1)
 
 # is patch (px, pz)'s level `lod` of the tile in `slot` a locked mesh?
 export function tmm_locked(ms: TmMeshes, tm: TileMap, slot: int, px: int, pz: int, lod: int) -> bool {
-  return ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY + 3] == 1
+  return ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY + 3] != 0
 }
 
 # the grid index of perimeter point p of a c-cell patch: along the low-z edge, up the high-x edge, back along the high-z edge,
@@ -209,7 +250,9 @@ export function tmm_patch(ms: TmMeshes, tm: TileMap, slot: int, tx: int, tz: int
   free(path)
   if f == null { return false }
   file_seek(f, at, 0)
-  if tmm_locked(ms, tm, slot, px, pz, lod) { return tmm_locked_patch(ms, tm, f, tx, tz, px, pz, lod, lift) }
+  let kind = ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY + 3]
+  if kind == 2 { return tmm_compact_patch(ms, tm, f, tx, tz, px, pz, lod, lift) }
+  if kind == 1 { return tmm_locked_patch(ms, tm, f, tx, tz, px, pz, lod, lift) }
   ms.locked = false
   let got = file_read(f, data_of(ms.raw), n1 * n1 * 4)
   file_close(f)
@@ -294,6 +337,138 @@ function tmm_locked_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: in
     if vi < 0 or vi >= nv { return false }
     ms.per[p] = vi
   }
+  for p in 0 .. np {
+    let o = ms.per[p] * TM_VERT
+    lwt_vert(v, nv + p, v[o], v[o + 1] - drop, v[o + 2], v[o + 3], v[o + 4], v[o + 5], v[o + 6], v[o + 7])
+  }
+  for p in 0 .. np {
+    let q = (p + 1) % np
+    let g0 = ms.per[p]
+    let g1 = ms.per[q]
+    ix[k] = g0;  ix[k + 1] = g1;  ix[k + 2] = nv + p
+    ix[k + 3] = g1;  ix[k + 4] = nv + q;  ix[k + 5] = nv + p
+    k += 6
+  }
+  ms.nv = nv + np
+  ms.np = np
+  ms.ibuf = ix
+  ms.ni = k
+  ms.locked = true
+  return true
+}
+
+# a compact locked level (kind 2) from the open file `f` (at its offset) into the scratch: the cells from the split bits, the
+# vertices on their corners in grid order, each cell's fan (lwt_ring) wound as the grid's triangles, the perimeter and the
+# skirt, as tmm_locked_patch leaves them. Closes `f`. Allocates nothing.
+function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: int, px: int, pz: int, lod: int, lift: float) -> bool {
+  let c0 = tm.patch_texels
+  let n0 = c0 + 1
+  let raw = ms.raw
+  var got = file_read(f, data_of(raw), 12)
+  let nv = lw_get32(raw, 0)
+  let nbits = lw_get32(raw, 4)
+  let nhole = lw_get32(raw, 8)
+  if got != 12 or nv < 4 or nv > n0 * n0 or nbits < 0 or nbits > c0 * c0 or nhole < 0 or nhole > c0 * c0 { file_close(f);  return false }
+  let bb = lwt_bits_bytes(nbits)
+  let hb = lwt_bits_bytes(nhole)
+  let body = bb + hb + nv * 4
+  got = file_read(f, data_of(raw), body)
+  file_close(f)
+  if got != body { return false }
+  ms.reads += 1
+  # the cells: the level's own, split depth first as the bits say (a stack in cx/cz/cs from the top: the last pushed is next)
+  for g in 0 .. n0 * n0 { ms.here[g] = 0 }
+  let s0 = 1 << lod
+  let top = c0 / s0
+  var nc = 0
+  let cap0 = len(ms.cs)
+  var sp = cap0
+  var bit = 0
+  for b in 0 .. top {
+    for a in 0 .. top {
+      sp -= 1
+      ms.cx[sp] = a * s0;  ms.cz[sp] = b * s0;  ms.cs[sp] = s0
+      while sp < cap0 {
+        let x0 = ms.cx[sp];  let z0 = ms.cz[sp];  let s = ms.cs[sp]
+        sp += 1
+        var split = false
+        if s > 1 {
+          if bit >= nbits { return false }
+          split = ((int(raw[bit / 8]) >> (bit % 8)) & 1) == 1
+          bit += 1
+        }
+        if split {
+          let h = s / 2
+          if sp - 4 < nc { return false }
+          # pushed in reverse so they come off in order: low x low z, high x low z, low x high z, high x high z
+          sp -= 1;  ms.cx[sp] = x0 + h;  ms.cz[sp] = z0 + h;  ms.cs[sp] = h
+          sp -= 1;  ms.cx[sp] = x0;  ms.cz[sp] = z0 + h;  ms.cs[sp] = h
+          sp -= 1;  ms.cx[sp] = x0 + h;  ms.cz[sp] = z0;  ms.cs[sp] = h
+          sp -= 1;  ms.cx[sp] = x0;  ms.cz[sp] = z0;  ms.cs[sp] = h
+          continue
+        }
+        if nc >= sp { return false }
+        ms.cx[nc] = x0;  ms.cz[nc] = z0;  ms.cs[nc] = s
+        ms.chole[nc] = 0
+        if nhole > 0 {
+          if nc >= nhole { return false }
+          ms.chole[nc] = (int(raw[bb + nc / 8]) >> (nc % 8)) & 1
+        }
+        nc += 1
+        ms.here[z0 * n0 + x0] = 1;  ms.here[z0 * n0 + x0 + s] = 1
+        ms.here[(z0 + s) * n0 + x0] = 1;  ms.here[(z0 + s) * n0 + x0 + s] = 1
+      }
+    }
+  }
+  if bit != nbits or (nhole > 0 and nc != nhole) { return false }
+  let size = tmap_patch_size(tm)
+  let tex = size / float(c0)
+  let drop = 2.0 * size / float(c0 >> lod) + tm.skirt
+  let v = ms.vbuf
+  var i = 0
+  for g in 0 .. n0 * n0 {
+    if ms.here[g] != 1 { ms.vid[g] = -1;  continue }
+    if i >= nv { return false }
+    let o = bb + hb + i * 4
+    let a = g % n0
+    let b = g / n0
+    let q = int(raw[o]) | (int(raw[o + 1]) << 8)
+    let nx = float(raw[o + 2]) / 255.0 * 2.0 - 1.0
+    let nz = float(raw[o + 3]) / 255.0 * 2.0 - 1.0
+    let ny = Math.sqrt(Math.max(1.0 - nx * nx - nz * nz, 0.0))
+    let x = float(a) * tex - size * 0.5
+    let z = float(b) * tex - size * 0.5
+    let wx = tmap_patch_cx(tm, tx, px) + x
+    let wz = tmap_patch_cz(tm, tz, pz) + z
+    ms.vga[i] = a;  ms.vgb[i] = b
+    ms.vid[g] = i
+    lwt_vert(v, i, x, tm.h_off + tm.h_min + float(q) * tm.step - lift, z, nx, ny, nz, (wx - tm.origin_x) / tm.tile_size * ms.uv_per_tile, (wz - tm.origin_z) / tm.tile_size * ms.uv_per_tile)
+    i += 1
+  }
+  if i != nv { return false }
+  let ix = ms.lix
+  let cap = len(ix)
+  var k = 0
+  for c in 0 .. nc {
+    if ms.chole[c] == 1 { continue }
+    let n = lwt_ring(ms.here, n0, ms.cx[c], ms.cz[c], ms.cs[c], ms.ring)
+    let g0 = ms.ring[0]
+    for r in 1 .. n - 1 {
+      let g1 = ms.ring[r];  let g2 = ms.ring[r + 1]
+      let w = lwt_cross(n0, g0, g1, g2)
+      if w == 0 { continue }
+      if k + 3 > cap { return false }
+      ix[k] = ms.vid[g0]
+      if w > 0 { ix[k + 1] = ms.vid[g2];  ix[k + 2] = ms.vid[g1] } else { ix[k + 1] = ms.vid[g1];  ix[k + 2] = ms.vid[g2] }
+      k += 3
+    }
+  }
+  var np = 0
+  for p in 0 .. 4 * c0 {
+    let g = lwt_perimeter(c0, p)
+    if ms.here[g] == 1 { ms.per[np] = ms.vid[g];  np += 1 }
+  }
+  if k + 6 * np > cap { return false }
   for p in 0 .. np {
     let o = ms.per[p] * TM_VERT
     lwt_vert(v, nv + p, v[o], v[o + 1] - drop, v[o + 2], v[o + 3], v[o + 4], v[o + 5], v[o + 6], v[o + 7])

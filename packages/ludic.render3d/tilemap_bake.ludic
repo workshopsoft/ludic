@@ -24,12 +24,29 @@ function tmb_n8(v: float) -> int { return min(max(int(Math.floor((v * 0.5 + 0.5)
 # ground's edges and bends, graded so a cell's neighbour is at most one step finer, every cell a fan from its high-x low-z
 # corner over the corners of its finer neighbours (so the mesh has no crack and no sliver, and an uncut cell is exactly the
 # grid's two triangles). A patch with no locked texel, or whose own grid
-# keeps them all, is written as before, byte for byte. Unlocked ground is free.
+# keeps them all, is written as before, byte for byte. A locked level is written compact: the cut as split bits and the
+# heights of its vertices, so it costs a vertex what the grid does (tilemap_lwt.ludic, kind 2). Unlocked ground is free.
+#
+# COVERED classes (`under`: a road, a sidewalk: a surface of their own is drawn over the ground there) need less: the ground
+# under them is hidden and only has to stay under the surface and meet its edge. A covered texel with a texel of another class
+# (or the tile's border) among its eight neighbours is an EDGE texel: it may rise `tol` and sink `sink`, so the ground meets the
+# kerb or edge line as level 0 does. Every other covered texel is INSIDE: it may rise `rise` (less than the clearance the ground
+# keeps under the surface) and sink any depth, so a coarse level spans a road with its own cells instead of level 0's. A locked
+# texel of a class that is not covered (a pad, a shore) may rise `tol` and sink `sink`. With no covered class and sink and rise
+# equal to tol (the defaults), the lock is the strict one above.
+#
+# HOLE classes (`hole`, tmap_holes' for physics): a texel of one is left out of the drawn ground at every level, level 0
+# included (a tunnel's mouth, where a heightfield's slope would cross the open tube): the cells round it are cut down to
+# texels and its own cell has no triangles. Such a level is written compact with a hole bit for each cell.
 export property TmLock {
   pattern: string = ""              # the mask tiles, {tx} and {tz} (tmap_mask_pattern_of the tiles' pattern by default)
   on: words = null                  # 256: 1 for a class that locks
-  tol: float = 0.005                # metres a locked texel may move (half the 1 cm promise)
-  bits: []byte = null               # the tile being baked: 1 a locked texel (res x res), null when it has no mask
+  tol: float = 0.005                # metres a locked texel may rise (a covered one inside: `rise`), and may sink with sink unset
+  sink: float = -1.0                # metres a locked texel may sink (a covered one inside: any depth); below 0: tol
+  rise: float = -1.0                # metres a covered texel inside may rise; below 0: tol
+  under: words = null               # 256: 1 for a covered class (a surface is drawn over the ground there), null: none
+  hole: words = null                # 256: 1 for a hole class (no ground drawn), null: none
+  bits: []byte = null               # the tile being baked, a texel each (res x res): 0 free, 1 locked, 2 covered edge, 3 covered inside, 4 hole; null when it has no mask
   scratch: []byte = null            # the decode's buffer, kept
   h0: floats = null                 # a patch's level 0 heights, quantized ((patch_texels + 1)^2)
   here: words = null                # a level being cut: 1 for a level 0 grid point that is a vertex
@@ -38,6 +55,14 @@ export property TmLock {
   lz: []int = null
   ls: []int = null
   ring: words = null                # a cell's boundary points, one cell at a time (grid indices)
+  leaf: words = null                # a level being written: the side of the cell whose low corner is this grid point, 0 none
+  nbits: int = 0                    # its split bits, as they are counted or written
+  nleaf: int = 0                    # its cells, as they are counted (and their hole bits written)
+  holes: bool = false               # the level being written has a hole cell
+  hole_at: int = 0                  # where its hole bits go in the file's bytes
+  cx0: int = 0                      # the patch's first texel in the tile, and the tile's res (the leaves read their texel's kind)
+  cz0: int = 0
+  res: int = 0
   locked_levels: int = 0            # patch levels written as locked meshes, over the bake
   locked: int = 0                   # locked texels seen, over the bake
   tris: int = 0                     # grid triangles of the locked levels written, over the bake
@@ -50,10 +75,28 @@ export function tmb_lock_new(pattern: string, classes: []int) -> TmLock {
   let k = new TmLock
   k.pattern = pattern
   k.on = words(256)
-  for c in 0 .. 256 { k.on[c] = 0 }
-  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { k.on[classes[i]] = 1 } }
+  for c in 0 .. 256 { k.on [c] = 0 }
+  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { k.on [classes[i]] = 1 } }
   k.lx = new []int;  k.lz = new []int;  k.ls = new []int
   return k
+}
+
+# the hole classes of lock k (each 0 .. 255): no ground is drawn on their texels
+@alloc_ok("a bake: the lock's table, once")
+export function tmb_lock_holes(k: TmLock, classes: []int) -> void {
+  k.hole = words(256)
+  for c in 0 .. 256 { k.hole[c] = 0 }
+  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { k.hole[classes[i]] = 1 } }
+}
+
+# the covered classes of lock k (each 0 .. 255; a covered class locks too)
+@alloc_ok("a bake: the lock's table, once")
+export function tmb_lock_under(k: TmLock, classes: []int) -> void {
+  k.under = words(256)
+  for c in 0 .. 256 { k.under[c] = 0 }
+  for i in 0 .. len(classes) {
+    if classes[i] >= 0 and classes[i] < 256 { k.under[classes[i]] = 1;  k.on [classes[i]] = 1 }
+  }
 }
 
 # tile (tx, tz)'s locked texels into k.bits: false (and bits null) when it has no mask or one of another size
@@ -75,7 +118,27 @@ export function tmb_lock_read(render3d_st: mut Render3dState, tm: TileMap, k: Tm
   let n = tm.res * tm.res
   let step = ch * bps
   let bits = buffer(n)
-  for i in 0 .. n { bits[i] = k.on[int(px[i * step])] }
+  for i in 0 .. n {
+    let c = int(px[i * step])
+    if k.hole != null and k.hole[c] == 1 { bits[i] = 4 } else if k.on [c] == 0 { bits[i] = 0 } else if k.under != null and k.under[c] == 1 { bits[i] = 3 } else { bits[i] = 1 }
+  }
+  # a covered texel with a texel of another kind (or the tile's border) among its eight neighbours is an edge texel
+  let res = tm.res
+  for j in 0 .. res {
+    for i in 0 .. res {
+      if bits[j * res + i] != 3 { continue }
+      var edge = i == 0 or j == 0 or i == res - 1 or j == res - 1
+      if not edge {
+        for b in j - 1 .. j + 2 {
+          for a in i - 1 .. i + 2 {
+            let v = bits[b * res + a]
+            if v != 3 and v != 2 { edge = true }       # a hole beside it is not covered ground either
+          }
+        }
+      }
+      if edge { bits[j * res + i] = 2 }
+    }
+  }
   k.bits = bits
   return true
 }
@@ -84,25 +147,28 @@ export function tmb_lock_read(render3d_st: mut Render3dState, tm: TileMap, k: Tm
 function tmb_is_locked(tm: TileMap, k: TmLock, px: int, pz: int, i: int, j: int) -> bool {
   return k.bits[(pz * tm.patch_texels + j) * tm.res + px * tm.patch_texels + i] != 0
 }
-
-# cell `c`'s boundary points into k.ring, from its high-x low-z corner up the high-x edge, back along the high-z edge, down
-# the low-x edge and along the low-z edge (every grid point on an edge that is a vertex); how many
-function tmb_ring(k: TmLock, n0: int, c: int) -> int {
-  let x0 = k.lx[c];  let z0 = k.lz[c];  let s = k.ls[c]
-  var n = 0
-  for t in 0 .. s { let g = (z0 + t) * n0 + x0 + s;  if k.here[g] == 1 { k.ring[n] = g;  n += 1 } }
-  for t in 0 .. s { let g = (z0 + s) * n0 + x0 + s - t;  if k.here[g] == 1 { k.ring[n] = g;  n += 1 } }
-  for t in 0 .. s { let g = (z0 + s - t) * n0 + x0;  if k.here[g] == 1 { k.ring[n] = g;  n += 1 } }
-  for t in 0 .. s { let g = z0 * n0 + x0 + t;  if k.here[g] == 1 { k.ring[n] = g;  n += 1 } }
-  return n
+# its kind: 0 free, 1 locked, 2 covered edge, 3 covered inside
+function tmb_code(tm: TileMap, k: TmLock, px: int, pz: int, i: int, j: int) -> int {
+  return int(k.bits[(pz * tm.patch_texels + j) * tm.res + px * tm.patch_texels + i])
 }
+# does a level that puts a locked texel of kind `code` `d` metres off level 0 (up positive) move it too far?
+function tmb_texel_moves(k: TmLock, code: int, d: float) -> bool {
+  if code == 4 { return true }                 # a hole: its cell is cut down to the texel
+  if code == 3 {
+    var r = k.rise
+    if r < 0.0 { r = k.tol }
+    return d > r
+  }
+  var s = k.sink
+  if s < 0.0 { s = k.tol }
+  return d > k.tol or d < -s
+}
+
+# cell `c`'s boundary points into k.ring (lwt_ring: the reader's own); how many
+function tmb_ring(k: TmLock, n0: int, c: int) -> int { return lwt_ring(k.here, n0, k.lx[c], k.lz[c], k.ls[c], k.ring) }
 
 # twice the signed area of the triangle of grid points g0 g1 g2 in (x, z): negative is the grid's winding, 0 degenerate
-function tmb_cross(n0: int, g0: int, g1: int, g2: int) -> int {
-  let ax = g1 % n0 - g0 % n0;  let az = g1 / n0 - g0 / n0
-  let bx = g2 % n0 - g0 % n0;  let bz = g2 / n0 - g0 / n0
-  return ax * bz - az * bx
-}
+function tmb_cross(n0: int, g0: int, g1: int, g2: int) -> int { return lwt_cross(n0, g0, g1, g2) }
 
 # the height of the fan over a ring of n points at (u, v) (level 0 grid units), or -1e9 when the point is in none of its
 # triangles
@@ -134,7 +200,7 @@ function tmb_cell_moves(tm: TileMap, k: TmLock, px: int, pz: int, n0: int, c: in
       # level 0 at the texel's centre: on its cell's diagonal, from (i + 1, j) to (i, j + 1)
       let want = (k.h0[j * n0 + i + 1] + k.h0[(j + 1) * n0 + i]) * 0.5
       let got = tmb_fan_at(k, n0, n, float(i) + 0.5, float(j) + 0.5)
-      if Math.abs(got - want) > k.tol { return true }
+      if tmb_texel_moves(k, tmb_code(tm, k, px, pz, i, j), got - want) { return true }
     }
   }
   return false
@@ -159,12 +225,19 @@ function tmb_cell_steep(k: TmLock, n0: int, c: int) -> bool {
 # split (the level is a locked mesh), false when the level's own grid keeps every locked texel (or none is locked).
 @alloc_ok("a bake: a patch's heights and the cut's tables, made once and kept with the lock")
 function tmb_lock_cut(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int, lod: int) -> bool {
-  if k == null or k.bits == null or lod == 0 { return false }
+  if k == null or k.bits == null { return false }
   let pt = tm.patch_texels
   let n0 = pt + 1
   var any = false
-  for j in 0 .. pt { for i in 0 .. pt { if tmb_is_locked(tm, k, px, pz, i, j) { any = true } } }
-  if not any { return false }
+  var hole = false
+  for j in 0 .. pt {
+    for i in 0 .. pt {
+      let code = tmb_code(tm, k, px, pz, i, j)
+      if code != 0 { any = true }
+      if code == 4 { hole = true }
+    }
+  }
+  if not any or (lod == 0 and not hole) { return false }
   if k.h0 == null or len(k.h0) < n0 * n0 {
     k.h0 = floats(n0 * n0);  k.here = words(n0 * n0);  k.vid = words(n0 * n0);  k.ring = words(4 * pt + 4)
   }
@@ -208,71 +281,96 @@ function tmb_lock_cut(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int
       again = true
     }
   }
-  return split
+  return split or hole
 }
 
-# the bytes of the locked level k holds (tmb_lock_cut said true), written at b[at ..] when b is not null; how many.
-# Vertices in grid order with their height and normal (central differences a level cell apart, as the plain grid's), the
-# cells' fans wound as the grid's triangles, the perimeter in the skirt's order; the table entry at `e` gets the lowest and
-# highest height and kind 1.
-function tmb_locked_bytes(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int, lod: int, b: []byte, at: int, e: int) -> int {
+# cell (x0, z0, s)'s split bits, depth first (tilemap_lwt.ludic, kind 2), counted in k.nbits and set in b from `at` when b
+# is not null: 1 and its quarters when it was split, 0 when it is a cell of the mesh; a cell of one texel has no bit
+function tmb_emit(k: TmLock, n0: int, x0: int, z0: int, s: int, b: []byte, at: int) -> void {
+  if s <= 1 {
+    tmb_leaf(k, x0, z0, s, b)
+    return
+  }
+  if k.leaf[z0 * n0 + x0] == s {
+    k.nbits += 1
+    tmb_leaf(k, x0, z0, s, b)
+    return
+  }
+  if b != null { b[at + k.nbits / 8] = b[at + k.nbits / 8] | (1 << (k.nbits % 8)) }
+  k.nbits += 1
+  let h = s / 2
+  tmb_emit(k, n0, x0, z0, h, b, at)
+  tmb_emit(k, n0, x0 + h, z0, h, b, at)
+  tmb_emit(k, n0, x0, z0 + h, h, b, at)
+  tmb_emit(k, n0, x0 + h, z0 + h, h, b, at)
+}
+
+# a cell of the mesh, in the split bits' order: counted, and its hole bit set at k.hole_at in b (a cell of one texel that is a hole)
+function tmb_leaf(k: TmLock, x0: int, z0: int, s: int, b: []byte) -> void {
+  if b != null and k.holes and s == 1 and int(k.bits[(k.cz0 + z0) * k.res + k.cx0 + x0]) == 4 { b[k.hole_at + k.nleaf / 8] = b[k.hole_at + k.nleaf / 8] | (1 << (k.nleaf % 8)) }
+  if s == 1 and int(k.bits[(k.cz0 + z0) * k.res + k.cx0 + x0]) == 4 { k.holes = true }
+  k.nleaf += 1
+}
+
+# the bytes of the locked level k holds (tmb_lock_cut said true) in the COMPACT form (tilemap_lwt.ludic, kind 2), written at
+# b[at ..] when b is not null; how many. The split bits of the level's own cells, then the vertices in grid order with their
+# height and normal (central differences a level cell apart, as the plain grid's); the table entry at `e` gets the lowest and
+# highest height and kind 2. The triangles are not written: the reader fans each cell (lwt_ring), wound as the grid's.
+@alloc_ok("a bake: the table of cells, made once and kept with the lock")
+function tmb_compact_bytes(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int, lod: int, b: []byte, at: int, e: int) -> int {
   let pt = tm.patch_texels
   let n0 = pt + 1
+  if k.leaf == null or len(k.leaf) < n0 * n0 { k.leaf = words(n0 * n0) }
+  for g in 0 .. n0 * n0 { k.leaf[g] = 0 }
+  for c in 0 .. len(k.ls) { k.leaf[k.lz[c] * n0 + k.lx[c]] = k.ls[c] }
   var nv = 0
-  for g in 0 .. n0 * n0 { if k.here[g] == 1 { k.vid[g] = nv;  nv += 1 } else { k.vid[g] = -1 } }
-  var nt = 0
-  for c in 0 .. len(k.ls) {
-    let n = tmb_ring(k, n0, c)
-    for i in 1 .. n - 1 { if tmb_cross(n0, k.ring[0], k.ring[i], k.ring[i + 1]) != 0 { nt += 1 } }
-  }
-  var np = 0
-  for p in 0 .. 4 * pt { if k.here[lwt_perimeter(pt, p)] == 1 { np += 1 } }
-  let size = 12 + nv * 8 + nt * 12 + np * 4
+  for g in 0 .. n0 * n0 { if k.here[g] == 1 { nv += 1 } }
+  let s0 = 1 << lod
+  k.cx0 = px * pt;  k.cz0 = pz * pt;  k.res = tm.res
+  k.nbits = 0;  k.nleaf = 0;  k.holes = false
+  for bz in 0 .. pt / s0 { for ax in 0 .. pt / s0 { tmb_emit(k, n0, ax * s0, bz * s0, s0, null, 0) } }
+  let nbits = k.nbits
+  let bb = lwt_bits_bytes(nbits)
+  var nhole = 0
+  if k.holes { nhole = k.nleaf }
+  let hb = lwt_bits_bytes(nhole)
+  let size = 12 + bb + hb + nv * 4
   if b == null { return size }
-  lw_put32(b, at, nv);  lw_put32(b, at + 4, nt);  lw_put32(b, at + 8, np)
+  lw_put32(b, at, nv);  lw_put32(b, at + 4, nbits);  lw_put32(b, at + 8, nhole)
+  k.nbits = 0;  k.nleaf = 0
+  k.hole_at = at + 12 + bb
+  for bz in 0 .. pt / s0 { for ax in 0 .. pt / s0 { tmb_emit(k, n0, ax * s0, bz * s0, s0, b, at + 12) } }
   let ps = tmap_patch_size(tm)
   let tex = ps / float(pt)
   let cell = ps / float(pt >> lod)
   let xw = tmap_patch_cx(tm, tx, px) - ps * 0.5
   let zw = tmap_patch_cz(tm, tz, pz) - ps * 0.5
-  var o = at + 12
+  var o = at + 12 + bb + hb
   var y0 = 1000000000.0
   var y1 = -1000000000.0
   for g in 0 .. n0 * n0 {
     if k.here[g] != 1 { continue }
-    let a = g % n0;  let bb = g / n0
-    let x = xw + float(a) * tex
-    let z = zw + float(bb) * tex
+    let x = xw + float(g % n0) * tex
+    let z = zw + float(g / n0) * tex
     let gx = (tmap_height(tm, x + cell, z) - tmap_height(tm, x - cell, z)) / (2.0 * cell)
     let gz = (tmap_height(tm, x, z + cell) - tmap_height(tm, x, z - cell)) / (2.0 * cell)
     let l = Math.sqrt(gx * gx + 1.0 + gz * gz)
     let q = tmb_q(tm, tmap_height(tm, x, z))
     let hq = tm.base + float(q) * tm.step
     y0 = Math.min(y0, hq);  y1 = Math.max(y1, hq)
-    b[o] = a & 255;  b[o + 1] = a >> 8;  b[o + 2] = bb & 255;  b[o + 3] = bb >> 8
-    b[o + 4] = q & 255;  b[o + 5] = q >> 8
-    b[o + 6] = tmb_n8(-gx / l);  b[o + 7] = tmb_n8(-gz / l)
-    o += 8
+    b[o] = q & 255;  b[o + 1] = q >> 8
+    b[o + 2] = tmb_n8(-gx / l);  b[o + 3] = tmb_n8(-gz / l)
+    o += 4
   }
+  # the triangles the reader will make, for the bake's count
+  var nt = 0
   for c in 0 .. len(k.ls) {
+    if k.ls[c] == 1 and int(k.bits[(k.cz0 + k.lz[c]) * k.res + k.cx0 + k.lx[c]]) == 4 { continue }
     let n = tmb_ring(k, n0, c)
-    let g0 = k.ring[0]
-    for i in 1 .. n - 1 {
-      let g1 = k.ring[i];  let g2 = k.ring[i + 1]
-      let w = tmb_cross(n0, g0, g1, g2)
-      if w == 0 { continue }
-      # wound as the grid's triangles are (negative in x, z)
-      if w > 0 { lw_put32(b, o, k.vid[g0]);  lw_put32(b, o + 4, k.vid[g2]);  lw_put32(b, o + 8, k.vid[g1]) }
-      else { lw_put32(b, o, k.vid[g0]);  lw_put32(b, o + 4, k.vid[g1]);  lw_put32(b, o + 8, k.vid[g2]) }
-      o += 12
-    }
-  }
-  for p in 0 .. 4 * pt {
-    let g = lwt_perimeter(pt, p)
-    if k.here[g] == 1 { lw_put32(b, o, k.vid[g]);  o += 4 }
+    for i in 1 .. n - 1 { if tmb_cross(n0, k.ring[0], k.ring[i], k.ring[i + 1]) != 0 { nt += 1 } }
   }
   lw_putf(b, e + 4, y0);  lw_putf(b, e + 8, y1)
-  lw_put32(b, e + 12, 1)
+  lw_put32(b, e + 12, 2)
   k.tris += nt
   return size
 }
@@ -283,7 +381,7 @@ function tmb_locked_bytes(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz:
 export function tmb_tile(tm: TileMap, tx: int, tz: int) -> []byte { return tmb_tile_locked(tm, tx, tz, null) }
 
 # The same, with a lock (null: none; its bits read for this tile by tmb_lock_read, or null when the tile has no mask): a level
-# whose own grid would move a locked texel is written as a locked mesh (and the file is version 2).
+# whose own grid would move a locked texel is written as a locked mesh, compact (kind 2: the file is version 3).
 @alloc_ok("a bake: the file's bytes are made once a tile")
 export function tmb_tile_locked(tm: TileMap, tx: int, tz: int, k: TmLock) -> []byte {
   if tm.slot_of[tz * tm.cols + tx] < 0 { return null }
@@ -306,7 +404,7 @@ export function tmb_tile_locked(tm: TileMap, tx: int, tz: int, k: TmLock) -> []b
         sizes[e] = (c + 1) * (c + 1) * 4
         if tmb_lock_cut(tm, k, tx, tz, px, pz, lod) {
           cut[e] = 1
-          sizes[e] = tmb_locked_bytes(tm, k, tx, tz, px, pz, lod, null, 0, 0)
+          sizes[e] = tmb_compact_bytes(tm, k, tx, tz, px, pz, lod, null, 0, 0)
           any = true
         }
         size += sizes[e]
@@ -316,7 +414,7 @@ export function tmb_tile_locked(tm: TileMap, tx: int, tz: int, k: TmLock) -> []b
   let b = buffer(size)
   for i in 0 .. size { b[i] = 0 }
   lwt_head_put(b, tm, tx, tz)
-  if any { lw_put32(b, 4, 2) }
+  if any { lw_put32(b, 4, 3) }
   var at = LWT_HEAD + entries * LWT_ENTRY * 4
   let ps = tmap_patch_size(tm)
   for pz in 0 .. tm.patches {
@@ -332,7 +430,7 @@ export function tmb_tile_locked(tm: TileMap, tx: int, tz: int, k: TmLock) -> []b
         if cut[en] == 1 {
           # cut again (the cut of one level is kept at a time) and written
           tmb_lock_cut(tm, k, tx, tz, px, pz, lod)
-          at += tmb_locked_bytes(tm, k, tx, tz, px, pz, lod, b, at, e)
+          at += tmb_compact_bytes(tm, k, tx, tz, px, pz, lod, b, at, e)
           k.locked_levels += 1
           k.tris_own += 2 * c * c
           continue

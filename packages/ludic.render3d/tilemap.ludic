@@ -66,6 +66,12 @@ export property TileMap {
   skirt: float = 0.0                # metres added to every skirt (on top of two cells of its own level)
   mesh_pattern: string = ""         # the baked mesh files (tilemap_lwt.ludic): the tiles pattern with .lwt for its extension
   nrm: floats = null                # tmap_normal's scratch
+  # HOLES (tmap_holes): texels of these land-use classes have no ground for physics (tmap_field answers `hole` there), the
+  # bake leaves them out of the drawn mesh (tilemap_bake.ludic TmLock); read from the mask beside each tile as it loads
+  hole_pattern: string = ""         # the mask tiles, {tx} and {tz}; "" none
+  hole_on: words = null             # 256: 1 for a class that is a hole
+  hole_bits: []byte = null          # slots x res x res: 1 a hole texel
+  hole_any: words = null            # per slot: 1 when its tile has a hole texel
 }
 
 # what is wrong with a row's numbers, or "" : the question a game asks before it opens a map
@@ -110,6 +116,62 @@ export function tmap_pool(tm: TileMap, slots: int) -> void {
   for s in 0 .. tm.slots { tm.slot_tile[s] = -1;  tm.slot_used[s] = 0 }
   tm.slot_of = words(tm.cols * tm.rows)
   for t in 0 .. tm.cols * tm.rows { tm.slot_of[t] = -1 }
+  if tm.hole_pattern != "" { tm_holes_alloc(tm) }
+}
+
+# Holes: the texels of tile masks `pattern` ({tx} {tz}; tmap_mask_pattern_of the tiles' by default) whose class is one of
+# `classes` have no ground for physics: tmap_field answers its `hole` value there (a heightfield leaves those cells out), the
+# rest of the map as before. For what a mesh draws over, open from below (a tunnel's mouth: the bake leaves the same texels
+# out of the drawn ground). Tiles loaded already are read again as they are next wanted.
+@alloc_ok("a map being opened: the hole table and its bits, made once for the pool")
+export function tmap_holes(tm: TileMap, pattern: string, classes: []int) -> void {
+  tm.hole_pattern = pattern
+  tm.hole_on = words(256)
+  for c in 0 .. 256 { tm.hole_on[c] = 0 }
+  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { tm.hole_on[classes[i]] = 1 } }
+  tm_holes_alloc(tm)
+  for s in 0 .. tm.slots { if tm.slot_tile[s] >= 0 { tm.slot_of[tm.slot_tile[s]] = -1;  tm.slot_tile[s] = -1 } }
+}
+@alloc_ok("a map being opened: the hole bits, made once for the pool")
+function tm_holes_alloc(tm: TileMap) -> void {
+  tm.hole_bits = buffer(tm.slots * tm.res * tm.res)
+  tm.hole_any = words(tm.slots)
+  for s in 0 .. tm.slots { tm.hole_any[s] = 0 }
+}
+# slot s (tile tx, tz)'s hole bits from its mask; a tile with no mask, or one of another size, has none
+@alloc_ok("a tile being read: its mask's decode, once")
+function tm_holes_read(render3d_st: mut Render3dState, tm: TileMap, s: int, tx: int, tz: int) -> void {
+  tm.hole_any[s] = 0
+  let path = Text.replace(Text.replace(tm.hole_pattern, "{tx}", string(tx)), "{tz}", string(tz))
+  if not Fs.exists(path) { return }
+  let px = png_decode_bytes(render3d_st, path, null)
+  if px == null { return }
+  let ch = render3d_st.tex_channels
+  let bps = render3d_st.tex_depth / 8
+  if render3d_st.tex_w == tm.res and render3d_st.tex_h == tm.res and ch >= 1 and ch <= 4 and bps >= 1 and bps <= 2 {
+    let n = tm.res * tm.res
+    let o = s * n
+    let step = ch * bps
+    var any = 0
+    for i in 0 .. n {
+      let h = tm.hole_on[int(px[i * step])]
+      tm.hole_bits[o + i] = h
+      if h != 0 { any = 1 }
+    }
+    tm.hole_any[s] = any
+  }
+  free(px)
+}
+
+# is the texel under (x, z) a hole (tmap_holes)? false where its tile is not loaded
+export function tmap_hole_at(tm: TileMap, x: float, z: float) -> bool {
+  if tm.hole_any == null { return false }
+  let i = int(Math.floor((x - tm.origin_x) / tm.texel))
+  let j = int(Math.floor((z - tm.origin_z) / tm.texel))
+  if i < 0 or j < 0 or i >= tm.cols * tm.res or j >= tm.rows * tm.res { return false }
+  let s = tm.slot_of[(j / tm.res) * tm.cols + i / tm.res]
+  if s < 0 or tm.hole_any[s] == 0 { return false }
+  return tm.hole_bits[s * tm.res * tm.res + (j % tm.res) * tm.res + i % tm.res] != 0
 }
 
 # Cut tiles into patches of about `texels` (the largest divisor of res up to it that is a multiple of four, else the
@@ -133,7 +195,7 @@ export function tmap_patches(tm: TileMap, texels: int) -> void {
 @alloc_ok("a map being opened: the pattern, once")
 export function tmap_mesh_pattern_of(pattern: string) -> string {
   let n = len(pattern)
-  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0 .. n - 4] + ".lwt" }
+  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0..n - 4] + ".lwt" }
   return pattern + ".lwt"
 }
 export function tmap_mesh_pattern(tm: TileMap, pattern: string) -> void { tm.mesh_pattern = pattern }
@@ -208,6 +270,7 @@ export function tmap_load(render3d_st: mut Render3dState, tm: TileMap, tx: int, 
   let n = tm.res * tm.res * 2
   mem_copy(mem_off(data_of(tm.data), s * n), px, n)
   free(px)
+  if tm.hole_pattern != "" { tm_holes_read(render3d_st, tm, s, tx, tz) }
   if tm.slot_tile[s] >= 0 { tm.slot_of[tm.slot_tile[s]] = -1;  tm.evicts += 1 }
   tm.slot_tile[s] = t
   tm.slot_used[s] = tm.clock
@@ -345,7 +408,8 @@ export function tmap_slope(tm: TileMap, x: float, z: float) -> float {
 
 # Heights for ludic.physics' heightfield shape: n x n samples row by row along z, the first at world (ox, oz), `cell` metres
 # apart, into `out` (n * n floats the caller keeps). A sample whose tile is not loaded takes `hole` (pass PHYS_HOLE: no
-# ground there); answers how many did. It is the same function tmap_height is, so the body stands where the ground is drawn:
+# ground there); answers how many did. A sample on a hole texel (tmap_holes) takes `hole` too and is not counted: the map
+# has no ground there. It is the same function tmap_height is, so the body stands where the ground is drawn:
 #   let holes = tmap_field(tm, h, 33, ox, oz, 2.0, PHYS_HOLE)
 #   if holes == 0 { phys_ground_add(physics_st, phys_heightfield(physics_st, h, 33, ox, oz, 2.0)) }
 export function tmap_field(tm: TileMap, out: floats, n: int, ox: float, oz: float, cell: float, hole: float) -> int {
@@ -354,7 +418,9 @@ export function tmap_field(tm: TileMap, out: floats, n: int, ox: float, oz: floa
     for i in 0 .. n {
       let x = ox + float(i) * cell
       let z = oz + float(j) * cell
-      if tmap_ready(tm, x, z) { out[j * n + i] = tmap_height(tm, x, z) } else { out[j * n + i] = hole;  holes += 1 }
+      if not tmap_ready(tm, x, z) { out[j * n + i] = hole;  holes += 1 }
+      else if tm.hole_any != null and tmap_hole_at(tm, x, z) { out[j * n + i] = hole }
+      else { out[j * n + i] = tmap_height(tm, x, z) }
     }
   }
   return holes
@@ -381,4 +447,3 @@ export function tmap_lod_for(tm: TileMap, d: float, cur: int) -> int {
   while l < tm.lod_max and d >= tm.lod_dist * float(1 << l) { l += 1 }
   return l
 }
-
