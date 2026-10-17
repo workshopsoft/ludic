@@ -109,6 +109,9 @@ export function roads_spawn(roads_st: mut RoadsState, edge: int, s: float, lane:
   c.waited = -1.0
   c.jam = 0.0
   c.holds = false
+  c.hold = -1
+  c.pin = -1
+  c.plane = 0
   roads_st.rd_ncars += 1
   roads_pose(roads_st, edge, s, lane)
   c.x = roads_st.rd_pose_x
@@ -125,9 +128,8 @@ export function roads_spawn(roads_st: mut RoadsState, edge: int, s: float, lane:
 function rd_take(roads_st: mut RoadsState, slot: int, why: int) -> void {
   let c = roads_st.rd_cars[slot]
   if not c.alive { return }
-  for n in 0 .. len(roads_st.rd_node_car) {
-    if roads_st.rd_node_car[n] == slot { roads_st.rd_node_car[n] = -1 }
-  }
+  c.hold = -1
+  c.holds = false
   c.alive = false
   roads_st.rd_ncars -= 1
   rd_say(roads_st, ROADS_GONE, c.id, c.kind, c.edge, why, c.x, c.z)
@@ -181,7 +183,36 @@ function rd_replan(roads_st: mut RoadsState, c: RoadCar) -> void {
     c.at = 0
     return
   }
+  # no place found: on to a road leaving the node it is driving to, chosen at random (a U-turn only where the road ends, never
+  # a forbidden turn); a car with nowhere at all to go arrives
+  let n = roads_st.rd_eto[c.edge]
+  let o0 = roads_st.rd_out_start[n]
+  let o1 = roads_st.rd_out_start[n + 1]
+  var count = 0
+  for i in o0 .. o1 { if rd_may_turn(roads_st, c.edge, roads_st.rd_out[i]) { count += 1 } }
+  if count > 0 {
+    var pick = rd_below(roads_st, count)
+    for i in o0 .. o1 {
+      let f = roads_st.rd_out[i]
+      if not rd_may_turn(roads_st, c.edge, f) { continue }
+      if pick == 0 {
+        List.clear(c.route)
+        kept_push(c.route, c.edge)
+        kept_push(c.route, f)
+        c.at = 0
+        return
+      }
+      pick -= 1
+    }
+  }
   c.wander = false
+}
+
+# may a car go from edge `e` on to `f` at their node: not a forbidden turn, and back the way it came only where its road ends
+function rd_may_turn(roads_st: RoadsState, e: int, f: int) -> bool {
+  if not roads_edge_ok(roads_st, f) { return false }
+  if f == (e ^ 1) and roads_st.rd_nroads[roads_st.rd_eto[e]] > 1 { return false }
+  return roads_turn_rule(roads_st, e, f) != ROAD_RULE_FORBID
 }
 
 # what is asked of a car by id

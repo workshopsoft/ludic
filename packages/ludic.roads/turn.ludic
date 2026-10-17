@@ -1,0 +1,384 @@
+# turn.ludic - the path a car takes through a junction: from the mouth of the road it comes by (roads_edge_setbacks) to the
+# mouth of the road it goes on to, in the lanes it leaves and takes. One cubic Bezier for a turn or a way straight on (its
+# handles along the two lanes, as long as a circle's for the angle turned), four for a U-turn round a dead end's circle (out
+# to the circle, half way round it, back in). The lane it takes is chosen by the side it turns to; two paths meet when they
+# come closer than the junction's conflict width or end in the same lane.
+
+const RD_KAPPA: float = 0.5522848       # a cubic's handle, over the radius, for a quarter circle
+const RD_PATH_STEPS: int = 16           # samples a piece of a path is measured by
+const RD_TURN_SIDE: float = 0.5236      # radians (30 deg): turned less than this is straight on
+const RD_CMP_STEPS: int = 12            # samples two paths are compared by
+
+function rd_tp_reset(roads_st: mut RoadsState) -> void {
+  while len(roads_st.rd_tp) < 32 { kept_push(roads_st.rd_tp, 0.0) }
+  while len(roads_st.rd_tps) < 4 { kept_push(roads_st.rd_tps, 0.0) }
+  while len(roads_st.rd_sax) < RD_CMP_STEPS + 1 {
+    kept_push(roads_st.rd_sax, 0.0)
+    kept_push(roads_st.rd_saz, 0.0)
+    kept_push(roads_st.rd_sbx, 0.0)
+    kept_push(roads_st.rd_sbz, 0.0)
+  }
+  roads_st.rd_tpn = 0
+  roads_st.rd_tplen = 0.0
+  roads_st.rd_tpk = 0.0
+}
+
+function rd_tp_piece(roads_st: mut RoadsState, ax: float, az: float, bx: float, bz: float, cx: float, cz: float, dx: float, dz: float) -> void {
+  let o = roads_st.rd_tpn * 8
+  roads_st.rd_tp[o] = ax
+  roads_st.rd_tp[o + 1] = az
+  roads_st.rd_tp[o + 2] = bx
+  roads_st.rd_tp[o + 3] = bz
+  roads_st.rd_tp[o + 4] = cx
+  roads_st.rd_tp[o + 5] = cz
+  roads_st.rd_tp[o + 6] = dx
+  roads_st.rd_tp[o + 7] = dz
+  roads_st.rd_tpn += 1
+}
+
+function rd_cub(a: float, b: float, c: float, d: float, t: float) -> float {
+  let u = 1.0 - t
+  return u * u * u * a + 3.0 * u * u * t * b + 3.0 * u * t * t * c + t * t * t * d
+}
+function rd_cub_d(a: float, b: float, c: float, d: float, t: float) -> float {
+  let u = 1.0 - t
+  return 3.0 * u * u * (b - a) + 6.0 * u * t * (c - b) + 3.0 * t * t * (d - c)
+}
+
+# the length of each piece and of the whole, and the sharpest bend (1 / radius) the samples show
+function rd_tp_measure(roads_st: mut RoadsState) -> void {
+  var total = 0.0
+  var kmax = 0.0
+  var phx = 0.0
+  var phz = 0.0
+  var have = false
+  for p in 0 .. roads_st.rd_tpn {
+    let o = p * 8
+    var l = 0.0
+    var px = roads_st.rd_tp[o]
+    var pz = roads_st.rd_tp[o + 1]
+    for i in 1 .. RD_PATH_STEPS + 1 {
+      let t = float(i) / float(RD_PATH_STEPS)
+      let x = rd_cub(roads_st.rd_tp[o], roads_st.rd_tp[o + 2], roads_st.rd_tp[o + 4], roads_st.rd_tp[o + 6], t)
+      let z = rd_cub(roads_st.rd_tp[o + 1], roads_st.rd_tp[o + 3], roads_st.rd_tp[o + 5], roads_st.rd_tp[o + 7], t)
+      let sl = Math.sqrt((x - px) * (x - px) + (z - pz) * (z - pz))
+      if sl > 0.0001 {
+        let hx = (x - px) / sl
+        let hz = (z - pz) / sl
+        if have {
+          let turn = Math.abs(Math.atan2(phx * hz - phz * hx, phx * hx + phz * hz))
+          let k = turn / sl
+          if k > kmax { kmax = k }
+        }
+        phx = hx
+        phz = hz
+        have = true
+      }
+      l += sl
+      px = x
+      pz = z
+    }
+    roads_st.rd_tps[p] = l
+    total += l
+  }
+  roads_st.rd_tplen = total
+  roads_st.rd_tpk = kmax
+}
+
+# the point `d` metres along the path built last into roads_pose_x / z / yaw
+function rd_tp_at(roads_st: mut RoadsState, d: float) -> void {
+  var rest = Math.clamp(d, 0.0, roads_st.rd_tplen)
+  var p = 0
+  while p < roads_st.rd_tpn - 1 and rest > roads_st.rd_tps[p] {
+    rest -= roads_st.rd_tps[p]
+    p += 1
+  }
+  let o = p * 8
+  # the parameter at that length along the piece, through its samples
+  var t = 0.0
+  var acc = 0.0
+  var px = roads_st.rd_tp[o]
+  var pz = roads_st.rd_tp[o + 1]
+  for i in 1 .. RD_PATH_STEPS + 1 {
+    let ti = float(i) / float(RD_PATH_STEPS)
+    let x = rd_cub(roads_st.rd_tp[o], roads_st.rd_tp[o + 2], roads_st.rd_tp[o + 4], roads_st.rd_tp[o + 6], ti)
+    let z = rd_cub(roads_st.rd_tp[o + 1], roads_st.rd_tp[o + 3], roads_st.rd_tp[o + 5], roads_st.rd_tp[o + 7], ti)
+    let sl = Math.sqrt((x - px) * (x - px) + (z - pz) * (z - pz))
+    if acc + sl >= rest or i == RD_PATH_STEPS {
+      var f = 0.0
+      if sl > 0.000001 { f = Math.clamp((rest - acc) / sl, 0.0, 1.0) }
+      t = (float(i - 1) + f) / float(RD_PATH_STEPS)
+      break
+    }
+    acc += sl
+    px = x
+    pz = z
+  }
+  roads_st.rd_pose_x = rd_cub(roads_st.rd_tp[o], roads_st.rd_tp[o + 2], roads_st.rd_tp[o + 4], roads_st.rd_tp[o + 6], t)
+  roads_st.rd_pose_z = rd_cub(roads_st.rd_tp[o + 1], roads_st.rd_tp[o + 3], roads_st.rd_tp[o + 5], roads_st.rd_tp[o + 7], t)
+  var dx = rd_cub_d(roads_st.rd_tp[o], roads_st.rd_tp[o + 2], roads_st.rd_tp[o + 4], roads_st.rd_tp[o + 6], t)
+  var dz = rd_cub_d(roads_st.rd_tp[o + 1], roads_st.rd_tp[o + 3], roads_st.rd_tp[o + 5], roads_st.rd_tp[o + 7], t)
+  if dx * dx + dz * dz < 0.0000001 {
+    # a handle on its end point: the chord's way
+    dx = roads_st.rd_tp[o + 6] - roads_st.rd_tp[o]
+    dz = roads_st.rd_tp[o + 7] - roads_st.rd_tp[o + 1]
+  }
+  if dx * dx + dz * dz > 0.0000001 { roads_st.rd_pose_yaw = Math.atan2(dx, dz) }
+  roads_st.rd_pose_seg = -1
+}
+
+function rd_wrap(a: float) -> float {
+  var r = a
+  while r > 3.1415927 { r -= 6.2831853 }
+  while r < -3.1415927 { r += 6.2831853 }
+  return r
+}
+
+# the lane a car in `lane` of edge `ei` takes on `eo`. The same number of lanes: the same lane. Otherwise by the side it
+# turns to: towards the kerb (right where traffic keeps right) it keeps its lane counted from the kerb, away from it counted
+# from the middle; nearly straight on, counted from the side the road it comes by joins from (a slip road on the right
+# merges into the right hand lane)
+export function roads_lane_onto(roads_st: mut RoadsState, ei: int, lane: int, eo: int) -> int {
+  if eo < 0 or ei < 0 { return lane }
+  let ni = roads_st.rd_elanes[ei]
+  let no = roads_st.rd_elanes[eo]
+  if no <= 0 { return 0 }
+  if ni == no or ni <= 0 { return Math.min(Math.max(lane, 0), no - 1) }
+  roads_pose(roads_st, ei, roads_st.rd_elen[ei], -1)
+  let yi = roads_st.rd_pose_yaw
+  roads_pose(roads_st, eo, 0.0, -1)
+  let yo = roads_st.rd_pose_yaw
+  let ox = roads_st.rd_pose_x
+  let oz = roads_st.rd_pose_z
+  var turn = rd_wrap(yo - yi)
+  if roads_st.rd_drive_left { turn = -turn }
+  var kerb = turn < -RD_TURN_SIDE
+  if Math.abs(turn) <= RD_TURN_SIDE {
+    # which side of the road it goes on to the road it comes by lies: a point 20 m back along it
+    roads_pose(roads_st, ei, Math.max(roads_st.rd_elen[ei] - 20.0, 0.0), -1)
+    let hx = Math.sin(yo)
+    let hz = Math.cos(yo)
+    var side = (-hz) * (roads_st.rd_pose_x - ox) + hx * (roads_st.rd_pose_z - oz)
+    if roads_st.rd_drive_left { side = -side }
+    kerb = side > 0.0
+  }
+  if kerb { return Math.clamp(no - 1 - (ni - 1 - lane), 0, no - 1) }
+  return Math.min(Math.max(lane, 0), no - 1)
+}
+
+# the turn path from lane `li` of edge `ei` (from its end mouth) to lane `lo` of edge `eo` (to its start mouth), built into rd_tp
+export function rd_path_build(roads_st: mut RoadsState, ei: int, li: int, eo: int, lo: int) -> void {
+  rd_tp_reset(roads_st)
+  roads_pose(roads_st, ei, roads_st.rd_elen[ei] - roads_st.rd_emouth_end[ei], li)
+  let ax = roads_st.rd_pose_x
+  let az = roads_st.rd_pose_z
+  let ahx = Math.sin(roads_st.rd_pose_yaw)
+  let ahz = Math.cos(roads_st.rd_pose_yaw)
+  roads_pose(roads_st, eo, roads_st.rd_emouth_start[eo], lo)
+  let dx = roads_st.rd_pose_x
+  let dz = roads_st.rd_pose_z
+  let dhx = Math.sin(roads_st.rd_pose_yaw)
+  let dhz = Math.cos(roads_st.rd_pose_yaw)
+  let n = roads_st.rd_eto[ei]
+  let chord = Math.sqrt((dx - ax) * (dx - ax) + (dz - az) * (dz - az))
+  # a U-turn round a dead end's circle: out to it on the kerb side, half way round, back in to the other lane
+  if eo == (ei ^ 1) and n >= 0 and roads_st.rd_nuturn[n] > 0.0 {
+    var sg = 1.0
+    if roads_st.rd_drive_left { sg = -1.0 }
+    let rx = sg * (-ahz)
+    let rz = sg * ahx
+    let w = roads_st.rd_sw[ei / 2]
+    # several lanes loop on concentric circles a lane's width and a metre apart (their paths keep clear of each other: they go round
+    # together)
+    let r = roads_st.rd_nuturn[n] - float(Math.max(roads_st.rd_elanes[ei] - 1 - li, 0)) * (w + 1.0)
+    let off_a = rd_lane_offset(roads_st, ei, li) * sg
+    let off_d = rd_lane_offset(roads_st, eo, lo) * sg
+    if r > Math.max(off_a, off_d) + 0.5 {
+      let cx = roads_st.rd_nx[n]
+      let cz = roads_st.rd_nz[n]
+      let px = cx + rx * r
+      let pz = cz + rz * r
+      let qx = cx + ahx * r
+      let qz = cz + ahz * r
+      let ux = cx - rx * r
+      let uz = cz - rz * r
+      let k1 = Math.max(Math.sqrt((px - ax) * (px - ax) + (pz - az) * (pz - az)) * 0.4, 0.1)
+      let k4 = Math.max(Math.sqrt((ux - dx) * (ux - dx) + (uz - dz) * (uz - dz)) * 0.4, 0.1)
+      let kr = r * RD_KAPPA
+      rd_tp_piece(roads_st, ax, az, ax + ahx * k1, az + ahz * k1, px - ahx * k1, pz - ahz * k1, px, pz)
+      rd_tp_piece(roads_st, px, pz, px + ahx * kr, pz + ahz * kr, qx + rx * kr, qz + rz * kr, qx, qz)
+      rd_tp_piece(roads_st, qx, qz, qx - rx * kr, qz - rz * kr, ux + ahx * kr, uz + ahz * kr, ux, uz)
+      rd_tp_piece(roads_st, ux, uz, ux - ahx * k4, uz - ahz * k4, dx + ahx * k4, dz + ahz * k4, dx, dz)
+      rd_tp_measure(roads_st)
+      return
+    }
+  }
+  # one cubic: handles along the two lanes, a circle's for the angle turned (a third of the chord straight on)
+  let cosang = Math.clamp(ahx * dhx + ahz * dhz, -1.0, 1.0)
+  let ang = Math.acos(cosang)
+  var k = chord / 3.0
+  if ang > 0.02 { k = chord * (4.0 / 3.0) * Math.tan(ang / 4.0) / (2.0 * Math.sin(ang / 2.0)) }
+  rd_tp_piece(roads_st, ax, az, ax + ahx * k, az + ahz * k, dx - dhx * k, dz - dhz * k, dx, dz)
+  rd_tp_measure(roads_st)
+}
+
+# the path built last, sampled into the first (a) or second pair of scratch lists
+function rd_tp_sample(roads_st: mut RoadsState, second: bool) -> void {
+  for i in 0 .. RD_CMP_STEPS + 1 {
+    rd_tp_at(roads_st, roads_st.rd_tplen * float(i) / float(RD_CMP_STEPS))
+    if second {
+      roads_st.rd_sbx[i] = roads_st.rd_pose_x
+      roads_st.rd_sbz[i] = roads_st.rd_pose_z
+    } else {
+      roads_st.rd_sax[i] = roads_st.rd_pose_x
+      roads_st.rd_saz[i] = roads_st.rd_pose_z
+    }
+  }
+}
+
+function rd_pt_seg_d2(px: float, pz: float, ax: float, az: float, bx: float, bz: float) -> float {
+  let dx = bx - ax
+  let dz = bz - az
+  let l2 = dx * dx + dz * dz
+  var t = 0.0
+  if l2 > 0.0000001 { t = Math.clamp(((px - ax) * dx + (pz - az) * dz) / l2, 0.0, 1.0) }
+  let qx = ax + dx * t - px
+  let qz = az + dz * t - pz
+  return qx * qx + qz * qz
+}
+
+function rd_seg_cross(ax: float, az: float, bx: float, bz: float, cx: float, cz: float, dx: float, dz: float) -> bool {
+  let d1 = (bx - ax) * (cz - az) - (bz - az) * (cx - ax)
+  let d2 = (bx - ax) * (dz - az) - (bz - az) * (dx - ax)
+  let d3 = (dx - cx) * (az - cz) - (dz - cz) * (ax - cx)
+  let d4 = (dx - cx) * (bz - cz) - (dz - cz) * (bx - cx)
+  return ((d1 > 0.0 and d2 < 0.0) or (d1 < 0.0 and d2 > 0.0)) and ((d3 > 0.0 and d4 < 0.0) or (d3 < 0.0 and d4 > 0.0))
+}
+
+# the least distance between the two sampled paths
+function rd_samples_apart(roads_st: RoadsState) -> float {
+  var best = 1000000000.0
+  for i in 0 .. RD_CMP_STEPS {
+    for j in 0 .. RD_CMP_STEPS {
+      if rd_seg_cross(roads_st.rd_sax[i], roads_st.rd_saz[i], roads_st.rd_sax[i + 1], roads_st.rd_saz[i + 1], roads_st.rd_sbx[j], roads_st.rd_sbz[j], roads_st.rd_sbx[j + 1], roads_st.rd_sbz[j + 1]) { return 0.0 }
+    }
+  }
+  for i in 0 .. RD_CMP_STEPS + 1 {
+    for j in 0 .. RD_CMP_STEPS {
+      let a = rd_pt_seg_d2(roads_st.rd_sax[i], roads_st.rd_saz[i], roads_st.rd_sbx[j], roads_st.rd_sbz[j], roads_st.rd_sbx[j + 1], roads_st.rd_sbz[j + 1])
+      if a < best { best = a }
+      let b = rd_pt_seg_d2(roads_st.rd_sbx[i], roads_st.rd_sbz[i], roads_st.rd_sax[j], roads_st.rd_saz[j], roads_st.rd_sax[j + 1], roads_st.rd_saz[j + 1])
+      if b < best { best = b }
+    }
+  }
+  return Math.sqrt(best)
+}
+
+# do two movements through a node meet: (ea, la) onto (oa, ma) and (eb, lb) onto (ob, mb). With no conflict width every two
+# do (one car at a time); a car behind another in its lane never meets it here (it follows); two that end in one lane always do
+export function roads_paths_meet(roads_st: mut RoadsState, ea: int, la: int, oa: int, ma: int, eb: int, lb: int, ob: int, mb: int) -> bool {
+  if roads_st.rd_conflict_w <= 0.0 { return true }
+  if ea == eb and la == lb { return false }
+  if oa == ob and ma == mb { return true }
+  if oa < 0 or ob < 0 or ea < 0 or eb < 0 { return true }
+  rd_path_build(roads_st, ea, la, oa, ma)
+  rd_tp_sample(roads_st, false)
+  rd_path_build(roads_st, eb, lb, ob, mb)
+  rd_tp_sample(roads_st, true)
+  return rd_samples_apart(roads_st) < roads_st.rd_conflict_w
+}
+
+# the turn path of a movement: its length into roads_turn_length, its sharpest bend into roads_turn_bend; the point d metres along it
+export function roads_turn_build(roads_st: mut RoadsState, ei: int, li: int, eo: int, lo: int) -> void { rd_path_build(roads_st, ei, li, eo, lo) }
+export function roads_turn_length(roads_st: RoadsState) -> float { return roads_st.rd_tplen }
+export function roads_turn_bend(roads_st: RoadsState) -> float { return roads_st.rd_tpk }
+export function roads_turn_at(roads_st: mut RoadsState, d: float) -> void { rd_tp_at(roads_st, d) }
+
+# the place `back` metres behind car `slot`'s front along the way it drives - its lane, the turn path it is on, the lane it came
+# by - into roads_pose_x / z / yaw (and roads_pose_y). `back` is in metres on the ground: through a turn path a car's body keeps
+# its length (the path's metres, not the road metres its span stands for). Behind where a car was made, its lane is carried
+# straight back
+export function roads_car_point(roads_st: mut RoadsState, slot: int, back: float) -> void {
+  let c = roads_st.rd_cars[slot]
+  let e = c.edge
+  let len_e = roads_st.rd_elen[e]
+  let next = rd_next_edge(roads_st, c)
+  # the turn ahead: from s0 on, its span in road metres is the path's length on the ground
+  let me = roads_st.rd_emouth_end[e]
+  let s0 = len_e - me
+  var ka = c.ka
+  var span_a = 0.0
+  if next >= 0 {
+    span_a = me + roads_st.rd_emouth_start[next]
+    if span_a > 0.0 and ka <= 0.0 and c.s > s0 {
+      rd_path_build(roads_st, e, c.lane, next, roads_lane_onto(roads_st, e, c.lane, next))
+      ka = roads_st.rd_tplen / span_a
+    }
+  }
+  if span_a <= 0.0 { ka = 0.0 }
+  # the turn behind: the path off the road it came by ends at the mouth ms
+  let ms = roads_st.rd_emouth_start[e]
+  var kb = c.kb
+  var span_b = 0.0
+  if c.pin >= 0 {
+    span_b = roads_st.rd_emouth_end[c.pin] + ms
+    if span_b > 0.0 and kb <= 0.0 {
+      rd_path_build(roads_st, c.pin, c.plane, e, c.lane)
+      kb = roads_st.rd_tplen / span_b
+    }
+  }
+  if span_b <= 0.0 { kb = 0.0 }
+  # where the front is on the way (ground metres on this road's axis), and where the asked point is
+  var w = c.s
+  if ka > 0.0 and c.s > s0 { w = s0 + (c.s - s0) * ka }
+  else if kb > 0.0 and c.s < ms { w = ms - (ms - c.s) * kb }
+  let t = w - back
+  if ka > 0.0 and t > s0 {
+    let lo = roads_lane_onto(roads_st, e, c.lane, next)
+    rd_path_build(roads_st, e, c.lane, next, lo)
+    rd_tp_at(roads_st, t - s0)
+    rd_turn_y(roads_st, e, len_e, next, (t - s0) / ka - me)
+    return
+  }
+  if c.pin < 0 or t >= ms {
+    if t >= 0.0 {
+      roads_pose(roads_st, e, Math.min(t, len_e), c.lane)
+      return
+    }
+    roads_pose(roads_st, e, 0.0, c.lane)
+    let hx = Math.sin(roads_st.rd_pose_yaw)
+    let hz = Math.cos(roads_st.rd_pose_yaw)
+    roads_st.rd_pose_x = roads_st.rd_pose_x + hx * t
+    roads_st.rd_pose_z = roads_st.rd_pose_z + hz * t
+    return
+  }
+  # behind the mouth, on the road it came by: its turn path, then its lane
+  let path_start = ms - span_b * kb
+  if kb > 0.0 and t >= path_start {
+    rd_path_build(roads_st, c.pin, c.plane, e, c.lane)
+    rd_tp_at(roads_st, t - path_start)
+    rd_turn_y(roads_st, c.pin, roads_st.rd_elen[c.pin], e, (t - path_start) / kb - roads_st.rd_emouth_end[c.pin])
+    return
+  }
+  let lp = roads_st.rd_elen[c.pin]
+  roads_pose(roads_st, c.pin, Math.max(lp - roads_st.rd_emouth_end[c.pin] - (path_start - t), 0.0), c.plane)
+}
+
+# a point on a turn path takes the height of whichever of its two roads it is nearer (`past` metres past the end of `ei`: below
+# 0 still on it); roads_pose_y reads it
+function rd_turn_y(roads_st: mut RoadsState, ei: int, len_i: float, eo: int, past: float) -> void {
+  let x = roads_st.rd_pose_x
+  let z = roads_st.rd_pose_z
+  let yaw = roads_st.rd_pose_yaw
+  if past < 0.0 { rd_seg_at_edge(roads_st, ei, Math.max(len_i + past, 0.0)) } else { rd_seg_at_edge(roads_st, eo, Math.min(past, roads_st.rd_elen[eo])) }
+  roads_st.rd_pose_x = x
+  roads_st.rd_pose_z = z
+  roads_st.rd_pose_yaw = yaw
+}
+
+function rd_seg_at_edge(roads_st: mut RoadsState, e: int, s: float) -> void {
+  let seg = e / 2
+  var d = s
+  if e % 2 == 1 { d = roads_st.rd_slen[seg] - s }
+  rd_seg_at(roads_st, seg, d)
+}

@@ -22,6 +22,14 @@ export const ROAD_RULE_YIELD: int = 1
 export const ROAD_RULE_STOP: int = 2
 export const ROAD_RULE_FORBID: int = 3
 
+# why a car may not go on into its junction (roads_enter_why)
+export const ROADS_ENTER_OK: int = 0
+export const ROADS_ENTER_NOT_FRONT: int = 1     # a car of its lane is ahead of it
+export const ROADS_ENTER_RULE: int = 2          # the signal, a stop not yet made, a road it yields to
+export const ROADS_ENTER_HOLDER: int = 3        # a car in the junction has a path its own meets (or a merge it cannot fall in with)
+export const ROADS_ENTER_ROOM: int = 4          # no room for it beyond the junction
+export const ROADS_ENTER_FIRST: int = 5         # a car that goes before it waits with a path its own meets
+
 export property RoadsFact {
   what: int = 0
   id: int = 0
@@ -49,6 +57,13 @@ export property RoadCar {
   waited: float = 0.0           # the clock when it came to the end of its road to wait its turn (-1 not waiting)
   jam: float = 0.0              # seconds standing for any reason
   holds: bool = false           # it holds the node at the end of its edge
+  hold: int = -1                # the node it holds (-1 none): it was let in, and is not yet clear of it
+  pin: int = -1                 # the edge it came by, while it is still turning off it into this one (-1 none)
+  plane: int = 0                # the lane it came by
+  ka: float = 0.0               # the turn path ahead (into the next road): its length over its span in road metres (0: none near)
+  kka: float = 0.0              # ... its sharpest bend (1 / radius)
+  kb: float = 0.0               # the turn path it is still on off the road it came by: its length over its span (0: none)
+  kkb: float = 0.0
   x: float = 0.0
   y: float = 0.0
   z: float = 0.0
@@ -142,10 +157,35 @@ export state RoadsState {
   rd_dice_ok: bool = false                 # seeded from RoadsWorld.seed() (the first time traffic needs it, or a reset)
   rd_head: []int = new []int             # per edge: the first car on it this tick, linked through rd_link
   rd_link: []int = new []int
-  rd_node_car: []int = new []int         # per node: the slot of the car holding it, -1 none
-  rd_node_id: []int = new []int
-  rd_node_in: []int = new []int          # the edge it came in by
   rd_route_tmp: []int = new []int
+  # junctions as places with a size (roads_edge_setbacks): per edge, metres short of its end that a car's front waits for the
+  # node (-1: the old 1.5 m wall), short of its end that its turn path begins, from its start that the path ends, and from its
+  # start that a car's rear is clear of the node it came through
+  rd_estop: []float = new []float
+  rd_emouth_end: []float = new []float
+  rd_emouth_start: []float = new []float
+  rd_eclear: []float = new []float
+  rd_ebase: []float = new []float        # per edge: the inner edge of lane 0 from the centre line, right of travel (RD_BASE_OLD: the old rule)
+  rd_nuturn: []float = new []float       # per node: the radius a U-turn there loops round it on (0: a hairpin between the two lanes)
+  rd_conflict_w: float = 0.0             # 0: a node lets one car in at a time; more: cars whose turn paths stay this far apart go together
+  rd_turn_acc: float = 0.0               # m/s2 across a turn path a car keeps under (0: no limit)
+  rd_jam_limit: float = 90.0
+  rd_debug_id: int = -1   # DEBUG-TEMP             # seconds standing before a car is taken off (0: never)
+  # one turn path (rd_path_build): up to 4 cubic Bezier pieces, 8 numbers each (p0, c1, c2, p3 as x, z), its length and its sharpest bend
+  rd_tp: []float = new []float
+  rd_tpn: int = 0
+  rd_tplen: float = 0.0
+  rd_tpk: float = 0.0
+  rd_tps: []float = new []float          # scratch: the length of each piece
+  rd_sax: []float = new []float          # scratch: two paths sampled, to compare
+  rd_saz: []float = new []float
+  rd_sbx: []float = new []float
+  rd_sbz: []float = new []float
+  rd_mv_a: []int = [0, 0, 0, 0]          # scratch: two movements through a node (in edge, lane, out edge, lane)
+  rd_mv_b: []int = [0, 0, 0, 0]
+  rd_mg_a: []int = [0, 0, 0, 0]          # scratch of the merges (merge.ludic)
+  rd_mg_b: []int = [0, 0, 0, 0]
+  rd_mg_c: []int = [0, 0, 0, 0]
   rd_gap: float = 0.0                    # scratch: the gap to what is ahead of the car being driven, and how much faster it is
   rd_dv: float = 0.0
   rd_facts: Queue<RoadsFact> = rd_facts__new()

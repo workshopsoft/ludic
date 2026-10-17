@@ -1,0 +1,17 @@
+# RoadNodes of the grid test map: a 3 x 3 grid of streets 120 m apart (a cross in the middle, Ts on the sides,
+# bends at the corners), a dead end off the south-east corner with a turning circle, and a highway with a slip road
+# merging from the right, a turning circle at each end
+g00 { x: -120.0, z: -120.0 }
+g01 { x: -120.0, z: 0.0 }
+g02 { x: -120.0, z: 120.0 }
+g10 { x: 0.0, z: -120.0 }
+g11 { x: 0.0, z: 0.0 }
+g12 { x: 0.0, z: 120.0 }
+g20 { x: 120.0, z: -120.0 }
+g21 { x: 120.0, z: 0.0 }
+g22 { x: 120.0, z: 120.0 }
+dd { x: 120.0, z: 230.0, kind: "deadend", radius: 9.0 }
+hw { x: -300.0, z: 400.0, kind: "deadend", radius: 14.0 }
+hm { x: 0.0, z: 400.0 }
+he { x: 300.0, z: 400.0, kind: "deadend", radius: 14.0 }
+hr { x: -200.0, z: 440.0 }

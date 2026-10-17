@@ -1,15 +1,28 @@
-# junction.ludic - who goes first where roads meet. A node where three or more roads end (or any signal) lets ONE
-# car through at a time: it holds the node from the moment it is let in until it is clear of it. Who is let in
-# when the node is free: among the cars waiting at its entries (near the end of their edge), those the rules
-# allow - a signal's green, a stop done, no higher road coming for a yield - and of those the higher priority
-# road, then whoever came first, then the lower id. A node with two roads, or one, never stops anyone.
+# junction.ludic - who goes first where roads meet. A node where three or more roads end (or any signal) lets cars through
+# one at a time - or, with a conflict width (roads_config_conflict), every car whose turn path keeps clear of the paths of
+# the cars in it: a car holds the node from the moment it is let in until its rear is clear of it. Who is let in: among
+# the cars waiting at its entries (near their waiting line), those the rules allow - a signal's green, a stop done, no
+# higher road coming for a yield - and of those the higher priority road, then whoever came first, then the lower id
+# (a car that has waited RD_STARVE seconds goes before any priority). A car is not let in while the lane it would take
+# has no room for it beyond the junction (the junction is kept clear). A node with two roads, or one, never stops anyone.
 
 const RD_STOP_TIME: float = 1.0          # seconds a stop takes
 const RD_YIELD_LOOK: float = 30.0        # metres a higher road is watched for
-const RD_QUEUE_LOOK: float = 12.0        # metres from the end of its edge a car counts as waiting
+const RD_QUEUE_LOOK: float = 12.0        # metres from its waiting line a car counts as waiting
+const RD_STARVE: float = 25.0            # seconds waited after which a car goes before any priority
+const RD_BIG: float = 1000000.0
 
 export function roads_node_controlled(roads_st: RoadsState, n: int) -> bool {
-  return roads_st.rd_nroads[n] >= 3 or roads_st.rd_nsignal[n] != 0
+  if roads_st.rd_nroads[n] >= 3 or roads_st.rd_nsignal[n] != 0 { return true }
+  # a dead end with a turning circle on a road of several lanes a way: the U-turns of its lanes cross each other's lanes
+  return roads_st.rd_nroads[n] == 1 and roads_st.rd_nuturn[n] > 0.0 and rd_node_lanes(roads_st, n) > 1
+}
+
+# the most lanes any road arriving at node n has
+function rd_node_lanes(roads_st: RoadsState, n: int) -> int {
+  var most = 0
+  for i in roads_st.rd_in_start[n] .. roads_st.rd_in_start[n + 1] { most = Math.max(most, roads_st.rd_elanes[roads_st.rd_in[i]]) }
+  return most
 }
 
 # a signal's green phase now, -1 for none (the last second of each phase is red for all)
@@ -56,72 +69,168 @@ function rd_eligible(roads_st: RoadsState, slot: int, n: int) -> bool {
       let o = roads_st.rd_cars[j]
       if j == slot or not o.alive or roads_st.rd_eto[o.edge] != n or o.edge == e { continue }
       if roads_st.rd_eprio[o.edge] <= roads_st.rd_eprio[e] { continue }
-      if roads_st.rd_elen[o.edge] - o.s < RD_YIELD_LOOK { return false }
+      if rd_to_line(roads_st, o) < RD_YIELD_LOOK { return false }
     }
   }
   return true
 }
 
-# the holder of node n is still in it: alive, not yet a full car length into the next road, and - while it is
-# still on the road it came in by - first in its lane (a car made or put ahead of it is the one at the line now)
-function rd_holder_valid(roads_st: RoadsState, n: int) -> bool {
-  let slot = roads_st.rd_node_car[n]
-  if slot < 0 { return false }
+# metres from car c's front to its waiting line (the end of its road less its stop, roads_edge_setbacks)
+function rd_to_line(roads_st: RoadsState, c: RoadCar) -> float {
+  return roads_st.rd_elen[c.edge] - Math.max(roads_st.rd_estop[c.edge], 0.0) - c.s
+}
+
+# the movement of a car through the node it holds or waits at: (in edge, lane, out edge, lane) into out[0 .. 4]
+function rd_movement(roads_st: mut RoadsState, c: RoadCar, n: int, out: []int) -> void {
+  if roads_st.rd_eto[c.edge] == n {
+    let next = rd_next_edge(roads_st, c)
+    out[0] = c.edge
+    out[1] = c.lane
+    out[2] = next
+    out[3] = roads_lane_onto(roads_st, c.edge, c.lane, next)
+  } else {
+    out[0] = c.pin
+    out[1] = c.plane
+    out[2] = c.edge
+    out[3] = c.lane
+  }
+}
+
+# the car in `slot` still holds the node it was let into: alive; while it is on the road it came by, first in its lane (a car
+# made or put ahead of it is the one at the line now); on the road it turned onto, its rear not yet past the clear line
+function rd_holder_valid(roads_st: RoadsState, slot: int) -> bool {
   let c = roads_st.rd_cars[slot]
-  if not c.alive or c.id != roads_st.rd_node_id[n] { return false }
-  if c.edge != roads_st.rd_node_in[n] and c.s > RoadCarKinds[c.kind].length + 1.0 { return false }
-  if c.edge == roads_st.rd_node_in[n] and not rd_front(roads_st, slot) { return false }
-  return true
+  let n = c.hold
+  if n < 0 or not c.alive { return false }
+  if roads_st.rd_eto[c.edge] == n { return rd_front(roads_st, slot) }
+  if c.pin >= 0 and roads_st.rd_efrom[c.edge] == n { return c.s <= RoadCarKinds[c.kind].length + roads_st.rd_eclear[c.edge] }
+  return false
 }
 
-# nodes let go that their holder has cleared (or that their holder left the roads)
+# nodes let go that their holders have cleared
 function rd_release_nodes(roads_st: mut RoadsState) -> void {
-  for n in 0 .. len(roads_st.rd_node_car) {
-    if roads_st.rd_node_car[n] >= 0 and not rd_holder_valid(roads_st, n) {
-      roads_st.rd_cars[roads_st.rd_node_car[n]].holds = false
-      roads_st.rd_node_car[n] = -1
+  for i in 0 .. len(roads_st.rd_cars) {
+    let c = roads_st.rd_cars[i]
+    if c.hold >= 0 and not rd_holder_valid(roads_st, i) {
+      c.hold = -1
+      c.holds = false
     }
   }
 }
 
-# may the car in `slot` go on from the end of its edge: true at once where nothing is arbitrated, else when it
-# holds the node, or the node is free and the car is the one chosen. Choosing is claiming: the node is the car's
-function rd_may_enter(roads_st: mut RoadsState, slot: int) -> bool {
+# does car `slot` go before car `other` at a node: a car that has waited RD_STARVE seconds first, then the higher priority
+# road, then whoever came first, then the lower id
+function rd_ranks_before(roads_st: RoadsState, slot: int, other: int) -> bool {
+  let a = roads_st.rd_cars[slot]
+  let b = roads_st.rd_cars[other]
+  let sa = a.waited >= 0.0 and roads_st.rd_time - a.waited >= RD_STARVE
+  let sb = b.waited >= 0.0 and roads_st.rd_time - b.waited >= RD_STARVE
+  if sa != sb { return sa }
+  if roads_st.rd_eprio[a.edge] != roads_st.rd_eprio[b.edge] { return roads_st.rd_eprio[a.edge] > roads_st.rd_eprio[b.edge] }
+  if a.waited != b.waited { return a.waited >= 0.0 and (b.waited < 0.0 or a.waited < b.waited) }
+  return a.id < b.id
+}
+
+# room for the car in `slot` in lane `lo` of edge `eo` beyond the junction: the last car in that lane (and every car let in
+# ahead of it bound for the same lane) leaves its whole length, its gap and the clear line free
+function rd_room_beyond(roads_st: mut RoadsState, slot: int, n: int, eo: int, lo: int) -> bool {
+  if eo < 0 { return true }
+  let c = roads_st.rd_cars[slot]
+  var need = roads_st.rd_eclear[eo] + RoadCarKinds[c.kind].length + RoadCarKinds[c.kind].gap
+  var last = RD_BIG
+  for j in 0 .. len(roads_st.rd_cars) {
+    let o = roads_st.rd_cars[j]
+    if j == slot or not o.alive { continue }
+    if o.edge == eo and o.lane == lo {
+      let rear = o.s - RoadCarKinds[o.kind].length
+      if rear < last { last = rear }
+    } else if o.hold == n and roads_st.rd_eto[o.edge] == n {
+      let nx = rd_next_edge(roads_st, o)
+      if nx == eo and roads_lane_onto(roads_st, o.edge, o.lane, nx) == lo { need += RoadCarKinds[o.kind].length + RoadCarKinds[o.kind].gap }
+    }
+  }
+  if last >= RD_BIG { return true }
+  return last >= need
+}
+
+# may the car in `slot` go on from the end of its edge: true at once where nothing is arbitrated, else when it holds the node,
+# or no car in it has a path its path meets, there is room beyond, and no car that goes before it waits with a path that
+# meets its own; a car whose movement merges with its own (merge.ludic) only has to be wholly behind or ahead of it.
+# Choosing is claiming: the node is the car's
+function rd_may_enter(roads_st: mut RoadsState, slot: int) -> bool { return rd_enter_check(roads_st, slot, true) == ROADS_ENTER_OK }
+
+# why car `slot` may not go on from the end of its edge now (ROADS_ENTER_*; ROADS_ENTER_OK: it may), without claiming the node: what a
+# game shows when a car has stood long
+export function roads_enter_why(roads_st: mut RoadsState, slot: int) -> int {
+  if slot < 0 or slot >= len(roads_st.rd_cars) or not roads_st.rd_cars[slot].alive { return ROADS_ENTER_OK }
+  if rd_next_edge(roads_st, roads_st.rd_cars[slot]) < 0 { return ROADS_ENTER_OK }
+  return rd_enter_check(roads_st, slot, false)
+}
+
+function rd_enter_check(roads_st: mut RoadsState, slot: int, claim: bool) -> int {
   let c = roads_st.rd_cars[slot]
   let e = c.edge
   let n = roads_st.rd_eto[e]
-  if not roads_node_controlled(roads_st, n) { return true }
-  if roads_st.rd_node_car[n] == slot { return true }
-  if roads_st.rd_node_car[n] >= 0 { return false }
-  if not rd_front(roads_st, slot) or not rd_eligible(roads_st, slot, n) { return false }
-  var best = slot
+  if not roads_node_controlled(roads_st, n) { return ROADS_ENTER_OK }
+  if c.hold == n { return ROADS_ENTER_OK }
+  if not rd_front(roads_st, slot) { return ROADS_ENTER_NOT_FRONT }
+  if not rd_eligible(roads_st, slot, n) { return ROADS_ENTER_RULE }
+  let mine = roads_st.rd_mv_a
+  rd_movement(roads_st, c, n, mine)
+  let other = roads_st.rd_mv_b
   for j in 0 .. len(roads_st.rd_cars) {
     let o = roads_st.rd_cars[j]
-    if j == slot or not o.alive or roads_st.rd_eto[o.edge] != n { continue }
-    let brake = RoadCarKinds[o.kind].brake
-    if roads_st.rd_elen[o.edge] - o.s > RD_QUEUE_LOOK + o.v * o.v / (2.0 * brake) { continue }
-    if not rd_front(roads_st, j) or not rd_eligible(roads_st, j, n) { continue }
-    let b = roads_st.rd_cars[best]
-    var wins = false
-    if roads_st.rd_eprio[o.edge] != roads_st.rd_eprio[b.edge] {
-      wins = roads_st.rd_eprio[o.edge] > roads_st.rd_eprio[b.edge]
-    } else if o.waited != b.waited {
-      wins = o.waited >= 0.0 and (b.waited < 0.0 or o.waited < b.waited)
-    } else {
-      wins = o.id < b.id
+    if j == slot or not o.alive or o.hold != n or not rd_holder_valid(roads_st, j) { continue }
+    rd_movement(roads_st, o, n, other)
+    # a merge (merge.ludic): in the order they reach the lane, not one at a time
+    let zone_h = rd_merge_zone(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3])
+    if zone_h >= 0.0 {
+      if not rd_merge_order_ok(roads_st, slot, j, n, zone_h) { return ROADS_ENTER_HOLDER }
+      continue
     }
-    if wins { best = j }
+    if roads_paths_meet(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3]) { return ROADS_ENTER_HOLDER }
   }
-  if best != slot { return false }
-  roads_st.rd_node_car[n] = slot
-  roads_st.rd_node_id[n] = c.id
-  roads_st.rd_node_in[n] = e
-  c.holds = true
-  return true
+  if not rd_room_beyond(roads_st, slot, n, mine[2], mine[3]) { return ROADS_ENTER_ROOM }
+  for j in 0 .. len(roads_st.rd_cars) {
+    let o = roads_st.rd_cars[j]
+    if j == slot or not o.alive or o.hold == n or roads_st.rd_eto[o.edge] != n { continue }
+    let brake = RoadCarKinds[o.kind].brake
+    if rd_to_line(roads_st, o) > RD_QUEUE_LOOK + o.v * o.v / (2.0 * brake) { continue }
+    if not rd_front(roads_st, j) or not rd_eligible(roads_st, j, n) { continue }
+    if not rd_ranks_before(roads_st, j, slot) { continue }
+    rd_movement(roads_st, o, n, other)
+    # a car that goes before it but has no room beyond the junction is going nowhere: it does not hold this one back (a dead end's
+    # stub full both ways would otherwise lock the junction: the stub's cars wait for this one, this one for that car)
+    if not rd_room_beyond(roads_st, j, n, other[2], other[3]) { continue }
+    let zone_w = rd_merge_zone(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3])
+    if zone_w >= 0.0 {
+      if not rd_merge_order_ok(roads_st, slot, j, n, zone_w) { return ROADS_ENTER_FIRST }
+      continue
+    }
+    if roads_paths_meet(roads_st, mine[0], mine[1], mine[2], mine[3], other[0], other[1], other[2], other[3]) { return ROADS_ENTER_FIRST }
+  }
+  if claim {
+    c.hold = n
+    c.holds = true
+  }
+  return ROADS_ENTER_OK
 }
 
-# who holds node n (a car id), -1 nobody
+# who holds node n (a car id; the lowest when several do), -1 nobody
 export function roads_node_holder(roads_st: RoadsState, n: int) -> int {
-  if not rd_holder_valid(roads_st, n) { return -1 }
-  return roads_st.rd_node_id[n]
+  var best = -1
+  for i in 0 .. len(roads_st.rd_cars) {
+    let c = roads_st.rd_cars[i]
+    if c.hold == n and rd_holder_valid(roads_st, i) and (best < 0 or c.id < best) { best = c.id }
+  }
+  return best
+}
+
+# how many cars hold node n now
+export function roads_node_holders(roads_st: RoadsState, n: int) -> int {
+  var k = 0
+  for i in 0 .. len(roads_st.rd_cars) {
+    if roads_st.rd_cars[i].hold == n and rd_holder_valid(roads_st, i) { k += 1 }
+  }
+  return k
 }
