@@ -68,7 +68,21 @@ NAV_SHIM int nav_save(void *h, unsigned char *buf, int cap) {
     if (!t || !t->header || !t->dataSize) continue;
     unsigned long long ref = (unsigned long long)m->getTileRef(t);
     if (buf && at + 12 + t->dataSize > cap) return -1;
-    nav_put(buf, at, &ref, 8); nav_put(buf, at, &t->dataSize, 4); nav_put(buf, at, t->data, t->dataSize);
+    nav_put(buf, at, &ref, 8); nav_put(buf, at, &t->dataSize, 4);
+    // the tile's data as it was built: the links Detour keeps in it (each polygon's first link and the link pool, written as the mesh
+    // joined it to its neighbours) are zeroed, as dtCreateNavMeshData left them. A load joins the tiles again (addTile rebuilds every
+    // link), and a tile's bytes then depend on its own triangles alone: a map baked tile range by tile range is the same file
+    if (buf) {
+      unsigned char *d = buf + at;
+      memcpy(d, t->data, t->dataSize);
+      const int polysAt = (int)((const unsigned char *)t->polys - t->data);
+      for (int k = 0; k < t->header->polyCount; ++k) {
+        unsigned int zero = 0;
+        memcpy(d + polysAt + k * (int)sizeof(dtPoly) + (int)offsetof(dtPoly, firstLink), &zero, sizeof(zero));
+      }
+      if (t->links && t->header->maxLinkCount > 0) memset(d + ((const unsigned char *)t->links - t->data), 0, sizeof(dtLink) * t->header->maxLinkCount);
+    }
+    at += t->dataSize;
   }
   return at;
 }

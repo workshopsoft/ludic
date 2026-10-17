@@ -27,6 +27,7 @@ program TilesTest {
     }
     return empty
   }
+  function le32(b: []byte, at: int) -> int { return int(b[at]) | (int(b[at + 1]) << 8) | (int(b[at + 2]) << 16) | (int(b[at + 3]) << 24) }
   function last_x(nav_st: NavState) -> float { return nav_corner_x(nav_st, nav_corners(nav_st) - 1) }
   function last_z(nav_st: NavState) -> float { return nav_corner_z(nav_st, nav_corners(nav_st) - 1) }
 
@@ -62,6 +63,34 @@ program TilesTest {
     let b = nav_path(nav_st, NAV_LARGE, 0, 10.0, 0.0, 20.0, 120.0, 0.0, 20.0)
     expect_eq(a, b)
     expect_near(last_x(nav_st), ax, 0.0001)
+  }
+
+  test "a tile's saved bytes are its own: the same alone as with its neighbours (no link to them), so a map baked range by range joins to the same file" (nav_st: mut NavState) {
+    map(nav_st, false)
+    let all = Os.temp_dir() + "/ludic_nav_all.navmesh"
+    expect(nav_save_file(nav_st, NAV_PERSON, all))
+    # tile (1, 1) alone in a mesh of the same params
+    let g = ground(128, 0)
+    g.cyl = post_at(96.0, 20.0, 2.0)
+    g.nc = 1
+    expect(nav_tiled(nav_st, NAV_LARGE, 0.0, 0.0, 64.0, 16, 4096))
+    expect(nav_tile_build(nav_st, NAV_LARGE, 1, 1, g, new NavConfig) > 0)
+    let one = Os.temp_dir() + "/ludic_nav_one.navmesh"
+    expect(nav_save_file(nav_st, NAV_LARGE, one))
+    let a = Fs.read_bytes(all)
+    let b = Fs.read_bytes(one)
+    # the last tile of the whole file (1, 1 was built last) and the only one of the other: the same size, the same bytes
+    let nb = le32(b, 40 + 8)
+    var at = 40
+    var last = 0
+    for k in 0 .. le32(a, 8) {
+      last = at
+      at += 12 + le32(a, at + 8)
+    }
+    expect_eq(le32(a, last + 8), nb)
+    var same = true
+    for k in 0 .. nb { if a[last + 12 + k] != b[40 + 12 + k] { same = false } }
+    expect(same)
   }
 
   test "a saved mesh as an index: only the tiles near a player are in, and they come and go" (nav_st: mut NavState) {
