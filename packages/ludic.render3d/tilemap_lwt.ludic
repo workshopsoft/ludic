@@ -21,11 +21,12 @@
 #        nv, nt, np (u32); nv vertices { a u16, b u16 (on level 0's grid), height u16, nx u8, nz u8 }; nt triangles (3 u32
 #        vertex indices, wound as the grid's); np perimeter vertices (u32 indices) in the skirt's order (lwt_perimeter's)
 #   A level of kind 2 is the same locked mesh, COMPACT (version 3 files): the cut as a quadtree and the heights alone, so a
-#   locked level costs what a grid does a vertex. nv, nbits (u32); the split bits, one a cell of more than one texel, depth
-#   first: for each of the level's own cells (row by row along +z) 1 when it is split (then its quarters at low x low z, high
-#   x low z, low x high z, high x high z, each the same way) or 0 when it is a cell of the mesh, bit k in byte k / 8 at
-#   (k % 8), the bytes padded to a word; then nv vertices { height u16, nx u8, nz u8 }, every corner of a cell of the mesh,
-#   in level 0's grid order (row by row along +z). The reader makes the triangles as the bake did: each cell a fan from its
+#   locked level costs what a grid does a vertex. nv, nbits, nhole (u32); the split bits, one a cell of more than one texel,
+#   depth first: for each of the level's own cells (row by row along +z) 1 when it is split (then its quarters at low x low z,
+#   high x low z, low x high z, high x high z, each the same way) or 0 when it is a cell of the mesh, bit k in byte k / 8 at
+#   (k % 8), the bytes padded to a word; then, when nhole is not 0, a bit for each cell of the mesh in the same order, 1 for a
+#   HOLE (no triangles: tilemap_bake.ludic's hole classes), padded to a word; then nv vertices { height u16, nx u8, nz u8 },
+#   every corner of a cell of the mesh, in level 0's grid order (row by row along +z). The reader makes the triangles as the bake did: each cell a fan from its
 #   high-x low-z corner over the corners of its finer neighbours on its edges (lwt_ring), the perimeter in the skirt's order.
 # ============================================================================
 numbers float
@@ -63,6 +64,7 @@ export property TmMeshes {
   cx: words = null                  # its cells: low corner on level 0's grid and side
   cz: words = null
   cs: words = null
+  chole: words = null               # its cells' hole flags
   ring: words = null                # one cell's boundary points
   stale: int = 0                    # files refused for another row's numbers or another cut
   no_file: int = 0
@@ -120,6 +122,7 @@ export function tmm_new(tm: TileMap, slots: int) -> TmMeshes {
   ms.per = words(4 * c0)
   ms.here = words((c0 + 1) * (c0 + 1));  ms.vid = words((c0 + 1) * (c0 + 1))
   ms.cx = words(c0 * c0 + 64);  ms.cz = words(c0 * c0 + 64);  ms.cs = words(c0 * c0 + 64)   # the cells, and a stack at the top
+  ms.chole = words(c0 * c0 + 64)
   ms.ring = words(4 * c0 + 4)
   return ms
 }
@@ -361,12 +364,14 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
   let c0 = tm.patch_texels
   let n0 = c0 + 1
   let raw = ms.raw
-  var got = file_read(f, data_of(raw), 8)
+  var got = file_read(f, data_of(raw), 12)
   let nv = lw_get32(raw, 0)
   let nbits = lw_get32(raw, 4)
-  if got != 8 or nv < 4 or nv > n0 * n0 or nbits < 0 or nbits > c0 * c0 { file_close(f);  return false }
+  let nhole = lw_get32(raw, 8)
+  if got != 12 or nv < 4 or nv > n0 * n0 or nbits < 0 or nbits > c0 * c0 or nhole < 0 or nhole > c0 * c0 { file_close(f);  return false }
   let bb = lwt_bits_bytes(nbits)
-  let body = bb + nv * 4
+  let hb = lwt_bits_bytes(nhole)
+  let body = bb + hb + nv * 4
   got = file_read(f, data_of(raw), body)
   file_close(f)
   if got != body { return false }
@@ -404,13 +409,18 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
         }
         if nc >= sp { return false }
         ms.cx[nc] = x0;  ms.cz[nc] = z0;  ms.cs[nc] = s
+        ms.chole[nc] = 0
+        if nhole > 0 {
+          if nc >= nhole { return false }
+          ms.chole[nc] = (int(raw[bb + nc / 8]) >> (nc % 8)) & 1
+        }
         nc += 1
         ms.here[z0 * n0 + x0] = 1;  ms.here[z0 * n0 + x0 + s] = 1
         ms.here[(z0 + s) * n0 + x0] = 1;  ms.here[(z0 + s) * n0 + x0 + s] = 1
       }
     }
   }
-  if bit != nbits { return false }
+  if bit != nbits or (nhole > 0 and nc != nhole) { return false }
   let size = tmap_patch_size(tm)
   let tex = size / float(c0)
   let drop = 2.0 * size / float(c0 >> lod) + tm.skirt
@@ -419,7 +429,7 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
   for g in 0 .. n0 * n0 {
     if ms.here[g] != 1 { ms.vid[g] = -1;  continue }
     if i >= nv { return false }
-    let o = bb + i * 4
+    let o = bb + hb + i * 4
     let a = g % n0
     let b = g / n0
     let q = int(raw[o]) | (int(raw[o + 1]) << 8)
@@ -440,6 +450,7 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
   let cap = len(ix)
   var k = 0
   for c in 0 .. nc {
+    if ms.chole[c] == 1 { continue }
     let n = lwt_ring(ms.here, n0, ms.cx[c], ms.cz[c], ms.cs[c], ms.ring)
     let g0 = ms.ring[0]
     for r in 1 .. n - 1 {

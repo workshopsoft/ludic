@@ -3,7 +3,7 @@
 # the game streams (tilemap_draw.ludic). The game makes none of it.
 #
 #   ludic build packages/ludic.render3d/tools/terrain_bake.ludic
-#   ./build/terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels] [lock] [mask] [tol] [under] [sink] [rise]
+#   ./build/terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels] [lock] [mask] [tol] [under] [sink] [rise] [holes]
 #
 #   <tiles>          the row's `tiles` pattern, with {tx} and {tz} ("assets/maps/meridian/terrain/{tx}_{tz}.png")
 #   tile_size ... height_max   the row's fields of those names (tile_cols and tile_rows for <cols> and <rows>)
@@ -19,6 +19,7 @@
 #                    inside rises at most `rise` and may sink any depth: tilemap_bake.ludic TmLock)
 #   sink             metres a locked texel (but a covered one inside) may sink, default tol
 #   rise             metres a covered texel inside may rise, default tol
+#   holes            the land-use classes with no ground drawn (a tunnel's mouth), default none (tilemap_bake.ludic TmLock)
 #
 # It reads the PNGs and writes files only: no window, no device, nothing of the game runs. A bake over a whole map is heavy
 # work (every tile is read with its neighbours) and is a person's to start, or a package.ludic `hook before build`:
@@ -47,7 +48,7 @@ program TerrainBake {
   handler Boot(render3d_st: mut Render3dState) phase Start {
     let tiles = given(1)
     if tiles == "" or given(9) == "" {
-      print("usage: terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels] [lock classes] [mask] [tol] [under classes] [sink] [rise]")
+      print("usage: terrain_bake <tiles> <tile_size> <tile_res> <cols> <rows> <origin_x> <origin_z> <height_min> <height_max> [height_offset] [out] [patch_texels] [lock classes] [mask] [tol] [under classes] [sink] [rise] [hole classes]")
       exit(2)
       return
     }
@@ -81,6 +82,13 @@ program TerrainBake {
       }
       lock.sink = num(17, -1.0)
       lock.rise = num(18, -1.0)
+      let holes = given(19)
+      if holes != "" {
+        let hs = new []int
+        let hps = Text.split(holes, ",")
+        for i in 0 .. len(hps) { if Text.trim(hps[i]) != "" { push(hs, int(Text.to_float(Text.trim(hps[i])))) } }
+        tmb_lock_holes(lock, hs)
+      }
     }
     let n = tmb_map_locked(render3d_st, tm, out, lock)
     print(`terrain_bake: {n} tiles baked ({tm.patches} x {tm.patches} patches of {tm.patch_texels} texels, {tm.lod_max + 1} levels) into {out}; {tm.no_file} tiles have no usable PNG`)

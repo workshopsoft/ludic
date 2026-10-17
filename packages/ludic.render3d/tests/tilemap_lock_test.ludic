@@ -266,6 +266,75 @@ program TileLockTest {
     expect(k.tris - k.tris_own < strict.tris - strict.tris_own)
   }
 
+  test "hole classes: their texels are left out of every level, level 0 included, and every other texel is still covered once" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st)
+    let k = lock_of(render3d_st)
+    let hs = new []int
+    push(hs, 6)                                # the lake bed
+    tmb_lock_holes(k, hs)
+    bake(render3d_st, tm, "holes", k)
+    let cls = classes(render3d_st)
+    let ms = tmm_new(tm, 1)
+    let s = tmm_load(ms, tm, 0, 0)
+    expect(s >= 0)
+    let size = tmap_patch_size(tm)
+    var holes = 0
+    var drawn_holes = 0
+    var missed = 0
+    for pz in 0 .. 2 {
+      for px in 0 .. 2 {
+        for lod in 0 .. tm.lod_max + 1 {
+          expect(tmm_patch(ms, tm, s, 0, 0, px, pz, lod, 0.0))
+          let hit = words(64 * 64)
+          for t in 0 .. 64 * 64 { hit[t] = 0 }
+          var t = 0
+          let nsk = ms.nv - ms.np
+          while t + 2 < ms.ni {
+            let i0 = ms.ibuf[t];  let i1 = ms.ibuf[t + 1];  let i2 = ms.ibuf[t + 2]
+            t += 3
+            if not ms.locked or i0 >= nsk or i1 >= nsk or i2 >= nsk { continue }
+            # the triangle's texel centres (a hole's cell is one texel: its centre in no triangle)
+            let tex = size / 64.0
+            let x0 = (ms.vbuf[i0 * 8] + size * 0.5) / tex;  let z0 = (ms.vbuf[i0 * 8 + 2] + size * 0.5) / tex
+            let x1 = (ms.vbuf[i1 * 8] + size * 0.5) / tex;  let z1 = (ms.vbuf[i1 * 8 + 2] + size * 0.5) / tex
+            let x2 = (ms.vbuf[i2 * 8] + size * 0.5) / tex;  let z2 = (ms.vbuf[i2 * 8 + 2] + size * 0.5) / tex
+            let d = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2)
+            for j in max(int(Math.floor(Math.min(z0, Math.min(z1, z2)))), 0) .. min(int(Math.ceil(Math.max(z0, Math.max(z1, z2)))), 64) {
+              for i in max(int(Math.floor(Math.min(x0, Math.min(x1, x2)))), 0) .. min(int(Math.ceil(Math.max(x0, Math.max(x1, x2)))), 64) {
+                let u = float(i) + 0.5;  let v = float(j) + 0.5
+                let w0 = ((z1 - z2) * (u - x2) + (x2 - x1) * (v - z2)) / d
+                let w1 = ((z2 - z0) * (u - x2) + (x0 - x2) * (v - z2)) / d
+                if w0 >= -0.000001 and w1 >= -0.000001 and 1.0 - w0 - w1 >= -0.000001 { hit[j * 64 + i] = 1 }
+              }
+            }
+          }
+          if not ms.locked { continue }
+          for j in 0 .. 64 {
+            for i in 0 .. 64 {
+              let hole = int(cls[(pz * 64 + j) * 128 + px * 64 + i]) == 6
+              if hole { holes += 1;  if hit[j * 64 + i] == 1 { drawn_holes += 1 } } else if hit[j * 64 + i] == 0 { missed += 1 }
+            }
+          }
+        }
+      }
+    }
+    print(`  holes: {holes} hole texel levels, {drawn_holes} drawn, {missed} other texels missed`)
+    expect(holes > 0)
+    expect_eq(drawn_holes, 0)
+    expect_eq(missed, 0)
+    # physics: tmap_field answers the hole value on a hole texel, the height elsewhere
+    tmap_holes(tm, render3d_st.r3d_root + "/tests/maps/lock/{tx}_{tz}.mask.png", hs)
+    tmap_ensure(render3d_st, tm, 64.0, 64.0, 100.0)
+    let out = floats(128 * 128)
+    expect_eq(tmap_field(tm, out, 128, 0.5, 0.5, 1.0, -9999.0), 0)
+    var fh = 0
+    for i in 0 .. 128 * 128 {
+      let hole = int(cls[i]) == 6
+      if hole { expect(out[i] == -9999.0);  fh += 1 } else { expect(out[i] > -9999.0) }
+    }
+    expect(fh > 0)
+  }
+
   test "a locked level's vertices take land-use tones like the plain grid's" (render3d_st: mut Render3dState) {
     let tm = open(render3d_st)
     bake(render3d_st, tm, "tones", lock_of(render3d_st))
