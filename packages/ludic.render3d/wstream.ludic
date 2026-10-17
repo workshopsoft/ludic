@@ -234,6 +234,7 @@ export function ws_retry(s: WStream) -> void {
   s.dirty = true
 }
 
+@alloc_ok("the live list doubles when more cells are live than ever before on this map: amortised, and kept for the map")
 function ws_live_add(s: WStream, slot: int) -> void {
   let c = s.cells[slot]
   if c.live_at >= 0 { return }
