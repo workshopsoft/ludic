@@ -11,6 +11,10 @@
 #   r3d_on_casters(st, fn casters)             #   function casters(vp: floats) { bw_draw_casters(st, bw, vp) }
 #   each frame, with the camera's WORLD position (doubles) and heading:  bw_frame(st, bw, wx, wy, wz, yaw, pitch, 2000.0)
 #
+# A game that keeps its own floating origin and sets its own camera shares that origin once (`bw_share_origin(bw, o)`) and calls
+# `bw_stream(st, bw, wx, wz, fwd_x, fwd_z, load_us)` each frame after it moved the origin: the same loads within the same budget,
+# no camera set, no second origin. Whatever moved the origin (a rebase, a reset for a teleport) is followed there.
+#
 # bw_frame moves the floating origin when the camera has drifted, sets the camera in render space, runs the scheduler and does the
 # loads it allows within the microsecond budget; the cell files are read here (synchronously: each cell is small, and the
 # budget is what keeps a frame's loading bounded). Everything a game keeps in render space (actors, other layers) follows
@@ -35,7 +39,10 @@ export property BigWorld {
   frame_load_us: int = 0,    # what the loads of the last frame cost
   wx: double = 0.0,
   wy: double = 0.0,
-  wz: double = 0.0
+  wz: double = 0.0,
+  seen_ox: double = 0.0,     # the origin the CPU culler's cells were last placed against (bw_stream follows any move of it)
+  seen_oy: double = 0.0,
+  seen_oz: double = 0.0
 }
 
 # Open a large world over a directory of cells (cells.lwi and the cell files: cellfile.ludic, hlod.ludic), the map's kit rows and its
@@ -63,12 +70,12 @@ function bw_dir_of(path: string) -> string {
   var i = len(path) - 1
   while i >= 0 and path[i] != '/' { i -= 1 }
   if i < 0 { return "" }
-  return path[0 .. i]
+  return path[0..i]
 }
 function bw_file_of(path: string) -> string {
   var i = len(path) - 1
   while i >= 0 and path[i] != '/' { i -= 1 }
-  return path[i + 1 .. len(path)]
+  return path[i + 1..len(path)]
 }
 
 # Load every kit's model, bake its impostor frames (n x n of frame_px texels; 0 for none), and its interior atlas: the map's
@@ -111,12 +118,37 @@ export function bw_frame(render3d_st: mut Render3dState, bw: BigWorld, wx: doubl
   bw.wy = wy
   bw.wz = wz
   let o = bw.origin
-  bw.rebased = forg_update(o, wx, wy, wz)
-  if bw.rebased { kinst_rebase(bw.cpu, o.shift_x, o.shift_y, o.shift_z) }
+  forg_update(o, wx, wy, wz)
   cam_set(render3d_st, forg_rx(o, wx), forg_ry(o, wy), forg_rz(o, wz), yaw_deg, pitch_deg)
   let yaw = Math.deg_to_rad(yaw_deg)
+  bw_stream(render3d_st, bw, wx, wz, -Math.sin(yaw), -Math.cos(yaw), load_us)
+}
+
+# The world's origin is `o`, a ForgOrigin the game owns and moves itself (it must be on the same grid as the cells: any
+# multiple of a power of two up to the cell size). Call once, before the first bw_stream; cells already in are re-placed.
+export function bw_share_origin(bw: BigWorld, o: ForgOrigin) -> void {
+  bw.origin = o
+}
+
+# The streaming half of a frame, for the camera at world (wx, wz) looking along (fwd_x, fwd_z) (a cell ahead loads first):
+# follows the origin if it moved since the last frame (a rebase or a reset), runs the scheduler, does the loads it allows
+# within `load_us` microseconds and the drops, and shows a cell's proxy only while its real instances are not in.
+export function bw_stream(render3d_st: mut Render3dState, bw: BigWorld, wx: double, wz: double, fwd_x: float, fwd_z: float, load_us: float) -> void {
+  bw.wx = wx
+  bw.wz = wz
+  let o = bw.origin
+  let dx = o.ox - bw.seen_ox
+  let dy = o.oy - bw.seen_oy
+  let dz = o.oz - bw.seen_oz
+  bw.rebased = dx != 0.0 or dy != 0.0 or dz != 0.0
+  if bw.rebased {
+    kinst_rebase(bw.cpu, float(dx), float(dy), float(dz))
+    bw.seen_ox = o.ox
+    bw.seen_oy = o.oy
+    bw.seen_oz = o.oz
+  }
   ws_begin_frame(bw.sched, load_us)
-  ws_update(bw.sched, float(wx), float(wz), -Math.sin(yaw), -Math.cos(yaw))
+  ws_update(bw.sched, float(wx), float(wz), fwd_x, fwd_z)
   bw.frame_load_us = 0
   var code = ws_next_job(bw.sched)
   while code >= 0 {
@@ -143,6 +175,7 @@ export function bw_frame(render3d_st: mut Render3dState, bw: BigWorld, wx: doubl
 }
 
 # one layer of one cell read from its file into the renderer
+@alloc_ok("a cell loading: its file is read and uploaded once and given back when the cell drops; the scheduler's budget bounds a frame's loads")
 function bw_load(render3d_st: mut Render3dState, bw: BigWorld, slot: int, layer: int) -> bool {
   let cx = ws_cell_x(bw.sched, slot)
   let cz = ws_cell_z(bw.sched, slot)
@@ -164,6 +197,7 @@ function bw_load(render3d_st: mut Render3dState, bw: BigWorld, slot: int, layer:
   return true
 }
 
+@alloc_ok("a cell dropping: the scratch that marks its records dead is made and freed in the call")
 function bw_drop(render3d_st: mut Render3dState, bw: BigWorld, slot: int, layer: int) -> void {
   if layer == WS_FULL {
     if bw_gpu_culls(bw) { kgpu_remove_cell(render3d_st, bw.gpu, slot) } else { kinst_remove_cell(bw.cpu, slot) }
