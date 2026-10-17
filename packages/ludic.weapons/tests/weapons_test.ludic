@@ -482,6 +482,36 @@ program WeaponsTest {
     expect_eq(weapons_cycle_mode(weapons_st, h, 0), WMODE_AUTO)
   }
 
+  test "the rate is exact at any tick rate: 650 a minute is 109 rounds in 10 s at 30, 60, 144 or 240 ticks a second, held or tapped at the rate" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    let rates = [30, 60, 144, 240]
+    for r in 0 .. 4 {
+      fresh(weapons_st, arena_st)
+      let h = armed(weapons_st, WPN_DRUM, 0)
+      let dt = 1.0 / float(rates[r])
+      weapons_trigger(weapons_st, h, true)
+      var n = 0
+      for i in 0 .. rates[r] * 10 {
+        weapons_run(weapons_st, dt)
+        n += count_facts(weapons_st, WP_FIRED)
+      }
+      weapons_trigger(weapons_st, h, false)
+      print(`{rates[r]} ticks a second: {n} rounds in 10 s`)
+      expect(n >= 108)
+      expect(n <= 110)
+    }
+    # a pause in the run ends the carry: the round after a rest leaves at once, and the rate afterwards is the same
+    fresh(weapons_st, arena_st)
+    let h = armed(weapons_st, WPN_DRUM, 0)
+    weapons_trigger(weapons_st, h, true)
+    weapons_run(weapons_st, 0.02)
+    weapons_trigger(weapons_st, h, false)
+    pass_time(weapons_st, 0.5)
+    q_clear(weapons_facts(weapons_st))
+    weapons_trigger(weapons_st, h, true)
+    weapons_run(weapons_st, 0.02)
+    expect_eq(count_facts(weapons_st, WP_FIRED), 1)
+  }
+
   test "an empty magazine clicks once per press and a class that reloads by itself starts to" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
     fresh(weapons_st, arena_st)
     let h = armed(weapons_st, WPN_CARBINE, 100)

@@ -45,3 +45,9 @@ frag {
   spread: 0.0, recoil_jitter: 0.0
   mag_size: 1, chamber: false, reload_tactical: 0.5, reload_empty: 0.5
 }
+drum {
+  class: WCLASS_RIFLE, ammo: AMMO_STD, kind: WKIND_HITSCAN
+  modes: [WMODE_AUTO, WMODE_SEMI], rate: 650.0, damage: 1.0, damage_type: 1, range: 100.0
+  spread: 0.0, bloom: 0.0, bloom_max: 0.0, recoil_jitter: 0.0
+  mag_size: 2000, chamber: false, reload_tactical: 2.0, reload_empty: 2.5
+}
