@@ -5,8 +5,8 @@
 #   tile (tx, tz)'s mask is the file the tiles' pattern names with .mask.png for .png (tmap_mask_pattern_of; a game may
 #   point it elsewhere or turn it off with tmd_mask_pattern): an 8-bit grey PNG, res x res, on the height tiles' own
 #   grid (image row 0 the low z), one class a texel. A tile with no mask draws exactly as before: the ground's tint.
-#   The tone table has 8 entries, class 0 .. 7 (tmd_tone_set, or GroundTone rows with tmd_tones_apply), linear r g b
-#   like an actor's tint; a class with no tone, or past 7, draws the ground's tint (TileDraw.color).
+#   The tone table has 16 entries, class 0 .. 15 (tmd_tone_set, or GroundTone rows with tmd_tones_apply), linear r g b
+#   like an actor's tint; a class with no tone, or past 15, draws the ground's tint (TileDraw.color).
 #
 # The tones go on the patch's vertices as a vertex colour (glTF COLOR_0, attribute 7, which the model pass already
 # multiplies in), so no shader or texture is added. A vertex stands on a cell corner; its colour is the mean tone of
@@ -21,12 +21,12 @@
 # ============================================================================
 numbers float
 
-const TMK_TONES: int = 8           # classes with a tone of their own: 0 .. 7
+const TMK_TONES: int = 16          # classes with a tone of their own: 0 .. 15
 
 # a tone for one class: the game's table (a row a class)
 export property GroundTone {
   key: string = ""
-  @Range(0, 7) class: int = 0               # the mask's byte
+  @Range(0, 15) class: int = 0              # the mask's byte
   @Range(0, 4) r: float = 0.5               # linear, like an actor's tint
   @Range(0, 4) g: float = 0.5
   @Range(0, 4) b: float = 0.5
@@ -36,7 +36,7 @@ export property GroundTone {
 @alloc_ok("a map being opened: the pattern, once")
 export function tmap_mask_pattern_of(pattern: string) -> string {
   let n = len(pattern)
-  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0 .. n - 4] + ".mask.png" }
+  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0..n - 4] + ".mask.png" }
   return pattern + ".mask.png"
 }
 
@@ -79,14 +79,14 @@ export function tmd_mask_pattern(td: TileDraw, pattern: string) -> void {
   tmk_redraw(td)
 }
 
-# class `c` (0 .. 7) draws (r, g, b), linear. Patches drawn already are made again, a few a frame.
+# class `c` (0 .. 15) draws (r, g, b), linear. Patches drawn already are made again, a few a frame.
 export function tmd_tone_set(td: TileDraw, c: int, r: float, g: float, b: float) -> void {
   if c < 0 or c >= TMK_TONES { return }
   td.tones[c * 3] = r;  td.tones[c * 3 + 1] = g;  td.tones[c * 3 + 2] = b
   td.tone_on[c] = 1
   tmk_redraw(td)
 }
-# the table from rows (a class past 7 is left out); classes no row names keep the ground's tint
+# the table from rows (a class past 15 is left out); classes no row names keep the ground's tint
 export function tmd_tones_apply(td: TileDraw, rows: []GroundTone) -> void {
   for c in 0 .. TMK_TONES { td.tone_on[c] = 0 }
   for i in 0 .. len(rows) {
