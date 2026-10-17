@@ -1,0 +1,10 @@
+sea pass, ms on this machine, the least frame of the least of 5 runs; lines 0.33 (sea at most half the frame) and 0.53 (sea fills the frame, or a foam beach) = 1.0 and 1.6 ms on an M1 (ESTIMATE: no M1 was run, M1 taken as 3x slower)
+     sea_prof prof_coast: least 0.395 ms (mean 0.425), 0.26 of the old plane's 1.54  inside the 0.53 line (about 1.19 ms on an M1, estimated)
+     sea_prof prof_horizon: least 0.182 ms (mean 0.274), 0.13 of the old plane's 1.38  inside the 0.33 line (about 0.55 ms on an M1, estimated)
+     sea_prof prof_land: least 0.084 ms (mean 0.167), 0.24 of the old plane's 0.34  inside the 0.33 line (about 0.25 ms on an M1, estimated)
+     sea_prof prof_open_sea: least 0.433 ms (mean 0.479), 0.15 of the old plane's 2.86  inside the 0.53 line (about 1.30 ms on an M1, estimated)
+     sea_prof_deep prof_coast: least 0.410 ms (mean 0.483), 0.27 of the old plane's 1.54  inside the 0.53 line (about 1.23 ms on an M1, estimated)
+     sea_prof_deep prof_horizon: least 0.171 ms (mean 0.264), 0.12 of the old plane's 1.38  inside the 0.33 line (about 0.51 ms on an M1, estimated)
+     sea_prof_deep prof_land: least 0.126 ms (mean 0.140), 0.37 of the old plane's 0.34  inside the 0.33 line (about 0.38 ms on an M1, estimated)
+     sea_prof_deep prof_open_sea: least 0.419 ms (mean 0.455), 0.15 of the old plane's 2.86  inside the 0.53 line (about 1.26 ms on an M1, estimated)
+sea_budget: 0 over

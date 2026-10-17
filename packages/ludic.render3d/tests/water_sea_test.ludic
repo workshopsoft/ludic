@@ -1,0 +1,220 @@
+# water_sea_test.ludic - the open sea (water_sea.ludic): a plane in sea style that reaches the horizon from anywhere on a
+# map, is drawn on the wet mask's wet texels, has no reflection pass, and leaves a lake's wash alone. The pictures (the
+# foam band by depth, nothing on dry texels, the horizon, no flicker, the river mouth) are lab/sea_lab.ludic +
+# lab/sea_check.py. No device.
+import "ludic.render3d/r3d.ludic"
+program WaterSeaTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function surface(r: float) -> Model {
+    let m = new Model
+    m.prims = new []Prim
+    m.radius = r
+    return m
+  }
+
+  test "no planar reflection in the default setting: the sea is not the mirrored body and no pass is asked for" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    let sea = water_sea_put(render3d_st, 0.0, 0.0, 0.0, 5120.0, 4096.0)
+    expect_eq(sea, 0)
+    expect_eq(render3d_st.wb_reflect[sea], 0)
+    expect_eq(render3d_st.wb_primary, -1)
+    expect(not water_reflect_visible(render3d_st))
+    expect_eq(render3d_st.wb_sea[sea], 1)
+    expect_eq(render3d_st.wb_kind[sea], WATER_PLANE)
+    # drawn only on wet texels: with a mask in use that is the mask's, with none the plane's own depth test
+    expect_eq(render3d_st.wb_masked[sea], 1)
+    # a lake beside it: a mesh, never sea style, and the mirror stays with whoever asks for it
+    let lake = water_mesh_put(render3d_st, surface(50.0), 100.0, 1.0, 100.0)
+    water_body_sea(render3d_st, lake, true)
+    expect_eq(render3d_st.wb_sea[lake], 0)
+    expect_eq(render3d_st.wb_wash[lake], 1)
+    water_body_wash(render3d_st, lake, false)
+    expect_eq(render3d_st.wb_wash[lake], 0)
+    water_body_wash(render3d_st, lake, true)
+    expect_eq(render3d_st.wb_wash[lake], 1)
+    water_planes_clear(render3d_st)
+  }
+
+  test "the sea covers the map and runs to the far distance on every side from anywhere on it" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    let sea = water_sea_put(render3d_st, 0.0, 0.0, 0.0, 5120.0, 4096.0)
+    # the map's own corners, and every corner pushed out by the camera's far distance: a camera on the map's edge sees as
+    # far as that in any direction, and the sea is under all of it
+    for sx in 0 .. 2 {
+      for sz in 0 .. 2 {
+        let cx = (float(sx) * 2.0 - 1.0) * 5120.0
+        let cz = (float(sz) * 2.0 - 1.0) * 4096.0
+        expect(water_body_covers(render3d_st, sea, cx, cz))
+        expect(water_body_covers(render3d_st, sea, cx + (float(sx) * 2.0 - 1.0) * 14000.0, cz + (float(sz) * 2.0 - 1.0) * 14000.0))
+        expect(water_body_covers(render3d_st, sea, cx + (float(sx) * 2.0 - 1.0) * 14000.0, cz))
+        expect(water_body_covers(render3d_st, sea, cx, cz + (float(sz) * 2.0 - 1.0) * 14000.0))
+      }
+    }
+    # past the far distance too, out to the horizon of a flat sea seen from a tall building (a camera 400 m up, 70 km)
+    expect(water_body_covers(render3d_st, sea, 5120.0 + 70000.0, 0.0))
+    expect(water_body_covers(render3d_st, sea, -5120.0 - 70000.0, 4096.0 + 70000.0))
+    # and the rectangle is not endless: nothing is claimed far outside it
+    expect(not water_body_covers(render3d_st, sea, 5120.0 + 2.0 * WATER_SEA_REACH, 0.0))
+    # a farther far distance widens it
+    water_planes_clear(render3d_st)
+    render3d_st.cam_far = 300000.0
+    let wide = water_sea_put(render3d_st, 0.0, 0.0, 0.0, 5120.0, 4096.0)
+    expect(water_body_covers(render3d_st, wide, 5120.0 + 299999.0, 0.0))
+    # a mesh body covers nothing by rectangle
+    let lake = water_mesh_put(render3d_st, surface(50.0), 0.0, 0.0, 0.0)
+    expect(not water_body_covers(render3d_st, lake, 0.0, 0.0))
+    water_planes_clear(render3d_st)
+    render3d_st.cam_far = 14000.0
+  }
+
+  test "the sea follows the floating origin and keeps its level" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    let sea = water_sea_put(render3d_st, 0.0, 10.0, 20.0, 100.0, 100.0)
+    water_rebase(render3d_st, 4000.0, 0.0, -2000.0)
+    expect_near(render3d_st.wb_cx[sea], -3990.0, 0.0001)
+    expect_near(render3d_st.wb_cz[sea], 2020.0, 0.0001)
+    expect_near(render3d_st.wb_level[sea], 0.0, 0.0001)
+    expect(water_body_covers(render3d_st, sea, 0.0, 0.0))
+    expect_eq(render3d_st.wb_sea[sea], 1)
+    water_planes_clear(render3d_st)
+  }
+
+  test "the sea is one of sixteen bodies, and a seventeenth is refused" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    var n = 0
+    for i in 0 .. 16 { if water_sea_put(render3d_st, float(i), 0.0, 0.0, 10.0, 10.0) >= 0 { n += 1 } }
+    expect_eq(n, 16)
+    expect_eq(water_sea_put(render3d_st, 0.0, 0.0, 0.0, 10.0, 10.0), -1)
+    expect_eq(water_body_count(render3d_st), 16)
+    water_planes_clear(render3d_st)
+    expect_eq(water_body_count(render3d_st), 0)
+  }
+
+  test "a body added after a sea starts as still water with its wash on" (render3d_st: mut Render3dState) {
+    render3d_st.cam_far = 14000.0
+    water_sea_put(render3d_st, 0.0, 0.0, 0.0, 10.0, 10.0)
+    water_planes_clear(render3d_st)
+    let plain = water_body_put(render3d_st, 3.0, 0.0, 0.0, 50.0, 50.0, false)
+    expect_eq(render3d_st.wb_sea[plain], 0)
+    expect_eq(render3d_st.wb_wash[plain], 1)
+    expect_eq(render3d_st.wb_masked[plain], 0)
+    water_planes_clear(render3d_st)
+  }
+
+  # ---- the baked swell (water_sea.ludic's sea_swell_bake): what the sea's normal is read from -------------------------
+  # the slope along x and along z of texel (x, z) of a baked tile
+  function swell_sx(px: []byte, res: int, x: int, z: int) -> float { return sea_slope_of(int(px[((z % res) * res + (x % res)) * 4])) }
+  function swell_sz(px: []byte, res: int, x: int, z: int) -> float { return sea_slope_of(int(px[((z % res) * res + (x % res)) * 4 + 1])) }
+
+  test "a baked swell tile is a tile: the edge meets the far edge as any two neighbouring texels do, in x and in z" (render3d_st: mut Render3dState) {
+    # whole wavenumbers: the tile repeats exactly. A tile of waves that do not fit would step by up to twice its slope across
+    # the seam, many times the biggest step between two texels inside
+    let res = 128
+    let px = sea_swell_bake(res, 64.0, 1.0, 20.0, 0.3, 1.0, 0.03, 24, 1.0)
+    var inner = 0.0
+    var seam = 0.0
+    for z in 0 .. res {
+      for x in 0 .. res {
+        let dx = Math.abs(swell_sx(px, res, x + 1, z) - swell_sx(px, res, x, z)) + Math.abs(swell_sz(px, res, x + 1, z) - swell_sz(px, res, x, z))
+        let dz = Math.abs(swell_sx(px, res, x, z + 1) - swell_sx(px, res, x, z)) + Math.abs(swell_sz(px, res, x, z + 1) - swell_sz(px, res, x, z))
+        if x == res - 1 { seam = Math.max(seam, dx) } else { inner = Math.max(inner, dx) }
+        if z == res - 1 { seam = Math.max(seam, dz) } else { inner = Math.max(inner, dz) }
+      }
+    }
+    expect(inner > 0.002)                       # the tile is not flat
+    expect(seam <= inner)                       # and its seam is no bigger a step than the steepest inside it
+  }
+
+  test "a baked tile has the slope it was asked for: root mean square, no net tilt, nothing clipped" (render3d_st: mut Render3dState) {
+    let res = 128
+    let px = sea_swell_bake(res, 64.0, 1.0, 20.0, 0.3, 1.0, 0.03, 24, 1.0)
+    var sum2 = 0.0
+    var mx = 0.0
+    var mz = 0.0
+    var peak = 0.0
+    var clipped = 0
+    for z in 0 .. res {
+      for x in 0 .. res {
+        let a = swell_sx(px, res, x, z)
+        let b = swell_sz(px, res, x, z)
+        sum2 += a * a + b * b
+        mx += a
+        mz += b
+        peak = Math.max(peak, Math.max(Math.abs(a), Math.abs(b)))
+        let ba = int(px[(z * res + x) * 4])
+        let bb = int(px[(z * res + x) * 4 + 1])
+        if ba == 0 or ba == 255 or bb == 0 or bb == 255 { clipped += 1 }
+      }
+    }
+    let n = float(res * res)
+    let rms = Math.sqrt(sum2 / n)
+    expect_near(rms, 0.03, 0.0012)                                  # the byte steps are 0.002
+    expect(Math.abs(mx / n) < 0.1 * rms and Math.abs(mz / n) < 0.1 * rms)
+    expect_eq(clipped, 0)
+    expect(peak < 0.2)                                              # of a range of 0.25
+    # opaque, with nothing in blue
+    expect_eq(int(px[2]), 0)
+    expect_eq(int(px[3]), 255)
+  }
+
+  test "the swell is repeatable: the same bake twice is the same bytes, another seed is another sea" (render3d_st: mut Render3dState) {
+    let a = sea_swell_bake(64, 32.0, 0.8, 10.0, 0.3, 1.0, 0.03, 16, 1.0)
+    let b = sea_swell_bake(64, 32.0, 0.8, 10.0, 0.3, 1.0, 0.03, 16, 1.0)
+    let c = sea_swell_bake(64, 32.0, 0.8, 10.0, 0.3, 1.0, 0.03, 16, 5.0)
+    var same_ab = 0
+    var same_ac = 0
+    for i in 0 .. 64 * 64 * 4 {
+      if i % 4 > 1 { continue }                  # the slopes, red and green (blue and alpha are the same in any bake)
+      if a[i] == b[i] { same_ab += 1 }
+      if a[i] == c[i] { same_ac += 1 }
+    }
+    expect_eq(same_ab, 64 * 64 * 2)
+    expect(same_ac < 64 * 64 * 2 / 4)
+  }
+
+  # the spread of the slope's direction: the covariance of the slope vector. Waves all one way make a slope that only ever
+  # points along them (the smaller eigenvalue is nothing: parallel stripes, the look the long swells had); waves from every
+  # way make it round (equal eigenvalues)
+  function swell_isotropy(px: []byte, res: int) -> float {
+    var cxx = 0.0
+    var czz = 0.0
+    var cxz = 0.0
+    for z in 0 .. res {
+      for x in 0 .. res {
+        let a = swell_sx(px, res, x, z)
+        let b = swell_sz(px, res, x, z)
+        cxx += a * a;  czz += b * b;  cxz += a * b
+      }
+    }
+    let h = (cxx - czz) * 0.5
+    let r = Math.sqrt(h * h + cxz * cxz)
+    let mean = (cxx + czz) * 0.5
+    return (mean - r) / (mean + r)
+  }
+
+  test "the swell's slope points every way within its cone: no stripes (the small eigenvalue of its covariance is not nothing)" (render3d_st: mut Render3dState) {
+    let a = sea_swell_long()
+    let b = sea_swell_ripple()
+    let ia = swell_isotropy(a, SEA_RES_A)
+    let ib = swell_isotropy(b, SEA_RES_B)
+    expect(ia > 0.2)
+    expect(ib > 0.2)
+    # and the measure sees stripes: one direction only (no spread) is nothing like it
+    let s = sea_swell_bake(128, 64.0, 2.0, 20.0, 0.3, 0.0, 0.03, 24, 1.0)
+    expect(swell_isotropy(s, 128) < 0.05)
+  }
+
+  test "the long and the ripple tile are the sea's old slope: two reads of the one and one of the other make 0.046, over the whole band down to the ripples" (render3d_st: mut Render3dState) {
+    # the seven swells the pass used to add up had a slope of 0.046 (the sum of half their steepnesses squared, rooted)
+    let total = Math.sqrt(2.0 * SEA_RMS_A * SEA_RMS_A + SEA_RMS_B * SEA_RMS_B)
+    expect_near(total, 0.046, 0.004)
+    # the long tile holds wavelengths from 3.2 m up to 90 m, the ripple tile 0.32 m to 1.9 m, each at least five texels long
+    expect(3.2 / (SEA_TILE_A / float(SEA_RES_A)) >= 5.0)
+    expect(0.32 / (SEA_TILE_B / float(SEA_RES_B)) >= 5.0)
+    # the baked tiles are the size the shader's tile constants say (water.frag: SEA_TILE_A 256, SEA_TILE_B 16)
+    expect_near(SEA_TILE_A, 256.0, 0.0001)
+    expect_near(SEA_TILE_B, 16.0, 0.0001)
+  }
+}

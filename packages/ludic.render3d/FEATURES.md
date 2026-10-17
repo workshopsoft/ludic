@@ -63,6 +63,7 @@ Geometry, terrain and world
 38. Texture edge dilation for cut-out atlases; 16-bit PNG decoding to RGB16/R16; RGBE HDR decoding — `texture.ludic`
 39. Anisotropic filtering and mipmapping on all scanned maps — `texture.ludic` `tex_upload`
 40. Still water: planar reflection pass through a reflection matrix with clip-below discard, depth-tinted body, soft shores, ripple normals, foam streaks, sun glitter; the surface writes depth so occlusion and temporal passes see it — `water.ludic`, `shaders/water.frag`
+40a. The open sea: a plane in sea style - baked tiling swell slopes (spread over a cone of directions, mipped) bend the light with the surface kept flat, fading out before a pixel can alias them and flat toward the horizon, a colour that deepens to plain sea by nine metres, a foam band where the water over the bed is under a metre (swash, lace, none at a metre) drawn on the sea only, a rectangle that reaches the horizon from anywhere on the map, drawn on the wet mask's wet texels with no reflection pass, a mesh body at the same height wins over it, its own shader program and one sky read for reflection and haze (3 times cheaper than the first sea: `lab/sea_budget.py`) - `water_sea.ludic`, `shaders/water.frag`
 
 Anti-aliasing, camera and post-processing
 41. Temporal anti-aliasing: Halton-jittered projection, depth reprojection, YCoCg neighbourhood clamping, history ping-pong — `camera.ludic` `cam_set_jitter`, `shaders/taa.frag`

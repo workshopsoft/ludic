@@ -1,0 +1,119 @@
+# sea_lab.ludic - the `sea` fixture (tests/maps/sea, made by make_sea.py) photographed: the open sea (water_sea.ludic) against
+# a beach, a cliff, a quay, a shoal, a rock, a river mouth, a dry dock and a dry platform in the sea, on tile ground
+# (tilemap_draw.ludic) in the lab's light.
+#
+#   ludic build packages/ludic.render3d/lab/sea_lab.ludic --headless -o build/sea_lab
+#   yes '' | head -n 4000 | R3D_SCENE=sea ./build/sea_lab        -> build/lab/sea/*.png
+#   python3 packages/ludic.render3d/lab/sea_check.py build/lab   (the measured checks, all scenes below)
+#
+# Scenes: `sea` (the sea in sea style at noon, wet mask on), `sea_dusk` (the same at 18:40), `sea_none` (the ground with no
+# water: what the sea must leave alone), `sea_old` (the same plane in the old still-water style: before), and `sea_prof`,
+# `sea_prof_deep` (the sea 3 m up: the bed 11 m down), `sea_prof_old`, `sea_prof_none` (R3D_PROF=1: the GPU time of each pass over
+# the open sea, the horizon, the coast and the land, with the sea, the sea over a deep bed, the old plane and no water: lab/sea_budget.py).
+import "ludic.lab"
+program SeaLab {
+  numbers float
+  state SeaScene { td: TileDraw = null, wm: WetMask = null, frames: int = 0, said: bool = false, sea: int = -1, flick: int = -1, prof: bool = false, shot_seen: int = -1 }
+
+  @alloc_ok("lab: the scene is built once, before its shots")
+  function sea_build(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState, mode: int, hour: float, prof: bool) -> void {
+    sh.prof = prof
+    # the lab's plate disc stands at y = 0, inside this ground: sent far below it
+    if lab_st.lb_plate != null { actor_place(lab_st.lb_plate, 0.0, -500.0, 0.0, 0.0) }
+    daylight_start(render3d_st, 0.0, 11.0, 0.0)
+    daylight_set(render3d_st, hour)
+    let dir = render3d_st.r3d_root + "/tests/maps/sea"
+    let pattern = dir + "/{tx}_{tz}.png"
+    let tm = tmap_new(pattern, 64.0, 64, 6, 4, -192.0, -128.0, -10.0, 10.0, 0.0, 200.0)
+    tmap_patches(tm, 128)
+    tmap_mesh_pattern(tm, tmap_mesh_pattern_of(pattern))
+    if not Fs.exists(tmap_mesh_path(tm, 0, 0)) { print(`sea: baked {tmb_map(render3d_st, tm, tm.mesh_pattern)} tiles`) }
+    sh.td = tmd_new(render3d_st, tm, 500.0)
+    sh.td.build_budget = 24
+    tmd_tone_set(sh.td, 1, 0.62, 0.52, 0.30)         # sand
+    tmd_tone_set(sh.td, 2, 0.16, 0.30, 0.10)         # grass
+    tmd_tone_set(sh.td, 5, 0.42, 0.42, 0.40)         # pad
+    tmd_tone_set(sh.td, 6, 0.25, 0.20, 0.12)         # seabed
+    sh.wm = wet_new(wet_pattern_of(pattern), 64.0, 64, 6, 4, -192.0, -128.0, 48)
+    water_wet_use(render3d_st, sh.wm)
+    wet_frame(render3d_st, sh.wm, -60.0, 0.0, 0.0, 0.0, 600.0, 32)
+    if mode != 2 {
+      if mode == 3 {
+        sh.sea = water_body_add(render3d_st, 0.0, 0.0, 0.0, 400.0, 400.0, false)      # the old material on the old plane
+        water_body_mask(render3d_st, sh.sea, true)
+      } else {
+        var level = 0.0
+        if mode == 4 { level = 3.0 }                    # three metres up: the open sea over a bed eleven metres down
+        sh.sea = water_sea_add(render3d_st, level, 0.0, 0.0, 192.0, 128.0)
+      }
+      let river = water_mesh_add(render3d_st, gltf_load(render3d_st, dir, "river.glb", "water"), 0.0, 0.0, 0.0)
+      water_body_wash(render3d_st, river, false)                 # the sea has foam, a river has none
+      print(`sea: {water_body_count(render3d_st)} water bodies; the sea reaches {render3d_st.wb_ex[sh.sea]} m a side half; reflection body {render3d_st.wb_primary}`)
+    }
+    lab_settle(lab_st, 40)
+    if prof {
+      # the GPU cost (R3D_PROF=1): the sea over the whole frame, the horizon, the coast, then the land, each held 300 frames
+      lab_settle(lab_st, 300)
+      lab_shot(lab_st, "prof_open_sea", -150.0, 6.0, 0.0, 90.0, -35.0)
+      lab_shot(lab_st, "prof_horizon", -150.0, 5.0, 0.0, 90.0, 0.0)
+      lab_shot_at(lab_st, "prof_coast", -50.8, 0.5, -70.0, 45.0, 270.0, 3.0)
+      lab_shot_at(lab_st, "prof_land", -51.5, 0.5, -70.0, 45.0, 90.0, 3.0)      # the beach turned to the land: the plane lies under all of it
+      return
+    }
+    # the six coast bookmarks, then the measured views
+    lab_shot_at(lab_st, "beach_low", -50.8, 0.5, -70.0, 45.0, 270.0, 3.0)
+    lab_shot_at(lab_st, "beach_high", -50.8, 0.0, -70.0, 90.0, 250.0, 35.0)
+    lab_shot_at(lab_st, "cliff", -43.0, 0.0, 10.0, 40.0, 270.0, 15.0)
+    lab_shot_at(lab_st, "quay", -50.0, 0.0, 70.0, 50.0, 270.0, 12.0)
+    lab_shot_at(lab_st, "shoal", -135.0, -0.3, 108.0, 70.0, 300.0, 25.0)
+    lab_shot_at(lab_st, "mouth", -62.0, 0.0, -45.0, 35.0, 290.0, 20.0)
+    lab_shot_at(lab_st, "rock", -120.0, 0.0, -90.0, 30.0, 240.0, 20.0)
+    lab_shot_at(lab_st, "drydock", -5.0, 0.0, -90.0, 80.0, 270.0, 20.0)
+    lab_shot(lab_st, "horizon", -150.0, 5.0, 0.0, 90.0, 0.0)
+    lab_shot(lab_st, "horizon_corner", -185.0, 12.0, 120.0, 135.0, -1.0)
+    lab_shot_at(lab_st, "top_beach", -60.0, 0.0, -78.0, 90.0, 0.0, 89.0)
+    lab_shot_at(lab_st, "top_platform", -98.0, 0.0, -58.0, 40.0, 0.0, 89.0)
+    lab_shot_at(lab_st, "top_cliff", -43.0, 0.0, 10.0, 40.0, 0.0, 89.0)
+    lab_shot_at(lab_st, "top_mouth", -57.0, 0.0, -45.0, 20.0, 0.0, 89.0)
+    lab_shot(lab_st, "flick_a", -80.0, 3.0, -75.0, 270.0, -5.0)
+    lab_shot(lab_st, "flick_b", -80.0, 3.0, -75.0, 270.0, -5.0)
+    sh.flick = lab_shot_count(lab_st) - 1
+  }
+  function sea_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 1, 12.0, false) }
+  function dusk_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 1, 18.7, false) }
+  function none_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 2, 12.0, false) }
+  function old_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 3, 12.0, false) }
+  function prof_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 1, 12.0, true) }
+  function prof_deep_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 4, 12.0, true) }
+  function prof_old_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 3, 12.0, true) }
+  function prof_none_setup(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void { sea_build(sh, lab_st, render3d_st, 2, 12.0, true) }
+  function sea_tick(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) -> void {
+    if sh.td == null { return }
+    tmd_frame(render3d_st, sh.td, render3d_st.cam_pos[0], render3d_st.cam_pos[2], 0.0, 0.0, 500.0)
+    wet_frame(render3d_st, sh.wm, render3d_st.cam_pos[0], render3d_st.cam_pos[2], 0.0, 0.0, 600.0, 8)
+    # the last shot repeats the one before it a frame later: what moved between two frames is all that may differ
+    if lab_st.lb_shot == sh.flick { lab_st.lb_settle = 1 }
+    sh.frames += 1
+    if sh.prof {
+      # a fresh count at each shot's first frame, the report on its last one
+      if sh.shot_seen != lab_st.lb_shot { sh.shot_seen = lab_st.lb_shot;  prof_reset(render3d_st) }
+      if lab_st.lb_wait == lab_st.lb_settle - 1 { print(`prof: shot {lab_st.lb_shot_names[lab_st.lb_shot]}`);  prof_report(render3d_st) }
+    }
+    if sh.frames == 30 and not sh.said {
+      sh.said = true
+      print(`sea: ground patches {sh.td.shown}; wet tiles resident {sh.wm.reads}`)
+    }
+  }
+  def LabScenes sea { setup: fn sea_setup }
+  def LabScenes sea_dusk { setup: fn dusk_setup }
+  def LabScenes sea_none { setup: fn none_setup }
+  def LabScenes sea_old { setup: fn old_setup }
+  def LabScenes sea_prof { setup: fn prof_setup }
+  def LabScenes sea_prof_deep { setup: fn prof_deep_setup }
+  def LabScenes sea_prof_old { setup: fn prof_old_setup }
+  def LabScenes sea_prof_none { setup: fn prof_none_setup }
+  handler Boot(lab_st: mut LabState, render3d_st: mut Render3dState) phase Start { lab_boot(lab_st, render3d_st) }
+  handler Stream(sh: mut SeaScene, lab_st: mut LabState, render3d_st: mut Render3dState) phase Update { sea_tick(sh, lab_st, render3d_st) }
+  handler Look(lab_st: mut LabState, render3d_st: mut Render3dState) phase Input { lab_input(lab_st, render3d_st) }
+  handler Draw(lab_st: mut LabState, render3d_st: mut Render3dState) phase Render { lab_render(lab_st, render3d_st) }
+}

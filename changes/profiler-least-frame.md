@@ -1,0 +1,3 @@
+bump: patch
+type: feat
+**The profiler reports the least single frame of a pass beside its mean** (`R3D_PROF=1`: a `least N us` column on each row). A busy GPU only ever adds to a pass, so the least frame is the pass's own time where the mean moves with whatever else the machine is doing; the results that arrive in the frames after `prof_reset` (the ring's latency) belong to the shot before it and are no longer counted. The sea's shader: the foam's fade at the wet mask's edge reads the mask once where the four reads lay in one tile (the same pixels), the swash's phase is two sines instead of a noise, and the shadow tap is skipped for a glitter under a hundredth of the sun's colour.

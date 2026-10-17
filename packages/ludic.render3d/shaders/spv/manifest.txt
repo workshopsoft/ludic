@@ -4487,7 +4487,9 @@ U 46e2325c frag u_clip_ellipse 1632 float 1 0
 U 46e2325c frag u_wet_on 1636 float 1 0
 U 46e2325c frag u_wet_grid 1648 vec4 1 0
 U 46e2325c frag u_wet_rows 1664 float 1 0
-U 46e2325c frag u_tp_on 1668 float 1 0
+U 46e2325c frag u_sea 1668 float 1 0
+U 46e2325c frag u_wash 1672 float 1 0
+U 46e2325c frag u_tp_on 1676 float 1 0
 U 46e2325c frag u_tp_dims 1680 vec4 1 0
 T 46e2325c u_brdf 2
 T 46e2325c u_depth 3
@@ -4496,13 +4498,15 @@ T 46e2325c u_prefilter 5
 T 46e2325c u_refl 6
 T 46e2325c u_scene 7
 T 46e2325c u_shadow 8
-T 46e2325c u_tershadow 9
-T 46e2325c u_tershadow_aux 10
-T 46e2325c u_tp_h 11
-T 46e2325c u_tp_page 12
-T 46e2325c u_ts_height 13
-T 46e2325c u_wet_page 14
-T 46e2325c u_wet_tiles 15
+T 46e2325c u_swell_a 9
+T 46e2325c u_swell_b 10
+T 46e2325c u_tershadow 11
+T 46e2325c u_tershadow_aux 12
+T 46e2325c u_tp_h 13
+T 46e2325c u_tp_page 14
+T 46e2325c u_ts_height 15
+T 46e2325c u_wet_page 16
+T 46e2325c u_wet_tiles 17
 P 1ebf3a80 water.vert water.frag #define WATER_MESH;
 B 1ebf3a80 vert 0 168
 U 1ebf3a80 vert u_offset 0 vec3 1 0
@@ -4566,7 +4570,9 @@ U 1ebf3a80 frag u_clip_ellipse 1632 float 1 0
 U 1ebf3a80 frag u_wet_on 1636 float 1 0
 U 1ebf3a80 frag u_wet_grid 1648 vec4 1 0
 U 1ebf3a80 frag u_wet_rows 1664 float 1 0
-U 1ebf3a80 frag u_tp_on 1668 float 1 0
+U 1ebf3a80 frag u_sea 1668 float 1 0
+U 1ebf3a80 frag u_wash 1672 float 1 0
+U 1ebf3a80 frag u_tp_on 1676 float 1 0
 U 1ebf3a80 frag u_tp_dims 1680 vec4 1 0
 T 1ebf3a80 u_brdf 2
 T 1ebf3a80 u_depth 3
@@ -4575,13 +4581,97 @@ T 1ebf3a80 u_prefilter 5
 T 1ebf3a80 u_refl 6
 T 1ebf3a80 u_scene 7
 T 1ebf3a80 u_shadow 8
-T 1ebf3a80 u_tershadow 9
-T 1ebf3a80 u_tershadow_aux 10
-T 1ebf3a80 u_tp_h 11
-T 1ebf3a80 u_tp_page 12
-T 1ebf3a80 u_ts_height 13
-T 1ebf3a80 u_wet_page 14
-T 1ebf3a80 u_wet_tiles 15
+T 1ebf3a80 u_swell_a 9
+T 1ebf3a80 u_swell_b 10
+T 1ebf3a80 u_tershadow 11
+T 1ebf3a80 u_tershadow_aux 12
+T 1ebf3a80 u_tp_h 13
+T 1ebf3a80 u_tp_page 14
+T 1ebf3a80 u_ts_height 15
+T 1ebf3a80 u_wet_page 16
+T 1ebf3a80 u_wet_tiles 17
+P c321afe6 water.vert water.frag #define WATER_SEA;
+B c321afe6 vert 0 152
+U c321afe6 vert u_view 0 mat4 1 0
+U c321afe6 vert u_proj 64 mat4 1 0
+U c321afe6 vert u_level 128 float 1 0
+U c321afe6 vert u_center 136 vec2 1 0
+U c321afe6 vert u_extent 144 vec2 1 0
+I c321afe6 a_xz 0 vec2
+B c321afe6 frag 1 1696
+U c321afe6 frag u_cascade_vp 0 mat4 5 64
+U c321afe6 frag u_cascade_split 320 float 5 16
+U c321afe6 frag u_cascade_range 400 float 5 16
+U c321afe6 frag u_cascade_texel 480 float 5 16
+U c321afe6 frag u_sun_dir 560 vec3 1 0
+U c321afe6 frag u_sun_color 576 vec3 1 0
+U c321afe6 frag u_cam_pos 592 vec3 1 0
+U c321afe6 frag u_prefilter_levels 604 float 1 0
+U c321afe6 frag u_fog_density 608 float 1 0
+U c321afe6 frag u_fog_height_falloff 612 float 1 0
+U c321afe6 frag u_fog_base 616 float 1 0
+U c321afe6 frag u_clip_y 620 float 1 0
+U c321afe6 frag u_spec_scale 624 float 1 0
+U c321afe6 frag u_sky_rot 632 vec2 1 0
+U c321afe6 frag u_ground_alb 640 vec3 1 0
+U c321afe6 frag u_ground_alb_hi 656 vec3 1 0
+U c321afe6 frag u_ground_hi_y 668 float 1 0
+U c321afe6 frag u_ground_hi_w 672 float 1 0
+U c321afe6 frag u_ibl_scale 688 vec3 1 0
+U c321afe6 frag u_daylight 700 float 1 0
+U c321afe6 frag u_fire_pos 704 vec3 1 0
+U c321afe6 frag u_fire_color 720 vec3 1 0
+U c321afe6 frag u_hand_pos 736 vec3 1 0
+U c321afe6 frag u_hand_color 752 vec3 1 0
+U c321afe6 frag u_hand_dir 768 vec3 1 0
+U c321afe6 frag u_hand_cone 780 float 1 0
+U c321afe6 frag u_hand_reach 784 float 1 0
+U c321afe6 frag u_ts_origin 792 vec2 1 0
+U c321afe6 frag u_ts_half 800 float 1 0
+U c321afe6 frag u_ts_on 804 float 1 0
+U c321afe6 frag u_force_cascade 808 int 1 0
+U c321afe6 frag u_cloud_shadow 812 float 1 0
+U c321afe6 frag u_time 816 float 1 0
+U c321afe6 frag u_lz 832 vec4 32 16
+U c321afe6 frag u_lz_n 1344 int 1 0
+U c321afe6 frag u_fog_inscatter 1348 float 1 0
+U c321afe6 frag u_fog_desat 1352 float 1 0
+U c321afe6 frag u_fog_wall 1356 float 1 0
+U c321afe6 frag u_fog_haze 1360 float 1 0
+U c321afe6 frag u_fog_cut 1368 vec2 1 0
+U c321afe6 frag u_sky_relight 1376 float 1 0
+U c321afe6 frag u_view 1392 mat4 1 0
+U c321afe6 frag u_proj 1456 mat4 1 0
+U c321afe6 frag u_wade 1520 vec3 1 0
+U c321afe6 frag u_inv_vp 1536 mat4 1 0
+U c321afe6 frag u_screen 1600 vec2 1 0
+U c321afe6 frag u_refl_on 1608 float 1 0
+U c321afe6 frag u_center 1616 vec2 1 0
+U c321afe6 frag u_extent 1624 vec2 1 0
+U c321afe6 frag u_clip_ellipse 1632 float 1 0
+U c321afe6 frag u_wet_on 1636 float 1 0
+U c321afe6 frag u_wet_grid 1648 vec4 1 0
+U c321afe6 frag u_wet_rows 1664 float 1 0
+U c321afe6 frag u_sea 1668 float 1 0
+U c321afe6 frag u_wash 1672 float 1 0
+U c321afe6 frag u_tp_on 1676 float 1 0
+U c321afe6 frag u_tp_dims 1680 vec4 1 0
+T c321afe6 u_brdf 2
+T c321afe6 u_depth 3
+T c321afe6 u_irradiance 4
+T c321afe6 u_prefilter 5
+T c321afe6 u_refl 6
+T c321afe6 u_scene 7
+T c321afe6 u_shadow 8
+T c321afe6 u_swell_a 9
+T c321afe6 u_swell_b 10
+T c321afe6 u_tershadow 11
+T c321afe6 u_tershadow_aux 12
+T c321afe6 u_tp_h 13
+T c321afe6 u_tp_page 14
+T c321afe6 u_ts_height 15
+T c321afe6 u_wet_page 16
+T c321afe6 u_wet_tiles 17
 P 69b0f9cd water.vert water_patch.frag 
 B 69b0f9cd vert 0 152
 U 69b0f9cd vert u_view 0 mat4 1 0
@@ -5151,4 +5241,4 @@ T 14b79603 u_shadow 7
 T 14b79603 u_tershadow 8
 T 14b79603 u_tershadow_aux 9
 T 14b79603 u_ts_height 10
-E 70
+E 71

@@ -7,8 +7,8 @@
 # is mirrored (every mirrored plane is another full scene pass), so a sea a player sees from afar and a pond beside
 # them are two rows and one reflection; with `masked` it draws only on the wet mask's wet texels (water_wet.ludic). A
 # MESH (`asset`, a glb, and the `node` in it): the node's triangles are the surface (a baked lake polygon, a river
-# ribbon), moved by (cx, level, cz) - zero for a mesh baked where it lies - and drawn nowhere else; ex, ez, reflect
-# and masked are a plane's and do nothing here
+# ribbon), moved by (cx, level, cz) - zero for a mesh baked where it lies - and drawn nowhere else; ex, ez, reflect,
+# masked and sea are a plane's and do nothing here
 export property WaterBody {
   key: string = ""
   @Unit("m") level: float = 0.0            # the surface's height
@@ -18,6 +18,9 @@ export property WaterBody {
   @Unit("m") @Range(0, 100000) ez: float = 256.0   # and along z
   reflect: bool = false                    # the sky and the land mirrored in it
   masked: bool = false                     # a plane drawn only on wet texels of the wet mask in use
+  sea: bool = false                        # a plane in sea style (water_sea.ludic): swell, deep colour, the shore foam band; its
+                                           # bounds are widened to reach the horizon from anywhere in them
+  wash: bool = true                        # the thin lapping wash on a still body's edge (off: none; the sea has its foam band)
   @Asset("gltf") asset: string = ""        # a mesh body: the glb whose node is the surface ("" a plane)
   node: string = "water"                   # the node of `asset` that holds the surface
 }
@@ -41,12 +44,18 @@ export function water_bodies_apply(render3d_st: mut Render3dState, w: WaterBodie
       let k = water_mesh_add(render3d_st, m, b.cx, b.level, b.cz)
       if k < 0 { model_release(render3d_st, m);  continue }
       render3d_st.wb_owned[k] = 1
+      water_body_wash(render3d_st, k, b.wash)
       n += 1
       continue
     }
-    let k = water_body_add(render3d_st, b.level, b.cx, b.cz, b.ex, b.ez, b.reflect)
+    var ex = b.ex
+    var ez = b.ez
+    if b.sea { let h = water_sea_half(render3d_st, b.ex, b.ez);  ex = h;  ez = h }
+    let k = water_body_add(render3d_st, b.level, b.cx, b.cz, ex, ez, b.reflect)
     if k >= 0 {
       water_body_mask(render3d_st, k, b.masked)
+      water_body_sea(render3d_st, k, b.sea)
+      water_body_wash(render3d_st, k, b.wash)
       n += 1
     }
   }
@@ -64,7 +73,7 @@ function water_asset_load(render3d_st: mut Render3dState, path: string, node: st
   for i in 0 .. len(path) { if path[i] == '/' { cut = i } }
   var dir = "."
   var file = path
-  if cut >= 0 { dir = path[0 .. cut];  file = path[cut + 1 .. len(path)] }
+  if cut >= 0 { dir = path[0..cut];  file = path[cut + 1..len(path)] }
   let m = gltf_load(render3d_st, dir, file, node)
   if m == null { water_say_asset(path, node) }
   return m

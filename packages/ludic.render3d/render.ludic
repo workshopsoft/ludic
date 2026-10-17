@@ -334,8 +334,10 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # transparent water over the resolved frame: it tests against the frame's own
   # depth and reads a copy of it for the depth tint and soft shores
   if render3d_st.water_on {
-    prof_begin(render3d_st, "water surface")
+    prof_begin(render3d_st, "water capture")
     post_capture_scene(render3d_st)
+    prof_end(render3d_st)
+    prof_begin(render3d_st, "water surface")
     target_bind(render3d_st, render3d_st.post_hdr)
     gpu_depth_test(render3d_st, true)
     gpu_depth_func(render3d_st, GPU_GREATER)

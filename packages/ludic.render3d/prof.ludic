@@ -14,7 +14,6 @@
 const PROF_SLOTS: int = 16
 const PROF_RING:  int = 4            # frames of latency before a result is read
 
-
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function prof_init(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_on = r3d_env_has(render3d_st, "R3D_PROF")
@@ -22,6 +21,7 @@ function prof_init(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_names = new []pointer
   render3d_st.prof_ns = new []long
   render3d_st.prof_hits = new []long
+  render3d_st.prof_min = new []long
   render3d_st.prof_ids = words(PROF_SLOTS * PROF_RING)
   render3d_st.prof_scratch = words(4)
   gpu_query_new(render3d_st, PROF_SLOTS * PROF_RING, render3d_st.prof_ids)
@@ -42,6 +42,7 @@ function prof_slot(render3d_st: mut Render3dState, name: pointer) -> int {
   push(render3d_st.prof_names, name)
   push(render3d_st.prof_ns, 0)
   push(render3d_st.prof_hits, 0)
+  push(render3d_st.prof_min, 0)
   render3d_st.prof_n += 1
   return render3d_st.prof_n - 1
 }
@@ -72,23 +73,41 @@ function prof_collect(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_frame += 1
   if render3d_st.prof_frame < PROF_RING { return }
   let slot_frame = (render3d_st.prof_frame + 1) % PROF_RING
+  # the results that arrive in the PROF_RING - 1 frames after a reset belong to the frames before it
+  let stale = render3d_st.prof_skip > 0
+  if stale { render3d_st.prof_skip -= 1 }
   var s = 0
   while s < render3d_st.prof_n {
     let q = render3d_st.prof_ids[s * PROF_RING + slot_frame]
-    if gpu_query_result(render3d_st, q, render3d_st.prof_scratch) {
+    if gpu_query_result(render3d_st, q, render3d_st.prof_scratch) and not stale {
       # the low 32 bits are ample: a pass is far below 4 seconds
-      render3d_st.prof_ns[s] = render3d_st.prof_ns[s] + render3d_st.prof_scratch[0]
+      let ns = render3d_st.prof_scratch[0]
+      render3d_st.prof_ns[s] = render3d_st.prof_ns[s] + ns
+      if render3d_st.prof_hits[s] == 0 or ns < render3d_st.prof_min[s] { render3d_st.prof_min[s] = ns }
       render3d_st.prof_hits[s] = render3d_st.prof_hits[s] + 1
     }
     s += 1
   }
 }
 
+# a fresh count: the means start again from the next frame (a lab holds one view, then the next)
+function prof_reset(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.prof_on { return }
+  var s = 0
+  while s < render3d_st.prof_n {
+    render3d_st.prof_ns[s] = 0
+    render3d_st.prof_hits[s] = 0
+    render3d_st.prof_min[s] = 0
+    s += 1
+  }
+  render3d_st.prof_skip = PROF_RING - 1
+}
+
 @alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_report(render3d_st: Render3dState) -> void {
   if not render3d_st.prof_on { return }
   print("")
-  print("GPU time per pass (mean over the run):")
+  print("GPU time per pass (mean over the run; least = the least single frame, which a busy GPU cannot lower):")
   var total = 0
   var s = 0
   while s < render3d_st.prof_n {
@@ -101,7 +120,7 @@ function prof_report(render3d_st: Render3dState) -> void {
       let us = render3d_st.prof_ns[s] / render3d_st.prof_hits[s] / 1000
       var pct = 0
       if total > 0 { pct = (render3d_st.prof_ns[s] / render3d_st.prof_hits[s]) * 100 / total }
-      print(`  {Text.pad_right(render3d_st.prof_names[s], 22)} {Text.pad_left(string(us), 7)} us   {string(pct)}%`)
+      print(`  {Text.pad_right(render3d_st.prof_names[s], 22)} {Text.pad_left(string(us), 7)} us   {string(pct)}%   least {string(render3d_st.prof_min[s] / 1000)} us`)
     }
     s += 1
   }

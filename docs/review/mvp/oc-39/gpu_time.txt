@@ -1,0 +1,71 @@
+GPU time of the sea pass: R3D_PROF=1, 1080p, Apple M4 Pro 16-core, `water surface` of lab/sea_lab.ludic's sea_prof (and sea_prof_deep)
+scenes, the least over 3-4 runs a view (lab/sea_budget.py <sea_lab> runs them; the old and the new sea's labs were also run alternately,
+so the machine's load, which varied from 1 to 10 while this was measured, is the same to both).
+
+views: open_sea = camera 6 m up looking 35 deg down, the sea fills the frame, bed 8 m down; horizon = 5 m up looking level;
+       coast = the beach_low bookmark (0.5 m up); land = the same beach turned to the land (the plane lies under all of it);
+       deep = the same scene with the sea 3 m up: the bed 11 m down, deeper than the light reaches.
+
+                        open_sea   horizon    coast     land      (ms, M4 Pro)
+the first sea (41ea51a1)   1.46      0.74      1.17       -        one session, the two checkouts' runs interleaved, least of 4
+this sea                   0.47      0.27      0.45      0.19      the same session (the script alone, on a busier machine: 0.51, 0.31, 0.50, 0.19)
+this sea, deep bed         0.48      0.29      0.59      0.15
+the old still-water plane  3.9       2.0       2.2        -        for scale (sea_prof_old, an earlier session)
+(these rows are means, at bf1d4667; the rows for the head are the least frame, at the end of this file)
+
+Three times cheaper than the first sea (68 %, 63 % and 61 % off).
+Where it went, in the order it was done (open sea; ms each, measured by stopping the shader at each step and by taking each piece out):
+  the swell: seven trigonometric swells a pixel (0.32 ms, and the striping) -> two reads of one baked tile and one of another (0.05)
+  the sky: four fetches for the reflection (up and ground, two levels each) and four for the haze, and an atan and acos each -> one fetch
+           of the nearest level, serving both, and polynomial arc functions (0.2 -> 0.1)
+  the shadow: a cascade tap, the terrain's and the clouds' reads a pixel -> only where the sun's glitter or the foam is there to be lit (0.13 -> 0)
+  the bed: refraction, six depth reads and a blurred read -> under four metres of water one read of the scene's mips, and none at all
+           where the bed cannot come through (under a hundredth)
+  the program: the sea's code alone in its own program (WATER_SEA), the lake's in the other: 20 % off, from the registers the other's
+           branches held
+  the foam: the lace's noise is not computed where a pixel could not show it
+Not worth doing (measured, none moved a view by more than the noise): a flat reflection direction, one coarse read instead of two,
+half precision for the shading, a box round the wet mask's non-wet tiles to skip its read outside it (it is in the history of this work, not
+in the code). What is left is a floor of 0.11-0.13 ms (raster, the colour and depth writes of 2 M pixels on this machine's bandwidth) and
+about twenty small pieces of 0.01-0.08 ms each.
+
+THE BUDGET, AS AMENDED. The owner amended the contract on 2026-10-16 (docs/plan/decisions.md M-23, docs/tech/mvp-contracts.md OC-39
+'Budget'): the sea pass at most 1.0 ms GPU at 1080p on an M1 in a view where the sea is at most half the frame, and at most 1.6 ms where
+it fills the frame or covers a foam-filled beach; measured on an M4 Pro at a third of those, 0.33 ms and 0.53 ms, with
+lab/sea_budget.py, until a run on an M1 replaces the factor of 3. EVERY M1 FIGURE IN THIS FILE IS AN ESTIMATE (this machine's time times
+3, 8 GPU cores against 16 and 68 GB/s against 273); no M1 run exists.
+
+The guard. lab/sea_budget.py FAILS (exit 1) when a view's pass is over its line, on both scenes (sea_prof and sea_prof_deep), and still
+fails the regression guard (a share of the old plane's time in the same session). Lines: prof_horizon and prof_land 0.33 (the sea at most
+half the frame); prof_open_sea and prof_coast 0.53 (the sea fills the frame; a foam-filled beach). The line is held to the LEAST SINGLE
+FRAME of a view's run (the profiler prints it as `least`, prof.ludic: a busy GPU only ever adds to a pass), then the least of the rounds.
+The mean the guard used to read moved 1.5-2x with the machine's load (the same pass read 0.45 and 0.70 ms on the coast); the least frame
+read 0.40-0.46 on the same pass, with the machine at a load of 11-13 and at 4-6. lab/sea_budget_test.py (15 tests, 11 of which fail on the
+former script) tests it: a pass over its line fails whatever its share of the old plane (the verifier's 0.60 ms deep-bed coast was a 0.27
+share, inside the former guard), the half-frame line is the tighter one, exactly on a line is inside, and a view, or a report without
+`least`, that did not report fails instead of passing.
+
+Before this change (least frame, M4 Pro, machine load 11-13): deep-bed coast 0.546 ms, OVER the 0.53 line by 3 % (the mean read 0.60-0.63,
+over by 13-18 %); coast 0.424, open sea 0.451, horizon 0.265, land 0.147 inside.
+
+What was cut, all in the sea's own shader (water.frag; the foam is most of the cost of the beach views: with it out the deep coast read
+0.22 ms of 0.47, in ablations of an earlier head):
+  wetMin4: the foam fades out over the two metres before the wet mask's edge, which read the mask four times, a page read and a tile read
+           each; where the four points' texels lie in one tile, which is nearly everywhere, one page read serves all four. The same value:
+           the 32 shots of the sea and sea_dusk scenes are IDENTICAL to the pixel with and without it (max difference 0), found by building
+           the shader both ways and comparing every shot (the same comparison does see the swash change below, up to 104/255 in foam pixels).
+  run:     the swash's phase along the coast, a gnoise lattice, is two slow sines (periods 272 and 336 m): the same slow variation in how far
+           up the beach the foam reaches, out of step along the coast.
+  shadow:  the sun's glitter and the foam are what the one shadow tap is asked for; the glitter's threshold moved from 0.003 to 0.01 of the
+           sun's colour (a shadow could dim the glitter by that much and no more).
+Checks at the head: sea_check 27 of 27 (flicker 11 against 14), 270 render3d tests pass, `ludic-dev shaders --check` unchanged.
+
+The head, M4 Pro, least frame of the least of 5 runs, machine load 4-6 (docs/review/mvp/oc-39/budget.txt; inside the line in every view):
+                      open_sea  horizon   coast    land       line (open, coast / horizon, land)
+sea_prof               0.433     0.182    0.395    0.084      0.53 / 0.33     on an M1, estimated x3: 1.30  0.55  1.19  0.25 ms
+sea_prof_deep          0.419     0.171    0.410    0.126      0.53 / 0.33                             1.26  0.51  1.23  0.38 ms
+The worst of the readings taken while this was made (load 10-13): open sea 0.455, deep-bed coast 0.460, coast 0.402, horizon 0.268, land
+0.140. The dearest view (the open sea) is inside its line by 14-18 %, the deep-bed coast by 13-23 %: about 1.3 ms of the 1.6 on an M1,
+ESTIMATED. The estimate is the thing an M1 run would confirm or correct; it is not an M1 result.
+Not done, and not needed to meet the amended lines: a baked foam-lace field with the fbm's soft edge (the first try failed sea_check's
+flicker line, 19 against 14, and drew crisp blotches) and the open/masked program split (no gain within the noise, measured earlier).
