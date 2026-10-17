@@ -102,14 +102,21 @@ export function kitbake_kit(kb: KitBake, model: string, node: string, w: float, 
   k.node = node
   k.w = Math.max(w, 0.1);  k.d = Math.max(d, 0.1);  k.h = Math.max(h, 0.1)
   let r = 0.5 * Math.sqrt(k.w * k.w + k.d * k.d + k.h * k.h)
-  k.near = Math.max(r * kb.near_scale, kb.near_min)
-  k.far = Math.max(r * kb.far_scale, Math.max(kb.far_min, k.near * 2.0))
+  kb_dists(kb, k, r)
   k.interior = interior
   push(kb.kits, k)
   push(kb.boxes, null)
   Dict.set(kb.kit_of, id, len(kb.kits) - 1)
   kb_box_mark(kb, len(kb.kits) - 1)
   return len(kb.kits) - 1
+}
+
+# a kit's distances from its bounding radius `r`: `near` and `far` scale with it, held within the row's @Range (cellfile.ludic RenderKit:
+# 0 .. KB_DIST_MAX m), so a kit as big as an airport writes a row the game's registry reads (a far past the camera's reach draws the same)
+const KB_DIST_MAX: float = 20000.0
+function kb_dists(kb: KitBake, k: RenderKit, r: float) -> void {
+  k.near = Math.min(Math.max(r * kb.near_scale, kb.near_min), KB_DIST_MAX)
+  k.far = Math.min(Math.max(r * kb.far_scale, Math.max(kb.far_min, k.near * 2.0)), KB_DIST_MAX)
 }
 
 # kit `id` made a box kit when its model and node were registered (kitbake_box): its row says so, its distances come from its
@@ -126,8 +133,7 @@ function kb_box_mark(kb: KitBake, id: int) -> void {
   let b = floats(6)
   kitbox_bounds(box, k.w, k.d, k.h, b)
   let r = kitbox_radius_of(b)
-  k.near = Math.max(r * kb.near_scale, kb.near_min)
-  k.far = Math.max(r * kb.far_scale, Math.max(kb.far_min, k.near * 2.0))
+  kb_dists(kb, k, r)
   free(b)
 }
 

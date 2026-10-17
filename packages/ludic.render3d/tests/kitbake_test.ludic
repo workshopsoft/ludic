@@ -22,6 +22,16 @@ program KitBakeTest {
     expect(kb.kits[d].key != kb.kits[a].key and kb.kits[c].key != kb.kits[a].key)        # keys are unique
   }
 
+  test "a very large kit's distances stay within the row's range (0 .. 20000 m)" {
+    let kb = kitbake_new(256.0)
+    let big = kitbake_kit(kb, "m.glb", "airport", 400.0, 140.0, 13.0, "")
+    let huge = kitbake_kit(kb, "m.glb", "range", 5000.0, 5000.0, 50.0, "")
+    expect(kb.kits[big].far <= 20000.0 and kb.kits[big].near <= kb.kits[big].far and kb.kits[big].near > 6000.0)
+    expect_near(kb.kits[huge].near, 20000.0, 0.0001)
+    expect_near(kb.kits[huge].far, 20000.0, 0.0001)
+    expect(Text.contains(kitbake_rows(kb, 0), "far: 20000"))
+  }
+
   test "a kit's key is a name a row can hold" {
     let kb = kitbake_new(256.0)
     let a = kitbake_kit(kb, "m.glb", "Building.001", 10.0, 10.0, 10.0, "")
