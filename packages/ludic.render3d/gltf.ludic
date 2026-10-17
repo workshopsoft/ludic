@@ -23,7 +23,6 @@ property Model {
   @owns(Skin) skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
 }
 
-
 # a JSON number as float bits (ints and fixed-point decimals both)
 function jnum(v: Val) -> float {
   if v.tag == 2 { return float(v.num) / 65536.0 }
@@ -47,7 +46,7 @@ function gltf_mat_remember(render3d_st: mut Render3dState, name: string, diff: i
   if render3d_st.gltf_mat_names == null { render3d_st.gltf_mat_names = new []string;  render3d_st.gltf_mat_diff = words(256);  render3d_st.gltf_mat_nrm = words(256);  render3d_st.gltf_mat_arm = words(256) }
   if gltf_mat_find(render3d_st, name) >= 0 or render3d_st.gltf_mat_n >= 256 { return }
   # its own copy of the name: a primitive frees its own with it (model_release)
-  push(render3d_st.gltf_mat_names, name[0 .. len(name)])
+  push(render3d_st.gltf_mat_names, name[0..len(name)])
   render3d_st.gltf_mat_diff[render3d_st.gltf_mat_n] = diff;  render3d_st.gltf_mat_nrm[render3d_st.gltf_mat_n] = nrm;  render3d_st.gltf_mat_arm[render3d_st.gltf_mat_n] = arm
   render3d_st.gltf_mat_n += 1
 }
@@ -58,7 +57,7 @@ function gltf_texture(render3d_st: mut Render3dState, uri: string, srgb: bool) -
   var png: string = uri
   let n = len(uri)
   var made = false
-  if n > 4 and uri[n - 4] == '.' and uri[n - 3] == 'j' { png = uri[0 .. n - 4] + ".png";  made = true }
+  if n > 4 and uri[n - 4] == '.' and uri[n - 3] == 'j' { png = uri[0..n - 4] + ".png";  made = true }
   let path = render3d_st.gltf_dir + "/" + png
   if made { free(png) }
   var i = 0
@@ -265,7 +264,7 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
     gltf_factors(render3d_st, pr, mat, td != 0, ta != 0)
     var mname: string = null
     # a copy: the document goes, strings and all, at the next load
-    if value_has(mat, "name") != 0 { let s = value_as_str(value_get(mat, "name"));  mname = s[0 .. len(s)] }
+    if value_has(mat, "name") != 0 { let s = value_as_str(value_get(mat, "name"));  mname = s[0..len(s)] }
     pr.name = mname
     if mname != null {
       # The name cache serves a LOD chain exported without images (its textures came with the LOD0 download, in the same
@@ -476,5 +475,61 @@ function gltf_load__t(render3d_st: mut Render3dState, dir: string, file: string,
   model.ymin = ymin
   model.height = ymax - ymin
   print(`gltf: {node_name}: {len(model.prims)} prims, {model.tris} tris`)
+  return model
+}
+
+# Load every mesh node of dir/file called `node_name` - or, when it is "", every mesh node of the file - as ONE model: the
+# primitives of each node's mesh in document order, each named by its material as gltf_load names them. Quiet (no console
+# line a load) and no node is an answer, not an error: null when the file cannot be read or no node matches. For a world
+# streamed as the camera moves, whose files hold a mesh a material (a baked chunk of road: one node a slot) and are loaded
+# and let go many times a minute. Node transforms are not applied (as gltf_load); a skin is not read. The bounds are
+# gltf_load's (radius from the origin, ymin, height); the GPU memory is counted as VKM_MODEL.
+function gltf_load_nodes(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_MODEL
+  let r = gltf_load_nodes__t(render3d_st, dir, file, node_name)
+  render3d_st.gvk_tag = was
+  return r
+}
+@alloc_ok("loading a model: a load, not a frame (a streamed chunk's file, once while it is in)")
+@creates(Model)
+function gltf_load_nodes__t(render3d_st: mut Render3dState, dir: string, file: string, node_name: string) -> Model {
+  if not Fs.exists(dir + "/" + file) { return null }
+  if not gltf_open(render3d_st, dir, file) { return null }
+  let nodes = value_get(render3d_st.gltf_doc, "nodes")
+  let meshes = value_get(render3d_st.gltf_doc, "meshes")
+  let accessors = value_get(render3d_st.gltf_doc, "accessors")
+  var model: Model = null
+  var r2 = 0.0;  var ymin = 1000000.0;  var ymax = -1000000.0
+  for n in 0 .. value_count(nodes) {
+    let nd = value_at(nodes, n)
+    let mi = jint(nd, "mesh", -1)
+    if mi < 0 { continue }
+    if Text.length(node_name) > 0 and value_as_str(value_get(nd, "name")) != node_name { continue }
+    if model == null {
+      model = new Model
+      model.prims = new []Prim
+    }
+    let prims = value_get(value_at(meshes, mi), "primitives")
+    for i in 0 .. value_count(prims) {
+      let p = value_at(prims, i)
+      push(model.prims, gltf_prim(render3d_st, p))
+      model.tris += render3d_st.gltf_count / 3
+      let acc = value_at(accessors, value_as_int(value_get(value_get(p, "attributes"), "POSITION")))
+      let mn = value_get(acc, "min");  let mx = value_get(acc, "max")
+      let rx = Math.max(Math.abs(jnum(value_at(mn, 0))), Math.abs(jnum(value_at(mx, 0))))
+      let rz = Math.max(Math.abs(jnum(value_at(mn, 2))), Math.abs(jnum(value_at(mx, 2))))
+      if rx * rx + rz * rz > r2 { r2 = rx * rx + rz * rz }
+      let y0 = jnum(value_at(mn, 1));  let y1 = jnum(value_at(mx, 1))
+      if y0 < ymin { ymin = y0 }
+      if y1 > ymax { ymax = y1 }
+    }
+  }
+  file_close(render3d_st.gltf_bin)
+  render3d_st.gltf_bin = null
+  if model == null { return null }
+  model.radius = Math.sqrt(r2)
+  model.ymin = ymin
+  model.height = ymax - ymin
   return model
 }

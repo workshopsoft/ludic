@@ -235,4 +235,16 @@ program GlbTest {
     expect(not gltf_mat_has_colour(denim))
     file_close(render3d_st.gltf_bin)
   }
+
+  test "gltf_load_nodes answers null, quietly and with nothing left open, for a missing file and for a name no node has" (render3d_st: mut Render3dState) {
+    let dir = models(render3d_st)
+    expect(gltf_load_nodes(render3d_st, dir, "no_such.glb", "") == null)
+    expect(gltf_load_nodes(render3d_st, dir, "tri.glb", "no_such_node") == null)
+    expect(render3d_st.gltf_bin == null)
+    # the document stays parsed (the next node of the same file is not parsed again), and reopens for a reader after it
+    expect(render3d_st.gltf_doc != null)
+    expect(gltf_open(render3d_st, dir, "tri.glb"))
+    expect(tri_ok(render3d_st))
+    file_close(render3d_st.gltf_bin)
+  }
 }
