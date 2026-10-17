@@ -243,6 +243,7 @@ export function kgpu_kit(render3d_st: mut Render3dState, g: KGpu, id: int, model
   let k = g.kits[id]
   k.model = model
   k.prims = min(len(model.prims), KG_PRIMS)
+  if len(model.prims) > KG_PRIMS { print(`r3d: kit {id} has {len(model.prims)} material primitives: only the first {KG_PRIMS} are drawn`) }
   k.near = near
   k.far = far
   k.radius = radius
