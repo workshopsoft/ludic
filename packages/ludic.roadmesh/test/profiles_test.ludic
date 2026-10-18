@@ -1,0 +1,79 @@
+# profiles_test.ludic - profiles.ludic against the studio's profiles.ts calls (fix/<scene>/profiles.fix)
+
+function check_mats(c: Check, what: string, m: Mats, w: Val) -> void {
+  check_str(c, `{what}.road`, m.road, v_get(w, "road"))
+  check_str(c, `{what}.curb`, m.curb, v_get(w, "curb"))
+  check_str(c, `{what}.walk`, m.walk, v_get(w, "walk"))
+  check_str(c, `{what}.plant`, m.plant, v_get(w, "plant"))
+  check_str(c, `{what}.park`, m.park, v_get(w, "park"))
+  check_str(c, `{what}.tram`, m.tram, v_get(w, "tram"))
+}
+function check_side(c: Check, what: string, s: SectionSide, w: Val) -> void {
+  check_numv(c, `{what}.carriage`, s.carriage, v_get(w, "carriage"))
+  check_numv(c, `{what}.shoulder`, s.shoulder, v_get(w, "shoulder"))
+  check_numv(c, `{what}.park`, s.park, v_get(w, "park"))
+  check_numv(c, `{what}.plant`, s.plant, v_get(w, "plant"))
+  check_numv(c, `{what}.walk`, s.walk, v_get(w, "walk"))
+}
+function side_of_val(v: Val) -> SectionSide {
+  let s = new SectionSide
+  s.carriage = v_getn(v, "carriage", 0.0)
+  s.shoulder = v_getn(v, "shoulder", 0.0)
+  s.park = v_getn(v, "park", 0.0)
+  s.plant = v_getn(v, "plant", 0.0)
+  s.walk = v_getn(v, "walk", 0.0)
+  return s
+}
+
+export function test_profiles(recs: []Rec) -> int {
+  let c = check_new("profiles")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "walkwayOf" {
+      check_bool(c, "v", walkway_of(profile_of_val(rarg(r, 0))), w)
+    } else if f == "taperAt" {
+      check_numv(c, "v", taper_at(arg_n(r, 0), arg_n(r, 1)), w)
+    } else if f == "offsetsOf" {
+      let sec = rarg(r, 1)
+      let o = offsets_of(side_of_val(rarg(r, 0)), v_getn(sec, "gutter", 0.0), v_getn(sec, "curbW", 0.0), v_getn(sec, "median", 0.0), arg_nd(r, 2, 1.0))
+      check_numv(c, "median", o.median, v_get(w, "median"))
+      check_numv(c, "lanes", o.lanes, v_get(w, "lanes"))
+      check_numv(c, "road", o.road, v_get(w, "road"))
+      check_numv(c, "park", o.park, v_get(w, "park"))
+      check_numv(c, "gutter", o.gutter, v_get(w, "gutter"))
+      check_numv(c, "curb", o.curb, v_get(w, "curb"))
+      check_numv(c, "plant", o.plant, v_get(w, "plant"))
+      check_numv(c, "walk", o.walk, v_get(w, "walk"))
+    } else if f == "sectionOf" {
+      let e = rarg(r, 0)
+      let s = section_of(v_getn(e, "lanesFwd", 0.0), v_getn(e, "lanesBack", 0.0), v_getn(e, "laneWidth", 0.0), profile_of_val(rarg(r, 1)), rarg(r, 2).str, arg_n(r, 3))
+      check_side(c, "left", s.left, v_get(w, "left"))
+      check_side(c, "right", s.right, v_get(w, "right"))
+      check_numv(c, "median", s.median, v_get(w, "median"))
+      check_numv(c, "gutter", s.gutter, v_get(w, "gutter"))
+      check_numv(c, "curbW", s.curbW, v_get(w, "curbW"))
+      check_numv(c, "curbH", s.curbH, v_get(w, "curbH"))
+      check_numv(c, "tram", s.tram, v_get(w, "tram"))
+      check_numv(c, "steps", s.steps, v_get(w, "steps"))
+      if s.hasMaxGrade { check_numv(c, "maxGrade", s.maxGrade, v_get(w, "maxGrade")) } else { if v_has(w, "maxGrade") { check_fail(c, "maxGrade, want none") } }
+      check_mats(c, "mat", s.mat, v_get(w, "mat"))
+      if s.profile == "" { if v_has(w, "profile") { check_fail(c, "a profile, want none") } } else { check_str(c, "profile", s.profile, v_get(w, "profile")) }
+    } else if f == "profileOfPlain" {
+      let p = profile_of_plain(rarg(r, 0).str, rarg(r, 1))
+      check_str(c, "key", p.key, v_get(w, "key"))
+      check_str(c, "title", p.title, v_get(w, "title"))
+      check_str(c, "kind", p.kind, v_get(w, "kind"))
+      let nk = ["lanesFwd", "lanesBack", "laneWidth", "speed", "priority", "carriage", "median", "shoulder", "curbH", "curbW", "gutter", "walkL", "walkR", "plantL", "plantR", "parkL", "parkR", "tramW", "steps", "maxGrade"]
+      let nv = [p.lanesFwd, p.lanesBack, p.laneWidth, p.speed, p.priority, p.carriage, p.median, p.shoulder, p.curbH, p.curbW, p.gutter, p.walkL, p.walkR, p.plantL, p.plantR, p.parkL, p.parkR, p.tramW, p.steps, p.maxGrade]
+      for k in 0 .. len(nk) { check_numv(c, nk[k], nv[k], v_get(w, nk[k])) }
+      check_bool(c, "tram", p.tram, v_get(w, "tram"))
+      check_mats(c, "mat", p.mat, v_get(w, "mat"))
+    } else {
+      check_fail(c, "no such function in the port")
+    }
+  }
+  return check_report(c)
+}

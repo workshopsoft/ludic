@@ -1,0 +1,90 @@
+# util.ludic - the small numbers the port needs to give the studio's TypeScript the same doubles: JavaScript's Math.max, Math.min
+# and Math.round (NaN and the sign of zero as V8 has them), selects (Ludic has no if-expression), points as flat x, z slices.
+
+let INF: double = double_from_bits(long(2047) << 52)
+let NAN: double = double_from_bits(long(4095) << 51)
+const PI: double = 3.141592653589793
+
+export function is_nan(x: double) -> bool { return x != x }
+export function neg_bit(x: double) -> bool { return double_bits(x) < long(0) }
+export function isel(c: bool, a: int, b: int) -> int { if c { return a };  return b }
+export function dsel(c: bool, a: double, b: double) -> double { if c { return a };  return b }
+export function dabs(a: double) -> double { if a < 0.0 { return -a };  if a == 0.0 { return 0.0 };  return a }
+
+# Math.max(a, b): NaN if either is, +0 over -0
+export function jmax(a: double, b: double) -> double {
+  if a != a { return a }
+  if b != b { return b }
+  if a > b { return a }
+  if b > a { return b }
+  if a == 0.0 and neg_bit(a) { return b }
+  return a
+}
+# Math.min(a, b): NaN if either is, -0 under +0
+export function jmin(a: double, b: double) -> double {
+  if a != a { return a }
+  if b != b { return b }
+  if a < b { return a }
+  if b < a { return b }
+  if a == 0.0 and not neg_bit(a) { return b }
+  return a
+}
+# Math.max(0, Math.min(1, v))
+export function clamp01(v: double) -> double { return jmax(0.0, jmin(1.0, v)) }
+# Math.round as V8 has it: the ceiling, less one when it is more than a half above (so 0.49999999999999994 rounds to 0, -0.5 to -0)
+export function jround(x: double) -> double {
+  if x != x { return x }
+  let c = Math.ceil(x)
+  if c - 0.5 > x { return c - 1.0 }
+  return c
+}
+# Math.sign
+export function jsign(x: double) -> double {
+  if x > 0.0 { return 1.0 }
+  if x < 0.0 { return -1.0 }
+  return x
+}
+
+# ---- points: flat x, z slices ---------------------------------------------------------------------------------------------
+export function pts_n(p: []double) -> int { return len(p) / 2 }
+export function pts_copy(p: []double) -> []double {
+  let out = doubles(len(p))
+  for i in 0 .. len(p) { out[i] = p[i] }
+  return out
+}
+export function pts_reversed(p: []double) -> []double {
+  let n = len(p) / 2
+  let out = doubles(len(p))
+  for i in 0 .. n {
+    out[i * 2] = p[(n - 1 - i) * 2]
+    out[i * 2 + 1] = p[(n - 1 - i) * 2 + 1]
+  }
+  return out
+}
+export function pts_push(p: []double, x: double, z: double) -> void {
+  push(p, x)
+  push(p, z)
+}
+export function pts_of(xs: []double) -> []double {
+  let out = new []double
+  for i in 0 .. len(xs) { push(out, xs[i]) }
+  return out
+}
+# the points of p from point a to point b (exclusive), as JavaScript's slice
+export function pts_slice(p: []double, a: int, b: int) -> []double {
+  let out = new []double
+  let n = len(p) / 2
+  let lo = min(max(a, 0), n)
+  let hi = min(max(b, 0), n)
+  for i in lo .. hi { pts_push(out, p[i * 2], p[i * 2 + 1]) }
+  return out
+}
+export function pts_append(dst: []double, src: []double) -> void {
+  for i in 0 .. len(src) { push(dst, src[i]) }
+}
+export function d_pair(a: double, b: double) -> []double {
+  let out = doubles(2)
+  out[0] = a
+  out[1] = b
+  return out
+}
