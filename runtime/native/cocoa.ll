@@ -106,6 +106,8 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 
 ; #51 — native hardware bindings (mouse position, GameController, NSTouch).
 @.s_mloc   = private unnamed_addr constant [34 x i8] c"mouseLocationOutsideOfEventStream\00"
+@.s_dltx   = private unnamed_addr constant [7 x i8] c"deltaX\00"
+@.s_dlty   = private unnamed_addr constant [7 x i8] c"deltaY\00"
 ; GameController.framework selectors (poll GCController.controllers each frame)
 @.c_gc     = private unnamed_addr constant [13 x i8] c"GCController\00"
 @.s_ctrls  = private unnamed_addr constant [12 x i8] c"controllers\00"
@@ -183,6 +185,11 @@ declare i32 @CGWarpMouseCursorPosition(%NSPoint)
 @W_cursor_mode   = internal global i32 0
 @W_cursor_hidden = internal global i32 0
 @W_cursor_assoc  = internal global i32 1
+; the locked mouse's motion: every mouse-moved / dragged event's deltaX / deltaY summed by win_poll, read and
+; emptied by win_mouse (whole pixels out, the remainder kept). CGGetLastMouseDelta is the LAST event's delta only:
+; polled once a frame it repeats a stale delta when no event came and drops all but one when several did.
+@W_rdx = internal global double 0.0
+@W_rdy = internal global double 0.0
 
 ; -drawRect: — blit the framebuffer into the view.
 ; The NSRect argument is ignored, so it never appears in this signature.
@@ -566,6 +573,27 @@ flags:                                          ; Shift is held-key 16 (ctrl 17,
   call void @win_held_bit(i32 18, i32 %al_i)
   br label %forward
 mouse:                                          ; #50 — mouse buttons + wheel
+  %mv5 = icmp eq i64 %ty, 5                     ; NSEventTypeMouseMoved
+  %mv6 = icmp eq i64 %ty, 6                     ; LeftMouseDragged
+  %mv7 = icmp eq i64 %ty, 7                     ; RightMouseDragged
+  %mv27 = icmp eq i64 %ty, 27                   ; OtherMouseDragged
+  %mva = or i1 %mv5, %mv6
+  %mvb = or i1 %mv7, %mv27
+  %ismv = or i1 %mva, %mvb
+  br i1 %ismv, label %motion, label %buttons
+motion:
+  %sel_dltx = call ptr @sel_registerName(ptr @.s_dltx)
+  %sel_dlty = call ptr @sel_registerName(ptr @.s_dlty)
+  %edx = call double (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_dltx)
+  %edy = call double (ptr, ptr) @objc_msgSend(ptr %ev, ptr %sel_dlty)
+  %ardx = load double, ptr @W_rdx
+  %ardy = load double, ptr @W_rdy
+  %nrdx = fadd double %ardx, %edx
+  %nrdy = fadd double %ardy, %edy
+  store double %nrdx, ptr @W_rdx
+  store double %nrdy, ptr @W_rdy
+  br label %forward
+buttons:
   %ml_d = icmp eq i64 %ty, 1                    ; NSEventTypeLeftMouseDown
   br i1 %ml_d, label %lset, label %ml_u
 lset:
@@ -838,11 +866,16 @@ entry:
   %isrel = icmp eq i32 %cmode, 2
   br i1 %isrel, label %reldelta, label %abspos
 reldelta:
-  %dxp = alloca i32
-  %dyp = alloca i32
-  call void @CGGetLastMouseDelta(ptr %dxp, ptr %dyp)
-  %ddx = load i32, ptr %dxp
-  %ddy = load i32, ptr %dyp
+  %rdx = load double, ptr @W_rdx
+  %rdy = load double, ptr @W_rdy
+  %ddx = fptosi double %rdx to i32
+  %ddy = fptosi double %rdy to i32
+  %kdx = sitofp i32 %ddx to double
+  %kdy = sitofp i32 %ddy to double
+  %remx = fsub double %rdx, %kdx
+  %remy = fsub double %rdy, %kdy
+  store double %remx, ptr @W_rdx
+  store double %remy, ptr @W_rdy
   %omx = load i32, ptr @W_mx
   %omy = load i32, ptr @W_my
   %nmx = add i32 %omx, %ddx
@@ -997,6 +1030,18 @@ keyed:
   %a2 = icmp eq i32 %mode, 2
   %wa = xor i1 %a2, true
   %wai = zext i1 %wa to i32
+  ; taking the lock: the cursor freezes where it is, so it goes to the window's middle first (a click then lands
+  ; in the game, never on the window behind), and motion from before the lock is dropped
+  %wasassoc = load i32, ptr @W_cursor_assoc
+  %wasfree = icmp ne i32 %wasassoc, 0
+  %taking = and i1 %a2, %wasfree
+  br i1 %taking, label %centre, label %apply
+centre:
+  call void @win_cursor_centre()
+  store double 0.0, ptr @W_rdx
+  store double 0.0, ptr @W_rdy
+  br label %apply
+apply:
   call void @cursor_apply(i32 %whi, i32 %wai)
   ; mode 3 (confined): physically hold the cursor inside the window each frame.
   %ism3 = icmp eq i32 %mode, 3
@@ -1059,6 +1104,44 @@ warp:
   %gx = extractvalue %NSPoint %gp, 0
   %gy = extractvalue %NSPoint %gp, 1
   ; main screen height for the flip to CG global coords (top-left origin, y down)
+  %scrcls = call ptr @objc_getClass(ptr @.c_screen)
+  %sel_main = call ptr @sel_registerName(ptr @.s_main)
+  %scr = call ptr (ptr, ptr) @objc_msgSend(ptr %scrcls, ptr %sel_main)
+  %sel_fr = call ptr @sel_registerName(ptr @.s_frame)
+  %fr = call %CGRect (ptr, ptr) @objc_msgSend(ptr %scr, ptr %sel_fr)
+  %sh = extractvalue %CGRect %fr, 3
+  %warpy = fsub double %sh, %gy
+  %wp0 = insertvalue %NSPoint undef, double %gx, 0
+  %wp = insertvalue %NSPoint %wp0, double %warpy, 1
+  %rc = call i32 @CGWarpMouseCursorPosition(%NSPoint %wp)
+  br label %done
+done:
+  ret void
+}
+
+; warp the cursor to the middle of the window's content (global CG coords: top-left origin, y down)
+define void @win_cursor_centre() {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %done, label %go
+go:
+  %sc = load i32, ptr @W_scale
+  %scd = sitofp i32 %sc to double
+  %fbw = load i32, ptr @W_fbw
+  %fbh = load i32, ptr @W_fbh
+  %fbwd = sitofp i32 %fbw to double
+  %fbhd = sitofp i32 %fbh to double
+  %cw = fmul double %fbwd, %scd
+  %ch = fmul double %fbhd, %scd
+  %cx = fmul double %cw, 5.000000e-01
+  %cy = fmul double %ch, 5.000000e-01
+  %cp0 = insertvalue %NSPoint undef, double %cx, 0
+  %cp = insertvalue %NSPoint %cp0, double %cy, 1
+  %sel_cps = call ptr @sel_registerName(ptr @.s_cpts)
+  %gp = call %NSPoint (ptr, ptr, %NSPoint) @objc_msgSend(ptr %win, ptr %sel_cps, %NSPoint %cp)
+  %gx = extractvalue %NSPoint %gp, 0
+  %gy = extractvalue %NSPoint %gp, 1
   %scrcls = call ptr @objc_getClass(ptr @.c_screen)
   %sel_main = call ptr @sel_registerName(ptr @.s_main)
   %scr = call ptr (ptr, ptr) @objc_msgSend(ptr %scrcls, ptr %sel_main)
