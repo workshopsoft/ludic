@@ -375,6 +375,30 @@ program RoadsTest {
     expect(roads_car_count(roads_st) <= 1)
   }
 
+  test "a yield gives way to a car whose own way is free, though its road is the higher" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
+    expect(load_map(roads_st, nodes, segs, turns, "yields"))
+    roads_reset(roads_st)
+    fleet(roads_st)
+    let wc = roads_seg_find(roads_st, "wc")
+    let ce = roads_seg_find(roads_st, "ce")
+    let nc = roads_seg_find(roads_st, "nc")
+    let cs = roads_seg_find(roads_st, "cs")
+    # the yielding car at its line; the free one 25 m out, coming on
+    let ramp = at_the_line(roads_st, 2 * wc, 2 * ce)
+    let street = roads_spawn(roads_st, 2 * nc, roads_edge_length(roads_st, 2 * nc) - 25.0, 0, RCK_CAR, 2 * cs, false)
+    expect(ramp >= 0 and street >= 0)
+    var ramp_over = -1.0
+    var street_over = -1.0
+    for k in 0 .. 600 {
+      drive(roads_st, roads_test_st, 0.05, 0.05)
+      let t = float(k + 1) * 0.05
+      if roads_car_edge(roads_st, ramp) == 2 * ce and ramp_over < 0.0 { ramp_over = t }
+      if roads_car_edge(roads_st, street) == 2 * cs and street_over < 0.0 { street_over = t }
+    }
+    expect(street_over > 0.0)
+    expect(ramp_over > street_over)
+  }
+
   test "a signal lets the roads of the green phase through and holds the others" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns, roads_test_st: mut RoadsTestState) {
     expect(load_map(roads_st, nodes, segs, turns, "lights"))
     roads_reset(roads_st)

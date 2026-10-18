@@ -1,0 +1,6 @@
+# RoadNodes of the yields test map: a cross where the west arm (a slip road's end, priority 3) yields to the lower north street
+c { x: 0.0, z: 0.0 }
+w { x: -100.0, z: 0.0 }
+e { x: 100.0, z: 0.0 }
+n { x: 0.0, z: -100.0 }
+s { x: 0.0, z: 100.0 }

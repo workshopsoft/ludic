@@ -1,0 +1,4 @@
+# RoadTurns of the yields test map: the west arm yields whichever way it goes
+y_we { node: "c", from: "wc", to: "ce", rule: "yield" }
+y_ws { node: "c", from: "wc", to: "cs", rule: "yield" }
+y_wn { node: "c", from: "wc", to: "nc", rule: "yield" }

@@ -35,6 +35,28 @@ export function roads_signal_phase(roads_st: RoadsState, n: int) -> int {
   return k % roads_st.rd_nphases[n]
 }
 
+# seconds into signal n's current phase (0 .. cycle; its last second is the red for all), -1 for a node that is no signal: what a game's
+# lamps read to show the amber before the red
+export function roads_signal_into(roads_st: RoadsState, n: int) -> float {
+  if roads_st.rd_nsignal[n] == 0 { return -1.0 }
+  let cycle = roads_st.rd_ncycle[n]
+  return roads_st.rd_time - Math.floor(roads_st.rd_time / cycle) * cycle
+}
+export function roads_signal_cycle(roads_st: RoadsState, n: int) -> float { return roads_st.rd_ncycle[n] }
+export function roads_signal_phases(roads_st: RoadsState, n: int) -> int { return roads_st.rd_nphases[n] }
+export function roads_node_signal(roads_st: RoadsState, n: int) -> bool { return roads_st.rd_nsignal[n] != 0 }
+# the phase that lets edge e's traffic into the node at its end
+export function roads_edge_phase(roads_st: RoadsState, e: int) -> int { return roads_st.rd_ephase[e] % roads_st.rd_nphases[roads_st.rd_eto[e]] }
+
+# the rule of car c's movement through the node at the end of its edge (free at the end of its route)
+function rd_car_rule(roads_st: RoadsState, c: RoadCar) -> int {
+  let next = rd_next_edge(roads_st, c)
+  if next < 0 { return ROAD_RULE_FREE }
+  return roads_turn_rule(roads_st, c.edge, next)
+}
+
+function rd_gives_way(rule: int) -> bool { return rule == ROAD_RULE_STOP or rule == ROAD_RULE_YIELD }
+
 # the edge a car goes on to from its own: the next of its route, -1 at the end of it
 function rd_next_edge(roads_st: RoadsState, c: RoadCar) -> int {
   if c.at + 1 < len(c.route) { return c.route[c.at + 1] }
@@ -64,11 +86,17 @@ function rd_eligible(roads_st: RoadsState, slot: int, n: int) -> bool {
   var rule = ROAD_RULE_FREE
   if next >= 0 { rule = roads_turn_rule(roads_st, e, next) }
   if rule == ROAD_RULE_STOP and c.stopped < RD_STOP_TIME { return false }
-  if rule == ROAD_RULE_YIELD {
+  # a yield, and a stop once made, give way to what comes within RD_YIELD_LOOK; a car that has waited RD_STARVE seconds edges out
+  # (the node's own turn-taking still keeps it off any path in use)
+  let starved = c.waited >= 0.0 and roads_st.rd_time - c.waited >= RD_STARVE
+  if rd_gives_way(rule) and not starved {
     for j in 0 .. len(roads_st.rd_cars) {
       let o = roads_st.rd_cars[j]
       if j == slot or not o.alive or roads_st.rd_eto[o.edge] != n or o.edge == e { continue }
-      if roads_st.rd_eprio[o.edge] <= roads_st.rd_eprio[e] { continue }
+      # it gives way to a higher road, and to any car whose own way through is not a stop or a yield (a slip road's end at a lower
+      # street still yields to it); a car bound for the same road out is a merge, ordered as it reaches the lane (merge.ludic)
+      if roads_st.rd_eprio[o.edge] <= roads_st.rd_eprio[e] and rd_gives_way(rd_car_rule(roads_st, o)) { continue }
+      if next >= 0 and rd_next_edge(roads_st, o) == next { continue }
       if rd_to_line(roads_st, o) < RD_YIELD_LOOK { return false }
     }
   }
@@ -126,6 +154,10 @@ function rd_ranks_before(roads_st: RoadsState, slot: int, other: int) -> bool {
   let sa = a.waited >= 0.0 and roads_st.rd_time - a.waited >= RD_STARVE
   let sb = b.waited >= 0.0 and roads_st.rd_time - b.waited >= RD_STARVE
   if sa != sb { return sa }
+  # a car whose way through is free goes before one that stops or yields there, whatever their roads' priorities
+  let ga = rd_gives_way(rd_car_rule(roads_st, a))
+  let gb = rd_gives_way(rd_car_rule(roads_st, b))
+  if ga != gb { return gb }
   if roads_st.rd_eprio[a.edge] != roads_st.rd_eprio[b.edge] { return roads_st.rd_eprio[a.edge] > roads_st.rd_eprio[b.edge] }
   if a.waited != b.waited { return a.waited >= 0.0 and (b.waited < 0.0 or a.waited < b.waited) }
   return a.id < b.id

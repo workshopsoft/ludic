@@ -47,6 +47,9 @@ no_ne { node: "c", from: "nc", to: "ce", rule: "forbid" }
   `level` and `heights` (below). Its shape is the curve below.
 - **Turn** (`RoadTurn`): at `node`, coming in along `from` and leaving along `to`: `free`, `yield`, `stop` or
   `forbid` (routes avoid it too).
+- A signal's state for a game's lamps: `roads_node_signal(n)`, `roads_signal_phase(n)` (the green phase, -1 in the last second
+  of each, red for all), `roads_signal_into(n)` (seconds into the phase), `roads_signal_cycle(n)`, `roads_signal_phases(n)`
+  and `roads_edge_phase(e)` (the phase that lets edge `e` into the node at its end).
 - **Car kinds**, a game table `RoadCarKinds` (open, `RCK_*`): `length`, `max_speed`, `accel`, `brake`, `headway`,
   `gap`, `pace` (the share of the limit it drives at), `weight` (its odds when traffic is made).
 
@@ -202,8 +205,10 @@ Each tick, for each car, the **Intelligent Driver Model**: its acceleration from
 times its `pace`) and what is ahead - the car in front in its lane (on its road, or the one it turns onto), a
 junction it may not enter (a wall at the stop line), what `RoadsBody.probe` reports. **Junctions**: a node where
 three or more roads end, or any signal, admits one car at a time. The car at the front of its lane that the
-rules allow (the signal's green, a stop done - standing a full second - and, for a yield, no higher road within
-30 m) and whose road has the higher priority, then whoever waited longest, then the lower id, takes the node
+rules allow (the signal's green; a stop done - standing a full second - and then, as for a yield, no car within 30 m of
+its line that has the way: on a higher road, or one whose own movement is not a stop or a yield; a car bound for the same road
+out is a merge, not waited for; a car that has waited 25 s edges out) and whose movement is free before one that stops or
+yields, then whose road has the higher priority, then whoever waited longest, then the lower id, takes the node
 and holds it until it is a car's length into the next road. A car first in line that is made ahead of the holder
 takes over the node. A car that stands 90 s is taken off (`ROADS_JAMMED`; `roads_config_jam`).
 
