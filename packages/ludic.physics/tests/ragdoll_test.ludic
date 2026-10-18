@@ -1,0 +1,154 @@
+# ragdoll_test.ludic - a ragdoll and a sensor on the real Jolt: a small figure (pelvis, chest, head, two legs) thrown at 15 m/s onto a mesh
+# floor with no thickness comes to rest on it, never under it, its joints held together; a ragdoll is removed for real; and a sensor capsule
+# is met by a box that drives through it unslowed, the meeting a fact, and no ray finds the sensor.
+import "ludic.physics"
+import "ludic.base"
+program RagdollTest {
+  numbers float
+
+  # part i of the figure, standing with its feet at the origin: the joint at (x, y, z) unturned, a capsule from a to b in its space
+  function part(physics_st: mut PhysicsState, i: int, parent: int, x: float, y: float, z: float, ax: float, ay: float, az: float, bx: float, by: float, bz: float, r: float, mass: float, tx: float, ty: float, tz: float, bend: float) -> bool {
+    let f = floats(PHYS_RAG_PART)
+    f[0] = x;  f[1] = y;  f[2] = z
+    f[3] = 0.0;  f[4] = 0.0;  f[5] = 0.0;  f[6] = 1.0
+    f[7] = ax;  f[8] = ay;  f[9] = az
+    f[10] = bx;  f[11] = by;  f[12] = bz
+    f[13] = r
+    f[14] = mass
+    f[15] = tx;  f[16] = ty;  f[17] = tz
+    f[18] = 0.0;  f[19] = 0.0;  f[20] = 1.0
+    f[21] = bend
+    f[22] = -0.3;  f[23] = 0.3
+    f[24] = 0.3
+    f[25] = Math.max(0.4, Math.abs(bend))
+    return phys_ragdef_part(physics_st, i, parent, f)
+  }
+
+  function figure(physics_st: mut PhysicsState) -> int {
+    expect(phys_ragdef_begin(physics_st, 5))
+    expect(part(physics_st, 0, -1, 0.0, 1.0, 0.0, -0.1, 0.0, 0.0, 0.1, 0.0, 0.0, 0.12, 12.0, 0.0, 1.0, 0.0, 0.0))
+    expect(part(physics_st, 1, 0, 0.0, 1.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.4, 0.0, 0.14, 25.0, 0.0, 1.0, 0.0, 0.0))
+    expect(part(physics_st, 2, 1, 0.0, 1.6, 0.0, 0.0, 0.05, 0.0, 0.0, 0.2, 0.0, 0.1, 5.0, 0.0, 1.0, 0.0, 0.0))
+    expect(part(physics_st, 3, 0, 0.1, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0, -0.9, 0.0, 0.07, 10.0, 0.0, -1.0, 0.0, 0.3))
+    expect(part(physics_st, 4, 0, -0.1, 0.95, 0.0, 0.0, 0.0, 0.0, 0.0, -0.9, 0.0, 0.07, 10.0, 0.0, -1.0, 0.0, 0.3))
+    let d = phys_ragdef_make(physics_st)
+    expect(d >= 0)
+    expect(phys_ragdef_parts(physics_st, d) == 5)
+    return d
+  }
+
+  # a floor 40 m square of two triangles (a road's mesh: no thickness)
+  function road(physics_st: mut PhysicsState) -> void {
+    let v = floats(12)
+    v[0] = -20.0;  v[1] = 0.0;  v[2] = -20.0
+    v[3] = 20.0;  v[4] = 0.0;  v[5] = -20.0
+    v[6] = 20.0;  v[7] = 0.0;  v[8] = 20.0
+    v[9] = -20.0;  v[10] = 0.0;  v[11] = 20.0
+    let t = words(6)
+    t[0] = 0;  t[1] = 2;  t[2] = 1
+    t[3] = 0;  t[4] = 3;  t[5] = 2
+    expect(phys_ground_add(physics_st, phys_mesh(physics_st, v, 4, t, 2)) >= 0)
+    phys_settle(physics_st)
+  }
+
+  # the figure's pose lifted by `lift`, every part moving at (vx, vy, vz)
+  function throw(physics_st: mut PhysicsState, d: int, lift: float, vx: float, vy: float, vz: float) -> int {
+    let pose = floats(5 * 7)
+    let vel = floats(5 * 3)
+    let ys = floats(5)
+    ys[0] = 1.0;  ys[1] = 1.1;  ys[2] = 1.6;  ys[3] = 0.95;  ys[4] = 0.95
+    for i in 0 .. 5 {
+      pose[i * 7] = 0.0
+      if i == 3 { pose[i * 7] = 0.1 }
+      if i == 4 { pose[i * 7] = -0.1 }
+      pose[i * 7 + 1] = ys[i] + lift
+      pose[i * 7 + 2] = 0.0
+      pose[i * 7 + 3] = 0.0;  pose[i * 7 + 4] = 0.0;  pose[i * 7 + 5] = 0.0;  pose[i * 7 + 6] = 1.0
+      vel[i * 3] = vx;  vel[i * 3 + 1] = vy;  vel[i * 3 + 2] = vz
+    }
+    let r = phys_ragdoll_add(physics_st, d, pose, vel)
+    expect(r >= 0)
+    return r
+  }
+
+  test "a ragdoll thrown at 15 m/s onto a mesh floor comes to rest on it, never under it, its joints held" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 1024, 1))
+    road(physics_st)
+    let d = figure(physics_st)
+    let r = throw(physics_st, d, 0.5, 12.0, -9.0, 3.0)
+    expect(phys_ragdoll_parts(physics_st, r) == 5)
+    let out = floats(5 * 7)
+    var lowest = 1000.0
+    var gap = 0.0
+    var rest_at = -1
+    for i in 0 .. 60 * 12 {
+      phys_step(physics_st)
+      let awake = phys_ragdoll_read(physics_st, r, out)
+      for k in 0 .. 5 { lowest = Math.min(lowest, out[k * 7 + 1]) }
+      # the head's joint stays 0.5 m from the chest's (its constraint holds it there)
+      let dx = out[2 * 7] - out[7]
+      let dy = out[2 * 7 + 1] - out[7 + 1]
+      let dz = out[2 * 7 + 2] - out[7 + 2]
+      gap = Math.max(gap, Math.abs(Math.sqrt(dx * dx + dy * dy + dz * dz) - 0.5))
+      if not awake and rest_at < 0 { rest_at = i }
+    }
+    expect(rest_at > 0)                     # it came to rest (every part asleep)
+    expect(lowest > 0.0)                    # no joint under the floor (a joint is inside its capsule, the capsule on the floor)
+    expect(gap < 0.08)
+    # at rest it lies: the pelvis low, well past where it was thrown from
+    expect(out[1] < 0.4)
+    expect(out[0] > 1.0)
+    phys_ragdoll_remove(physics_st, r)
+    expect(phys_ragdoll_parts(physics_st, r) == 0)
+    expect(not phys_ragdoll_read(physics_st, r, out))
+    expect(phys_count(physics_st) == 1)     # only the floor is left
+    phys_close(physics_st)
+  }
+
+  test "a ragdoll with a number that is not one, or of no definition, is refused" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 1024, 1))
+    let d = figure(physics_st)
+    let pose = floats(5 * 7)
+    let vel = floats(5 * 3)
+    expect(phys_ragdoll_add(physics_st, d + 7, pose, vel) < 0)
+    vel[4] = 0.0 / 0.0
+    expect(phys_ragdoll_add(physics_st, d, pose, vel) < 0)
+    expect(phys_ragdef_begin(physics_st, 2))
+    expect(not part(physics_st, 1, 0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.4, 0.0, 0.1, 5.0, 0.0, 1.0, 0.0, 0.0))   # out of order
+    expect(phys_ragdef_make(physics_st) < 0)                                                            # a part missing
+    phys_close(physics_st)
+  }
+
+  test "a sensor is met but pushes nothing, and no ray finds it" (physics_st: mut PhysicsState) {
+    expect(phys_open(physics_st, 1024, 1))
+    phys_gravity(physics_st, 0.0)
+    let s = phys_kinematic_add(physics_st, phys_capsule(physics_st, 0.6, 0.35), 10.0, 1.0, 0.0, 0.0)
+    expect(phys_sensor(physics_st, s, true))
+    let car = phys_body_add(physics_st, phys_box(physics_st, 2.2, 0.7, 0.9), 0.0, 1.0, 0.0, 1.5707964, 1500.0)
+    phys_set_velocity(physics_st, car, 15.0, 0.0, 0.0)
+    let free = phys_body_add(physics_st, phys_box(physics_st, 2.2, 0.7, 0.9), 0.0, 1.0, 10.0, 1.5707964, 1500.0)    # the same car, nothing in its way
+    phys_set_velocity(physics_st, free, 15.0, 0.0, 0.0)
+    let h = new PhysHit
+    expect(not phys_ray(physics_st, 10.0, 5.0, 0.0, 0.0, -10.0, 0.0, PHYS_M_ALL, h))
+    var met = false
+    for i in 0 .. 90 {
+      phys_step(physics_st)
+      let q = phys_facts(physics_st)
+      for k in 0 .. q_len(q) {
+        let f = q.items[k]
+        if f.what == PHYS_HIT and ((f.a == s and f.b == car) or (f.a == car and f.b == s)) { met = true }
+      }
+      q_clear(q)
+    }
+    expect(met)
+    let p = new PhysPose
+    expect(phys_pose(physics_st, car, p))
+    let pf = new PhysPose
+    expect(phys_pose(physics_st, free, pf))
+    expect(Math.abs(p.vx - pf.vx) < 0.001)  # unslowed: as fast as the car with nothing in its way
+    expect(Math.abs(p.x - pf.x) < 0.001)
+    expect(p.x > 20.0)
+    expect(not phys_sensor(physics_st, -1, true))
+    phys_close(physics_st)
+  }
+}

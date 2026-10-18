@@ -57,6 +57,11 @@ export state PhysicsState {
   @max(64) ph_walkers: []pointer = new []pointer   # a walker id is its place here; null once removed
   @max(256) ph_vehicles: []pointer = new []pointer  # a vehicle id is its place here; null once removed (vehicle.ludic)
   @max(256) ph_vbody: []int = new []int             # and the body each is on
+  @max(64) ph_ragdefs: []pointer = new []pointer    # a ragdoll definition id is its place here (ragdoll.ludic); kept across worlds
+  ph_ragdef: pointer = null                         # a definition being built (phys_ragdef_begin .. phys_ragdef_make)
+  @max(256) ph_rags: []pointer = new []pointer      # a ragdoll id is its place here; null once removed
+  ph_us: long = 0                                   # the last step's time in Jolt, microseconds (phys_step_us)
+  ph_rag_group: int = 0                             # the last collision group a ragdoll was given
   ph_vs: pointer = null                             # a vehicle's settings being built (phys_vehicle_begin .. phys_vehicle_add)
   ph_ids: []int = words(PH_CAP * 2)
   ph_vals: []float = floats(PH_CAP * 4)

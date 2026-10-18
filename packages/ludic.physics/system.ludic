@@ -24,12 +24,16 @@ export function phys_step(physics_st: mut PhysicsState) -> void {
   ph_buffers()
   ph_buoy_all(physics_st)
   # 25.5a: Jolt's pairs or contacts full (PH_PAIRS, PH_CONTACTS) is a failure: past it things pass through
+  let t0 = Time.now_us()
   if jph_world_step(physics_st.ph_world, physics_st.ph_step, physics_st.ph_sub) != 0 { Mem.over("a physics step past phys_open's pairs or contacts") }
+  physics_st.ph_us = Time.now_us() - t0
   physics_st.ph_steps += 1
   ph_contacts(physics_st)
 }
 
 export function phys_steps(physics_st: PhysicsState) -> int { return physics_st.ph_steps }
+# how long the last step took in Jolt, microseconds (what a ragdoll, a car or a pile costs)
+export function phys_step_us(physics_st: PhysicsState) -> long { return physics_st.ph_us }
 
 # m/s2 down is negative
 export function phys_gravity(physics_st: mut PhysicsState, y: float) -> void { if physics_st.ph_world != null { jph_world_gravity(physics_st.ph_world, y) } }

@@ -31,6 +31,10 @@
 #include <Jolt/Physics/Vehicle/VehicleConstraint.h>
 #include <Jolt/Physics/Vehicle/VehicleCollisionTester.h>
 #include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
+#include <Jolt/Physics/Ragdoll/Ragdoll.h>
+#include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
+#include <Jolt/Skeleton/Skeleton.h>
+#include <Jolt/Core/StringTools.h>
 #include <mutex>
 #include <thread>
 #include <cfloat>
@@ -74,6 +78,12 @@ public:
   bool ShouldCollide(ObjectLayer l) const override { return (mask >> l) & 1; }
   int mask;
 };
+// a sensor (a pedestrian's presence) is never what a query finds: it is there to be met, not to stand on or see
+class NoSensors final : public BodyFilter {
+public:
+  bool ShouldCollideLocked(const Body &b) const override { return !b.IsSensor(); }
+};
+const NoSensors g_no_sensors;
 
 // ---- contacts: recorded on Jolt's threads, drained on the game's -------------------------
 const int C_CAP = 512;
@@ -143,3 +153,4 @@ JPH_SHIM int jph_init(void) {
 #include "jph_queries.inl"
 #include "jph_character.inl"
 #include "jph_vehicle.inl"
+#include "jph_ragdoll.inl"

@@ -1,0 +1,136 @@
+# ragdoll.ludic - a body that falls limp: Jolt's Ragdoll (a skeleton of capsule parts held to their parents by swing-twist constraints,
+# Samples/Utils/RagdollLoader.cpp's way). A definition is built once in calls - phys_ragdef_begin, each part in order (a parent before its
+# children), phys_ragdef_make - and outlives a world; any number of ragdolls of it are then added to the world where a figure stands, and read
+# back every frame as bones: a part's body stands at its joint, turned as the joint is. A ragdoll is an int; it goes alone
+# (phys_ragdoll_remove) or with the world (phys_close).
+#
+# A part is given as 26 floats (PHYS_RAG_PART):
+#   0..2 the joint, 3..6 its rotation (x, y, z, w), in the definition's pose, world space
+#   7..9, 10..12 the capsule's two ends in the joint's own space; 13 its radius; 14 the mass (kg)
+#   15..17 the twist axis, 18..20 the plane axis, world space at the joint (the plane axis is the way the part swings most: a knee's is forward)
+#   21 the bend: the constraint's middle turned from the definition's pose toward the plane axis (radians; a knee bends one way only)
+#   22, 23 the least and most twist; 24 the swing toward the normal axis, 25 toward the plane axis (half cones, radians)
+# Each part sweeps over its steps (continuous collision detection): a thrown limb is thinner than one step's travel and a road's mesh has no
+# thickness. The parts that touch in the definition's pose never collide with each other; two ragdolls collide.
+export const PHYS_RAG_PART: int = 26
+
+function ph_ragdef(physics_st: PhysicsState, d: int) -> pointer {
+  if d < 0 or d >= len(physics_st.ph_ragdefs) { return null }
+  return physics_st.ph_ragdefs[d]
+}
+function ph_rag(physics_st: PhysicsState, r: int) -> pointer {
+  if r < 0 or r >= len(physics_st.ph_rags) { return null }
+  return physics_st.ph_rags[r]
+}
+
+# a definition of n parts begun (one at a time: an unfinished one is dropped); false for no part or more than 64
+export function phys_ragdef_begin(physics_st: mut PhysicsState, n: int) -> bool {
+  if physics_st.ph_ragdef != null { jph_rag_def_free(physics_st.ph_ragdef) }
+  physics_st.ph_ragdef = jph_rag_def_new(n)
+  return physics_st.ph_ragdef != null
+}
+
+# part i, the next one, of parent `parent` (-1 for the root, which is part 0 and only it), from f[PHYS_RAG_PART]; false out of order,
+# with a parent not before it, or with a number that is not one
+export function phys_ragdef_part(physics_st: mut PhysicsState, i: int, parent: int, f: []float) -> bool {
+  if physics_st.ph_ragdef == null or f == null or len(f) < PHYS_RAG_PART { return false }
+  var sum = 0.0
+  for k in 0 .. PHYS_RAG_PART { sum += f[k] }
+  if not is_finite(sum) { return false }
+  return jph_rag_def_part(physics_st.ph_ragdef, i, parent, f) == 0
+}
+
+# the definition finished: its id (-1 when a part is missing)
+export function phys_ragdef_make(physics_st: mut PhysicsState) -> int {
+  let d = physics_st.ph_ragdef
+  if d == null { return -1 }
+  physics_st.ph_ragdef = null
+  if jph_rag_def_make(d) != 0 {
+    jph_rag_def_free(d)
+    return -1
+  }
+  for i in 0 .. len(physics_st.ph_ragdefs) {
+    if physics_st.ph_ragdefs[i] == null {
+      physics_st.ph_ragdefs[i] = d
+      return i
+    }
+  }
+  @alloc_ok("a slot a definition: a game has a few, made at a load")
+  push(physics_st.ph_ragdefs, d)
+  return len(physics_st.ph_ragdefs) - 1
+}
+
+# how many parts a definition has (0 for none)
+export function phys_ragdef_parts(physics_st: PhysicsState, d: int) -> int { return jph_rag_def_parts(ph_ragdef(physics_st, d)) }
+
+# A ragdoll of definition d in the world, part i where pose[7 i ..] puts it (x, y, z, then the rotation x, y, z, w) and moving at
+# vel[3 i ..]. Its id, -1 with no world, no such definition, a number that is not one, or no room for its bodies
+@creates(PhysRagdoll)
+export function phys_ragdoll_add(physics_st: mut PhysicsState, d: int, pose: []float, vel: []float) -> int {
+  let def = ph_ragdef(physics_st, d)
+  if physics_st.ph_world == null or def == null or pose == null or vel == null { return -1 }
+  let n = jph_rag_def_parts(def)
+  if len(pose) < n * 7 or len(vel) < n * 3 { return -1 }
+  var sum = 0.0
+  for k in 0 .. n * 7 { sum += pose[k] }
+  for k in 0 .. n * 3 { sum += vel[k] }
+  if not is_finite(sum) { return -1 }
+  physics_st.ph_rag_group += 1
+  let h = jph_rag_new(physics_st.ph_world, def, physics_st.ph_rag_group, pose, vel)
+  if h == null { return -1 }
+  for i in 0 .. len(physics_st.ph_rags) {
+    if physics_st.ph_rags[i] == null {
+      physics_st.ph_rags[i] = h
+      return i
+    }
+  }
+  @alloc_ok("a slot for the most ragdolls at once; a removed one's slot is reused")
+  push(physics_st.ph_rags, h)
+  return len(physics_st.ph_rags) - 1
+}
+
+# the ragdoll out of the world, its bodies with it
+@releases(PhysRagdoll)
+export function phys_ragdoll_remove(physics_st: mut PhysicsState, r: int) -> void {
+  let h = ph_rag(physics_st, r)
+  if h == null { return }
+  jph_rag_free(h)
+  physics_st.ph_rags[r] = null
+}
+
+# every ragdoll out (before the world goes)
+function ph_ragdolls_free(physics_st: mut PhysicsState) -> void {
+  for i in 0 .. len(physics_st.ph_rags) {
+    if physics_st.ph_rags[i] != null { jph_rag_free(physics_st.ph_rags[i]) }
+    physics_st.ph_rags[i] = null
+  }
+}
+
+export function phys_ragdoll_parts(physics_st: PhysicsState, r: int) -> int { return jph_rag_parts(ph_rag(physics_st, r)) }
+
+# the body of part i (what a contact names), -1 none
+export function phys_ragdoll_body(physics_st: PhysicsState, r: int, i: int) -> int { return jph_rag_body(ph_rag(physics_st, r), i) }
+
+# a push on part i at the world point (px, py, pz), N.s
+export function phys_ragdoll_impulse(physics_st: mut PhysicsState, r: int, i: int, ix: float, iy: float, iz: float, px: float, py: float, pz: float) -> void {
+  let h = ph_rag(physics_st, r)
+  if h == null or not is_finite(ix + iy + iz + px + py + pz) { return }
+  jph_rag_impulse(h, i, ix, iy, iz, px, py, pz)
+}
+
+# every part's place and rotation into out[7 parts] (x, y, z, then x, y, z, w); true while any part is awake, false when the whole of it
+# sleeps (at rest) or there is no such ragdoll
+export function phys_ragdoll_read(physics_st: PhysicsState, r: int, out: []float) -> bool {
+  let h = ph_rag(physics_st, r)
+  if h == null or out == null or len(out) < jph_rag_parts(h) * 7 { return false }
+  return jph_rag_read(h, out) == 1
+}
+
+# a body made a sensor (true) or solid again: a sensor's contacts are facts like any other, it pushes nothing and nothing pushes it,
+# and no query (a ray, a top, an overlap, a push) finds it. Returns whether it is one now; false for no such body
+export function phys_sensor(physics_st: mut PhysicsState, id: int, on: bool) -> bool {
+  if physics_st.ph_world == null or id < 0 { return false }
+  var flag = 0
+  if on { flag = 1 }
+  return jph_body_sensor(physics_st.ph_world, id, flag) == 1
+}

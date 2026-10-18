@@ -7,7 +7,7 @@ JPH_SHIM int jph_ray(void *w, float ox, float oy, float oz, float dx, float dy, 
   RRayCast ray{ RVec3(ox, oy, oz), Vec3(dx, dy, dz) };
   RayCastResult hit;
   MaskFilter f(mask);
-  if (!ww->sys.GetNarrowPhaseQuery().CastRay(ray, hit, {}, f)) return -1;
+  if (!ww->sys.GetNarrowPhaseQuery().CastRay(ray, hit, {}, f, g_no_sensors)) return -1;
   RVec3 p = ray.GetPointOnRay(hit.mFraction);
   Vec3 n = Vec3::sAxisY();
   BodyLockRead lock(ww->sys.GetBodyLockInterface(), hit.mBodyID);
@@ -27,7 +27,7 @@ JPH_SHIM float jph_top_at(void *w, float x, float z, float r, float from_y, floa
                                                     Vec3(0.0f, -depth, 0.0f));
   ClosestHitCollisionCollector<CastShapeCollector> hit;
   MaskFilter f(mask);
-  ww->sys.GetNarrowPhaseQuery().CastShape(cast, ShapeCastSettings(), RVec3::sZero(), hit, {}, f);
+  ww->sys.GetNarrowPhaseQuery().CastShape(cast, ShapeCastSettings(), RVec3::sZero(), hit, {}, f, g_no_sensors);
   if (!hit.HadHit()) return -FLT_MAX;
   return float(hit.mHit.mContactPointOn2.GetY());
 }
@@ -40,7 +40,7 @@ JPH_SHIM int jph_overlap(void *w, float x, float y, float z, float r, int mask, 
   AllHitCollisionCollector<CollideShapeCollector> hits;
   MaskFilter f(mask);
   ww->sys.GetNarrowPhaseQuery().CollideShape(&ball, Vec3::sOne(), RMat44::sTranslation(RVec3(x, y, z)),
-                                             CollideShapeSettings(), RVec3::sZero(), hits, {}, f);
+                                             CollideShapeSettings(), RVec3::sZero(), hits, {}, f, g_no_sensors);
   hits.Sort();
   int n = 0;
   for (const CollideShapeResult &h : hits.mHits) {
@@ -64,7 +64,7 @@ JPH_SHIM int jph_push(void *w, float x, float z, float r, float y0, float y1, in
   CollideShapeSettings cs;
   cs.mBackFaceMode = EBackFaceMode::CollideWithBackFaces;
   ww->sys.GetNarrowPhaseQuery().CollideShape(&body, Vec3::sOne(), RMat44::sTranslation(RVec3(x, y0 + half, z)),
-                                             cs, RVec3::sZero(), hits, {}, f);
+                                             cs, RVec3::sZero(), hits, {}, f, g_no_sensors);
   hits.Sort();
   // a thing wholly below the feet (stood on) or above the head is not in the way; anything else
   // pushes out sideways - along Jolt's own axis when the contact is side-on, else straight away
@@ -118,7 +118,7 @@ JPH_SHIM float jph_step_top(void *w, float x, float z, float r, float feet, floa
   AllHitCollisionCollector<CollideShapeCollector> hits;
   MaskFilter f(mask);
   ww->sys.GetNarrowPhaseQuery().CollideShape(&column, Vec3::sOne(), RMat44::sTranslation(RVec3(x, y0 + half, z)),
-                                             CollideShapeSettings(), RVec3::sZero(), hits, {}, f);
+                                             CollideShapeSettings(), RVec3::sZero(), hits, {}, f, g_no_sensors);
   hits.Sort();
   float best = -FLT_MAX;
   SphereShape ball(r);
