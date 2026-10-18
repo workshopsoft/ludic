@@ -10,6 +10,13 @@ RC_TAG=v1.6.0
 RC_SHA=d48ca0121962fa0639502c0f56c4e3ae72f98e55d88727225444f500775c0074
 SRC="$PKG/build/src/recast-$RC_TAG"
 native_fetch "$SRC" "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/$RC_TAG.tar.gz" "$RC_SHA"
+# our patches on that tag (native/patches/*.patch, in name order), each applied once to the extracted tree (a stamp beside it says so):
+#   recast-polymerge.patch  rcBuildPolyMesh merges a contour's polygons asking only the pairs that share an edge (the same polygons)
+for p in "$PKG"/native/patches/*.patch; do
+  [ -f "$p" ] || continue
+  stamp="$SRC/.patched-$(basename "$p")"
+  [ -f "$stamp" ] || { patch -p1 -s -d "$SRC" < "$p" && touch "$stamp"; }
+done
 
 OBJ="$PKG/build/native/$(native_target)"
 mkdir -p "$OBJ"

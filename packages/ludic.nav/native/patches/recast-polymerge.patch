@@ -1,0 +1,174 @@
+--- a/Recast/Source/RecastMesh.cpp
++++ b/Recast/Source/RecastMesh.cpp
+@@ -547,6 +547,116 @@
+ }
+ 
+ 
++// ludic: the polygons of one contour merged as the loop in rcBuildPolyMesh merged them, asking only the pairs that share an edge.
++// That loop asked every pair of polygons for every merge (the contour's triangles cubed: a long contour took seconds); a pair that
++// shares no edge is never merged (getPolyMergeValue answers -1), and a pair's value depends only on its two polygons. So the pairs
++// sharing an edge are found once, each keeps its value, and a merge asks again only the pairs of the merged polygon and of the one
++// moved into the freed slot. The pair merged is the loop's: the greatest value, then the lowest first index, then the lowest second;
++// each value is asked with the lower index first, as the loop asked it. The same polygons, in the same order, every time.
++static int mergeContourPolys(unsigned short* polys, int npolys, const unsigned short* verts, unsigned short* tmpPoly, const int nvp)
++{
++	if (npolys < 2)
++		return npolys;
++	const int n0 = npolys;
++	rcTempVector<int> pos(n0), idAt(n0), mark(n0, -1);
++	for (int i = 0; i < n0; ++i) { pos[i] = i; idAt[i] = i; }
++
++	// the pairs sharing an edge: each polygon's edges in a hash of the edge's two vertices, every polygon already on an edge paired with
++	// the new one
++	rcTempVector<int> pairA, pairB, pairV;
++	{
++		int cap = 64;
++		while (cap < n0 * nvp * 2) cap <<= 1;
++		rcTempVector<unsigned int> keys(cap, 0xffffffffu);
++		rcTempVector<int> head(cap, -1);
++		rcTempVector<int> recPoly, recNext;
++		for (int i = 0; i < n0; ++i)
++		{
++			const unsigned short* p = &polys[i*nvp];
++			const int nv = countPolyVerts(p, nvp);
++			for (int e = 0; e < nv; ++e)
++			{
++				unsigned short a = p[e], b = p[(e+1) % nv];
++				if (a > b) rcSwap(a, b);
++				const unsigned int key = ((unsigned int)a << 16) | (unsigned int)b;
++				unsigned int h = (key * 2654435761u) & (unsigned int)(cap - 1);
++				while (keys[h] != 0xffffffffu && keys[h] != key) h = (h + 1) & (unsigned int)(cap - 1);
++				if (keys[h] == 0xffffffffu) keys[h] = key;
++				for (int r = head[h]; r != -1; r = recNext[r])
++				{
++					if (recPoly[r] == i) continue;
++					pairA.push_back(recPoly[r]);
++					pairB.push_back(i);
++					pairV.push_back(0);
++				}
++				recPoly.push_back(i);
++				recNext.push_back(head[h]);
++				head[h] = recPoly.size() - 1;
++			}
++		}
++	}
++	const int npairs = pairA.size();
++	for (int q = 0; q < npairs; ++q)
++	{
++		int ea, eb;
++		const int lo = rcMin(pos[pairA[q]], pos[pairB[q]]), hi = rcMax(pos[pairA[q]], pos[pairB[q]]);
++		pairV[q] = getPolyMergeValue(&polys[lo*nvp], &polys[hi*nvp], verts, ea, eb, nvp);
++	}
++
++	for (int round = 0; ; ++round)
++	{
++		int bestVal = 0, bestLo = 0, bestHi = 0;
++		for (int q = 0; q < npairs; ++q)
++		{
++			const int v = pairV[q];
++			if (pairA[q] < 0 || v <= 0 || v < bestVal) continue;
++			const int lo = rcMin(pos[pairA[q]], pos[pairB[q]]), hi = rcMax(pos[pairA[q]], pos[pairB[q]]);
++			if (v > bestVal || lo < bestLo || (lo == bestLo && hi < bestHi)) { bestVal = v; bestLo = lo; bestHi = hi; }
++		}
++		if (bestVal <= 0)
++			break;
++
++		// the merge, as the loop made it: the merged polygon in the first slot, the last polygon moved into the second
++		unsigned short* pa = &polys[bestLo*nvp];
++		unsigned short* pb = &polys[bestHi*nvp];
++		int ea, eb;
++		getPolyMergeValue(pa, pb, verts, ea, eb, nvp);
++		mergePolyVerts(pa, pb, ea, eb, tmpPoly, nvp);
++		const int idA = idAt[bestLo], idB = idAt[bestHi];
++		const int last = npolys - 1, idL = idAt[last];
++		unsigned short* lastPoly = &polys[last*nvp];
++		if (pb != lastPoly)
++		{
++			memcpy(pb, lastPoly, sizeof(unsigned short)*nvp);
++			idAt[bestHi] = idL;
++			pos[idL] = bestHi;
++		}
++		npolys--;
++
++		// the second polygon's pairs are the merged one's now (once each); the pairs of the merged polygon and of the moved one asked again
++		for (int q = 0; q < npairs; ++q)
++		{
++			if (pairA[q] < 0) continue;
++			if (pairA[q] == idB) pairA[q] = idA;
++			if (pairB[q] == idB) pairB[q] = idA;
++			if (pairA[q] == pairB[q]) { pairA[q] = -1; continue; }
++			if (pairA[q] == idA || pairB[q] == idA)
++			{
++				const int other = pairA[q] == idA ? pairB[q] : pairA[q];
++				if (mark[other] == round) { pairA[q] = -1; continue; }
++				mark[other] = round;
++			}
++			if (pairA[q] == idA || pairB[q] == idA || pairA[q] == idL || pairB[q] == idL)
++			{
++				int qa, qb;
++				const int lo = rcMin(pos[pairA[q]], pos[pairB[q]]), hi = rcMax(pos[pairA[q]], pos[pairB[q]]);
++				pairV[q] = getPolyMergeValue(&polys[lo*nvp], &polys[hi*nvp], verts, qa, qb, nvp);
++			}
++		}
++	}
++	return npolys;
++}
++
+ static void pushFront(int v, int* arr, int& an)
+ {
+ 	an++;
+@@ -1157,52 +1267,9 @@
+ 		if (!npolys)
+ 			continue;
+ 		
+-		// Merge polygons.
++		// Merge polygons (ludic: mergeContourPolys, the loop's polygons from the pairs that share an edge).
+ 		if (nvp > 3)
+-		{
+-			for(;;)
+-			{
+-				// Find best polygons to merge.
+-				int bestMergeVal = 0;
+-				int bestPa = 0, bestPb = 0, bestEa = 0, bestEb = 0;
+-				
+-				for (int j = 0; j < npolys-1; ++j)
+-				{
+-					unsigned short* pj = &polys[j*nvp];
+-					for (int k = j+1; k < npolys; ++k)
+-					{
+-						unsigned short* pk = &polys[k*nvp];
+-						int ea, eb;
+-						int v = getPolyMergeValue(pj, pk, mesh.verts, ea, eb, nvp);
+-						if (v > bestMergeVal)
+-						{
+-							bestMergeVal = v;
+-							bestPa = j;
+-							bestPb = k;
+-							bestEa = ea;
+-							bestEb = eb;
+-						}
+-					}
+-				}
+-				
+-				if (bestMergeVal > 0)
+-				{
+-					// Found best, merge.
+-					unsigned short* pa = &polys[bestPa*nvp];
+-					unsigned short* pb = &polys[bestPb*nvp];
+-					mergePolyVerts(pa, pb, bestEa, bestEb, tmpPoly, nvp);
+-					unsigned short* lastPoly = &polys[(npolys-1)*nvp];
+-					if (pb != lastPoly)
+-						memcpy(pb, lastPoly, sizeof(unsigned short)*nvp);
+-					npolys--;
+-				}
+-				else
+-				{
+-					// Could not merge any polygons, stop.
+-					break;
+-				}
+-			}
+-		}
++			npolys = mergeContourPolys(polys, npolys, mesh.verts, tmpPoly, nvp);
+ 		
+ 		// Store polygons.
+ 		for (int j = 0; j < npolys; ++j)

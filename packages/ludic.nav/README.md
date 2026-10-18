@@ -71,6 +71,11 @@ across the seams, a tile under water with no polygons, and the set saved and loa
 `native/build.sh` fetches Recast & Detour v1.6.0, checks its SHA-256, and builds Recast, Detour
 and the shim (`native/shim/nav_shim.cpp`) into `lib/<target>/` - the same script on the Mac and on
 the PC (Git Bash, the LLVM installer's clang). `native/LICENSE-recastnavigation` ships with it.
+Our patches on that tag (`native/patches/*.patch`) are applied once to the extracted tree:
+`recast-polymerge.patch` makes `rcBuildPolyMesh` merge a contour's polygons asking only the pairs that
+share an edge, not every pair for every merge (cubic in a contour's triangles: one long contour took
+1.7 s); it merges the same pairs in the same order, so a mesh is the same bytes, only faster. The
+committed `windows-x64` library predates it (the same meshes, slower) until it is rebuilt on the PC.
 
 Every byte Recast and Detour allocate - the tiles in, the queries, the crowds - goes through a counted
 allocator registered when the library loads (`native/shim/nav_alloc.inl`, as ludic.physics counts
