@@ -46,7 +46,35 @@ export property RenderKit {
   @Unit("m") @Range(0, 20) storey_h: float = 0.0        # a line across every wall each storey_h metres (kit.frag): from the top of a box instance (its eave) down, from the base of another; 0 = none. The count is metres, so it is the same on an instance of 3 floors or of 72
   @Unit("m") @Range(0.01, 1) storey_line: float = 0.12  # how thick a storey line is
   casts_shadow: bool = true
+  # ---- a box kit's FACADE (kit.frag FACADE; fac.ludic is the CPU twin of its grid): a window grid fitted to each wall of each instance,
+  # its rows the storeys counted down from the eave. fac_bay 0: none. The kit row is the draw unit, so a body family with two facade
+  # styles is two rows (the style's name is part of the kit's identity, kitbake.ludic)
+  facade: string = ""                                  # the style's name (a game's own key): identity only
+  @Unit("m") @Range(0, 20) fac_bay: float = 0.0        # a wall is cut into n = max(1, round((L - 2 pier) / bay)) bays, each (L - 2 pier) / n wide
+  @Range(0.05, 1) fac_glass: float = 0.55              # the share of a bay the glass takes (centred)
+  @Unit("m") @Range(0, 10) fac_sill: float = 0.9       # the glass from this height over the storey's floor ...
+  @Unit("m") @Range(0, 10) fac_head: float = 2.5       # ... to this one (held below the storey above)
+  @Unit("m") @Range(0, 10) fac_pier: float = 0.6       # the blank margin at each end of a wall (corners, party walls)
+  @Range(0, 8) fac_mull: int = 1                       # upright bars across the glass
+  @Range(0, 8) fac_tran: int = 0                       # level bars across the glass
+  @Unit("m") @Range(0, 1) fac_reveal: float = 0.15     # how deep the glass sits behind the wall (a parallax reveal: no geometry)
+  @Range(0, 3) fac_ground: int = 0                     # the ground storey: 0 windows as above, 1 a shopfront (glass band, fascia), 2 house doors (as 0), 3 blank
+  @Range(0, 1) fac_spandrel: float = 0.0               # how much darker the wall between two rows of glass is (a curtain wall's spandrels)
+  @Unit("m") @Range(0, 10) fac_shop_b: float = 0.45    # a shopfront's glass from this height ...
+  @Unit("m") @Range(0, 10) fac_shop_t: float = 2.9     # ... to this one; the fascia band above it to the first storey line
+  @Unit("m") @Range(0, 5000) fac_near: float = 120.0   # the rooms behind the glass inside this distance; past it flat glass, the night lights the same
+  @Unit("m") @Range(0, 0.5) fac_frame: float = 0.07    # a frame's and a bar's width
+  @Range(0, 1) fac_frame_r: float = 0.22               # the frames' and bars' tone
+  @Range(0, 1) fac_frame_g: float = 0.23
+  @Range(0, 1) fac_frame_b: float = 0.25
 }
+
+# A box instance's FACADE flags (CellContent.flags; kit.vert hands them to kit.frag as a float, so 24 bits at most; fac.ludic packs them):
+#   bits 0..3    the walls with no windows (party walls): +x, -x, +z, -z of the kit's frame
+#   bits 4..10   the instance's storeys (0: as many as its height holds), so a plinth under the pad has no windows
+#   bit 11       a door is masked: no glass in the ground storey where it stands
+#   bits 12..13  its wall (0 +x, 1 -x, 2 +z, 3 -z)
+#   bits 14..23  its middle along that wall from the wall's start, in tenths of a metre (fac_wall_u)
 
 @PerMap @ByKey
 export registry RenderKits of RenderKit from "render_kits.lres"

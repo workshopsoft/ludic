@@ -86,6 +86,7 @@ skill crosses a level or a role starts or ends; ask `progression_stat` for the e
 | `progression_curve_xp(curve, level)`, `progression_curve_level(curve, xp)`, `progression_curve_max(curve)`, `progression_track_cap(track)`, `progression_general_track()` | the curves |
 | `progression_unlock_state(player, u)`, `progression_has`, `progression_allows(player, what)`, `progression_unlock_of(what)` | what is opened; `allows` is true for a key no unlock gates |
 | `progression_buy_unlock(player, u) -> bool`, `progression_grant_unlock(player, u) -> bool` | pay for an offered one; open one outright |
+| `progression_settle(player)` | settle the unlocks against what the player has now (after a load older than the tables); a new row is settled at once, so level-1 priced unlocks are on offer before any XP |
 | `progression_skill_use(player, skill, uses) -> int`, `_skill_points`, `_skill_level`, `_skill_mod`, `progression_stat(player, stat) -> float`, `progression_tell_all(player)` | skills and the modifiers they carry |
 | `progression_role(player)`, `progression_role_can_start`, `progression_role_start`, `progression_role_end` | roles |
 | `progression_can_prestige`, `progression_prestige(player, track) -> bool` | prestige |

@@ -85,6 +85,9 @@ export state CharacterState {
   chr_land: float = 0.0             # seconds of the landing's crouch left
   chr_steep: float = 0.0            # seconds of "that was too steep" left to say
   chr_can_run: bool = true
+  chr_load_mult: float = 1.0        # a load carried (char_set_load): every gait's speed times this
+  chr_load_sprint: bool = true      # ... the fast gaits (run, sprint) allowed
+  chr_load_jump: bool = true        # ... a jump allowed
   chr_step: float = 0.0             # metres covered this frame
   chr_sit: bool = false
   chr_sit_mode: int = 0

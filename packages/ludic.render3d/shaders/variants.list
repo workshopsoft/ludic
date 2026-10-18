@@ -69,6 +69,7 @@ water.vert|water_patch.frag|
 grass_inst.vert|model.frag|#define FOLIAGE;#define BLADE;#define GBLADE;#define GINST;
 kit.vert|kit.frag|
 kit.vert|kit.frag|#define INTERIOR_MAP;
+kit.vert|kit.frag|#define INTERIOR_MAP;#define FACADE;
 kit.vert|shadow.frag|#define SHADOW_PASS;
 oimp.vert|oimp.frag|
 hlod.vert|hlod.frag|

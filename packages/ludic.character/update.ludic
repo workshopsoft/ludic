@@ -1,6 +1,6 @@
 # update.ludic - a frame of the body: the stick in the camera's frame, the step, the gait, the camera
 export function char_update(character_st: mut CharacterState, ix0: float, iz0: float, run0: bool, jump0: bool, dyaw: float, dpitch: float, dt: float) -> void {
-  var run = run0 and character_st.chr_can_run
+  var run = run0 and character_st.chr_can_run and character_st.chr_load_sprint
   var ix = ix0
   var iz = iz0
   var jump = jump0

@@ -48,6 +48,7 @@ program ProgressionTest {
   def Unlocks chain { what: "car_fast_paint", kind: "item", track: PRGT_RANK, level: 1, requires: UNLK_FAST_CAR }
   def Unlocks sprint { what: "sprint", kind: "feature", track: PRGT_RANK, level: 1, skill: SKLL_DRIVING, skill_level: 2 }
   def Unlocks hauler { what: "van", kind: "vehicle", track: PRGT_COURIER, level: 2, role: PRGR_COURIER }
+  def Unlocks starter { what: "starter_kit", kind: "item", track: PRGT_RANK, level: 1, price: 50 }
   def XpAwards from "progression.lres"
 
   function facts_of(progression_st: mut ProgressionState, what: int) -> int {
@@ -282,5 +283,18 @@ program ProgressionTest {
     expect_eq(q_len(progression_facts(progression_st)), 0)                       # a load tells no stories
     progression_forget(progression_st, 7)
     expect_eq(progression_players(progression_st), 1)
+  }
+
+  test "a new player is settled against level 1 at once: a priced unlock of level 1 is on offer before any XP" (progression_st: mut ProgressionState, prog_test_st: mut ProgTestState) {
+    expect_eq(progression_unlock_state(progression_st, 7, UNLK_STARTER), PROG_LOCKED)    # no row yet
+    progression_settle(progression_st, 7)
+    expect_eq(progression_unlock_state(progression_st, 7, UNLK_STARTER), PROG_OFFER)
+    expect_eq(progression_unlock_state(progression_st, 7, UNLK_FAST_CAR), PROG_LOCKED)   # level 3
+    expect(facts_of(progression_st, PROG_OFFERED) >= 1)
+    expect(progression_buy_unlock(progression_st, 7, UNLK_STARTER))
+    expect(progression_has(progression_st, 7, UNLK_STARTER))
+    # a row made by anything else (XP) is settled the same way
+    progression_add_xp(progression_st, 8, PRGT_RANK, 1)
+    expect_eq(progression_unlock_state(progression_st, 8, UNLK_STARTER), PROG_OFFER)
   }
 }

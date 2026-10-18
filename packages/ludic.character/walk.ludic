@@ -24,7 +24,7 @@ function chr_walk(character_st: mut CharacterState, fx: float, fz: float, dx: fl
     character_st.chr_air_vz = character_st.chr_air_vz + dz * (4.0 * dt)
     vx = character_st.chr_air_vx
     vz = character_st.chr_air_vz
-  } else if jump and character_st.chr_can_run and character_st.chr_land < 0.05 {
+  } else if jump and character_st.chr_can_run and character_st.chr_load_jump and character_st.chr_land < 0.05 {
     up = 5.0
     character_st.chr_air_vx = vx
     character_st.chr_air_vz = vz
