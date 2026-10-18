@@ -23,9 +23,12 @@ program CharacterTest {
     if z > 10.0 { return (z - 10.0) * 0.3 }
     return 0.0
   }
-  function fk_water(x: float, z: float) -> float {
-    if x > 19.0 { return 0.0 }
-    return -10000.0
+  # the lake's surface is at 0; in the band z -7 .. -3 a tube runs under it, its roof half a metre down: a body lower than that
+  # there is sealed off from the water (the height says which level)
+  function fk_water(x: float, y: float, z: float) -> float {
+    if x <= 19.0 { return -10000.0 }
+    if z > -7.0 and z < -3.0 and y < -0.5 { return -10000.0 }
+    return 0.0
   }
   # a boulder at (0, 6), a metre round and 40 cm high, and a pillar at (-6, 0)
   state CharacterTestState {
@@ -301,6 +304,20 @@ program CharacterTest {
     walk(character_st, 8.0, 60.0, false)
     expect(not body_swimming(character_st))
     expect_eq(count(facts(character_st), CHAR_LEFT_WATER), 1)
+  }
+
+  test "the water is asked at the body's height: a body the water is sealed from (a tube under the lake) walks on and never swims" (character_st: mut CharacterState) {
+    fresh(character_st, 18.0, -5.0, EAST)
+    walk(character_st, 4.0, 60.0, false)
+    expect(not body_swimming(character_st))
+    expect_eq(count(facts(character_st), CHAR_STARTED_SWIMMING), 0)
+    expect(body_x(character_st) > 22.5)
+    expect(body_y(character_st) < -1.4)                    # deeper than a wade, on the bed: no lake for it
+    expect(body_water(character_st) < -9000.0)
+    # the same walk beside the tube swims
+    fresh(character_st, 18.0, 0.0, EAST)
+    walk(character_st, 4.0, 60.0, false)
+    expect(body_swimming(character_st))
   }
 
   test "the jump held dives, the air runs out, and the body surfaces" (character_st: mut CharacterState) {

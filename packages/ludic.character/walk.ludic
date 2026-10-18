@@ -40,8 +40,8 @@ function chr_walked(character_st: mut CharacterState, g: int, jumped: bool, dt: 
   let nx = CharacterGround.walked_x()
   let ny = CharacterGround.walked_y()
   let nz = CharacterGround.walked_z()
-  if ny < CharacterGround.water(nx, nz) - CHAR_WADE_MAX {
-    chr_enter_water(character_st, nx, nz)
+  if ny < CharacterGround.water(nx, ny, nz) - CHAR_WADE_MAX {
+    chr_enter_water(character_st, nx, ny, nz)
     return character_st.chr_speed * dt
   }
   let was_air = character_st.chr_air

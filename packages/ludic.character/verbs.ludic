@@ -26,8 +26,9 @@ export function char_teleport(character_st: mut CharacterState, x: float, z: flo
   character_st.chr_dive = false
   character_st.chr_depth = 0.0
   character_st.chr_float = 0.0
-  # the water where the body lands, not where it was: a trip reloaded mid-swim reads it next
-  character_st.chr_water = CharacterGround.water(x, z)
+  # the water where the body lands, not where it was: a trip reloaded mid-swim reads it next (for a body on the ground there;
+  # the next update reads it again at the height the game set)
+  character_st.chr_water = CharacterGround.water(x, character_st.chr_y, z)
   character_st.chr_cam_yaw = yaw
   character_st.chr_piv_x = character_st.chr_x
   character_st.chr_piv_y = character_st.chr_y + 1.45
@@ -73,7 +74,7 @@ export function char_stand_on(character_st: mut CharacterState, x: float, z: flo
 
 # a trip saved in the middle of the lake reloads in the middle of the lake, not on the bed
 export function char_resume_swim(character_st: mut CharacterState, dive: bool, depth: float, breath: float) -> void {
-  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_z)
+  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_y, character_st.chr_z)
   character_st.chr_swim = true
   character_st.chr_dive = dive
   character_st.chr_depth = depth
@@ -86,7 +87,7 @@ export function char_map_changed(character_st: mut CharacterState) -> void {
   character_st.chr_swim = false
   character_st.chr_dive = false
   character_st.chr_depth = 0.0
-  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_z)
+  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_y, character_st.chr_z)
 }
 
 export function char_face(character_st: mut CharacterState, yaw: float) -> void { character_st.chr_yaw = yaw }

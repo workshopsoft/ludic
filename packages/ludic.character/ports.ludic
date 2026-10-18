@@ -5,7 +5,9 @@ export port CharacterGround {
   # (x, z, r, from_y, step, base): the top of a collider within `step` above from_y, else base
   top_at: fn(float, float, float, float, float, float) -> float = fn chr__top_plain
   bed: fn(float, float) -> float = fn chr__bed_plain       # the bed under water (unbound: the ground)
-  water: fn(float, float) -> float = fn chr__dry           # the surface over a point
+  # (x, y, z): the surface over a point for a body at height y there (its feet), else far under everything: a body under the
+  # bed, or sealed off from the water over it (a tunnel's tube, a deck's underside), is in no water. The height says which level
+  water: fn(float, float, float) -> float = fn chr__dry
   # (x, z, r, y0, y1): true when a collider takes a body of radius r there; pushed_x / _z say where to
   push: fn(float, float, float, float, float) -> bool = fn chr__no_push
   pushed_x: fn() -> float = fn chr__asked_x
@@ -127,7 +129,7 @@ export state CharacterState {
 }
 function chr__top_plain(x: float, z: float, r: float, from_y: float, step: float, base: float) -> float { return base }
 function chr__bed_plain(x: float, z: float) -> float { return CharacterGround.height(x, z) }
-function chr__dry(x: float, z: float) -> float { return -10000.0 }
+function chr__dry(x: float, y: float, z: float) -> float { return -10000.0 }
 function chr__no_push(x: float, z: float, r: float, y0: float, y1: float) -> bool { return false }
 function chr__asked_x(character_st: CharacterState) -> float { return character_st.chr_ask_x }
 function chr__asked_z(character_st: CharacterState) -> float { return character_st.chr_ask_z }
