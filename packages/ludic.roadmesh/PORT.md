@@ -23,10 +23,10 @@ Branch `mvp/roadnative` in gpp, game-editor and occutown.
 | junction.ts | 443 | junction.ludic | corners, geom, network, profiles | to do |
 | junctionSurface.ts | 254 | junctionsurface.ludic | geom, junction, network, profiles, roadGrade, stationLine | to do |
 | corners.ts | 343 | corners.ludic | geom, junction, junctionSurface, stationLine | to do (one unit with junction and junctionSurface: they import each other) |
-| sidewalk.ts | 773 | sidewalk.ludic | corners, crossings, geom, junction, junctionSurface, network, profiles, roadGrade, stationLine | to do |
+| sidewalk.ts | 773 | sidewalk.ludic | geom, jsmath, profiles (+ junction, corners, junctionSurface through its `dep_` stubs) | ported, verified (stations, junction, lvlAt, rampAt, bulb, deadCap, discVertices, bulbRails, bulbArc, railPoints, densifyLine, thinRing). Not ported: sidewalkOf's assembly (gradeNetwork, setbacks, planCrossings fill the `Sw`), walkFaces and sidewalkRing (blocks.ts only) |
 | throughPath.ts | 168 | throughpath.ludic | geom, junction, sidewalk | to do |
 | medianThrough.ts | 57 | medianthrough.ludic | geom, meshBuilder, network, sidewalk, throughPath | to do |
-| roadStructures.ts | 602 | roadstructures.ludic | geom, meshBuilder, network, profiles, sidewalk | to do |
+| roadStructures.ts | 602 | roadstructures.ludic | geom, jsmath, meshBuilder, sidewalk (+ the ground and edgesNear as recorded answers) | ported, verified (buildStructures: decks, piers, abutments, spans, tubes, light zones, portals, wing walls, meta, problems) |
 | lanePaint.ts | 777 | lanepaint.ludic | geom, junction, meshBuilder, network, profiles, sidewalk, throughPath | to do |
 | lanePaintChecks.ts (only what the bake calls) | 204 | lanepaintchecks.ludic | lanePaint, throughPath | to do |
 | roadMesh.ts (+ the part of blocks.ts it reads) | 931 | roadmesh.ludic | everything above | to do |
@@ -38,6 +38,10 @@ Shared files:
 - `util.ludic`: JavaScript's `Math.max`, `Math.min`, `Math.round` and `Math.sign` with V8's NaN and signed-zero rules, `INF` and `NAN`,
   selects (Ludic has no if-expression), and points as flat `[]double` (x0, z0, x1, z1, ...).
 - `fixture.ludic`: the tagged-value reader (`Val`) and the checks (`Check`) every module test uses.
+- `jsmath.ludic`: JavaScript's `Math.sin`, `Math.cos`, `Math.atan2`, `Math.asin` (and `atan`) as Node computes them: V8's fdlibm
+  compiled for arm64 with clang's `-ffp-contract=on`, so every `a * b + c` in one C expression is a fused multiply-add. The port
+  makes the same fusions with `fma` (exact in software). libm differs in the last bit for 5% of sines and 17% of atan2s; plain
+  fdlibm without the fusions for 0.5%. 1.2 million random arguments: none differ. Use these for any angle that reaches an output.
 
 Conventions of the port:
 - A `Pt[]` is a flat `[]double`. A `Pt | undefined` answer is `null`. A small record answer is a slice of its numbers (in the
@@ -49,8 +53,14 @@ Conventions of the port:
   Do not use scientific notation, and do not use if-expressions (use `dsel` and `isel`).
 - Read only what the TypeScript reads. An expression like `onA ? A[i + 1] : B[j + 1]` must not index both sides, or an
   out-of-range index stops the program.
-- `Math.hypot` is `hypot2` and `hypot3` (V8's algorithm, the same bits). `Math.atan2` is libm's. It is used only under a 1e-6
-  tolerance (starFrom), where the last bit does not matter.
+- `Math.hypot` is `hypot2` and `hypot3` (V8's algorithm, the same bits). Trigonometry is `jsmath.ludic`'s (`jsin`, `jcos`,
+  `jatan2`, `jasin`); polymesh's starFrom keeps libm's `Math.atan2` under its 1e-6 tolerance.
+- Ludic traps met: `<` on strings is not lexicographic (sort keys with a byte compare: roadstructures `str_lt`); `>>` on an `int` is
+  a logical shift (a negative number's shift is wrong: divide); `getenv` of an unset name is null (comparing it crashes); slices
+  have no `pop`; a whole-literal expression such as `25.0 * 3.14 / 180.0` is computed in `fixed` (keep a typed variable in it).
+- A part that needs another part's answers stubs them: sidewalk's `dep_` functions answer what the studio answered, in the order it
+  asked (the record's `stubs`); roadStructures reads the ground and edgesNear the same way, each checked against the point asked.
+  When the other part lands, its `dep_` becomes the native call.
 - Module `roadmesh`: a name is private unless it says `export`. The test program is `friend module roadmesh_test` and sees everything.
 
 ## Fixtures
@@ -103,7 +113,7 @@ PATH=<gpp>/bin:$PATH LUDIC_HOME=<gpp> ludic build packages/ludic.roadmesh/roadme
 ```
 The module is the file's name (`geom.fix` runs `test_geom`). A record passes when every number is the same to the bit (NaN
 equals NaN, and -0 differs from 0). The program prints a tally for each function and the first 12 differences. It exits 1 if
-any record differs. The 16 fixtures (4 scenes x 4 modules) run in 0.4 s.
+any record differs. The 24 fixtures (4 scenes x 6 modules) run in 1.2 s.
 
 **Adding a module (a part agent):**
 1. In game-editor `export.test.ts`, add the module to `MODULES` and a `vi.mock('../../../src/world/<module>', ...)` line with

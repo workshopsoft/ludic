@@ -13,6 +13,7 @@ program RoadmeshTest {
   import "test/polyMesh_test.ludic"
   import "test/meshBuilder_test.ludic"
   import "test/sidewalk_test.ludic"
+  import "test/roadStructures_test.ludic"
 
   function base_name(path: string) -> string {
     var a = 0
@@ -35,6 +36,7 @@ program RoadmeshTest {
     if m == "polyMesh" { return test_polyMesh(recs) }
     if m == "meshBuilder" { return test_meshBuilder(recs) }
     if m == "sidewalk" { return test_sidewalk(recs) }
+    if m == "roadStructures" { return test_roadStructures(recs) }
     print(`roadmesh_test: no test for the module {m}`)
     return 0
   }
