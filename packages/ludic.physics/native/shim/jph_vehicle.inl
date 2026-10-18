@@ -19,7 +19,45 @@ struct Vehicle {
   float grip[16];       // a multiplier per wheel for the surface it stands on (the game's ground), 1 by default
   float steer[16];      // each wheel's own most steer as it was given (the Ackermann angles are worked out from it)
   float rear_z = 0.0f;  // where the wheels that do not steer are, along the body: the turn's centre is level with them
+  float bar_k[16];      // each anti-roll bar's stiffness as given, N/m (Jolt's own is set from it every step: bars_in_newtons)
 };
+
+// Jolt's anti-roll bar is not in N/m. It works out an impulse, difference * stiffness * dt (N.s), and hands it to each wheel's soft
+// suspension constraint as its velocity BIAS (m/s), so what the wheel gets is that number times the soft constraint's effective mass,
+// 1 / (K + softness): a bar given in N/m acted 1 / (K + softness) times as stiff (some 85x on the van: its 7000 N/m bar held like
+// 600 kN/m, ten times its springs). One wheel on a kerb then lifted its whole axle at once - 120 kN on the wheel that met a 14 cm kerb
+// at 16 m/s, and the van flew 0.8 m. Before each step the bar's Jolt stiffness is the given one times (K + softness) of its wheels'
+// suspensions (K: the body's inverse mass at the suspension's force point along up; softness = 1 / (dt (c + dt k))), so the wheels
+// get exactly stiffness * difference: a bar in N/m, as the car's row means it.
+static float soft_inv_mass(const VehicleConstraint &c, const WheelSettings *ws, float dt) {
+  const Body *body = c.GetVehicleBody();
+  const MotionProperties *mp = body->GetMotionProperties();
+  Vec3 up = c.GetLocalUp();
+  Vec3 fp = ws->mPosition + 0.5f * (ws->mSuspensionMinLength + ws->mSuspensionMaxLength) * ws->mSuspensionDirection - body->GetShape()->GetCenterOfMass();
+  Vec3 rxn = fp.Cross(up);
+  float inv_k = mp->GetInverseMass() + rxn.Dot(mp->GetLocalSpaceInverseInertia().Multiply3x3(rxn));
+  float k = ws->mSuspensionSpring.mStiffness, d = ws->mSuspensionSpring.mDamping;
+  if (ws->mSuspensionSpring.mMode != ESpringMode::StiffnessAndDamping) {
+    float m = 1.0f / inv_k;
+    if (ws->mSuspensionSpring.mMode == ESpringMode::FrequencyAndDamping) {
+      float omega = 2.0f * JPH_PI * ws->mSuspensionSpring.mFrequency;
+      k = m * omega * omega;
+      d = 2.0f * m * ws->mSuspensionSpring.mDamping * omega;
+    } else { k *= m; d *= m; }
+  }
+  float denom = dt * (d + dt * k);
+  return inv_k + (denom > 0.0f ? 1.0f / denom : 0.0f);
+}
+static void bars_in_newtons(Vehicle *v, float dt) {
+  if (dt <= 0.0f) return;
+  VehicleAntiRollBars &bars = v->c->GetAntiRollBars();
+  const Wheels &ws = v->c->GetWheels();
+  for (uint i = 0; i < bars.size() && i < 16; i++) {
+    VehicleAntiRollBar &r = bars[i];
+    float f = 0.5f * (soft_inv_mass(*v->c, ws[r.mLeftWheel]->GetSettings(), dt) + soft_inv_mass(*v->c, ws[r.mRightWheel]->GetSettings(), dt));
+    r.mStiffness = v->bar_k[i] * f;
+  }
+}
 
 // Ackermann steering: wheels that steer turn about one centre level with the axle that does not, so the inner wheel turns more than
 // the outer (with every wheel at the same angle they scrub against each other and the car turns wider than its lock). Jolt turns a
@@ -245,6 +283,12 @@ JPH_SHIM void *jph_vehicle_add(void *w, int id, void *vs) {
     });
   }
   delete b;
+  {
+    VehicleAntiRollBars &bars = v->c->GetAntiRollBars();
+    for (uint i = 0; i < bars.size() && i < 16; i++) v->bar_k[i] = bars[i].mStiffness;
+    Vehicle *vv = v;
+    v->c->SetPostCollideCallback([vv](VehicleConstraint &, const PhysicsStepListenerContext &ctx) { bars_in_newtons(vv, ctx.mDeltaTime); });
+  }
   ww->sys.AddConstraint(v->c);
   ww->sys.AddStepListener(v->c);
   return v;

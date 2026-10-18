@@ -107,7 +107,8 @@ export function phys_vehicle_diff_lsd(physics_st: mut PhysicsState, ratio: float
   if physics_st.ph_vs != null and is_finite(ratio) { jph_vs_diff_lsd(physics_st.ph_vs, ratio) }
 }
 
-# an anti-roll bar between two wheels, N/m
+# an anti-roll bar between two wheels, N/m: the wheels get stiffness * the difference of their suspensions (the shim turns it into
+# Jolt's own bar, which is not in N/m - jph_vehicle.inl, bars_in_newtons)
 export function phys_vehicle_bar(physics_st: mut PhysicsState, left: int, right: int, stiffness: float) -> void {
   if physics_st.ph_vs != null and is_finite(stiffness) { jph_vs_bar(physics_st.ph_vs, left, right, stiffness) }
 }
