@@ -222,14 +222,6 @@ export function world_of(forward: string, edges: Val, nodes: Val, dump: Val) -> 
 }
 
 # JavaScript's a < b for strings of one-byte characters (the keys)
-export function str_lt(a: string, b: string) -> bool {
-  let n = min(len(a), len(b))
-  for i in 0 .. n {
-    if a[i] < b[i] { return true }
-    if a[i] > b[i] { return false }
-  }
-  return len(a) < len(b)
-}
 # the indices 0..n-1 ordered by their keys (a stable merge sort: JavaScript's sort with (p, q) => p < q ? -1 : p > q ? 1 : 0)
 export function order_by_key(keys: []string) -> []int {
   let n = len(keys)

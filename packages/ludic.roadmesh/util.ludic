@@ -91,3 +91,12 @@ export function d_pair(a: double, b: double) -> []double {
 # typed constants for the places a bare literal would not be a double (push onto a []double)
 export const ZERO_D: double = 0.0
 export const ONE_D: double = 1.0
+
+# a < b as JavaScript compares strings (code units; the keys are single-byte characters). Ludic's `<` on strings is not lexicographic
+export function str_lt(a: string, b: string) -> bool {
+  let n = min(len(a), len(b))
+  for i in 0 .. n {
+    if a[i] != b[i] { return a[i] < b[i] }
+  }
+  return len(a) < len(b)
+}

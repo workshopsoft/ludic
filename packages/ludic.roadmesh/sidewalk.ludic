@@ -268,7 +268,7 @@ export function sw_lvl_at(sw: Sw, key: string, i: int, side: int, d: double) -> 
 
 # ---- junctions ------------------------------------------------------------------------------------------------------------
 
-export property JEnd {
+export property SwJEnd {
   key: string = ""
   out: bool = false
   ux: double = 0.0
@@ -280,7 +280,7 @@ export property JEnd {
   l: Offsets = null
   curbH: double = 0.0
 }
-export property Corner {
+export property SwCorner {
   i: int = 0
   j: int = 0
   kind: string = ""
@@ -298,11 +298,11 @@ export property Junc {
   strict: bool = false
   radius: double = 0.0
   notes: []string = null
-  ends: []JEnd = null
-  corners: []Corner = null
+  ends: []SwJEnd = null
+  corners: []SwCorner = null
 }
 # a corner's plan (corners.ts CornerPlan: what the sidewalk reads of it)
-export property Plan {
+export property SwPlan {
   kind: string = ""
   rho: double = 0.0
   hasCentre: bool = false
@@ -318,7 +318,7 @@ property ELine {
 }
 
 # a rail's end point on a strip's own end (the strip's station, at the corner's level)
-function end_pt(sw: Sw, e: JEnd, right: bool, level: int, other: Offsets) -> []double {
+function end_pt(sw: Sw, e: SwJEnd, right: bool, level: int, other: Offsets) -> []double {
   let es = sw_stations(sw, e.key)
   if es == null or len(es.st) < 2 { return null }
   let i = isel(e.out, 0, len(es.st) - 1)
@@ -327,7 +327,7 @@ function end_pt(sw: Sw, e: JEnd, right: bool, level: int, other: Offsets) -> []d
   return strip_at(es, i, double(edgeSide) * dep_corner_level(sw, o, other, level))
 }
 # the strip's own end line at a node and the way into the strip from it
-function end_line(sw: Sw, e: JEnd) -> ELine {
+function end_line(sw: Sw, e: SwJEnd) -> ELine {
   let es = sw_stations(sw, e.key)
   if es == null or len(es.st) < 2 { return null }
   let i = isel(e.out, 0, len(es.st) - 1)
@@ -345,7 +345,7 @@ function end_line(sw: Sw, e: JEnd) -> ELine {
 }
 function beyond(line: ELine, x: double, z: double) -> bool { return line != null and (x - line.px) * line.ux + (z - line.pz) * line.uz > 0.001 }
 # the strip's other edge at a level, on its end line
-function far_pt(sw: Sw, e: JEnd, right: bool, level: int) -> []double {
+function far_pt(sw: Sw, e: SwJEnd, right: bool, level: int) -> []double {
   let es = sw_stations(sw, e.key)
   if es == null or len(es.st) < 2 { return null }
   let i = isel(e.out, 0, len(es.st) - 1)
@@ -396,7 +396,7 @@ function clip_tail(r: []double, line: ELine, far: []double) -> []double {
   return keep
 }
 # can a strict corner be drawn along this end's arm: its laid line and strip (armOfEnd); `lim` its setback
-function arm_lim(sw: Sw, e: JEnd) -> []double {
+function arm_lim(sw: Sw, e: SwJEnd) -> []double {
   let ed = sw_edge(sw, e.key)
   let es = sw_stations(sw, e.key)
   if not laid(ed) or es == null or len(es.st) < 2 { return null }
@@ -405,8 +405,8 @@ function arm_lim(sw: Sw, e: JEnd) -> []double {
   out[0] = jmax(0.0, dsel(e.out, sb_from(ed), sb_to(ed)))
   return out
 }
-function chord_plan(n: int) -> Plan {
-  let p = new Plan
+function chord_plan(n: int) -> SwPlan {
+  let p = new SwPlan
   p.kind = "flat"
   p.rho = 0.0
   p.mids = new [][]double
@@ -446,7 +446,7 @@ export function sw_junction(sw: Sw, n: SwNode, j: Junc) -> Junc {
       let ob2 = dep_corner_offsets(sw)
       let oa = ob2[0]
       let ob = ob2[1]
-      var plan: Plan = null
+      var plan: SwPlan = null
       var crushed = false
       let gore: double = 25.0
       let wide: double = 175.0
@@ -915,9 +915,9 @@ function dep_corner_radius(sw: Sw) -> []double {
   return out
 }
 # corners armOf(line, s, out)
-function dep_arm_of(sw: Sw, e: JEnd) -> void { dep_next(sw, "armOf") }
+function dep_arm_of(sw: Sw, e: SwJEnd) -> void { dep_next(sw, "armOf") }
 # corners fitCorner (null when none fits) or outsideCorner
-function dep_plan(sw: Sw, fn: string) -> Plan {
+function dep_plan(sw: Sw, fn: string) -> SwPlan {
   let v = dep_next(sw, fn)
   if v_undef(v) { return null }
   return plan_of_val(v)
@@ -1047,8 +1047,8 @@ export function sw_of_val(v: Val) -> Sw {
   for i in 0 .. vlen0(ns) { push(sw.nodes, node_of_val(v_item(ns, i))) }
   return sw
 }
-export function plan_of_val(v: Val) -> Plan {
-  let p = new Plan
+export function plan_of_val(v: Val) -> SwPlan {
+  let p = new SwPlan
   p.kind = v_gets(v, "kind", "")
   p.rho = v_getn(v, "rho", 0.0)
   let c = v_get(v, "centre")
@@ -1071,11 +1071,11 @@ export function junc_of_val(v: Val) -> Junc {
   j.notes = new []string
   let ns = v_get(v, "notes")
   for i in 0 .. vlen0(ns) { push(j.notes, v_item(ns, i).str) }
-  j.ends = new []JEnd
+  j.ends = new []SwJEnd
   let es = v_get(v, "ends")
   for i in 0 .. vlen0(es) {
     let ev = v_item(es, i)
-    let e = new JEnd
+    let e = new SwJEnd
     e.key = v_gets(ev, "key", "")
     e.out = vbool0(v_get(ev, "out"))
     let u = vnums0(v_get(ev, "u"))
@@ -1094,11 +1094,11 @@ export function junc_of_val(v: Val) -> Junc {
     e.curbH = v_getn(ev, "curbH", 0.0)
     push(j.ends, e)
   }
-  j.corners = new []Corner
+  j.corners = new []SwCorner
   let cs = v_get(v, "corners")
   for i in 0 .. vlen0(cs) {
     let cv = v_item(cs, i)
-    let c = new Corner
+    let c = new SwCorner
     c.i = int(v_getn(cv, "i", 0.0))
     c.j = int(v_getn(cv, "j", 0.0))
     c.kind = v_gets(cv, "kind", "")

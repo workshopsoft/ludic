@@ -352,13 +352,6 @@ function outer(c: StCtx, e: StEdge, es: Strip, i: int, side: int, extra: double)
 }
 
 # a < b as JavaScript compares strings (by code unit; the keys are ASCII, so by byte)
-function str_lt(a: string, b: string) -> bool {
-  let n = min(len(a), len(b))
-  for i in 0 .. n {
-    if a[i] != b[i] { return a[i] < b[i] }
-  }
-  return len(a) < len(b)
-}
 
 export function build_structures(b: Builder, c: StCtx) -> void {
   let es0 = new []StEdge

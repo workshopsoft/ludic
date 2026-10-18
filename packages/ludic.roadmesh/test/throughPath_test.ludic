@@ -39,7 +39,7 @@ export function check_path_line(c: Check, what: string, p: PathLine, w: Val) -> 
   check_numv(c, `{what}.signA`, p.signA, v_get(w, "signA"))
   check_numv(c, `{what}.signC`, p.signC, v_get(w, "signC"))
 }
-function arm_of(v: Val) -> []double {
+function tp_arm_of(v: Val) -> []double {
   if v_undef(v) { return null }
   let p = v_pts(v_get(v, "p"))
   return arm_points(p[0], p[1], v_getn(v, "sEnd", 0.0), v_bool(v_get(v, "out")), v_nums(v_get(v, "s")), v_pts(v_get(v, "line")))
@@ -78,8 +78,8 @@ export function test_throughPath(recs: []Rec) -> int {
       continue
     }
     if f == "throughPath" {
-      let a = arm_of(rarg(r, 0))
-      let cc = arm_of(rarg(r, 1))
+      let a = tp_arm_of(rarg(r, 0))
+      let cc = tp_arm_of(rarg(r, 1))
       var p: PathLine = null
       if a != null and cc != null { p = through_path_arms(a, cc, arg_nd(r, 2, 2.0), v_bool(v_get(rarg(r, 0), "out")), v_bool(v_get(rarg(r, 1), "out"))) }
       check_path_line(c, "path", p, w)

@@ -14,7 +14,6 @@ program RoadmeshTest {
   import "test/meshBuilder_test.ludic"
   import "test/junction_test.ludic"
   import "test/trig_tab.ludic"
-  bind JsMath { sin: fn tt_sin, cos: fn tt_cos, tan: fn tt_tan, atan2: fn tt_atan2 }
   import "test/sidewalk_test.ludic"
   import "test/roadStructures_test.ludic"
   import "test/throughPath_test.ludic"
