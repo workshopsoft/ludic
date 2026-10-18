@@ -179,6 +179,18 @@ the limit, plus 4 s for a stop, 1.5 s for a yield, a quarter of a signal's cycle
 cost. The heap, distances and parents are kept lists: a route allocates nothing. A route's goal is an edge;
 a car drives it to its end.
 
+### A satellite navigator's route (route_astar.ludic)
+
+`roads_route_points(x0, y0, z0, yaw0, x1, y1, z1, mode, out)` is an edge-based A* (the turn-expanded graph, so turn rules and
+one-way roads are exact): both directions of the start road are seeds at the cost of the part left to drive (setting off against
+`yaw0` costs a U-turn, 30 s), both directions of the goal road are goals at the part driven onto it; a U-turn elsewhere only where
+a road ends; turns cost a little (left 3 s, right 1 s, mirrored when driving on the left). The heuristic is the straight line over
+the map's top speed. Each end snaps by height (`ROADS_NO_HEIGHT`: the plan) to a road the mode may use. `ROADS_WALK` takes every
+road both ways, lane-less ways (stairs, paths) too, by length, up to `roads_route_config_walk`'s priority.
+`roads_route_config_max_turn(rad)` keeps a drive off near U-turns at a node that is not a dead end. `roads_route_s0 / s1` say where
+the route starts and ends on its first and last edge, `roads_route_line` turns it into a polyline, `roads_route_why` says why there
+is none. Stamped arrays: nothing is cleared between searches (tens of microseconds on a town of 1,700 roads).
+
 ## Traffic
 
 `roads_spawn(edge, s, lane, kind, dest, wander) -> id` (or -1: no such edge or kind, no room, no way to `dest`),
