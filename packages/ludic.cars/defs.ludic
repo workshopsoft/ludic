@@ -274,6 +274,8 @@ export property CarSettings {
   @Unit("m/s") @Range(0, 500) max_speed_check: float = 120.0   # a snapshot faster than this is refused
   impound_place: int = -1                                      # the game's place for impounded cars
   @Range(0, 1000) min_tank: float = 0.0
+  breakdown: bool = false                                      # body health at 0 breaks a car down (engine dead, steering and brakes kept) instead of wrecking it
+  @Range(0, 1) sputter_at: float = 0.0                         # under this share of body health the engine misfires (0: never)
   # names the game's animation graphs use (the package sets them, the graph reads them)
   param_speed: string = "car_speed"
   param_steer: string = "car_steer"

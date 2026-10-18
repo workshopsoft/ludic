@@ -41,7 +41,8 @@ function cr_vehicle_pedals(cars_st: mut CarsState, c: Car) -> void {
   }
   # the brake held at a stand backs a person's car up; an AI driver's brake only ever stops it (held at a stand it would back away and
   # come forward again, a car waiting at a line rocking to and fro)
-  if c.ai { c.vdir = 1 }
+  # an AI driver, and an engine that is off (no reverse without it: the brake pedal is a brake), go forward
+  if c.ai or not c.engine_on { c.vdir = 1 }
   if driven and c.engine_on and not c.ai {
     if c.vdir > 0 and brake > 0.05 and throttle < 0.05 and c.speed < 0.8 { c.vdir = -1 }
     else if c.vdir < 0 and throttle > 0.05 and c.speed > -0.8 { c.vdir = 1 }
@@ -86,7 +87,7 @@ function cr_vehicle_torque(cars_st: mut CarsState, c: Car, dem: float, dt: float
     }
   }
   var tq = car_torque_peak(c.model, s) * m.efficiency * (1.0 + s.boost * c.spool + m.nitro * nitro)
-  if c.engine_hp <= 0.0 { tq = 0.0 } else { tq = tq * (0.5 + 0.5 * Math.min(1.0, c.engine_hp / (0.5 * m.engine_health))) }
+  tq = tq * cr_engine_share(cars_st, c, dt)
   if s.top_speed > 0.0 { tq = tq * Math.clamp((s.top_speed - Math.abs(c.speed)) / 2.0, 0.0, 1.0) }
   if m.tank > 0.0 {
     if c.fuel <= 0.0 {
