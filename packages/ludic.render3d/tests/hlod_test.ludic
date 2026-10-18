@@ -274,6 +274,133 @@ program HlodTest {
     expect_near(cell_rgba_b(bits), 0.0, 0.005)
   }
 
+  # the 12 triangles of a box (x0 .. x1, y0 .. y1, z0 .. z1) into tri at triangle t; the next free triangle
+  function box_tris(tri: floats, t: int, x0: float, y0: float, z0: float, x1: float, y1: float, z1: float) -> int {
+    let xs = [x0, x1]
+    let ys = [y0, y1]
+    let zs = [z0, z1]
+    var n = t
+    # each face as two triangles over its four corners
+    for a in 0 .. 3 {
+      for side in 0 .. 2 {
+        let q = floats(12)
+        for k in 0 .. 4 {
+          var u = 0
+          var v = 0
+          if k == 1 or k == 2 { u = 1 }
+          if k >= 2 { v = 1 }
+          var cx = xs[u]
+          var cy = ys[v]
+          var cz = zs[side]
+          if a == 1 { cx = xs[side];  cy = ys[u];  cz = zs[v] }
+          if a == 2 { cx = xs[u];  cy = ys[side];  cz = zs[v] }
+          q[k * 3] = cx;  q[k * 3 + 1] = cy;  q[k * 3 + 2] = cz
+        }
+        let order = [0, 1, 2, 0, 2, 3]
+        for e in 0 .. 6 {
+          let o = n * 9 + e * 3
+          tri[o] = q[order[e] * 3];  tri[o + 1] = q[order[e] * 3 + 1];  tri[o + 2] = q[order[e] * 3 + 2]
+        }
+        n += 2
+      }
+    }
+    return n
+  }
+
+  function in_part(p: floats, x: float, y: float, z: float, slack: float) -> bool {
+    var q = 0
+    while q + HLOD_PART <= len(p) {
+      if x >= p[q] - slack and x <= p[q + 3] + slack and y >= p[q + 1] - slack and y <= p[q + 4] + slack and z >= p[q + 2] - slack and z <= p[q + 5] + slack { return true }
+      q += HLOD_PART
+    }
+    return false
+  }
+
+  test "a crane's mesh is a few boxes that follow it: a tower and a jib, not the box round both" {
+    # a tower 2 x 30 x 2 and a jib 2 x 2 x 50 at its top, reaching 35 m one way and 15 m the other (the mesh is not centred)
+    let tri = floats(24 * 9)
+    var n = box_tris(tri, 0, -1.0, 0.0, -1.0, 1.0, 30.0, 1.0)
+    n = box_tris(tri, n, -1.0, 28.0, -15.0, 1.0, 30.0, 35.0)
+    expect_eq(n, 24)
+    let p = hlod_parts(tri, n, 8)
+    expect(p != null)
+    if p == null { return }
+    let nb = len(p) / HLOD_PART
+    print(`crane: {nb} parts`)
+    expect(nb >= 2 and nb <= 8)
+    # every vertex of the mesh is in a part, the parts together reach the mesh's bounds and no further
+    var vol = 0.0
+    var x0 = 1000.0
+    var z1 = -1000.0
+    var y1 = -1000.0
+    for b in 0 .. nb {
+      let q = b * HLOD_PART
+      vol = vol + (p[q + 3] - p[q]) * (p[q + 4] - p[q + 1]) * (p[q + 5] - p[q + 2])
+      x0 = Math.min(x0, p[q]);  y1 = Math.max(y1, p[q + 4]);  z1 = Math.max(z1, p[q + 5])
+    }
+    for v in 0 .. n * 3 { expect(in_part(p, tri[v * 3], tri[v * 3 + 1], tri[v * 3 + 2], 0.001)) }
+    expect_near(x0, -1.0, 0.001)
+    expect_near(y1, 30.0, 0.001)
+    expect_near(z1, 35.0, 0.001)
+    # the empty air under the jib is in none (the one box round both was 2 x 30 x 50: 3000 m3; the crane itself is 320 m3)
+    expect(not in_part(p, 0.0, 14.0, 20.0, 0.0))
+    expect(not in_part(p, 0.0, 14.0, -10.0, 0.0))
+    print(`crane parts: {vol} m3 (the box round it 3000 m3)`)
+    expect(vol < 3000.0 * 0.3)
+    # deterministic
+    let p2 = hlod_parts(tri, n, 8)
+    expect_eq(len(p2), len(p))
+    for i in 0 .. len(p) { expect(p2[i] == p[i]) }
+    # no triangle: none
+    expect(hlod_parts(tri, 0, 8) == null)
+  }
+
+  test "a kit with parts is drawn as its parts, turned and moved with its instance, and never merged with its neighbours" {
+    let kk = kits()
+    let parts = new []floats
+    for i in 0 .. len(kk) { push(parts, null) }
+    # kit 0 (the house, 10 x 8 x 7): two parts, one off its middle
+    let p = floats(12)
+    p[0] = -5.0;  p[1] = 0.0;  p[2] = -4.0;  p[3] = 5.0;  p[4] = 3.0;  p[5] = 4.0
+    p[6] = 2.0;  p[7] = 3.0;  p[8] = 10.0;  p[9] = 4.0;  p[10] = 20.0;  p[11] = 14.0
+    parts[0] = p
+    let c = cell_content_new(0, 0, 128.0, 4)
+    # a house turned 90 degrees at (50, 60), and two neighbours of another kit beside it (merged with each other, not with it)
+    cell_add(c, 0, 50.0, 1.0, 60.0, Math.deg_to_rad(90.0), 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    cell_add(c, 1, 56.0, 0.0, 52.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    cell_add(c, 1, 62.0, 0.0, 52.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let m = hlod_new(0, 0, 128.0, 4)
+    hlod_bake_parts(c, kk, parts, 32.0, 100.0, 100.0, m)
+    expect(faces_out(m))
+    expect_eq(m.boxes, 3)
+    expect_eq(m.source, 3)
+    # the second part: x 2 .. 4, z 10 .. 14 in the kit's frame, turned 90 degrees (x' = c x + s z, z' = -s x + c z) at (50, 60): x 60 .. 64,
+    # z 56 .. 58, from y 4 to 21
+    var found = false
+    for b in 0 .. m.boxes {
+      var bx0 = 1000.0
+      var bx1 = -1000.0
+      var bz0 = 1000.0
+      var bz1 = -1000.0
+      var by1 = -1000.0
+      for v in b * 20 .. b * 20 + 20 {
+        bx0 = Math.min(bx0, m.vtx[v * HLOD_V]);  bx1 = Math.max(bx1, m.vtx[v * HLOD_V])
+        bz0 = Math.min(bz0, m.vtx[v * HLOD_V + 2]);  bz1 = Math.max(bz1, m.vtx[v * HLOD_V + 2])
+        by1 = Math.max(by1, m.vtx[v * HLOD_V + 1])
+      }
+      if Math.abs(bx0 - 60.0) < 0.01 and Math.abs(bx1 - 64.0) < 0.01 and Math.abs(bz0 - 56.0) < 0.01 and Math.abs(bz1 - 58.0) < 0.01 and Math.abs(by1 - 21.0) < 0.01 { found = true }
+    }
+    expect(found)
+    # with no parts it is the house's one box, merged with the neighbours as before
+    let m2 = hlod_new(0, 0, 128.0, 4)
+    hlod_bake_parts(c, kk, null, 32.0, 100.0, 100.0, m2)
+    let m3 = hlod_new(0, 0, 128.0, 4)
+    hlod_bake(c, kk, 32.0, 100.0, 100.0, m3)
+    expect_eq(m2.boxes, m3.boxes)
+    expect_eq(m2.nv, m3.nv)
+    for i in 0 .. m2.nv * HLOD_V { expect(m2.vtx[i] == m3.vtx[i] or float_bits(m2.vtx[i]) == float_bits(m3.vtx[i])) }
+  }
+
   test "the proxy file round-trips and refuses damage" {
     let c = cell_content_new(3, -2, 128.0, 4)
     for i in 0 .. 3 { cell_add(c, i, 10.0 + float(i) * 30.0, 0.0, 10.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0) }

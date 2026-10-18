@@ -211,7 +211,9 @@ replaced by one box if it is not more than `max_growth` times the volume of what
 7 floats a vertex: position, normal, RGBA8 colour in the float's bits). A box's walls are its kit's `proxy_r/g/b` and its roof
 `proxy_roof_r/g/b` (when `proxy_roof`), times the instance's tint; a merged box takes its members' weighted by wall area and plan.
 A bake derives a kit's proxy colours from its own mesh with `kit_proxy_read` (the walls what a side view of it sees, the roof what
-a view from above sees), so the far city is the colour of the near one. The bake is **a person's task**, not a frame's:
+a view from above sees), so the far city is the colour of the near one. A kit can be drawn far off as a few boxes that follow its
+shape instead (`hlod_bake_parts`, its parts from `kit_parts_read` / `hlod_parts`: a crane a tower and a jib), never merged with its
+neighbours. The bake is **a person's task**, not a frame's:
 
 ```text
 ludic build packages/ludic.render3d/tools/hlod_bake.ludic

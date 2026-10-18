@@ -110,3 +110,60 @@ export function kit_proxy_read(render3d_st: mut Render3dState, dir: string, file
   if not ok { return false }
   return hlod_colour_apply(acc, k)
 }
+
+# Kit node `node`'s coarse shape from its mesh in dir/file (hlod_parts: at most max_parts boxes in the kit's own frame, HLOD_PART floats
+# each), every primitive's triangles read on the CPU as kit_proxy_read reads them; null when the file or node cannot be read or has no
+# triangle. A bake hands the result to hlod_bake_parts (a landmark drawn far off as a few boxes that follow it)
+@alloc_ok("a bake: the triangles of one kit, once")
+export function kit_parts_read(render3d_st: mut Render3dState, dir: string, file: string, node: string, max_parts: int) -> floats {
+  if not gltf_open(render3d_st, dir, file) { return null }
+  let doc = render3d_st.gltf_doc
+  let nodes = value_get(doc, "nodes")
+  var mi = -1
+  for i in 0 .. value_count(nodes) {
+    let nd = value_at(nodes, i)
+    if value_has(nd, "name") != 0 and value_as_str(value_get(nd, "name")) == node { mi = jint(nd, "mesh", -1) }
+  }
+  var tri = floats(9 * 256)
+  var nt = 0
+  if mi >= 0 {
+    let prims = value_get(value_at(value_get(doc, "meshes"), mi), "primitives")
+    for p in 0 .. value_count(prims) {
+      let pv = value_at(prims, p)
+      let attrs = value_get(pv, "attributes")
+      if value_has(attrs, "POSITION") == 0 { continue }
+      let pos = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "POSITION")))
+      let nv = len(pos) / 3
+      var idx: words = null
+      var n = nv / 3
+      if value_has(pv, "indices") != 0 {
+        idx = gltf_accessor_ints(render3d_st, value_as_int(value_get(pv, "indices")))
+        n = len(idx) / 3
+      }
+      for t in 0 .. n {
+        var a = t * 3
+        var b = t * 3 + 1
+        var c = t * 3 + 2
+        if idx != null { a = idx[t * 3];  b = idx[t * 3 + 1];  c = idx[t * 3 + 2] }
+        if a >= nv or b >= nv or c >= nv { continue }
+        if (nt + 1) * 9 > len(tri) {
+          let more = floats(len(tri) * 2)
+          for q in 0 .. nt * 9 { more[q] = tri[q] }
+          free(tri)
+          tri = more
+        }
+        for q in 0 .. 3 {
+          tri[nt * 9 + q] = pos[a * 3 + q]
+          tri[nt * 9 + 3 + q] = pos[b * 3 + q]
+          tri[nt * 9 + 6 + q] = pos[c * 3 + q]
+        }
+        nt += 1
+      }
+    }
+  }
+  file_close(render3d_st.gltf_bin)
+  render3d_st.gltf_bin = null
+  let out = hlod_parts(tri, nt, max_parts)
+  free(tri)
+  return out
+}

@@ -312,6 +312,35 @@ program KitBoxTest {
     expect(back != null and back.boxes == 1)
   }
 
+  test "a kit's coarse shape is read from its own mesh: a few boxes inside the mesh's bounds holding every vertex" (render3d_st: mut Render3dState) {
+    let p = kit_parts_read(render3d_st, dir(render3d_st), "kits.glb", "flat", 6)
+    expect(p != null)
+    if p == null { return }
+    expect(len(p) >= HLOD_PART and len(p) <= 6 * HLOD_PART and len(p) % HLOD_PART == 0)
+    let pos = new []float
+    let box = kitbox_new()
+    expect(kitbox_read(render3d_st, dir(render3d_st), "kits.glb", "flat", box, pos, new []float, new []float))
+    var lo = 1000000.0
+    var hi = -1000000.0
+    for v in 0 .. len(pos) / 3 {
+      lo = Math.min(lo, pos[v * 3 + 1])
+      hi = Math.max(hi, pos[v * 3 + 1])
+      var inside = false
+      var q = 0
+      while q < len(p) {
+        if pos[v * 3] >= p[q] - 0.001 and pos[v * 3] <= p[q + 3] + 0.001 and pos[v * 3 + 1] >= p[q + 1] - 0.001 and pos[v * 3 + 1] <= p[q + 4] + 0.001 and pos[v * 3 + 2] >= p[q + 2] - 0.001 and pos[v * 3 + 2] <= p[q + 5] + 0.001 { inside = true }
+        q += HLOD_PART
+      }
+      expect(inside)
+    }
+    var q = 0
+    while q < len(p) {
+      expect(p[q + 1] >= lo - 0.001 and p[q + 4] <= hi + 0.001)
+      q += HLOD_PART
+    }
+    expect(kit_parts_read(render3d_st, dir(render3d_st), "kits.glb", "no_such_node", 6) == null)
+  }
+
   test "a kit's proxy colours are read from its own mesh, and its row says them" (render3d_st: mut Render3dState) {
     # the fixture's meshes state no material: they draw the renderer's white (200 of 255), walls and roof alike
     let k = new RenderKit
