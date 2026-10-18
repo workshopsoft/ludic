@@ -1,0 +1,335 @@
+# ============================================================================
+# tilemap_far.ludic - the far ground: past the patches a TileDraw draws (tilemap_draw.ludic, a radius of full detail), each tile
+# within a far radius is ONE actor, its patches at their coarsest baked level merged into one mesh, so the ground reaches as far
+# as a game draws its far proxies without an actor a patch (a 4 km radius of 128 m patches is three thousand). A tile's far mesh
+# holds exactly the patches the near draw does not hold now (a patch the near draw has not built yet included), so the two never
+# overlap and nothing is missing at the seam; it is made again when that set changes, a few tiles a frame, nearest first. Its land
+# use is the near draw's (the same masks, tones, steep tone and tint).
+#
+#   let far = tmf_new(render3d_st, td, 4000.0)       # after tmd_new and the tones
+#   each frame, after tmd_frame:  tmf_frame(render3d_st, far, cam_x, cam_z)
+#   at the end, before tmd_free:  tmf_free(render3d_st, far)
+#
+# A frame allocates nothing once the merged buffers have grown to the largest tile: every slot's mesh, model and primitive are made
+# once (tmf_new); a rebuild refills them.
+# ============================================================================
+numbers float
+
+export property TmFar {
+  tile: int = -1                     # the tile it draws (tz * cols + tx), -1 none
+  actor: Actor = null
+  model: Model = null
+  mesh: Mesh = null
+  held: bool = false                 # the mesh holds buffers
+  built: bool = false                # made for the near draw's holdings in `near` (else made again)
+  none: bool = false                 # the tile has no baked file: never asked again
+  nheld: int = 0                     # how many of its patches the near draw held when it was built
+  used: int = 0                      # the frame it was last wanted
+  cx: float = 0.0                    # where its actor stands (world), and its cull radius
+  cz: float = 0.0
+  lift: float = 0.0
+  radius: float = 0.0
+}
+
+export property TileFar {
+  td: TileDraw = null                # the near draw
+  src: TileDraw = null               # the far tiles' tables, masks and expansion (a draw that is never framed and holds no patch)
+  radius: float = 0.0
+  slots: []TmFar = null
+  slot_of: words = null              # per tile: the slot drawing it, -1 none
+  near: words = null                 # per slot and patch: 1 where the near draw held the patch when the slot was built
+  vb: floats = null                  # the merged mesh being made: vertices (TM_VERT floats), colours (4), indices
+  cb: floats = null
+  ib: words = null
+  budget: int = 2                    # tiles made again a frame
+  clock: int = 0
+  ox: float = 0.0
+  oz: float = 0.0
+  shown: int = 0                     # far tiles on the stage now
+  builds: int = 0
+}
+
+# the far ground over near draw `td`'s map out to `radius` metres from the camera
+@alloc_ok("a map being opened: the far tiles' records, made once")
+export function tmf_new(render3d_st: mut Render3dState, td: TileDraw, radius: float) -> TileFar {
+  let f = new TileFar
+  f.td = td
+  f.radius = radius
+  let tm = td.tm
+  let a = Math.max(radius, 0.0) / tm.tile_size + 1.5
+  let n = min(int(3.15 * a * a) + 4, tm.cols * tm.rows)
+  let src = new TileDraw
+  src.tm = tm
+  src.ms = tmm_new(tm, n)
+  src.color = td.color
+  src.fac = td.fac
+  tmk_init(src)
+  src.mask_pattern = td.mask_pattern
+  src.tones = td.tones
+  src.tone_on = td.tone_on
+  f.src = src
+  f.slots = new []TmFar
+  for s in 0 .. src.ms.mslots {
+    let q = new TmFar
+    q.mesh = gpu_mesh_new(render3d_st)
+    q.model = tmd_model_of(render3d_st, td, q.mesh, 0, 0)
+    push(f.slots, q)
+  }
+  f.near = words(src.ms.mslots * tm.patches * tm.patches)
+  f.slot_of = words(tm.cols * tm.rows)
+  for t in 0 .. tm.cols * tm.rows { f.slot_of[t] = -1 }
+  f.vb = floats(0)
+  f.cb = floats(0)
+  f.ib = words(0)
+  return f
+}
+
+# a slot's tile let go: its actor off the stage, its buffers given back
+function tmf_release(render3d_st: mut Render3dState, f: TileFar, q: TmFar) -> void {
+  if q.actor != null { actor_release(render3d_st, q.actor);  q.actor = null;  f.shown -= 1 }
+  if q.held { gpu_mesh_free(render3d_st, q.mesh);  q.held = false }
+  q.built = false
+}
+
+export function tmf_free(render3d_st: mut Render3dState, f: TileFar) -> void {
+  for s in 0 .. len(f.slots) {
+    let q = f.slots[s]
+    tmf_release(render3d_st, f, q)
+    if q.model != null { model_release(render3d_st, q.model) }
+    q.model = null
+    q.mesh = null
+    if q.tile >= 0 { f.slot_of[q.tile] = -1 }
+    q.tile = -1
+  }
+}
+
+# does the near draw hold patch k of tile t now?
+function tmf_near_holds(f: TileFar, t: int, k: int) -> bool {
+  let ms = f.td.ms
+  let s = ms.slot_of[t]
+  if s < 0 { return false }
+  if ms.slot_tile[s] != t { return false }
+  let p = f.td.patches[s * f.td.tm.patches * f.td.tm.patches + k]
+  return p.tile == t and p.actor != null
+}
+
+# is slot s's mesh still what the near draw's holdings ask for?
+function tmf_current(f: TileFar, s: int) -> bool {
+  let q = f.slots[s]
+  if not q.built { return false }
+  # a tile the near draw has no table of holds none of its patches
+  if f.td.ms.slot_of[q.tile] < 0 { return q.nheld == 0 }
+  let pp = f.td.tm.patches * f.td.tm.patches
+  for k in 0 .. pp {
+    var h = 0
+    if tmf_near_holds(f, q.tile, k) { h = 1 }
+    if f.near[s * pp + k] != h { return false }
+  }
+  return true
+}
+
+# room for `nv` more vertices and `ni` more indices past (v, i) in the merged buffers, grown by doubling (and kept)
+@alloc_ok("the far ground's merged buffers growing to the largest tile, once")
+function tmf_room(f: TileFar, v: int, nv: int, i: int, ni: int) -> void {
+  if (v + nv) * TM_VERT > len(f.vb) {
+    let n = max((v + nv) * 2, 1024)
+    let vb = floats(n * TM_VERT)
+    let cb = floats(n * 4)
+    for k in 0 .. v * TM_VERT { vb[k] = f.vb[k] }
+    for k in 0 .. v * 4 { cb[k] = f.cb[k] }
+    free(f.vb);  free(f.cb)
+    f.vb = vb
+    f.cb = cb
+  }
+  if i + ni > len(f.ib) {
+    let ib = words(max((i + ni) * 2, 4096))
+    for k in 0 .. i { ib[k] = f.ib[k] }
+    free(f.ib)
+    f.ib = ib
+  }
+}
+
+# slot s's tile made again: every patch the near draw does not hold, at its coarsest level, into one mesh on one actor; false when
+# the tile's file cannot be read
+@alloc_ok("a far tile made again: its actor taken from the stage's spares, the mask reader's buffers made the first time")
+function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> bool {
+  let td = f.td
+  let src = f.src
+  let tm = td.tm
+  let q = f.slots[s]
+  let t = q.tile
+  let tx = t % tm.cols
+  let tz = t / tm.cols
+  let pp = tm.patches * tm.patches
+  let lod = tm.lod_max
+  src.steep_ny = td.steep_ny
+  for c in 0 .. 3 { src.steep_color[c] = td.steep_color[c] }
+  let ts = tmm_load(src.ms, tm, tx, tz)
+  if ts < 0 { return false }
+  # the tile's height range at that level: its actor's cull sphere and the height its vertices are given from
+  var y0 = 1000000000.0
+  var y1 = -1000000000.0
+  let cell = tmap_patch_size(tm) / float(tm.patch_texels >> lod)
+  for k in 0 .. pp {
+    y0 = Math.min(y0, tmm_ymin(src.ms, tm, ts, k % tm.patches, k / tm.patches, lod) - (2.0 * cell + tm.skirt))
+    y1 = Math.max(y1, tmm_ymax(src.ms, tm, ts, k % tm.patches, k / tm.patches, lod))
+  }
+  let half = tm.tile_size * 0.5
+  let r = Math.sqrt(2.0 * half * half + (y1 - y0) * (y1 - y0) * 0.25) + 1.0
+  let lift = (y0 + y1) * 0.5 - r
+  let cx = tm.origin_x + (float(tx) + 0.5) * tm.tile_size
+  let cz = tm.origin_z + (float(tz) + 0.5) * tm.tile_size
+  var nv = 0
+  var ni = 0
+  q.nheld = 0
+  for k in 0 .. pp {
+    var h = 0
+    if tmf_near_holds(f, t, k) { h = 1 }
+    f.near[s * pp + k] = h
+    q.nheld += h
+    if h == 1 { continue }
+    let px = k % tm.patches
+    let pz = k / tm.patches
+    if not tmm_patch(src.ms, tm, ts, tx, tz, px, pz, lod, lift) { continue }
+    let coloured = tmk_colours(render3d_st, src, ts, tx, tz, px, pz, lod)
+    let ms = src.ms
+    tmf_room(f, nv, ms.nv, ni, ms.ni)
+    # the patch's vertices are about its own middle: moved to the tile's
+    let dx = tmap_patch_cx(tm, tx, px) - cx
+    let dz = tmap_patch_cz(tm, tz, pz) - cz
+    for v in 0 .. ms.nv {
+      let o = (nv + v) * TM_VERT
+      for c in 0 .. TM_VERT { f.vb[o + c] = ms.vbuf[v * TM_VERT + c] }
+      f.vb[o] = f.vb[o] + dx
+      f.vb[o + 2] = f.vb[o + 2] + dz
+      if coloured { for c in 0 .. 4 { f.cb[(nv + v) * 4 + c] = src.cbuf[v * 4 + c] } }
+      else { f.cb[(nv + v) * 4] = td.color[0];  f.cb[(nv + v) * 4 + 1] = td.color[1];  f.cb[(nv + v) * 4 + 2] = td.color[2];  f.cb[(nv + v) * 4 + 3] = 1.0 }
+    }
+    for i in 0 .. ms.ni { f.ib[ni + i] = ms.ibuf[i] + nv }
+    nv += ms.nv
+    ni += ms.ni
+  }
+  q.built = true
+  if ni == 0 {
+    # the near draw holds the whole tile
+    if q.actor != null { actor_release(render3d_st, q.actor);  q.actor = null;  f.shown -= 1 }
+    if q.held { gpu_mesh_free(render3d_st, q.mesh);  q.held = false }
+    return true
+  }
+  tmf_fill(render3d_st, f, q, nv, ni)
+  if q.actor == null {
+    q.actor = actor_new(render3d_st, q.model)
+    q.actor.casts = false
+    q.actor.cull = 0.0
+    f.shown += 1
+  } else { q.actor.model = q.model }
+  q.actor.tint[0] = 1.0;  q.actor.tint[1] = 1.0;  q.actor.tint[2] = 1.0
+  q.actor.radius = r
+  q.cx = cx;  q.cz = cz;  q.lift = lift;  q.radius = r
+  actor_place(q.actor, cx - f.ox, lift, cz - f.oz, 0.0)
+  f.builds += 1
+  return true
+}
+
+# the merged buffers into slot q's mesh (the near draw's layout: position, normal, uv, and the land use's colour)
+function tmf_fill(render3d_st: mut Render3dState, f: TileFar, q: TmFar, nv: int, ni: int) -> void {
+  tmd_textures(render3d_st)
+  let m = q.mesh
+  if q.held { gpu_mesh_free(render3d_st, m) }
+  if not q.held {
+    for i in 0 .. len(m.attrs) { m.attrs[i] = 0 }
+    m.n_attrs = 0
+    m.vk_layout = 0
+  }
+  m.cur_buf = 0
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  gpu_mesh_vertices(render3d_st, m, data_of(f.vb), nv * TM_VERT * 4, GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, TM_VERT * 4, 0, false)
+  gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, TM_VERT * 4, 12, false)
+  gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, TM_VERT * 4, 24, false)
+  gpu_mesh_vertices(render3d_st, m, data_of(f.cb), nv * 16, GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 7, 4, GPU_F32, 16, 0, false)
+  gpu_mesh_indices(render3d_st, m, data_of(f.ib), ni * 4, 4)
+  m.count = ni
+  gpu_mesh_done(render3d_st, m)
+  render3d_st.gvk_tag = was
+  let pr = q.model.prims[0]
+  pr.verts = nv
+  pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
+  q.model.tris = ni / 3
+  q.held = true
+}
+
+# One frame of the far ground, after the near draw's (tmd_frame, whose floating origin it follows): the tiles within the radius
+# kept, the others let go, and the nearest `budget` whose mesh is not what the near draw's holdings ask for made again.
+export function tmf_frame(render3d_st: mut Render3dState, f: TileFar, cam_x: float, cam_z: float) -> void {
+  let td = f.td
+  let tm = td.tm
+  f.clock += 1
+  let dox = td.ox - f.ox
+  let doz = td.oz - f.oz
+  f.ox = td.ox;  f.oz = td.oz
+  if dox != 0.0 or doz != 0.0 {
+    for s in 0 .. len(f.slots) {
+      let q = f.slots[s]
+      if q.actor != null { actor_place(q.actor, q.cx - f.ox, q.lift, q.cz - f.oz, 0.0) }
+    }
+  }
+  # the tiles within reach: the ones held kept, the others given a slot (a free one, else the one wanted longest ago)
+  let tx0 = tmap_tile_x(tm, cam_x - f.radius)
+  let tx1 = tmap_tile_x(tm, cam_x + f.radius)
+  let tz0 = tmap_tile_z(tm, cam_z - f.radius)
+  let tz1 = tmap_tile_z(tm, cam_z + f.radius)
+  for tz in tz0 .. tz1 + 1 {
+    for tx in tx0 .. tx1 + 1 {
+      if tmap_tile_dist(tm, tx, tz, cam_x, cam_z) > f.radius { continue }
+      let t = tz * tm.cols + tx
+      var held = f.slot_of[t]
+      if held < 0 {
+        var take = -1
+        for s in 0 .. len(f.slots) {
+          let q = f.slots[s]
+          if q.used != f.clock and (take < 0 or f.slots[take].tile >= 0 and (q.tile < 0 or q.used < f.slots[take].used)) { take = s }
+        }
+        if take < 0 { continue }
+        let q = f.slots[take]
+        tmf_release(render3d_st, f, q)
+        if q.tile >= 0 { f.slot_of[q.tile] = -1 }
+        q.tile = t
+        q.none = false
+        f.slot_of[t] = take
+        held = take
+      }
+      f.slots[held].used = f.clock
+    }
+  }
+  # the slots no tile within reach wants let go
+  for s in 0 .. len(f.slots) {
+    let q = f.slots[s]
+    if q.tile >= 0 and q.used != f.clock {
+      tmf_release(render3d_st, f, q)
+      f.slot_of[q.tile] = -1
+      q.tile = -1
+    }
+  }
+  # the nearest stale ones made again
+  for n in 0 .. f.budget {
+    var bi = -1
+    var bd = 1000000000.0
+    for s in 0 .. len(f.slots) {
+      let q = f.slots[s]
+      if q.tile < 0 or q.none { continue }
+      let d = tmap_tile_dist(tm, q.tile % tm.cols, q.tile / tm.cols, cam_x, cam_z)
+      if d >= bd { continue }
+      if tmf_current(f, s) { continue }
+      bi = s;  bd = d
+    }
+    if bi < 0 { break }
+    if not tmf_build(render3d_st, f, bi) {
+      let q = f.slots[bi]
+      tmf_release(render3d_st, f, q)
+      q.none = true
+    }
+  }
+}

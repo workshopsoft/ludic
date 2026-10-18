@@ -118,6 +118,35 @@ program RoadsTest {
     expect(near(roads_pose_x(roads_st), 0.0, 0.05))
   }
 
+  test "a lane runs square to the road's chord 2 m either side (the frame the road bake paints in), across a spline's cusp too" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "cusp"))
+    let p = roads_seg_find(roads_st, "p")
+    let len = roads_seg_length(roads_st, p)
+    var worst = 0.0
+    var s = 0.0
+    while s <= len {
+      # the centre line here and 2 m either side (clamped to the road's ends), and the outer lane's place
+      roads_pose(roads_st, 2 * p, Math.max(s - 2.0, 0.0), -1)
+      let ax = roads_pose_x(roads_st)
+      let az = roads_pose_z(roads_st)
+      roads_pose(roads_st, 2 * p, Math.min(s + 2.0, len), -1)
+      let bx = roads_pose_x(roads_st)
+      let bz = roads_pose_z(roads_st)
+      roads_pose(roads_st, 2 * p, s, -1)
+      let cx = roads_pose_x(roads_st)
+      let cz = roads_pose_z(roads_st)
+      roads_pose(roads_st, 2 * p, s, 1)
+      let l = Math.sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az))
+      # the lane is to the right of the centre, square to the chord: no part of its offset along the chord
+      let ox = roads_pose_x(roads_st) - cx
+      let oz = roads_pose_z(roads_st) - cz
+      worst = Math.max(worst, Math.abs(ox * (bx - ax) + oz * (bz - az)) / l)
+      expect(ox * (bz - az) - oz * (bx - ax) < 0.0)
+      s += 0.1
+    }
+    expect(worst < 0.005)
+  }
+
   test "the nearest road, how far along it, how far off, and which side's edge a point is on" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
     expect(load_map(roads_st, nodes, segs, turns, "town"))
     let ce = roads_seg_find(roads_st, "ce")

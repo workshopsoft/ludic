@@ -110,7 +110,38 @@ export function roads_edge_mouth_end(roads_st: RoadsState, e: int) -> float { re
 export function roads_edge_mouth_start(roads_st: RoadsState, e: int) -> float { return roads_st.rd_emouth_start[e] }
 export function roads_edge_clear(roads_st: RoadsState, e: int) -> float { return roads_st.rd_eclear[e] }
 
-# the pose of a car `s` metres along edge `e` in `lane`, into roads_pose_x / z / yaw (yaw faces along the edge)
+# A lane's frame: square to the road's chord from RD_FRAME_WINDOW metres before to as far after (clamped to the road's ends), not to the
+# polyline's own step there. It is the frame a road bake draws its strips, their paint and its lane lines in (a cusp of centimetres where a
+# spline's control points come unevenly spaced swings the steps round, and a lane offset metres from them would leave the painted one).
+const RD_FRAME_WINDOW: float = 2.0
+
+# the x (axis 0) or z (axis 1) of the point `d` metres along segment `seg` (clamped to it)
+function rd_seg_coord(roads_st: RoadsState, seg: int, d: float, axis: int) -> float {
+  var lo = roads_st.rd_sp0[seg]
+  var hi = roads_st.rd_sp1[seg] - 1
+  while hi - lo > 1 {
+    let mid = (lo + hi) / 2
+    if roads_st.rd_ps[mid] <= d { lo = mid } else { hi = mid }
+  }
+  let span = roads_st.rd_ps[hi] - roads_st.rd_ps[lo]
+  var t = 0.0
+  if span > 0.0001 { t = Math.clamp((d - roads_st.rd_ps[lo]) / span, 0.0, 1.0) }
+  if axis == 0 { return roads_st.rd_px[lo] + (roads_st.rd_px[hi] - roads_st.rd_px[lo]) * t }
+  return roads_st.rd_pz[lo] + (roads_st.rd_pz[hi] - roads_st.rd_pz[lo]) * t
+}
+
+# the heading (from -> to) of segment `seg`'s frame `d` metres along it: its chord over RD_FRAME_WINDOW either side; `fallback` when that is none
+function rd_frame_yaw(roads_st: RoadsState, seg: int, d: float, fallback: float) -> float {
+  let a = Math.max(d - RD_FRAME_WINDOW, 0.0)
+  let b = Math.min(d + RD_FRAME_WINDOW, roads_st.rd_slen[seg])
+  let dx = rd_seg_coord(roads_st, seg, b, 0) - rd_seg_coord(roads_st, seg, a, 0)
+  let dz = rd_seg_coord(roads_st, seg, b, 1) - rd_seg_coord(roads_st, seg, a, 1)
+  if dx * dx + dz * dz < 0.0000001 { return fallback }
+  return Math.atan2(dx, dz)
+}
+
+# the pose of a car `s` metres along edge `e` in `lane`, into roads_pose_x / z / yaw (yaw faces along the edge, in the lane's frame:
+# RD_FRAME_WINDOW)
 export function roads_pose(roads_st: mut RoadsState, e: int, s: float, lane: int) -> void {
   if e < 0 or e >= len(roads_st.rd_efrom) { return }
   let seg = e / 2
@@ -122,6 +153,7 @@ export function roads_pose(roads_st: mut RoadsState, e: int, s: float, lane: int
   }
   rd_seg_at(roads_st, seg, d)
   var yaw = roads_st.rd_pose_yaw
+  if roads_st.rd_pose_seg >= 0 { yaw = rd_frame_yaw(roads_st, seg, Math.clamp(d, 0.0, roads_st.rd_slen[seg]), yaw) }
   if flip { yaw = yaw + 3.1415927 }
   if yaw > 3.1415927 { yaw = yaw - 6.2831853 }
   let hx = Math.sin(yaw)
