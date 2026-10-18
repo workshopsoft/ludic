@@ -2,6 +2,7 @@
 # code: the same rules and the same doubles. PORT.md has the module map, the job format and what is ported and verified.
 module roadmesh
 import "util.ludic"
+import "jsmath.ludic"
 import "fixture.ludic"
 import "geom.ludic"
 import "profiles.ludic"
@@ -12,3 +13,5 @@ import "netview.ludic"
 import "junction.ludic"
 import "corners.ludic"
 import "junctionsurface.ludic"
+import "sidewalk.ludic"
+import "roadstructures.ludic"

@@ -1,0 +1,52 @@
+# roadStructures_test.ludic - roadstructures.ludic against the studio's roadStructures.ts calls (fix/<scene>/roadStructures.fix).
+# A record is one buildStructures call: [uv, level, context], and what it drew (as a Builder method's record), the meta it added
+# and the problems it noted.
+
+function check_mrows(c: Check, what: string, rows: []MRow, w: Val) -> void {
+  check_int(c, `{what}.length`, len(rows), v_len(w))
+  if len(rows) != v_len(w) { return }
+  for i in 0 .. len(rows) {
+    let r = rows[i]
+    let wv = v_item(w, i)
+    for k in 0 .. len(r.nk) { check_numv(c, `{what}[{i}].{r.nk[k]}`, r.nv[k], v_get(wv, r.nk[k])) }
+    for k in 0 .. len(r.sk) { check_str(c, `{what}[{i}].{r.sk[k]}`, r.sv[k], v_get(wv, r.sk[k])) }
+    for k in 0 .. len(r.uk) { if not v_undef(v_get(wv, r.uk[k])) { check_fail(c, `{what}[{i}].{r.uk[k]}: undefined, want a value`) } }
+    let n = len(r.nk) + len(r.sk) + len(r.uk)
+    if n != v_len(wv) { check_fail(c, `{what}[{i}]: {n} fields, want {v_len(wv)}`) }
+  }
+}
+
+export function test_roadStructures(recs: []Rec) -> int {
+  let c = check_new("roadStructures")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let w = r.res
+    check_rec(c, r.fn)
+    if r.fn != "buildStructures" {
+      check_fail(c, "no such function in the port")
+      continue
+    }
+    let b = builder_new(arg_n(r, 0))
+    b.level = int(arg_n(r, 1))
+    let x = st_ctx_of_val(rarg(r, 2))
+    build_structures(b, x)
+    check_layers(c, b, w)
+    check_numv(c, "level", double(b.level), v_get(w, "level"))
+    let m = v_get(w, "meta")
+    check_mrows(c, "piers", x.meta.piers, v_get(m, "piers"))
+    check_mrows(c, "abutments", x.meta.abutments, v_get(m, "abutments"))
+    check_mrows(c, "spans", x.meta.spans, v_get(m, "spans"))
+    check_mrows(c, "decks", x.meta.decks, v_get(m, "decks"))
+    check_mrows(c, "tubes", x.meta.tubes, v_get(m, "tubes"))
+    check_mrows(c, "portals", x.meta.portals, v_get(m, "portals"))
+    check_mrows(c, "lightZones", x.meta.lightZones, v_get(m, "lightZones"))
+    let ps = v_get(w, "problems")
+    check_int(c, "problems", len(x.problems), v_len(ps))
+    if len(x.problems) == v_len(ps) { for i in 0 .. len(x.problems) { check_str(c, `problems[{i}]`, x.problems[i], v_item(ps, i)) } }
+    if x.bad != "" { check_fail(c, `answers: {x.bad}`) }
+    if x.gAt * 3 != len(x.ground) { check_fail(c, `ground: asked {x.gAt} of {len(x.ground) / 3}`) }
+    if x.nAt != len(x.near) { check_fail(c, `edgesNear: asked {x.nAt} of {len(x.near)}`) }
+    if x.sw.deps.bad != "" { check_fail(c, `stubs: {x.sw.deps.bad}`) }
+  }
+  return check_report(c)
+}

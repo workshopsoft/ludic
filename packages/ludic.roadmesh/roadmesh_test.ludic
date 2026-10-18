@@ -15,6 +15,8 @@ program RoadmeshTest {
   import "test/junction_test.ludic"
   import "test/trig_tab.ludic"
   bind JsMath { sin: fn tt_sin, cos: fn tt_cos, tan: fn tt_tan, atan2: fn tt_atan2 }
+  import "test/sidewalk_test.ludic"
+  import "test/roadStructures_test.ludic"
 
   function base_name(path: string) -> string {
     var a = 0
@@ -42,6 +44,8 @@ program RoadmeshTest {
     if m == "junction" { return test_junction(recs) }
     if m == "corners" { return test_corners(recs) }
     if m == "junctionSurface" { return test_junctionSurface(recs) }
+    if m == "sidewalk" { return test_sidewalk(recs) }
+    if m == "roadStructures" { return test_roadStructures(recs) }
     print(`roadmesh_test: no test for the module {m}`)
     return 0
   }
