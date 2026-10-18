@@ -100,6 +100,23 @@ program StreamLeakTest {
     expect(grew == long(0))
   }
 
+  # (a level's upload needs a device; the in-game drive is its proof: docs/review/mvp/seatunnel in the game. Here: the records it refills)
+  test "the terrain draw makes every patch slot's mesh, model and primitive once, with the draw: a change of level makes none" (render3d_st: mut Render3dState) {
+    let pattern = shore(render3d_st)
+    let tm = tmap_new(pattern, 64.0, 64, 3, 1, -96.0, -32.0, -10.0, 10.0, 0.0, 200.0)
+    tmap_patches(tm, 128)
+    let td = tmd_new(render3d_st, tm, 400.0)
+    for i in 0 .. len(td.patches) {
+      let p = td.patches[i]
+      expect(p.model != null and p.mesh != null and len(p.model.prims) == 1 and p.model.prims[0].mesh == p.mesh)
+      expect(not p.held and p.lod == -1)
+      expect(p.model.prims[0].fac != td.fac)
+    }
+    tmd_free(render3d_st, td)
+    expect_eq(td.frees, 0)
+    expect(td.patches[0].model == null and td.patches[0].mesh == null)
+  }
+
   test "the instance arena's lists, given room for its ranges once, never grow as 64 ranges churn and fragment for 2000 frames" {
     let a = kar_new(100000, 3)
     kar_reserve(a, 64)
