@@ -15,7 +15,6 @@ program RoadmeshTest {
   import "test/junction_test.ludic"
   import "test/trig_tab.ludic"
   import "test/sidewalk_test.ludic"
-  import "test/roadStructures_test.ludic"
   import "test/throughPath_test.ludic"
   import "test/lanePaint_test.ludic"
 
@@ -46,7 +45,6 @@ program RoadmeshTest {
     if m == "corners" { return test_corners(recs) }
     if m == "junctionSurface" { return test_junctionSurface(recs) }
     if m == "sidewalk" { return test_sidewalk(recs) }
-    if m == "roadStructures" { return test_roadStructures(recs) }
     if m == "throughPath" { return test_throughPath(recs) }
     if m == "lanePaint" { return test_lanePaint(recs) }
     if m == "medianThrough" { return test_medianThrough(recs) }

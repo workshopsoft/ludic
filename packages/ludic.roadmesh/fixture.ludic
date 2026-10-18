@@ -26,6 +26,7 @@ export property Val {
   arr: []Val = null       # an array's items, an object's values
   keys: []string = null   # an object's keys
   nums: []double = null   # f64s, or pts as x, z pairs
+  bytes: []byte = null    # tag 10 (the job's): raw bytes
 }
 
 export property Rec {
@@ -84,6 +85,12 @@ export function read_val(r: VReader) -> Val {
     v.nums = doubles(n)
     for i in 0 .. n { v.nums[i] = vr_d(r) }
   }
+  if t == 10 {
+    let n = vr_i(r)
+    v.bytes = buffer(max(n, 1))
+    for i in 0 .. n { v.bytes[i] = r.b[r.at + i] }
+    r.at = r.at + n
+  }
   if t == T_OBJ {
     let n = vr_i(r)
     v.arr = new []Val
@@ -94,6 +101,16 @@ export function read_val(r: VReader) -> Val {
     }
   }
   return v
+}
+
+# a file of one tagged value after a magic and a version (the bake's job): null when it cannot be read
+export function read_val_file(path: string, magic: int) -> Val {
+  let r = new VReader
+  r.b = Fs.read_bytes(path)
+  if r.b == null or len(r.b) < 9 { return null }
+  if vr_i(r) != magic { return null }
+  if vr_i(r) != 1 { return null }
+  return read_val(r)
 }
 
 # a fixture file's records (null when it cannot be read)

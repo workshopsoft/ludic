@@ -1,0 +1,1098 @@
+# roadmesh.ludic - game-editor packages/core/src/world/roadMesh.ts buildRoadMesh, the full bake (a skirt depth set: what the per-chunk
+# bake builds): every edge's strips between its setbacks (carriageway or steps, medians, tram bed, parking, curb, planting, walk,
+# their skirts), every node's surface (plaza, turning circle, dead end's cap, junction with its corners' bands and skirts, a barrier
+# carried through), the crossings and their painted stripes, the structures, the lane paint. The plain bake's slopes, block sides
+# and embankments are not here (the studio's per-chunk bake never draws them). The same triangles in the same order.
+
+export property MeshOpt {
+  uv: double = 4.0
+  lift: double = 0.02
+  skirt: double = 0.5
+  below: double = 0.3
+  medians: bool = false       # opt.medians given
+  barrierKinds: []string = null
+  barrierH: double = 0.9
+  planted: Val = null         # opt.medians.planted (undefined: null)
+  areas: Val = null
+  markings: bool = false
+  lanePaint: LPOptions = null # null: none (its chunk already set to the bake's)
+  chunk: double = 0.0         # 0: none
+  structures: Val = null      # StructureOptions (null: none)
+  matSkirt: string = "skirt"
+  matStructure: string = "structure"
+  matMarking: string = "marking"
+  starRings: double = 0.0
+  hasStarRings: bool = false
+}
+
+export property RoadMesh {
+  b: Builder = null
+  problems: []string = null
+  crossings: []Crossing = null
+  st: StMeta = null
+  lp: LPMeta = null
+  barriers: int = -1          # barrier medians carried through (-1: none asked)
+  sw: Sw = null
+  pw: PaintWorld = null
+}
+
+
+# ---- what a build's closures read -----------------------------------------------------------------------------------------------
+property Mk {
+  b: Builder = null
+  sw: Sw = null
+  w: RWorld = null
+  o: MeshOpt = null
+  full: bool = true
+  structured: bool = false
+  problems: []string = null
+  pw: PaintWorld = null
+  barriers: int = 0
+}
+property NodeCtx {
+  sw: Sw = null
+  n: NetNode = null
+}
+function node_yf(c: NodeCtx, x: double, z: double) -> double { return sw_node_y(c.sw, c.n, x, z) }
+function node_y_of(c: Sw, ni: int, x: double, z: double) -> double { return sw_node_y(c, c.net.nodes[ni], x, z) }
+
+function b_quad_up(b: Builder, m: string, ax: double, ay: double, az: double, bx: double, by: double, bz: double, cx: double, cy: double, cz: double, dx: double, dy: double, dz: double, u0: double, v0: double, u1: double, v1: double, u2: double, v2: double, u3: double, v3: double) -> void {
+  b_quad(b, m, ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, u0, v0, u1, v1, u2, v2, u3, v3, UP_YES, 0.0, 0.0, 0.0)
+}
+# a quad with uvs (0,0) (1,0) (1,1) (0,1), facing `out`
+function b_quad_out(b: Builder, m: string, ax: double, ay: double, az: double, bx: double, by: double, bz: double, cx: double, cy: double, cz: double, dx: double, dy: double, dz: double, ox: double, oy: double, oz: double) -> void {
+  b_quad(b, m, ax, ay, az, bx, by, bz, cx, cy, cz, dx, dy, dz, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, UP_VEC, ox, oy, oz)
+}
+
+# the skirt under the rail `top` (heights topY), facing out(i) at each point: outs is 3 numbers a point, or 3 numbers for all
+function skirt(k: Mk, top: []double, topY: []double, outs: []double) -> void {
+  let b = k.b
+  let m = k.o.matSkirt
+  b_slot(b, m, "skirt")
+  let n = len(top) / 2
+  let bottom = doubles(n)
+  for i in 0 .. n {
+    var g = NAN
+    if b.level == 0 { g = ground_y(k.w.ground, top[i * 2], top[i * 2 + 1]) }
+    if g != g { bottom[i] = topY[i] - k.o.skirt } else { bottom[i] = jmin(topY[i] - k.o.skirt, g - k.o.below) }
+  }
+  let one = len(outs) == 3
+  for i in 0 .. n - 1 {
+    let px = top[i * 2]
+    let pz = top[i * 2 + 1]
+    let qx = top[i * 2 + 2]
+    let qz = top[i * 2 + 3]
+    if hypot2(px - qx, pz - qz) < 0.0001 { continue }
+    let o = isel(one, 0, i * 3)
+    b_quad_out(b, m, px, topY[i], pz, qx, topY[i + 1], qz, qx, bottom[i + 1], qz, px, bottom[i], pz, outs[o], outs[o + 1], outs[o + 2])
+  }
+}
+function v3(x: double, y: double, z: double) -> []double {
+  let o = doubles(3)
+  o[0] = x
+  o[1] = y
+  o[2] = z
+  return o
+}
+
+# a material's slots, the road's last (the first slot a material is given is its slot)
+function slots(b: Builder, m: Mats) -> void {
+  b_slot(b, m.curb, "curb")
+  b_slot(b, m.walk, "walk")
+  b_slot(b, m.plant, "plant")
+  b_slot(b, m.park, "park")
+  b_slot(b, m.tram, "tram")
+  b_slot(b, m.road, "road")
+}
+
+# Offsets fields by code: 0 road, 1 park, 2 gutter, 3 curb, 4 plant, 5 walk, 6 median
+function off_pick(o: Offsets, c: int) -> double {
+  if c == 0 { return o.road }
+  if c == 1 { return o.park }
+  if c == 2 { return o.gutter }
+  if c == 3 { return o.curb }
+  if c == 4 { return o.plant }
+  if c == 5 { return o.walk }
+  return o.median
+}
+function rail_of_es(es: EdgeStations, c: int, side: int) -> []double {
+  let out = new []double
+  let sd = double(side)
+  for i in 0 .. len(es.st) {
+    let p = es_at(es, i, sd * off_pick(side_off(es, i, side), c))
+    pts_push(out, p[0], p[1])
+  }
+  return out
+}
+function ys_of(es: EdgeStations, lift: double, extra: double) -> []double {
+  let out = doubles(len(es.st))
+  for i in 0 .. len(es.st) { out[i] = (es.st[i].y + lift) + extra }
+  return out
+}
+
+# ---- a flight's cheek (the steps' own skirt) ------------------------------------------------------------------------------------
+property Cheek {
+  k: Mk = null
+  on: bool = false
+}
+function cheek(c: Cheek, px: double, pz: double, qx: double, qz: double, top: double, bottom: double, ox: double, oy: double, oz: double) -> void {
+  if not c.on { return }
+  let k = c.k
+  let b = k.b
+  b_slot(b, k.o.matSkirt, "skirt")
+  let lp = cheek_low(k, px, pz, bottom)
+  let lq = cheek_low(k, qx, qz, bottom)
+  b_quad_out(b, k.o.matSkirt, px, top, pz, qx, top, qz, qx, lq, qz, px, lp, pz, ox, oy, oz)
+}
+function cheek_low(k: Mk, x: double, z: double, bottom: double) -> double {
+  var g = NAN
+  if k.b.level == 0 { g = ground_y(k.w.ground, x, z) }
+  if g != g { return bottom - k.o.skirt }
+  return jmin(bottom - k.o.skirt, g - k.o.below)
+}
+
+# stairs: steps along an edge that follow its line (roadMesh.ts stairs)
+function stairs_pt(es: EdgeStations, d: double, side: int) -> []double {
+  let st = es.st
+  let sAbs = st[0].s + d
+  var i = 0
+  while i + 2 < len(st) and st[i + 1].s < sAbs { i += 1 }
+  let ln = st[i + 1].s - st[i].s
+  var t: double = 0.0
+  if not (ln < 0.000000001) { t = jmax(0.0, jmin(1.0, (sAbs - st[i].s) / ln)) }
+  let sd = double(side)
+  let a = es_at(es, i, sd * side_off(es, i, side).walk)
+  let c = es_at(es, i + 1, sd * side_off(es, i + 1, side).walk)
+  return d_pair(a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t)
+}
+function stairs_side(es: EdgeStations, d0: double, d1: double, sd: int) -> []double {
+  let st = es.st
+  let last = len(st) - 1
+  let out = stairs_pt(es, d0, sd)
+  for i in 1 .. last {
+    let d = st[i].s - st[0].s
+    if d > d0 + 0.000001 and d < d1 - 0.000001 {
+      let p = es_at(es, i, double(sd) * side_off(es, i, sd).walk)
+      pts_push(out, p[0], p[1])
+    }
+  }
+  let e = stairs_pt(es, d1, sd)
+  pts_push(out, e[0], e[1])
+  return out
+}
+function stairs(b: Builder, es: EdgeStations, riser: double, mat: string, lift: double, ch: Cheek, run: double) -> void {
+  let st = es.st
+  let last = len(st) - 1
+  let y0 = st[0].y
+  let dy = st[last].y - y0
+  let nd = jround(dabs(dy) / riser)
+  if nd < 1.0 {
+    let L = new []double
+    let R = new []double
+    let ys = doubles(len(st))
+    for i in 0 .. len(st) {
+      let p = es_at(es, i, -es.left[i].walk)
+      pts_push(L, p[0], p[1])
+      let q = es_at(es, i, es.right[i].walk)
+      pts_push(R, q[0], q[1])
+      ys[i] = st[i].y + lift
+    }
+    b_strip(b, mat, L, ys, R, ys, true)
+    return
+  }
+  let n = nd
+  let h = dy / n
+  let total = st[last].s - st[0].s
+  let f = doubles(len(st))
+  let q = doubles(len(st))
+  for i in 0 .. len(st) {
+    if i == 0 {
+      f[i] = 0.0
+      q[i] = 0.0
+    } else if i == last {
+      f[i] = n
+      q[i] = n
+    } else {
+      f[i] = (st[i].y - y0) / h
+      q[i] = jround(f[i])
+    }
+  }
+  let sD = new []double
+  let sFrom = new []double
+  let sTo = new []double
+  for i in 0 .. last {
+    var kk = q[i]
+    while kk != q[i + 1] {
+      let next = kk + jsign(q[i + 1] - kk)
+      let half = (kk + next) / 2.0
+      let df = f[i + 1] - f[i]
+      var t: double = 0.5
+      if not (dabs(df) < 0.000000000001) { t = jmax(0.0, jmin(1.0, (half - f[i]) / df)) }
+      push(sD, st[i].s - st[0].s + t * (st[i + 1].s - st[i].s))
+      push(sFrom, kk)
+      push(sTo, next)
+      kk = next
+    }
+  }
+  let m = len(sD)
+  let md = double(m)
+  var gap = total / (md + 1.0)
+  if run > 0.0 and total >= (md + 1.0) * run { gap = run }
+  for k in 0 .. m {
+    if k == 0 { sD[k] = jmax(sD[k], gap / 2.0) } else { sD[k] = jmax(sD[k], sD[k - 1] + gap) }
+  }
+  var k2 = m - 1
+  while k2 >= 0 {
+    if k2 == m - 1 { sD[k2] = jmin(sD[k2], total - gap / 2.0) } else { sD[k2] = jmin(sD[k2], sD[k2 + 1] - gap) }
+    k2 -= 1
+  }
+  let bounds = new []double
+  push(bounds, ZERO_D)
+  for k in 0 .. m { push(bounds, sD[k]) }
+  push(bounds, total)
+  for k in 0 .. m + 1 {
+    var level: double = 0.0
+    if k > 0 { level = sTo[k - 1] }
+    let yk = y0 + h * level + lift
+    let L = stairs_side(es, bounds[k], bounds[k + 1], -1)
+    let R = stairs_side(es, bounds[k], bounds[k + 1], 1)
+    let ly = doubles(len(L) / 2)
+    for z in 0 .. len(ly) { ly[z] = yk }
+    let ry = doubles(len(R) / 2)
+    for z in 0 .. len(ry) { ry[z] = yk }
+    b_strip(b, mat, L, ly, R, ry, true)
+    if k == 0 { continue }
+    let yb = y0 + h * sFrom[k - 1] + lift
+    let ahead = stairs_pt(es, jmin(total, bounds[k] + 0.1), 1)
+    let behind = stairs_pt(es, jmax(0.0, bounds[k] - 0.1), 1)
+    let up = dsel(yk > yb, 1.0, -1.0)
+    b_quad_out(b, mat, L[0], yb, L[1], R[0], yb, R[1], R[0], yk, R[1], L[0], yk, L[1], up * (behind[0] - ahead[0]), 0.0, up * (behind[1] - ahead[1]))
+  }
+  # each tread's sides, facing out of the flight, down past the lower of it and its neighbours
+  for k in 0 .. m + 1 {
+    var level: double = 0.0
+    if k > 0 { level = sTo[k - 1] }
+    let yk = y0 + h * level + lift
+    var lowY = yk
+    if k > 0 { lowY = jmin(lowY, y0 + h * sFrom[k - 1] + lift) }
+    if k < m { lowY = jmin(lowY, y0 + h * sTo[k] + lift) }
+    for pass in 0 .. 2 {
+      let sd = isel(pass == 0, 1, -1)
+      let E = stairs_side(es, bounds[k], bounds[k + 1], sd)
+      let O = stairs_side(es, bounds[k], bounds[k + 1], -sd)
+      let ne = len(E) / 2
+      let no = len(O) / 2
+      for i in 0 .. ne - 1 {
+        let px = E[i * 2]
+        let pz = E[i * 2 + 1]
+        let rx = E[i * 2 + 2]
+        let rz = E[i * 2 + 3]
+        let oi = min(i, no - 1)
+        let ox = O[oi * 2]
+        let oz = O[oi * 2 + 1]
+        let nrx = rz - pz
+        let nrz = -(rx - px)
+        let out = dsel(nrx * (px - ox) + nrz * (pz - oz) >= 0.0, 1.0, -1.0)
+        cheek(ch, px, pz, rx, rz, yk, lowY, out * nrx, 0.0, out * nrz)
+      }
+    }
+  }
+}
+
+# Math.min(...lows) over up to three values in order: V8's Math.min (NaN wins, -0 below 0)
+# (jmin is V8's rule)
+
+# whether a fine distance lies inside a crossing's strip (where a median is cut)
+function cut_at(sw: Sw, idx: int, s: double) -> bool {
+  let l = sw.w.laid[idx]
+  if l == null { return false }
+  let cs = sw.w.cs[idx]
+  if cs == null { return false }
+  for c in 0 .. len(cs) { if dabs(s / l.scale - cs[c].s) <= sw.w.dims.width / 2.0 + 0.000001 { return true } }
+  return false
+}
+
+function median_piece(b: Builder, es: EdgeStations, i: int, li0: double, li1: double, mi0: double, mi1: double, lift: double, h: double, topMat: string, faceMat: string) -> void {
+  let l0 = es_at(es, i, -li0)
+  let l1 = es_at(es, i + 1, -li1)
+  let r0 = es_at(es, i, mi0)
+  let r1 = es_at(es, i + 1, mi1)
+  let y0 = es.st[i].y + lift
+  let y1 = es.st[i + 1].y + lift
+  b_quad(b, topMat, l0[0], y0 + h, l0[1], l1[0], y1 + h, l1[1], r1[0], y1 + h, r1[1], r0[0], y0 + h, r0[1], 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, UP_YES, 0.0, 0.0, 0.0)
+  b_quad_out(b, faceMat, l0[0], y0, l0[1], l1[0], y1, l1[1], l1[0], y1 + h, l1[1], l0[0], y0 + h, l0[1], l0[0] - r0[0], 0.0, l0[1] - r0[1])
+  b_quad_out(b, faceMat, r0[0], y0, r0[1], r1[0], y1, r1[1], r1[0], y1 + h, r1[1], r0[0], y0 + h, r0[1], r0[0] - l0[0], 0.0, r0[1] - l0[1])
+}
+
+# ---- the strips along an edge ---------------------------------------------------------------------------------------------------
+function edge_strips(k: Mk, idx: int) -> void {
+  let b = k.b
+  let sw = k.sw
+  let o = k.o
+  let l = k.w.laid[idx]
+  let e = l.edge
+  let es = sw_stations_i(sw, idx)
+  if es == null { return }
+  b.level = level_code(e.level)
+  let deck = k.structured and e.level == "structure"
+  let tube = k.structured and e.level == "tunnel"
+  let st = es.st
+  let ns = len(st)
+  let sec = e.section
+  slots(b, sec.mat)
+  let lift = sw.lift
+  let curbH = sec.curbH
+  let raised = curbH > 0.001
+  let ch = new Cheek
+  ch.k = k
+  ch.on = not (deck or tube or not (o.skirt > 0.0))
+  if sec.steps > 0.0 {
+    var mat = sec.mat.road
+    if sec.left.walk + sec.right.walk > 0.01 { mat = sec.mat.walk }
+    var run: double = 0.0
+    if sec.hasMaxGrade and sec.maxGrade > 0.0 { run = sec.steps / sec.maxGrade }
+    stairs(b, es, sec.steps, mat, lift, ch, run)
+  } else if not (k.full and o.medians and sec.median > 0.01) or flush_median(k.pw.edges[idx], o.planted, o.areas) {
+    b_strip(b, sec.mat.road, rail_of_es(es, 0, -1), ys_of(es, lift, 0.0), rail_of_es(es, 0, 1), ys_of(es, lift, 0.0), true)
+  } else {
+    var barrier = false
+    var pkind = ""
+    if e.prof != null { pkind = e.prof.kind }
+    if e.profile != "" { for q in 0 .. len(o.barrierKinds) { if o.barrierKinds[q] == pkind { barrier = true } } }
+    let h = dsel(barrier, o.barrierH, curbH)
+    var top = sec.mat.plant
+    var face = sec.mat.curb
+    if barrier {
+      top = o.matStructure
+      face = o.matStructure
+      b_slot(b, o.matStructure, "structure")
+    }
+    let cut = new []bool
+    for i in 0 .. ns { push(cut, cut_at(sw, idx, st[i].s)) }
+    for i in 0 .. ns - 1 {
+      let li0 = es.left[i].median
+      let li1 = es.left[i + 1].median
+      let mi0 = es.right[i].median
+      let mi1 = es.right[i + 1].median
+      if cut[i] and cut[i + 1] {
+        med_quad(b, es, sec.mat.road, i, -es.left[i].road, -es.left[i + 1].road, es.right[i].road, es.right[i + 1].road, lift)
+        continue
+      }
+      med_quad(b, es, sec.mat.road, i, -es.left[i].road, -es.left[i + 1].road, -li0, -li1, lift)
+      med_quad(b, es, sec.mat.road, i, mi0, mi1, es.right[i].road, es.right[i + 1].road, lift)
+      median_piece(b, es, i, li0, li1, mi0, mi1, lift, h, top, face)
+      if i == 0 or (cut[i - 1] and cut[i]) { end_face(b, es, face, i, li0, mi0, -1.0, lift, h) }
+      if i + 2 == ns or (cut[i + 1] and cut[i + 2]) { end_face(b, es, face, i + 1, li1, mi1, 1.0, lift, h) }
+    }
+  }
+  if sec.tram > 0.0 {
+    let A = new []double
+    let B = new []double
+    for i in 0 .. ns {
+      let p = es_at(es, i, -sec.tram / 2.0)
+      pts_push(A, p[0], p[1])
+      let q = es_at(es, i, sec.tram / 2.0)
+      pts_push(B, q[0], q[1])
+    }
+    b_strip(b, sec.mat.tram, A, ys_of(es, lift, 0.015), B, ys_of(es, lift, 0.015), true)
+  }
+  for pass in 0 .. 2 {
+    let side = isel(pass == 0, 1, -1)
+    if sec.steps > 0.0 { continue }
+    var parkW = sec.left.park
+    var plantW = sec.left.plant
+    var walkW = sec.left.walk
+    if side == 1 {
+      parkW = sec.right.park
+      plantW = sec.right.plant
+      walkW = sec.right.walk
+    }
+    if parkW > 0.01 { b_strip(b, sec.mat.park, rail_of_es(es, 0, side), ys_of(es, lift, 0.0), rail_of_es(es, 1, side), ys_of(es, lift, 0.0), true) }
+    b_strip(b, sec.mat.road, rail_of_es(es, 1, side), ys_of(es, lift, 0.0), rail_of_es(es, 2, side), ys_of(es, lift, 0.0), true)
+    if raised and sec.curbW > 0.001 {
+      band(k, es, idx, side, sec.mat.curb, 2, 3, raised)
+      let a = rail_of_es(es, 2, side)
+      for i in 0 .. ns - 1 {
+        let h0 = lv_at(sw, idx, raised, i, side, es.right[i].gutter, es.left[i].gutter)
+        let h1 = lv_at(sw, idx, raised, i + 1, side, es.right[i + 1].gutter, es.left[i + 1].gutter)
+        let y0 = st[i].y + lift
+        let y1 = st[i + 1].y + lift
+        let sd = double(side)
+        b_quad_out(b, sec.mat.curb, a[i * 2], y0, a[i * 2 + 1], a[i * 2 + 2], y1, a[i * 2 + 3], a[i * 2 + 2], y1 + h1, a[i * 2 + 3], a[i * 2], y0 + h0, a[i * 2 + 1], -sd * st[i].nx, 0.0, -sd * st[i].nz)
+      }
+    }
+    if plantW > 0.01 { band(k, es, idx, side, sec.mat.plant, 3, 4, raised) }
+    if walkW > 0.01 { band(k, es, idx, side, sec.mat.walk, 4, 5, raised) }
+    if not deck and not tube {
+      let top = rail_of_es(es, 5, side)
+      let ty = doubles(ns)
+      for i in 0 .. ns { ty[i] = (st[i].y + lift) + lv_at(sw, idx, raised, i, side, es.right[i].walk, es.left[i].walk) }
+      let outs = doubles(ns * 3)
+      let sd = double(side)
+      for i in 0 .. ns {
+        outs[i * 3] = sd * st[i].nx
+        outs[i * 3 + 1] = 0.0
+        outs[i * 3 + 2] = sd * st[i].nz
+      }
+      skirt(k, top, ty, outs)
+    }
+  }
+  # both ends of the strip: a skirt across its whole section, under its own surface heights
+  if not deck and not tube and o.skirt > 0.0 {
+    for pass in 0 .. 2 {
+      let kk = isel(pass == 0, 0, ns - 1)
+      let sgn = dsel(pass == 0, -1.0, 1.0)
+      let dir = st[min(ns - 1, kk + 1)]
+      let back = st[max(0, kk - 1)]
+      let outv = v3(sgn * (dir.px - back.px), 0.0, sgn * (dir.pz - back.pz))
+      let pts = new []double
+      let ys = new []double
+      let yr = st[kk].y + lift
+      if sec.steps > 0.0 {
+        end_put(es, pts, ys, kk, -1, es.left[kk].walk, yr, 0.0)
+        end_put(es, pts, ys, kk, 1, es.right[kk].walk, yr, 0.0)
+      } else {
+        let L = es.left[kk]
+        let R = es.right[kk]
+        end_put(es, pts, ys, kk, -1, L.walk, yr, lv_side(sw, idx, raised, kk, -1, L.walk))
+        end_put(es, pts, ys, kk, -1, L.curb, yr, lv_side(sw, idx, raised, kk, -1, L.curb))
+        end_put(es, pts, ys, kk, -1, L.gutter, yr, lv_side(sw, idx, raised, kk, -1, L.gutter))
+        end_put(es, pts, ys, kk, -1, L.gutter, yr, 0.0)
+        end_put(es, pts, ys, kk, 1, R.gutter, yr, 0.0)
+        end_put(es, pts, ys, kk, 1, R.gutter, yr, lv_side(sw, idx, raised, kk, 1, R.gutter))
+        end_put(es, pts, ys, kk, 1, R.curb, yr, lv_side(sw, idx, raised, kk, 1, R.curb))
+        end_put(es, pts, ys, kk, 1, R.walk, yr, lv_side(sw, idx, raised, kk, 1, R.walk))
+      }
+      skirt(k, pts, ys, outv)
+    }
+  }
+}
+function end_put(es: EdgeStations, pts: []double, ys: []double, k: int, side: int, d: double, yr: double, h: double) -> void {
+  let p = es_at(es, k, double(side) * d)
+  pts_push(pts, p[0], p[1])
+  push(ys, yr + h)
+}
+# the kerb level at station i on `side`, d out (0 when the road has no raised kerb): lv(i, side, d)
+function lv_side(sw: Sw, idx: int, raised: bool, i: int, side: int, d: double) -> double {
+  if raised { return sw_lvl_at(sw, idx, i, side, d) }
+  return 0.0
+}
+function lv_at(sw: Sw, idx: int, raised: bool, i: int, side: int, dr: double, dl: double) -> double {
+  return lv_side(sw, idx, raised, i, side, dsel(side == 1, dr, dl))
+}
+function med_quad(b: Builder, es: EdgeStations, m: string, i: int, d00: double, d01: double, d10: double, d11: double, lift: double) -> void {
+  let p0 = es_at(es, i, d00)
+  let p1 = es_at(es, i + 1, d01)
+  let q1 = es_at(es, i + 1, d11)
+  let q0 = es_at(es, i, d10)
+  let y0 = es.st[i].y + lift
+  let y1 = es.st[i + 1].y + lift
+  b_quad(b, m, p0[0], y0, p0[1], p1[0], y1, p1[1], q1[0], y1, q1[1], q0[0], y0, q0[1], 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, UP_YES, 0.0, 0.0, 0.0)
+}
+function end_face(b: Builder, es: EdgeStations, face: string, k: int, li: double, mi: double, sgn: double, lift: double, h: double) -> void {
+  let st = es.st
+  let a0 = es_at(es, k, -li)
+  let a1 = es_at(es, k, mi)
+  let nb = st[min(len(st) - 1, k + 1)]
+  let pb = st[max(0, k - 1)]
+  let y = st[k].y + lift
+  b_quad_out(b, face, a0[0], y, a0[1], a1[0], y, a1[1], a1[0], y + h, a1[1], a0[0], y + h, a0[1], sgn * (nb.px - pb.px), 0.0, sgn * (nb.pz - pb.pz))
+}
+# a band of the full bake: heights from the kerb level function, split where a dropped kerb's ramp ends
+function band(k: Mk, es: EdgeStations, idx: int, side: int, m: string, ca: int, cb: int, raised: bool) -> void {
+  let sw = k.sw
+  let ns = len(es.st)
+  let ra = doubles(ns)
+  let rb = doubles(ns)
+  let rr = doubles(ns)
+  for i in 0 .. ns {
+    let o = side_off(es, i, side)
+    ra[i] = off_pick(o, ca)
+    rb[i] = off_pick(o, cb)
+  }
+  for i in 0 .. ns {
+    let end = sw_ramp_at(sw, idx, i, side)
+    if end != end { rr[i] = ra[i] } else { rr[i] = jmin(rb[i], jmax(ra[i], end)) }
+  }
+  let sd = double(side)
+  let pa = band_pts(es, ra, sd)
+  let pr = band_pts(es, rr, sd)
+  let pb = band_pts(es, rb, sd)
+  let ha = band_hs(sw, es, idx, raised, side, ra)
+  let hr = band_hs(sw, es, idx, raised, side, rr)
+  let hb = band_hs(sw, es, idx, raised, side, rb)
+  b_strip(k.b, m, pa, ha, pr, hr, true)
+  b_strip(k.b, m, pr, hr, pb, hb, true)
+}
+function band_pts(es: EdgeStations, r: []double, sd: double) -> []double {
+  let out = new []double
+  for i in 0 .. len(r) {
+    let p = es_at(es, i, sd * r[i])
+    pts_push(out, p[0], p[1])
+  }
+  return out
+}
+function band_hs(sw: Sw, es: EdgeStations, idx: int, raised: bool, side: int, r: []double) -> []double {
+  let out = doubles(len(r))
+  for i in 0 .. len(r) { out[i] = (es.st[i].y + sw.lift) + lv_side(sw, idx, raised, i, side, r[i]) }
+  return out
+}
+
+# ---- the nodes ------------------------------------------------------------------------------------------------------------------
+function flat_of(c: NodeCtx, pts: []double, extra: double) -> []double {
+  let n = len(pts) / 2
+  let out = doubles(n)
+  for i in 0 .. n { out[i] = node_yf(c, pts[i * 2], pts[i * 2 + 1]) + extra }
+  return out
+}
+function flat_lvl(c: NodeCtx, pts: []double) -> []double {
+  let n = len(pts) / 2
+  let out = doubles(n)
+  for i in 0 .. n { out[i] = node_yf(c, pts[i * 2], pts[i * 2 + 1]) + sw_node_lvl(c.sw, c.n, pts[i * 2], pts[i * 2 + 1]) }
+  return out
+}
+function outs_of(n: NetNode, pts: []double) -> []double {
+  let m = len(pts) / 2
+  let o = doubles(m * 3)
+  for i in 0 .. m {
+    o[i * 3] = pts[i * 2] - n.x
+    o[i * 3 + 1] = 0.0
+    o[i * 3 + 2] = pts[i * 2 + 1] - n.z
+  }
+  return o
+}
+function node_skirt(k: Mk, c: NodeCtx, ring: []double) -> void {
+  if k.full { skirt(k, ring, flat_lvl(c, ring), outs_of(c.n, ring)) }
+}
+function kerb_face(k: Mk, c: NodeCtx, m: string, r: []double) -> void {
+  let n = c.n
+  let nr = len(r) / 2
+  for i in 0 .. nr - 1 {
+    let px = r[i * 2]
+    let pz = r[i * 2 + 1]
+    let qx = r[i * 2 + 2]
+    let qz = r[i * 2 + 3]
+    let yp = node_yf(c, px, pz)
+    let yq = node_yf(c, qx, qz)
+    b_quad_out(k.b, m, px, yp, pz, qx, yq, qz, qx, node_yf(c, qx, qz) + sw_node_lvl(c.sw, n, qx, qz), qz, px, node_yf(c, px, pz) + sw_node_lvl(c.sw, n, px, pz), pz, n.x - px, 0.0, n.z - pz)
+  }
+}
+function concat_rev(a: []double, b: []double) -> []double {
+  let out = pts_copy(a)
+  pts_append(out, pts_reversed(b))
+  return out
+}
+
+# where a junction's surface is tiled from: its node when that lies inside the ring, else the ring's centre of area
+function star_centre(ring: []double, nx: double, nz: double) -> []double {
+  var inside = false
+  let n = len(ring) / 2
+  var k = n - 1
+  for i in 0 .. n {
+    let ax = ring[i * 2]
+    let az = ring[i * 2 + 1]
+    let bx = ring[k * 2]
+    let bz = ring[k * 2 + 1]
+    if (az > nz) != (bz > nz) and nx < ((bx - ax) * (nz - az)) / (bz - az) + ax { inside = not inside }
+    k = i
+  }
+  var near = INF
+  for i in 0 .. n {
+    let ax = ring[i * 2]
+    let az = ring[i * 2 + 1]
+    let j = (i + 1) % n
+    let dx = ring[j * 2] - ax
+    let dz = ring[j * 2 + 1] - az
+    let l2 = dx * dx + dz * dz
+    var t: double = 0.0
+    if not (l2 < 0.000000000001) { t = jmax(0.0, jmin(1.0, ((nx - ax) * dx + (nz - az) * dz) / l2)) }
+    near = jmin(near, hypot2(nx - ax - dx * t, nz - az - dz * t))
+  }
+  if inside and near > 0.5 { return d_pair(nx, nz) }
+  var A: double = 0.0
+  var cx: double = 0.0
+  var cz: double = 0.0
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    let px = ring[i * 2]
+    let pz = ring[i * 2 + 1]
+    let qx = ring[j * 2]
+    let qz = ring[j * 2 + 1]
+    let c = px * qz - qx * pz
+    A += c
+    cx += (px + qx) * c
+    cz += (pz + qz) * c
+  }
+  if dabs(A) < 0.000000001 { return d_pair(nx, nz) }
+  return d_pair(cx / (3.0 * A), cz / (3.0 * A))
+}
+
+# the way into a strip from its end at a node (the end station less its neighbour), or the reverse
+function into_of(sw: Sw, e: JEnd, toward: bool) -> []double {
+  let es = sw_stations_i(sw, e.edge.idx)
+  if es == null or len(es.st) < 2 { return v3(0.0, 0.0, 0.0) }
+  let q = es.st[isel(e.out, 0, len(es.st) - 1)]
+  let nb = es.st[isel(e.out, 1, len(es.st) - 2)]
+  if toward { return v3(nb.px - q.px, 0.0, nb.pz - q.pz) }
+  return v3(q.px - nb.px, 0.0, q.pz - nb.pz)
+}
+
+function node_mesh(k: Mk, n: NetNode, only: Dict) -> void {
+  let b = k.b
+  let sw = k.sw
+  let o = k.o
+  if len(n.edges) == 0 { return }
+  if only != null {
+    var any = false
+    for q in 0 .. len(n.edges) { if Dict.has(only, n.edges[q].key) { any = true } }
+    if not any { return }
+  }
+  let j = sw_junction(sw, n)
+  if len(j.ends) == 0 { return }
+  for q in 0 .. len(j.notes) { push(k.problems, j.notes[q]) }
+  var hasGround = false
+  for q in 0 .. len(j.ends) { if j.ends[q].edge.level == "ground" { hasGround = true } }
+  b.level = dsel_i(hasGround, 0, level_code(j.ends[0].edge.level))
+  let c = new NodeCtx
+  c.sw = sw
+  c.n = n
+  let sec0 = j.ends[0].edge.section
+  var surfE = j.ends[0]
+  for q in 0 .. len(j.ends) {
+    if not walkway_of(j.ends[q].edge.prof) {
+      surfE = j.ends[q]
+      break
+    }
+  }
+  let surfMat = surfE.edge.section.mat.road
+  slots(b, sec0.mat)
+  if j.kind == "plaza" {
+    let ring = disc_vertices(n.x, n.z, j.radius)
+    b_poly(b, sec0.mat.walk, ring, flat_of(c, ring, 0.0))
+    if k.full {
+      let closed = pts_copy(ring)
+      pts_push(closed, ring[0], ring[1])
+      skirt(k, closed, flat_of(c, closed, 0.0), outs_of(n, closed))
+    }
+    return
+  }
+  var rails: [][]double = null
+  if k.full { rails = sw_bulb(sw, n) }
+  if j.kind == "bulb" and rails != null {
+    var K: double = 4.0
+    if o.hasStarRings { K = o.starRings }
+    b_star(b, sec0.mat.road, rails[0], fn node_yf, c, n.x, n.z, jmax(2.0, K))
+    if sec0.curbH > 0.001 and sec0.curbW > 0.001 {
+      b_strip(b, sec0.mat.curb, rails[0], flat_lvl(c, rails[0]), rails[1], flat_lvl(c, rails[1]), true)
+      kerb_face(k, c, sec0.mat.curb, rails[0])
+    }
+    if thick(concat_rev(rails[1], rails[2])) { b_strip(b, sec0.mat.plant, rails[1], flat_lvl(c, rails[1]), rails[2], flat_lvl(c, rails[2]), true) }
+    if thick(concat_rev(rails[2], rails[3])) { b_strip(b, sec0.mat.walk, rails[2], flat_lvl(c, rails[2]), rails[3], flat_lvl(c, rails[3]), true) }
+    node_skirt(k, c, rails[3])
+    return
+  }
+  if j.kind == "bulb" {
+    let R = j.radius
+    let e0 = j.ends[0]
+    let ring = disc_vertices(n.x, n.z, R)
+    b_poly(b, sec0.mat.road, ring, flat_of(c, ring, 0.0))
+    let gutter = jmax(e0.r.gutter, e0.l.gutter)
+    let cw = sec0.curbW
+    let rc = bulb_arc(n.x, n.z, e0.ux, e0.uz, R, gutter, R)
+    let rc2 = bulb_arc(n.x, n.z, e0.ux, e0.uz, R, gutter, R + cw)
+    let rw = bulb_arc(n.x, n.z, e0.ux, e0.uz, R, gutter, R + cw + jmax(e0.r.walk - e0.r.curb, e0.l.walk - e0.l.curb))
+    b_strip(b, sec0.mat.curb, rc, flat_lvl(c, rc), rc2, flat_lvl(c, rc2), true)
+    b_strip(b, sec0.mat.walk, rc2, flat_lvl(c, rc2), rw, flat_lvl(c, rw), true)
+    if k.full {
+      if sec0.curbH > 0.001 { kerb_face(k, c, sec0.mat.curb, rc) }
+      node_skirt(k, c, rw)
+    }
+    return
+  }
+  if j.kind == "dead" {
+    let e = j.ends[0]
+    let es = sw_stations_i(sw, e.edge.idx)
+    var ie = 0
+    if es != null { ie = isel(e.out, 0, len(es.st) - 1) }
+    var hasNb = false
+    var nbx: double = 0.0
+    var nbz: double = 0.0
+    if es != null and len(es.st) >= 2 {
+      let nb = es.st[isel(e.out, 1, len(es.st) - 2)]
+      hasNb = true
+      nbx = nb.px
+      nbz = nb.pz
+    }
+    let sR = dsel(e.out, 1.0, -1.0)
+    var fnx = e.nx
+    var fnz = e.nz
+    var fux = e.ux
+    var fuz = e.uz
+    if es != null and hasNb {
+      let q = es.st[ie]
+      var dl = hypot2(nbx - q.px, nbz - q.pz)
+      if dl == 0.0 or dl != dl { dl = 1.0 }
+      fux = (nbx - q.px) / dl
+      fuz = (nbz - q.pz) / dl
+    }
+    let caps = new [][]double
+    for lv in 0 .. 4 {
+      let r = lv_of(e.r, lv)
+      let l = lv_of(e.l, lv)
+      if es != null and hasNb {
+        let pr = es_at(es, ie, sR * r)
+        let pl = es_at(es, ie, -sR * l)
+        let ends = doubles(4)
+        ends[0] = pr[0]
+        ends[1] = pr[1]
+        ends[2] = pl[0]
+        ends[3] = pl[1]
+        push(caps, dead_cap(n.x, n.z, fnx, fnz, fux, fuz, r, l, ends))
+      } else {
+        push(caps, dead_cap(n.x, n.z, e.nx, e.nz, e.ux, e.uz, r, l, null))
+      }
+    }
+    b_poly(b, sec0.mat.road, caps[0], flat_of(c, caps[0], 0.0))
+    if sec0.curbH > 0.001 and sec0.curbW > 0.001 {
+      b_strip(b, sec0.mat.curb, caps[0], flat_lvl(c, caps[0]), caps[1], flat_lvl(c, caps[1]), true)
+      if k.full { kerb_face(k, c, sec0.mat.curb, caps[0]) }
+    }
+    if e.r.plant - e.r.curb > 0.01 or e.l.plant - e.l.curb > 0.01 { b_strip(b, sec0.mat.plant, caps[1], flat_lvl(c, caps[1]), caps[2], flat_lvl(c, caps[2]), true) }
+    if e.r.walk - e.r.plant > 0.01 or e.l.walk - e.l.plant > 0.01 { b_strip(b, sec0.mat.walk, caps[2], flat_lvl(c, caps[2]), caps[3], flat_lvl(c, caps[3]), true) }
+    node_skirt(k, c, caps[3])
+    return
+  }
+  # a junction: the surface inside the gutter rails, and the curb, planting and sidewalk bands round its corners
+  let surface = junction_ring(j)
+  let sn = len(surface) / 2
+  if sn >= 3 and k.full {
+    if o.hasStarRings {
+      let sc = star_centre(surface, n.x, n.z)
+      b_star(b, surfMat, surface, fn node_yf, c, sc[0], sc[1], o.starRings)
+    } else {
+      b_fine(b, surfMat, surface, fn node_yf, c, 2.0)
+    }
+  } else if sn >= 3 {
+    var K: double = 3.0
+    if o.hasStarRings { K = o.starRings }
+    b_star(b, surfMat, surface, fn node_yf, c, n.x, n.z, K)
+  } else if not k.full or len(j.ends) > 2 {
+    push(k.problems, `node {n.key}: no surface`)
+  }
+  for ci in 0 .. len(j.corners) {
+    let cr = j.corners[ci]
+    let r0 = cr.rails[0].p
+    let r1 = cr.rails[1].p
+    let r2 = cr.rails[2].p
+    let r3 = cr.rails[3].p
+    let sa = j.ends[cr.i].edge.section
+    let sb = j.ends[cr.j].edge.section
+    if k.full and cr.crushedI != null {
+      skirt(k, r0, flat_of(c, r0, 0.0), outs_of(n, r0))
+      for pass in 0 .. 2 {
+        var across = cr.crushedI
+        var end = cr.i
+        if pass == 1 {
+          across = cr.crushedJ
+          end = cr.j
+        }
+        let into = into_of(sw, j.ends[end], false)
+        let na = len(across) / 2
+        let ys = doubles(na)
+        for q in 0 .. na {
+          let px = across[q * 2]
+          let pz = across[q * 2 + 1]
+          if q > 0 { ys[q] = node_yf(c, px, pz) + sw_node_lvl(sw, n, px, pz) } else { ys[q] = node_yf(c, px, pz) + 0.0 }
+        }
+        skirt(k, across, ys, into)
+      }
+      continue
+    }
+    if jmax(sa.curbH, sb.curbH) > 0.001 and jmax(sa.curbW, sb.curbW) > 0.001 and len(r0) / 2 > 1 {
+      if k.full { b_ribbon(b, sec0.mat.curb, r0, flat_lvl(c, r0), r1, flat_lvl(c, r1)) } else {
+        let bandp = concat_rev(r0, r1)
+        b_poly(b, sec0.mat.curb, bandp, flat_lvl(c, bandp))
+      }
+      let n0 = len(r0) / 2
+      let n1 = len(r1) / 2
+      for i in 0 .. n0 - 1 {
+        let px = r0[i * 2]
+        let pz = r0[i * 2 + 1]
+        let qx = r0[i * 2 + 2]
+        let qz = r0[i * 2 + 3]
+        let i1 = min(i, n1 - 1)
+        let o1x = r1[i1 * 2]
+        let o1z = r1[i1 * 2 + 1]
+        let i2 = min(i + 1, n1 - 1)
+        let o2x = r1[i2 * 2]
+        let o2z = r1[i2 * 2 + 1]
+        if dabs((qx - px) * (o2z - pz) - (qz - pz) * (o2x - px)) + dabs((o2x - px) * (o1z - pz) - (o2z - pz) * (o1x - px)) < 0.000001 { continue }
+        b_quad_out(b, sec0.mat.curb, px, node_yf(c, px, pz), pz, qx, node_yf(c, qx, qz), qz, qx, node_yf(c, qx, qz) + sw_node_lvl(sw, n, qx, qz), qz, px, node_yf(c, px, pz) + sw_node_lvl(sw, n, px, pz), pz, px - o1x, 0.0, pz - o1z)
+      }
+    }
+    let pl = concat_rev(r1, r2)
+    if thick(pl) {
+      if k.full { b_ribbon(b, sec0.mat.plant, r1, flat_lvl(c, r1), r2, flat_lvl(c, r2)) } else { b_poly(b, sec0.mat.plant, pl, flat_lvl(c, pl)) }
+    }
+    let wk = concat_rev(r2, r3)
+    if thick(wk) {
+      if k.full { b_ribbon(b, sec0.mat.walk, r2, flat_lvl(c, r2), r3, flat_lvl(c, r3)) } else { b_poly(b, sec0.mat.walk, wk, flat_lvl(c, wk)) }
+    }
+    if k.full {
+      node_skirt(k, c, r3)
+      for pass in 0 .. 2 {
+        var own = j.ends[cr.i].r
+        var other = j.ends[cr.j].l
+        var endE = j.ends[cr.i]
+        if pass == 1 {
+          own = j.ends[cr.j].l
+          other = j.ends[cr.i].r
+          endE = j.ends[cr.j]
+        }
+        if not (own.walk - own.gutter <= 0.000001 and other.walk - other.gutter > 0.000001) { continue }
+        let across = new []double
+        for q in 0 .. len(cr.rails) {
+          let p = cr.rails[q].p
+          let at = isel(pass == 1, len(p) / 2 - 1, 0)
+          pts_push(across, p[at * 2], p[at * 2 + 1])
+        }
+        skirt(k, across, flat_lvl(c, across), into_of(sw, endE, true))
+      }
+    }
+  }
+  if k.full and o.medians {
+    let t = through_barrier(b, k.pw, n.idx, o.barrierKinds, o.matStructure, o.barrierH, fn node_y_of, sw)
+    if t != null { k.barriers += 1 }
+  }
+}
+function dsel_i(c: bool, a: int, b: int) -> int {
+  if c { return a }
+  return b
+}
+
+# ---- crossings: their painted stripes -------------------------------------------------------------------------------------------
+function nearest_station(st: []Station, s: double) -> int {
+  var best = 0
+  for i in 1 .. len(st) { if dabs(st[i].s - s) < dabs(st[best].s - s) { best = i } }
+  return best
+}
+function frame_at_sd(es: EdgeStations, s: double, d: double) -> []double {
+  let st = es.st
+  var i = 0
+  while i + 2 < len(st) and st[i + 1].s < s { i += 1 }
+  let t = jmax(0.0, jmin(1.0, (s - st[i].s) / jmax(st[i + 1].s - st[i].s, 0.000000001)))
+  let p = es_at(es, i, d)
+  let q = es_at(es, i + 1, d)
+  return d_pair(p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t)
+}
+# the road's triangles under a crossing's strip: 9 numbers each (A, B, C as x, y, z)
+function paint_crossing(b: Builder, mat: string, es: EdgeStations, sw: Sw, idx: int, sMid: double, lift: double, chunk: double) -> void {
+  let l = sw.w.laid[idx]
+  let hw = (sw.w.dims.width / 2.0) * l.scale
+  let s0 = sMid - hw + 0.1
+  let s1 = sMid + hw - 0.1
+  let st = es.st
+  let tris = new []double
+  for i in 0 .. len(st) - 1 {
+    if st[i + 1].s < s0 - 0.000001 or st[i].s > s1 + 0.000001 { continue }
+    let y0 = st[i].y + lift
+    let y1 = st[i + 1].y + lift
+    let a = es_at(es, i, -es.left[i].gutter)
+    let bb = es_at(es, i + 1, -es.left[i + 1].gutter)
+    let c = es_at(es, i + 1, es.right[i + 1].gutter)
+    let d = es_at(es, i, es.right[i].gutter)
+    push9(tris, a[0], y0, a[1], bb[0], y1, bb[1], c[0], y1, c[1])
+    push9(tris, a[0], y0, a[1], c[0], y1, c[1], d[0], y0, d[1])
+  }
+  let i0 = nearest_station(st, sMid)
+  let across0 = -es.left[i0].gutter + 0.1
+  let across1 = es.right[i0].gutter - 0.1
+  let total = across1 - across0
+  let n = int(jmax(1.0, Math.floor((total + 0.5) / 1.0)))
+  let start = across0 + (total - (double(n) - 0.5)) / 2.0
+  for k in 0 .. n {
+    let d0 = start + double(k)
+    let d1 = d0 + 0.5
+    let poly = new []double
+    pts_append(poly, frame_at_sd(es, s0, d0))
+    pts_append(poly, frame_at_sd(es, s1, d0))
+    pts_append(poly, frame_at_sd(es, s1, d1))
+    pts_append(poly, frame_at_sd(es, s0, d1))
+    drape(b, mat, off_chunk_lines(poly, chunk), tris, 0.02)
+  }
+}
+function push9(t: []double, a: double, b: double, c: double, d: double, e: double, f: double, g: double, h: double, i: double) -> void {
+  push(t, a)
+  push(t, b)
+  push(t, c)
+  push(t, d)
+  push(t, e)
+  push(t, f)
+  push(t, g)
+  push(t, h)
+  push(t, i)
+}
+
+# a convex plan polygon laid onto triangles (9 numbers each): cut at each one's edges, every piece `up` metres above its plane
+export function drape(b: Builder, mat: string, poly: []double, tris: []double, up: double) -> void {
+  let U = b.uv
+  for t in 0 .. len(tris) / 9 {
+    let o = t * 9
+    var piece = pts_copy(poly)
+    let t0x = tris[o]
+    let t0z = tris[o + 2]
+    let t1x = tris[o + 3]
+    let t1z = tris[o + 5]
+    let t2x = tris[o + 6]
+    let t2z = tris[o + 8]
+    let ccw = (t1x - t0x) * (t2z - t0z) - (t1z - t0z) * (t2x - t0x) > 0.0
+    let sg = dsel(ccw, 1.0, -1.0)
+    var k = 0
+    while k < 3 and len(piece) > 0 {
+      var ax = t0x
+      var az = t0z
+      var cx = t1x
+      var cz = t1z
+      if k == 1 {
+        ax = t1x
+        az = t1z
+        cx = t2x
+        cz = t2z
+      } else if k == 2 {
+        ax = t2x
+        az = t2z
+        cx = t0x
+        cz = t0z
+      }
+      let out = new []double
+      let np = len(piece) / 2
+      for i in 0 .. np {
+        let j = (i + 1) % np
+        let px = piece[i * 2]
+        let pz = piece[i * 2 + 1]
+        let qx = piece[j * 2]
+        let qz = piece[j * 2 + 1]
+        let sp = ((cx - ax) * (pz - az) - (cz - az) * (px - ax)) * sg
+        let sq = ((cx - ax) * (qz - az) - (cz - az) * (qx - ax)) * sg
+        if sp >= 0.0 { pts_push(out, px, pz) }
+        if (sp >= 0.0) != (sq >= 0.0) {
+          let f = sp / (sp - sq)
+          pts_push(out, px + (qx - px) * f, pz + (qz - pz) * f)
+        }
+      }
+      piece = out
+      k += 1
+    }
+    if len(piece) / 2 < 3 { continue }
+    let Ax = tris[o]
+    let Ay = tris[o + 1]
+    let Az = tris[o + 2]
+    let Bx = tris[o + 3]
+    let By = tris[o + 4]
+    let Bz = tris[o + 5]
+    let Cx = tris[o + 6]
+    let Cy = tris[o + 7]
+    let Cz = tris[o + 8]
+    let det = (Bx - Ax) * (Cz - Az) - (Cx - Ax) * (Bz - Az)
+    if dabs(det) < 0.000000000001 { continue }
+    let np = len(piece) / 2
+    for i in 1 .. np - 1 {
+      let px = piece[0]
+      let pz = piece[1]
+      let qx = piece[i * 2]
+      let qz = piece[i * 2 + 1]
+      let rx = piece[i * 2 + 2]
+      let rz = piece[i * 2 + 3]
+      b_tri(b, mat, px, drape_y(Ax, Ay, Az, Bx, By, Bz, Cx, Cy, Cz, det, up, px, pz), pz, qx, drape_y(Ax, Ay, Az, Bx, By, Bz, Cx, Cy, Cz, det, up, qx, qz), qz, rx, drape_y(Ax, Ay, Az, Bx, By, Bz, Cx, Cy, Cz, det, up, rx, rz), rz, px / U, pz / U, qx / U, qz / U, rx / U, rz / U, UP_YES, 0.0, 0.0, 0.0)
+    }
+  }
+}
+function drape_y(Ax: double, Ay: double, Az: double, Bx: double, By: double, Bz: double, Cx: double, Cy: double, Cz: double, det: double, up: double, px: double, pz: double) -> double {
+  let u = ((px - Ax) * (Cz - Az) - (Cx - Ax) * (pz - Az)) / det
+  let v = ((Bx - Ax) * (pz - Az) - (px - Ax) * (Bz - Az)) / det
+  return Ay + (By - Ay) * u + (Cy - Ay) * v + up
+}
+
+# ---- the whole build ------------------------------------------------------------------------------------------------------------
+# a build of the full bake over sw (its sidewalk), only these edges (a Dict of keys, null: all); the paint world pw reads sw
+export function build_road_mesh(sw: Sw, o: MeshOpt, only: Dict) -> RoadMesh {
+  let w = sw.w
+  let net = w.net
+  let b = builder_new(o.uv)
+  let k = new Mk
+  k.b = b
+  k.sw = sw
+  k.w = w
+  k.o = o
+  k.full = o.skirt > 0.0
+  k.structured = k.full and o.structures != null
+  k.problems = new []string
+  k.pw = paint_world_of(sw)
+  k.barriers = 0
+  let mesh = new RoadMesh
+  mesh.b = b
+  mesh.sw = sw
+  mesh.pw = k.pw
+  mesh.problems = k.problems
+  # ---- the strips along each edge ----
+  for idx in 0 .. len(net.edges) {
+    let l = w.laid[idx]
+    if l == null { continue }
+    if only != null and not Dict.has(only, l.edge.key) { continue }
+    edge_strips(k, idx)
+  }
+  # ---- the nodes ----
+  for ni in 0 .. len(net.nodes) { node_mesh(k, net.nodes[ni], only) }
+  if k.full and o.medians { mesh.barriers = k.barriers }
+  # ---- crossings ----
+  mesh.crossings = new []Crossing
+  if k.full {
+    let count = new []int
+    for i in 0 .. len(net.edges) { push(count, 0) }
+    let xs = new []Crossing
+    for q in 0 .. len(w.crossings) {
+      let plan = w.crossings[q]
+      let es = sw_stations_i(sw, plan.segIdx)
+      let l = w.laid[plan.segIdx]
+      if es == null or l == null { continue }
+      let sFine = plan.s * l.scale
+      count[plan.segIdx] = count[plan.segIdx] + 1
+      let kk = count[plan.segIdx]
+      let st = es.st
+      var i = 0
+      while i + 2 < len(st) and st[i + 1].s < sFine { i += 1 }
+      let t = jmax(0.0, jmin(1.0, (sFine - st[i].s) / jmax(st[i + 1].s - st[i].s, 0.000000001)))
+      let px = st[i].px + (st[i + 1].px - st[i].px) * t
+      let pz = st[i].pz + (st[i + 1].pz - st[i].pz) * t
+      let nx = st[i].nx + (st[i + 1].nx - st[i].nx) * t
+      let nz = st[i].nz + (st[i + 1].nz - st[i].nz) * t
+      var nl = hypot2(nx, nz)
+      if nl == 0.0 or nl != nl { nl = 1.0 }
+      push(xs, crossing_at(l.edge, plan, kk, px, pz, nx / nl, nz / nl, st[i].k + (st[i + 1].k - st[i].k) * t, w.dims.width))
+      if o.markings and (only == null or Dict.has(only, plan.seg)) {
+        b.level = 0
+        b_slot(b, o.matMarking, "marking")
+        paint_crossing(b, o.matMarking, es, sw, plan.segIdx, sFine, sw.lift, o.chunk)
+      }
+    }
+    let keys = new []string
+    for q in 0 .. len(xs) { push(keys, xs[q].key) }
+    let ord = order_by_key(keys)
+    for q in 0 .. len(ord) { push(mesh.crossings, xs[ord[q]]) }
+  }
+  # ---- structures ----
+  if k.structured {
+    let c = st_ctx_world(sw, o.structures, o.matStructure, o.skirt, only, k.problems)
+    build_structures(b, c)
+    mesh.st = c.meta
+  } else {
+    mesh.st = st_ctx_new().meta
+  }
+  # ---- lane paint, on the surface drawn above ----
+  if k.full and o.lanePaint != null {
+    b.level = 0
+    mesh.lp = paint_lanes(b, k.pw, surface_of(b), o.lanePaint, o.matMarking, sw.lift, only, o.planted, o.areas, fn node_y_of, sw)
+  }
+  for i in 0 .. len(b.layers) { b.layers[i].slot = b_slot_of(b, b.layers[i].material) }
+  return mesh
+}

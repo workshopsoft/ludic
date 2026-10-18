@@ -65,6 +65,21 @@ export property JOpt {
   radiiV: []double = null
   armK: []string = null
   armV: []ArmSide = null
+  # the assembled port's arms (sidewalkOf's fineArm): each end's arm along its graded line, by edge idx (null: not graded)
+  armLaid: []EdgeGrade = null
+}
+
+export function jopt_copy(o: JOpt) -> JOpt {
+  let c = new JOpt
+  c.hasFillet = o.hasFillet
+  c.fillet = o.fillet
+  c.strict = o.strict
+  c.radiiK = o.radiiK
+  c.radiiV = o.radiiV
+  c.armK = o.armK
+  c.armV = o.armV
+  c.armLaid = o.armLaid
+  return c
 }
 
 function jo_profile_radius(o: JOpt, e: NetEdge) -> double {
@@ -88,6 +103,13 @@ export function jo_arm_key(e: JEnd) -> string {
 }
 # (opt.arms ?? edgeArm)(e)
 export function jo_arm(o: JOpt, e: JEnd) -> ArmSide {
+  if o.armLaid != null {
+    let l = o.armLaid[e.edge.idx]
+    if l == null { return null }
+    let s = doubles(len(l.s))
+    for i in 0 .. len(l.s) { s[i] = l.s[i] / l.scale }
+    return arm_of(l.line, s, e.out)
+  }
   if o.armK == null { return edge_arm(e) }
   let k = jo_arm_key(e)
   for i in 0 .. len(o.armK) { if o.armK[i] == k { return o.armV[i] } }

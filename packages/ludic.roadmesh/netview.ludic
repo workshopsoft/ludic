@@ -17,6 +17,20 @@ export property NetEdge {
   # the profile's name ("" for none) and its row (null when the network has none of that name)
   profile: string = ""
   prof: RoadProfile = null
+  # the rest of network.ts NetEdge the bake reads (the assembled port)
+  from: string = ""
+  to: string = ""
+  fromIdx: int = -1
+  toIdx: int = -1
+  level: string = "ground"
+  lanesFwd: double = 0.0
+  lanesBack: double = 0.0
+  laneWidth: double = 0.0
+  left: double = 0.0
+  right: double = 0.0
+  outerLeft: double = 0.0
+  outerRight: double = 0.0
+  missing: bool = false
 }
 
 # an end of an edge at a node, in Network.around's order (by heading)
@@ -35,11 +49,20 @@ export property NetNode {
   radius: double = 0.0
   # Network.around(node.key)
   around: []NetArm = null
+  # its place in the network's nodes, and its edges in the order the node lists them (NetNode.edges)
+  idx: int = 0
+  edges: []NetEdge = null
 }
 
 export property Net {
   edges: []NetEdge = null
   nodes: []NetNode = null
+  # the assembled port: the def's forward side, the profiles, the structure rows, and the keys' places
+  forward: string = "right"
+  profiles: []RoadProfile = null
+  structures: []Val = null
+  edgeByKey: Dict = null
+  nodeByKey: Dict = null
 }
 
 # roadGrade.ts EdgeGrade: the finely sampled centre line of an edge, the metres along it and the graded height of each sample

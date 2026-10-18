@@ -1,0 +1,578 @@
+# bake.ludic - the per-chunk road bake (game-editor mcp roadBake.ts roads_bake_chunks, from its `fullBake` to its files) on a job
+# the studio wrote (mcp roadNative.ts): the network, its graded lines, the natural ground, the options. Three builds (LOD0 `mesh`,
+# LOD1 `coarse`, LOD2 `far`), cut into chunks and cells, written as the studio writes them: <cx>_<cz>.glb, .col.glb, .crossings.json,
+# .lanes.bin, lod1/<kx>_<kz>.glb, lod2/<kx>_<kz>.glb and light_zones.json, and an answer (answer.json) with what roads_bake_chunks
+# reports. The same bytes as the TypeScript bake.
+
+# ---- the job -------------------------------------------------------------------------------------------------------------------
+function side_of_val(v: Val) -> SectionSide {
+  let s = new SectionSide
+  s.carriage = v_getn(v, "carriage", 0.0)
+  s.shoulder = v_getn(v, "shoulder", 0.0)
+  s.park = v_getn(v, "park", 0.0)
+  s.plant = v_getn(v, "plant", 0.0)
+  s.walk = v_getn(v, "walk", 0.0)
+  return s
+}
+export function section_of_val(v: Val) -> Section {
+  let s = new Section
+  s.left = side_of_val(v_get(v, "left"))
+  s.right = side_of_val(v_get(v, "right"))
+  s.median = v_getn(v, "median", 0.0)
+  s.gutter = v_getn(v, "gutter", 0.0)
+  s.curbW = v_getn(v, "curbW", 0.0)
+  s.curbH = v_getn(v, "curbH", 0.0)
+  s.tram = v_getn(v, "tram", 0.0)
+  s.steps = v_getn(v, "steps", 0.0)
+  let mg = v_get(v, "maxGrade")
+  if mg != null and mg.tag == T_NUM {
+    s.hasMaxGrade = true
+    s.maxGrade = mg.num
+  }
+  s.mat = mats_of_val(v_get(v, "mat"))
+  s.profile = v_gets(v, "profile", "")
+  return s
+}
+
+export function net_of_job(j: Val) -> Net {
+  let net = new Net
+  net.forward = v_gets(j, "forward", "right")
+  net.profiles = new []RoadProfile
+  let pd = Dict.new()
+  let pv = v_get(j, "profiles")
+  for i in 0 .. v_len(pv) {
+    let p = profile_of_val(v_item(pv, i))
+    Dict.set(pd, p.key, len(net.profiles))
+    push(net.profiles, p)
+  }
+  net.edges = new []NetEdge
+  net.edgeByKey = Dict.new()
+  let ev = v_get(j, "edges")
+  for i in 0 .. v_len(ev) {
+    let v = v_item(ev, i)
+    let e = new NetEdge
+    e.key = v_gets(v, "key", "")
+    e.idx = i
+    e.from = v_gets(v, "from", "")
+    e.to = v_gets(v, "to", "")
+    e.line = v_pts(v_get(v, "line"))
+    e.s = v_nums(v_get(v, "s"))
+    e.length = v_getn(v, "length", 0.0)
+    e.lanesFwd = v_getn(v, "lanesFwd", 0.0)
+    e.lanesBack = v_getn(v, "lanesBack", 0.0)
+    e.laneWidth = v_getn(v, "laneWidth", 0.0)
+    e.profile = v_gets(v, "profile", "")
+    e.taper = v_getn(v, "taper", 1.0)
+    e.level = v_gets(v, "level", "ground")
+    e.left = v_getn(v, "left", 0.0)
+    e.right = v_getn(v, "right", 0.0)
+    e.outerLeft = v_getn(v, "outerLeft", 0.0)
+    e.outerRight = v_getn(v, "outerRight", 0.0)
+    e.missing = v_bool(v_get(v, "missing"))
+    e.section = section_of_val(v_get(v, "section"))
+    if e.profile != "" {
+      let pi = Dict.get_or(pd, e.profile, -1)
+      if pi >= 0 { e.prof = net.profiles[pi] }
+    }
+    Dict.set(net.edgeByKey, e.key, i)
+    push(net.edges, e)
+  }
+  net.nodes = new []NetNode
+  net.nodeByKey = Dict.new()
+  let nv = v_get(j, "nodes")
+  for i in 0 .. v_len(nv) {
+    let v = v_item(nv, i)
+    let n = new NetNode
+    n.key = v_gets(v, "key", "")
+    n.idx = i
+    n.x = v_getn(v, "x", 0.0)
+    n.z = v_getn(v, "z", 0.0)
+    n.kind = v_gets(v, "kind", "")
+    n.radius = v_getn(v, "radius", 0.0)
+    n.edges = new []NetEdge
+    let es = v_nums(v_get(v, "edges"))
+    for k in 0 .. len(es) { push(n.edges, net.edges[int(es[k])]) }
+    n.around = new []NetArm
+    let ar = v_nums(v_get(v, "around"))
+    for k in 0 .. len(ar) / 2 {
+      let a = new NetArm
+      a.edge = net.edges[int(ar[k * 2])]
+      a.out = ar[k * 2 + 1] != 0.0
+      push(n.around, a)
+    }
+    Dict.set(net.nodeByKey, n.key, i)
+    push(net.nodes, n)
+  }
+  for i in 0 .. len(net.edges) {
+    let e = net.edges[i]
+    e.fromIdx = Dict.get_or(net.nodeByKey, e.from, -1)
+    e.toIdx = Dict.get_or(net.nodeByKey, e.to, -1)
+  }
+  net.structures = new []Val
+  let sv = v_get(j, "structures")
+  for i in 0 .. v_len(sv) { push(net.structures, v_item(sv, i)) }
+  return net
+}
+
+export function grades_of_job(j: Val, net: Net) -> []EdgeGrade {
+  let out = new []EdgeGrade
+  let gv = v_get(j, "grades")
+  for i in 0 .. len(net.edges) {
+    let v = v_item(gv, i)
+    if v_undef(v) {
+      push(out, null)
+      continue
+    }
+    let g = new EdgeGrade
+    g.edge = net.edges[i]
+    g.line = v_pts(v_get(v, "line"))
+    g.s = v_nums(v_get(v, "s"))
+    g.y = v_nums(v_get(v, "y"))
+    g.len = v_getn(v, "len", 0.0)
+    g.scale = v_getn(v, "scale", 1.0)
+    g.maxGrade = v_getn(v, "maxGrade", 0.0)
+    push(out, g)
+  }
+  return out
+}
+
+export function ground_of_job(j: Val) -> Ground {
+  let g = new Ground
+  let v = v_get(j, "ground")
+  let kind = v_gets(v, "kind", "none")
+  if kind == "tiles" {
+    g.kind = 1
+    g.tileSize = v_getn(v, "tileSize", 0.0)
+    g.originX = v_getn(v, "originX", 0.0)
+    g.originZ = v_getn(v, "originZ", 0.0)
+    g.hmin = v_getn(v, "min", 0.0)
+    g.hmax = v_getn(v, "max", 0.0)
+    g.hoff = v_getn(v, "offset", 0.0)
+    g.res = int(v_getn(v, "res", 0.0))
+    g.tiles = Dict.new()
+    let t = v_nums(v_get(v, "tiles"))
+    for k in 0 .. len(t) / 3 { Dict.set(g.tiles, `{int(t[k * 3])},{int(t[k * 3 + 1])}`, int(t[k * 3 + 2])) }
+    g.data = new [][]byte
+    let dv = v_get(v, "data")
+    for k in 0 .. v_len(dv) { push(g.data, v_item(dv, k).bytes) }
+  } else if kind == "pts" {
+    g.kind = 2
+    g.ptsK = Dict.new()
+    g.ptsY = new []double
+    let p = v_nums(v_get(v, "pts"))
+    for k in 0 .. len(p) / 3 {
+      Dict.set(g.ptsK, pt_key(p[k * 3], p[k * 3 + 1]), len(g.ptsY))
+      push(g.ptsY, p[k * 3 + 2])
+    }
+  }
+  return g
+}
+
+export function jopt_of_job(o: Val) -> JOpt {
+  let jo = new JOpt
+  jo.strict = true
+  let r = v_get(o, "radii")
+  if r != null and r.tag == T_OBJ {
+    jo.radiiK = new []string
+    jo.radiiV = new []double
+    for i in 0 .. len(r.keys) {
+      if r.arr[i].tag != T_NUM { continue }
+      push(jo.radiiK, r.keys[i])
+      push(jo.radiiV, r.arr[i].num)
+    }
+  }
+  return jo
+}
+
+export function rule_of_job(o: Val) -> CrossingRule {
+  let r = new CrossingRule
+  let c = v_get(o, "crossings")
+  if v_undef(c) { return r }
+  r.has = true
+  let am = v_get(c, "armMouth")
+  if not v_undef(am) { r.minDegree = v_getn(am, "minDegree", 0.0) }
+  let mb = v_get(c, "midBlock")
+  if not v_undef(mb) {
+    r.hasMid = true
+    r.every = v_getn(mb, "every", 0.0)
+    r.midProfiles = new []string
+    let ps = v_get(mb, "profiles")
+    for i in 0 .. v_len(ps) { push(r.midProfiles, v_item(ps, i).str) }
+  }
+  return r
+}
+export function dims_of_job(o: Val) -> Dims {
+  let d = new Dims
+  let c = v_get(o, "crossings")
+  if v_undef(c) { return d }
+  d.width = v_getn(c, "width", 3.0)
+  d.gap = v_getn(c, "gap", 0.5)
+  d.ramp = v_getn(c, "ramp", 1.2)
+  d.flare = v_getn(c, "flare", 1.0)
+  d.lip = v_getn(c, "lip", 0.02)
+  return d
+}
+
+# a build's options: LOD0 (`mesh`), LOD1 (`coarse`), LOD2 (`far`)
+export function mesh_opt_of(o: Val, chunk: double, which: int) -> MeshOpt {
+  let m = new MeshOpt
+  m.uv = v_getn(o, "uvMetres", 4.0)
+  m.lift = v_getn(o, "lift", 0.02)
+  m.skirt = v_getn(o, "skirt", 0.0)
+  m.below = v_getn(o, "skirtBelowGround", 0.3)
+  let md = v_get(o, "medians")
+  m.medians = not v_undef(md)
+  m.barrierKinds = new []string
+  let bk = v_get(md, "barrierKinds")
+  if v_undef(bk) { push(m.barrierKinds, "highway") } else { for i in 0 .. v_len(bk) { push(m.barrierKinds, v_item(bk, i).str) } }
+  m.barrierH = v_getn(md, "barrierHeight", 0.9)
+  let pl = v_get(md, "planted")
+  if not v_undef(pl) { m.planted = pl }
+  let ar = v_get(o, "areas")
+  if not v_undef(ar) { m.areas = ar }
+  m.markings = v_bool(v_get(o, "markings"))
+  let st = v_get(o, "structures")
+  if not v_undef(st) { m.structures = st }
+  let mt = v_get(o, "materials")
+  m.matSkirt = v_gets(mt, "skirt", "skirt")
+  m.matStructure = v_gets(mt, "structure", "structure")
+  m.matMarking = v_gets(mt, "marking", "marking")
+  let lp = v_get(o, "lanePaint")
+  if which == 2 {
+    m.markings = false
+    m.chunk = 0.0
+    m.hasStarRings = true
+    m.starRings = 1.0
+  } else {
+    m.chunk = chunk
+    if not v_undef(lp) {
+      m.lanePaint = lp_options_of(lp)
+      if chunk != 0.0 { m.lanePaint.chunk = chunk }
+    }
+  }
+  return m
+}
+
+# ---- the bake ------------------------------------------------------------------------------------------------------------------
+export property Bake {
+  job: Val = null
+  dir: string = ""            # where the files go (a scratch folder the studio copies from)
+  w: RWorld = null
+  chunk: double = 256.0
+  lod: double = 1024.0
+  only: Dict = null           # the box's edges (null: every edge)
+  hasBox: bool = false
+  k0x: int = 0
+  k1x: int = 0
+  k0z: int = 0
+  k1z: int = 0
+  unit: double = 1024.0
+  files: []string = null      # written, relative to dir
+  bytes: long = 0
+  problems: []string = null
+  answer: BOut = null
+}
+
+function box_chunk(b: Bake, cx: int, cz: int) -> bool {
+  if not b.hasBox { return true }
+  let per = int(jround(b.unit / b.chunk))
+  let kx = floor_div_i(cx, per)
+  let kz = floor_div_i(cz, per)
+  return kx >= b.k0x and kx <= b.k1x and kz >= b.k0z and kz <= b.k1z
+}
+
+function hash_of(b: Bake, name: string) -> string {
+  let h = v_get(b.job, "hash")
+  return text_hash(`{v_gets(h, "base", "")}|{v_gets(h, "param", "")}|{name}`)
+}
+function extras_base(b: Bake) -> JV {
+  let x = v_get(b.job, "extras")
+  let o = jv_obj()
+  jv_put(o, "world", jv_str(v_gets(x, "world", "")))
+  jv_put(o, "row", jv_str(v_gets(x, "row", "")))
+  jv_put(o, "network", jv_str(v_gets(x, "network", "")))
+  return o
+}
+function pair(a: int, c: int) -> JV {
+  let p = jv_arr()
+  jv_push(p, jv_num(double(a)))
+  jv_push(p, jv_num(double(c)))
+  return p
+}
+function write_file(b: Bake, rel: string, o: BOut) -> void {
+  let path = `{b.dir}/{rel}`
+  var cut = -1
+  for i in 0 .. len(path) { if path[i] == 47 { cut = i } }
+  if cut > 0 { Fs.mkdir(path[0..cut]) }
+  Fs.write_bytes(path, o.b, o.n)
+  push(b.files, rel)
+  b.bytes = b.bytes + long(o.n)
+}
+function zone_jv(m: MRow) -> JV {
+  let o = jv_obj()
+  for i in 0 .. len(m.nk) { jv_put(o, m.nk[i], jv_num(m.nv[i])) }
+  for i in 0 .. len(m.sk) { jv_put(o, m.sk[i], jv_str(m.sv[i])) }
+  return o
+}
+function zone_n(m: MRow, k: string) -> double {
+  for i in 0 .. len(m.nk) { if m.nk[i] == k { return m.nv[i] } }
+  return NAN
+}
+function crossing_jv(c: Crossing) -> JV {
+  let o = jv_obj()
+  jv_put(o, "key", jv_str(c.key))
+  jv_put(o, "seg", jv_str(c.seg))
+  jv_put(o, "node", jv_str(c.node))
+  jv_put(o, "s", jv_num(c.s))
+  jv_put(o, "x", jv_num(c.x))
+  jv_put(o, "z", jv_num(c.z))
+  jv_put(o, "yaw", jv_num(c.yaw))
+  jv_put(o, "len", jv_num(c.len))
+  jv_put(o, "w", jv_num(c.w))
+  let ends = jv_arr()
+  let r = jv_arr()
+  jv_push(r, jv_num(c.rx))
+  jv_push(r, jv_num(c.rz))
+  let l = jv_arr()
+  jv_push(l, jv_num(c.lx))
+  jv_push(l, jv_num(c.lz))
+  jv_push(ends, r)
+  jv_push(ends, l)
+  jv_put(o, "ends", ends)
+  return o
+}
+
+export function run_bake(b: Bake) -> void {
+  let j = b.job
+  let o = v_get(j, "opt")
+  b.files = new []string
+  b.problems = new []string
+  let net = net_of_job(j)
+  let laid = grades_of_job(j, net)
+  let ground = ground_of_job(j)
+  b.chunk = v_getn(j, "chunk", 256.0)
+  b.lod = v_getn(j, "lod", 1024.0)
+  let ov = v_get(j, "only")
+  if not v_undef(ov) {
+    b.only = Dict.new()
+    for i in 0 .. v_len(ov) { Dict.set(b.only, v_item(ov, i).str, 1) }
+  }
+  let bx = v_get(j, "box")
+  if not v_undef(bx) {
+    let n4 = v_nums(bx)
+    b.hasBox = true
+    b.k0x = int(n4[0])
+    b.k1x = int(n4[1])
+    b.k0z = int(n4[2])
+    b.k1z = int(n4[3])
+    b.unit = n4[4]
+  }
+  let w = world_new(net, laid, jopt_of_job(o), rule_of_job(o), dims_of_job(o), ground)
+  b.w = w
+  let lift = v_getn(o, "lift", 0.02)
+  # LOD0
+  let mo = mesh_opt_of(o, b.chunk, 0)
+  let sw0 = sw_new(w, lift, null)
+  let mesh = build_road_mesh(sw0, mo, b.only)
+  for i in 0 .. len(mesh.problems) { push(b.problems, mesh.problems[i]) }
+  let all0 = chunk_mesh(mesh.b.layers, b.chunk)
+  let chunks = new []MeshChunk
+  for i in 0 .. len(all0) { if box_chunk(b, all0[i].cx, all0[i].cz) { push(chunks, all0[i]) } }
+  # LOD1
+  var cells = new []LodCell
+  if b.lod > 0.0 {
+    let co = mesh_opt_of(o, b.chunk, 1)
+    let thin = new StationThin
+    thin.plan = 0.03
+    thin.y = 0.02
+    thin.max = 24.0
+    let sw1 = sw_new(w, lift, thin)
+    let coarse = build_road_mesh(sw1, co, b.only)
+    cells = lod_cells(coarse.b.layers, chunks, b.chunk, b.lod)
+  }
+  # LOD2
+  var farList = new []MeshChunk
+  let farv = v_get(j, "far")
+  if b.lod > 0.0 and not v_undef(farv) {
+    let fo = mesh_opt_of(o, b.chunk, 2)
+    let thin = new StationThin
+    thin.plan = v_getn(farv, "plan", 0.25)
+    thin.y = v_getn(farv, "y", 0.15)
+    thin.max = v_getn(farv, "max", 64.0)
+    let sw2 = sw_new(w, lift, thin)
+    let far = build_road_mesh(sw2, fo, b.only)
+    farList = far_cells(far.b.layers, cells, b.lod)
+  }
+  # every tunnel's light zones (a box bake asked for light_zones.json): the tunnels alone, as the full bake builds them
+  var zonesAll: []MRow = null
+  if b.hasBox and v_bool(v_get(j, "zonesAll")) {
+    let tubes = Dict.new()
+    var nt = 0
+    for i in 0 .. len(net.edges) {
+      if net.edges[i].level == "tunnel" {
+        Dict.set(tubes, net.edges[i].key, 1)
+        nt += 1
+      }
+    }
+    zonesAll = new []MRow
+    if nt > 0 {
+      let swz = sw_new(w, lift, null)
+      let zb = builder_new(4.0)
+      let c = st_ctx_world(swz, mo.structures, mo.matStructure, mo.skirt, tubes, new []string)
+      build_structures(zb, c)
+      zonesAll = c.meta.lightZones
+    }
+  }
+  # lanes
+  let lanes = chunk_lanes(lane_lines(sw0, b.only, 2.0), b.chunk)
+  let laneKeep = new []LaneChunk
+  for i in 0 .. len(lanes) { if box_chunk(b, lanes[i].cx, lanes[i].cz) { push(laneKeep, lanes[i]) } }
+  let laneD = Dict.new()
+  for i in 0 .. len(laneKeep) { Dict.set(laneD, laneKeep[i].name, i) }
+  # ---- the files ----
+  let tones = not (v_get(j, "tones") != null and v_get(j, "tones").tag == T_FALSE)
+  let lightZones = mesh.st.lightZones
+  let report = jv_arr()
+  let wroteLanes = Dict.new()
+  for ci in 0 .. len(chunks) {
+    let ch = chunks[ci]
+    let name = `{ch.cx}_{ch.cz}`
+    let hash = hash_of(b, name)
+    let lo = double(ch.cx) * b.chunk
+    let lz = double(ch.cz) * b.chunk
+    let zones = jv_arr()
+    for q in 0 .. len(lightZones) {
+      let zx = zone_n(lightZones[q], "x")
+      let zz = zone_n(lightZones[q], "z")
+      if zx >= lo and zx < lo + b.chunk and zz >= lz and zz < lz + b.chunk { jv_push(zones, zone_jv(lightZones[q])) }
+    }
+    let ex = extras_base(b)
+    jv_put(ex, "chunk", pair(ch.cx, ch.cz))
+    jv_put(ex, "size", jv_num(b.chunk))
+    jv_put(ex, "hash", jv_str(hash))
+    if len(zones.items) > 0 { jv_put(ex, "light_zones", zones) }
+    write_file(b, `{name}.glb`, road_glb(ch.layers, ex, tones, true))
+    let exc = extras_base(b)
+    for q in 3 .. len(ex.keys) { jv_put(exc, ex.keys[q], ex.items[q]) }
+    jv_put(exc, "collision", jv_bool(true))
+    write_file(b, `{name}.col.glb`, collision_glb(collision_of(ch), exc, true))
+    let xs = jv_arr()
+    for q in 0 .. len(mesh.crossings) {
+      let x = mesh.crossings[q]
+      if int(Math.floor(x.x / b.chunk)) == ch.cx and int(Math.floor(x.z / b.chunk)) == ch.cz { jv_push(xs, crossing_jv(x)) }
+    }
+    let cj = jv_obj()
+    jv_put(cj, "schema", jv_str("road-crossings.v1"))
+    jv_put(cj, "chunk", pair(ch.cx, ch.cz))
+    jv_put(cj, "size", jv_num(b.chunk))
+    jv_put(cj, "crossings", xs)
+    let co = bout_new(256)
+    json_write(co, cj, 2, 0)
+    bo_u8(co, 10)
+    write_file(b, `{name}.crossings.json`, co)
+    let li = Dict.get_or(laneD, name, -1)
+    var ls = new []LaneLine
+    if li >= 0 { ls = laneKeep[li].lines }
+    write_file(b, `{name}.lanes.bin`, lanes_bin(ls))
+    Dict.set(wroteLanes, name, 1)
+    let r = jv_obj()
+    jv_put(r, "chunk", jv_str(name))
+    jv_put(r, "tris", jv_num(double(ch.tris)))
+    jv_put(r, "materials", jv_num(double(len(ch.layers))))
+    jv_put(r, "crossings", jv_num(double(len(xs.items))))
+    jv_put(r, "lanes", jv_num(double(len(ls))))
+    jv_push(report, r)
+  }
+  for i in 0 .. len(laneKeep) {
+    if Dict.has(wroteLanes, laneKeep[i].name) { continue }
+    write_file(b, `{laneKeep[i].name}.lanes.bin`, lanes_bin(laneKeep[i].lines))
+  }
+  var fileZones = lightZones
+  if b.hasBox {
+    fileZones = zonesAll
+    if fileZones == null { fileZones = new []MRow }
+  }
+  if len(fileZones) > 0 {
+    let lz = extras_base(b)
+    let zo = jv_obj()
+    jv_put(zo, "schema", jv_str("road-light-zones.v1"))
+    for q in 0 .. 3 { jv_put(zo, lz.keys[q], lz.items[q]) }
+    let za = jv_arr()
+    for q in 0 .. len(fileZones) { jv_push(za, zone_jv(fileZones[q])) }
+    jv_put(zo, "zones", za)
+    let zw = bout_new(1024)
+    json_write(zw, zo, 1, 0)
+    bo_u8(zw, 10)
+    write_file(b, "light_zones.json", zw)
+  }
+  let lod1 = jv_arr()
+  for i in 0 .. len(cells) {
+    let c = cells[i]
+    let name = `{c.cx}_{c.cz}`
+    let ex = extras_base(b)
+    jv_put(ex, "lod", jv_num(1.0))
+    jv_put(ex, "layout", jv_num(2.0))
+    jv_put(ex, "cell", pair(c.cx, c.cz))
+    jv_put(ex, "size", jv_num(b.lod))
+    jv_put(ex, "chunk", jv_num(b.chunk))
+    jv_put(ex, "hash", jv_str(hash_of(b, `lod1:2:{name}`)))
+    write_file(b, `lod1/{name}.glb`, lod_cell_glb(c.pieces, ex, "Ludic Studio roads bake (LOD1)", tones, true))
+    let r = jv_obj()
+    jv_put(r, "cell", jv_str(name))
+    jv_put(r, "tris", jv_num(double(c.tris)))
+    jv_put(r, "chunks", jv_num(double(len(c.pieces))))
+    jv_push(lod1, r)
+  }
+  let lod2 = jv_arr()
+  for i in 0 .. len(farList) {
+    let c = farList[i]
+    let name = `{c.cx}_{c.cz}`
+    let ex = extras_base(b)
+    jv_put(ex, "lod", jv_num(2.0))
+    jv_put(ex, "cell", pair(c.cx, c.cz))
+    jv_put(ex, "size", jv_num(b.lod))
+    jv_put(ex, "hash", jv_str(hash_of(b, `lod2:1:{name}`)))
+    let one = new []MeshChunk
+    push(one, c)
+    write_file(b, `lod2/{name}.glb`, lod_cell_glb(one, ex, "Ludic Studio roads bake (LOD1)", tones, true))
+    let r = jv_obj()
+    jv_put(r, "cell", jv_str(name))
+    jv_put(r, "tris", jv_num(double(c.tris)))
+    jv_push(lod2, r)
+  }
+  # ---- the answer ----
+  let a = jv_obj()
+  jv_put(a, "chunks", report)
+  let fl = jv_arr()
+  for i in 0 .. len(b.files) { jv_push(fl, jv_str(b.files[i])) }
+  jv_put(a, "files", fl)
+  jv_put(a, "bytes", jv_num(double(b.bytes)))
+  jv_put(a, "lod1", lod1)
+  jv_put(a, "lod2", lod2)
+  jv_put(a, "crossings", jv_num(double(len(mesh.crossings))))
+  if mesh.lp != null {
+    let p = jv_obj()
+    jv_put(p, "tris", jv_num(double(mesh.lp.tris)))
+    let pc = jv_obj()
+    for i in 0 .. len(mesh.lp.pieceKeys) { jv_put(pc, mesh.lp.pieceKeys[i], jv_num(double(mesh.lp.pieceN[i]))) }
+    jv_put(p, "pieces", pc)
+    jv_put(p, "flush", jv_num(double(len(mesh.lp.flush))))
+    jv_put(p, "planted", jv_num(double(len(mesh.lp.planted))))
+    jv_put(a, "paint", p)
+  }
+  if mesh.barriers > 0 { jv_put(a, "barriers", jv_num(double(mesh.barriers))) }
+  let s = jv_obj()
+  jv_put(s, "decks", jv_num(double(len(mesh.st.decks))))
+  jv_put(s, "piers", jv_num(double(len(mesh.st.piers))))
+  jv_put(s, "abutments", jv_num(double(len(mesh.st.abutments))))
+  jv_put(s, "tubes", jv_num(double(len(mesh.st.tubes))))
+  jv_put(s, "portals", jv_num(double(len(mesh.st.portals))))
+  jv_put(s, "lightZones", jv_num(double(len(mesh.st.lightZones))))
+  jv_put(a, "structures", s)
+  let pr = jv_arr()
+  for i in 0 .. len(b.problems) { jv_push(pr, jv_str(b.problems[i])) }
+  jv_put(a, "problems", pr)
+  jv_put(a, "groundMiss", jv_num(double(ground.miss)))
+  b.answer = bout_new(4096)
+  json_write(b.answer, a, 0, 0)
+}

@@ -64,6 +64,7 @@ export property PaintWorld {
   nknown: []byte = null
   width: double = 0.0         # the crossings' strip width (CrossingDims.width)
   miss: int = 0               # answers asked for that the world does not hold (a fixture's world holds what the studio asked)
+  src: Sw = null              # the assembled port: the native sidewalk answers what is asked (glue.ludic), each once
 }
 
 export function st_px(S: PStations, i: int) -> double { return S.st[i * 7] }
@@ -78,14 +79,17 @@ export function st_at_z(S: PStations, i: int, d: double) -> double { return S.st
 
 export function w_edge_index(w: PaintWorld, key: string) -> int { return Dict.get_or(w.byKey, key, -1) }
 export function w_st(w: PaintWorld, ei: int) -> PStations {
+  if w.src != null and (int(w.known[ei]) & 1) == 0 { pw_fill_st(w, ei) }
   if (int(w.known[ei]) & 1) == 0 { w.miss += 1 }
   return w.st[ei]
 }
 export function w_laid(w: PaintWorld, ei: int) -> PLaid {
+  if w.src != null and (int(w.known[ei]) & 2) == 0 { pw_fill_laid(w, ei) }
   if (int(w.known[ei]) & 2) == 0 { w.miss += 1 }
   return w.laid[ei]
 }
 export function w_cross(w: PaintWorld, ei: int) -> []double {
+  if w.src != null and (int(w.known[ei]) & 4) == 0 { pw_fill_cross(w, ei) }
   if (int(w.known[ei]) & 4) == 0 {
     w.miss += 1
     return doubles(0)
@@ -93,6 +97,7 @@ export function w_cross(w: PaintWorld, ei: int) -> []double {
   return w.cross[ei]
 }
 export function w_junction(w: PaintWorld, ni: int) -> PJunction {
+  if w.src != null and int(w.nknown[ni]) == 0 { pw_fill_junction(w, ni) }
   if int(w.nknown[ni]) == 0 { w.miss += 1 }
   return w.junction[ni]
 }
