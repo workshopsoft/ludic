@@ -122,6 +122,7 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   g.kits = new []KGpuKit
   for i in 0 .. n_kits { push(g.kits, new KGpuKit) }
   g.arena = kar_new(src_cap, 3)
+  kar_reserve(g.arena, max_cells)                    # one range a resident cell: the arena's lists never grow in play
   g.cell_tab = floats(max_cells * 4)
   g.cell_cx = words(max_cells)
   g.cell_cz = words(max_cells)

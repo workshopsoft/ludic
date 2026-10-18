@@ -35,6 +35,25 @@ export function kar_new(cap: int, delay: int) -> KArena {
   return a
 }
 
+# Room for `ranges` ranges handed out at once, made now: the free list never holds more than one range more than that (a range
+# handed out splits at most one free range in two) plus the one kar_insert pushes before it merges, and as many can wait in the
+# hold lists, so a world that streams cells in and out for hours never grows these lists in a frame (the allocation fence)
+@alloc_ok("a world being set up: the arena's lists get their room once")
+export function kar_reserve(a: KArena, ranges: int) -> void {
+  let n = max(ranges, 0) + 2
+  let fa = len(a.free_at)
+  for i in fa .. n {
+    push(a.free_at, 0);  push(a.free_n, 0)
+  }
+  for i in fa .. n {
+    List.pop(a.free_at);  List.pop(a.free_n)
+  }
+  for i in 0 .. n {
+    push(a.hold_at, 0);  push(a.hold_n, 0);  push(a.hold_frame, 0)
+  }
+  List.clear(a.hold_at);  List.clear(a.hold_n);  List.clear(a.hold_frame)
+}
+
 # a range of n elements: its first index, or -1 when no free range is that long
 export function kar_alloc(a: KArena, n: int) -> int {
   if n <= 0 { return -1 }

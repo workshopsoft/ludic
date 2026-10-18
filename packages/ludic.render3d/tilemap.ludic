@@ -143,8 +143,9 @@ function tm_holes_alloc(tm: TileMap) -> void {
 function tm_holes_read(render3d_st: mut Render3dState, tm: TileMap, s: int, tx: int, tz: int) -> void {
   tm.hole_any[s] = 0
   let path = Text.replace(Text.replace(tm.hole_pattern, "{tx}", string(tx)), "{tz}", string(tz))
-  if not Fs.exists(path) { return }
-  let px = png_decode_bytes(render3d_st, path, null)
+  var px: []byte = null
+  if Fs.exists(path) { px = png_decode_bytes(render3d_st, path, null) }
+  free(path)                                         # made for this read: a tile is read again each time it comes back into the pool
   if px == null { return }
   let ch = render3d_st.tex_channels
   let bps = render3d_st.tex_depth / 8

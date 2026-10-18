@@ -360,10 +360,26 @@ export function hlod_save(dir: string, m: HlodMesh) -> bool {
   return Fs.write_bytes(cell_path(dir, m.cx, m.cz, "lwh"), b, len(b))
 }
 
+# (the path and the file's bytes are given back here: a streamed world reads proxies for as long as it runs)
 export function hlod_load(dir: string, cx: int, cz: int) -> HlodMesh {
   let path = cell_path(dir, cx, cz, "lwh")
-  if not Fs.exists(path) { return null }
-  return hlod_decode(Fs.read_bytes(path))
+  if not Fs.exists(path) {
+    free(path)
+    return null
+  }
+  let b = Fs.read_bytes(path)
+  free(path)
+  let m = hlod_decode(b)
+  if b != null { free(b) }
+  return m
+}
+
+# a proxy mesh given back once it is uploaded: its arrays and itself
+export function hlod_mesh_free(m: HlodMesh) -> void {
+  if m == null { return }
+  if m.vtx != null { free(m.vtx) }
+  if m.idx != null { free(m.idx) }
+  free(m)
 }
 
 # Bake every cell a content directory holds into `out_dir`, and write the index beside it: what the dev tool does

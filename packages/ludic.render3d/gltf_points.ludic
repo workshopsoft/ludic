@@ -46,6 +46,15 @@ function gltf_points(render3d_st: mut Render3dState, dir: string, file: string, 
   render3d_st.gltf_bin = null
   return found
 }
+# does dir/file exist? The path is made and given back here: a loader that streams files for as long as a world runs asks
+# without making a text a file (gltf_open says "cannot read" of a file that is not there)
+export function gltf_file_exists(dir: string, file: string) -> bool {
+  let path = dir + "/" + file
+  let ok = Fs.exists(path)
+  free(path)
+  return ok
+}
+
 function gp_put(at: []int, i: int, v: int) -> void {
   if i < len(at) { at[i] = v } else { push(at, v) }
 }

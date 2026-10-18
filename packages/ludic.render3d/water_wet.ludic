@@ -59,7 +59,7 @@ export property WetMask {
 @alloc_ok("a map being opened: the pattern, once")
 export function wet_pattern_of(pattern: string) -> string {
   let n = len(pattern)
-  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0 .. n - 4] + ".wet.png" }
+  if n > 4 and pattern[n - 4] == '.' and pattern[n - 3] == 'p' and pattern[n - 2] == 'n' and pattern[n - 1] == 'g' { return pattern[0..n - 4] + ".wet.png" }
   return pattern + ".wet.png"
 }
 
@@ -139,16 +139,18 @@ export function wet_read(render3d_st: mut Render3dState, wm: WetMask, tx: int, t
   var px: []byte = null
   if Fs.exists(path) { px = png_decode_bytes(render3d_st, path, wm.scratch) }
   wm.reads += 1
+  let ch = render3d_st.tex_channels
+  let bps = render3d_st.tex_depth / 8
+  let odd = px != null and (render3d_st.tex_w != wm.res or render3d_st.tex_h != wm.res or ch < 1 or ch > 4 or bps < 1 or bps > 2)
+  if odd { wet_say_size(render3d_st, path, wm.res) }
+  free(path)                                         # made for this read: a mixed tile is read again when it gets a layer back
   if px == null {
     wm.cls[t] = WET_NONE
     wet_page_set(wm, t)
     return WET_NONE
   }
   wm.scratch = px
-  let ch = render3d_st.tex_channels
-  let bps = render3d_st.tex_depth / 8
-  if render3d_st.tex_w != wm.res or render3d_st.tex_h != wm.res or ch < 1 or ch > 4 or bps < 1 or bps > 2 {
-    wet_say_size(render3d_st, path, wm.res)
+  if odd {
     wm.cls[t] = WET_NONE
     wet_page_set(wm, t)
     return WET_NONE

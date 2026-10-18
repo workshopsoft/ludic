@@ -118,16 +118,16 @@ function tmk_read(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: in
   let tm = td.tm
   if td.mask_pattern == "" { return false }
   let path = Text.replace(Text.replace(td.mask_pattern, "{tx}", string(t % tm.cols)), "{tz}", string(t / tm.cols))
-  if not Fs.exists(path) { return false }
-  let px = png_decode_bytes(render3d_st, path, td.mk_scratch)
-  if px == null { return false }
-  td.mk_scratch = px
+  var px: []byte = null
+  if Fs.exists(path) { px = png_decode_bytes(render3d_st, path, td.mk_scratch) }
   let ch = render3d_st.tex_channels
   let bps = render3d_st.tex_depth / 8
-  if render3d_st.tex_w != tm.res or render3d_st.tex_h != tm.res or ch < 1 or ch > 4 or bps < 1 or bps > 2 {
-    tmk_say_size(render3d_st, path, tm.res)
-    return false
-  }
+  let odd = px != null and (render3d_st.tex_w != tm.res or render3d_st.tex_h != tm.res or ch < 1 or ch > 4 or bps < 1 or bps > 2)
+  if odd { tmk_say_size(render3d_st, path, tm.res) }
+  free(path)                                         # made for this read: a tile's mask is read again each time a patch of it is built
+  if px == null { return false }
+  td.mk_scratch = px
+  if odd { return false }
   let n = tm.res * tm.res
   let step = ch * bps
   if full >= 0 {

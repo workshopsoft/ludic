@@ -1,0 +1,127 @@
+# stream_leak_test.ludic - what a streamed world reads for as long as it runs gives back what the read made: a cell's file (its
+# path, its bytes, its content once copied where it is drawn from), a proxy's file, a wet-mask tile, a land-use mask tile and a
+# tile's hole bits, read again and again, grow the heap by nothing; the instance arena's lists, given their room once, never grow
+# however the ranges fragment. A long drive over a city reads all of these for minutes, and the allocation fence fails a run whose
+# declared memory keeps rising (exit 86): these are the reads it named. Fixtures: tests/maps/shore (make_shore.py). No device.
+import "ludic.render3d/r3d.ludic"
+import "ludic.render3d/bigworld.ludic"
+program StreamLeakTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function shore(render3d_st: Render3dState) -> string { return render3d_st.r3d_root + "/tests/maps/shore/{tx}_{tz}.png" }
+
+  function sample(cx: int, cz: int, n: int) -> CellContent {
+    let c = cell_content_new(cx, cz, 128.0, 2)
+    for i in 0 .. n { cell_add(c, i % 3, float(i) * 1.25, 0.0, float(i) * 0.5, 0.0, 1.0, cell_rgba(10, 20, 30, 255), i, 0) }
+    return c
+  }
+
+  test "a cell's file read 300 times gives back its path, its bytes and its content: the heap does not grow" {
+    let dir = Os.temp_dir() + "/r3d_stream_leak_cells"
+    expect(cell_save(dir, sample(4, -2, 200)))
+    let first = cell_load(dir, 4, -2)
+    expect(first != null and first.n == 200)
+    cell_content_free(first)
+    expect(cell_load(dir, 9, 9) == null)                     # no file: nothing made either
+    let before = Os.heap_bytes()
+    for k in 0 .. 300 {
+      let c = cell_load(dir, 4, -2)
+      expect(c != null)
+      cell_content_free(c)
+      let none = cell_load(dir, 9, 9)
+      expect(none == null)
+    }
+    let grew = Os.heap_bytes() - before
+    print(`cells: 300 reads, heap grew {grew} bytes`)
+    expect(grew == long(0))
+  }
+
+  test "a proxy's file read 300 times gives back its path, its bytes and its mesh" {
+    let dir = Os.temp_dir() + "/r3d_stream_leak_hlod"
+    let m = hlod_new(1, 2, 256.0, 4)
+    let px = floats(4)
+    let pz = floats(4)
+    hlod_corners(10.0, 20.0, 4.0, 3.0, 0.3, px, pz)
+    hlod_prism(m, px, pz, 0.0, 12.0, cell_rgba(200, 190, 180, 255))
+    expect(hlod_save(dir, m))
+    hlod_mesh_free(hlod_load(dir, 1, 2))
+    let before = Os.heap_bytes()
+    for k in 0 .. 300 {
+      let back = hlod_load(dir, 1, 2)
+      expect(back != null and back.ni == m.ni)
+      hlod_mesh_free(back)
+    }
+    let grew = Os.heap_bytes() - before
+    print(`proxies: 300 reads, heap grew {grew} bytes`)
+    expect(grew == long(0))
+  }
+
+  test "wet-mask tiles read 200 times (mixed, all dry, no file) give back their paths and decodes" (render3d_st: mut Render3dState) {
+    let wm = wet_new(wet_pattern_of(shore(render3d_st)), 64.0, 64, 3, 1, -96.0, -32.0, 1)
+    for tx in 0 .. 3 { wet_read(render3d_st, wm, tx, 0) }       # the scratch and the inflate's tables, made once
+    let before = Os.heap_bytes()
+    for k in 0 .. 200 { wet_read(render3d_st, wm, k % 3, 0) }
+    let grew = Os.heap_bytes() - before
+    print(`wet mask: 200 reads, heap grew {grew} bytes`)
+    expect(grew == long(0))
+    expect(wet_at(wm, -96.0 + 63.5, 0.0) < 0.5 or wet_at(wm, -96.0 + 0.5, 0.0) > 0.5)   # still read as before
+  }
+
+  test "land-use mask tiles read 200 times give back their paths and decodes" (render3d_st: mut Render3dState) {
+    let pattern = shore(render3d_st)
+    let tm = tmap_new(pattern, 64.0, 64, 3, 1, -96.0, -32.0, -10.0, 10.0, 0.0, 200.0)
+    tmap_patches(tm, 128)
+    tmap_mesh_pattern(tm, tmap_mesh_pattern_of(pattern))
+    let td = tmd_new(render3d_st, tm, 400.0)
+    expect(tmk_read(render3d_st, td, 0, 0, -1))
+    expect(not tmk_read(render3d_st, td, 2, 0, -1))           # tile 2 has no mask
+    let before = Os.heap_bytes()
+    for k in 0 .. 200 {
+      expect(tmk_read(render3d_st, td, k % 2, 0, -1))
+      expect(not tmk_read(render3d_st, td, 2, 0, -1))
+    }
+    let grew = Os.heap_bytes() - before
+    print(`land-use masks: 400 reads, heap grew {grew} bytes`)
+    expect(grew == long(0))
+  }
+
+  test "a tile's hole bits read 200 times give back their path and decode" (render3d_st: mut Render3dState) {
+    let pattern = shore(render3d_st)
+    let tm = tmap_new(pattern, 64.0, 64, 3, 1, -96.0, -32.0, -10.0, 10.0, 0.0, 200.0)
+    let classes = new []int
+    push(classes, 3)
+    tmap_holes(tm, tmap_mask_pattern_of(pattern), classes)
+    tm_holes_read(render3d_st, tm, 0, 0, 0)
+    let before = Os.heap_bytes()
+    for k in 0 .. 200 { tm_holes_read(render3d_st, tm, 0, k % 3, 0) }
+    let grew = Os.heap_bytes() - before
+    print(`holes: 200 reads, heap grew {grew} bytes`)
+    expect(grew == long(0))
+  }
+
+  test "the instance arena's lists, given room for its ranges once, never grow as 64 ranges churn and fragment for 2000 frames" {
+    let a = kar_new(100000, 3)
+    kar_reserve(a, 64)
+    expect_eq(kar_fragments(a), 1)
+    expect_eq(len(a.hold_at), 0)
+    let at = words(64)
+    let n = words(64)
+    for i in 0 .. 64 { n[i] = 10 + (i * 37) % 90;  at[i] = kar_alloc(a, n[i]) }
+    let before = Os.heap_bytes()
+    for f in 0 .. 2000 {
+      # every other range given back and taken again at another size: the free list fragments and merges
+      let i = (f * 7) % 64
+      if at[i] >= 0 { kar_free(a, at[i], n[i]);  at[i] = -1 }
+      let j = (f * 13 + 5) % 64
+      if at[j] < 0 { n[j] = 10 + (f * 31 + j) % 90;  at[j] = kar_alloc(a, n[j]) }
+      kar_tick(a)
+    }
+    let grew = Os.heap_bytes() - before
+    print(`arena: 2000 frames of churn, {kar_fragments(a)} fragments, heap grew {grew} bytes`)
+    expect(grew == long(0))
+    var used = 0
+    for i in 0 .. 64 { if at[i] >= 0 { used += n[i] } }
+    expect(kar_used(a) >= used)
+  }
+}
