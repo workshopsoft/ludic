@@ -1,0 +1,45 @@
+# tilemap_far_test.ludic - the far ground's books (tilemap_far.ludic) on the shore fixture (tests/maps/shore: 3 tiles of 64 m, one
+# patch a tile), as far as they run with no device: a slot a tile within reach, the tiles' slots kept by index, the near draw's
+# holdings read per patch, and a slot never built is never current (so the first frame makes every tile in reach). The meshes
+# themselves are drawn in the game (occutown's district shots and its allocation-fenced flight).
+import "ludic.render3d/r3d.ludic"
+program TileFarTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function open(render3d_st: mut Render3dState) -> TileDraw {
+    let pattern = r3d_package_dir() + "/tests/maps/shore/{tx}_{tz}.png"
+    let tm = tmap_new(pattern, 64.0, 64, 3, 1, -96.0, -32.0, -10.0, 10.0, 0.0, 200.0)
+    tmap_patches(tm, 128)
+    tmap_mesh_pattern(tm, tmap_mesh_pattern_of(pattern))
+    return tmd_new(render3d_st, tm, 20.0)
+  }
+
+  test "a far ground over a near draw: a slot for each tile in reach, none held yet, nothing built, the near draw's tones shared" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    tmd_tone_set(td, 2, 0.2, 0.3, 0.1)
+    let f = tmf_new(render3d_st, td, 400.0)
+    expect_eq(len(f.slots), 3)                                # 400 m reaches past the 3 tiles: one slot each, no more
+    expect_eq(len(f.slot_of), 3)
+    for t in 0 .. 3 { expect_eq(f.slot_of[t], -1) }
+    expect(f.src.tones == td.tones and f.src.tone_on == td.tone_on and f.src.color == td.color)
+    expect(f.src.mask_pattern == td.mask_pattern)
+    # the near draw holds no patch yet, and no slot was built: not current
+    for t in 0 .. 3 { expect(not tmf_near_holds(f, t, 0)) }
+    f.slots[0].tile = 1
+    expect(not tmf_current(f, 0))
+    f.slots[0].tile = -1
+    tmf_free(render3d_st, f)
+    for s in 0 .. 3 { expect(f.slots[s].model == null and f.slots[s].tile == -1) }
+    tmd_free(render3d_st, td)
+  }
+
+  test "the slots a small reach needs: a tile and a half round the camera" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    let f = tmf_new(render3d_st, td, 10.0)
+    expect_eq(len(f.slots), 3)                                # 3.15 x (10 / 64 + 1.5)^2 + 4 = 12, at most the map's 3
+    expect_eq(len(f.near), 3)                                 # a patch a tile
+    tmf_free(render3d_st, f)
+    tmd_free(render3d_st, td)
+  }
+}

@@ -1,6 +1,7 @@
 # tilemap_mask_test.ludic - the ground's land-use tones (tilemap_mask.ludic) on the shore fixture (tests/maps/shore, made by
 # make_shore.py: 3 tiles of 64 m at 1 m texels; tiles 0 and 1 have a class mask, tile 2 none). Every class draws
-# its table tone, a class with no tone and a tile with no mask draw the ground's tint; the far levels read the coarse grid
+# its table tone, a class with no tone and a tile with no mask draw the ground's tint (or, steeper than a slope the game names,
+# the steep tone); the far levels read the coarse grid
 # and still draw a region's tone inside it; the skirt wears its edge's colour. No device.
 import "ludic.render3d/r3d.ludic"
 program TileMaskTest {
@@ -53,6 +54,30 @@ program TileMaskTest {
     tmd_tone_set(td, 4, 0.1, 0.5, 0.1)
     expect(colour(render3d_st, td, 1, 0))
     expect(is(td, n1, 52, 10, 0.1, 0.5, 0.1))
+  }
+
+  test "ground no class names wears the steep tone where it leans past the slope the game names, the tint elsewhere; a toned class never" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    let n1 = 65
+    expect(colour(render3d_st, td, 1, 0))
+    # the park's vertex (52, 10) (class 4, no tone) and its normal; a slope just gentler than the ground there makes it steep
+    let v = 10 * n1 + 52
+    let ny = td.ms.vbuf[v * 8 + 4]
+    let lean = Math.sqrt(Math.max(1.0 / (ny * ny) - 1.0, 0.0))     # the ground's slope at the vertex, rise over run
+    expect(lean > 0.001)                                       # the park leans a little there (0.0055)
+    tmd_steep_set(td, lean * 0.5, 0.3, 0.3, 0.3)
+    expect(colour(render3d_st, td, 1, 0))
+    expect(is(td, n1, 52, 10, 0.3, 0.3, 0.3))
+    expect(is(td, n1, 5, 5, 0.2, 0.3, 0.1))                   # grass keeps its tone
+    # a slope steeper than the ground there: the tint
+    tmd_steep_set(td, lean * 2.0 + 0.01, 0.3, 0.3, 0.3)
+    expect(colour(render3d_st, td, 1, 0))
+    expect(is(td, n1, 52, 10, 0.5, 0.5, 0.5))
+    # off
+    tmd_steep_set(td, 0.0, 0.3, 0.3, 0.3)
+    expect(colour(render3d_st, td, 1, 0))
+    expect(is(td, n1, 52, 10, 0.5, 0.5, 0.5))
+    expect(td.steep_ny == 0.0)
   }
 
   test "a tile with no mask, or the mask turned off, draws the tint as before" (render3d_st: mut Render3dState) {
