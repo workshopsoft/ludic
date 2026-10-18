@@ -18,5 +18,5 @@ function chr_swim_tick(character_st: mut CharacterState, dx: float, dz: float, j
   let bob = 0.04 * Math.sin(character_st.chr_time * 3.8)
   character_st.chr_y = character_st.chr_water - 0.30 + bob - character_st.chr_depth
   # shallow enough to stand up in, and at the top rather than under it
-  if chr_bed_depth(character_st.chr_x, character_st.chr_z) < CHAR_STAND_UP and character_st.chr_depth < 0.2 { chr_leave_water(character_st) }
+  if chr_bed_depth(character_st.chr_x, character_st.chr_y, character_st.chr_z) < CHAR_STAND_UP and character_st.chr_depth < 0.2 { chr_leave_water(character_st) }
 }

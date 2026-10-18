@@ -284,8 +284,14 @@ function ck_chunk(cs: CityColliders, cx: int, cz: int) -> int {
 @alloc_ok("a chunk loading: its file is read once")
 export function city_colliders_in(cs: mut CityColliders, dir: string, cx: int, cz: int) -> int {
   if ck_chunk(cs, cx, cz) >= 0 { return 0 }
-  let b = Fs.read_bytes(city_colliders_path(dir, cx, cz))
-  if b == null or len(b) < CK_HEAD or ck_get(b, 0) != CK_MAGIC or ck_get(b, 4) != 1 or ck_get(b, 8) != cx or ck_get(b, 12) != cz { cs.missing += 1;  return -1 }
+  let path = city_colliders_path(dir, cx, cz)
+  let b = Fs.read_bytes(path)
+  free(path)                                         # the path and the bytes are this read's: a streamed map reads chunks as long as it runs
+  if b == null or len(b) < CK_HEAD or ck_get(b, 0) != CK_MAGIC or ck_get(b, 4) != 1 or ck_get(b, 8) != cx or ck_get(b, 12) != cz {
+    if b != null { free(b) }
+    cs.missing += 1
+    return -1
+  }
   let np = ck_get(b, 20)
   let p = cs.piece
   kept_push(cs.cx, cx)
@@ -307,6 +313,7 @@ export function city_colliders_in(cs: mut CityColliders, dir: string, cx: int, c
     got += 1
   }
   kept_push(cs.count, got)
+  free(b)
   return got
 }
 

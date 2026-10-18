@@ -11,7 +11,6 @@
 
 const GPU_TEXTURE_MAX_ANISOTROPY_EXT: int = 0x84FE
 
-
 # The anisotropic filtering level for every mipmapped texture, loaded or not: 1 (off), 2, 4, 8
 # or 16. Textures uploaded before a change are updated in place - by rewriting the
 # record the sampler cache reads - so a settings
@@ -126,7 +125,9 @@ function png_decode(render3d_st: mut Render3dState, path: pointer) -> pointer {
   j.path = path
   j.z = tex_z(render3d_st, 0)
   png_work(j)
-  return png_take(render3d_st, j)
+  let out = png_take(render3d_st, j)
+  free(j)                                            # the job itself: its buffers are given back or handed on by png_take
+  return out
 }
 
 # Edge padding for cut-out atlases: pixels darker than `thresh` (the unused

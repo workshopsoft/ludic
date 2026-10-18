@@ -17,7 +17,7 @@ export function char_sit(character_st: mut CharacterState, x: float, y: float, z
   character_st.chr_sit_yaw = yaw
   character_st.chr_leave_x = x
   character_st.chr_leave_z = z
-  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_z)
+  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_y, character_st.chr_z)
 }
 
 # where the body stands when it gets up out of this seat: in front of a bench, beside a boat's thwart
@@ -36,7 +36,7 @@ function chr_sit_tick(character_st: mut CharacterState, dt: float) -> void {
   character_st.chr_z = Math.lerp(character_st.chr_z, character_st.chr_sit_z, k)
   character_st.chr_yaw = character_st.chr_yaw + char_wrap(character_st.chr_sit_yaw - character_st.chr_yaw) * k
   character_st.chr_y = Math.lerp(character_st.chr_y, character_st.chr_sit_y - character_st.chr_sit_h, k)
-  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_z)
+  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_y, character_st.chr_z)
 }
 
 # Sitting down where the body stands: not astride something, not in the air, not on a slope,

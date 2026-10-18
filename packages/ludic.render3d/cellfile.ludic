@@ -244,10 +244,30 @@ export function cell_save(dir: string, c: CellContent) -> bool {
 }
 
 # a cell's content from its file, or null
+# (the path and the file's bytes are given back here: a streamed world reads cells for as long as it runs)
 export function cell_load(dir: string, cx: int, cz: int) -> CellContent {
   let path = cell_path(dir, cx, cz, "lwc")
-  if not Fs.exists(path) { return null }
-  return cell_decode(Fs.read_bytes(path))
+  if not Fs.exists(path) {
+    free(path)
+    return null
+  }
+  let b = Fs.read_bytes(path)
+  free(path)
+  let c = cell_decode(b)
+  if b != null { free(b) }
+  return c
+}
+
+# a content given back once its things are where they are drawn from (the instance arena, the CPU lists): its columns and itself
+export function cell_content_free(c: CellContent) -> void {
+  if c == null { return }
+  if c.xf != null { free(c.xf) }
+  if c.kit != null { free(c.kit) }
+  if c.tint != null { free(c.tint) }
+  if c.vari != null { free(c.vari) }
+  if c.flags != null { free(c.flags) }
+  if c.box != null { free(c.box) }
+  free(c)
 }
 
 # ---- the index ---------------------------------------------------------------------------------

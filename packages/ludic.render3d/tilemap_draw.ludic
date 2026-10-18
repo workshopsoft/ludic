@@ -12,8 +12,11 @@
 #     tmd_frame(render3d_st, td, cam_x, cam_z, origin_x, origin_z, 3000.0)
 #
 # `tm`'s own pool (radius 300 above) is the ground as data for physics and placement (tilemap.ludic); drawing does not use it.
-# A frame allocates nothing but what a change of level needs (a mesh, a model: a load). The ground casts no shadow map
-# of its own (buildings and trees still fall on it).
+# A frame allocates nothing: every patch slot's mesh, model and primitive records are made once with the draw (tmd_new) and a
+# change of level refills them, its old buffers given back and the new ones uploaded into the same mesh. (Made at each change
+# and freed with the old level, they were memory that rose with the patches in view for as long as a drive went into new
+# ground, and the allocation fence failed the run.) The ground casts no shadow map of its own (buildings and trees still
+# fall on it).
 # ============================================================================
 numbers float
 
@@ -23,7 +26,10 @@ export property TmPatch {
   pz: int = 0
   lod: int = -1                      # the level of the mesh it holds, -1 none
   actor: Actor = null
-  model: Model = null
+  model: Model = null                # its records, made once (tmd_new): the model, its one primitive, the primitive's mesh
+  mesh: Mesh = null
+  held: bool = false                 # the mesh holds a level's buffers
+  coloured: bool = false             # ... with the land use's vertex colours (attribute 7)
 }
 
 export property TileDraw {
@@ -59,36 +65,47 @@ export property TileDraw {
   frees: int = 0
 }
 
-@alloc_ok("a map being opened: the reader's pool and one record a patch slot, made once")
+@alloc_ok("a map being opened: the reader's pool and one record a patch slot (its mesh, model and primitive too), made once")
 export function tmd_new(render3d_st: mut Render3dState, tm: TileMap, radius: float) -> TileDraw {
   let td = new TileDraw
   td.tm = tm
   let a = Math.max(radius, 0.0) / tm.tile_size + 1.5
   td.ms = tmm_new(tm, int(3.15 * a * a) + 4)
   let pp = tm.patches * tm.patches
-  td.patches = new []TmPatch
-  for i in 0 .. td.ms.mslots * pp { push(td.patches, new TmPatch) }
   td.color = floats(3)
   td.color[0] = 0.5;  td.color[1] = 0.5;  td.color[2] = 0.5
   td.fac = floats(9)
   for k in 0 .. 6 { td.fac[k] = 1.0 }
   for k in 6 .. 9 { td.fac[k] = 0.0 }
   td.fac[4] = td.rough;  td.fac[5] = 0.0
+  td.patches = new []TmPatch
+  for i in 0 .. td.ms.mslots * pp {
+    let p = new TmPatch
+    p.mesh = gpu_mesh_new(render3d_st)               # a record and its lists only: nothing on the GPU until a level is uploaded
+    p.model = tmd_model_of(render3d_st, td, p.mesh, 0, 0)
+    push(td.patches, p)
+  }
   tmk_init(td)
   return td
 }
 
-# a patch's mesh and actor let go
+# a patch's level let go: its actor off the stage, its mesh's buffers given back (the records stay for its next level)
 function tmd_release(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch) -> void {
   if p.actor != null { actor_release(render3d_st, p.actor);  p.actor = null;  td.shown -= 1 }
-  if p.model != null { model_release(render3d_st, p.model);  p.model = null;  td.frees += 1 }
+  if p.held { gpu_mesh_free(render3d_st, p.mesh);  p.held = false;  td.frees += 1 }
   p.lod = -1
   p.tile = -1
 }
 
-# the whole ground let go (a map swap, the end)
+# the whole ground let go (a map swap, the end): every level, then every patch's records
 export function tmd_free(render3d_st: mut Render3dState, td: TileDraw) -> void {
-  for i in 0 .. len(td.patches) { tmd_release(render3d_st, td, td.patches[i]) }
+  for i in 0 .. len(td.patches) {
+    let p = td.patches[i]
+    tmd_release(render3d_st, td, p)
+    if p.model != null { model_release(render3d_st, p.model) }    # the primitive, its mesh record, the model
+    p.model = null
+    p.mesh = null
+  }
 }
 
 # metres from a point to a patch's square
@@ -105,16 +122,23 @@ function tmd_textures(render3d_st: mut Render3dState) -> void {
   if render3d_st.gltf_pure == 0 { render3d_st.gltf_pure = tex_solid(render3d_st, 255, 255, 255, 255) }
 }
 
-# The level the reader expanded (tmm_patch) as a one-primitive Model: attribute 0 the position, 1 the normal, 2 the uv, all read
-# from one interleaved buffer
-@alloc_ok("a patch changing level: its mesh and model are made when it does")
-@creates(Model)
-function tmd_model(render3d_st: mut Render3dState, td: TileDraw, coloured: bool) -> Model {
+# The level the reader expanded (tmm_patch) into patch p's own mesh and model: the level before's buffers given back, the new
+# ones uploaded into the same record (attribute 0 the position, 1 the normal, 2 the uv, all read from one interleaved buffer;
+# 7 the land use's colour). Nothing is made but the GPU's buffers.
+function tmd_fill(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, coloured: bool) -> void {
   let ms = td.ms
   tmd_textures(render3d_st)
+  let m = p.mesh
+  if p.held { gpu_mesh_free(render3d_st, m);  td.frees += 1 }
+  # a level with the colours after one without (or the other way) has another layout: the record's attributes start over
+  if coloured != p.coloured or not p.held {
+    for i in 0 .. len(m.attrs) { m.attrs[i] = 0 }
+    m.n_attrs = 0
+    m.vk_layout = 0
+  }
+  m.cur_buf = 0
   let was = render3d_st.gvk_tag
   render3d_st.gvk_tag = VKM_TERRAIN
-  let m = gpu_mesh_new(render3d_st)
   gpu_mesh_vertices(render3d_st, m, data_of(ms.vbuf), ms.nv * TM_VERT * 4, GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, TM_VERT * 4, 0, false)
   gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, TM_VERT * 4, 12, false)
@@ -128,11 +152,16 @@ function tmd_model(render3d_st: mut Render3dState, td: TileDraw, coloured: bool)
   m.count = ms.ni
   gpu_mesh_done(render3d_st, m)
   render3d_st.gvk_tag = was
-  return tmd_model_of(render3d_st, td, m, ms.nv, ms.ni)
+  let pr = p.model.prims[0]
+  pr.verts = ms.nv
+  pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
+  p.model.tris = ms.ni / 3
+  p.held = true
+  p.coloured = coloured
 }
-# the uploaded mesh as the patch's model: its primitive wears the ground's material and owns a copy of its factors,
-# since model_release gives a primitive's factors back (one array shared by every patch was freed with the first)
-@alloc_ok("a patch changing level: its model is made when it does")
+# a mesh as a patch's model: its primitive wears the ground's material and owns a copy of its factors, since model_release
+# gives a primitive's factors back (one array shared by every patch was freed with the first). Made once a patch slot (tmd_new)
+@alloc_ok("a map being opened: a patch slot's model, made once")
 function tmd_model_of(render3d_st: Render3dState, td: TileDraw, m: Mesh, nv: int, ni: int) -> Model {
   let pr = new Prim
   pr.mesh = m
@@ -149,7 +178,7 @@ function tmd_model_of(render3d_st: Render3dState, td: TileDraw, m: Mesh, nv: int
 
 # patch p (of mesh slot `slot`) at level `lod`: read, uploaded and put on the stage (or its actor given the new mesh and the old one
 # let go); false when its file cannot be read
-@alloc_ok("a patch changing level: its mesh, model and actor are made when it does")
+@alloc_ok("a patch changing level: its actor taken from the stage's spares when it has none")
 function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slot: int, lod: int) -> bool {
   let tm = td.tm
   let ms = td.ms
@@ -163,22 +192,19 @@ function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slo
   let lift = (y0 + y1) * 0.5 - r                      # an actor's cull sphere is centred r above its origin
   if not tmm_patch(ms, tm, slot, tx, tz, p.px, p.pz, lod, lift) { return false }
   let coloured = tmk_colours(render3d_st, td, slot, tx, tz, p.px, p.pz, lod)
-  let model = tmd_model(render3d_st, td, coloured)
-  let old = p.model
+  tmd_fill(render3d_st, td, p, coloured)
   if p.actor == null {
-    p.actor = actor_new(render3d_st, model)
+    p.actor = actor_new(render3d_st, p.model)
     p.actor.casts = false
     p.actor.cull = 0.0
     td.shown += 1
-  } else { p.actor.model = model }
+  } else { p.actor.model = p.model }
   # a masked patch's colour is the tones alone (they carry the tint where a class has none); else the tint
   if coloured { p.actor.tint[0] = 1.0;  p.actor.tint[1] = 1.0;  p.actor.tint[2] = 1.0 }
   else { p.actor.tint[0] = td.color[0];  p.actor.tint[1] = td.color[1];  p.actor.tint[2] = td.color[2] }
   p.actor.radius = r
-  p.model = model
   p.lod = lod
   actor_place(p.actor, tmap_patch_cx(tm, tx, p.px) - td.ox, lift, tmap_patch_cz(tm, tz, p.pz) - td.oz, 0.0)
-  if old != null { model_release(render3d_st, old);  td.frees += 1 }
   td.builds += 1
   return true
 }

@@ -6,7 +6,7 @@ export function char_update(character_st: mut CharacterState, ix0: float, iz0: f
   var jump = jump0
   character_st.chr_step = 0.0
   character_st.chr_time = character_st.chr_time + dt
-  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_z)
+  character_st.chr_water = CharacterGround.water(character_st.chr_x, character_st.chr_y, character_st.chr_z)
   chr_sit_tick(character_st, dt)
   if CharacterBody.riding() {
     chr_ride_update(character_st, ix, iz, run, dyaw, dpitch, dt)

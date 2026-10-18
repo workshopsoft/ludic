@@ -179,20 +179,26 @@ export function bw_stream(render3d_st: mut Render3dState, bw: BigWorld, wx: doub
 function bw_load(render3d_st: mut Render3dState, bw: BigWorld, slot: int, layer: int) -> bool {
   let cx = ws_cell_x(bw.sched, slot)
   let cz = ws_cell_z(bw.sched, slot)
+  # the file's content is copied where it is drawn from (the instance arena, the CPU lists, the proxy's mesh) and given back here
   if layer == WS_FULL {
     let c = cell_load(bw.dir, cx, cz)
     if c == null { return false }
+    var ok = true
     if bw_gpu_culls(bw) {
-      if not kgpu_add_cell(render3d_st, bw.gpu, slot, c, bw.origin) { return false }
+      ok = kgpu_add_cell(render3d_st, bw.gpu, slot, c, bw.origin)
     } else {
       kinst_add_cell(bw.cpu, slot, c, cell_render_x(bw.origin, cx, c.size), float(0.0 - bw.origin.oy), cell_render_z(bw.origin, cz, c.size))
     }
+    cell_content_free(c)
+    if not ok { return false }
     bw.loads_full += 1
     return true
   }
   let m = hlod_load(bw.dir, cx, cz)
   if m == null { return false }
-  if not hlod_gpu_add(render3d_st, bw.hlod, slot, m) { return false }
+  let ok = hlod_gpu_add(render3d_st, bw.hlod, slot, m)
+  hlod_mesh_free(m)
+  if not ok { return false }
   bw.loads_hlod += 1
   return true
 }

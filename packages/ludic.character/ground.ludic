@@ -21,7 +21,8 @@ function chr_push(character_st: mut CharacterState, x: float, z: float, r: float
   return hit
 }
 
-function chr_bed_depth(x: float, z: float) -> float { return CharacterGround.water(x, z) - CharacterGround.bed(x, z) }
+# how deep the water is over the bed where a body at height y is (negative: dry, or no water for that body)
+function chr_bed_depth(x: float, y: float, z: float) -> float { return CharacterGround.water(x, y, z) - CharacterGround.bed(x, z) }
 
 export function char_wrap(a: float) -> float {
   var d = a
