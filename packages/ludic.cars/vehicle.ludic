@@ -128,7 +128,9 @@ function cr_vehicle_abs(c: Car, stop: float, dt: float) -> float {
       if w.contact { lock = Math.max(lock, Math.abs(w.slip_r)) }
     }
   }
-  if lock > 0.25 { c.abs_k = Math.max(0.2, c.abs_k - dt * 8.0) } else { c.abs_k = Math.min(1.0, c.abs_k + dt * 4.0) }
+  # held near the grip's peak (slip 0.15 .. 0.25): eased off gently past it, back fast under it - the old drop to a fifth of the pedal
+  # sawed the brake and stopped the car at well under the tyres' grip
+  if lock > 0.25 { c.abs_k = Math.max(0.6, c.abs_k - dt * 3.0) } else if lock < 0.15 { c.abs_k = Math.min(1.0, c.abs_k + dt * 8.0) }
   return c.abs_k
 }
 

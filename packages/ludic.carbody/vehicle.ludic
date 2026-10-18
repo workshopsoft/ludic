@@ -87,6 +87,9 @@ export function carbody_vehicle(physics_st: mut PhysicsState, model: int, s: Car
     curve[0] = 0.0;  curve[1] = 1.0;  curve[2] = 1.0;  curve[3] = 1.0
     nc = 2
   }
+  # Jolt holds the body within 50 degrees of pitch and roll (VehicleConstraint's own limit): a car slides and tilts, it does not go over
+  # on a kerb taken with the wheel turned in or a hard stop
+  phys_vehicle_limit(physics_st, 0.87266463)
   phys_vehicle_engine(physics_st, peak * m.efficiency, m.idle, m.limiter, m.engine_inertia, 0.2, curve, nc)
   # the gearbox
   let ng = car_gear_count(model)
@@ -120,7 +123,7 @@ export function carbody_vehicle(physics_st: mut PhysicsState, model: int, s: Car
     let ax = m.axles[a]
     let tyre = CarTyres[ax.tyre]
     let mu = tyre.mu * s.grip * (1.0 + 0.35 * m.arcade)
-    let nlon = cbv_curve(tyre.lon, mu, lon, 0)
+    let nlon = cbv_curve(tyre.lon, mu * 1.3, lon, 0)      # an arcade's bite along the road: hard braking near 1.5 g (it was 1.15)
     let nlat = cbv_curve(tyre.lat, mu * (1.0 + 0.3 * m.arcade), lat, 1)
     var b = br
     if car_axle_front(model, a) { b = bf }
