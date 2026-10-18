@@ -11,7 +11,7 @@ program KitBoxTest {
 
   const STOREY: float = 3.4
 
-  function dir(render3d_st: Render3dState) -> string { return render3d_st.r3d_root + "/tests/maps/boxkits" }
+  function dir(render3d_st: Render3dState) -> string { return r3d_package_dir() + "/tests/maps/boxkits" }
 
   # node `node` of the fixture: its tuples, and its vertices' positions, anchors and offsets
   function kit(render3d_st: mut Render3dState, node: string, pos: []float, anc: []float, off: []float) -> KitBox {

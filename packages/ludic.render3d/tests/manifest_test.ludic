@@ -26,7 +26,7 @@ program ManifestTest {
   test "a manifest cut short is refused" {
     expect(gpu_manifest_parse(two()) == null)                       # no end line
     let whole = two() + "E 2\n"
-    expect(gpu_manifest_parse(whole[0 .. len(whole) - 30]) == null) # cut mid-program
+    expect(gpu_manifest_parse(whole[0..len(whole) - 30]) == null)  # cut mid-program
     expect(gpu_manifest_parse("") == null)
   }
 
@@ -37,7 +37,7 @@ program ManifestTest {
   }
 
   test "every program variants.list names has a variant in the shipped manifest" {
-    let root = "packages/ludic.render3d/shaders"
+    let root = `{r3d_package_dir()}/shaders`
     let text = Fs.read_text(`{root}/spv/manifest.txt`)
     expect(text != null)
     let vs = gpu_manifest_parse(text)
@@ -65,12 +65,28 @@ program ManifestTest {
     expect_eq(r3d_tilde("~/x", null), "~/x")
   }
 
+  test "the package's folder is the first candidate that holds its files, whatever folder the test was started in" {
+    let t = Os.temp_dir() + "/r3d_pick"
+    expect(Fs.mkdir(t + "/b/shaders"))
+    expect(Fs.mkdir(t + "/c/shaders"))
+    Fs.write_text(t + "/b/shaders/lighting.glsl", "x")
+    Fs.write_text(t + "/c/shaders/lighting.glsl", "x")
+    expect_eq(r3d_dir_pick([t + "/a", t + "/b", t + "/c"]), t + "/b")
+    expect_eq(r3d_dir_pick([t + "/c", t + "/b"]), t + "/c")
+    expect_eq(r3d_dir_pick([t + "/a", t + "/none"]), t + "/a")
+    # from here (a checkout's root, the package itself, or a game's folder with the toolchain's copy) it is the package with its
+    # shaders and its tests' fixtures
+    let d = r3d_package_dir()
+    expect(Fs.exists(`{d}/shaders/lighting.glsl`))
+    expect(Fs.exists(`{d}/tests/maps/tiles/0_0.png`))
+  }
+
   # ---- every program render3d can ask for, not only what variants.list names ----
   # A request is r3d_program / gpu_program / ac_prog_new(state, vertex, fragment, defines). With all three
   # literal it is read straight out of the source; with computed defines its site is one of KNOWN, whose
   # defines are program_defs.ludic's functions, asked below for every value. A new computed site fails
   # here by name until it is given a function there and a line in `computed_all`.
-  function shipped() -> []GpuVariant { return gpu_manifest_parse(Fs.read_text("packages/ludic.render3d/shaders/spv/manifest.txt")) }
+  function shipped() -> []GpuVariant { return gpu_manifest_parse(Fs.read_text(`{r3d_package_dir()}/shaders/spv/manifest.txt`)) }
   function known_computed(file: string) -> int {
     if file == "programs.ludic" { return 1 }          # r3d_program itself, handing on to gpu_program
     if file == "actor.ludic" { return 1 }             # ac_prog_new's own call: its callers are literal
@@ -87,14 +103,14 @@ program ManifestTest {
         out = out + ";"
         i += 2
       } else {
-        out = out + lit[i .. i + 1]
+        out = out + lit[i..i + 1]
         i += 1
       }
     }
     return out
   }
   function is_lit(a: string) -> bool { return len(a) >= 2 and a[0] == 34 and a[len(a) - 1] == 34 }
-  function unq(a: string) -> string { return a[1 .. len(a) - 1] }
+  function unq(a: string) -> string { return a[1..len(a) - 1] }
   # the top-level arguments of the call whose '(' is at `open`, trimmed
   function args_at(src: string, open: int) -> []string {
     let out = new []string
@@ -108,12 +124,12 @@ program ManifestTest {
       if not inq {
         if c == 40 { depth += 1 }
         if c == 41 and depth == 0 {
-          push(out, Text.trim(src[start .. i]))
+          push(out, Text.trim(src[start..i]))
           return out
         }
         if c == 41 { depth -= 1 }
         if c == 44 and depth == 0 {
-          push(out, Text.trim(src[start .. i]))
+          push(out, Text.trim(src[start..i]))
           start = i + 1
         }
       }
@@ -123,7 +139,7 @@ program ManifestTest {
   }
   # checks every request in one file against the manifest; returns how many had computed arguments
   function file_requests(vs: []GpuVariant, file: string, missing: []string) -> int {
-    let src = Fs.read_text(`packages/ludic.render3d/{file}`)
+    let src = Fs.read_text(`{r3d_package_dir()}/{file}`)
     var computed = 0
     let names = ["r3d_program(", "gpu_program(", "ac_prog_new("]
     for n in 0 .. len(names) {
@@ -166,7 +182,7 @@ program ManifestTest {
     let vs = shipped()
     expect(vs != null)
     let missing = new []string
-    let files = Fs.list("packages/ludic.render3d")
+    let files = Fs.list(r3d_package_dir())
     var asked_files = 0
     for i in 0 .. len(files) {
       if not Text.ends_with(files[i], ".ludic") { continue }

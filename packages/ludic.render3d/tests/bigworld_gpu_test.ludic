@@ -8,7 +8,7 @@ program BigWorldGpuTest {
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
   test "the compute programs the instancer asks for are built" {
-    let dir = "packages/ludic.render3d/shaders"
+    let dir = `{r3d_package_dir()}/shaders`
     let names = Text.split("kinst_reset kinst_cull kinst_args", " ")
     for i in 0 .. len(names) {
       expect(Fs.exists(`{dir}/spv/{names[i]}.comp.spv`))
@@ -19,7 +19,7 @@ program BigWorldGpuTest {
   }
 
   test "every shader file a big-world program names exists" {
-    let dir = "packages/ludic.render3d/shaders"
+    let dir = `{r3d_package_dir()}/shaders`
     let files = Text.split("kit.vert kit.frag oimp.vert oimp.frag hlod.vert hlod.frag shadow.frag bake.frag", " ")
     for i in 0 .. len(files) { expect(Fs.exists(`{dir}/{files[i]}`)) }
   }
@@ -29,12 +29,12 @@ program BigWorldGpuTest {
     expect_eq(KG_SRC_FLOATS, 20)
     expect_eq(KG_DST_FLOATS, 16)
     expect_eq(KI_FLOATS, KG_DST_FLOATS)           # what the CPU culler lists and what the GPU writes are one layout
-    let src = Fs.read_text("packages/ludic.render3d/shaders/kinst_cull.comp")
+    let src = Fs.read_text(`{r3d_package_dir()}/shaders/kinst_cull.comp`)
     expect(Text.contains(src, "src[i * 5u + 3u]"))
     expect(Text.contains(src, "src[i * 5u + 4u]"))
     expect(Text.contains(src, "(offs[bin] + at) * 4u"))
     expect(Text.contains(src, "dst[o + 3u] = box"))
-    let args = Fs.read_text("packages/ludic.render3d/shaders/kinst_args.comp")
+    let args = Fs.read_text(`{r3d_package_dir()}/shaders/kinst_args.comp`)
     expect(Text.contains(args, "k * 9u + j"))
   }
 
@@ -51,9 +51,9 @@ program BigWorldGpuTest {
   }
 
   test "the preparation hook is registered and called by the frame" {
-    let src = Fs.read_text("packages/ludic.render3d/render.ludic")
+    let src = Fs.read_text(`{r3d_package_dir()}/render.ludic`)
     expect(Text.contains(src, "r3d_scene_prepare(render3d_st)"))
-    let hooks = Fs.read_text("packages/ludic.render3d/hooks.ludic")
+    let hooks = Fs.read_text(`{r3d_package_dir()}/hooks.ludic`)
     expect(Text.contains(hooks, "function r3d_on_prepare"))
   }
 }
