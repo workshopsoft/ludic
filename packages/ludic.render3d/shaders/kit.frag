@@ -270,7 +270,8 @@ vec3 facadeRoom(Fac f, vec3 ray, float lod, bool rays) {
   uint seed = uint(int(v_tint.w));
   uint wall = uint(f.wall);
   int cx = f.cell.x, cy = f.cell.y;
-  float night = imiNight(u_sun_dir.y);
+  // how night it is from the daylight level (after dusk the light the renderer calls its sun is the moon, so its height says nothing)
+  float night = max(imiNight(u_sun_dir.y) * step(0.5, u_daylight), 1.0 - smoothstep(0.0, 0.45, u_daylight));
   bool lit = imiUnit(imiHash(seed, wall, cx, cy, 1u)) < night * u_im_atlas.w;
   bool curtain = imiUnit(imiHash(seed, wall, cx, cy, 2u)) < u_im_gain.z;
   vec3 amb = skyIrradiance(vec3(0.0, 1.0, 0.0));
