@@ -78,3 +78,12 @@ ludic test packages/ludic.minimap
 A 20 x 20 grid with sea on one side: the cells, revealing and the land's share, the marks' cap,
 editing and rubbing out, the nearest for a compass, projection, zoom about a point, a pan, focus
 and the clamp, picking and placing, the scale bar, and the save.
+
+## The turning window (rotview.ludic)
+
+`MinimapRotView` is a radar's or a pause map's window as a value, so a game holds one for each it draws.
+`minimap_rv_set(v, x0, y0, w, h, fx, fy, cx, cz, rot, span)` puts the world point (cx, cz) at the fraction (fx, fy) of
+the window, the heading `rot` up (ludic.character's yaw: forward is (-sin, -cos); 0 is north up) and `span` metres across.
+`minimap_rv_sx / sy` take a world point to the screen and `minimap_rv_wx / wz` back; `minimap_rv_angle(v, yaw)` turns an
+arrow; `minimap_rv_rim` brings a tracked mark onto the rim along its bearing; `minimap_rv_tiles` names the square tiles
+of a pyramid level the window can show.

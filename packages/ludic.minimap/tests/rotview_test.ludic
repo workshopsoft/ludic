@@ -1,0 +1,74 @@
+# rotview_test.ludic - the turning window (rotview.ludic): north up is the plain map, the way you face is up, world to screen and back
+# within a hundredth of a pixel at any heading, the anchor below the middle, a tracked mark brought onto the rim along its bearing, and
+# the tiles a turned window can show
+import "ludic.minimap"
+import "ludic.base"
+program RotviewTest {
+  numbers float
+  function near(a: float, b: float, eps: float) -> bool { return Math.abs(a - b) <= eps }
+
+  test "north up: +x right and +z down, the anchor at its fraction, k pixels a metre" {
+    let v = new MinimapRotView
+    minimap_rv_set(v, 10.0, 20.0, 300.0, 190.0, 0.5, 0.62, 1000.0, 2000.0, 0.0, 150.0)
+    expect(near(v.k, 2.0, 0.0001))
+    expect(near(minimap_rv_sx(v, 1000.0, 2000.0), 160.0, 0.001))
+    expect(near(minimap_rv_sy(v, 1000.0, 2000.0), 20.0 + 190.0 * 0.62, 0.001))
+    expect(near(minimap_rv_sx(v, 1010.0, 2000.0), 180.0, 0.001))
+    expect(near(minimap_rv_sy(v, 1000.0, 1990.0), 20.0 + 190.0 * 0.62 - 20.0, 0.001))
+  }
+
+  test "the way you face is up: facing west (+pi/2, forward -x), a point ahead is above the anchor and north is to the right" {
+    let v = new MinimapRotView
+    minimap_rv_set(v, 0.0, 0.0, 200.0, 200.0, 0.5, 0.5, 0.0, 0.0, 1.5707963, 100.0)
+    expect(near(minimap_rv_sx(v, -10.0, 0.0), 100.0, 0.001))
+    expect(minimap_rv_sy(v, -10.0, 0.0) < 100.0 - 19.0)
+    expect(minimap_rv_sx(v, 0.0, -10.0) > 100.0 + 19.0)
+    expect(near(minimap_rv_angle(v, 1.5707963), 0.0, 0.0001))           # an arrow for the way you face points up
+  }
+
+  test "world to screen and back within a hundredth of a pixel at 64 headings and anchors" {
+    let v = new MinimapRotView
+    for i in 0 .. 64 {
+      let rot = float(i) * 0.1 - 3.2
+      minimap_rv_set(v, 5.0, 7.0, 320.0, 200.0, 0.3 + float(i % 5) * 0.1, 0.62, 512.0 * float(i), -300.0, rot, 220.0 + float(i))
+      for j in 0 .. 10 {
+        let x = 512.0 * float(i) + float(j * 37 % 200) - 100.0
+        let z = -300.0 + float(j * 53 % 200) - 100.0
+        let sx = minimap_rv_sx(v, x, z)
+        let sy = minimap_rv_sy(v, x, z)
+        expect(near(minimap_rv_wx(v, sx, sy), x, 0.01 / v.k))
+        expect(near(minimap_rv_wz(v, sx, sy), z, 0.01 / v.k))
+      }
+    }
+  }
+
+  test "a point off the window comes to its rim along the line from the anchor; one inside stays" {
+    let v = new MinimapRotView
+    minimap_rv_set(v, 0.0, 0.0, 300.0, 190.0, 0.5, 0.62, 0.0, 0.0, 0.0, 300.0)
+    minimap_rv_rim(v, 150.0, 100.0, 8.0)
+    expect(not v.rim_out)
+    minimap_rv_rim(v, 150.0 + 1000.0, 117.8 + 500.0, 8.0)
+    expect(v.rim_out)
+    expect(near(v.rim_x, 292.0, 0.01) or near(v.rim_y, 182.0, 0.01))
+    expect(minimap_rv_inside(v, v.rim_x, v.rim_y, 7.99))
+    # along its bearing: the same slope from the anchor
+    expect(near((v.rim_y - v.ay) * 1000.0, (v.rim_x - v.ax) * 500.0, 0.5))
+  }
+
+  test "the tiles a turned window can show hold every corner of it" {
+    let v = new MinimapRotView
+    let t = [0, 0, 0, 0]
+    minimap_rv_set(v, 0.0, 0.0, 300.0, 190.0, 0.5, 0.62, 300.0, 300.0, 0.7, 220.0)
+    minimap_rv_tiles(v, 256.0, -256.0, -256.0, t)
+    for c in 0 .. 4 {
+      var sx = 0.0
+      var sy = 0.0
+      if c == 1 or c == 2 { sx = 300.0 }
+      if c >= 2 { sy = 190.0 }
+      let tx = int(Math.floor((minimap_rv_wx(v, sx, sy) + 256.0) / 256.0))
+      let tz = int(Math.floor((minimap_rv_wz(v, sx, sy) + 256.0) / 256.0))
+      expect(tx >= t[0] and tx <= t[2] and tz >= t[1] and tz <= t[3])
+    }
+    expect(t[2] - t[0] <= 2 and t[3] - t[1] <= 2)
+  }
+}

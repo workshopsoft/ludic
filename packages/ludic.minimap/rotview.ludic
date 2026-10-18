@@ -1,0 +1,112 @@
+# rotview.ludic - a window onto the map that turns: a radar that keeps the way you face up (a car's satellite navigator, a shooter's
+# corner map), and the same with no turn for a full screen map. A view is a value (MinimapRotView), so a game holds as many as it
+# draws (the corner radar and the pause map), each set every frame from where the viewer is.
+#
+# The window is w x h pixels at (x0, y0) on the screen. The world point (cx, cz) is drawn at the anchor, a fraction (ax, ay) of the
+# window (0.5, 0.62: a little below the middle, more road ahead). `rot` is a heading in ludic.character's convention, forward being
+# (-sin rot, -cos rot): that way is up on the screen. rot 0 is north up: -z up, +x right, as minimap_px / py draw. `k` is pixels a metre.
+export property MinimapRotView {
+  x0: float = 0.0
+  y0: float = 0.0
+  w: float = 1.0
+  h: float = 1.0
+  ax: float = 0.0                        # the anchor on the screen, pixels
+  ay: float = 0.0
+  cx: float = 0.0                        # the world point drawn there
+  cz: float = 0.0
+  rot: float = 0.0
+  k: float = 1.0
+  cs: float = 1.0                        # cos and sin of rot
+  sn: float = 0.0
+  rim_x: float = 0.0                     # minimap_rv_rim's answer
+  rim_y: float = 0.0
+  rim_out: bool = false
+  bx0: float = 0.0                       # the world box the window shows (minimap_rv_set keeps it)
+  bz0: float = 0.0
+  bx1: float = 0.0
+  bz1: float = 0.0
+}
+
+# the view this frame: the window, the anchor as a fraction of it, the world point there, the heading up and the metres across the window
+export function minimap_rv_set(v: MinimapRotView, x0: float, y0: float, w: float, h: float, fx: float, fy: float, cx: float, cz: float, rot: float, span: float) -> void {
+  v.x0 = x0
+  v.y0 = y0
+  v.w = Math.max(w, 1.0)
+  v.h = Math.max(h, 1.0)
+  v.ax = x0 + v.w * fx
+  v.ay = y0 + v.h * fy
+  v.cx = cx
+  v.cz = cz
+  v.rot = rot
+  v.cs = Math.cos(rot)
+  v.sn = Math.sin(rot)
+  v.k = v.w / Math.max(span, 0.001)
+  # the world box: the four corners unturned
+  v.bx0 = 1000000000.0
+  v.bz0 = 1000000000.0
+  v.bx1 = -1000000000.0
+  v.bz1 = -1000000000.0
+  rv_box_add(v, x0, y0)
+  rv_box_add(v, x0 + v.w, y0)
+  rv_box_add(v, x0 + v.w, y0 + v.h)
+  rv_box_add(v, x0, y0 + v.h)
+}
+function rv_box_add(v: MinimapRotView, sx: float, sy: float) -> void {
+  let x = minimap_rv_wx(v, sx, sy)
+  let z = minimap_rv_wz(v, sx, sy)
+  v.bx0 = Math.min(v.bx0, x)
+  v.bz0 = Math.min(v.bz0, z)
+  v.bx1 = Math.max(v.bx1, x)
+  v.bz1 = Math.max(v.bz1, z)
+}
+
+# a world point on the screen
+export function minimap_rv_sx(v: MinimapRotView, x: float, z: float) -> float { return v.ax + v.k * ((x - v.cx) * v.cs - (z - v.cz) * v.sn) }
+export function minimap_rv_sy(v: MinimapRotView, x: float, z: float) -> float { return v.ay + v.k * ((x - v.cx) * v.sn + (z - v.cz) * v.cs) }
+# the world under a point of the screen
+export function minimap_rv_wx(v: MinimapRotView, sx: float, sy: float) -> float {
+  let u = (sx - v.ax) / v.k
+  let w = (sy - v.ay) / v.k
+  return v.cx + u * v.cs + w * v.sn
+}
+export function minimap_rv_wz(v: MinimapRotView, sx: float, sy: float) -> float {
+  let u = (sx - v.ax) / v.k
+  let w = (sy - v.ay) / v.k
+  return v.cz - u * v.sn + w * v.cs
+}
+# a heading in the world (ludic.character's yaw) as an angle on the screen, 0 up, clockwise: what an arrow drawn at the anchor turns by
+export function minimap_rv_angle(v: MinimapRotView, yaw: float) -> float { return v.rot - yaw }
+
+# is a screen point inside the window, `margin` pixels in from its edge?
+export function minimap_rv_inside(v: MinimapRotView, sx: float, sy: float, margin: float) -> bool {
+  return sx >= v.x0 + margin and sx <= v.x0 + v.w - margin and sy >= v.y0 + margin and sy <= v.y0 + v.h - margin
+}
+
+# a screen point brought onto the window's rim, `margin` pixels in, along the line from the anchor (a tracked mark off the radar):
+# into rim_x / rim_y; rim_out says it had to be moved
+export function minimap_rv_rim(v: MinimapRotView, sx: float, sy: float, margin: float) -> void {
+  v.rim_x = sx
+  v.rim_y = sy
+  v.rim_out = false
+  if minimap_rv_inside(v, sx, sy, margin) { return }
+  v.rim_out = true
+  let dx = sx - v.ax
+  let dy = sy - v.ay
+  var t = 1.0
+  if dx > 0.0001 { t = Math.min(t, (v.x0 + v.w - margin - v.ax) / dx) }
+  if dx < -0.0001 { t = Math.min(t, (v.x0 + margin - v.ax) / dx) }
+  if dy > 0.0001 { t = Math.min(t, (v.y0 + v.h - margin - v.ay) / dy) }
+  if dy < -0.0001 { t = Math.min(t, (v.y0 + margin - v.ay) / dy) }
+  t = Math.max(t, 0.0)
+  v.rim_x = v.ax + dx * t
+  v.rim_y = v.ay + dy * t
+}
+
+# the square tiles of `tile` metres (a grid whose corner is at (ox, oz)) the window can show: their first and last column and row
+# into out[0..4] (tx0, tz0, tx1, tz1). A turned window's box: a tile in it may still miss the window, never one outside it
+export function minimap_rv_tiles(v: MinimapRotView, tile: float, ox: float, oz: float, out: []int) -> void {
+  out[0] = int(Math.floor((v.bx0 - ox) / tile))
+  out[1] = int(Math.floor((v.bz0 - oz) / tile))
+  out[2] = int(Math.floor((v.bx1 - ox) / tile))
+  out[3] = int(Math.floor((v.bz1 - oz) / tile))
+}
