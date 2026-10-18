@@ -379,14 +379,15 @@ export function hlod_tris(m: HlodMesh) -> int { return m.ni / 3 }
 
 # ---- a kit's coarse shape, from its own mesh ----------------------------------------------------
 # A landmark (a crane, a port, an airport, a stadium) past the full radius is a few boxes that follow its shape, not the one box round it.
-# hlod_parts takes the kit's triangles (9 floats each, in its own frame), marks the cells of a grid of HLOD_PART_GRID cells along each axis
-# of their bounds that the triangles pass through (points over each triangle no farther apart than half a cell), then splits: from the box
-# round every marked cell, it cuts the box, along the axis and at the plane, that takes the most empty volume away (each half shrunk to its
-# own marked cells), until there are max_parts boxes or no cut takes away HLOD_PART_GAIN of the first box. Each box is then fitted to the
-# points in its marked cells. The result: HLOD_PART floats a box (x0, y0, z0, x1, y1, z1), or null for no triangle.
+# hlod_parts takes the kit's triangles (9 floats each, in its own frame) and marks the cells of a grid of HLOD_PART_GRID cells along each
+# axis of their bounds that the triangles pass through (points over each triangle no farther apart than half a cell; each cell keeps the
+# bounds of its points). The marked cells are taken as boxes, each grown from its first cell along x, then z, then y while every cell is
+# marked and free, and fitted to its cells' points. Then the two boxes whose box round both adds the least empty volume (its volume less
+# theirs) are merged, again and again, until max_parts are left: the pieces of a beam merge first, a stadium's four stands stay four (a
+# merge across the pitch would add the pitch's whole air), a crane's tower and its jib stay apart. The result: HLOD_PART floats a box (x0,
+# y0, z0, x1, y1, z1), every triangle inside one of them; null for no triangle.
 export const HLOD_PART: int = 6
 export const HLOD_PART_GRID: int = 20
-const HLOD_PART_GAIN: float = 0.02
 const HLOD_BIG: float = 1000000000.0
 
 function hlod_pcell(v: float, v0: float, cs: float, g: int) -> int {
@@ -448,197 +449,125 @@ export function hlod_parts(tri: floats, ntri: int, max_parts: int) -> floats {
       }
     }
   }
-  # boxes of cells: 6 ints each (first cell along x, y, z; one past the last)
-  let bx = words(max_parts * 6)
-  let cs = floats(3)
-  cs[0] = csx;  cs[1] = csy;  cs[2] = csz
-  bx[0] = 0;  bx[1] = 0;  bx[2] = 0;  bx[3] = g;  bx[4] = g;  bx[5] = g
-  hlod_pshrink(occ, g, bx, 0)
-  var nb = 1
-  let v0 = hlod_pvol(bx, 0, cs)
-  # per slab along the axis cut: its marked cells' bounds on the other two axes, then those bounds summed from either end
-  let sl = words(g * 4)
-  let pre = words((g + 1) * 6)
-  let suf = words((g + 1) * 6)
-  let cut = words(8)
-  while nb < max_parts {
-    var best = HLOD_PART_GAIN * v0
-    var bb = -1
-    for b in 0 .. nb {
-      for a in 0 .. 3 {
-        let n = bx[b * 6 + 3 + a] - bx[b * 6 + a]
-        if n < 2 { continue }
-        hlod_pslabs(occ, g, bx, b, a, sl)
-        hlod_psums(sl, n, pre, suf)
-        for p in 1 .. n {
-          # the halves [0, p) and [p, n): each its first and last marked slab, and its bounds across
-          if pre[p * 6] < 0 or suf[p * 6] < 0 { continue }
-          let va = hlod_phalf(a, cs, pre, p)
-          let vb = hlod_phalf(a, cs, suf, p)
-          let gain = hlod_pvol(bx, b, cs) - va - vb
-          if gain > best {
-            best = gain
-            bb = b
-            cut[0] = a
-            cut[1] = p
+  # the marked cells as boxes, each grown from its first free cell along x, z, then y, fitted to its cells' points (6 floats a box)
+  var bx = floats(HLOD_PART * 64)
+  var nb = 0
+  for iy in 0 .. g {
+    for iz in 0 .. g {
+      for ix in 0 .. g {
+        let c0 = (iy * g + iz) * g + ix
+        if occ[c0] != 1 { continue }
+        var ex = ix + 1
+        while ex < g and occ[(iy * g + iz) * g + ex] == 1 { ex += 1 }
+        var ez = iz + 1
+        while ez < g and hlod_prun(occ, g, ix, ex, iy, iy + 1, ez, ez + 1) { ez += 1 }
+        var ey = iy + 1
+        while ey < g and hlod_prun(occ, g, ix, ex, ey, ey + 1, iz, ez) { ey += 1 }
+        if (nb + 1) * HLOD_PART > len(bx) {
+          let more = floats(len(bx) * 2)
+          for q in 0 .. nb * HLOD_PART { more[q] = bx[q] }
+          free(bx)
+          bx = more
+        }
+        let q = nb * HLOD_PART
+        bx[q] = HLOD_BIG;  bx[q + 1] = HLOD_BIG;  bx[q + 2] = HLOD_BIG
+        bx[q + 3] = -HLOD_BIG;  bx[q + 4] = -HLOD_BIG;  bx[q + 5] = -HLOD_BIG
+        for yy in iy .. ey {
+          for zz in iz .. ez {
+            for xx in ix .. ex {
+              let c = (yy * g + zz) * g + xx
+              occ[c] = 2
+              for k in 0 .. 3 {
+                bx[q + k] = Math.min(bx[q + k], lo[c * 3 + k])
+                bx[q + 3 + k] = Math.max(bx[q + 3 + k], hi[c * 3 + k])
+              }
+            }
           }
         }
+        nb += 1
       }
     }
-    if bb < 0 { break }
-    # box bb becomes the half before the cut, a new box the half after it, each shrunk to its own cells
-    let a = cut[0]
-    let p = cut[1]
-    for q in 0 .. 6 { bx[nb * 6 + q] = bx[bb * 6 + q] }
-    let at = bx[bb * 6 + a]
-    bx[bb * 6 + 3 + a] = at + p
-    bx[nb * 6 + a] = at + p
-    hlod_pshrink(occ, g, bx, bb)
-    hlod_pshrink(occ, g, bx, nb)
-    nb += 1
   }
-  free(sl);  free(pre);  free(suf);  free(cut);  free(cs)
-  # each box fitted to the points of its marked cells
-  let out = floats(nb * HLOD_PART)
-  for b in 0 .. nb {
-    var ax0 = HLOD_BIG
-    var ay0 = HLOD_BIG
-    var az0 = HLOD_BIG
-    var ax1 = -HLOD_BIG
-    var ay1 = -HLOD_BIG
-    var az1 = -HLOD_BIG
-    for iy in bx[b * 6 + 1] .. bx[b * 6 + 4] {
-      for iz in bx[b * 6 + 2] .. bx[b * 6 + 5] {
-        for ix in bx[b * 6] .. bx[b * 6 + 3] {
-          let c = (iy * g + iz) * g + ix
-          if occ[c] == 0 { continue }
-          ax0 = Math.min(ax0, lo[c * 3]);  ax1 = Math.max(ax1, hi[c * 3])
-          ay0 = Math.min(ay0, lo[c * 3 + 1]);  ay1 = Math.max(ay1, hi[c * 3 + 1])
-          az0 = Math.min(az0, lo[c * 3 + 2]);  az1 = Math.max(az1, hi[c * 3 + 2])
+  free(occ);  free(lo);  free(hi)
+  # merge the pair that adds the least empty volume until max_parts are left: each box keeps its cheapest partner, so a merge asks again
+  # only for the boxes whose partner it took
+  let alive = words(nb)
+  let pj = words(nb)
+  let pc = floats(nb)
+  for i in 0 .. nb { alive[i] = 1 }
+  for i in 0 .. nb { hlod_ppartner(bx, alive, nb, i, pj, pc) }
+  var left = nb
+  while left > max_parts {
+    var ba = -1
+    for i in 0 .. nb {
+      if alive[i] == 1 and pj[i] >= 0 and (ba < 0 or pc[i] < pc[ba]) { ba = i }
+    }
+    if ba < 0 { break }
+    let bb = pj[ba]
+    for k in 0 .. 3 {
+      bx[ba * HLOD_PART + k] = Math.min(bx[ba * HLOD_PART + k], bx[bb * HLOD_PART + k])
+      bx[ba * HLOD_PART + 3 + k] = Math.max(bx[ba * HLOD_PART + 3 + k], bx[bb * HLOD_PART + 3 + k])
+    }
+    alive[bb] = 0
+    left -= 1
+    hlod_ppartner(bx, alive, nb, ba, pj, pc)
+    for i in 0 .. nb {
+      if alive[i] == 0 or i == ba { continue }
+      if pj[i] == ba or pj[i] == bb { hlod_ppartner(bx, alive, nb, i, pj, pc) } else {
+        let c = hlod_pmerge_cost(bx, i, ba)
+        if c < pc[i] or (c == pc[i] and ba < pj[i]) {
+          pc[i] = c
+          pj[i] = ba
         }
       }
     }
-    let q = b * HLOD_PART
-    out[q] = ax0;  out[q + 1] = ay0;  out[q + 2] = az0;  out[q + 3] = ax1;  out[q + 4] = ay1;  out[q + 5] = az1
   }
-  free(occ);  free(lo);  free(hi);  free(bx)
+  let out = floats(left * HLOD_PART)
+  var o = 0
+  for i in 0 .. nb {
+    if alive[i] == 0 { continue }
+    for k in 0 .. HLOD_PART { out[o * HLOD_PART + k] = bx[i * HLOD_PART + k] }
+    o += 1
+  }
+  free(bx);  free(alive);  free(pj);  free(pc)
   return out
 }
 
-# box b's volume in metres
-function hlod_pvol(bx: words, b: int, cs: floats) -> float {
-  let o = b * 6
-  return float(bx[o + 3] - bx[o]) * cs[0] * float(bx[o + 4] - bx[o + 1]) * cs[1] * float(bx[o + 5] - bx[o + 2]) * cs[2]
-}
-
-# box b shrunk to its marked cells (a box with none is left with no extent)
-function hlod_pshrink(occ: words, g: int, bx: words, b: int) -> void {
-  let o = b * 6
-  var i0 = g
-  var j0 = g
-  var k0 = g
-  var i1 = -1
-  var j1 = -1
-  var k1 = -1
-  for iy in bx[o + 1] .. bx[o + 4] {
-    for iz in bx[o + 2] .. bx[o + 5] {
-      for ix in bx[o] .. bx[o + 3] {
-        if occ[(iy * g + iz) * g + ix] == 0 { continue }
-        i0 = min(i0, ix);  i1 = max(i1, ix)
-        j0 = min(j0, iy);  j1 = max(j1, iy)
-        k0 = min(k0, iz);  k1 = max(k1, iz)
-      }
+# box i's cheapest partner among the boxes alive (the first of equals), into pj[i] and pc[i]; -1 when it is the only one
+function hlod_ppartner(bx: floats, alive: words, nb: int, i: int, pj: words, pc: floats) -> void {
+  pj[i] = -1
+  pc[i] = HLOD_BIG
+  for j in 0 .. nb {
+    if j == i or alive[j] == 0 { continue }
+    let c = hlod_pmerge_cost(bx, i, j)
+    if c < pc[i] {
+      pc[i] = c
+      pj[i] = j
     }
   }
-  if i1 < 0 {
-    bx[o + 3] = bx[o];  bx[o + 4] = bx[o + 1];  bx[o + 5] = bx[o + 2]
-    return
-  }
-  bx[o] = i0;  bx[o + 1] = j0;  bx[o + 2] = k0;  bx[o + 3] = i1 + 1;  bx[o + 4] = j1 + 1;  bx[o + 5] = k1 + 1
 }
 
-# the cell (along x, y, z) of box b's slab s across axis a, at (u, v) on the other two axes (u the first of them in x, y, z order)
-function hlod_pidx(g: int, bx: words, b: int, a: int, s: int, u: int, v: int) -> int {
-  let o = b * 6
-  var ix = 0
-  var iy = 0
-  var iz = 0
-  if a == 0 { ix = bx[o] + s;  iy = u;  iz = v }
-  else if a == 1 { iy = bx[o + 1] + s;  ix = u;  iz = v }
-  else { iz = bx[o + 2] + s;  ix = u;  iy = v }
-  return (iy * g + iz) * g + ix
-}
-
-# each slab of box b across axis a: the marked cells' first and last on the other two axes (4 ints a slab; -1 for a slab with none)
-function hlod_pslabs(occ: words, g: int, bx: words, b: int, a: int, sl: words) -> void {
-  let o = b * 6
-  var ua = 1
-  var va = 2
-  if a == 1 { ua = 0 }
-  if a == 2 { ua = 0;  va = 1 }
-  let n = bx[o + 3 + a] - bx[o + a]
-  for s in 0 .. n {
-    var u0 = g
-    var u1 = -1
-    var w0 = g
-    var w1 = -1
-    for u in bx[o + ua] .. bx[o + 3 + ua] {
-      for v in bx[o + va] .. bx[o + 3 + va] {
-        if occ[hlod_pidx(g, bx, b, a, s, u, v)] == 0 { continue }
-        u0 = min(u0, u);  u1 = max(u1, u)
-        w0 = min(w0, v);  w1 = max(w1, v)
-      }
+# every cell of x0 .. x1, y0 .. y1, z0 .. z1 (one past the last) marked and not yet in a box
+function hlod_prun(occ: words, g: int, x0: int, x1: int, y0: int, y1: int, z0: int, z1: int) -> bool {
+  for iy in y0 .. y1 {
+    for iz in z0 .. z1 {
+      for ix in x0 .. x1 { if occ[(iy * g + iz) * g + ix] != 1 { return false } }
     }
-    sl[s * 4] = u0;  sl[s * 4 + 1] = u1;  sl[s * 4 + 2] = w0;  sl[s * 4 + 3] = w1
-    if u1 < 0 { sl[s * 4] = -1 }
   }
+  return true
 }
 
-# the slabs summed from the start (pre[p]: slabs [0, p)) and from the end (suf[p]: slabs [p, n)): 6 ints each, the first and last marked
-# slab (-1: none) and the bounds across
-function hlod_psums(sl: words, n: int, pre: words, suf: words) -> void {
-  pre[0] = -1
-  for p in 1 .. n + 1 {
-    let s = p - 1
-    for q in 0 .. 6 { pre[p * 6 + q] = pre[s * 6 + q] }
-    if sl[s * 4] < 0 { continue }
-    if pre[p * 6] < 0 {
-      pre[p * 6] = s;  pre[p * 6 + 2] = sl[s * 4];  pre[p * 6 + 3] = sl[s * 4 + 1];  pre[p * 6 + 4] = sl[s * 4 + 2];  pre[p * 6 + 5] = sl[s * 4 + 3]
-    } else {
-      pre[p * 6 + 2] = min(pre[p * 6 + 2], sl[s * 4]);  pre[p * 6 + 3] = max(pre[p * 6 + 3], sl[s * 4 + 1])
-      pre[p * 6 + 4] = min(pre[p * 6 + 4], sl[s * 4 + 2]);  pre[p * 6 + 5] = max(pre[p * 6 + 5], sl[s * 4 + 3])
-    }
-    pre[p * 6 + 1] = s
-  }
-  suf[n * 6] = -1
-  var p = n - 1
-  while p >= 0 {
-    for q in 0 .. 6 { suf[p * 6 + q] = suf[(p + 1) * 6 + q] }
-    if sl[p * 4] >= 0 {
-      if suf[p * 6] < 0 {
-        suf[p * 6 + 1] = p;  suf[p * 6 + 2] = sl[p * 4];  suf[p * 6 + 3] = sl[p * 4 + 1];  suf[p * 6 + 4] = sl[p * 4 + 2];  suf[p * 6 + 5] = sl[p * 4 + 3]
-      } else {
-        suf[p * 6 + 2] = min(suf[p * 6 + 2], sl[p * 4]);  suf[p * 6 + 3] = max(suf[p * 6 + 3], sl[p * 4 + 1])
-        suf[p * 6 + 4] = min(suf[p * 6 + 4], sl[p * 4 + 2]);  suf[p * 6 + 5] = max(suf[p * 6 + 5], sl[p * 4 + 3])
-      }
-      suf[p * 6] = p
-    }
-    p -= 1
-  }
+function hlod_pvol6(x0: float, y0: float, z0: float, x1: float, y1: float, z1: float) -> float {
+  return Math.max(x1 - x0, 0.0) * Math.max(y1 - y0, 0.0) * Math.max(z1 - z0, 0.0)
 }
 
-# the volume (metres) of a half of a box cut across axis a, from its sums row `at` (pre or suf at the cut): its marked slabs by its cells across
-function hlod_phalf(a: int, cs: floats, sums: words, at: int) -> float {
-  let r = at * 6
-  let n_a = float(sums[r + 1] - sums[r] + 1)
-  let n_u = float(sums[r + 3] - sums[r + 2] + 1)
-  let n_v = float(sums[r + 5] - sums[r + 4] + 1)
-  var ca = cs[0]
-  var cu = cs[1]
-  var cv = cs[2]
-  if a == 1 { ca = cs[1];  cu = cs[0];  cv = cs[2] }
-  if a == 2 { ca = cs[2];  cu = cs[0];  cv = cs[1] }
-  return n_a * ca * n_u * cu * n_v * cv
+# the empty volume a merge of boxes a and b adds: the box round both less each of them (their overlap counted once more: a small error
+# that makes an overlapping pair a little dearer)
+function hlod_pmerge_cost(bx: floats, a: int, b: int) -> float {
+  let p = a * HLOD_PART
+  let q = b * HLOD_PART
+  let u = hlod_pvol6(Math.min(bx[p], bx[q]), Math.min(bx[p + 1], bx[q + 1]), Math.min(bx[p + 2], bx[q + 2]), Math.max(bx[p + 3], bx[q + 3]), Math.max(bx[p + 4], bx[q + 4]), Math.max(bx[p + 5], bx[q + 5]))
+  return u - hlod_pvol6(bx[p], bx[p + 1], bx[p + 2], bx[p + 3], bx[p + 4], bx[p + 5]) - hlod_pvol6(bx[q], bx[q + 1], bx[q + 2], bx[q + 3], bx[q + 4], bx[q + 5])
 }
 
 # ---- the proxy's colours, from the kit's own mesh ------------------------------------------------
