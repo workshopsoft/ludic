@@ -1,0 +1,153 @@
+# maptiles_test.ludic - the rasteriser and the PNG writer: a triangle paints the pixels whose centres it holds, either winding; two
+# canvases that meet at a seam paint exactly what one canvas over both paints; a turned rectangle covers its area; a class raster goes
+# through its palette; the 2 x 2 box down is the mean; the hillshade leaves flat ground alone and lights the north-west slopes; the PNG
+# decodes (render3d's own decoder) to the same pixels and a flat picture is a small fraction of its stored size
+import "ludic.maptiles"
+import "ludic.base"
+import "ludic.render3d/r3d.ludic"
+program MaptilesTest {
+  numbers float
+  # never called: naming Input links the engine's runtime, which render3d's decoder stands on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function count(c: MapCanvas, rgb: int) -> int {
+    var n = 0
+    for j in 0 .. c.h { for i in 0 .. c.w { if maptiles_get(c, i, j) == rgb { n += 1 } } }
+    return n
+  }
+
+  test "a triangle paints the pixels whose centres it holds, either winding" {
+    let c = maptiles_canvas(20, 20, 0.0, 0.0, 1.0)
+    maptiles_clear(c, 0)
+    maptiles_tri(c, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 0xff0000)
+    let a = count(c, 0xff0000)
+    expect(a >= 50 and a <= 56)
+    expect_eq(maptiles_get(c, 1, 1), 0xff0000)
+    expect_eq(maptiles_get(c, 9, 9), 0)
+    maptiles_clear(c, 0)
+    maptiles_tri(c, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0x00ff00)
+    expect_eq(count(c, 0x00ff00), a)
+  }
+
+  test "two canvases meeting at a seam paint what one canvas over both paints, pixel for pixel" {
+    let one = maptiles_canvas(64, 32, 100.0, 200.0, 0.5)
+    let left = maptiles_canvas(32, 32, 100.0, 200.0, 0.5)
+    let right = maptiles_canvas(32, 32, 116.0, 200.0, 0.5)
+    maptiles_clear(one, 0x101010)
+    maptiles_clear(left, 0x101010)
+    maptiles_clear(right, 0x101010)
+    let rng = rng_new(3)
+    for k in 0 .. 60 {
+      let x = 100.0 + rng_float(rng) * 32.0
+      let z = 200.0 + rng_float(rng) * 16.0
+      let col = (k * 40503) & 0xffffff
+      let bx = x + rng_float(rng) * 12.0 - 6.0
+      let bz = z + rng_float(rng) * 12.0 - 6.0
+      let cx = x + rng_float(rng) * 12.0 - 6.0
+      let cz = z + rng_float(rng) * 12.0 - 6.0
+      maptiles_tri(one, x, z, bx, bz, cx, cz, col)
+      maptiles_tri(left, x, z, bx, bz, cx, cz, col)
+      maptiles_tri(right, x, z, bx, bz, cx, cz, col)
+      maptiles_line(one, x, z, bx, bz, 1.5, col ^ 0xffffff)
+      maptiles_line(left, x, z, bx, bz, 1.5, col ^ 0xffffff)
+      maptiles_line(right, x, z, bx, bz, 1.5, col ^ 0xffffff)
+    }
+    var differ = 0
+    for j in 0 .. 32 {
+      for i in 0 .. 64 {
+        var v = 0
+        if i < 32 { v = maptiles_get(left, i, j) } else { v = maptiles_get(right, i - 32, j) }
+        if v != maptiles_get(one, i, j) { differ += 1 }
+      }
+    }
+    expect_eq(differ, 0)
+  }
+
+  test "a turned rectangle covers its area, centred where it is" {
+    let c = maptiles_canvas(100, 100, 0.0, 0.0, 0.25)
+    maptiles_clear(c, 0)
+    maptiles_rect(c, 12.5, 12.5, 0.6, 8.0, 4.0, 0x123456)
+    let n = count(c, 0x123456)
+    expect(Math.abs(float(n) * 0.0625 - 32.0) < 2.0)
+    expect_eq(maptiles_get(c, 50, 50), 0x123456)
+  }
+
+  test "a class raster goes through its palette; a class past it or with a negative entry leaves the pixel" {
+    let c = maptiles_canvas(8, 8, 0.0, 0.0, 1.0)
+    maptiles_clear(c, 0x777777)
+    let cls = buffer(16)
+    for i in 0 .. 16 { cls[i] = i % 4 }
+    let pal = [-1, 0x00ff00, 0x0000ff]
+    maptiles_classes(c, cls, 4, 4, 0.0, 0.0, 2.0, pal)
+    expect_eq(maptiles_get(c, 0, 0), 0x777777)    # class 0: -1
+    expect_eq(maptiles_get(c, 2, 0), 0x00ff00)    # class 1
+    expect_eq(maptiles_get(c, 5, 1), 0x0000ff)    # class 2
+    expect_eq(maptiles_get(c, 7, 7), 0x777777)    # class 3: past the palette
+  }
+
+  test "the box down is the mean of the four under each pixel, into a quarter of a parent" {
+    let s = maptiles_canvas(4, 4, 0.0, 0.0, 1.0)
+    maptiles_clear(s, 0)
+    maptiles_set(s, 0, 0, 0x404040)
+    maptiles_set(s, 1, 0, 0x808080)
+    maptiles_set(s, 0, 1, 0xc0c0c0)
+    maptiles_set(s, 1, 1, 0xffffff)
+    let d = maptiles_canvas(4, 4, 0.0, 0.0, 2.0)
+    maptiles_clear(d, 0x111111)
+    maptiles_down(s, d, 2, 2)
+    expect_eq(maptiles_get(d, 2, 2), 0xa0a0a0)
+    expect_eq(maptiles_get(d, 3, 3), 0)
+    expect_eq(maptiles_get(d, 0, 0), 0x111111)
+  }
+
+  test "the hillshade leaves flat ground alone, lights a slope facing north-west and darkens one facing south-east" {
+    let c = maptiles_canvas(30, 10, 0.0, 0.0, 1.0)
+    maptiles_clear(c, 0x808080)
+    let hts = new []float
+    for j in 0 .. 10 {
+      for i in 0 .. 30 {
+        var y = 0.0
+        if i >= 10 and i < 20 { y = float(i - 10) * 0.5 }   # rising east: faces west
+        if i >= 20 { y = 5.0 }
+        push(hts, y)
+      }
+    }
+    maptiles_shade(c, hts, 30, 10, 0.0, 0.0, 1.0, 1.0, 0.6, 1.3)
+    expect_eq(maptiles_get(c, 3, 5), 0x808080)
+    expect(((maptiles_get(c, 15, 5) >> 16) & 255) > 0x80)
+    let c2 = maptiles_canvas(30, 10, 0.0, 0.0, 1.0)
+    maptiles_clear(c2, 0x808080)
+    for k in 0 .. len(hts) { hts[k] = 0.0 - hts[k] }
+    maptiles_shade(c2, hts, 30, 10, 0.0, 0.0, 1.0, 1.0, 0.6, 1.3)
+    expect(((maptiles_get(c2, 15, 5) >> 16) & 255) < 0x80)
+  }
+
+  test "the PNG decodes to the same pixels, and a flat map picture is a small part of its stored size" (render3d_st: mut Render3dState) {
+    let t = maptiles_png_tables()
+    let c = maptiles_canvas(256, 256, 0.0, 0.0, 1.0)
+    maptiles_clear(c, 0x5a7a3a)
+    for k in 0 .. 40 { maptiles_rect(c, float(k * 37 % 256), float(k * 91 % 256), float(k) * 0.3, 20.0, 12.0, 0x9a9ea3 + k) }
+    maptiles_line(c, 0.0, 128.0, 256.0, 140.0, 7.0, 0xc3c4c0)
+    let z = maptiles_png_out(256, 256)
+    let n = maptiles_png_encode(t, c, z)
+    let path = "/tmp/maptiles_test.png"
+    expect(Fs.write_bytes(path, z.out, n))
+    print(`maptiles: a 256 px tile is {n} bytes ({n * 100 / (256 * 256 * 3)} % of stored)`)
+    expect(n * 5 < 256 * 256 * 3)
+    let px = png_decode_bytes(render3d_st, path, null)
+    expect(px != null)
+    expect_eq(render3d_st.tex_w, 256)
+    expect_eq(render3d_st.tex_h, 256)
+    let ch = render3d_st.tex_channels
+    var differ = 0
+    for j in 0 .. 256 {
+      for i in 0 .. 256 {
+        let o = (j * 256 + i) * ch
+        let v = ((px[o] & 255) << 16) | ((px[o + 1] & 255) << 8) | (px[o + 2] & 255)
+        if v != maptiles_get(c, i, j) { differ += 1 }
+      }
+    }
+    expect_eq(differ, 0)
+    Fs.remove(path)
+  }
+}

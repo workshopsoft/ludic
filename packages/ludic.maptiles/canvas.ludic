@@ -1,0 +1,95 @@
+# canvas.ludic - an RGB picture of a square of the world: pixel (i, j) covers x0 + i * mpp .. x0 + (i + 1) * mpp and the same in z
+# (rows go +z down the picture: north, -z, is up). 3 bytes a pixel, rows top down.
+export property MapCanvas {
+  w: int = 0
+  h: int = 0
+  x0: float = 0.0
+  z0: float = 0.0
+  mpp: float = 1.0
+  px: []byte = null
+}
+
+@alloc_ok("a bake's canvas: made once and drawn into again")
+export function maptiles_canvas(w: int, h: int, x0: float, z0: float, mpp: float) -> MapCanvas {
+  let c = new MapCanvas
+  c.w = max(w, 1)
+  c.h = max(h, 1)
+  c.x0 = x0
+  c.z0 = z0
+  c.mpp = mpp
+  c.px = buffer(c.w * c.h * 3)
+  return c
+}
+
+# the canvas moved to another square of the world (same size): drawn into again with nothing made
+export function maptiles_place(c: MapCanvas, x0: float, z0: float, mpp: float) -> void {
+  c.x0 = x0
+  c.z0 = z0
+  c.mpp = mpp
+}
+
+export function maptiles_clear(c: MapCanvas, rgb: int) -> void {
+  let r = (rgb >> 16) & 255
+  let g = (rgb >> 8) & 255
+  let b = rgb & 255
+  let n = c.w * c.h
+  for i in 0 .. n {
+    c.px[i * 3] = r
+    c.px[i * 3 + 1] = g
+    c.px[i * 3 + 2] = b
+  }
+}
+
+# the colour of a pixel (0xRRGGBB), and one set
+export function maptiles_get(c: MapCanvas, i: int, j: int) -> int {
+  if i < 0 or j < 0 or i >= c.w or j >= c.h { return -1 }
+  let o = (j * c.w + i) * 3
+  return ((c.px[o] & 255) << 16) | ((c.px[o + 1] & 255) << 8) | (c.px[o + 2] & 255)
+}
+export function maptiles_set(c: MapCanvas, i: int, j: int, rgb: int) -> void {
+  if i < 0 or j < 0 or i >= c.w or j >= c.h { return }
+  let o = (j * c.w + i) * 3
+  c.px[o] = (rgb >> 16) & 255
+  c.px[o + 1] = (rgb >> 8) & 255
+  c.px[o + 2] = rgb & 255
+}
+
+# a colour scaled (a shade: 0.8 darker, 1.2 lighter), held to 0..255 a channel
+export function maptiles_scale(rgb: int, k: float) -> int {
+  let r = min(max(int(float((rgb >> 16) & 255) * k + 0.5), 0), 255)
+  let g = min(max(int(float((rgb >> 8) & 255) * k + 0.5), 0), 255)
+  let b = min(max(int(float(rgb & 255) * k + 0.5), 0), 255)
+  return (r << 16) | (g << 8) | b
+}
+# a colour from linear 0..1 channels (an actor's tint) as the sRGB a picture holds, times a brightness
+export function maptiles_rgb_linear(r: float, g: float, b: float, k: float) -> int {
+  return (mt_srgb(r * k) << 16) | (mt_srgb(g * k) << 8) | mt_srgb(b * k)
+}
+function mt_srgb(v: float) -> int {
+  let c = Math.clamp(v, 0.0, 1.0)
+  var s = 12.92 * c
+  if c > 0.0031308 { s = 1.055 * Math.pow(c, 1.0 / 2.4) - 0.055 }
+  return min(max(int(s * 255.0 + 0.5), 0), 255)
+}
+
+# the canvas `src` (2w x 2h) boxed down into `dst` at pixel (ox, oy): each pixel the mean of the four under it. The supersampled
+# picture to its tile, and four children to a quarter of their parent each
+export function maptiles_down(src: MapCanvas, dst: MapCanvas, ox: int, oy: int) -> void {
+  let w = src.w / 2
+  let h = src.h / 2
+  for j in 0 .. h {
+    let y = oy + j
+    if y < 0 or y >= dst.h { continue }
+    for i in 0 .. w {
+      let x = ox + i
+      if x < 0 or x >= dst.w { continue }
+      let a = ((2 * j) * src.w + 2 * i) * 3
+      let b = a + src.w * 3
+      let o = (y * dst.w + x) * 3
+      for k in 0 .. 3 {
+        let s = (src.px[a + k] & 255) + (src.px[a + 3 + k] & 255) + (src.px[b + k] & 255) + (src.px[b + 3 + k] & 255)
+        dst.px[o + k] = (s + 2) / 4
+      }
+    }
+  }
+}

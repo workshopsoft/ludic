@@ -1,0 +1,6 @@
+# ludic.maptiles - a top-down rasteriser for a game's map picture: triangles, turned rectangles and lines in flat colours, a class
+# raster through a palette, a hillshade of a height raster, 2 x 2 box downsampling (supersampling and a tile pyramid), and a PNG
+# writer that compresses (deflate with fixed codes: flat map colours shrink well). Uses ludic.base and nothing else. See README.md.
+package "ludic.maptiles"
+version "0.1.0"
+kind source

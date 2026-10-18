@@ -1,0 +1,135 @@
+# raster.ludic - shapes in flat colours: a pixel is painted when its centre is inside (a shared edge paints each pixel once or twice,
+# never leaves a gap), so two canvases that meet at a seam paint the same pixels as one canvas over both.
+
+# a triangle (world x, z corners), either winding
+export function maptiles_tri(c: MapCanvas, ax: float, az: float, bx: float, bz: float, cx: float, cz: float, rgb: int) -> void {
+  # to pixel space
+  let inv = 1.0 / c.mpp
+  let px0 = (ax - c.x0) * inv
+  let pz0 = (az - c.z0) * inv
+  let px1 = (bx - c.x0) * inv
+  let pz1 = (bz - c.z0) * inv
+  let px2 = (cx - c.x0) * inv
+  let pz2 = (cz - c.z0) * inv
+  let area = (px1 - px0) * (pz2 - pz0) - (pz1 - pz0) * (px2 - px0)
+  if Math.abs(area) < 0.0000001 { return }
+  let i0 = max(int(Math.floor(Math.min(px0, Math.min(px1, px2)) - 0.5)), 0)
+  let i1 = min(int(Math.ceil(Math.max(px0, Math.max(px1, px2)) - 0.5)), c.w - 1)
+  let j0 = max(int(Math.floor(Math.min(pz0, Math.min(pz1, pz2)) - 0.5)), 0)
+  let j1 = min(int(Math.ceil(Math.max(pz0, Math.max(pz1, pz2)) - 0.5)), c.h - 1)
+  if i0 > i1 or j0 > j1 { return }
+  var sgn = 1.0
+  if area < 0.0 { sgn = -1.0 }
+  let r = (rgb >> 16) & 255
+  let g = (rgb >> 8) & 255
+  let b = rgb & 255
+  let eps = -0.000001
+  for j in j0 .. j1 + 1 {
+    let y = float(j) + 0.5
+    for i in i0 .. i1 + 1 {
+      let x = float(i) + 0.5
+      let e0 = ((px1 - px0) * (y - pz0) - (pz1 - pz0) * (x - px0)) * sgn
+      if e0 < eps { continue }
+      let e1 = ((px2 - px1) * (y - pz1) - (pz2 - pz1) * (x - px1)) * sgn
+      if e1 < eps { continue }
+      let e2 = ((px0 - px2) * (y - pz2) - (pz0 - pz2) * (x - px2)) * sgn
+      if e2 < eps { continue }
+      let o = (j * c.w + i) * 3
+      c.px[o] = r
+      c.px[o + 1] = g
+      c.px[o + 2] = b
+    }
+  }
+}
+
+# `count` triangles of a flat list of x, y, z corners (9 numbers a triangle) from triangle `first`, the height ignored
+export function maptiles_tris(c: MapCanvas, xyz: []float, first: int, count: int, rgb: int) -> void {
+  for t in first .. first + count {
+    let o = t * 9
+    maptiles_tri(c, xyz[o], xyz[o + 2], xyz[o + 3], xyz[o + 5], xyz[o + 6], xyz[o + 8], rgb)
+  }
+}
+
+# a quadrilateral, corners in order
+export function maptiles_quad(c: MapCanvas, ax: float, az: float, bx: float, bz: float, cx: float, cz: float, dx: float, dz: float, rgb: int) -> void {
+  maptiles_tri(c, ax, az, bx, bz, cx, cz, rgb)
+  maptiles_tri(c, ax, az, cx, cz, dx, dz, rgb)
+}
+
+# a rectangle w x d metres centred at (x, z), turned by yaw (radians; 0: w along x, d along z; a row's yaw as ludic.city keeps it)
+export function maptiles_rect(c: MapCanvas, x: float, z: float, yaw: float, w: float, d: float, rgb: int) -> void {
+  let cs = Math.cos(yaw)
+  let sn = Math.sin(yaw)
+  let hx = w * 0.5
+  let hz = d * 0.5
+  # local (lx, lz) -> world (x + cs lx + sn lz, z - sn lx + cs lz): the turn ludic.city's rows use (yaw 0 faces +z)
+  maptiles_quad(c, x - cs * hx - sn * hz, z + sn * hx - cs * hz, x + cs * hx - sn * hz, z - sn * hx - cs * hz, x + cs * hx + sn * hz, z - sn * hx + cs * hz, x - cs * hx + sn * hz, z + sn * hx + cs * hz, rgb)
+}
+
+# a line `width` metres wide between two points
+export function maptiles_line(c: MapCanvas, x0: float, z0: float, x1: float, z1: float, width: float, rgb: int) -> void {
+  let dx = x1 - x0
+  let dz = z1 - z0
+  let l = Math.sqrt(dx * dx + dz * dz)
+  if l < 0.0001 { return }
+  let nx = -dz / l * width * 0.5
+  let nz = dx / l * width * 0.5
+  maptiles_quad(c, x0 + nx, z0 + nz, x1 + nx, z1 + nz, x1 - nx, z1 - nz, x0 - nx, z0 - nz, rgb)
+}
+
+# a raster of classes (one byte a cell, cw x ch cells of cmpp metres from (cx0, cz0)) through a palette: every pixel whose centre is
+# on a cell takes palette[class] (a class past the palette, or whose entry is negative, leaves the pixel as it is)
+export function maptiles_classes(c: MapCanvas, cls: []byte, cw: int, ch: int, cx0: float, cz0: float, cmpp: float, palette: []int) -> void {
+  let np = len(palette)
+  for j in 0 .. c.h {
+    let z = c.z0 + (float(j) + 0.5) * c.mpp
+    let cj = int(Math.floor((z - cz0) / cmpp))
+    if cj < 0 or cj >= ch { continue }
+    for i in 0 .. c.w {
+      let x = c.x0 + (float(i) + 0.5) * c.mpp
+      let ci = int(Math.floor((x - cx0) / cmpp))
+      if ci < 0 or ci >= cw { continue }
+      let k = cls[cj * cw + ci] & 255
+      if k >= np { continue }
+      let rgb = palette[k]
+      if rgb < 0 { continue }
+      let o = (j * c.w + i) * 3
+      c.px[o] = (rgb >> 16) & 255
+      c.px[o + 1] = (rgb >> 8) & 255
+      c.px[o + 2] = rgb & 255
+    }
+  }
+}
+
+# a hillshade of a height raster (hw x hh samples of hmpp metres from (hx0, hz0), heights in metres) multiplied in: light from the
+# north-west and above, 1.0 on flat ground, between lo and hi on slopes; `exag` exaggerates the relief (a map reads flat ground as
+# flat). Pixels off the raster are left as they are
+export function maptiles_shade(c: MapCanvas, hts: []float, hw: int, hh: int, hx0: float, hz0: float, hmpp: float, exag: float, lo: float, hi: float) -> void {
+  # the light: from the north-west (-x, -z) at 45 degrees up
+  let lx = -0.5
+  let lz = -0.5
+  let ly = 0.7071068
+  for j in 0 .. c.h {
+    let z = c.z0 + (float(j) + 0.5) * c.mpp
+    let gj = int(Math.floor((z - hz0) / hmpp))
+    if gj < 0 or gj >= hh { continue }
+    let ja = max(gj - 1, 0)
+    let jb = min(gj + 1, hh - 1)
+    for i in 0 .. c.w {
+      let x = c.x0 + (float(i) + 0.5) * c.mpp
+      let gi = int(Math.floor((x - hx0) / hmpp))
+      if gi < 0 or gi >= hw { continue }
+      let ia = max(gi - 1, 0)
+      let ib = min(gi + 1, hw - 1)
+      let dhx = (hts[gj * hw + ib] - hts[gj * hw + ia]) / (float(max(ib - ia, 1)) * hmpp) * exag
+      let dhz = (hts[jb * hw + gi] - hts[ja * hw + gi]) / (float(max(jb - ja, 1)) * hmpp) * exag
+      # the normal (-dhx, 1, -dhz), normalised; flat ground lights at ly: shade relative to that
+      let nl = 1.0 / Math.sqrt(dhx * dhx + 1.0 + dhz * dhz)
+      let d = (-dhx * lx + ly - dhz * lz) * nl
+      let k = Math.clamp(d / ly, lo, hi)
+      if k > 0.999 and k < 1.001 { continue }
+      let o = (j * c.w + i) * 3
+      for q in 0 .. 3 { c.px[o + q] = min(max(int(float(c.px[o + q] & 255) * k + 0.5), 0), 255) }
+    }
+  }
+}

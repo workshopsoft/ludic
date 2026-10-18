@@ -1,0 +1,251 @@
+# png.ludic - a canvas as a PNG that compresses: the rows (filter 0) deflated with the fixed codes, each run matched against the pixel
+# before it (distance 3) or the pixel above it (one row back), the longer of the two, greedily. A map's flat colours come out a tenth of
+# their stored size or less. The writer's tables are made once (maptiles_png_tables) and only read, and maptiles_png_encode writes into
+# a buffer it is given, so many tiles encode at once on Job.parallel_for workers.
+export property MapPngTables {
+  crc: []long = null                     # the CRC-32 table
+  lcode: []int = null                    # per literal/length symbol 0..287: its fixed code, bit-reversed, and its length
+  llen: []int = null
+  dcode: []int = null                    # per distance symbol 0..29
+  lbase: []int = null                    # length symbols 257..285: base length and extra bits (index symbol - 257)
+  lextra: []int = null
+  dbase: []int = null
+  dextra: []int = null
+  lsym: []int = null                     # per length 3..258: its symbol (index = length)
+}
+
+# the encoder's running bits: a ctx a worker owns
+export property MapPngOut {
+  out: []byte = null
+  o: int = 0
+  bits: int = 0
+  nbits: int = 0
+}
+
+function mtp_rev(code: int, n: int) -> int {
+  var r = 0
+  for i in 0 .. n {
+    if (code >> i) & 1 == 1 { r = r | (1 << (n - 1 - i)) }
+  }
+  return r
+}
+
+@alloc_ok("the PNG writer's tables: made once a program")
+export function maptiles_png_tables() -> MapPngTables {
+  let t = new MapPngTables
+  t.crc = new []long
+  let poly: long = 3988292384            # 0xEDB88320: eight hex digits would be a 32-bit pattern
+  for n in 0 .. 256 {
+    var c = long(n)
+    for k in 0 .. 8 {
+      if (c & long(1)) != long(0) { c = (c >> long(1)) ^ poly } else { c = c >> long(1) }
+    }
+    push(t.crc, c)
+  }
+  t.lcode = new []int
+  t.llen = new []int
+  for s in 0 .. 288 {
+    var code = 0
+    var n = 8
+    if s < 144 {
+      code = 48 + s
+      n = 8
+    } else if s < 256 {
+      code = 400 + s - 144
+      n = 9
+    } else if s < 280 {
+      code = s - 256
+      n = 7
+    } else {
+      code = 192 + s - 280
+      n = 8
+    }
+    push(t.lcode, mtp_rev(code, n))
+    push(t.llen, n)
+  }
+  t.dcode = new []int
+  for s in 0 .. 30 { push(t.dcode, mtp_rev(s, 5)) }
+  t.lbase = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258]
+  t.lextra = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0]
+  t.dbase = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577]
+  t.dextra = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13]
+  t.lsym = new []int
+  for l in 0 .. 259 {
+    var s = 0
+    if l >= 3 {
+      for k in 0 .. 29 { if t.lbase[k] <= l { s = k } }
+    }
+    push(t.lsym, s)
+  }
+  return t
+}
+
+function mtp_dsym(t: MapPngTables, d: int) -> int {
+  var s = 0
+  for k in 0 .. 30 { if t.dbase[k] <= d { s = k } }
+  return s
+}
+
+function mtp_put(z: MapPngOut, v: int, n: int) -> void {
+  z.bits = z.bits | (v << z.nbits)
+  z.nbits += n
+  while z.nbits >= 8 {
+    z.out[z.o] = z.bits & 255
+    z.o += 1
+    z.bits = z.bits >> 8
+    z.nbits -= 8
+  }
+}
+
+function mtp_u32(out: []byte, at: int, v: long) -> void {
+  out[at] = int((v >> long(24)) & long(255))
+  out[at + 1] = int((v >> long(16)) & long(255))
+  out[at + 2] = int((v >> long(8)) & long(255))
+  out[at + 3] = int(v & long(255))
+}
+
+function mtp_crc(t: MapPngTables, out: []byte, from: int, n: int) -> long {
+  let mask: long = 4294967295
+  var c = mask
+  for i in from .. from + n {
+    let k = int((c ^ long(out[i] & 255)) & long(255))
+    c = t.crc[k] ^ (c >> long(8))
+  }
+  return c ^ mask
+}
+
+# the raw stream's byte k (rows behind a filter byte of 0)
+function mtp_raw(px: []byte, stride: int, k: int) -> int {
+  let row = stride + 1
+  let x = k % row
+  if x == 0 { return 0 }
+  return px[(k / row) * stride + x - 1] & 255
+}
+
+# the most bytes a w x h RGB canvas can take as a PNG here (every byte a 9-bit literal, and the chunks)
+export function maptiles_png_max(w: int, h: int) -> int {
+  let raw = (w * 3 + 1) * h
+  return raw + raw / 8 + 1024
+}
+
+@alloc_ok("a PNG's buffer: made once a tile and reused")
+export function maptiles_png_out(w: int, h: int) -> MapPngOut {
+  let z = new MapPngOut
+  z.out = buffer(maptiles_png_max(w, h))
+  return z
+}
+
+# the canvas as PNG bytes in z.out[0 .. return): no allocation; safe on a worker with its own MapPngOut
+export function maptiles_png_encode(t: MapPngTables, c: MapCanvas, z: MapPngOut) -> int {
+  let w = c.w
+  let h = c.h
+  let stride = w * 3
+  let row = stride + 1
+  let raw = row * h
+  let px = c.px
+  let out = z.out
+  # signature and IHDR
+  out[0] = 137
+  out[1] = 80
+  out[2] = 78
+  out[3] = 71
+  out[4] = 13
+  out[5] = 10
+  out[6] = 26
+  out[7] = 10
+  mtp_u32(out, 8, long(13))
+  out[12] = 73
+  out[13] = 72
+  out[14] = 68
+  out[15] = 82
+  mtp_u32(out, 16, long(w))
+  mtp_u32(out, 20, long(h))
+  out[24] = 8
+  out[25] = 2
+  out[26] = 0
+  out[27] = 0
+  out[28] = 0
+  mtp_u32(out, 29, mtp_crc(t, out, 12, 17))
+  # IDAT: its length is written once the stream is done
+  let at0 = 33
+  out[at0 + 4] = 73
+  out[at0 + 5] = 68
+  out[at0 + 6] = 65
+  out[at0 + 7] = 84
+  out[at0 + 8] = 120
+  out[at0 + 9] = 1
+  z.o = at0 + 10
+  z.bits = 0
+  z.nbits = 0
+  mtp_put(z, 1, 1)                       # the last block
+  mtp_put(z, 1, 2)                       # fixed codes
+  let d_row = mtp_dsym(t, row)
+  let d_3 = mtp_dsym(t, 3)
+  var a = 1
+  var b = 0
+  var k = 0
+  while k < raw {
+    # the runs against the pixel before and the pixel above
+    var l3 = 0
+    if k >= 3 {
+      while l3 < 258 and k + l3 < raw and mtp_raw(px, stride, k + l3) == mtp_raw(px, stride, k + l3 - 3) { l3 += 1 }
+    }
+    var lr = 0
+    if k >= row {
+      while lr < 258 and k + lr < raw and mtp_raw(px, stride, k + lr) == mtp_raw(px, stride, k + lr - row) { lr += 1 }
+    }
+    var len_m = l3
+    var dist = 3
+    var dsym = d_3
+    if lr > l3 {
+      len_m = lr
+      dist = row
+      dsym = d_row
+    }
+    if len_m >= 3 {
+      let ls = t.lsym[len_m]
+      mtp_put(z, t.lcode[257 + ls], t.llen[257 + ls])
+      if t.lextra[ls] > 0 { mtp_put(z, len_m - t.lbase[ls], t.lextra[ls]) }
+      mtp_put(z, t.dcode[dsym], 5)
+      if t.dextra[dsym] > 0 { mtp_put(z, dist - t.dbase[dsym], t.dextra[dsym]) }
+      for q in 0 .. len_m {
+        let v = mtp_raw(px, stride, k + q)
+        a = (a + v) % 65521
+        b = (b + a) % 65521
+      }
+      k += len_m
+    } else {
+      let v = mtp_raw(px, stride, k)
+      mtp_put(z, t.lcode[v], t.llen[v])
+      a = (a + v) % 65521
+      b = (b + a) % 65521
+      k += 1
+    }
+  }
+  mtp_put(z, t.lcode[256], t.llen[256])  # the end of the block
+  if z.nbits > 0 { mtp_put(z, 0, 8 - z.nbits) }
+  var o = z.o
+  mtp_u32(out, o, long(b) * long(65536) + long(a))
+  o += 4
+  mtp_u32(out, at0, long(o - at0 - 8))
+  mtp_u32(out, o, mtp_crc(t, out, at0 + 4, o - at0 - 4))
+  o += 4
+  # IEND
+  mtp_u32(out, o, long(0))
+  out[o + 4] = 73
+  out[o + 5] = 69
+  out[o + 6] = 78
+  out[o + 7] = 68
+  mtp_u32(out, o + 8, mtp_crc(t, out, o + 4, 4))
+  return o + 12
+}
+
+# the canvas written as a PNG at `path` (made and dropped here: a one-off; a bake encodes into its own MapPngOut and writes those)
+@alloc_ok("one PNG written once")
+export function maptiles_png_write(t: MapPngTables, c: MapCanvas, path: string) -> bool {
+  let z = maptiles_png_out(c.w, c.h)
+  let n = maptiles_png_encode(t, c, z)
+  let ok = Fs.write_bytes(path, z.out, n)
+  free(z.out)
+  return ok
+}

@@ -1,0 +1,8 @@
+# ludic.maptiles - a map picture drawn from above into RGB canvases, and written as compressed PNG tiles. No game words: a colour
+# is 0xRRGGBB, a place is world metres (x right, z down the picture), a canvas knows its corner and its metres a pixel.
+module ludic_maptiles uses ludic_base
+numbers float
+import "ludic.base"
+import "canvas.ludic"
+import "raster.ludic"
+import "png.ludic"
