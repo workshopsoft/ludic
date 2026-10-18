@@ -5,9 +5,9 @@ footprint times its height, centred on its place), so a landmark read as a block
 and jib (and, its mesh not being centred, 10 m off where it stands).
 - `hlod_parts(tri, ntri, max_parts)` (hlod.ludic, pure): a kit's triangles (9 floats each, its own frame) into at most `max_parts`
   boxes (`HLOD_PART` floats each: x0, y0, z0, x1, y1, z1). The cells of a 20-cell grid along each axis that the triangles pass
-  through are marked; from the box round them, the cut (box, axis, plane) that takes the most empty volume away is made, each half
-  shrunk to its own cells, until `max_parts` boxes or no cut takes 2% of the first box; each box is fitted to the triangles' points
-  in its cells. A tower and a jib are two boxes.
+  through are marked and taken as boxes (each grown along x, z, then y over marked cells, fitted to the triangles' points in them);
+  then the pair whose box round both adds the least empty volume is merged until `max_parts` are left (each box keeps its cheapest
+  partner). A portal crane is its four legs, its beams and its jib; a stadium's stands stay round its pitch.
 - `kit_parts_read(render3d_st, dir, file, node, max_parts)` (kitbox_read.ludic, CPU, no device): the same from a kit's node.
 - `hlod_bake_parts(content, kits, parts, ...)` / `hlod_bake_dir_parts(...)`: `parts[kit id]` (or null) draws each thing of that kit
   as its parts (turned, moved and scaled with the instance, in the kit's proxy colours), never merged with its neighbours.
