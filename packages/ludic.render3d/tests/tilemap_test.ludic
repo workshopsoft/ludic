@@ -13,7 +13,7 @@ program TileMapTest {
   function want(i: int, j: int) -> float { return 3.0 - 10.0 + float(raw_at(i, j)) * 50.0 / 65535.0 }
 
   function open(render3d_st: Render3dState, radius: float) -> TileMap {
-    let pattern = render3d_st.r3d_root + "/tests/maps/tiles/{tx}_{tz}.png"
+    let pattern = r3d_package_dir() + "/tests/maps/tiles/{tx}_{tz}.png"
     return tmap_new(pattern, 32.0, 16, 3, 2, -48.0, -16.0, -10.0, 40.0, 3.0, radius)
   }
   # world x and z of the centre of texel (i, j)
@@ -33,7 +33,7 @@ program TileMapTest {
     let tm = open(render3d_st, 1000.0)
     expect(tm != null)
     expect_near(tm.texel, 2.0, 0.0001)
-    expect_eq(tmap_path(tm, 2, 1), render3d_st.r3d_root + "/tests/maps/tiles/2_1.png")
+    expect_eq(tmap_path(tm, 2, 1), r3d_package_dir() + "/tests/maps/tiles/2_1.png")
     expect(tmap_stream(render3d_st, tm, 0.0, 0.0, 1000.0, 100) > 0)
     expect_eq(tmap_resident_count(tm), 5)            # (2, 1) has no file
     var bad = 0
@@ -164,7 +164,7 @@ program TileMapTest {
     expect_eq(tmm_load(ms, tm, 2, 1), -2)                     # no file
     expect_eq(ms.no_file, 1)
     # another row's numbers, or another cut, are refused and the file is left alone
-    let other = tmap_new(render3d_st.r3d_root + "/tests/maps/tiles/{tx}_{tz}.png", 32.0, 16, 3, 2, -48.0, -16.0, -10.0, 41.0, 3.0, 1000.0)
+    let other = tmap_new(r3d_package_dir() + "/tests/maps/tiles/{tx}_{tz}.png", 32.0, 16, 3, 2, -48.0, -16.0, -10.0, 41.0, 3.0, 1000.0)
     tmap_mesh_pattern(other, pattern)
     let ms2 = tmm_new(other, 4)
     expect_eq(tmm_load(ms2, other, 1, 0), -2)
@@ -257,7 +257,7 @@ program TileMapTest {
     expect_eq(tmap_mesh_pattern_of("assets/maps/m/terrain/{tx}_{tz}.png"), "assets/maps/m/terrain/{tx}_{tz}.lwt")
     expect_eq(tmap_mesh_pattern_of("t/{tx}_{tz}"), "t/{tx}_{tz}.lwt")
     let tm = open(render3d_st, 100.0)
-    expect_eq(tmap_mesh_path(tm, 2, 1), render3d_st.r3d_root + "/tests/maps/tiles/2_1.lwt")
+    expect_eq(tmap_mesh_path(tm, 2, 1), r3d_package_dir() + "/tests/maps/tiles/2_1.lwt")
     tmap_mesh_pattern(tm, "x/{tz}/{tx}.lwt")
     expect_eq(tmap_mesh_path(tm, 2, 1), "x/1/2.lwt")
   }

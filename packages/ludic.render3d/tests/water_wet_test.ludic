@@ -10,7 +10,7 @@ program WaterWetTest {
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
   function mask(render3d_st: Render3dState, layers: int) -> WetMask {
-    let pattern = render3d_st.r3d_root + "/tests/maps/shore/{tx}_{tz}.png"
+    let pattern = r3d_package_dir() + "/tests/maps/shore/{tx}_{tz}.png"
     return wet_new(wet_pattern_of(pattern), 64.0, 64, 3, 1, -96.0, -32.0, layers)
   }
   function surface(r: float) -> Model {

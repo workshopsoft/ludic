@@ -15,7 +15,7 @@ program GroundFillTest {
 
   test "the golden is what the generator writes today, number for number" (render3d_st: mut Render3dState) {
     expect(gg_open(render3d_st, "golden"))
-    let want = Fs.read_text("packages/ludic.render3d/tests/ground_fill_golden.json")
+    let want = Fs.read_text(`{r3d_package_dir()}/tests/ground_fill_golden.json`)
     expect(want != null)
     if want == null { return }
     let got = Text.split(gg_json(render3d_st), "\n")
@@ -28,7 +28,7 @@ program GroundFillTest {
   }
 
   test "the golden is one JSON object, every section in it and nothing after it" {
-    expect_eq(gft_golden_fault(Fs.read_text("packages/ludic.render3d/tests/ground_fill_golden.json")), "")
+    expect_eq(gft_golden_fault(Fs.read_text(`{r3d_package_dir()}/tests/ground_fill_golden.json`)), "")
   }
 
   test "Math.lerp is a + (b - a) * t" {

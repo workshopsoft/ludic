@@ -7,7 +7,7 @@ program GlbTest {
   numbers float
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
-  function models(render3d_st: Render3dState) -> string { return render3d_st.r3d_root + "/tests/models" }
+  function models(render3d_st: Render3dState) -> string { return r3d_package_dir() + "/tests/models" }
 
   function tri_ok(render3d_st: mut Render3dState) -> bool {
     let p = gltf_accessor_floats(render3d_st, 0)
@@ -147,7 +147,7 @@ program GlbTest {
   }
 
   test "the header is read: chunk places and lengths" {
-    let f = file_open("packages/ludic.render3d/tests/models/tri.glb", "rb")
+    let f = file_open(`{r3d_package_dir()}/tests/models/tri.glb`, "rb")
     expect(f != null)
     let out = words(4)
     expect(glb_scan(f, 696, out))

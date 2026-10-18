@@ -8,7 +8,7 @@ program TileMaskTest {
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
   function open(render3d_st: mut Render3dState) -> TileDraw {
-    let pattern = render3d_st.r3d_root + "/tests/maps/shore/{tx}_{tz}.png"
+    let pattern = r3d_package_dir() + "/tests/maps/shore/{tx}_{tz}.png"
     let tm = tmap_new(pattern, 64.0, 64, 3, 1, -96.0, -32.0, -10.0, 10.0, 0.0, 200.0)
     tmap_patches(tm, 128)
     tmap_mesh_pattern(tm, tmap_mesh_pattern_of(pattern))

@@ -12,7 +12,7 @@ program TileLockTest {
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
   function open(render3d_st: mut Render3dState) -> TileMap {
-    let pattern = render3d_st.r3d_root + "/tests/maps/lock/{tx}_{tz}.png"
+    let pattern = r3d_package_dir() + "/tests/maps/lock/{tx}_{tz}.png"
     let tm = tmap_new(pattern, 128.0, 128, 1, 1, 0.0, 0.0, -20.0, 40.0, 0.0, 400.0)
     tmap_patches(tm, 64)                       # 2 x 2 patches, levels of 64, 32, 16, 8, 4 cells
     return tm
@@ -20,7 +20,7 @@ program TileLockTest {
   function lock_of(render3d_st: Render3dState) -> TmLock {
     let cs = new []int
     push(cs, 3);  push(cs, 4);  push(cs, 5);  push(cs, 1)
-    return tmb_lock_new(render3d_st.r3d_root + "/tests/maps/lock/{tx}_{tz}.mask.png", cs)
+    return tmb_lock_new(r3d_package_dir() + "/tests/maps/lock/{tx}_{tz}.mask.png", cs)
   }
   # bake into a fresh folder (k null: unlocked) and point the map's reader at it
   function bake(render3d_st: mut Render3dState, tm: TileMap, tag: string, k: TmLock) -> string {
@@ -33,7 +33,7 @@ program TileLockTest {
 
   # the mask, read by the test itself: class of texel (i, j)
   function classes(render3d_st: mut Render3dState) -> []byte {
-    let px = png_decode_bytes(render3d_st, render3d_st.r3d_root + "/tests/maps/lock/0_0.mask.png", null)
+    let px = png_decode_bytes(render3d_st, r3d_package_dir() + "/tests/maps/lock/0_0.mask.png", null)
     expect(px != null)
     expect_eq(render3d_st.tex_w, 128)
     let step = render3d_st.tex_channels * (render3d_st.tex_depth / 8)
@@ -323,7 +323,7 @@ program TileLockTest {
     expect_eq(drawn_holes, 0)
     expect_eq(missed, 0)
     # physics: tmap_field answers the hole value on a hole texel, the height elsewhere
-    tmap_holes(tm, render3d_st.r3d_root + "/tests/maps/lock/{tx}_{tz}.mask.png", hs)
+    tmap_holes(tm, r3d_package_dir() + "/tests/maps/lock/{tx}_{tz}.mask.png", hs)
     tmap_ensure(render3d_st, tm, 64.0, 64.0, 100.0)
     let out = floats(128 * 128)
     expect_eq(tmap_field(tm, out, 128, 0.5, 0.5, 1.0, -9999.0), 0)
@@ -362,7 +362,7 @@ program TileLockTest {
     let tm = open(render3d_st)
     let a = bake(render3d_st, tm, "plain", null)
     let k = lock_of(render3d_st)
-    k.pattern = render3d_st.r3d_root + "/tests/maps/lock/none_{tx}_{tz}.mask.png"
+    k.pattern = r3d_package_dir() + "/tests/maps/lock/none_{tx}_{tz}.mask.png"
     let b = bake(render3d_st, tm, "nomask", k)
     let ra = Fs.read_bytes(Text.replace(Text.replace(a, "{tx}", "0"), "{tz}", "0"))
     let rb = Fs.read_bytes(Text.replace(Text.replace(b, "{tx}", "0"), "{tz}", "0"))
@@ -376,7 +376,7 @@ program TileLockTest {
   }
 
   test "a version 1 file baked before the lock reads each level as its plain grid" (render3d_st: mut Render3dState) {
-    let pattern = render3d_st.r3d_root + "/tests/maps/shore/{tx}_{tz}.png"
+    let pattern = r3d_package_dir() + "/tests/maps/shore/{tx}_{tz}.png"
     let tm = tmap_new(pattern, 64.0, 64, 3, 1, -96.0, -32.0, -10.0, 10.0, 0.0, 200.0)
     tmap_patches(tm, 128)
     tmap_mesh_pattern(tm, tmap_mesh_pattern_of(pattern))

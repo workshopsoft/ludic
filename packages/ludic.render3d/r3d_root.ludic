@@ -31,3 +31,23 @@ function r3d_find_root(render3d_st: mut Render3dState) -> void {
   if Fs.exists(`{alt}/shaders/lighting.glsl`) { render3d_st.r3d_root = alt;  return }
   gpu_fault_set(render3d_st, `cannot find the renderer's shaders (looked in {render3d_st.r3d_root}/shaders and {alt}/shaders)`)
 }
+
+# The package's own folder as a path that opens from the folder the program was started in, for what reads the package's files
+# outside a device's start-up (its tests' fixtures and goldens, its shader sources): "packages/ludic.render3d" from a checkout's
+# root (where `ludic test packages/ludic.render3d` runs), "." when started inside the package itself, else the toolchain's copy
+# ($LUDIC_HOME, else ~/.ludic) - so `ludic test` of a package test passes from any folder, a game's or the package's own.
+@alloc_ok("once a call: three candidate paths, asked by tests and tools, never in a frame")
+function r3d_package_dir() -> string {
+  let c = new []string
+  push(c, "packages/ludic.render3d")
+  push(c, ".")
+  push(c, `{r3d_home()}/packages/ludic.render3d`)
+  return r3d_dir_pick(c)
+}
+# the first of `cands` that holds the renderer's files (shaders/lighting.glsl), else the first (whose files then fail by name)
+function r3d_dir_pick(cands: []string) -> string {
+  for i in 0 .. len(cands) {
+    if Fs.exists(`{cands[i]}/shaders/lighting.glsl`) { return cands[i] }
+  }
+  return cands[0]
+}
