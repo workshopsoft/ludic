@@ -105,6 +105,16 @@ export function maptiles_classes(c: MapCanvas, cls: []byte, cw: int, ch: int, cx
 # north-west and above, 1.0 on flat ground, between lo and hi on slopes; `exag` exaggerates the relief (a map reads flat ground as
 # flat). Pixels off the raster are left as they are
 export function maptiles_shade(c: MapCanvas, hts: []float, hw: int, hh: int, hx0: float, hz0: float, hmpp: float, exag: float, lo: float, hi: float) -> void {
+  mt_shade(c, hts, hw, hh, hx0, hz0, hmpp, exag, lo, hi, null, 0)
+}
+
+# the same, but not where the height raster's cell is of a class in `skip` (a bit a class, classes 0 .. 30, from a class raster of the
+# height raster's own size: the water's bed is not shaded, so a lake reads flat)
+export function maptiles_shade_where(c: MapCanvas, hts: []float, hw: int, hh: int, hx0: float, hz0: float, hmpp: float, exag: float, lo: float, hi: float, cls: []byte, skip: int) -> void {
+  mt_shade(c, hts, hw, hh, hx0, hz0, hmpp, exag, lo, hi, cls, skip)
+}
+
+function mt_shade(c: MapCanvas, hts: []float, hw: int, hh: int, hx0: float, hz0: float, hmpp: float, exag: float, lo: float, hi: float, cls: []byte, skip: int) -> void {
   # the light: from the north-west (-x, -z) at 45 degrees up
   let lx = -0.5
   let lz = -0.5
@@ -119,6 +129,10 @@ export function maptiles_shade(c: MapCanvas, hts: []float, hw: int, hh: int, hx0
       let x = c.x0 + (float(i) + 0.5) * c.mpp
       let gi = int(Math.floor((x - hx0) / hmpp))
       if gi < 0 or gi >= hw { continue }
+      if cls != null {
+        let k = cls[gj * hw + gi] & 255
+        if k < 31 and ((skip >> k) & 1) == 1 { continue }
+      }
       let ia = max(gi - 1, 0)
       let ib = min(gi + 1, hw - 1)
       let dhx = (hts[gj * hw + ib] - hts[gj * hw + ia]) / (float(max(ib - ia, 1)) * hmpp) * exag

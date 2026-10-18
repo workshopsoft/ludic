@@ -120,6 +120,13 @@ program MaptilesTest {
     for k in 0 .. len(hts) { hts[k] = 0.0 - hts[k] }
     maptiles_shade(c2, hts, 30, 10, 0.0, 0.0, 1.0, 1.0, 0.6, 1.3)
     expect(((maptiles_get(c2, 15, 5) >> 16) & 255) < 0x80)
+    # not where the class is skipped (class 8: the water's bed)
+    let c3 = maptiles_canvas(30, 10, 0.0, 0.0, 1.0)
+    maptiles_clear(c3, 0x808080)
+    let cls = buffer(300)
+    for k in 0 .. 300 { cls[k] = 8 }
+    maptiles_shade_where(c3, hts, 30, 10, 0.0, 0.0, 1.0, 1.0, 0.6, 1.3, cls, 1 << 8)
+    expect_eq(maptiles_get(c3, 15, 5), 0x808080)
   }
 
   test "the PNG decodes to the same pixels, and a flat map picture is a small part of its stored size" (render3d_st: mut Render3dState) {
