@@ -159,4 +159,5 @@ function sky_bind_lighting(render3d_st: mut Render3dState, prog: int) -> void {
   u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ground_alb"), render3d_st.r3d_ground_alb_r, render3d_st.r3d_ground_alb_g, render3d_st.r3d_ground_alb_b)
   daylight_bind(render3d_st, prog)
   lightzone_bind(render3d_st, prog)
+  zonelamp_bind(render3d_st, prog)
 }
