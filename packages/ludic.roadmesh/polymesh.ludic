@@ -1,0 +1,474 @@
+# polymesh.ludic - game-editor packages/core/src/world/polyMesh.ts: any simple polygon tiled finely and without slivers: every point
+# of the ring kept, points on a world-aligned grid inside it, a constrained Delaunay triangulation of the lot (ear clipping, then
+# Lawson flips; grid points inserted one by one, each followed by its flips). The same triangles in the same order as the studio's.
+
+# ---- a map of directed edges (a, b) to an int: polyMesh.ts's Map<number, number> keyed a * 2^20 + b ----------------------------
+property EMap {
+  ka: []int = null
+  kb: []int = null
+  val: []int = null
+  st: []byte = null     # 0 empty, 1 used, 2 removed
+  n: int = 0            # used
+  m: int = 0            # used and removed
+}
+function emap_new(cap: int) -> EMap {
+  var c = 64
+  while c < cap * 2 { c = c * 2 }
+  let e = new EMap
+  e.ka = words(c)
+  e.kb = words(c)
+  e.val = words(c)
+  e.st = buffer(c)
+  return e
+}
+function emap_slot(e: EMap, a: int, b: int) -> int {
+  let mask = len(e.st) - 1
+  var h = ((a * 73856093) ^ (b * 19349663)) & mask
+  var tomb = -1
+  while true {
+    let s = int(e.st[h])
+    if s == 0 {
+      if tomb >= 0 { return tomb }
+      return h
+    }
+    if s == 1 and e.ka[h] == a and e.kb[h] == b { return h }
+    if s == 2 and tomb < 0 { tomb = h }
+    h = (h + 1) & mask
+  }
+  return -1
+}
+function emap_find(e: EMap, a: int, b: int) -> int {
+  let mask = len(e.st) - 1
+  var h = ((a * 73856093) ^ (b * 19349663)) & mask
+  while true {
+    let s = int(e.st[h])
+    if s == 0 { return -1 }
+    if s == 1 and e.ka[h] == a and e.kb[h] == b { return h }
+    h = (h + 1) & mask
+  }
+  return -1
+}
+function emap_grow(e: EMap) -> void {
+  let oka = e.ka
+  let okb = e.kb
+  let ov = e.val
+  let ost = e.st
+  var c = len(ost)
+  if e.n * 2 >= c / 2 { c = c * 2 }
+  e.ka = words(c)
+  e.kb = words(c)
+  e.val = words(c)
+  e.st = buffer(c)
+  e.n = 0
+  e.m = 0
+  for i in 0 .. len(ost) { if int(ost[i]) == 1 { emap_set(e, oka[i], okb[i], ov[i]) } }
+}
+export function emap_set(e: EMap, a: int, b: int, v: int) -> void {
+  if (e.m + 1) * 2 > len(e.st) { emap_grow(e) }
+  let h = emap_slot(e, a, b)
+  if int(e.st[h]) != 1 {
+    if int(e.st[h]) == 0 { e.m += 1 }
+    e.st[h] = 1
+    e.ka[h] = a
+    e.kb[h] = b
+    e.n += 1
+  }
+  e.val[h] = v
+}
+# the value, or -1 when the map has none (the values are never negative)
+export function emap_get(e: EMap, a: int, b: int) -> int {
+  let h = emap_find(e, a, b)
+  if h < 0 { return -1 }
+  return e.val[h]
+}
+export function emap_del(e: EMap, a: int, b: int) -> void {
+  let h = emap_find(e, a, b)
+  if h < 0 { return }
+  e.st[h] = 2
+  e.n -= 1
+}
+
+# a stack of int pairs
+property IStack {
+  d: []int = null
+  n: int = 0
+}
+function istack_new() -> IStack {
+  let s = new IStack
+  s.d = words(64)
+  return s
+}
+function istack_push(s: IStack, a: int, b: int) -> void {
+  if s.n + 2 > len(s.d) {
+    let d = words(len(s.d) * 2)
+    for i in 0 .. s.n { d[i] = s.d[i] }
+    s.d = d
+  }
+  s.d[s.n] = a
+  s.d[s.n + 1] = b
+  s.n += 2
+}
+
+export function orient(ax: double, az: double, bx: double, bz: double, cx: double, cz: double) -> double { return (bx - ax) * (cz - az) - (bz - az) * (cx - ax) }
+function orient_i(p: []double, a: int, b: int, c: int) -> double { return orient(p[a * 2], p[a * 2 + 1], p[b * 2], p[b * 2 + 1], p[c * 2], p[c * 2 + 1]) }
+
+# is d inside the circle through a, b, c (counter-clockwise)?
+function in_circle(p: []double, a: int, b: int, c: int, d: int) -> double {
+  let ax = p[a * 2] - p[d * 2]
+  let ay = p[a * 2 + 1] - p[d * 2 + 1]
+  let bx = p[b * 2] - p[d * 2]
+  let by = p[b * 2 + 1] - p[d * 2 + 1]
+  let cx = p[c * 2] - p[d * 2]
+  let cy = p[c * 2 + 1] - p[d * 2 + 1]
+  return (ax * ax + ay * ay) * (bx * cy - cx * by) - (bx * bx + by * by) * (ax * cy - cx * ay) + (cx * cx + cy * cy) * (ax * by - bx * ay)
+}
+
+const STAR_MIN_SINE: double = 0.02
+
+# whether every fan triangle from c to the ring's edges turns the ring's way and the fan goes round once: the ring is star-shaped from c
+export function star_from(ring: []double, cx: double, cz: double) -> bool {
+  let n = len(ring) / 2
+  if n < 3 { return false }
+  let s = jsign(ring_area(ring))
+  if s == 0.0 or s != s { return false }
+  var turn: double = 0.0
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    let ax = ring[i * 2]
+    let az = ring[i * 2 + 1]
+    let bx = ring[j * 2]
+    let bz = ring[j * 2 + 1]
+    let o = orient(cx, cz, ax, az, bx, bz) * s
+    let la = hypot2(ax - cx, az - cz)
+    let lb = hypot2(bx - cx, bz - cz)
+    if la < 0.000001 or lb < 0.000001 { return false }
+    let ab = hypot2(bx - ax, bz - az)
+    if ab > 0.000000001 and o < STAR_MIN_SINE * ab * jmax(la, lb) { return false }
+    turn += Math.atan2(o, ((ax - cx) * (bx - cx) + (az - cz) * (bz - cz)) * s * s)
+  }
+  return dabs(turn - 6.283185307179586) < 0.000001
+}
+
+# ear clipping that keeps every vertex (polyMesh.ts clipEars): triangles as index triples, counter-clockwise
+function clip_ears(pts: []double, order: []int) -> []int {
+  let idx = new []int
+  for i in 0 .. len(order) { push(idx, order[i]) }
+  var m = len(idx)
+  let out = new []int
+  var scale: double = 1.0
+  for i in 0 .. len(pts) / 2 { scale = jmax(scale, dabs(pts[i * 2]) + dabs(pts[i * 2 + 1])) }
+  let eps = 0.000000000001 * scale * scale
+  var k0 = 0
+  while m > 3 {
+    var at = -1
+    var s = 0
+    while s < m and at < 0 {
+      if ear(pts, idx, m, (k0 + s) % m, true, eps) { at = (k0 + s) % m }
+      s += 1
+    }
+    s = 0
+    while s < m and at < 0 {
+      if ear(pts, idx, m, (k0 + s) % m, false, eps) { at = (k0 + s) % m }
+      s += 1
+    }
+    if at < 0 {
+      var best = -INF
+      for k in 0 .. m {
+        let o = orient_i(pts, idx[(k + m - 1) % m], idx[k], idx[(k + 1) % m])
+        if o > best {
+          best = o
+          at = k
+        }
+      }
+    }
+    push(out, idx[(at + m - 1) % m])
+    push(out, idx[at])
+    push(out, idx[(at + 1) % m])
+    for q in at .. m - 1 { idx[q] = idx[q + 1] }
+    m -= 1
+    k0 = at % m
+  }
+  push(out, idx[0])
+  push(out, idx[1])
+  push(out, idx[2])
+  return out
+}
+function ear(pts: []double, idx: []int, m: int, k: int, strict: bool, eps: double) -> bool {
+  let ia = idx[(k + m - 1) % m]
+  let ib = idx[k]
+  let ic = idx[(k + 1) % m]
+  let ax = pts[ia * 2]
+  let az = pts[ia * 2 + 1]
+  let bx = pts[ib * 2]
+  let bz = pts[ib * 2 + 1]
+  let cx = pts[ic * 2]
+  let cz = pts[ic * 2 + 1]
+  let o = orient(ax, az, bx, bz, cx, cz)
+  if strict { if o <= eps { return false } } else { if o < -eps { return false } }
+  for q in 0 .. m {
+    if q == k or q == (k + m - 1) % m or q == (k + 1) % m { continue }
+    let px = pts[idx[q] * 2]
+    let pz = pts[idx[q] * 2 + 1]
+    if (px == ax and pz == az) or (px == bx and pz == bz) or (px == cx and pz == cz) { continue }
+    let o1 = orient(ax, az, bx, bz, px, pz)
+    let o2 = orient(bx, bz, cx, cz, px, pz)
+    let o3 = orient(cx, cz, ax, az, px, pz)
+    if strict {
+      if o1 >= -eps and o2 >= -eps and o3 >= -eps { return false }
+    } else {
+      if o1 > eps and o2 > eps and o3 > eps { return false }
+    }
+  }
+  return true
+}
+
+export property PolyMesh {
+  pts: []double = null    # the ring's points first, then the grid points inside (x, z)
+  tris: []int = null      # counter-clockwise triples
+}
+
+# the triangulation being built: triangles (a, b, c), -1 a removed one; the directed edges to their triangle; the ring's edges
+property Tri {
+  pts: []double = null
+  t: []int = null
+  edge: EMap = null
+  fixed: EMap = null
+}
+function tri_add(T: Tri, a: int, b: int, c: int) -> int {
+  let id = len(T.t) / 3
+  push(T.t, a)
+  push(T.t, b)
+  push(T.t, c)
+  emap_set(T.edge, a, b, id)
+  emap_set(T.edge, b, c, id)
+  emap_set(T.edge, c, a, id)
+  return id
+}
+function tri_live(T: Tri, id: int) -> bool { return T.t[id * 3] >= 0 }
+function tri_del(T: Tri, id: int) -> void {
+  if not tri_live(T, id) { return }
+  for k in 0 .. 3 {
+    let a = T.t[id * 3 + k]
+    let b = T.t[id * 3 + (k + 1) % 3]
+    if emap_get(T.edge, a, b) == id { emap_del(T.edge, a, b) }
+  }
+  T.t[id * 3] = -1
+  T.t[id * 3 + 1] = -1
+  T.t[id * 3 + 2] = -1
+}
+function tri_first(T: Tri) -> int {
+  for i in 0 .. len(T.t) / 3 { if tri_live(T, i) { return i } }
+  return -1
+}
+# the corner of triangle id after vertex v by `step` (indexOf(v) + step) % 3
+function tri_after(T: Tri, id: int, v: int, step: int) -> int {
+  var k = -1
+  if T.t[id * 3 + 2] == v { k = 2 }
+  if T.t[id * 3 + 1] == v { k = 1 }
+  if T.t[id * 3] == v { k = 0 }
+  return T.t[id * 3 + (k + 3 + step) % 3]
+}
+
+# Lawson flips of the edges on the stack
+function legalize(T: Tri, st: IStack) -> void {
+  let p = T.pts
+  var guard = 0
+  while st.n > 0 and guard < 200000 {
+    guard += 1
+    let a = st.d[st.n - 2]
+    let b = st.d[st.n - 1]
+    st.n -= 2
+    if emap_get(T.fixed, a, b) >= 0 { continue }
+    let t1 = emap_get(T.edge, a, b)
+    let t2 = emap_get(T.edge, b, a)
+    if t1 < 0 or t2 < 0 { continue }
+    let c = tri_after(T, t1, a, 2)
+    let d = tri_after(T, t2, b, 2)
+    if not (orient_i(p, c, d, b) > 0.000000000001 and orient_i(p, d, c, a) > 0.000000000001) { continue }
+    let flat = orient_i(p, a, b, c) <= 0.000000000001 or orient_i(p, b, a, d) <= 0.000000000001
+    if not flat and in_circle(p, a, b, c, d) <= 0.000000000001 { continue }
+    tri_del(T, t1)
+    tri_del(T, t2)
+    tri_add(T, c, d, b)
+    tri_add(T, d, c, a)
+    istack_push(st, a, c)
+    istack_push(st, c, b)
+    istack_push(st, b, d)
+    istack_push(st, d, a)
+  }
+}
+
+# a walk toward (x, z) from triangle `last`, then every triangle if the walk loses its way; -1 when none holds it
+function locate(T: Tri, last: int, x: double, z: double) -> int {
+  let p = T.pts
+  var id = last
+  var step = 0
+  var lost = false
+  while step < 4 * (len(T.t) / 3) and id >= 0 and not lost {
+    if not tri_live(T, id) { break }
+    var moved = false
+    for k in 0 .. 3 {
+      let a = T.t[id * 3 + k]
+      let b = T.t[id * 3 + (k + 1) % 3]
+      if orient(p[a * 2], p[a * 2 + 1], p[b * 2], p[b * 2 + 1], x, z) < -0.000000000001 {
+        let nb = emap_get(T.edge, b, a)
+        if nb < 0 {
+          lost = true
+        } else {
+          id = nb
+          moved = true
+        }
+        break
+      }
+    }
+    if lost { break }
+    if not moved { return id }
+    step += 1
+  }
+  for i in 0 .. len(T.t) / 3 {
+    if not tri_live(T, i) { continue }
+    let a = T.t[i * 3]
+    let b = T.t[i * 3 + 1]
+    let c = T.t[i * 3 + 2]
+    if orient(p[a * 2], p[a * 2 + 1], p[b * 2], p[b * 2 + 1], x, z) >= -0.000000000001 and orient(p[b * 2], p[b * 2 + 1], p[c * 2], p[c * 2 + 1], x, z) >= -0.000000000001 and orient(p[c * 2], p[c * 2 + 1], p[a * 2], p[a * 2 + 1], x, z) >= -0.000000000001 { return i }
+  }
+  return -1
+}
+
+# a simple ring tiled finely: its own points, grid points every `cell` metres inside it (none nearer than 0.45 cell to its edge),
+# constrained Delaunay; counter-clockwise triangles whatever the ring's winding. cell 0: the ring's points only
+export function poly_mesh(ring: []double, cell: double) -> PolyMesh {
+  let n = len(ring) / 2
+  let out = new PolyMesh
+  let pts = pts_of(ring)
+  out.pts = pts
+  out.tris = new []int
+  if n < 3 { return out }
+  let isccw = ring_area(ring) >= 0.0
+  let order = words(n)
+  for i in 0 .. n { order[i] = isel(isccw, i, n - 1 - i) }
+  let T = new Tri
+  T.pts = pts
+  T.t = new []int
+  T.edge = emap_new(n * 8)
+  T.fixed = emap_new(n * 2)
+  for i in 0 .. n {
+    let a = order[i]
+    let b = order[(i + 1) % n]
+    emap_set(T.fixed, a, b, 1)
+    emap_set(T.fixed, b, a, 1)
+  }
+  let ears = clip_ears(pts, order)
+  for q in 0 .. len(ears) / 3 { tri_add(T, ears[q * 3], ears[q * 3 + 1], ears[q * 3 + 2]) }
+  let all = istack_new()
+  for i in 0 .. len(T.t) / 3 {
+    if not tri_live(T, i) { continue }
+    for k in 0 .. 3 { istack_push(all, T.t[i * 3 + k], T.t[i * 3 + (k + 1) % 3]) }
+  }
+  legalize(T, all)
+  if cell > 0.0 {
+    var x0 = INF
+    var z0 = INF
+    var x1 = -INF
+    var z1 = -INF
+    for i in 0 .. n {
+      x0 = jmin(x0, ring[i * 2])
+      z0 = jmin(z0, ring[i * 2 + 1])
+      x1 = jmax(x1, ring[i * 2])
+      z1 = jmax(z1, ring[i * 2 + 1])
+    }
+    let clear = cell * 0.45
+    var last = tri_first(T)
+    var gz = Math.ceil(z0 / cell)
+    while gz * cell <= z1 {
+      let xs = new []double
+      var gx = Math.ceil(x0 / cell)
+      while gx * cell <= x1 {
+        push(xs, gx * cell)
+        gx = gx + 1.0
+      }
+      let odd = (int(gz) & 1) == 1
+      for q in 0 .. len(xs) {
+        var x = xs[q]
+        if odd { x = xs[len(xs) - 1 - q] }
+        let z = gz * cell
+        if not point_in_polygon(x, z, ring) or near_edge(ring, x, z, clear) { continue }
+        let id = locate(T, last, x, z)
+        if id < 0 { continue }
+        let v = len(pts) / 2
+        var on = -1
+        for k in 0 .. 3 {
+          let a = T.t[id * 3 + k]
+          let b = T.t[id * 3 + (k + 1) % 3]
+          let o = orient(pts[a * 2], pts[a * 2 + 1], pts[b * 2], pts[b * 2 + 1], x, z)
+          if dabs(o) < 0.000000001 * jmax(1.0, hypot2(pts[a * 2] - pts[b * 2], pts[a * 2 + 1] - pts[b * 2 + 1])) { on = k }
+        }
+        if on >= 0 {
+          let a = T.t[id * 3 + on]
+          let b = T.t[id * 3 + (on + 1) % 3]
+          let c = T.t[id * 3 + (on + 2) % 3]
+          let other = emap_get(T.edge, b, a)
+          if emap_get(T.fixed, a, b) >= 0 or other < 0 { continue }
+          let d = tri_after(T, other, a, 1)
+          pts_push(pts, x, z)
+          tri_del(T, id)
+          tri_del(T, other)
+          last = tri_add(T, a, v, c)
+          tri_add(T, v, b, c)
+          tri_add(T, b, v, d)
+          tri_add(T, v, a, d)
+          let st = istack_new()
+          istack_push(st, a, c)
+          istack_push(st, c, b)
+          istack_push(st, b, d)
+          istack_push(st, d, a)
+          legalize(T, st)
+        } else {
+          pts_push(pts, x, z)
+          let a = T.t[id * 3]
+          let b = T.t[id * 3 + 1]
+          let c = T.t[id * 3 + 2]
+          tri_del(T, id)
+          last = tri_add(T, a, b, v)
+          tri_add(T, b, c, v)
+          tri_add(T, c, a, v)
+          let st = istack_new()
+          istack_push(st, a, b)
+          istack_push(st, b, c)
+          istack_push(st, c, a)
+          legalize(T, st)
+        }
+        if not tri_live(T, last) { last = tri_first(T) }
+      }
+      gz = gz + 1.0
+    }
+  }
+  for i in 0 .. len(T.t) / 3 {
+    if not tri_live(T, i) { continue }
+    let a = T.t[i * 3]
+    let b = T.t[i * 3 + 1]
+    let c = T.t[i * 3 + 2]
+    if orient_i(pts, a, b, c) > 0.000000000001 {
+      push(out.tris, a)
+      push(out.tris, b)
+      push(out.tris, c)
+    }
+  }
+  return out
+}
+
+function near_edge(ring: []double, px: double, pz: double, clear: double) -> bool {
+  let n = len(ring) / 2
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    let ax = ring[i * 2]
+    let az = ring[i * 2 + 1]
+    let dx = ring[j * 2] - ax
+    let dz = ring[j * 2 + 1] - az
+    let l2 = dx * dx + dz * dz
+    var t: double = 0.0
+    if not (l2 < 0.000000000001) { t = clamp01(((px - ax) * dx + (pz - az) * dz) / l2) }
+    if hypot2(px - ax - dx * t, pz - az - dz * t) < clear { return true }
+  }
+  return false
+}

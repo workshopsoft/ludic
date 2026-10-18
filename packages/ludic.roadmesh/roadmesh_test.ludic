@@ -6,9 +6,12 @@
 # Exits 1 when any record differs. A module's test is test/<module>_test.ludic with `export function test_<module>(recs: []Rec) -> int`
 # (the records that differ); add its import and its line in run_one below.
 program RoadmeshTest {
+  friend module roadmesh_test
   import "index.ludic"
   import "test/geom_test.ludic"
   import "test/profiles_test.ludic"
+  import "test/polyMesh_test.ludic"
+  import "test/meshBuilder_test.ludic"
 
   function base_name(path: string) -> string {
     var a = 0
@@ -28,6 +31,8 @@ program RoadmeshTest {
     print(`{path}: {len(recs)} records`)
     if m == "geom" { return test_geom(recs) }
     if m == "profiles" { return test_profiles(recs) }
+    if m == "polyMesh" { return test_polyMesh(recs) }
+    if m == "meshBuilder" { return test_meshBuilder(recs) }
     print(`roadmesh_test: no test for the module {m}`)
     return 0
   }

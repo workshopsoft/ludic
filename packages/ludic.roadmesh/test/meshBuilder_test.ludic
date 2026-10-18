@@ -1,0 +1,115 @@
+# meshBuilder_test.ludic - meshbuilder.ludic against the studio's meshBuilder.ts calls (fix/<scene>/meshBuilder.fix). A Builder
+# method's record is [uv, level, ...its arguments] (a yOf as the table of the points it was asked), and its answer what the call
+# appended to each layer (indices from the layer's first new vertex): each is run on a fresh Builder and compared.
+
+property YTab {
+  pts: []double = null
+  ys: []double = null
+  miss: int = 0
+}
+function ytab_y(t: YTab, x: double, z: double) -> double {
+  for i in 0 .. len(t.ys) { if t.pts[i * 2] == x and t.pts[i * 2 + 1] == z { return t.ys[i] } }
+  t.miss += 1
+  return NAN
+}
+function ytab_of(v: Val) -> YTab {
+  let t = new YTab
+  t.pts = v_pts(v_get(v, "pts"))
+  t.ys = v_nums(v_get(v, "ys"))
+  return t
+}
+# a call's `up`: true (or absent), false, or a direction
+function up_mode(v: Val) -> int {
+  if v.tag == T_FALSE { return UP_NO }
+  if v.tag == T_NUMS { return UP_VEC }
+  return UP_YES
+}
+function up_vec(v: Val, k: int) -> double {
+  if v.tag == T_NUMS { return v.nums[k] }
+  return 0.0
+}
+
+function check_layers(c: Check, b: Builder, w: Val) -> void {
+  check_numv(c, "tris", double(b.tris), v_get(w, "tris"))
+  let ls = v_get(w, "layers")
+  var drawn = 0
+  for i in 0 .. len(b.layers) { if len(b.layers[i].levels) > 0 { drawn += 1 } }
+  check_int(c, "layers", drawn, v_len(ls))
+  for i in 0 .. v_len(ls) {
+    let wl = v_item(ls, i)
+    let m = v_gets(wl, "material", "")
+    let l = b_find(b, m)
+    if l == null {
+      check_fail(c, `no layer {m}`)
+      continue
+    }
+    check_nums(c, `{m}.positions`, l.positions, v_get(wl, "positions"))
+    check_nums(c, `{m}.normals`, l.normals, v_get(wl, "normals"))
+    check_nums(c, `{m}.uvs`, l.uvs, v_get(wl, "uvs"))
+    check_ints(c, `{m}.indices`, l.indices, v_get(wl, "indices"))
+    check_ints(c, `{m}.levels`, l.levels, v_get(wl, "levels"))
+  }
+}
+
+export function test_meshBuilder(recs: []Rec) -> int {
+  let c = check_new("meshBuilder")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "visibleFrom" {
+      let p = arg_pt(r, 1)
+      check_bool(c, "v", visible_from(arg_pt(r, 0), p[0], p[1]), w)
+      continue
+    }
+    if f == "thick" {
+      check_bool(c, "v", thick(arg_pt(r, 0)), w)
+      continue
+    }
+    if f == "earClip" {
+      check_ints(c, "v", ear_clip(arg_pt(r, 0)), w)
+      continue
+    }
+    # a Builder method: [uv, level, m, ...]
+    let b = builder_new(arg_n(r, 0))
+    b.level = int(arg_n(r, 1))
+    let m = rarg(r, 2).str
+    if f == "tri" {
+      let a = v_nums(rarg(r, 3))
+      let bb = v_nums(rarg(r, 4))
+      let cc = v_nums(rarg(r, 5))
+      let uv = v_pts(rarg(r, 6))
+      let up = rarg(r, 7)
+      b_tri(b, m, a[0], a[1], a[2], bb[0], bb[1], bb[2], cc[0], cc[1], cc[2], uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], up_mode(up), up_vec(up, 0), up_vec(up, 1), up_vec(up, 2))
+    } else if f == "quad" {
+      let a = v_nums(rarg(r, 3))
+      let bb = v_nums(rarg(r, 4))
+      let cc = v_nums(rarg(r, 5))
+      let d = v_nums(rarg(r, 6))
+      let uv = v_pts(rarg(r, 7))
+      let up = rarg(r, 8)
+      b_quad(b, m, a[0], a[1], a[2], bb[0], bb[1], bb[2], cc[0], cc[1], cc[2], d[0], d[1], d[2], uv[0], uv[1], uv[2], uv[3], uv[4], uv[5], uv[6], uv[7], up_mode(up), up_vec(up, 0), up_vec(up, 1), up_vec(up, 2))
+    } else if f == "poly" {
+      b_poly(b, m, arg_pt(r, 3), v_nums(rarg(r, 4)))
+    } else if f == "star" {
+      let t = ytab_of(rarg(r, 4))
+      let p = arg_pt(r, 5)
+      b_star(b, m, arg_pt(r, 3), fn ytab_y, t, p[0], p[1], arg_nd(r, 6, 3.0))
+      if t.miss > 0 { check_fail(c, `{t.miss} heights asked that the studio did not ask`) }
+    } else if f == "fine" {
+      let t = ytab_of(rarg(r, 4))
+      b_fine(b, m, arg_pt(r, 3), fn ytab_y, t, arg_nd(r, 5, 2.0))
+      if t.miss > 0 { check_fail(c, `{t.miss} heights asked that the studio did not ask`) }
+    } else if f == "ribbon" {
+      b_ribbon(b, m, arg_pt(r, 3), v_nums(rarg(r, 4)), arg_pt(r, 5), v_nums(rarg(r, 6)))
+    } else if f == "strip" {
+      b_strip(b, m, arg_pt(r, 3), v_nums(rarg(r, 4)), arg_pt(r, 5), v_nums(rarg(r, 6)), arg_bd(r, 7, true))
+    } else {
+      check_fail(c, "no such function in the port")
+      continue
+    }
+    check_layers(c, b, w)
+  }
+  return check_report(c)
+}

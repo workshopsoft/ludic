@@ -1,0 +1,486 @@
+# meshbuilder.ludic - game-editor packages/core/src/world/meshBuilder.ts: the triangles of a baked mesh, by material. Every triangle
+# is its own three vertices (a soup), tagged with the level it belongs to (0 ground, 1 structure, 2 tunnel). The same triangles,
+# vertices, normals and uvs in the same order as the studio's Builder.
+#
+# A height function (Builder.star's and fine's yOf) is a function value and its context: yf(yc, x, z) (the methods are generic in
+# the context's type, so each caller passes its own record).
+
+export property Layer {
+  material: string = ""
+  slot: string = ""
+  positions: []double = null
+  normals: []double = null
+  uvs: []double = null
+  indices: []int = null
+  levels: []int = null
+}
+
+export property Builder {
+  layers: []Layer = null      # in the order they were first drawn into
+  slotM: []string = null      # the slot each material was first used as
+  slotS: []string = null
+  tris: int = 0
+  level: int = 0              # the level of the next triangles (0 ground, 1 structure, 2 tunnel)
+  uv: double = 4.0            # metres of a texture tile
+  last: Layer = null
+}
+
+const UP_NO: int = 0
+const UP_YES: int = 1
+const UP_VEC: int = 2
+const ZIP_TIE: double = 0.05
+
+export function builder_new(uv: double) -> Builder {
+  let b = new Builder
+  b.layers = new []Layer
+  b.slotM = new []string
+  b.slotS = new []string
+  b.uv = uv
+  return b
+}
+
+export function b_layer(b: Builder, m: string) -> Layer {
+  if b.last != null and b.last.material == m { return b.last }
+  for i in 0 .. len(b.layers) {
+    if b.layers[i].material == m {
+      b.last = b.layers[i]
+      return b.last
+    }
+  }
+  let l = new Layer
+  l.material = m
+  l.positions = new []double
+  l.normals = new []double
+  l.uvs = new []double
+  l.indices = new []int
+  l.levels = new []int
+  push(b.layers, l)
+  b.last = l
+  return l
+}
+# the layer of a material, or null when nothing was drawn in it
+export function b_find(b: Builder, m: string) -> Layer {
+  for i in 0 .. len(b.layers) { if b.layers[i].material == m { return b.layers[i] } }
+  return null
+}
+
+# note the slot a material is used as, the first time
+export function b_slot(b: Builder, m: string, slot: string) -> void {
+  for i in 0 .. len(b.slotM) { if b.slotM[i] == m { return } }
+  push(b.slotM, m)
+  push(b.slotS, slot)
+}
+export function b_slot_of(b: Builder, m: string) -> string {
+  for i in 0 .. len(b.slotM) { if b.slotM[i] == m { return b.slotS[i] } }
+  return ""
+}
+
+# a triangle; up UP_YES flips it to face +y when it would face down, UP_VEC to face (ux, uy, uz), UP_NO never
+export function b_tri(b: Builder, m: string, ax: double, ay: double, az: double, bx: double, by: double, bz: double, cx: double, cy: double, cz: double, u0: double, v0: double, u1: double, v1: double, u2: double, v2: double, up: int, ux: double, uy: double, uz: double) -> void {
+  let l = b_layer(b, m)
+  let px = bx - ax
+  let py = by - ay
+  let pz = bz - az
+  let qx = cx - ax
+  let qy = cy - ay
+  let qz = cz - az
+  var nx = py * qz - pz * qy
+  var ny = pz * qx - px * qz
+  var nz = px * qy - py * qx
+  let ln = hypot3(nx, ny, nz)
+  if ln < 0.0000000001 { return }
+  nx = nx / ln
+  ny = ny / ln
+  nz = nz / ln
+  let base = len(l.positions) / 3
+  if (up == UP_YES and ny < 0.0) or (up == UP_VEC and nx * ux + ny * uy + nz * uz < 0.0) {
+    nx = -nx
+    ny = -ny
+    nz = -nz
+    put_vertex(l, ax, ay, az, nx, ny, nz, u0, v0)
+    put_vertex(l, cx, cy, cz, nx, ny, nz, u2, v2)
+    put_vertex(l, bx, by, bz, nx, ny, nz, u1, v1)
+  } else {
+    put_vertex(l, ax, ay, az, nx, ny, nz, u0, v0)
+    put_vertex(l, bx, by, bz, nx, ny, nz, u1, v1)
+    put_vertex(l, cx, cy, cz, nx, ny, nz, u2, v2)
+  }
+  push(l.indices, base)
+  push(l.indices, base + 1)
+  push(l.indices, base + 2)
+  push(l.levels, b.level)
+  b.tris += 1
+}
+function put_vertex(l: Layer, x: double, y: double, z: double, nx: double, ny: double, nz: double, u: double, v: double) -> void {
+  push(l.positions, x)
+  push(l.positions, y)
+  push(l.positions, z)
+  push(l.normals, nx)
+  push(l.normals, ny)
+  push(l.normals, nz)
+  push(l.uvs, u)
+  push(l.uvs, v)
+}
+
+# a quad a-b-c-d (in order round it): two triangles a-b-c, a-c-d
+export function b_quad(b: Builder, m: string, ax: double, ay: double, az: double, bx: double, by: double, bz: double, cx: double, cy: double, cz: double, dx: double, dy: double, dz: double, u0: double, v0: double, u1: double, v1: double, u2: double, v2: double, u3: double, v3: double, up: int, ux: double, uy: double, uz: double) -> void {
+  b_tri(b, m, ax, ay, az, bx, by, bz, cx, cy, cz, u0, v0, u1, v1, u2, v2, up, ux, uy, uz)
+  b_tri(b, m, ax, ay, az, cx, cy, cz, dx, dy, dz, u0, v0, u2, v2, u3, v3, up, ux, uy, uz)
+}
+
+# a flat polygon (the points and a height each), ear clipped, facing up
+export function b_poly(b: Builder, m: string, pts: []double, ys: []double) -> void {
+  let idx = ear_clip(pts)
+  let U = b.uv
+  var i = 0
+  while i + 2 < len(idx) {
+    let a = idx[i]
+    let c1 = idx[i + 1]
+    let c2 = idx[i + 2]
+    b_tri(b, m, pts[a * 2], ys[a], pts[a * 2 + 1], pts[c1 * 2], ys[c1], pts[c1 * 2 + 1], pts[c2 * 2], ys[c2], pts[c2 * 2 + 1], pts[a * 2] / U, pts[a * 2 + 1] / U, pts[c1 * 2] / U, pts[c1 * 2 + 1] / U, pts[c2 * 2] / U, pts[c2 * 2 + 1] / U, UP_YES, 0.0, 0.0, 0.0)
+    i += 3
+  }
+}
+
+# a flat polygon seen from an interior point: K concentric copies of the ring scaled toward c, quads between them and a fan to c,
+# every vertex at yf; a ring not star-shaped from c is tiled by b_fine instead
+export function b_star<C>(b: Builder, m: string, ring: []double, yf: fn(C, double, double) -> double, yc: C, cx: double, cz: double, K: double) -> void {
+  let n = len(ring) / 2
+  if not star_from(ring, cx, cz) {
+    var reach = -INF
+    for i in 0 .. n { reach = jmax(reach, dist(ring[i * 2], ring[i * 2 + 1], cx, cz)) }
+    b_fine(b, m, ring, yf, yc, jmax(2.0, reach / jmax(1.0, K)))
+    return
+  }
+  let U = b.uv
+  let cy = yf(yc, cx, cz)
+  var k = K
+  while k >= 1.0 {
+    let f = k / K
+    let g = (k - 1.0) / K
+    for i in 0 .. n {
+      let j = (i + 1) % n
+      let ax = cx + (ring[i * 2] - cx) * f
+      let az = cz + (ring[i * 2 + 1] - cz) * f
+      let bx = cx + (ring[j * 2] - cx) * f
+      let bz = cz + (ring[j * 2 + 1] - cz) * f
+      if k == 1.0 {
+        b_tri(b, m, ax, yf(yc, ax, az), az, bx, yf(yc, bx, bz), bz, cx, cy, cz, ax / U, az / U, bx / U, bz / U, cx / U, cz / U, UP_YES, 0.0, 0.0, 0.0)
+      } else {
+        let dx = cx + (ring[i * 2] - cx) * g
+        let dz = cz + (ring[i * 2 + 1] - cz) * g
+        let ex = cx + (ring[j * 2] - cx) * g
+        let ez = cz + (ring[j * 2 + 1] - cz) * g
+        b_quad(b, m, ax, yf(yc, ax, az), az, bx, yf(yc, bx, bz), bz, ex, yf(yc, ex, ez), ez, dx, yf(yc, dx, dz), dz, ax / U, az / U, bx / U, bz / U, ex / U, ez / U, dx / U, dz / U, UP_YES, 0.0, 0.0, 0.0)
+      }
+    }
+    k = k - 1.0
+  }
+}
+
+# a flat polygon of any shape tiled by poly_mesh (its points and a grid every `cell` metres inside), every vertex at yf
+export function b_fine<C>(b: Builder, m: string, ring: []double, yf: fn(C, double, double) -> double, yc: C, cell: double) -> void {
+  let U = b.uv
+  let pm = poly_mesh(ring, cell)
+  let p = pm.pts
+  var i = 0
+  while i + 2 < len(pm.tris) {
+    let a = pm.tris[i]
+    let c1 = pm.tris[i + 1]
+    let c2 = pm.tris[i + 2]
+    let ax = p[a * 2]
+    let az = p[a * 2 + 1]
+    let bx = p[c1 * 2]
+    let bz = p[c1 * 2 + 1]
+    let dx = p[c2 * 2]
+    let dz = p[c2 * 2 + 1]
+    b_tri(b, m, ax, yf(yc, ax, az), az, bx, yf(yc, bx, bz), bz, dx, yf(yc, dx, dz), dz, ax / U, az / U, bx / U, bz / U, dx / U, dz / U, UP_YES, 0.0, 0.0, 0.0)
+    i += 3
+  }
+}
+
+# each point's share of the rail's length (0 to 1; a rail of no length counts as 1 long)
+function rail_frac(r: []double) -> []double {
+  let n = len(r) / 2
+  let s = doubles(n)
+  for i in 1 .. n { s[i] = s[i - 1] + dist_at(r, i - 1, r, i) }
+  var L = s[n - 1]
+  if L == 0.0 or L != L { L = 1.0 }
+  for i in 0 .. n { s[i] = s[i] / L }
+  return s
+}
+function turn3(px: double, pz: double, qx: double, qz: double, rx: double, rz: double) -> double { return (qx - px) * (rz - pz) - (qz - pz) * (rx - px) }
+
+# a band between two rails of any lengths, zipped by their shares of length; a zip that cannot tile the band is replaced by a
+# constrained Delaunay triangulation of its outline (poly_mesh)
+export function b_ribbon(b: Builder, m: string, A: []double, Ay: []double, B: []double, By: []double) -> void {
+  let U = b.uv
+  let fa = rail_frac(A)
+  let fb = rail_frac(B)
+  let na = len(A) / 2
+  let nb = len(B) / 2
+  let ring = pts_copy(A)
+  pts_append(ring, pts_reversed(B))
+  let nr = len(ring) / 2
+  var area: double = 0.0
+  for k in 0 .. nr {
+    let q = (k + 1) % nr
+    area += ring[k * 2] * ring[q * 2 + 1] - ring[q * 2] * ring[k * 2 + 1]
+  }
+  var want: double = 1.0
+  if area > 0.0 { want = -1.0 }
+  # the zip: (i, j, onA) a triangle
+  let zi = new []int
+  let zj = new []int
+  let za = new []int
+  var i = 0
+  var j = 0
+  while i < na - 1 or j < nb - 1 {
+    var nextA = INF
+    if i < na - 1 { nextA = fa[i + 1] }
+    var nextB = INF
+    if j < nb - 1 { nextB = fb[j + 1] }
+    var takeA = nextA <= nextB
+    if dabs(area) > 0.000000001 and nextA != INF and nextB != INF and dabs(nextA - nextB) < ZIP_TIE {
+      let goodA = turn3(A[i * 2], A[i * 2 + 1], B[j * 2], B[j * 2 + 1], A[i * 2 + 2], A[i * 2 + 3]) * want > 0.000000001
+      let goodB = turn3(A[i * 2], A[i * 2 + 1], B[j * 2], B[j * 2 + 1], B[j * 2 + 2], B[j * 2 + 3]) * want > 0.000000001
+      if takeA and not goodA and goodB {
+        takeA = false
+      } else {
+        if not takeA and not goodB and goodA { takeA = true }
+      }
+    }
+    push(zi, i)
+    push(zj, j)
+    push(za, isel(takeA, 1, 0))
+    if takeA { i += 1 } else { j += 1 }
+  }
+  if dabs(area) > 0.000000001 and not zip_tiles(A, B, zi, zj, za, want) and simple_ring(ring) {
+    let ys = new []double
+    for k in 0 .. len(Ay) { push(ys, Ay[k]) }
+    var k2 = len(By) - 1
+    while k2 >= 0 {
+      push(ys, By[k2])
+      k2 -= 1
+    }
+    let keep = new []int
+    for k in 0 .. nr { if dist_at(ring, k, ring, (k + 1) % nr) > 0.000000001 { push(keep, k) } }
+    let kr = new []double
+    for k in 0 .. len(keep) { pts_push(kr, ring[keep[k] * 2], ring[keep[k] * 2 + 1]) }
+    let pm = poly_mesh(kr, 0.0)
+    var t = 0
+    while t + 2 < len(pm.tris) {
+      let a = keep[pm.tris[t]]
+      let c1 = keep[pm.tris[t + 1]]
+      let c2 = keep[pm.tris[t + 2]]
+      b_tri(b, m, ring[a * 2], ys[a], ring[a * 2 + 1], ring[c1 * 2], ys[c1], ring[c1 * 2 + 1], ring[c2 * 2], ys[c2], ring[c2 * 2 + 1], ring[a * 2] / U, ring[a * 2 + 1] / U, ring[c1 * 2] / U, ring[c1 * 2 + 1] / U, ring[c2 * 2] / U, ring[c2 * 2 + 1] / U, UP_YES, 0.0, 0.0, 0.0)
+      t += 3
+    }
+    return
+  }
+  for z in 0 .. len(zi) {
+    let a = zi[z]
+    let c = zj[z]
+    if za[z] == 1 {
+      b_tri(b, m, A[a * 2], Ay[a], A[a * 2 + 1], B[c * 2], By[c], B[c * 2 + 1], A[a * 2 + 2], Ay[a + 1], A[a * 2 + 3], A[a * 2] / U, A[a * 2 + 1] / U, B[c * 2] / U, B[c * 2 + 1] / U, A[a * 2 + 2] / U, A[a * 2 + 3] / U, UP_YES, 0.0, 0.0, 0.0)
+    } else {
+      b_tri(b, m, A[a * 2], Ay[a], A[a * 2 + 1], B[c * 2], By[c], B[c * 2 + 1], B[c * 2 + 2], By[c + 1], B[c * 2 + 3], A[a * 2] / U, A[a * 2 + 1] / U, B[c * 2] / U, B[c * 2 + 1] / U, B[c * 2 + 2] / U, B[c * 2 + 3] / U, UP_YES, 0.0, 0.0, 0.0)
+    }
+  }
+}
+
+# a band between two rails of the same length: a strip of quads, u across (the width), v along (the length)
+export function b_strip(b: Builder, m: string, lo: []double, loY: []double, hi: []double, hiY: []double, up: bool) -> void {
+  let U = b.uv
+  let n = min(len(lo) / 2, len(hi) / 2)
+  var acc: double = 0.0
+  var i = 0
+  while i + 1 < n {
+    let d = dist_at(lo, i, lo, i + 1)
+    let w0 = dist_at(lo, i, hi, i)
+    let w1 = dist_at(lo, i + 1, hi, i + 1)
+    b_quad(b, m, lo[i * 2], loY[i], lo[i * 2 + 1], lo[i * 2 + 2], loY[i + 1], lo[i * 2 + 3], hi[i * 2 + 2], hiY[i + 1], hi[i * 2 + 3], hi[i * 2], hiY[i], hi[i * 2 + 1], 0.0, acc / U, 0.0, (acc + d) / U, w1 / U, (acc + d) / U, w0 / U, acc / U, isel(up, UP_YES, UP_NO), 0.0, 0.0, 0.0)
+    acc += d
+    i += 1
+  }
+}
+
+# whether c lies inside the ring and sees every vertex of it (a fan from c covers it)
+export function visible_from(ring: []double, cx: double, cz: double) -> bool {
+  let n = len(ring) / 2
+  if n < 3 { return false }
+  if not point_in_polygon(cx, cz, ring) { return false }
+  for i in 0 .. n {
+    let px = ring[i * 2]
+    let pz = ring[i * 2 + 1]
+    for k in 0 .. n {
+      let k2 = (k + 1) % n
+      if k == i or k2 == i { continue }
+      let ax = ring[k * 2]
+      let az = ring[k * 2 + 1]
+      let bx = ring[k2 * 2]
+      let bz = ring[k2 * 2 + 1]
+      if side_of_line(cx, cz, px, pz, ax, az) * side_of_line(cx, cz, px, pz, bx, bz) < 0.0 and side_of_line(ax, az, bx, bz, cx, cz) * side_of_line(ax, az, bx, bz, px, pz) < 0.0 { return false }
+    }
+  }
+  return true
+}
+function side_of_line(ax: double, az: double, bx: double, bz: double, px: double, pz: double) -> double { return (bx - ax) * (pz - az) - (bz - az) * (px - ax) }
+
+# a polygon with some width to it: not a sliver between two rails that nearly coincide
+export function thick(pts: []double) -> bool {
+  let n = len(pts) / 2
+  if n < 3 { return false }
+  var per: double = 0.0
+  for i in 0 .. n { per += dist_at(pts, i, pts, (i + 1) % n) }
+  return per > 0.0 and (dabs(ring_area(pts)) * 4.0) / per > 0.12
+}
+
+function area2(p: []double, a: int, b: int, c: int) -> double { return (p[b * 2] - p[a * 2]) * (p[c * 2 + 1] - p[a * 2 + 1]) - (p[b * 2 + 1] - p[a * 2 + 1]) * (p[c * 2] - p[a * 2]) }
+
+# ear clipping of a simple polygon (meshBuilder.ts earClip): triangle indices into pts, whatever the winding
+export function ear_clip(pts: []double) -> []int {
+  let n = len(pts) / 2
+  let out = new []int
+  if n < 3 { return out }
+  let idx = new []int
+  if ring_area(pts) < 0.0 {
+    var k = n - 1
+    while k >= 0 {
+      push(idx, k)
+      k -= 1
+    }
+  } else {
+    for k in 0 .. n { push(idx, k) }
+  }
+  var m = n
+  var guard = 0
+  while m > 3 and guard < n * n + 10 {
+    guard += 1
+    var clipped = false
+    for k in 0 .. m {
+      let ia = idx[(k + m - 1) % m]
+      let ib = idx[k]
+      let ic = idx[(k + 1) % m]
+      if area2(pts, ia, ib, ic) <= 0.000000001 { continue }
+      var isEar = true
+      for q in 0 .. m {
+        let jj = idx[q]
+        if jj == ia or jj == ib or jj == ic { continue }
+        let px = pts[jj * 2]
+        let pz = pts[jj * 2 + 1]
+        if (px == pts[ia * 2] and pz == pts[ia * 2 + 1]) or (px == pts[ib * 2] and pz == pts[ib * 2 + 1]) or (px == pts[ic * 2] and pz == pts[ic * 2 + 1]) { continue }
+        if area2(pts, ia, ib, jj) >= -0.000000001 and area2(pts, ib, ic, jj) >= -0.000000001 and area2(pts, ic, ia, jj) >= -0.000000001 {
+          isEar = false
+          break
+        }
+      }
+      if not isEar { continue }
+      push(out, ia)
+      push(out, ib)
+      push(out, ic)
+      for q in k .. m - 1 { idx[q] = idx[q + 1] }
+      m -= 1
+      clipped = true
+      break
+    }
+    if not clipped {
+      var best = 0
+      var ba = INF
+      for k in 0 .. m {
+        let v = dabs(area2(pts, idx[(k + m - 1) % m], idx[k], idx[(k + 1) % m]))
+        if v < ba {
+          ba = v
+          best = k
+        }
+      }
+      for q in best .. m - 1 { idx[q] = idx[q + 1] }
+      m -= 1
+    }
+  }
+  if m == 3 and area2(pts, idx[0], idx[1], idx[2]) > 0.000000001 {
+    push(out, idx[0])
+    push(out, idx[1])
+    push(out, idx[2])
+  }
+  return out
+}
+
+function cross_proper(px: double, pz: double, qx: double, qz: double, rx: double, rz: double, sx: double, sz: double) -> bool {
+  if jmax(px, qx) < jmin(rx, sx) or jmax(rx, sx) < jmin(px, qx) { return false }
+  if jmax(pz, qz) < jmin(rz, sz) or jmax(rz, sz) < jmin(pz, qz) { return false }
+  let eps: double = 0.0000000001
+  let d1 = orient(px, pz, qx, qz, rx, rz)
+  let d2 = orient(px, pz, qx, qz, sx, sz)
+  let d3 = orient(rx, rz, sx, sz, px, pz)
+  let d4 = orient(rx, rz, sx, sz, qx, qz)
+  return ((d1 > eps and d2 < -eps) or (d1 < -eps and d2 > eps)) and ((d3 > eps and d4 < -eps) or (d3 < -eps and d4 > eps))
+}
+
+# whether a ribbon's zip tiles its band: no triangle turns the band's way, no edge across crosses either rail
+function zip_tiles(A: []double, B: []double, zi: []int, zj: []int, za: []int, want: double) -> bool {
+  for z in 0 .. len(zi) {
+    let i = zi[z]
+    let j = zj[z]
+    var cx: double = 0.0
+    var cz: double = 0.0
+    if za[z] == 1 {
+      cx = A[i * 2 + 2]
+      cz = A[i * 2 + 3]
+    } else {
+      cx = B[j * 2 + 2]
+      cz = B[j * 2 + 3]
+    }
+    if orient(A[i * 2], A[i * 2 + 1], B[j * 2], B[j * 2 + 1], cx, cz) * want < -0.000000001 { return false }
+  }
+  var li = -1
+  var lj = -1
+  for z in 0 .. len(zi) {
+    let i = zi[z]
+    let j = zj[z]
+    if i == li and j == lj { continue }
+    li = i
+    lj = j
+    let px = A[i * 2]
+    let pz = A[i * 2 + 1]
+    let qx = B[j * 2]
+    let qz = B[j * 2 + 1]
+    for k in 0 .. len(A) / 2 - 1 { if cross_proper(px, pz, qx, qz, A[k * 2], A[k * 2 + 1], A[k * 2 + 2], A[k * 2 + 3]) { return false } }
+    for k in 0 .. len(B) / 2 - 1 { if cross_proper(px, pz, qx, qz, B[k * 2], B[k * 2 + 1], B[k * 2 + 2], B[k * 2 + 3]) { return false } }
+  }
+  return true
+}
+
+# whether a closed ring is simple: no two edges cross, no point lies on another edge
+function simple_ring(ring: []double) -> bool {
+  let n = len(ring) / 2
+  if n < 3 { return false }
+  for a in 0 .. n {
+    var b = a + 2
+    while b < n {
+      if not (a == 0 and b == n - 1) {
+        let a1 = (a + 1) % n
+        let b1 = (b + 1) % n
+        if cross_proper(ring[a * 2], ring[a * 2 + 1], ring[a1 * 2], ring[a1 * 2 + 1], ring[b * 2], ring[b * 2 + 1], ring[b1 * 2], ring[b1 * 2 + 1]) { return false }
+      }
+      b += 1
+    }
+  }
+  for k in 0 .. n {
+    for a in 0 .. n {
+      let b = (a + 1) % n
+      if a == k or b == k { continue }
+      let px = ring[k * 2]
+      let pz = ring[k * 2 + 1]
+      let qx = ring[a * 2]
+      let qz = ring[a * 2 + 1]
+      let dx = ring[b * 2] - qx
+      let dz = ring[b * 2 + 1] - qz
+      let l2 = dx * dx + dz * dz
+      var t: double = 0.0
+      if l2 > 0.0 { t = clamp01(((px - qx) * dx + (pz - qz) * dz) / l2) }
+      if hypot2(px - qx - dx * t, pz - qz - dz * t) < 0.000001 { return false }
+    }
+  }
+  return true
+}
