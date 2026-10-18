@@ -54,6 +54,11 @@ export function kitbake_new(size: float) -> KitBake {
 
 # the kit's name in the Dict: what makes two placements one mesh
 function kb_id(model: string, node: string, interior: string) -> string { return `{model}|{node}|{interior}` }
+# ... and with a facade style: another kit of the same mesh (the style's uniforms are the kit's)
+function kb_id_styled(model: string, node: string, interior: string, facade: string) -> string {
+  if facade == "" { return kb_id(model, node, interior) }
+  return `{model}|{node}|{interior}|{facade}`
+}
 
 # rows already written (the map's render_kits.lres as loaded): they keep their ids, and kitbake_kit finds them again by model,
 # node and interior atlas
@@ -62,7 +67,7 @@ export function kitbake_seed(kb: KitBake, rows: []RenderKit) -> void {
   for i in 0 .. len(rows) {
     push(kb.kits, rows[i])
     push(kb.boxes, null)
-    Dict.set(kb.kit_of, kb_id(rows[i].model, rows[i].node, rows[i].interior), i)
+    Dict.set(kb.kit_of, kb_id_styled(rows[i].model, rows[i].node, rows[i].interior, rows[i].facade), i)
   }
   kb.seeded = len(rows)
 }
@@ -91,12 +96,21 @@ function kb_key_free(kb: KitBake, key: string) -> bool {
 # with other measures keeps the first's.
 @alloc_ok("a bake: a kit's row is made once")
 export function kitbake_kit(kb: KitBake, model: string, node: string, w: float, d: float, h: float, interior: string) -> int {
-  let id = kb_id(model, node, interior)
+  return kitbake_kit_styled(kb, model, node, w, d, h, interior, "")
+}
+
+# kitbake_kit with a facade style: `facade` names the style (kitbake_facade gives its numbers); "" is kitbake_kit. The kit's key is
+# the node's and the style's ("flat_office")
+@alloc_ok("a bake: a kit's row is made once")
+export function kitbake_kit_styled(kb: KitBake, model: string, node: string, w: float, d: float, h: float, interior: string, facade: string) -> int {
+  let id = kb_id_styled(model, node, interior, facade)
   if Dict.has(kb.kit_of, id) { return Dict.get(kb.kit_of, id) }
   let k = new RenderKit
-  var key = kb_key(node)
+  var base = kb_key(node)
+  if facade != "" { base = kb_key(`{node}_{facade}`) }
+  var key = base
   var n = 2
-  while not kb_key_free(kb, key) { key = `{kb_key(node)}_{n}`;  n += 1 }
+  while not kb_key_free(kb, key) { key = `{base}_{n}`;  n += 1 }
   k.key = key
   k.model = model
   k.node = node
@@ -104,6 +118,7 @@ export function kitbake_kit(kb: KitBake, model: string, node: string, w: float, 
   let r = 0.5 * Math.sqrt(k.w * k.w + k.d * k.d + k.h * k.h)
   kb_dists(kb, k, r)
   k.interior = interior
+  k.facade = facade
   push(kb.kits, k)
   push(kb.boxes, null)
   Dict.set(kb.kit_of, id, len(kb.kits) - 1)
@@ -160,6 +175,34 @@ export function kitbake_is_box(kb: KitBake, id: int) -> bool { return id >= 0 an
 export function kitbake_kit_box(kb: KitBake, model: string, node: string, box: KitBox, w: float, d: float, h: float, interior: string) -> int {
   if not kitbake_box(kb, model, node, box) { return -1 }
   return kitbake_kit(kb, model, node, w, d, h, interior)
+}
+
+# kitbake_kit_box with a facade style (kitbake_kit_styled)
+export function kitbake_kit_box_styled(kb: KitBake, model: string, node: string, box: KitBox, w: float, d: float, h: float, interior: string, facade: string) -> int {
+  if not kitbake_box(kb, model, node, box) { return -1 }
+  return kitbake_kit_styled(kb, model, node, w, d, h, interior, facade)
+}
+
+# kit `id`'s facade numbers from `src` (its fac_* fields and its window cell: kit.frag FACADE draws them); the style's name stays the kit's
+export function kitbake_facade(kb: KitBake, id: int, src: RenderKit) -> void {
+  if id < 0 or id >= len(kb.kits) or src == null { return }
+  let k = kb.kits[id]
+  k.fac_bay = src.fac_bay;  k.fac_glass = src.fac_glass;  k.fac_sill = src.fac_sill;  k.fac_head = src.fac_head
+  k.fac_pier = src.fac_pier;  k.fac_mull = src.fac_mull;  k.fac_tran = src.fac_tran;  k.fac_reveal = src.fac_reveal
+  k.fac_ground = src.fac_ground;  k.fac_spandrel = src.fac_spandrel;  k.fac_shop_b = src.fac_shop_b;  k.fac_shop_t = src.fac_shop_t
+  k.fac_near = src.fac_near;  k.fac_frame = src.fac_frame
+  k.fac_frame_r = src.fac_frame_r;  k.fac_frame_g = src.fac_frame_g;  k.fac_frame_b = src.fac_frame_b
+  k.win_w = src.win_w;  k.win_h = src.win_h
+}
+
+# kit `id`'s distances set, not derived: its full mesh inside `near`, its card to `far` when it has an `impostor` (a small detail has none
+# and is gone past `near`)
+export function kitbake_dists(kb: KitBake, id: int, near: float, far: float, impostor: bool) -> void {
+  if id < 0 or id >= len(kb.kits) { return }
+  let k = kb.kits[id]
+  k.near = Math.min(Math.max(near, 0.0), KB_DIST_MAX)
+  k.far = Math.min(Math.max(far, k.near), KB_DIST_MAX)
+  k.impostor = impostor
 }
 
 # kit `id`'s walls carry a line every `h` metres (from a box instance's eave down, from an ordinary instance's base up), `line` metres thick (0: none): the RenderKits row
@@ -245,6 +288,14 @@ export function kitbake_rows(kb: KitBake, from: int) -> string {
     if k.interior != "" { out = out + `  interior: "{k.interior}"\n  win_w: {kb_num(k.win_w)}, win_h: {kb_num(k.win_h)}\n` }
     if k.storey_h > 0.0 { out = out + `  storey_h: {kb_num(k.storey_h)}, storey_line: {kb_num(k.storey_line)}\n` }
     if k.box { out = out + "  box: true\n" }
+    if not k.impostor { out = out + "  impostor: false\n" }
+    if k.facade != "" or k.fac_bay > 0.0 {
+      if k.interior == "" { out = out + `  win_w: {kb_num(k.win_w)}, win_h: {kb_num(k.win_h)}\n` }
+      out = out + `  facade: "{k.facade}", fac_bay: {kb_num(k.fac_bay)}, fac_glass: {kb_num(k.fac_glass)}, fac_sill: {kb_num(k.fac_sill)}, fac_head: {kb_num(k.fac_head)}\n`
+      out = out + `  fac_pier: {kb_num(k.fac_pier)}, fac_mull: {k.fac_mull}, fac_tran: {k.fac_tran}, fac_reveal: {kb_num(k.fac_reveal)}, fac_ground: {k.fac_ground}, fac_spandrel: {kb_num(k.fac_spandrel)}\n`
+      out = out + `  fac_shop_b: {kb_num(k.fac_shop_b)}, fac_shop_t: {kb_num(k.fac_shop_t)}, fac_near: {kb_num(k.fac_near)}, fac_frame: {kb_num(k.fac_frame)}\n`
+      out = out + `  fac_frame_r: {kb_num(kb_c3(k.fac_frame_r))}, fac_frame_g: {kb_num(kb_c3(k.fac_frame_g))}, fac_frame_b: {kb_num(kb_c3(k.fac_frame_b))}\n`
+    }
     let d = new RenderKit
     if k.proxy_roof or k.proxy_r != d.proxy_r or k.proxy_g != d.proxy_g or k.proxy_b != d.proxy_b {
       out = out + `  proxy_r: {kb_num(kb_c3(k.proxy_r))}, proxy_g: {kb_num(kb_c3(k.proxy_g))}, proxy_b: {kb_num(kb_c3(k.proxy_b))}\n`

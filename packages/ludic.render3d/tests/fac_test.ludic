@@ -1,0 +1,64 @@
+# fac_test.ludic - the FACADE grid's reference (fac.ludic): bays fitted to a wall so no window is cut by a corner, rows counted down from the
+# eave so none is cut by it or sits in a plinth, and the flags packed in 24 bits. The golden values are the studio's too
+# (game-editor packages/core massingTypes.ts facadeGrid): a planner puts balconies on the bays the shader draws.
+import "ludic.render3d/bigworld.ludic"
+program FacTest {
+  numbers float
+
+  test "bays: n = max(1, round((L - 2 pier) / bay)), none on a wall too short (golden values shared with the studio)" {
+    expect_eq(fac_bays(4.0, 3.0, 0.6), 1)
+    expect_eq(fac_bays(7.3, 3.0, 0.6), 2)
+    expect_eq(fac_bays(12.9, 3.0, 0.6), 4)
+    expect_eq(fac_bays(31.1, 3.0, 0.6), 10)
+    expect_eq(fac_bays(1.5, 3.0, 0.6), 0)
+    expect_eq(fac_bays(10.0, 0.0, 0.6), 0)
+    expect(Math.abs(fac_bay_mid(0, 7.3, 3.0, 0.6) - 2.125) < 1 e - 5)
+    expect(Math.abs(fac_bay_mid(9, 31.1, 3.0, 0.6) - 29.995) < 1 e - 4)
+  }
+
+  test "every bay lies inside the wall's piers, end to end: no window is cut by a corner at any length" {
+    let out = floats(2)
+    var len = 2.0
+    while len < 80.0 {
+      let n = fac_bays(len, 3.2, 0.5)
+      if n > 0 {
+        let cw = (len - 1.0) / float(n)
+        expect(cw > 1.6 and cw < 6.4)
+        expect_eq(fac_bay_of(0.25, len, 3.2, 0.5, out), -1)
+        expect_eq(fac_bay_of(len - 0.25, len, 3.2, 0.5, out), -1)
+        expect_eq(fac_bay_of(len - 0.51, len, 3.2, 0.5, out), n - 1)
+        expect(out[0] + out[1] <= len - 0.5 + 1 e - 4)
+      }
+      len += 0.37
+    }
+  }
+
+  test "rows: counted from the eave, a plinth's partial storey and anything past the storeys have none" {
+    expect_eq(fac_rows(10.2, 3.4, 0), 3)
+    expect_eq(fac_rows(11.5, 3.4, 3), 3)
+    expect_eq(fac_row_of(0.5, 11.5, 3.4, 3), -1)
+    expect_eq(fac_row_of(2.0, 11.5, 3.4, 3), 2)
+    expect_eq(fac_row_of(11.0, 11.5, 3.4, 3), 0)
+    expect_eq(fac_row_of(11.6, 11.5, 3.4, 3), -1)
+    expect_eq(fac_rows(244.8, 3.4, 72), 72)
+  }
+
+  test "flags pack blind walls, storeys and one door into 24 bits and read back" {
+    let f = fac_flags(5, 12, 2, 7.25)
+    expect_eq(f, 1206469)
+    expect(f < 16777216)
+    expect(fac_flag_blind(f, 0) and not fac_flag_blind(f, 1) and fac_flag_blind(f, 2) and not fac_flag_blind(f, 3))
+    expect_eq(fac_flag_floors(f), 12)
+    expect_eq(fac_flag_door_wall(f), 2)
+    expect(Math.abs(fac_flag_door_u(f) - 7.3) < 1 e - 4)
+    expect_eq(fac_flag_door_wall(fac_flags(0, 3, -1, 0.0)), -1)
+    expect(fac_flags(15, 200, 3, 500.0) < 16777216)
+  }
+
+  test "a wall's u runs from its start to its length on every wall" {
+    expect(Math.abs(fac_wall_u(2, -5.0, 3.0, 10.0, 6.0) - 0.0) < 1 e - 5)
+    expect(Math.abs(fac_wall_u(2, 5.0, 3.0, 10.0, 6.0) - 10.0) < 1 e - 5)
+    expect(Math.abs(fac_wall_u(0, 5.0, 3.0, 10.0, 6.0) - 0.0) < 1 e - 5)
+    expect(Math.abs(fac_wall_u(0, 5.0, -3.0, 10.0, 6.0) - 6.0) < 1 e - 5)
+  }
+}

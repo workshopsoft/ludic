@@ -35,6 +35,11 @@ out vec3 v_lpos;
 out vec3 v_lnrm;
 out vec3 v_lcam;
 #endif
+#ifdef FACADE
+// a box instance's own w, d, h (the eave) and its facade flags (cellfile.ludic: blind walls, storeys, a masked door)
+out vec3 v_box;
+out vec2 v_flags;          // the flags in two 12-bit halves: exact through interpolation
+#endif
 void main() {
   float s = i_rot.x, c = i_rot.y;
   bool boxed = i_box.w > 0.0;
@@ -57,6 +62,11 @@ void main() {
   v_lnrm = a_nrm;
   vec3 d = (u_cam_pos - i_pos.xyz) / sc;
   v_lcam = vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
+#endif
+#ifdef FACADE
+  v_box = boxed ? i_box.xyz : vec3(0.0);
+  float fl = floor(i_rot.w + 0.5);
+  v_flags = vec2(mod(fl, 4096.0), floor(fl / 4096.0));
 #endif
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * vec4(w, 1.0);

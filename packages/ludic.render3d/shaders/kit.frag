@@ -162,6 +162,139 @@ vec4 interiorAt(float lod) {
 }
 #endif
 
+#ifdef FACADE
+// ---- FACADE: a window grid fitted to each wall of a box instance (fac.ludic is the reference of this arithmetic) ----
+in vec3 v_box;
+in vec2 v_flags;
+uniform vec4 u_fac_a;            // bay, glass share of a bay, sill, head (m over the storey's floor)
+uniform vec4 u_fac_b;            // pier (m), upright bars, level bars, reveal depth (m)
+uniform vec4 u_fac_c;            // ground storey mode (0 windows, 1 shopfront, 2 doors, 3 blank), spandrel darkening, storey height, rooms on
+uniform vec4 u_fac_d;            // shopfront glass bottom, top (m), the rooms' distance, frame width (m)
+uniform vec4 u_fac_e;            // the frames' tone
+
+// what a point of a wall is: 0 wall, 1 glass, 2 frame or bar, 3 the opening's reveal, 4 a sill, 5 a shop's fascia
+struct Fac { int kind; vec2 q; vec2 size; ivec2 cell; int wall; float shade; float bay; };
+
+Fac facadeAt(vec3 ray) {
+  Fac f;
+  f.kind = 0; f.q = vec2(0.0); f.size = vec2(1.0); f.cell = ivec2(0); f.wall = -1; f.shade = 1.0; f.bay = 1.0;
+  int wall = imiWall(normalize(v_lnrm));
+  if (wall < 0 || v_box.x <= 0.0) return f;
+  int flags = int(v_flags.x + 0.5) | (int(v_flags.y + 0.5) << 12);
+  if (((flags >> wall) & 1) != 0) return f;
+  f.wall = wall;
+  float L = wall < 2 ? v_box.y : v_box.x;
+  vec3 on = imiWallNormal(wall);
+  vec3 tng = normalize(cross(vec3(0.0, 1.0, 0.0), on));
+  float u = dot(v_lpos, tng) + 0.5 * L;
+  float y = v_lpos.y;
+  float h = v_box.z;
+  float s = u_fac_c.z;
+  if (s <= 0.0 || y >= h || y < 0.0) return f;
+  int floors = (flags >> 4) & 127;
+  int fit = int(floor((h + 0.02) / s));
+  int rows = floors > 0 ? min(fit, floors) : fit;
+  int k = int(floor((h - y) / s));
+  if (k >= rows) return f;
+  float yy = y - (h - float(k + 1) * s);
+  bool ground = k == rows - 1;
+  int gmode = int(u_fac_c.x + 0.5);
+  bool shop = ground && gmode == 1;
+  if (ground && gmode == 3) return f;
+  float bay = u_fac_a.x, pier = u_fac_b.x;
+  if (shop) pier = min(pier, 0.35);
+  float span = L - 2.0 * pier;
+  if (bay <= 0.0 || span < 0.5 * bay) return f;
+  // a shopfront's fascia: the band from the glass's head to the storey above, end to end
+  if (shop && yy > min(u_fac_d.y, s - 0.35) + 0.04 && u > 0.12 && u < L - 0.12) { f.kind = 5; return f; }
+  int n = max(1, int(floor(span / bay + 0.5)));
+  float cw = span / float(n);
+  float cu = u - pier;
+  f.bay = cw;
+  float gw, g0, g1;
+  if (shop) { gw = cw - 0.24; g0 = u_fac_d.x; g1 = min(u_fac_d.y, s - 0.35); }
+  else { gw = cw * u_fac_a.y; g0 = u_fac_a.z; g1 = min(u_fac_a.w, s - 0.3); }
+  // a curtain wall's spandrels: the wall between two rows of glass a little darker
+  if (!shop && (yy < g0 || yy > g1)) f.shade = 1.0 - u_fac_c.y;
+  if (cu < 0.0 || cu >= span) return f;
+  int ci = min(int(floor(cu / cw)), n - 1);
+  float lu = cu - float(ci) * cw;
+  float gx0 = 0.5 * (cw - gw);
+  float gh = g1 - g0;
+  if (gh <= 0.1 || gw <= 0.1) return f;
+  // a door on this wall's ground storey: no glass where it stands (a shopfront keeps its glass beside it)
+  if (ground && (flags & 2048) != 0 && ((flags >> 12) & 3) == wall) {
+    float du = float((flags >> 14) & 1023) * 0.1;
+    float bx0 = pier + float(ci) * cw + gx0;
+    if (shop) { if (abs(u - du) < 0.8) return f; }
+    else if (bx0 + gw > du - 0.95 && bx0 < du + 0.95) return f;
+  }
+  float a = lu - gx0, b = yy - g0;
+  // the sill: a lighter ledge under the opening
+  if (!shop && b < 0.0 && b > -0.07 && a > -0.07 && a < gw + 0.07) { f.kind = 4; return f; }
+  if (a < 0.0 || a > gw || b < 0.0 || b > gh) return f;
+  // into the opening: the glass sits `reveal` behind the wall, so the ray meets its plane further on; short of it, the reveal
+  float r = u_fac_b.w;
+  vec3 d = vec3(dot(ray, tng), ray.y, -dot(ray, on));
+  vec2 q = vec2(a, b);
+  if (r > 0.0 && d.z > 0.02) {
+    q += d.xy * (r / d.z);
+    if (q.x < 0.0 || q.x > gw || q.y < 0.0 || q.y > gh) {
+      f.kind = 3;
+      f.shade = q.y > gh ? 0.45 : (q.y < 0.0 ? 0.85 : 0.65);
+      return f;
+    }
+  }
+  float fw = u_fac_d.w;
+  f.q = q; f.size = vec2(gw, gh); f.cell = ivec2(ci, rows - 1 - k);
+  if (q.x < fw || q.x > gw - fw || q.y < fw || q.y > gh - fw) { f.kind = 2; return f; }
+  int nm = int(u_fac_b.y + 0.5), nt = int(u_fac_b.z + 0.5);
+  if (shop) nm = max(nm, 1);
+  for (int i = 1; i <= 8; i++) {
+    if (i > nm) break;
+    if (abs(q.x - gw * float(i) / float(nm + 1)) < 0.5 * fw) { f.kind = 2; return f; }
+  }
+  for (int i = 1; i <= 8; i++) {
+    if (i > nt) break;
+    if (abs(q.y - gh * float(i) / float(nt + 1)) < 0.5 * fw) { f.kind = 2; return f; }
+  }
+  f.kind = 1;
+  return f;
+}
+
+// the room behind a window's glass (or, past the rooms' distance, flat glass lit as the room would be): rgb
+vec3 facadeRoom(Fac f, vec3 ray, float lod, bool rays) {
+  vec3 on = imiWallNormal(f.wall);
+  vec3 tng = normalize(cross(vec3(0.0, 1.0, 0.0), on));
+  vec3 d = vec3(dot(ray, tng), ray.y, -dot(ray, on));
+  uint seed = uint(int(v_tint.w));
+  uint wall = uint(f.wall);
+  int cx = f.cell.x, cy = f.cell.y;
+  float night = imiNight(u_sun_dir.y);
+  bool lit = imiUnit(imiHash(seed, wall, cx, cy, 1u)) < night * u_im_atlas.w;
+  bool curtain = imiUnit(imiHash(seed, wall, cx, cy, 2u)) < u_im_gain.z;
+  vec3 amb = skyIrradiance(vec3(0.0, 1.0, 0.0));
+  float dayGain = mix(1.0, u_im_gain.y, night);
+  vec3 tex;
+  if (!rays || u_fac_c.w < 0.5 || d.z < 0.0001) {
+    // flat: a room's average grey, a little darker near the top of the glass (the ceiling's shade)
+    float t = imiUnit(imiHash(seed, wall, cx, cy, 0u));
+    tex = vec3(0.30 + 0.12 * t) * (0.8 + 0.2 * f.q.y / max(f.size.y, 0.01));
+  } else if (curtain) {
+    float t = imiUnit(imiHash(seed, wall, cx, cy, 3u));
+    tex = mix(vec3(0.62, 0.60, 0.56), vec3(0.48, 0.50, 0.53), t) * (0.75 + 0.25 * f.q.y / f.size.y);
+  } else {
+    float rooms = u_im_atlas.z;
+    int room = min(int(imiUnit(imiHash(seed, wall, cx, cy, 0u)) * rooms), int(rooms) - 1);
+    vec4 hit = imiHit(vec3(f.size.x, f.size.y, u_im_cell.w), f.q.x, f.q.y, d);
+    tex = textureLod(u_rooms, imiAtlasUv(room, int(hit.x + 0.5), hit.yz, 0.01), lod).rgb;
+  }
+  vec3 col = tex * amb * 0.45 * dayGain;
+  if (lit) col += tex * u_im_lit * u_im_gain.x * night;
+  return col;
+}
+#endif
+
 void main() {
   if (v_wpos.y < u_clip_y) discard;
 #ifndef SHADOW_PASS
@@ -183,7 +316,36 @@ void main() {
   float shadow = sunShadow(v_wpos, N, viewDepth);
   float roughF = clamp(arm.g * u_rough_scale, 0.35, 1.0);
   float ao = arm.r;
-#ifdef INTERIOR_MAP
+#ifdef FACADE
+  // the derivatives first, where every invocation of the quad is still running
+  float pxm = length(fwidth(v_lpos));
+  float lod = clamp(log2(max(pxm, 1e-5) / max(u_im_gain.w, 1e-4)), 0.0, 6.0);
+  vec3 fray = normalize(v_lpos - v_lcam);
+  Fac fa = facadeAt(fray);
+  vec3 glow = vec3(0.0);
+  // a bay smaller than a few pixels: the grid fades to the wall darkened by what its glass would take (no shimmer far off)
+  float gone = smoothstep(0.12 * fa.bay, 0.35 * fa.bay, pxm);
+  if (fa.kind == 1) {
+    vec3 v = normalize(u_cam_pos - v_wpos);
+    float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, v), 0.0), 5.0);
+    vec3 room = facadeRoom(fa, fray, lod, dist < u_fac_d.z);
+    alb = mix(vec3(0.02), alb * 0.6, gone);
+    roughF = mix(0.06, roughF, gone);
+    n = N;
+    ao = 1.0;
+    glow = room * (1.0 - fres) * (1.0 - 0.6 * gone);
+  } else if (fa.kind == 2) {
+    alb = mix(u_fac_e.rgb, alb * 0.7, gone);
+  } else if (fa.kind == 3) {
+    alb *= mix(fa.shade, 0.8, gone);
+  } else if (fa.kind == 4) {
+    alb = mix(min(alb * 1.22, vec3(1.0)), alb, gone);
+  } else if (fa.kind == 5) {
+    alb = mix(u_fac_e.rgb * 1.4, alb, gone * 0.5);
+  } else {
+    alb *= mix(fa.shade, 1.0, gone);
+  }
+#elif defined(INTERIOR_MAP)
   // the derivative first, where every invocation of the quad is still running
   float pxm = length(fwidth(v_lpos));
   float lod = clamp(log2(max(pxm, 1e-5) / max(u_im_gain.w, 1e-4)), 0.0, 6.0);
@@ -201,7 +363,7 @@ void main() {
   }
 #endif
   vec3 col = shade(v_wpos, n, alb, roughF, 0.0, ao, shadow, viewDepth);
-#ifdef INTERIOR_MAP
+#if defined(INTERIOR_MAP) || defined(FACADE)
   col += glow;
 #endif
   col += u_fac_emis;
