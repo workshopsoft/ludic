@@ -13,6 +13,17 @@ NAV_SHIM int nav_nearest(void *h, float x, float y, float z, float *out) {
   return nav_poly_at(static_cast<Nav *>(h), p, out) ? 1 : 0;
 }
 
+// the kind of ground (area 1..62) of the mesh nearest a point, 0 when there is none within reach
+NAV_SHIM int nav_area_at(void *h, float x, float y, float z) {
+  Nav *n = static_cast<Nav *>(h);
+  float p[3] = {x, y, z}, o[3];
+  dtPolyRef r = nav_poly_at(n, p, o);
+  if (!r) return 0;
+  unsigned char a = 0;
+  if (dtStatusFailed(n->mesh->getPolyArea(r, &a))) return 0;
+  return int(a);
+}
+
 // filter f's cost for a kind of ground (area 1..62); a query names the filter it walks by
 NAV_SHIM void nav_area_cost(void *h, int f, int area, float cost) {
   Nav *n = static_cast<Nav *>(h);

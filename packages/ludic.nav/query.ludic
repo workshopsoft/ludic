@@ -7,6 +7,12 @@ export function nav_nearest(nav_st: NavState, kind: int, x: float, y: float, z: 
   if h == null { return false }
   return nvc_nearest(h, x, y, z, nav_st.nv_near) == 1
 }
+# the kind of ground (the mesh's area byte, 1..62) nearest (x, y, z) within a couple of metres; 0 off the mesh
+export function nav_area_at(nav_st: NavState, kind: int, x: float, y: float, z: float) -> int {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return 0 }
+  return nvc_area_at(h, x, y, z)
+}
 export function nav_near_x(nav_st: NavState) -> float { return nav_st.nv_near[0] }
 export function nav_near_y(nav_st: NavState) -> float { return nav_st.nv_near[1] }
 export function nav_near_z(nav_st: NavState) -> float { return nav_st.nv_near[2] }
