@@ -188,6 +188,32 @@ export state RoadsState {
   rd_mg_c: []int = [0, 0, 0, 0]
   rd_gap: float = 0.0                    # scratch: the gap to what is ahead of the car being driven, and how much faster it is
   rd_dv: float = 0.0
+  # the edge-based A* (route_astar.ludic): stamped per search, so nothing is cleared between searches; prepared once a build
+  rd_builds: int = 0                     # roads_build calls so far: the prepared arrays below name the build they were made for
+  rd_ra_prep: int = -1
+  rd_ra_id: int = 0                      # the search's number: an edge whose stamp is not it has not been reached
+  rd_ra_stamp: []int = new []int
+  rd_ra_g: []float = new []float         # per edge: the best cost to its end so far
+  rd_ra_prev: []int = new []int          # ... and the edge before it (-1: a seed)
+  rd_ra_hin: []float = new []float       # per edge: its heading where it ends, and where it starts (yaw, atan2(dx, dz))
+  rd_ra_hout: []float = new []float
+  rd_ra_wstart: []int = new []int        # the walk graph: every built road both ways, rows per node (rd_ra_wout[wstart[n] .. wstart[n + 1]))
+  rd_ra_wout: []int = new []int
+  rd_ra_vmax: float = 1.0                # the fastest limit of the map: the heuristic's speed
+  rd_ra_walk_prio: int = 1000000         # roads above this priority are not walked (roads_route_config_walk)
+  rd_ra_noh: bool = false                # no heuristic: plain Dijkstra (tests compare the two)
+  rd_ra_seg0: int = -1                   # the last search: the snapped roads and places, where it starts and ends on its first and last edge
+  rd_ra_seg1: int = -1
+  rd_ra_a: float = 0.0
+  rd_ra_b: float = 0.0
+  rd_ra_s0: float = 0.0
+  rd_ra_s1: float = 0.0
+  rd_ra_x0: float = 0.0
+  rd_ra_z0: float = 0.0
+  rd_ra_x1: float = 0.0
+  rd_ra_z1: float = 0.0
+  rd_ra_pops: int = 0                    # edges taken off the heap by the last search
+  rd_ra_why: int = 0                     # ROADS_ROUTE_*
   rd_facts: Queue<RoadsFact> = rd_facts__new()
 }
 function rd_facts__new() -> Queue<RoadsFact> { return queue_new("roads.facts") }

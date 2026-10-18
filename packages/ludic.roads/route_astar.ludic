@@ -1,0 +1,439 @@
+# route_astar.ludic - a route between two places, for a satellite navigator: an edge-based A* over the graph.
+#
+# The search's state is a directed edge (the turn-expanded graph): a turn rule (forbid, stop, yield) is a wall or a cost between two
+# edges, exactly as roads_route_edges keeps them, and a U-turn is allowed only where a road ends (a dead end), or at the start against
+# the way the traveller faces, at a price. One search: both directions of the start road are seeds at the cost of the part of the road
+# left to drive, both directions of the goal road are goals at the cost of the part to drive onto it. The heuristic is the straight
+# line from an edge's end to the goal over the map's top speed (metres for ROADS_SHORTEST and ROADS_WALK): never more than the
+# truth, so the answer is the cheapest. Distances and parents are stamped per search, so nothing is cleared between searches.
+#
+# ROADS_WALK is a person's route: every built road both ways (one-way roads, turn rules and lanes ignored; lane-less ways, stairs and
+# paths included), by length, except roads above roads_route_config_walk's priority (motorways).
+export const ROADS_WALK: int = 2
+
+export const ROADS_NO_HEADING: float = 1000.0      # roads_route_points' yaw0 when the traveller faces no way in particular
+export const ROADS_NO_HEIGHT: float = -100000.0    # y0 / y1 when the snap is to look at the plan only
+
+export const ROADS_ROUTE_OK: int = 0
+export const ROADS_ROUTE_NO_START: int = 1   # no road the mode may use near the start
+export const ROADS_ROUTE_NO_GOAL: int = 2
+export const ROADS_ROUTE_NO_WAY: int = 3     # both snapped, nothing joins them
+
+const RA_FAR: float = 1000000000.0
+const RA_TURN: float = 0.5                   # radians: a change of heading under this is no turn
+const RA_LEFT_S: float = 3.0                 # seconds a turn across the oncoming lanes costs a fastest route
+const RA_RIGHT_S: float = 1.0                # ... a turn with the traffic
+const RA_UTURN_END_S: float = 10.0           # ... turning round at a dead end
+const RA_UTURN_START_S: float = 30.0         # ... setting off against the way the traveller faces
+const RA_FACING: float = -0.3                # cos of the angle past which a seed is against the traveller's heading
+const RA_METRES_A_SECOND: float = 10.0       # a shortest route prices the seconds above at this many metres each
+
+# roads above this priority are not walked by ROADS_WALK (a game's motorways); every road by default
+export function roads_route_config_walk(roads_st: mut RoadsState, max_priority: int) -> void {
+  roads_st.rd_ra_walk_prio = max_priority
+  roads_st.rd_ra_prep = -1
+}
+# plain Dijkstra (no heuristic): the same answer, more edges taken off the heap; tests compare the two
+export function roads_route_config_astar(roads_st: mut RoadsState, on: bool) -> void { roads_st.rd_ra_noh = not on }
+
+export function roads_route_s0(roads_st: RoadsState) -> float { return roads_st.rd_ra_s0 }          # metres along the first edge where the route starts
+export function roads_route_s1(roads_st: RoadsState) -> float { return roads_st.rd_ra_s1 }          # ... along the last edge where it ends
+export function roads_route_start_x(roads_st: RoadsState) -> float { return roads_st.rd_ra_x0 }     # the start and the goal snapped to their roads
+export function roads_route_start_z(roads_st: RoadsState) -> float { return roads_st.rd_ra_z0 }
+export function roads_route_goal_x(roads_st: RoadsState) -> float { return roads_st.rd_ra_x1 }
+export function roads_route_goal_z(roads_st: RoadsState) -> float { return roads_st.rd_ra_z1 }
+export function roads_route_pops(roads_st: RoadsState) -> int { return roads_st.rd_ra_pops }
+export function roads_route_why(roads_st: RoadsState) -> int { return roads_st.rd_ra_why }
+
+# ---- prepared once a build: headings, the walk graph, the top speed --------------------------------------------------------
+
+function ra_yaw(roads_st: RoadsState, a: int, b: int) -> float {
+  return Math.atan2(roads_st.rd_px[b] - roads_st.rd_px[a], roads_st.rd_pz[b] - roads_st.rd_pz[a])
+}
+
+function ra_walkable(roads_st: RoadsState, seg: int) -> bool {
+  return roads_st.rd_sfrom[seg] >= 0 and roads_st.rd_slen[seg] > 0.0 and roads_st.rd_sp1[seg] - roads_st.rd_sp0[seg] >= 2 and roads_st.rd_sprio[seg] <= roads_st.rd_ra_walk_prio
+}
+
+function ra_drivable(roads_st: RoadsState, seg: int) -> bool {
+  return roads_st.rd_elanes[2 * seg] > 0 or roads_st.rd_elanes[2 * seg + 1] > 0
+}
+
+function ra_seg_ok(roads_st: RoadsState, seg: int, mode: int) -> bool {
+  if seg < 0 or seg >= len(roads_st.rd_skey) or roads_st.rd_sfrom[seg] < 0 { return false }
+  if mode == ROADS_WALK { return ra_walkable(roads_st, seg) }
+  return ra_drivable(roads_st, seg)
+}
+
+function ra_prepare(roads_st: mut RoadsState) -> void {
+  if roads_st.rd_ra_prep == roads_st.rd_builds { return }
+  roads_st.rd_ra_prep = roads_st.rd_builds
+  let ne = len(roads_st.rd_efrom)
+  let nn = len(roads_st.rd_nx)
+  List.clear(roads_st.rd_ra_stamp)
+  List.clear(roads_st.rd_ra_g)
+  List.clear(roads_st.rd_ra_prev)
+  List.clear(roads_st.rd_ra_hin)
+  List.clear(roads_st.rd_ra_hout)
+  roads_st.rd_ra_vmax = 1.0
+  for e in 0 .. ne {
+    kept_push(roads_st.rd_ra_stamp, 0)
+    kept_push(roads_st.rd_ra_g, RA_FAR)
+    kept_push(roads_st.rd_ra_prev, -1)
+    let seg = e / 2
+    var hin = 0.0
+    var hout = 0.0
+    let p0 = roads_st.rd_sp0[seg]
+    let p1 = roads_st.rd_sp1[seg]
+    if p1 - p0 >= 2 {
+      if e % 2 == 0 {
+        hout = ra_yaw(roads_st, p0, p0 + 1)
+        hin = ra_yaw(roads_st, p1 - 2, p1 - 1)
+      } else {
+        hout = ra_yaw(roads_st, p1 - 1, p1 - 2)
+        hin = ra_yaw(roads_st, p0 + 1, p0)
+      }
+    }
+    kept_push(roads_st.rd_ra_hin, hin)
+    kept_push(roads_st.rd_ra_hout, hout)
+    if roads_st.rd_elanes[e] > 0 and roads_st.rd_espeed[e] > roads_st.rd_ra_vmax { roads_st.rd_ra_vmax = roads_st.rd_espeed[e] }
+  }
+  roads_st.rd_ra_id = 0
+  ra_walk_graph(roads_st, nn, ne)
+}
+
+# every walkable road both ways, as rows per node (the walk priority is read when this is made: roads_route_config_walk before the
+# first walk search after a build, or it is made again)
+function ra_walk_graph(roads_st: mut RoadsState, nn: int, ne: int) -> void {
+  List.clear(roads_st.rd_ra_wstart)
+  List.clear(roads_st.rd_ra_wout)
+  for n in 0 .. nn + 1 { kept_push(roads_st.rd_ra_wstart, 0) }
+  for e in 0 .. ne {
+    if not ra_walkable(roads_st, e / 2) { continue }
+    roads_st.rd_ra_wstart[roads_st.rd_efrom[e] + 1] += 1
+  }
+  for n in 0 .. nn { roads_st.rd_ra_wstart[n + 1] += roads_st.rd_ra_wstart[n] }
+  let total = roads_st.rd_ra_wstart[nn]
+  for i in 0 .. total { kept_push(roads_st.rd_ra_wout, -1) }
+  @alloc_ok("a graph being prepared: once a build")
+  let fill = new []int
+  for n in 0 .. nn { push(fill, roads_st.rd_ra_wstart[n]) }
+  for e in 0 .. ne {
+    if not ra_walkable(roads_st, e / 2) { continue }
+    let n = roads_st.rd_efrom[e]
+    roads_st.rd_ra_wout[fill[n]] = e
+    fill[n] += 1
+  }
+}
+
+# ---- costs ---------------------------------------------------------------------------------------------------------------
+
+function ra_edge_cost(roads_st: RoadsState, e: int, mode: int) -> float {
+  if mode == ROADS_FASTEST { return roads_st.rd_elen[e] / Math.max(roads_st.rd_espeed[e], 0.5) }
+  return roads_st.rd_elen[e]
+}
+
+function ra_secs(mode: int, s: float) -> float {
+  if mode == ROADS_FASTEST { return s }
+  if mode == ROADS_WALK { return 0.0 }
+  return s * RA_METRES_A_SECOND
+}
+
+function ra_wrap(a: float) -> float {
+  var d = a
+  while d > 3.1415927 { d -= 6.2831853 }
+  while d < -3.1415927 { d += 6.2831853 }
+  return d
+}
+
+# what going from edge e into edge f at their node costs beyond f itself: the rule's wait, a turn across or with the traffic, a U-turn
+function ra_turn(roads_st: RoadsState, e: int, f: int, rule: int, node: int, mode: int) -> float {
+  if mode == ROADS_WALK { return 0.0 }
+  var c = rd_turn_cost(roads_st, rule, node, ROADS_FASTEST)
+  if mode != ROADS_FASTEST { c = 0.0 }
+  if f == (e ^ 1) { return c + ra_secs(mode, RA_UTURN_END_S) }
+  let d = ra_wrap(roads_st.rd_ra_hout[f] - roads_st.rd_ra_hin[e])     # > 0: to the left (a heading's yaw grows to its left)
+  if Math.abs(d) < RA_TURN { return c }
+  var left = d > 0.0
+  if roads_st.rd_drive_left { left = not left }
+  if left { return c + ra_secs(mode, RA_LEFT_S) }
+  return c + ra_secs(mode, RA_RIGHT_S)
+}
+
+function ra_h(roads_st: RoadsState, e: int, mode: int) -> float {
+  if roads_st.rd_ra_noh { return 0.0 }
+  let n = roads_st.rd_eto[e]
+  let dx = roads_st.rd_nx[n] - roads_st.rd_ra_x1
+  let dz = roads_st.rd_nz[n] - roads_st.rd_ra_z1
+  let d = Math.sqrt(dx * dx + dz * dz)
+  if mode == ROADS_FASTEST { return d / roads_st.rd_ra_vmax }
+  return d
+}
+
+# ---- snapping ----------------------------------------------------------------------------------------------------------
+
+# the road the mode may use nearest (x, y, z) into rd_ra_snap_*; -1 for none. The grid answers first; a road it names that the mode
+# may not use (a footpath for a car, a motorway for a walk) sends the search over every road's polyline, by the plan
+function ra_snap(roads_st: mut RoadsState, x: float, y: float, z: float, mode: int) -> int {
+  var seg = -1
+  if y <= ROADS_NO_HEIGHT + 1.0 { seg = roads_nearest(roads_st, x, z) } else { seg = roads_nearest_y(roads_st, x, y, z) }
+  if seg >= 0 and ra_seg_ok(roads_st, seg, mode) { return seg }
+  var best = -1
+  var best_d2 = RA_FAR
+  var best_s = 0.0
+  for s in 0 .. len(roads_st.rd_skey) {
+    if not ra_seg_ok(roads_st, s, mode) { continue }
+    let p0 = roads_st.rd_sp0[s]
+    let p1 = roads_st.rd_sp1[s]
+    for i in p0 .. p1 - 1 {
+      let ax = roads_st.rd_px[i]
+      let az = roads_st.rd_pz[i]
+      let dx = roads_st.rd_px[i + 1] - ax
+      let dz = roads_st.rd_pz[i + 1] - az
+      let l2 = dx * dx + dz * dz
+      var t = 0.0
+      if l2 > 0.000001 { t = Math.clamp(((x - ax) * dx + (z - az) * dz) / l2, 0.0, 1.0) }
+      let qx = ax + dx * t - x
+      let qz = az + dz * t - z
+      let d2 = qx * qx + qz * qz
+      if d2 < best_d2 {
+        best_d2 = d2
+        best = s
+        best_s = roads_st.rd_ps[i] + (roads_st.rd_ps[i + 1] - roads_st.rd_ps[i]) * t
+      }
+    }
+  }
+  if best < 0 { return -1 }
+  roads_st.rd_near_seg = best
+  roads_st.rd_near_s = best_s
+  roads_st.rd_near_d = Math.sqrt(best_d2)
+  return best
+}
+
+# ---- the search ----------------------------------------------------------------------------------------------------------
+
+function ra_seed(roads_st: mut RoadsState, e: int, g: float, mode: int) -> void {
+  if not roads_edge_ok(roads_st, e) and mode != ROADS_WALK { return }
+  if mode == ROADS_WALK and not ra_walkable(roads_st, e / 2) { return }
+  if roads_st.rd_ra_stamp[e] == roads_st.rd_ra_id and roads_st.rd_ra_g[e] <= g { return }
+  roads_st.rd_ra_stamp[e] = roads_st.rd_ra_id
+  roads_st.rd_ra_g[e] = g
+  roads_st.rd_ra_prev[e] = -1
+  rd_heap_push(roads_st, g + ra_h(roads_st, e, mode), e)
+}
+
+# the cost of the part of edge e (of segment seg) from metres `a` of the segment to its end (e's own way)
+function ra_part_to_end(roads_st: RoadsState, e: int, a: float, mode: int) -> float {
+  let len_s = Math.max(roads_st.rd_slen[e / 2], 0.001)
+  var left = len_s - a
+  if e % 2 == 1 { left = a }
+  return ra_edge_cost(roads_st, e, mode) * Math.clamp(left / len_s, 0.0, 1.0)
+}
+# ... from its start to metres `b` of the segment
+function ra_part_from_start(roads_st: RoadsState, e: int, b: float, mode: int) -> float {
+  let len_s = Math.max(roads_st.rd_slen[e / 2], 0.001)
+  var on = b
+  if e % 2 == 1 { on = len_s - b }
+  return ra_edge_cost(roads_st, e, mode) * Math.clamp(on / len_s, 0.0, 1.0)
+}
+
+# The route from (x0, y0, z0), facing yaw0 (atan2(dx, dz); ROADS_NO_HEADING for none), to (x1, y1, z1), by `mode` (ROADS_FASTEST,
+# ROADS_SHORTEST, ROADS_WALK). Each end snaps to the nearest road the mode may use, at its height (ROADS_NO_HEIGHT: the plan). Into
+# `out`: the edges, first to last; how many, or -1 (roads_route_why says why). The cost is in roads_route_cost; where the route starts
+# on its first edge and ends on its last, in roads_route_s0 / s1 (metres from each edge's own start)
+export function roads_route_points(roads_st: mut RoadsState, x0: float, y0: float, z0: float, yaw0: float, x1: float, y1: float, z1: float, mode: int, out: []int) -> int {
+  List.clear(out)
+  roads_st.rd_route_cost = 0.0
+  roads_st.rd_ra_pops = 0
+  ra_prepare(roads_st)
+  let seg0 = ra_snap(roads_st, x0, y0, z0, mode)
+  if seg0 < 0 {
+    roads_st.rd_ra_why = ROADS_ROUTE_NO_START
+    return -1
+  }
+  let a = roads_st.rd_near_s
+  rd_seg_at(roads_st, seg0, a)
+  roads_st.rd_ra_x0 = roads_st.rd_pose_x
+  roads_st.rd_ra_z0 = roads_st.rd_pose_z
+  let yaw_a = roads_st.rd_pose_yaw
+  let seg1 = ra_snap(roads_st, x1, y1, z1, mode)
+  if seg1 < 0 {
+    roads_st.rd_ra_why = ROADS_ROUTE_NO_GOAL
+    return -1
+  }
+  let b = roads_st.rd_near_s
+  rd_seg_at(roads_st, seg1, b)
+  roads_st.rd_ra_x1 = roads_st.rd_pose_x
+  roads_st.rd_ra_z1 = roads_st.rd_pose_z
+  roads_st.rd_ra_seg0 = seg0
+  roads_st.rd_ra_seg1 = seg1
+  roads_st.rd_ra_a = a
+  roads_st.rd_ra_b = b
+  roads_st.rd_ra_id += 1
+  List.clear(roads_st.rd_hk)
+  List.clear(roads_st.rd_hv)
+
+  # the seeds: both ways along the start road; against the traveller's heading costs a U-turn, unless the road is one way
+  let fwd = 2 * seg0
+  let back = fwd + 1
+  var pen_f = 0.0
+  var pen_b = 0.0
+  if yaw0 < ROADS_NO_HEADING - 1.0 and mode != ROADS_WALK and ra_drivable(roads_st, seg0) and roads_edge_ok(roads_st, fwd) and roads_edge_ok(roads_st, back) {
+    let c = Math.cos(yaw0) * Math.cos(yaw_a) + Math.sin(yaw0) * Math.sin(yaw_a)     # > 0: the traveller faces the road's from -> to
+    if c < RA_FACING { pen_f = ra_secs(mode, RA_UTURN_START_S) }
+    if -c < RA_FACING { pen_b = ra_secs(mode, RA_UTURN_START_S) }
+  }
+  ra_seed(roads_st, fwd, ra_part_to_end(roads_st, fwd, a, mode) + pen_f, mode)
+  ra_seed(roads_st, back, ra_part_to_end(roads_st, back, a, mode) + pen_b, mode)
+
+  # the best way found so far: the edge it ends on, the edge before it (-1: the start road alone) and its cost
+  var best = RA_FAR
+  var best_last = -1
+  var best_prev = -1
+  # the start and the goal on one road, driven along it
+  if seg0 == seg1 {
+    if b >= a and (mode == ROADS_WALK or roads_edge_ok(roads_st, fwd)) {
+      let c = ra_edge_cost(roads_st, fwd, mode) * (b - a) / Math.max(roads_st.rd_slen[seg0], 0.001) + pen_f
+      if c < best {
+        best = c
+        best_last = fwd
+        best_prev = -1
+      }
+    }
+    if b <= a and (mode == ROADS_WALK or roads_edge_ok(roads_st, back)) {
+      let c = ra_edge_cost(roads_st, back, mode) * (a - b) / Math.max(roads_st.rd_slen[seg0], 0.001) + pen_b
+      if c < best {
+        best = c
+        best_last = back
+        best_prev = -1
+      }
+    }
+  }
+
+  while len(roads_st.rd_hk) > 0 {
+    let key = roads_st.rd_hk[0]
+    if key >= best { break }
+    let e = rd_heap_pop(roads_st)
+    let g = roads_st.rd_ra_g[e]
+    if key > g + ra_h(roads_st, e, mode) + 0.000001 { continue }      # an old entry: a cheaper way to e came since
+    roads_st.rd_ra_pops += 1
+    let n = roads_st.rd_eto[e]
+    var k0 = 0
+    var k1 = 0
+    if mode == ROADS_WALK {
+      k0 = roads_st.rd_ra_wstart[n]
+      k1 = roads_st.rd_ra_wstart[n + 1]
+    } else {
+      k0 = roads_st.rd_out_start[n]
+      k1 = roads_st.rd_out_start[n + 1]
+    }
+    for k in k0 .. k1 {
+      var f = -1
+      var rule = ROAD_RULE_FREE
+      if mode == ROADS_WALK {
+        f = roads_st.rd_ra_wout[k]
+        if f == (e ^ 1) { continue }
+      } else {
+        f = roads_st.rd_out[k]
+        rule = roads_turn_rule(roads_st, e, f)
+        if rule == ROAD_RULE_FORBID { continue }
+        if f == (e ^ 1) and k1 - k0 > 1 { continue }               # a U-turn only where the road ends
+      }
+      let gt = g + ra_turn(roads_st, e, f, rule, n, mode)
+      if f / 2 == seg1 {
+        let c = gt + ra_part_from_start(roads_st, f, b, mode)
+        if c < best {
+          best = c
+          best_last = f
+          best_prev = e
+        }
+      }
+      let nd = gt + ra_edge_cost(roads_st, f, mode)
+      if roads_st.rd_ra_stamp[f] != roads_st.rd_ra_id or nd < roads_st.rd_ra_g[f] {
+        roads_st.rd_ra_stamp[f] = roads_st.rd_ra_id
+        roads_st.rd_ra_g[f] = nd
+        roads_st.rd_ra_prev[f] = e
+        rd_heap_push(roads_st, nd + ra_h(roads_st, f, mode), f)
+      }
+    }
+  }
+  if best_last < 0 {
+    roads_st.rd_ra_why = ROADS_ROUTE_NO_WAY
+    return -1
+  }
+  roads_st.rd_ra_why = ROADS_ROUTE_OK
+  roads_st.rd_route_cost = best
+  kept_push(out, best_last)
+  var e = best_prev
+  while e >= 0 {
+    kept_push(out, e)
+    e = roads_st.rd_ra_prev[e]
+  }
+  let n = len(out)
+  for i in 0 .. n / 2 {
+    let t = out[i]
+    out[i] = out[n - 1 - i]
+    out[n - 1 - i] = t
+  }
+  # where the route starts on its first edge and ends on its last, each in the edge's own metres
+  let first = out[0]
+  let last = out[n - 1]
+  roads_st.rd_ra_s0 = a
+  if first % 2 == 1 { roads_st.rd_ra_s0 = roads_st.rd_slen[seg0] - a }
+  roads_st.rd_ra_s1 = b
+  if last % 2 == 1 { roads_st.rd_ra_s1 = roads_st.rd_slen[seg1] - b }
+  return n
+}
+
+# The route's line: the centre lines of its edges, from s0 on the first to s1 on the last (roads_route_s0 / s1), as x, z pairs appended
+# to `out` (cleared first): the polyline points of each road between, so the line follows each road as it is drawn. How many points
+export function roads_route_line(roads_st: mut RoadsState, edges: []int, n: int, s0: float, s1: float, out: []float) -> int {
+  List.clear(out)
+  for i in 0 .. n {
+    let e = edges[i]
+    let seg = e / 2
+    let len_s = roads_st.rd_slen[seg]
+    var a = 0.0
+    var b = len_s
+    if i == 0 { a = Math.clamp(s0, 0.0, len_s) }
+    if i == n - 1 { b = Math.clamp(s1, 0.0, len_s) }
+    if b < a { b = a }
+    # in the segment's own metres (from its `from` end)
+    var sa = a
+    var sb = b
+    if e % 2 == 1 {
+      sa = len_s - a
+      sb = len_s - b
+    }
+    rd_seg_at(roads_st, seg, sa)
+    ra_line_add(out, roads_st.rd_pose_x, roads_st.rd_pose_z)
+    let p0 = roads_st.rd_sp0[seg]
+    let p1 = roads_st.rd_sp1[seg]
+    if e % 2 == 0 {
+      for p in p0 .. p1 {
+        if roads_st.rd_ps[p] > sa and roads_st.rd_ps[p] < sb { ra_line_add(out, roads_st.rd_px[p], roads_st.rd_pz[p]) }
+      }
+    } else {
+      var p = p1 - 1
+      while p >= p0 {
+        if roads_st.rd_ps[p] < sa and roads_st.rd_ps[p] > sb { ra_line_add(out, roads_st.rd_px[p], roads_st.rd_pz[p]) }
+        p -= 1
+      }
+    }
+    rd_seg_at(roads_st, seg, sb)
+    ra_line_add(out, roads_st.rd_pose_x, roads_st.rd_pose_z)
+  }
+  return len(out) / 2
+}
+
+# a point onto a line, unless it is where the line already is
+function ra_line_add(out: []float, x: float, z: float) -> void {
+  let n = len(out)
+  if n >= 2 {
+    let dx = out[n - 2] - x
+    let dz = out[n - 1] - z
+    if dx * dx + dz * dz < 0.0001 { return }
+  }
+  kept_push(out, x)
+  kept_push(out, z)
+}

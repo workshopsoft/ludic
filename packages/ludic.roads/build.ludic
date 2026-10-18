@@ -423,6 +423,7 @@ function rd_grid_build(roads_st: mut RoadsState) -> void {
 # roads_error saying the first fault, when a road names a node that is not there or there are too many roads;
 # such a road is left out and the rest is built. Cars are taken off first (their roads are gone)
 export function roads_build(roads_st: mut RoadsState, nodes: RoadNodes, segs: RoadSegs, turns: RoadTurns) -> bool {
+  roads_st.rd_builds += 1
   roads_take_all(roads_st, ROADS_WHY_REBUILT)
   rd_clear_lists(roads_st)
   roads_st.rd_err = ""
@@ -514,6 +515,7 @@ export function roads_error(roads_st: RoadsState) -> string { return roads_st.rd
 
 # the graph emptied (the map is leaving)
 export function roads_clear(roads_st: mut RoadsState) -> void {
+  roads_st.rd_builds += 1
   roads_take_all(roads_st, ROADS_WHY_REBUILT)
   rd_clear_lists(roads_st)
   roads_st.rd_err = ""
