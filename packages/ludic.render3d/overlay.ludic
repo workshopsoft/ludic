@@ -444,6 +444,43 @@ function ov_sub_rot(render3d_st: mut Render3dState, tex: int, cx: int, cy: int, 
   let x3 = fx + (-hw * c - hh * s);  let y3 = fy + (-hw * s + hh * c)
   ov_quad4(render3d_st, x0, y0, x1, y1, x2, y2, x3, y3, u0, v0, u1, v1, r, g, b, a)
 }
+# text centred on (cx, cy) along the angle `ang` (radians, clockwise on the screen: 0 reads left to right): each glyph's quad turned
+# about the centre (a street name along its road)
+function ov_text_rot(render3d_st: mut Render3dState, cx: float, cy: float, size: int, s: string, ang: float, r: float, g: float, b: float, a: float) -> void {
+  if render3d_st.ov_font == 0 { return }
+  ov_use_tex(render3d_st, render3d_st.ov_font)
+  let c = Math.cos(ang);  let sn = Math.sin(ang)
+  let k = float(size) / float(render3d_st.ov_font_em)
+  let cell = float(render3d_st.ov_font_cell) * k
+  let px = render3d_st.ov_pad_x * float(render3d_st.ov_font_em) * k
+  let py = render3d_st.ov_base_y * float(render3d_st.ov_font_em) * k
+  # the text's own frame: the pen from -width/2, the box's middle at y 0 (ov_text's top at -size/2)
+  var pen = -float(ov_text_w(render3d_st, size, s)) * 0.5
+  let base = -float(size) * 0.5 + float(size) * 0.80
+  let sp: pointer = s
+  let n = len(sp)
+  var i = 0
+  while i < n {
+    let gl = ov_glyph(render3d_st, ov_u8(render3d_st, sp, i, n))
+    i += render3d_st.ov_u8_len
+    if gl != render3d_st.ov_font_space {
+      let gx = gl - (gl / render3d_st.ov_font_cols) * render3d_st.ov_font_cols
+      let gy = gl / render3d_st.ov_font_cols
+      let u0 = float(gx) / float(render3d_st.ov_font_cols);  let u1 = float(gx + 1) / float(render3d_st.ov_font_cols)
+      let v0 = float(gy) / float(render3d_st.ov_font_rows);  let v1 = float(gy + 1) / float(render3d_st.ov_font_rows)
+      let x0 = pen - px;  let y1 = base + py
+      let x1 = x0 + cell;  let y0 = y1 - cell
+      ov_quad4(render3d_st, cx + x0 * c - y0 * sn, cy + x0 * sn + y0 * c, cx + x1 * c - y0 * sn, cy + x1 * sn + y0 * c, cx + x1 * c - y1 * sn, cy + x1 * sn + y1 * c, cx + x0 * c - y1 * sn, cy + x0 * sn + y1 * c, u0, v0, u1, v1, r, g, b, a)
+    }
+    pen = pen + render3d_st.ov_font_adv[gl] * float(size)
+  }
+}
+# ov_text_rot with a soft dark shadow under it
+function ov_text_rot_sh(render3d_st: mut Render3dState, cx: float, cy: float, size: int, s: string, ang: float, r: float, g: float, b: float, a: float) -> void {
+  let d = float(size / 18 + 1)
+  ov_text_rot(render3d_st, cx + d, cy + d, size, s, ang, 0.0, 0.0, 0.0, a * 0.7)
+  ov_text_rot(render3d_st, cx, cy, size, s, ang, r, g, b, a)
+}
 # a filled circle approximated by `n` wedges (float-bit centre and radius)
 function ov_disc(render3d_st: mut Render3dState, cx: float, cy: float, rad: float, n: int, r: float, g: float, b: float, a: float) -> void {
   ov_use_tex(render3d_st, render3d_st.ov_white)
