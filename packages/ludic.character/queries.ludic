@@ -38,6 +38,9 @@ export function body_breath(character_st: CharacterState) -> float { return char
 export function body_floating(character_st: CharacterState) -> float { return character_st.chr_float }
 export function body_swim_phase(character_st: CharacterState) -> float { return character_st.chr_swim_phase }
 export function body_can_run(character_st: CharacterState) -> bool { return character_st.chr_can_run }
+# a load in the arms (char_set_load): its speed multiplier, and whether there is one at all (the hands are busy)
+export function body_load(character_st: CharacterState) -> float { return character_st.chr_load_mult }
+export function body_loaded(character_st: CharacterState) -> bool { return character_st.chr_load_mult < 1.0 or not character_st.chr_load_sprint or not character_st.chr_load_jump }
 export function body_walk_speed(character_st: CharacterState) -> float { return character_st.chr_walk_speed }
 export function body_run_speed(character_st: CharacterState) -> float { return character_st.chr_run_speed }
 export function body_held(character_st: CharacterState) -> bool { return character_st.chr_holds != 0 }

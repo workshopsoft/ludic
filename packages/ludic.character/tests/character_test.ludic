@@ -248,6 +248,43 @@ program CharacterTest {
     expect_near(sig(character_st, "character.gait") - float(body_gait(character_st)), 0.0, 0.001)
   }
 
+  test "a load slows every gait by its multiplier, takes the run, the sprint and the jump away as it says, and char_reset clears it" (character_st: mut CharacterState) {
+    fresh(character_st, 0.0, 0.0, SOUTH)
+    expect(not body_loaded(character_st))
+    char_set_load(character_st, 0.8, false, true)
+    expect(body_loaded(character_st))
+    walk(character_st, 2.0, 60.0, false)
+    expect_near(body_speed(character_st), 3.2 * 0.8, 0.05)
+    # the run held: no faster than the loaded walk
+    walk(character_st, 2.0, 60.0, true)
+    expect_near(body_speed(character_st), 3.2 * 0.8, 0.05)
+    # nor a sprint
+    char_config_gaits(character_st, 1.3, 9.0)
+    char_sprint(character_st, true)
+    move(character_st, 0.0, 1.0, 2.0, true)
+    expect_near(body_speed(character_st), 3.2 * 0.8, 0.05)
+    char_sprint(character_st, false)
+    # a jump with a small box leaves the ground; a heavy one's does not
+    for i in 0 .. 30 { char_update(character_st, 0.0, 0.0, false, i == 0, 0.0, 0.0, 1.0 / 60.0) }
+    expect(count(facts(character_st), CHAR_JUMPED) == 1)
+    for i in 0 .. 90 { char_update(character_st, 0.0, 0.0, false, false, 0.0, 0.0, 1.0 / 60.0) }
+    char_set_load(character_st, 0.6, false, false)
+    q_clear(char_facts(character_st))
+    for i in 0 .. 30 { char_update(character_st, 0.0, 0.0, false, i == 0, 0.0, 0.0, 1.0 / 60.0) }
+    expect(count(facts(character_st), CHAR_JUMPED) == 0)
+    walk(character_st, 2.0, 60.0, false)
+    expect_near(body_speed(character_st), 3.2 * 0.6, 0.05)
+    # nothing in the arms again: the walk and the run are back
+    char_set_load(character_st, 1.0, true, true)
+    expect(not body_loaded(character_st))
+    walk(character_st, 2.0, 60.0, true)
+    expect_near(body_speed(character_st), 6.8, 0.05)
+    char_set_load(character_st, 0.5, false, false)
+    char_reset(character_st)
+    expect(not body_loaded(character_st))
+    expect_near(body_load(character_st), 1.0, 0.0001)
+  }
+
   test "character.direction is the motion against the facing: nothing while the body turns to its way, real when it strafes" (character_st: mut CharacterState, character_test_st: mut CharacterTestState) {
     fresh(character_st, 0.0, 0.0, SOUTH)
     move(character_st, 1.0, 0.0, 2.0, false)

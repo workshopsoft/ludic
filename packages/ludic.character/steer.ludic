@@ -8,7 +8,7 @@ function chr_turn_to(character_st: mut CharacterState, dx: float, dz: float, rat
 # crouched: the game's stance port or the held crouch; sprinting: held, the body has a sprint speed, it may run and is not crouched
 function chr_crouching(character_st: CharacterState) -> bool { return character_st.chr_crouch_in or CharacterBody.sneaking() }
 function chr_sprinting(character_st: CharacterState) -> bool {
-  return character_st.chr_sprint_in and character_st.chr_sprint_speed > 0.0 and character_st.chr_can_run and not chr_crouching(character_st)
+  return character_st.chr_sprint_in and character_st.chr_sprint_speed > 0.0 and character_st.chr_can_run and character_st.chr_load_sprint and not chr_crouching(character_st)
 }
 
 function chr_steer(character_st: mut CharacterState, dx: float, dz: float, mag: float, run: bool, dt: float) -> void {
@@ -29,7 +29,7 @@ function chr_steer(character_st: mut CharacterState, dx: float, dz: float, mag: 
     if run { top = character_st.chr_run_speed * CharacterBody.pace() }
     if chr_sprinting(character_st) { top = character_st.chr_sprint_speed * CharacterBody.pace() }
     if chr_crouching(character_st) { top = character_st.chr_crouch_speed }
-    target = mag * top * lined
+    target = mag * top * lined * character_st.chr_load_mult
   } else if CharacterBody.holding() and not character_st.chr_air and not character_st.chr_sit {
     # a hold turns the body to the thing being worked, so the work is seen being done
     chr_turn_to(character_st, CharacterBody.hold_x() - character_st.chr_x, CharacterBody.hold_z() - character_st.chr_z, 6.0 * dt)

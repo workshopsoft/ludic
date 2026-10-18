@@ -6,6 +6,7 @@ export function char_reset(character_st: mut CharacterState) -> void {
   character_st.chr_phase = 0.0
   character_st.chr_breath = CHAR_BREATH_MAX
   character_st.chr_can_run = true
+  char_set_load(character_st, 1.0, true, true)
   character_st.chr_crouch_in = false
   character_st.chr_sprint_in = false
   character_st.chr_crouch = 0.0

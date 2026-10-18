@@ -10,6 +10,14 @@ export function char_config_gaits(character_st: mut CharacterState, crouch: floa
   character_st.chr_sprint_speed = sprint
 }
 
+# a load in the arms (a box, a hand truck): every gait's speed times speed_mult (1 none), and whether the fast gaits (the run
+# and the sprint) and a jump are allowed. Saved nowhere: the game says it every frame it matters (char_reset clears it)
+export function char_set_load(character_st: mut CharacterState, speed_mult: float, can_sprint: bool, can_jump: bool) -> void {
+  character_st.chr_load_mult = Math.clamp(speed_mult, 0.0, 1.0)
+  character_st.chr_load_sprint = can_sprint
+  character_st.chr_load_jump = can_jump
+}
+
 # the crouch and the sprint held (char_tick reads them from CharacterInput; a game calling char_update sets them here)
 export function char_crouch(character_st: mut CharacterState, on: bool) -> void { character_st.chr_crouch_in = on }
 export function char_sprint(character_st: mut CharacterState, on: bool) -> void { character_st.chr_sprint_in = on }
