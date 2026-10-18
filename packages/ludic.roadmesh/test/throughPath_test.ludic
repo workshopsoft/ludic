@@ -1,0 +1,102 @@
+# throughPath_test.ludic - throughpath.ludic against the studio's throughPath.ts calls (fix/<scene>/throughPath.fix). throughPair's
+# record is the ends' headings and what `ok` answered for each end it asked about; throughPath's is the two arms as armToNode
+# reads them (out, the strip end's point and metres, the laid line and its metres).
+
+property AskedOk {
+  asked: Val = null
+  miss: int = 0
+}
+function asked_ok(o: AskedOk, k: int) -> bool {
+  let v = v_item(o.asked, k)
+  if v.tag != T_TRUE and v.tag != T_FALSE {
+    o.miss += 1
+    return false
+  }
+  return v.tag == T_TRUE
+}
+
+export function path_line_of(v: Val) -> PathLine {
+  let p = new PathLine
+  p.pts = v_pts(v_get(v, "pts"))
+  p.s = v_nums(v_get(v, "s"))
+  p.nrm = v_pts(v_get(v, "nrm"))
+  p.len = v_getn(v, "len", 0.0)
+  p.sNode = v_getn(v, "sNode", 0.0)
+  p.signA = v_getn(v, "signA", 0.0)
+  p.signC = v_getn(v, "signC", 0.0)
+  return p
+}
+export function check_path_line(c: Check, what: string, p: PathLine, w: Val) -> void {
+  if p == null or v_undef(w) {
+    if p != null or not v_undef(w) { check_fail(c, `{what}: one is none`) }
+    return
+  }
+  check_nums(c, `{what}.pts`, p.pts, v_get(w, "pts"))
+  check_nums(c, `{what}.s`, p.s, v_get(w, "s"))
+  check_nums(c, `{what}.nrm`, p.nrm, v_get(w, "nrm"))
+  check_numv(c, `{what}.len`, p.len, v_get(w, "len"))
+  check_numv(c, `{what}.sNode`, p.sNode, v_get(w, "sNode"))
+  check_numv(c, `{what}.signA`, p.signA, v_get(w, "signA"))
+  check_numv(c, `{what}.signC`, p.signC, v_get(w, "signC"))
+}
+function arm_of(v: Val) -> []double {
+  if v_undef(v) { return null }
+  let p = v_pts(v_get(v, "p"))
+  return arm_points(p[0], p[1], v_getn(v, "sEnd", 0.0), v_bool(v_get(v, "out")), v_nums(v_get(v, "s")), v_pts(v_get(v, "line")))
+}
+
+export function test_throughPath(recs: []Rec) -> int {
+  let c = check_new("throughPath")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "throughPair" {
+      let us = arg_pt(r, 0)
+      let j = new PJunction
+      j.kind = "cross"
+      j.ends = new []PEnd
+      for k in 0 .. len(us) / 2 {
+        let e = new PEnd
+        e.ux = us[k * 2]
+        e.uz = us[k * 2 + 1]
+        push(j.ends, e)
+      }
+      let o = new AskedOk
+      o.asked = rarg(r, 1)
+      let opt = rarg(r, 2)
+      let p = through_pair(j, fn asked_ok, o, v_getn(opt, "opposite", 15.0), v_getn(opt, "branch", 30.0), v_getn(opt, "turn", 60.0))
+      if o.miss > 0 { check_fail(c, `{o.miss} ends asked that the studio did not ask`) }
+      if p == null or v_undef(w) {
+        if p != null or not v_undef(w) { check_fail(c, "pair: one is none") }
+        continue
+      }
+      check_numv(c, "a", double(p.a), v_get(w, "a"))
+      check_numv(c, "c", double(p.c), v_get(w, "c"))
+      check_ints(c, "branches", p.branches, v_get(w, "branches"))
+      continue
+    }
+    if f == "throughPath" {
+      let a = arm_of(rarg(r, 0))
+      let cc = arm_of(rarg(r, 1))
+      var p: PathLine = null
+      if a != null and cc != null { p = through_path_arms(a, cc, arg_nd(r, 2, 2.0), v_bool(v_get(rarg(r, 0), "out")), v_bool(v_get(rarg(r, 1), "out"))) }
+      check_path_line(c, "path", p, w)
+      continue
+    }
+    if f == "pathPoint" {
+      check_nums(c, "v", path_point(path_line_of(rarg(r, 0)), arg_n(r, 1), arg_n(r, 2)), w)
+      continue
+    }
+    if f == "pathCoords" {
+      let qq = arg_pt(r, 1)
+      let tc = path_coords(path_line_of(rarg(r, 0)), qq[0], qq[1])
+      check_numv(c, "t", tc[0], v_get(w, "t"))
+      check_numv(c, "d", tc[1], v_get(w, "d"))
+      continue
+    }
+    check_fail(c, "no such function in the port")
+  }
+  return check_report(c)
+}

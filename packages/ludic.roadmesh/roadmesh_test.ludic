@@ -12,6 +12,8 @@ program RoadmeshTest {
   import "test/profiles_test.ludic"
   import "test/polyMesh_test.ludic"
   import "test/meshBuilder_test.ludic"
+  import "test/throughPath_test.ludic"
+  import "test/lanePaint_test.ludic"
 
   function base_name(path: string) -> string {
     var a = 0
@@ -33,6 +35,9 @@ program RoadmeshTest {
     if m == "profiles" { return test_profiles(recs) }
     if m == "polyMesh" { return test_polyMesh(recs) }
     if m == "meshBuilder" { return test_meshBuilder(recs) }
+    if m == "throughPath" { return test_throughPath(recs) }
+    if m == "lanePaint" { return test_lanePaint(recs) }
+    if m == "medianThrough" { return test_medianThrough(recs) }
     print(`roadmesh_test: no test for the module {m}`)
     return 0
   }
