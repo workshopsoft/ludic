@@ -33,9 +33,14 @@ function prog__find(progression_st: ProgressionState, player: int) -> ProgPlayer
   return null
 }
 
+# a player's row, made the first time anything is said about them: a new row is settled against level 1 at once (free unlocks of level 1
+# open, priced ones are offered), so a new player can buy what needs no level
 function prog__row(progression_st: mut ProgressionState, player: int) -> ProgPlayer {
   var r = prog__find(progression_st, player)
-  if r == null { r = prog__make(progression_st, player) }
+  if r == null {
+    r = prog__make(progression_st, player)
+    prog__refresh(progression_st, r)
+  }
   prog__fit(r)
   return r
 }
