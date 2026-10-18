@@ -398,10 +398,11 @@ export function far_cells_of(all: []MeshChunk, cells: []LodCell) -> []MeshChunk 
 }
 
 # ---- a hash of fixed-width int keys (exact welds) ------------------------------------------------------------------------------
+# keys are w 32-bit ints (a double is two); vals hold the value + 1 (0: an empty slot)
 export property KeyMap {
   w: int = 3
   cap: int = 0
-  keys: []long = null
+  keys: []int = null
   vals: []int = null
   n: int = 0
 }
@@ -411,17 +412,15 @@ export function km_new(w: int, hint: int) -> KeyMap {
   var cap = 64
   while cap < hint * 2 { cap = cap * 2 }
   m.cap = cap
-  m.keys = new []long
-  m.vals = new []int
-  for i in 0 .. cap * w { push(m.keys, long(0)) }
-  for i in 0 .. cap { push(m.vals, -1) }
+  m.keys = words(cap * w)
+  m.vals = words(cap)
   return m
 }
-function km_hash(k: []long, w: int) -> long {
-  var h: long = long(1469598103934665603)
+function km_hash(k: []int, w: int) -> int {
+  var h = 2166136261
   for i in 0 .. w {
-    h = (h ^ k[i]) * long(1099511628211)
-    h = h ^ (h >> 29)
+    h = ((h ^ k[i]) * 16777619) & 4294967295
+    h = h ^ (h >> 15)
   }
   return h
 }
@@ -430,25 +429,25 @@ function km_grow(m: KeyMap) -> void {
   let oldV = m.vals
   let oldCap = m.cap
   m.cap = oldCap * 2
-  m.keys = new []long
-  m.vals = new []int
-  for i in 0 .. m.cap * m.w { push(m.keys, long(0)) }
-  for i in 0 .. m.cap { push(m.vals, -1) }
-  let k = new []long
-  for i in 0 .. m.w { push(k, long(0)) }
+  m.keys = words(m.cap * m.w)
+  m.vals = words(m.cap)
+  let k = words(m.w)
   for s in 0 .. oldCap {
-    if oldV[s] < 0 { continue }
+    if oldV[s] == 0 { continue }
     for i in 0 .. m.w { k[i] = oldK[s * m.w + i] }
-    km_put_raw(m, k, oldV[s])
+    let t = km_slot(m, k)
+    for i in 0 .. m.w { m.keys[t * m.w + i] = k[i] }
+    m.vals[t] = oldV[s]
   }
 }
-function km_slot(m: KeyMap, k: []long) -> int {
+function km_slot(m: KeyMap, k: []int) -> int {
   let mask = m.cap - 1
-  var s = int(km_hash(k, m.w) & long(mask))
-  while m.vals[s] >= 0 {
+  let w = m.w
+  var s = km_hash(k, w) & mask
+  while m.vals[s] != 0 {
     var same = true
-    for i in 0 .. m.w {
-      if m.keys[s * m.w + i] != k[i] {
+    for i in 0 .. w {
+      if m.keys[s * w + i] != k[i] {
         same = false
         break
       }
@@ -458,19 +457,13 @@ function km_slot(m: KeyMap, k: []long) -> int {
   }
   return s
 }
-function km_put_raw(m: KeyMap, k: []long, v: int) -> void {
-  let s = km_slot(m, k)
-  if m.vals[s] < 0 { m.n += 1 }
-  for i in 0 .. m.w { m.keys[s * m.w + i] = k[i] }
-  m.vals[s] = v
-}
 # the value under k, or else v put there (and -1 returned)
-export function km_get_or_put(m: KeyMap, k: []long, v: int) -> int {
+export function km_get_or_put(m: KeyMap, k: []int, v: int) -> int {
   if (m.n + 1) * 10 > m.cap * 7 { km_grow(m) }
   let s = km_slot(m, k)
-  if m.vals[s] >= 0 { return m.vals[s] }
+  if m.vals[s] != 0 { return m.vals[s] - 1 }
   for i in 0 .. m.w { m.keys[s * m.w + i] = k[i] }
-  m.vals[s] = v
+  m.vals[s] = v + 1
   m.n += 1
   return -1
 }
@@ -491,9 +484,8 @@ export function collision_of(c: MeshChunk) -> Soup {
   let idx = new []int
   var total = 0
   for i in 0 .. len(c.layers) { total += len(c.layers[i].indices) }
-  let m = km_new(3, total)
-  let k = new []long
-  for i in 0 .. 3 { push(k, long(0)) }
+  let m = km_new(6, total)
+  let k = words(6)
   let ord = layer_order(c.layers)
   for oi in 0 .. len(ord) {
     let l = c.layers[ord[oi]]
@@ -503,9 +495,15 @@ export function collision_of(c: MeshChunk) -> Soup {
       let x = l.positions[i * 3]
       let y = l.positions[i * 3 + 1]
       let z = l.positions[i * 3 + 2]
-      k[0] = double_bits(x + 0.0)
-      k[1] = double_bits(y + 0.0)
-      k[2] = double_bits(z + 0.0)
+      let bx = double_bits(x + 0.0)
+      let by = double_bits(y + 0.0)
+      let bz = double_bits(z + 0.0)
+      k[0] = int(bx & long(4294967295))
+      k[1] = int((bx >> 32) & long(4294967295))
+      k[2] = int(by & long(4294967295))
+      k[3] = int((by >> 32) & long(4294967295))
+      k[4] = int(bz & long(4294967295))
+      k[5] = int((bz >> 32) & long(4294967295))
       let v = len(out.positions) / 3
       let had = km_get_or_put(m, k, v)
       if had >= 0 { push(idx, had) } else {

@@ -263,8 +263,7 @@ export function weld(positions: []double, indices: []int, normals: []double, uvs
   var w = 3
   if normals != null { w = 8 }
   let m = km_new(w, n)
-  let k = new []long
-  for i in 0 .. w { push(k, long(0)) }
+  let k = words(w)
   let remap = new []int
   let out = new Welded
   out.pos = new []int
@@ -277,9 +276,9 @@ export function weld(positions: []double, indices: []int, normals: []double, uvs
     let px = f32_bits(positions[v * 3])
     let py = f32_bits(positions[v * 3 + 1])
     let pz = f32_bits(positions[v * 3 + 2])
-    k[0] = long(px)
-    k[1] = long(py)
-    k[2] = long(pz)
+    k[0] = px
+    k[1] = py
+    k[2] = pz
     var nx = 0
     var ny = 0
     var nz = 0
@@ -291,11 +290,11 @@ export function weld(positions: []double, indices: []int, normals: []double, uvs
       nz = f32_bits(normals[v * 3 + 2])
       u = f32_bits(uvs[v * 2])
       vv = f32_bits(uvs[v * 2 + 1])
-      k[3] = long(nx)
-      k[4] = long(ny)
-      k[5] = long(nz)
-      k[6] = long(u)
-      k[7] = long(vv)
+      k[3] = nx
+      k[4] = ny
+      k[5] = nz
+      k[6] = u
+      k[7] = vv
     }
     let had = km_get_or_put(m, k, kept)
     if had >= 0 { push(remap, had) } else {
@@ -359,7 +358,7 @@ export function glb_of(json: JV, bin: BOut) -> BOut {
   let binLen = (bin.n + 3) & (-4)
   var total = 12 + 8 + js.n
   if binLen > 0 { total = total + 8 + binLen }
-  let o = bout_new(total)
+  let o = bout_new(total + 8)
   bo_u32(o, 0x46546C67)
   bo_u32(o, 2)
   bo_u32(o, total)
@@ -419,7 +418,9 @@ function jv_scene(name: string, n: int) -> JV {
 
 # roadGlb: a node per material layer (sorted by name), welded
 export function road_glb(layers: []Layer, extras: JV, tones: bool, weldOn: bool) -> BOut {
-  let bin = bout_new(1 << 16)
+  var size = 0
+  for i in 0 .. len(layers) { size += (len(layers[i].positions) + len(layers[i].normals) + len(layers[i].uvs) + len(layers[i].indices)) * 4 + 16 }
+  let bin = bout_new(size)
   let views = jv_arr()
   let accessors = jv_arr()
   let meshes = jv_arr()
@@ -546,7 +547,7 @@ export function collision_glb(s: Soup, extras: JV, weldOn: bool) -> BOut {
     idx = s.indices
   }
   let has = len(s.indices) > 0
-  let bin = bout_new(1 << 14)
+  let bin = bout_new((len(pos) + len(idx)) * 4 + 16)
   for i in 0 .. len(pos) { bo_u32(bin, pos[i]) }
   let posBytes = len(pos) * 4
   bo_pad(bin, 0)
@@ -676,7 +677,7 @@ export function lod_cell_glb(pieces: []MeshChunk, extras: JV, generator: string,
     }
   }
   let ns = len(spanMM)
-  let bin = bout_new(1 << 16)
+  let bin = bout_new((len(pos) + len(nor) + len(uv) + len(all) + len(local)) * 4 + len(col) + 64)
   let views = jv_arr()
   let starts = new []int
   # positions, normals, uvs, colours, all, local
