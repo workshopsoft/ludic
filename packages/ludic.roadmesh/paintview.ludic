@@ -1,0 +1,266 @@
+# paintview.ludic - what the lane paint (lanePaint.ts), the through paths (throughPath.ts) and the barrier across a node
+# (medianThrough.ts) read of the network and the sidewalk: the edges' plain fields, the nodes, and the sidewalk's answers by edge
+# (stations, laid line, crossings) and by node (junction). Until the sidewalk is ported the fixtures fill it (the answers the
+# studio's sidewalk gave); then the native sidewalk does. A node's height function stays a function value and its context:
+# yf(yc, node, x, z).
+
+export property PEdge {
+  key: string = ""
+  profile: string = ""     # "" for none
+  kind: string = ""        # the profile's kind ("" for none)
+  steps: double = 0.0
+  median: double = 0.0
+  lanesFwd: double = 0.0
+  lanesBack: double = 0.0
+  level: string = "ground"
+  length: double = 0.0
+  s: []double = null
+  line: []double = null
+}
+
+# an edge's strip: per station p (x, z), n (x, z), k, s, y (7 numbers), and the offsets on each side (median, lanes, road on the
+# right, then on the left: 6 numbers)
+export property PStations {
+  st: []double = null
+  off: []double = null
+  n: int = 0
+}
+
+export property PLaid {
+  line: []double = null
+  s: []double = null
+  scale: double = 1.0
+  len: double = 0.0
+}
+
+export property PEnd {
+  edge: int = -1
+  out: bool = false
+  ux: double = 0.0
+  uz: double = 0.0
+}
+
+export property PJunction {
+  kind: string = ""
+  ends: []PEnd = null
+}
+
+export property PNode {
+  key: string = ""
+  edges: []int = null
+}
+
+export property PaintWorld {
+  forward: string = "right"
+  edges: []PEdge = null
+  nodes: []PNode = null
+  byKey: Dict = null
+  nodeByKey: Dict = null
+  st: []PStations = null      # by edge (null: none)
+  laid: []PLaid = null
+  cross: [][]double = null    # by edge: the crossings' metres along the edge's plan line (CrossingPlan.s)
+  junction: []PJunction = null
+  known: []byte = null        # by edge: 1 stations known, 2 laid known, 4 crossings known; by node (nknown): junction known
+  nknown: []byte = null
+  width: double = 0.0         # the crossings' strip width (CrossingDims.width)
+  miss: int = 0               # answers asked for that the world does not hold (a fixture's world holds what the studio asked)
+}
+
+export function st_px(S: PStations, i: int) -> double { return S.st[i * 7] }
+export function st_pz(S: PStations, i: int) -> double { return S.st[i * 7 + 1] }
+export function st_s(S: PStations, i: int) -> double { return S.st[i * 7 + 5] }
+export function st_y(S: PStations, i: int) -> double { return S.st[i * 7 + 6] }
+export function st_rmed(S: PStations, i: int) -> double { return S.off[i * 6] }
+export function st_lmed(S: PStations, i: int) -> double { return S.off[i * 6 + 3] }
+# EdgeStations.at: the point d metres from the centre line at station i (positive right)
+export function st_at_x(S: PStations, i: int, d: double) -> double { return S.st[i * 7] + S.st[i * 7 + 2] * d * S.st[i * 7 + 4] }
+export function st_at_z(S: PStations, i: int, d: double) -> double { return S.st[i * 7 + 1] + S.st[i * 7 + 3] * d * S.st[i * 7 + 4] }
+
+export function w_edge_index(w: PaintWorld, key: string) -> int { return Dict.get_or(w.byKey, key, -1) }
+export function w_st(w: PaintWorld, ei: int) -> PStations {
+  if (int(w.known[ei]) & 1) == 0 { w.miss += 1 }
+  return w.st[ei]
+}
+export function w_laid(w: PaintWorld, ei: int) -> PLaid {
+  if (int(w.known[ei]) & 2) == 0 { w.miss += 1 }
+  return w.laid[ei]
+}
+export function w_cross(w: PaintWorld, ei: int) -> []double {
+  if (int(w.known[ei]) & 4) == 0 {
+    w.miss += 1
+    return doubles(0)
+  }
+  return w.cross[ei]
+}
+export function w_junction(w: PaintWorld, ni: int) -> PJunction {
+  if int(w.nknown[ni]) == 0 { w.miss += 1 }
+  return w.junction[ni]
+}
+
+# ---- a world from tagged values (the fixtures' and the job's) ------------------------------------------------------------
+export function pedge_of(v: Val) -> PEdge {
+  let e = new PEdge
+  e.key = v_gets(v, "key", "")
+  e.profile = v_gets(v, "profile", "")
+  e.kind = v_gets(v, "kind", "")
+  e.steps = v_getn(v, "steps", 0.0)
+  e.median = v_getn(v, "median", 0.0)
+  e.lanesFwd = v_getn(v, "lanesFwd", 0.0)
+  e.lanesBack = v_getn(v, "lanesBack", 0.0)
+  e.level = v_gets(v, "level", "ground")
+  e.length = v_getn(v, "length", 0.0)
+  let s = v_get(v, "s")
+  if s != null { e.s = v_nums(s) } else { e.s = doubles(0) }
+  let l = v_get(v, "line")
+  if l != null { e.line = v_pts(l) } else { e.line = doubles(0) }
+  return e
+}
+
+# edges: [PEdge values]; nodes: [{key, edges: [keys]}] (or null); dump: {width, stations, junctions, laid, crossings} as lists of {key, v}
+export function world_of(forward: string, edges: Val, nodes: Val, dump: Val) -> PaintWorld {
+  let w = new PaintWorld
+  w.forward = forward
+  w.edges = new []PEdge
+  w.byKey = Dict.new()
+  w.nodeByKey = Dict.new()
+  for i in 0 .. v_len(edges) {
+    let e = pedge_of(v_item(edges, i))
+    Dict.set(w.byKey, e.key, i)
+    push(w.edges, e)
+  }
+  let ne = len(w.edges)
+  w.st = new []PStations
+  w.laid = new []PLaid
+  w.cross = new [][]double
+  w.known = buffer(ne)
+  for i in 0 .. ne {
+    push(w.st, null)
+    push(w.laid, null)
+    push(w.cross, null)
+  }
+  w.nodes = new []PNode
+  if nodes != null {
+    for i in 0 .. v_len(nodes) {
+      let nv = v_item(nodes, i)
+      let n = new PNode
+      n.key = v_gets(nv, "key", "")
+      n.edges = new []int
+      let ks = v_get(nv, "edges")
+      for k in 0 .. v_len(ks) {
+        let it = v_item(ks, k)
+        if it.tag == T_STR { push(n.edges, w_edge_index(w, it.str)) } else { push(n.edges, w_edge_index(w, v_gets(it, "key", ""))) }
+      }
+      Dict.set(w.nodeByKey, n.key, i)
+      push(w.nodes, n)
+    }
+  }
+  w.junction = new []PJunction
+  w.nknown = buffer(len(w.nodes))
+  for i in 0 .. len(w.nodes) { push(w.junction, null) }
+  w.width = v_getn(dump, "width", 0.0)
+  let sts = v_get(dump, "stations")
+  for i in 0 .. v_len(sts) {
+    let kv = v_item(sts, i)
+    let ei = w_edge_index(w, v_gets(kv, "key", ""))
+    if ei < 0 { continue }
+    w.known[ei] = int(w.known[ei]) | 1
+    let v = v_get(kv, "v")
+    if v_undef(v) { continue }
+    let S = new PStations
+    S.st = v_nums(v_get(v, "st"))
+    S.off = v_nums(v_get(v, "off"))
+    S.n = len(S.st) / 7
+    w.st[ei] = S
+  }
+  let ls = v_get(dump, "laid")
+  for i in 0 .. v_len(ls) {
+    let kv = v_item(ls, i)
+    let ei = w_edge_index(w, v_gets(kv, "key", ""))
+    if ei < 0 { continue }
+    w.known[ei] = int(w.known[ei]) | 2
+    let v = v_get(kv, "v")
+    if v_undef(v) { continue }
+    let L = new PLaid
+    L.line = v_pts(v_get(v, "line"))
+    L.s = v_nums(v_get(v, "s"))
+    L.scale = v_getn(v, "scale", 1.0)
+    L.len = v_getn(v, "len", 0.0)
+    w.laid[ei] = L
+  }
+  let cs = v_get(dump, "crossings")
+  for i in 0 .. v_len(cs) {
+    let kv = v_item(cs, i)
+    let ei = w_edge_index(w, v_gets(kv, "key", ""))
+    if ei < 0 { continue }
+    w.known[ei] = int(w.known[ei]) | 4
+    w.cross[ei] = v_nums(v_get(kv, "v"))
+  }
+  let js = v_get(dump, "junctions")
+  for i in 0 .. v_len(js) {
+    let kv = v_item(js, i)
+    let ni = Dict.get_or(w.nodeByKey, v_gets(kv, "key", ""), -1)
+    if ni < 0 { continue }
+    w.nknown[ni] = 1
+    let v = v_get(kv, "v")
+    let J = new PJunction
+    J.kind = v_gets(v, "kind", "")
+    J.ends = new []PEnd
+    let es = v_get(v, "ends")
+    for k in 0 .. v_len(es) {
+      let ev = v_item(es, k)
+      let E = new PEnd
+      E.edge = w_edge_index(w, v_gets(ev, "edge", ""))
+      E.out = v_bool(v_get(ev, "out"))
+      let u = v_nums(v_get(ev, "u"))
+      E.ux = u[0]
+      E.uz = u[1]
+      push(J.ends, E)
+    }
+    w.junction[ni] = J
+  }
+  return w
+}
+
+# JavaScript's a < b for strings of one-byte characters (the keys)
+export function str_lt(a: string, b: string) -> bool {
+  let n = min(len(a), len(b))
+  for i in 0 .. n {
+    if a[i] < b[i] { return true }
+    if a[i] > b[i] { return false }
+  }
+  return len(a) < len(b)
+}
+# the indices 0..n-1 ordered by their keys (a stable merge sort: JavaScript's sort with (p, q) => p < q ? -1 : p > q ? 1 : 0)
+export function order_by_key(keys: []string) -> []int {
+  let n = len(keys)
+  var a = words(n)
+  var t = words(n)
+  for i in 0 .. n { a[i] = i }
+  var w = 1
+  while w < n {
+    var lo = 0
+    while lo < n {
+      let mid = min(lo + w, n)
+      let hi = min(lo + 2 * w, n)
+      var i = lo
+      var j = mid
+      var k = lo
+      while k < hi {
+        if i < mid and (j >= hi or not str_lt(keys[a[j]], keys[a[i]])) {
+          t[k] = a[i]
+          i += 1
+        } else {
+          t[k] = a[j]
+          j += 1
+        }
+        k += 1
+      }
+      lo = hi
+    }
+    let x = a
+    a = t
+    t = x
+    w = w * 2
+  }
+  return a
+}

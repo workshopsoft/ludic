@@ -88,3 +88,6 @@ export function d_pair(a: double, b: double) -> []double {
   out[1] = b
   return out
 }
+# typed constants for the places a bare literal would not be a double (push onto a []double)
+export const ZERO_D: double = 0.0
+export const ONE_D: double = 1.0

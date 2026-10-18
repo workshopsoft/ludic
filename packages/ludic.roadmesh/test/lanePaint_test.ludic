@@ -1,0 +1,175 @@
+# lanePaint_test.ludic - lanepaint.ludic and medianthrough.ludic against the studio's calls (fix/<scene>/lanePaint.fix and
+# medianThrough.fix). paintLanes' and throughBarrier's records hold what they read of the network and the sidewalk (a world:
+# paintview.ludic), the road surface the paint is laid on, the node heights asked (tables by node) and what was appended.
+
+property NodeYs {
+  pts: [][]double = null     # by node
+  ys: [][]double = null
+  miss: int = 0
+}
+function node_y(t: NodeYs, ni: int, x: double, z: double) -> double {
+  let p = t.pts[ni]
+  if p != null {
+    let ys = t.ys[ni]
+    for i in 0 .. len(ys) { if p[i * 2] == x and p[i * 2 + 1] == z { return ys[i] } }
+  }
+  t.miss += 1
+  return NAN
+}
+function node_ys_of(w: PaintWorld, v: Val) -> NodeYs {
+  let t = new NodeYs
+  t.pts = new [][]double
+  t.ys = new [][]double
+  for i in 0 .. len(w.nodes) {
+    push(t.pts, null)
+    push(t.ys, null)
+  }
+  for i in 0 .. v_len(v) {
+    let kv = v_item(v, i)
+    let ni = Dict.get_or(w.nodeByKey, v_gets(kv, "key", ""), -1)
+    if ni < 0 { continue }
+    let tv = v_get(kv, "v")
+    t.pts[ni] = v_pts(v_get(tv, "pts"))
+    t.ys[ni] = v_nums(v_get(tv, "ys"))
+  }
+  return t
+}
+function layers_of(v: Val) -> []Layer {
+  let out = new []Layer
+  for i in 0 .. v_len(v) {
+    let lv = v_item(v, i)
+    let l = new Layer
+    l.material = v_gets(lv, "material", "")
+    l.positions = v_nums(v_get(lv, "positions"))
+    let ix = v_nums(v_get(lv, "indices"))
+    l.indices = words(len(ix))
+    for k in 0 .. len(ix) { l.indices[k] = int(ix[k]) }
+    let lvs = v_nums(v_get(lv, "levels"))
+    l.levels = words(len(lvs))
+    for k in 0 .. len(lvs) { l.levels[k] = int(lvs[k]) }
+    push(out, l)
+  }
+  return out
+}
+function lp_check_layers(c: Check, b: Builder, w: Val) -> void {
+  check_numv(c, "tris", double(b.tris), v_get(w, "tris"))
+  let ls = v_get(w, "layers")
+  var drawn = 0
+  for i in 0 .. len(b.layers) { if len(b.layers[i].levels) > 0 { drawn += 1 } }
+  check_int(c, "layers", drawn, v_len(ls))
+  for i in 0 .. v_len(ls) {
+    let wl = v_item(ls, i)
+    let m = v_gets(wl, "material", "")
+    let l = b_find(b, m)
+    if l == null {
+      check_fail(c, `no layer {m}`)
+      continue
+    }
+    check_nums(c, `{m}.positions`, l.positions, v_get(wl, "positions"))
+    check_nums(c, `{m}.normals`, l.normals, v_get(wl, "normals"))
+    check_nums(c, `{m}.uvs`, l.uvs, v_get(wl, "uvs"))
+    check_ints(c, `{m}.indices`, l.indices, v_get(wl, "indices"))
+    check_ints(c, `{m}.levels`, l.levels, v_get(wl, "levels"))
+  }
+}
+function check_strs(c: Check, what: string, got: []string, w: Val) -> void {
+  if len(got) != v_len(w) {
+    check_fail(c, `{what}: {len(got)} strings, want {v_len(w)}`)
+    return
+  }
+  for i in 0 .. len(got) { check_str(c, `{what}[{i}]`, got[i], v_item(w, i)) }
+}
+function strs_of(v: Val) -> []string {
+  let out = new []string
+  for i in 0 .. v_len(v) { push(out, v_item(v, i).str) }
+  return out
+}
+
+export function test_lanePaint(recs: []Rec) -> int {
+  let c = check_new("lanePaint")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "flushMedian" {
+      check_bool(c, "v", flush_median(pedge_of(rarg(r, 0)), rarg(r, 1), rarg(r, 2)), w)
+      continue
+    }
+    if f == "offChunkLines" {
+      check_nums(c, "v", off_chunk_lines(arg_pt(r, 0), arg_nd(r, 1, 0.0)), w)
+      continue
+    }
+    if f == "paintLanes" {
+      let wv = rarg(r, 2)
+      let world = world_of(v_gets(wv, "forward", "right"), v_get(wv, "edges"), v_get(wv, "nodes"), wv)
+      let ys = node_ys_of(world, v_get(wv, "nodeY"))
+      let b = builder_new(arg_n(r, 0))
+      b.level = int(arg_n(r, 1))
+      let xx = rarg(r, 6)
+      var only: Dict = null
+      let ov = v_get(xx, "only")
+      if not v_undef(ov) {
+        only = Dict.new()
+        for k in 0 .. v_len(ov) { Dict.set(only, v_item(ov, k).str, 1) }
+      }
+      let meta = paint_lanes(b, world, layers_of(rarg(r, 3)), lp_options_of(rarg(r, 4)), rarg(r, 5).str, v_getn(xx, "lift", 0.0), only, v_get(xx, "planted"), v_get(xx, "areas"), fn node_y, ys)
+      if world.miss > 0 { check_fail(c, `{world.miss} sidewalk answers asked that the studio did not ask`) }
+      if ys.miss > 0 { check_fail(c, `{ys.miss} node heights asked that the studio did not ask`) }
+      let wm = v_get(w, "meta")
+      let pc = v_get(wm, "pieces")
+      check_int(c, "pieces", len(meta.pieceKeys), v_len(pc))
+      if len(meta.pieceKeys) == v_len(pc) {
+        for k in 0 .. len(meta.pieceKeys) {
+          if pc.keys[k] != meta.pieceKeys[k] { check_fail(c, `pieces[{k}]: {meta.pieceKeys[k]}, want {pc.keys[k]}`) }
+          check_numv(c, `pieces.{meta.pieceKeys[k]}`, double(meta.pieceN[k]), pc.arr[k])
+        }
+      }
+      check_strs(c, "flush", meta.flush, v_get(wm, "flush"))
+      check_strs(c, "planted", meta.planted, v_get(wm, "planted"))
+      check_numv(c, "meta.tris", double(meta.tris), v_get(wm, "tris"))
+      lp_check_layers(c, b, v_get(w, "out"))
+      continue
+    }
+    check_fail(c, "no such function in the port")
+  }
+  return check_report(c)
+}
+
+export function test_medianThrough(recs: []Rec) -> int {
+  let c = check_new("medianThrough")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let w = r.res
+    check_rec(c, r.fn)
+    if r.fn != "throughBarrier" {
+      check_fail(c, "no such function in the port")
+      continue
+    }
+    let nv = rarg(r, 2)
+    let nodes = new Val
+    nodes.tag = T_ARR
+    nodes.arr = new []Val
+    push(nodes.arr, nv)
+    let dump = rarg(r, 3)
+    let world = world_of("right", v_get(nv, "edges"), nodes, dump)
+    let ys = node_ys_of(world, v_get(dump, "nodeY"))
+    let b = builder_new(arg_n(r, 0))
+    b.level = int(arg_n(r, 1))
+    let t = through_barrier(b, world, 0, strs_of(rarg(r, 4)), rarg(r, 5).str, arg_n(r, 6), fn node_y, ys)
+    if world.miss > 0 { check_fail(c, `{world.miss} sidewalk answers asked that the studio did not ask`) }
+    if ys.miss > 0 { check_fail(c, `{ys.miss} node heights asked that the studio did not ask`) }
+    let wt = v_get(w, "through")
+    if t == null or v_undef(wt) {
+      if t != null or not v_undef(wt) { check_fail(c, "through: one is none") }
+    } else {
+      check_str(c, "node", t.node, v_get(wt, "node"))
+      check_str(c, "a", t.a, v_get(wt, "a"))
+      check_str(c, "c", t.c, v_get(wt, "c"))
+      check_path_line(c, "path", t.path, v_get(wt, "path"))
+      check_numv(c, "hw", t.hw, v_get(wt, "hw"))
+    }
+    lp_check_layers(c, b, v_get(w, "out"))
+  }
+  return check_report(c)
+}

@@ -31,6 +31,15 @@ Branch `mvp/roadnative` in gpp, game-editor and occutown.
 | roadStructures.ts | 602 | roadstructures.ludic | geom, jsmath, meshBuilder, sidewalk (+ the ground and edgesNear as recorded answers) | ported, verified (buildStructures: decks, piers, abutments, spans, tubes, light zones, portals, wing walls, meta, problems) |
 | lanePaint.ts | 777 | lanepaint.ludic | geom, junction, meshBuilder, network, profiles, sidewalk, throughPath | to do |
 | lanePaintChecks.ts (only what the bake calls) | 204 | lanepaintchecks.ludic | lanePaint, throughPath | to do |
+| junction.ts | 443 | junction.ludic | corners, geom, network, profiles | to do |
+| junctionSurface.ts | 254 | junctionsurface.ludic | geom, junction, network, profiles, roadGrade, stationLine | to do |
+| corners.ts | 343 | corners.ludic | geom, junction, junctionSurface, stationLine | to do (one unit with junction and junctionSurface: they import each other) |
+| sidewalk.ts | 773 | sidewalk.ludic | corners, crossings, geom, junction, junctionSurface, network, profiles, roadGrade, stationLine | to do |
+| throughPath.ts | 168 | throughpath.ludic | geom, paintview | ported, verified (throughPair, throughPath, pathPoint, pathCoords; armToNode inside throughPath) |
+| medianThrough.ts | 57 | medianthrough.ludic | meshbuilder, paintview, throughpath | ported, verified (throughBarrier) |
+| roadStructures.ts | 602 | roadstructures.ludic | geom, meshBuilder, network, profiles, sidewalk | to do |
+| lanePaint.ts | 777 | lanepaint.ludic | geom, meshbuilder, paintview, throughpath | ported, verified (paintLanes whole, flushMedian, offChunkLines) |
+| lanePaintChecks.ts | 204 | (none) | | not needed: the bake calls none of it (roadMesh imports only flushMedian, offChunkLines, paintLanes) |
 | roadMesh.ts (+ the part of blocks.ts it reads) | 931 | roadmesh.ludic | everything above | to do |
 | roadChunks.ts | 461 | roadchunks.ludic | junctionSurface, meshBuilder, roadMesh, sidewalk | to do |
 | roadGlb.ts | 428 | roadglb.ludic | roadMesh | to do |
@@ -45,6 +54,10 @@ Shared files:
 - `trig.ludic`: V8's Math.sin, cos, tan and atan2 are fdlibm/glibc code built with fused multiply-adds and differ from libm in the
   last bit (sin about 1 call in 25, tan 1 in 3 on random arguments). The port calls them as `JsMath.sin(x)` etc.; unbound that is
   libm, which leaves differences of at most 4.5e-13 m in the junctions of the four scenes (far under the bake's millimetres).
+- `paintview.ludic`: what the lane paint, the through paths and the barrier read of the network and the sidewalk (a `PaintWorld`:
+  the edges' plain fields, the nodes, and by edge the stations, the laid line and the crossings, by node the junction). The
+  fixtures fill it with the studio sidewalk's answers; when sidewalk, junction and junctionSurface are ported, roadMesh fills it
+  from them (or those parts answer through it). A node's height (`Sidewalk.nodeY`) stays a function value: `yf(yc, node, x, z)`.
 - `util.ludic`: JavaScript's `Math.max`, `Math.min`, `Math.round` and `Math.sign` with V8's NaN and signed-zero rules, `INF` and `NAN`,
   selects (Ludic has no if-expression), and points as flat `[]double` (x0, z0, x1, z1, ...).
 - `fixture.ludic`: the tagged-value reader (`Val`) and the checks (`Check`) every module test uses.
@@ -189,6 +202,14 @@ per worker, and workers may allocate.
 | junction | 994, same | 1938, same | 1890, same | 1963, same |
 | corners | 1115, same | 1341, same | 1351, same | 1370, same |
 | junctionSurface | 1011, same | 1550, same | 1489, same | 1667, same |
+| throughPath | 782, same | 325, same | 812, same | 829, same |
+| lanePaint (2 whole paintLanes each) | 335, same | 351, same | 338, same | 277, same |
+| medianThrough | 231, same | 660, same | 348, same | 294, same |
+
+lanePaint's and medianThrough's records carry what the call read of the sidewalk (a recording sidewalk in `export.test.ts`
+notes every junction, stations, laid line, crossing list and node height asked), the road surface the paint is laid on and
+what was appended. A native call that asks for something the studio did not ask fails the record. Changing LINE_CLEAR to
+0.021 made both gym paintLanes records differ.
 
 To check that the harness catches a real difference, the ribbon's zip condition was inverted. The test then reported the
 ribbons' positions, normals (including -0 against 0) and uvs as different.

@@ -1,0 +1,80 @@
+# medianthrough.ludic - game-editor packages/core/src/world/medianThrough.ts: a barrier median carried across a junction, where
+# two arms with a barrier median run on through a node: the barrier follows the road's centre line from the end of one arm's
+# median to the other's, standing on the junction's surface.
+
+export property BarrierThrough {
+  node: string = ""
+  a: string = ""
+  c: string = ""
+  path: PathLine = null
+  hw: double = 0.0
+}
+
+property BarrierOk {
+  w: PaintWorld = null
+  j: PJunction = null
+  kinds: []string = null
+}
+function barrier_ok(o: BarrierOk, k: int) -> bool {
+  let e = o.w.edges[o.j.ends[k].edge]
+  if not (e.median > 0.01) or e.profile == "" { return false }
+  for i in 0 .. len(o.kinds) { if o.kinds[i] == e.kind { return true } }
+  return false
+}
+function end_half(w: PaintWorld, e: PEnd) -> double {
+  let es = w_st(w, e.edge)
+  return st_rmed(es, isel(e.out, 0, es.n - 1))
+}
+
+# throughBarrier: the barrier across node ni, when two of its arms with a barrier median (a profile of one of `kinds`) run on
+# through it, drawn into b in material mat, h high; what was built, or null. yf(yc, node, x, z): the node's surface height.
+export function through_barrier<C>(b: Builder, w: PaintWorld, ni: int, kinds: []string, mat: string, h: double, yf: fn(C, int, double, double) -> double, yc: C) -> BarrierThrough {
+  let j = w_junction(w, ni)
+  if j == null or len(j.ends) < 2 { return null }
+  let ok = new BarrierOk
+  ok.w = w
+  ok.j = j
+  ok.kinds = kinds
+  let pair = through_pair(j, fn barrier_ok, ok, 15.0, 30.0, 60.0)
+  if pair == null { return null }
+  let A = j.ends[pair.a]
+  let C = j.ends[pair.c]
+  if w.edges[A.edge].level != w.edges[C.edge].level { return null }
+  let path = through_path(w, A, C, 2.0)
+  if path == null { return null }
+  if path.len < 0.05 { return null }
+  let ha = end_half(w, A)
+  let hc = end_half(w, C)
+  b_slot(b, mat, "structure")
+  let np = len(path.pts) / 2
+  let l0 = doubles(2)
+  let l1 = doubles(2)
+  let r0 = doubles(2)
+  let r1 = doubles(2)
+  for k in 0 .. np - 1 {
+    barrier_at(path, k, -1.0, ha, hc, l0)
+    barrier_at(path, k + 1, -1.0, ha, hc, l1)
+    barrier_at(path, k, 1.0, ha, hc, r0)
+    barrier_at(path, k + 1, 1.0, ha, hc, r1)
+    let ox = r0[0] - l0[0]
+    let oz = r0[1] - l0[1]
+    let yl0 = yf(yc, ni, l0[0], l0[1])
+    let yl1 = yf(yc, ni, l1[0], l1[1])
+    let yr0 = yf(yc, ni, r0[0], r0[1])
+    let yr1 = yf(yc, ni, r1[0], r1[1])
+    b_quad(b, mat, l0[0], yl0 + h, l0[1], l1[0], yl1 + h, l1[1], r1[0], yr1 + h, r1[1], r0[0], yr0 + h, r0[1], 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, UP_YES, 0.0, 0.0, 0.0)
+    b_quad(b, mat, l0[0], yl0, l0[1], l1[0], yl1, l1[1], l1[0], yl1 + h, l1[1], l0[0], yl0 + h, l0[1], 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, UP_VEC, -ox, 0.0, -oz)
+    b_quad(b, mat, r0[0], yr0, r0[1], r1[0], yr1, r1[1], r1[0], yr1 + h, r1[1], r0[0], yr0 + h, r0[1], 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, UP_VEC, ox, 0.0, oz)
+  }
+  let out = new BarrierThrough
+  out.node = w.nodes[ni].key
+  out.a = w.edges[A.edge].key
+  out.c = w.edges[C.edge].key
+  out.path = path
+  out.hw = (ha + hc) / 2.0
+  return out
+}
+function barrier_at(path: PathLine, k: int, side: double, ha: double, hc: double, out: []double) -> void {
+  let f = path.s[k] / path.len
+  path_point_to(path, path.s[k], side * (ha + (hc - ha) * f), out)
+}
