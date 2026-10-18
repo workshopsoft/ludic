@@ -298,6 +298,15 @@ vec3 facadeRoom(Fac f, vec3 ray, float lod, bool rays) {
 
 void main() {
   if (v_wpos.y < u_clip_y) discard;
+#ifdef FACADE
+  // nothing of a box instance is drawn past a party wall its flags name: a cornice's side or a corner block there would stand in the
+  // neighbour's wall (z-fighting with its face) or hang on a taller neighbour's facade
+  if (v_box.x > 0.0) {
+    int bl = int(v_flags.x + 0.5) & 15;
+    vec2 hw = 0.5 * v_box.xy + 0.002;
+    if (((bl & 1) != 0 && v_lpos.x > hw.x) || ((bl & 2) != 0 && v_lpos.x < -hw.x) || ((bl & 4) != 0 && v_lpos.z > hw.y) || ((bl & 8) != 0 && v_lpos.z < -hw.y)) discard;
+  }
+#endif
 #ifndef SHADOW_PASS
   if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
 #endif
