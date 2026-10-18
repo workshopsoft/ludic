@@ -43,6 +43,13 @@ function prog__refresh(progression_st: mut ProgressionState, r: ProgPlayer) -> v
   }
 }
 
+# settle a player's unlocks against what they have now (the row made if it is not there): after a load whose snapshot is older than the
+# tables (an unlock added since), or to begin a player. Free unlocks that are met open, priced ones are offered (facts as usual). Host only
+export function progression_settle(progression_st: mut ProgressionState, player: int) -> void {
+  if not prog__is_host() { return }
+  prog__refresh(progression_st, prog__row(progression_st, player))
+}
+
 export function progression_unlock_state(progression_st: ProgressionState, player: int, u: int) -> int {
   let r = prog__find(progression_st, player)
   if r == null or not prog__unlock_ok(u) or u >= len(r.unlock) { return PROG_LOCKED }
