@@ -83,7 +83,10 @@ a pure function of those two - the same on every machine and in the editor's pre
   `wet_frame` (tiles read nearest first within a budget, a mixed tile's texels in one of N resident layers),
   `water_wet_use`; `wet_at` answers on the CPU what the water shader reads.
 - **Light zones** (`lightzone.ludic`): boxes the sun does not reach, a tunnel's tube. `lightzone_add(st, x, y, z,
-  yaw, w, h, d, feather)` (a turned box, fading in over `feather` metres from its faces), `lightzone_ambient(st, z,
+  yaw, w, h, d, feather)` (a turned box, fading in over `feather` metres from its faces), `lightzone_feather(st, z,
+  ends, sides)` (its two ends across its depth and its four sides fading over their own lengths: a tube's zone fades in
+  at its portals and stands hard in its walls and roof), `lightzone_grade(st, z, g)` (sheared along its depth to a
+  sloping tube's grade), `lightzone_ambient(st, z,
   r, g, b, sky)` (the zone's own linear ambient and the share of the sky it still sees), `lightzone_clear`,
   `lightzone_rebase`, `lightzone_at` (the weight on the CPU). Inside, every lit shader drops the sun's direct light,
   its bounce, a leaf's glow and sheen, water's glitter and the air's shafts; the 8 zones nearest the camera are

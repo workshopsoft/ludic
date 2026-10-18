@@ -253,8 +253,10 @@ vec3 regionTint(vec3 wpos, float strength) {
 }
 
 // Light zones (lightzone.ludic): boxes the sun does not reach (a tunnel). Each is 4 vec4s:
-// (centre, feather) (cos yaw, sin yaw, sky, -) (half sizes, -) (ambient rgb, -). The weight is 0 outside the box,
-// 1 deeper than the feather inside, smoothstep between; the strongest zone wins and lends its ambient and sky.
+// (centre, end feather) (cos yaw, sin yaw, sky, grade) (half sizes, side feather) (ambient rgb, -). The weight is 0 outside
+// the box, 1 deeper than the feathers inside (the end feather from its two faces along its depth, the side feather from
+// the other four), smoothstep between; the box is sheared along its depth by its grade (a sloping tube's floor and roof);
+// the strongest zone wins and lends its ambient and sky.
 #define LZ_MAX 8
 uniform vec4 u_lz[LZ_MAX * 4];
 uniform int u_lz_n;
@@ -268,9 +270,10 @@ float lightZone(vec3 p, out vec4 amb) {
     vec4 c = u_lz[i * 4 + 2];
     vec3 d = p - a.xyz;
     vec3 l = vec3(b.x * d.x - b.y * d.z, d.y, b.y * d.x + b.x * d.z);
+    l.y -= b.w * l.z;
     vec3 e = c.xyz - abs(l);
-    float inside = min(e.x, min(e.y, e.z));
-    float wi = (a.w > 0.0) ? smoothstep(0.0, a.w, inside) : step(0.0, inside);
+    float side = min(e.x, e.y);
+    float wi = min((c.w > 0.0) ? smoothstep(0.0, c.w, side) : step(0.0, side), (a.w > 0.0) ? smoothstep(0.0, a.w, e.z) : step(0.0, e.z));
     if (wi > w) { w = wi; amb = vec4(u_lz[i * 4 + 3].rgb, b.z); }
   }
   return w;

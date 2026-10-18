@@ -54,6 +54,36 @@ program LightZoneTest {
     expect_eq(a, 0)
   }
 
+  test "a zone's ends and sides fade over their own feathers: a tube's zone fades in at its portals, hard in its walls and roof" (render3d_st: mut Render3dState) {
+    # a tube along z: 10 m wide, 7 m tall, 40 m long, its ends fading over 2 m, its sides hard
+    let z = lightzone_add(render3d_st, 0.0, 3.5, 0.0, 0.0, 10.0, 7.0, 40.0, 2.0)
+    lightzone_feather(render3d_st, z, 2.0, 0.0)
+    expect_eq(lightzone_at(render3d_st, 4.9, 3.5, 0.0), 1.0)                       # a wall's inner face, just inside the box's side
+    expect_eq(lightzone_at(render3d_st, 5.1, 3.5, 0.0), 0.0)                       # its outer face
+    expect_eq(lightzone_at(render3d_st, 0.0, 6.95, 0.0), 1.0)                      # the roof's underside
+    expect_eq(lightzone_at(render3d_st, 0.0, 7.05, 0.0), 0.0)                      # over the roof
+    expect_eq(lightzone_at(render3d_st, 4.9, 0.05, 0.0), 1.0)                      # the floor's corner
+    expect_near(lightzone_at(render3d_st, 0.0, 3.5, 19.0), 0.5, 0.000001)          # half the ends' feather in from a portal
+    expect_near(lightzone_at(render3d_st, 4.9, 6.95, 19.0), 0.5, 0.000001)         # the same by the walls and roof there
+    expect_eq(lightzone_at(render3d_st, 0.0, 3.5, 20.5), 0.0)                      # past the portal
+    # the shaders' table carries both: the ends' feather in the first vec4's w, the sides' in the third's
+    lightzone_pick(render3d_st, 0.0, 3.5, 0.0)
+    expect_near(render3d_st.lz_u[3], 2.0, 0.000001)
+    expect_near(render3d_st.lz_u[11], 0.0, 0.000001)
+    # sheared by a grade of 5%: 10 m along its depth its floor and roof stand 0.5 m higher
+    lightzone_grade(render3d_st, z, 0.05)
+    expect_eq(lightzone_at(render3d_st, 0.0, 7.4, 10.0), 1.0)                      # under the roof there (7.5)
+    expect_eq(lightzone_at(render3d_st, 0.0, 7.6, 10.0), 0.0)                      # over it
+    expect_eq(lightzone_at(render3d_st, 0.0, 0.45, 10.0), 0.0)                     # under its floor there (0.5)
+    expect_eq(lightzone_at(render3d_st, 0.0, -0.4, -10.0), 1.0)                    # and 10 m back the other way, 0.5 m lower
+    lightzone_pick(render3d_st, 0.0, 3.5, 0.0)
+    expect_near(render3d_st.lz_u[7], 0.05, 0.000001)                               # the grade for the shaders
+    # lightzone_add alone: both feathers the one given
+    let y = lightzone_add(render3d_st, 100.0, 0.0, 0.0, 0.0, 4.0, 4.0, 4.0, 1.0)
+    expect_near(lightzone_weight(render3d_st, y, 101.5, 0.0, 0.0), 0.5, 0.000001)
+    expect_near(lightzone_weight(render3d_st, y, 100.0, 0.0, 1.5), 0.5, 0.000001)
+  }
+
   test "the floating origin moves the zones with the world" (render3d_st: mut Render3dState) {
     lightzone_add(render3d_st, 100.0, 0.0, 100.0, 0.0, 10.0, 10.0, 10.0, 0.0)
     lightzone_rebase(render3d_st, -100.0, 0.0, -100.0)
@@ -83,7 +113,7 @@ program LightZoneTest {
     expect_near(u[4], 1.0, 0.0001);  expect_near(u[5], 0.0, 0.0001)  # cos, sin of yaw 0
     expect_near(u[6], 0.25, 0.0001)                                  # sky
     expect_near(u[8], 1.0, 0.0001);  expect_near(u[9], 1.0, 0.0001);  expect_near(u[10], 1.0, 0.0001)   # half sizes
-    expect_near(u[12], 0.6, 0.0001);  expect_near(u[13], 0.2, 0.0001);  expect_near(u[14], 0.3, 0.0001) # ambient
+    expect_near(u[12], 0.6, 0.0001);  expect_near(u[13], 0.2, 0.0001);  expect_near(u[14], 0.3, 0.0001)  # ambient
     # inside a box the distance is 0: that zone comes first
     lightzone_pick(render3d_st, 30.5, 0.0, 0.0)
     expect_eq(lightzone_slot(render3d_st, 0), 3)

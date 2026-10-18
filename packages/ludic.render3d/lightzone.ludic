@@ -3,9 +3,16 @@
 # sun contributes nothing (its direct light, its bounce off the ground and its shafts in the air), the sky's light is
 # scaled by the zone's `sky` (0: a tube that sees no sky) and the zone's own AMBIENT is added (linear radiance, like a
 # tint: the lamps along a tunnel, a level the game tunes). A zone fades in over `feather` metres inward from its faces,
-# so a portal is a short dusk and not a line; outside its box a zone does nothing.
+# so a portal is a short dusk and not a line; outside its box a zone does nothing. Its two ends (the faces across its
+# depth, a tube's portals) and its four sides (along its depth: a tube's walls, roof and floor) may fade over different
+# lengths: a tube's zone fades in at a portal and stands with hard sides in its walls and roof, so the tube's inside is
+# wholly in it and the tube's outside wholly out of it. A zone may be sheared along its depth by a grade (its floor and
+# roof rising `grade` metres a metre along its local z, as a tube's road does), so a box in a sloping tube still stands
+# in its roof and not over it.
 #
 #   let z = lightzone_add(st, x, y, z, yaw, w, h, d, feather)    # centre, turn (radians, as actor_place), full sizes
+#   lightzone_feather(st, z, 2.0, 0.0)                           # the ends' feather and the sides' (default: both `feather`)
+#   lightzone_grade(st, z, 0.04)                                 # sheared: up 4 cm a metre along its depth (default 0)
 #   lightzone_ambient(st, z, 0.9, 0.75, 0.5, 0.0)                # ambient r g b, sky fraction (default 0, 0, 0, 0)
 #   lightzone_clear(st);  lightzone_rebase(st, dx, dy, dz)       # all gone; the floating origin moved by (dx, dy, dz)
 #   lightzone_at(st, x, y, z)                                    # 0 .. 1: how far inside (the shaders' weight)
@@ -19,7 +26,7 @@ numbers float
 
 const LZ_CAP: int = 512            # zones kept
 const LZ_MAX: int = 8              # zones a frame's shaders see (lighting.glsl LZ_MAX)
-const LZ_STRIDE: int = 16          # cx cy cz cos sin hx hy hz feather r g b sky 0 0 0
+const LZ_STRIDE: int = 16          # cx cy cz cos sin hx hy hz feather r g b sky side grade 0
 
 @alloc_ok("the zones' tables, made once on the first zone")
 function lz_make(render3d_st: mut Render3dState) -> void {
@@ -45,6 +52,7 @@ export function lightzone_add(render3d_st: mut Render3dState, x: float, y: float
   v[o + 5] = w * 0.5;  v[o + 6] = h * 0.5;  v[o + 7] = d * 0.5
   v[o + 8] = Math.max(feather, 0.0)
   for k in 9 .. LZ_STRIDE { v[o + k] = 0.0 }
+  v[o + 13] = v[o + 8]
   render3d_st.lz_n = i + 1
   render3d_st.lz_dirty = true
   return i
@@ -56,6 +64,22 @@ export function lightzone_ambient(render3d_st: mut Render3dState, i: int, r: flo
   let o = i * LZ_STRIDE
   render3d_st.lz[o + 9] = Math.max(r, 0.0);  render3d_st.lz[o + 10] = Math.max(g, 0.0);  render3d_st.lz[o + 11] = Math.max(b, 0.0)
   render3d_st.lz[o + 12] = Math.clamp(sky, 0.0, 1.0)
+  render3d_st.lz_dirty = true
+}
+
+# zone i's feathers: over `ends` metres from its two faces across its depth (d), over `sides` from the other four (0: a hard edge)
+export function lightzone_feather(render3d_st: mut Render3dState, i: int, ends: float, sides: float) -> void {
+  if i < 0 or i >= render3d_st.lz_n { return }
+  let o = i * LZ_STRIDE
+  render3d_st.lz[o + 8] = Math.max(ends, 0.0)
+  render3d_st.lz[o + 13] = Math.max(sides, 0.0)
+  render3d_st.lz_dirty = true
+}
+
+# zone i sheared along its depth: its floor and roof rise `grade` metres a metre along its local z (0: a plain box)
+export function lightzone_grade(render3d_st: mut Render3dState, i: int, grade: float) -> void {
+  if i < 0 or i >= render3d_st.lz_n { return }
+  render3d_st.lz[i * LZ_STRIDE + 14] = grade
   render3d_st.lz_dirty = true
 }
 
@@ -71,20 +95,24 @@ export function lightzone_rebase(render3d_st: mut Render3dState, dx: float, dy: 
   render3d_st.lz_dirty = true
 }
 
-# how far inside zone i (x, y, z) is: 0 outside its box, 1 deeper than its feather, smoothstep between (lighting.glsl
-# lightZone, the same sum)
+# how far inside zone i (x, y, z) is: 0 outside its box, 1 deeper than its feathers, smoothstep between (the ends' feather
+# from its faces across its depth, the sides' from the other four: the lesser of the two; lighting.glsl lightZone, the same sum)
 export function lightzone_weight(render3d_st: Render3dState, i: int, x: float, y: float, z: float) -> float {
   let o = i * LZ_STRIDE
   let v = render3d_st.lz
   let dx = x - v[o];  let dy = y - v[o + 1];  let dz = z - v[o + 2]
   let lx = v[o + 3] * dx - v[o + 4] * dz
   let lz = v[o + 4] * dx + v[o + 3] * dz
-  let inside = Math.min(v[o + 5] - Math.abs(lx), Math.min(v[o + 6] - Math.abs(dy), v[o + 7] - Math.abs(lz)))
-  if v[o + 8] <= 0.0 {
+  let side = Math.min(v[o + 5] - Math.abs(lx), v[o + 6] - Math.abs(dy - v[o + 14] * lz))
+  return Math.min(lz_fade(side, v[o + 13]), lz_fade(v[o + 7] - Math.abs(lz), v[o + 8]))
+}
+# 0 outside (inside < 0), 1 deeper than the feather, smoothstep between; a hard edge with no feather
+function lz_fade(inside: float, feather: float) -> float {
+  if feather <= 0.0 {
     if inside >= 0.0 { return 1.0 }
     return 0.0
   }
-  let t = Math.clamp(inside / v[o + 8], 0.0, 1.0)
+  let t = Math.clamp(inside / feather, 0.0, 1.0)
   return t * t * (3.0 - 2.0 * t)
 }
 
@@ -102,7 +130,7 @@ export function lightzone_slot(render3d_st: Render3dState, k: int) -> int {
 }
 
 # the LZ_MAX zones nearest (cx, cy, cz) (by the distance to their box) into the shaders' table: 4 vec4 a zone
-#   (cx, cy, cz, feather) (cos, sin, sky, 0) (hx, hy, hz, 0) (r, g, b, index)
+#   (cx, cy, cz, end feather) (cos, sin, sky, grade) (hx, hy, hz, side feather) (r, g, b, index)
 export function lightzone_pick(render3d_st: mut Render3dState, cx: float, cy: float, cz: float) -> void {
   lz_make(render3d_st)
   let u = render3d_st.lz_u
@@ -112,7 +140,7 @@ export function lightzone_pick(render3d_st: mut Render3dState, cx: float, cy: fl
     let o = i * LZ_STRIDE
     let dx = cx - v[o];  let dy = cy - v[o + 1];  let dz = cz - v[o + 2]
     let lx = Math.max(Math.abs(v[o + 3] * dx - v[o + 4] * dz) - v[o + 5], 0.0)
-    let ly = Math.max(Math.abs(dy) - v[o + 6], 0.0)
+    let ly = Math.max(Math.abs(dy - v[o + 14] * (v[o + 4] * dx + v[o + 3] * dz)) - v[o + 6], 0.0)
     let lz = Math.max(Math.abs(v[o + 4] * dx + v[o + 3] * dz) - v[o + 7], 0.0)
     let dist = lx * lx + ly * ly + lz * lz
     # insertion into the sorted slots (kept in u's unused w of the 4th vec4 as the index, the distance beside in a scratch)
@@ -125,10 +153,12 @@ export function lightzone_pick(render3d_st: mut Render3dState, cx: float, cy: fl
     let s = k * 16
     u[s] = v[o];  u[s + 1] = v[o + 1];  u[s + 2] = v[o + 2];  u[s + 3] = v[o + 8]
     u[s + 4] = v[o + 3];  u[s + 5] = v[o + 4];  u[s + 6] = v[o + 12];  u[s + 7] = dist
-    u[s + 8] = v[o + 5];  u[s + 9] = v[o + 6];  u[s + 10] = v[o + 7];  u[s + 11] = 0.0
+    u[s + 8] = v[o + 5];  u[s + 9] = v[o + 6];  u[s + 10] = v[o + 7];  u[s + 11] = v[o + 13]
     u[s + 12] = v[o + 9];  u[s + 13] = v[o + 10];  u[s + 14] = v[o + 11];  u[s + 15] = float(i)
     if n < LZ_MAX { n += 1 }
   }
+  # the sort's distances (the second vec4's w) are done with: each slot's grade there for the shaders
+  for k in 0 .. n { u[k * 16 + 7] = v[int(u[k * 16 + 15]) * LZ_STRIDE + 14] }
   render3d_st.lz_un = n
   render3d_st.lz_at[0] = cx;  render3d_st.lz_at[1] = cy;  render3d_st.lz_at[2] = cz
   render3d_st.lz_dirty = false
