@@ -262,8 +262,9 @@ Fac facadeAt(vec3 ray) {
   return f;
 }
 
-// the room behind a window's glass (or, past the rooms' distance, flat glass lit as the room would be): rgb
-vec3 facadeRoom(Fac f, vec3 ray, float lod, bool rays) {
+// the room behind a window's glass, or flat glass lit as the room would be: rgb. `rays` is how much of the room shows (1 the room, 0 the
+// flat glass): it falls off with distance and on a glancing look, where a room is a sliver of floor or wall seen edge on
+vec3 facadeRoom(Fac f, vec3 ray, float lod, float rays) {
   vec3 on = imiWallNormal(f.wall);
   vec3 tng = normalize(cross(vec3(0.0, 1.0, 0.0), on));
   vec3 d = vec3(dot(ray, tng), ray.y, -dot(ray, on));
@@ -276,11 +277,14 @@ vec3 facadeRoom(Fac f, vec3 ray, float lod, bool rays) {
   bool curtain = imiUnit(imiHash(seed, wall, cx, cy, 2u)) < u_im_gain.z;
   vec3 amb = skyIrradiance(vec3(0.0, 1.0, 0.0));
   float dayGain = mix(1.0, u_im_gain.y, night);
-  vec3 tex;
-  if (!rays || u_fac_c.w < 0.5 || d.z < 0.0001) {
-    // flat: a room's average grey, a little darker near the top of the glass (the ceiling's shade)
-    float t = imiUnit(imiHash(seed, wall, cx, cy, 0u));
-    tex = vec3(0.30 + 0.12 * t) * (0.8 + 0.2 * f.q.y / max(f.size.y, 0.01));
+  // flat: a room's average grey, a little darker near the top of the glass (the ceiling's shade)
+  float t0 = imiUnit(imiHash(seed, wall, cx, cy, 0u));
+  vec3 flatg = vec3(0.30 + 0.12 * t0) * (0.8 + 0.2 * f.q.y / max(f.size.y, 0.01));
+  // a glancing look (the ray nearly along the wall) shows the room's floor or a side wall as a sliver that breaks up: the room fades to
+  // the flat glass between 0.55 and 0.25 of the ray into the room
+  float show = rays * smoothstep(0.25, 0.55, d.z);
+  vec3 tex = flatg;
+  if (show <= 0.001 || u_fac_c.w < 0.5) {
   } else if (curtain) {
     float t = imiUnit(imiHash(seed, wall, cx, cy, 3u));
     tex = mix(vec3(0.62, 0.60, 0.56), vec3(0.48, 0.50, 0.53), t) * (0.75 + 0.25 * f.q.y / f.size.y);
@@ -290,6 +294,7 @@ vec3 facadeRoom(Fac f, vec3 ray, float lod, bool rays) {
     vec4 hit = imiHit(vec3(f.size.x, f.size.y, u_im_cell.w), f.q.x, f.q.y, d);
     tex = textureLod(u_rooms, imiAtlasUv(room, int(hit.x + 0.5), hit.yz, 0.01), lod).rgb;
   }
+  if (show < 0.999) tex = mix(flatg, tex, show);
   vec3 col = tex * amb * 0.45 * dayGain;
   if (lit) col += tex * u_im_lit * u_im_gain.x * night;
   return col;
@@ -312,6 +317,7 @@ void main() {
 #endif
   vec3 N = normalize(v_nrm);
   if (!gl_FrontFacing) N = -N;
+  g_ground_grey = 1.0;   // built things stand over paving: what lights them from below has the ground's brightness, not its hue (lighting.glsl)
   float dist = length(v_wpos - u_cam_pos);
   float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;
   vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv) * v_col;
@@ -338,7 +344,8 @@ void main() {
   if (fa.kind == 1) {
     vec3 v = normalize(u_cam_pos - v_wpos);
     float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, v), 0.0), 5.0);
-    vec3 room = facadeRoom(fa, fray, lod, dist < u_fac_d.z);
+    // the rooms fade to flat glass over the last half of their distance (no line where they stop)
+    vec3 room = facadeRoom(fa, fray, lod, 1.0 - smoothstep(0.5 * u_fac_d.z, u_fac_d.z, dist));
     alb = mix(vec3(0.02), alb * 0.6, gone);
     roughF = mix(0.06, roughF, gone);
     n = N;
