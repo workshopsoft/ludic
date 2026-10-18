@@ -1,0 +1,1460 @@
+# lanepaint.ludic - game-editor packages/core/src/world/lanePaint.ts: the lines a road class draws on its carriageway (dividers,
+# edge lines, a centre line, a barrier's inner line, a flush median's lines and hatching, the lines carried through a node and a
+# slip road's gore lines), each piece cut at the road surface's own triangles and laid `up` above them. No piece ends on a chunk
+# line (LINE_CLEAR). The same triangles, in the same order, as the studio's.
+
+export property LinePaint {
+  style: string = "solid"
+  dash: double = 3.0
+  hasDash: bool = false
+  gap: double = 6.0
+  hasGap: bool = false
+  width: double = 0.0
+  hasWidth: bool = false
+  spacing: double = 0.1
+  hasSpacing: bool = false
+}
+
+export property LPRule {
+  key: string = ""
+  dividers: LinePaint = null
+  centre: LinePaint = null
+  centreArea: string = ""
+  edges: LinePaint = null
+  inner: LinePaint = null
+  flush: LinePaint = null
+  hatch: double = 0.0
+  width: double = 0.0
+  hasWidth: bool = false
+}
+
+export property LPOptions {
+  rules: []LPRule = null
+  width: double = 0.15
+  inset: double = 0.1
+  stop: double = 0.5
+  minPiece: double = 0.5
+  up: double = 0.02
+  chunk: double = 0.0         # 0: no grid
+  goreKinds: []string = null
+  merge: LinePaint = null     # the gore's merge line (default dash 3, gap 3)
+}
+
+export property LPMeta {
+  pieceKeys: []string = null  # painted pieces by kind, in the order the kinds were first counted
+  pieceN: []int = null
+  flush: []string = null
+  planted: []string = null
+  tris: int = 0
+}
+
+export const LINE_NEAR: double = 0.005
+export const LINE_CLEAR: double = 0.02
+
+# ---- options from tagged values ------------------------------------------------------------------------------------------
+function line_paint_of(v: Val) -> LinePaint {
+  if v_undef(v) { return null }
+  let p = new LinePaint
+  p.style = v_gets(v, "style", "")
+  let d = v_get(v, "dash")
+  if d != null and d.tag == T_NUM {
+    p.hasDash = true
+    p.dash = d.num
+  }
+  let g = v_get(v, "gap")
+  if g != null and g.tag == T_NUM {
+    p.hasGap = true
+    p.gap = g.num
+  }
+  let w = v_get(v, "width")
+  if w != null and w.tag == T_NUM {
+    p.hasWidth = true
+    p.width = w.num
+  }
+  let s = v_get(v, "spacing")
+  if s != null and s.tag == T_NUM {
+    p.hasSpacing = true
+    p.spacing = s.num
+  }
+  return p
+}
+export function lp_options_of(v: Val) -> LPOptions {
+  let o = new LPOptions
+  o.rules = new []LPRule
+  let ps = v_get(v, "profiles")
+  if ps != null and ps.tag == T_OBJ {
+    for i in 0 .. len(ps.keys) {
+      let rv = ps.arr[i]
+      let r = new LPRule
+      r.key = ps.keys[i]
+      r.dividers = line_paint_of(v_get(rv, "dividers"))
+      r.centre = line_paint_of(v_get(rv, "centre"))
+      r.centreArea = v_gets(rv, "centreArea", "")
+      r.edges = line_paint_of(v_get(rv, "edges"))
+      r.inner = line_paint_of(v_get(rv, "inner"))
+      r.flush = line_paint_of(v_get(rv, "flush"))
+      r.hatch = v_getn(rv, "hatch", 0.0)
+      let w = v_get(rv, "width")
+      if w != null and w.tag == T_NUM {
+        r.hasWidth = true
+        r.width = w.num
+      }
+      push(o.rules, r)
+    }
+  }
+  o.width = v_getn(v, "width", 0.15)
+  o.inset = v_getn(v, "inset", 0.1)
+  o.stop = v_getn(v, "stop", 0.5)
+  o.minPiece = v_getn(v, "minPiece", 0.5)
+  o.up = v_getn(v, "up", 0.02)
+  o.chunk = v_getn(v, "chunk", 0.0)
+  if o.chunk != o.chunk { o.chunk = 0.0 }
+  o.goreKinds = new []string
+  let g = v_get(v, "gore")
+  if not v_undef(g) {
+    let ks = v_get(g, "kinds")
+    for i in 0 .. v_len(ks) { push(o.goreKinds, v_item(ks, i).str) }
+    o.merge = line_paint_of(v_get(g, "merge"))
+  }
+  if o.merge == null {
+    o.merge = new LinePaint
+    o.merge.style = "dash"
+    o.merge.hasDash = true
+    o.merge.dash = 3.0
+    o.merge.hasGap = true
+    o.merge.gap = 3.0
+  }
+  return o
+}
+function rule_of_key(o: LPOptions, key: string) -> LPRule {
+  for i in 0 .. len(o.rules) { if o.rules[i].key == key { return o.rules[i] } }
+  return null
+}
+function has_str(xs: []string, s: string) -> bool {
+  for i in 0 .. len(xs) { if xs[i] == s { return true } }
+  return false
+}
+
+# ---- flush medians and areas ---------------------------------------------------------------------------------------------
+# lanePaint.ts FNV: FNV-1a of the key, murmur3's finaliser, over 2^32 (the keys are one-byte characters)
+export function fnv_unit(s: string) -> double {
+  let M: long = long(4294967295)
+  var h: long = long(2166136261)
+  for i in 0 .. len(s) {
+    h = h ^ long(s[i])
+    h = (h * long(16777619)) & M
+  }
+  h = h ^ (h >> 16)
+  h = (h * long(2246822507)) & M
+  h = h ^ (h >> 13)
+  h = (h * long(3266489909)) & M
+  h = h ^ (h >> 16)
+  return double(h) / 4294967296.0
+}
+
+# edgeMiddle: the plan point halfway along an edge
+export function edge_middle(e: PEdge) -> []double {
+  let half = e.length / 2.0
+  var i = 0
+  let n = len(e.s)
+  while i + 2 < n and e.s[i + 1] < half { i += 1 }
+  let f = clamp01((half - e.s[i]) / jmax(e.s[i + 1] - e.s[i], 0.000000001))
+  let L = e.line
+  return d_pair(L[i * 2] + (L[(i + 1) * 2] - L[i * 2]) * f, L[i * 2 + 1] + (L[(i + 1) * 2 + 1] - L[i * 2 + 1]) * f)
+}
+# inArea: whether an edge's middle lies in a named area (no name: yes; a name with no polygons: no)
+export function in_area(e: PEdge, area: string, areas: Val) -> bool {
+  if area == "" { return true }
+  let polys = v_get(areas, area)
+  if polys == null or v_len(polys) == 0 { return false }
+  let m = edge_middle(e)
+  for i in 0 .. v_len(polys) { if point_in_polygon(m[0], m[1], v_pts(v_item(polys, i))) { return true } }
+  return false
+}
+# flushMedian: whether an edge's median is drawn flush (planted: {profile: {share, minRun, area?}})
+export function flush_median(e: PEdge, planted: Val, areas: Val) -> bool {
+  if e.profile == "" { return false }
+  let rule = v_get(planted, e.profile)
+  if v_undef(rule) or not (e.median > 0.01) { return false }
+  if e.length < v_getn(rule, "minRun", NAN) { return true }
+  if not in_area(e, v_gets(rule, "area", ""), areas) { return true }
+  return fnv_unit(e.key) >= v_getn(rule, "share", NAN)
+}
+
+# ---- the lines of an edge ------------------------------------------------------------------------------------------------
+const K_DIV: int = 0
+const K_EDGE: int = 1
+const K_INNER: int = 2
+const K_FLUSH: int = 3
+const K_CENTRE_L: int = 4
+const K_CENTRE_R: int = 5
+const K_CENTRE: int = 6
+
+export property LineDef {
+  id: string = ""
+  kind: string = ""
+  paint: LinePaint = null
+  code: int = 0
+  side: int = 1
+  j: double = 0.0
+  n: double = 0.0
+  w: double = 0.0
+  sp: double = 0.0
+  raised: bool = false
+  inset: double = 0.0
+  lo: double = 0.0          # the band ld_band answered last
+  hi: double = 0.0
+}
+
+function off_med(es: PStations, side: int, i: int) -> double { return es.off[i * 6 + isel(side == 1, 0, 3)] }
+function off_lanes(es: PStations, side: int, i: int) -> double { return es.off[i * 6 + isel(side == 1, 1, 4)] }
+function off_road(es: PStations, side: int, i: int) -> double { return es.off[i * 6 + isel(side == 1, 2, 5)] }
+
+function ld_clamp(d: LineDef, es: PStations, i: int, lo: double, hi: double) -> void {
+  let side = d.side
+  let mn = dsel(d.raised, off_med(es, side, i) + d.inset, 0.0)
+  let mx = off_road(es, side, i) - d.inset
+  let a = jmax(mn, jmin(lo, hi))
+  let b = jmin(mx, jmax(lo, hi))
+  if side == 1 {
+    d.lo = a
+    d.hi = jmax(a, b)
+  } else {
+    d.lo = -jmax(a, b)
+    d.hi = -a
+  }
+}
+# a line's band at station i (signed metres from the centre line, + right) into d.lo, d.hi
+export function ld_band(d: LineDef, es: PStations, i: int) -> void {
+  let c = d.code
+  let w = d.w
+  if c == K_DIV {
+    let m = off_med(es, d.side, i)
+    let x = m + ((off_lanes(es, d.side, i) - m) * d.j) / d.n
+    ld_clamp(d, es, i, x - w / 2.0, x + w / 2.0)
+    return
+  }
+  if c == K_EDGE {
+    let lanes = off_lanes(es, d.side, i)
+    let road = off_road(es, d.side, i)
+    if road - lanes >= w + d.inset - 0.000000001 {
+      ld_clamp(d, es, i, lanes, lanes + w)
+      return
+    }
+    ld_clamp(d, es, i, road - d.inset - w, road - d.inset)
+    return
+  }
+  if c == K_INNER {
+    let m = off_med(es, d.side, i)
+    ld_clamp(d, es, i, m + d.inset, m + d.inset + w)
+    return
+  }
+  if c == K_FLUSH {
+    let m = off_med(es, d.side, i)
+    ld_clamp(d, es, i, m - w, m)
+    return
+  }
+  if c == K_CENTRE_L {
+    d.lo = -d.sp / 2.0 - w
+    d.hi = -d.sp / 2.0
+    return
+  }
+  if c == K_CENTRE_R {
+    d.lo = d.sp / 2.0
+    d.hi = d.sp / 2.0 + w
+    return
+  }
+  d.lo = -w / 2.0
+  d.hi = w / 2.0
+}
+function ld_lo(d: LineDef, es: PStations, i: int) -> double {
+  ld_band(d, es, i)
+  return d.lo
+}
+function ld_hi(d: LineDef, es: PStations, i: int) -> double {
+  ld_band(d, es, i)
+  return d.hi
+}
+
+function w_of(p: LinePaint, rule: LPRule, ow: double) -> double {
+  if p.hasWidth { return p.width }
+  if rule.hasWidth { return rule.width }
+  return ow
+}
+function new_def(id: string, kind: string, paint: LinePaint, code: int, side: int, w: double, raised: bool, inset: double) -> LineDef {
+  let d = new LineDef
+  d.id = id
+  d.kind = kind
+  d.paint = paint
+  d.code = code
+  d.side = side
+  d.w = w
+  d.raised = raised
+  d.inset = inset
+  return d
+}
+
+# linesOf: the lines of an edge's rule
+export function lines_of(e: PEdge, rule: LPRule, ow: double, inset: double, forwardRight: bool, flush: bool, centreOn: bool) -> []LineDef {
+  let nR = dsel(forwardRight, e.lanesFwd, e.lanesBack)
+  let nL = dsel(forwardRight, e.lanesBack, e.lanesFwd)
+  let out = new []LineDef
+  let raised = e.median > 0.01 and not flush
+  for si in 0 .. 2 {
+    let side = isel(si == 0, 1, -1)
+    let n = dsel(side == 1, nR, nL)
+    let nOther = dsel(side == 1, nL, nR)
+    var tag = "r"
+    if side != 1 { tag = "l" }
+    if rule.dividers != null and n >= 2.0 {
+      let p = rule.dividers
+      let w = w_of(p, rule, ow)
+      var j = 1
+      while double(j) < n {
+        let d = new_def(`div_{tag}{j}`, "divider", p, K_DIV, side, w, raised, inset)
+        d.j = double(j)
+        d.n = n
+        push(out, d)
+        j += 1
+      }
+    }
+    if rule.edges != null and n + nOther > 0.0 {
+      let p = rule.edges
+      push(out, new_def(`edge_{tag}`, "edge", p, K_EDGE, side, w_of(p, rule, ow), raised, inset))
+    }
+    if rule.inner != null and raised and n > 0.0 {
+      let p = rule.inner
+      push(out, new_def(`inner_{tag}`, "inner", p, K_INNER, side, w_of(p, rule, ow), raised, inset))
+    }
+    if rule.flush != null and e.median > 0.01 and flush and n > 0.0 {
+      let p = rule.flush
+      push(out, new_def(`flush_{tag}`, "flush", p, K_FLUSH, side, w_of(p, rule, ow), raised, inset))
+    }
+  }
+  if rule.centre != null and centreOn and nR > 0.0 and nL > 0.0 and not (e.median > 0.01) {
+    let p = rule.centre
+    let w = w_of(p, rule, ow)
+    if p.style == "double" {
+      let ps = new LinePaint
+      ps.style = "solid"
+      ps.dash = p.dash
+      ps.hasDash = p.hasDash
+      ps.gap = p.gap
+      ps.hasGap = p.hasGap
+      ps.width = p.width
+      ps.hasWidth = p.hasWidth
+      ps.spacing = p.spacing
+      ps.hasSpacing = p.hasSpacing
+      let sp = dsel(p.hasSpacing, p.spacing, 0.1)
+      let a = new_def("centre_l", "centre", ps, K_CENTRE_L, 1, w, raised, inset)
+      a.sp = sp
+      push(out, a)
+      let b = new_def("centre_r", "centre", ps, K_CENTRE_R, 1, w, raised, inset)
+      b.sp = sp
+      push(out, b)
+    } else {
+      push(out, new_def("centre", "centre", p, K_CENTRE, 1, w, raised, inset))
+    }
+  }
+  return out
+}
+
+# piecesOf: the pieces [a, b] of a run a line's paint covers (pairs)
+export function pieces_of(p: LinePaint, a: double, b: double, minPiece: double) -> []double {
+  let out = new []double
+  if b - a < minPiece { return out }
+  if p.style != "dash" {
+    push(out, a)
+    push(out, b)
+    return out
+  }
+  let d = dsel(p.hasDash, p.dash, 3.0)
+  let g = dsel(p.hasGap, p.gap, 6.0)
+  let dg = d + g
+  var s = a
+  while s < b - 0.000001 {
+    let e = jmin(b, s + d)
+    if e - s >= jmin(minPiece, d) - 0.000001 {
+      push(out, s)
+      push(out, e)
+    }
+    s += dg
+  }
+  return out
+}
+
+# ---- chunk lines ---------------------------------------------------------------------------------------------------------
+export function on_chunk_line(px: double, pz: double, qx: double, qz: double, size: double) -> bool {
+  if size == 0.0 or size != size { return false }
+  let lx = jround(px / size) * size
+  if dabs(px - lx) < LINE_NEAR and dabs(qx - lx) < LINE_NEAR { return true }
+  let lz = jround(pz / size) * size
+  if dabs(pz - lz) < LINE_NEAR and dabs(qz - lz) < LINE_NEAR { return true }
+  return false
+}
+# offChunkLines: a convex polygon with each edge along a chunk line moved LINE_CLEAR inside (the polygon itself when none is)
+export function off_chunk_lines(poly: []double, size: double) -> []double {
+  if size == 0.0 or size != size { return poly }
+  let n = len(poly) / 2
+  var any = false
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    if on_chunk_line(poly[i * 2], poly[i * 2 + 1], poly[j * 2], poly[j * 2 + 1], size) {
+      any = true
+      break
+    }
+  }
+  if not any { return poly }
+  var sx: double = 0.0
+  var sz: double = 0.0
+  for i in 0 .. n { sx = sx + poly[i * 2] }
+  for i in 0 .. n { sz = sz + poly[i * 2 + 1] }
+  let cx = sx / double(n)
+  let cz = sz / double(n)
+  let out = pts_copy(poly)
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    if not on_chunk_line(poly[i * 2], poly[i * 2 + 1], poly[j * 2], poly[j * 2 + 1], size) { continue }
+    for k in 0 .. 2 {
+      let line = jround(poly[i * 2 + k] / size) * size
+      if dabs(poly[i * 2 + k] - line) >= LINE_NEAR or dabs(poly[j * 2 + k] - line) >= LINE_NEAR { continue }
+      let off = line + jsign(dsel(k == 0, cx, cz) - line) * LINE_CLEAR
+      out[i * 2 + k] = off
+      out[j * 2 + k] = off
+    }
+  }
+  return out
+}
+
+# ---- the road surface's triangles in a plan grid -------------------------------------------------------------------------
+property CellMap {
+  keys: []int = null
+  vals: []int = null
+  used: []byte = null
+  n: int = 0
+}
+function cm_new() -> CellMap {
+  let m = new CellMap
+  m.keys = words(1024)
+  m.vals = words(1024)
+  m.used = buffer(1024)
+  return m
+}
+function cm_hash(k: int, mask: int) -> int { return ((k * 2654435761) >> 7) & mask }
+function cm_get(m: CellMap, k: int) -> int {
+  let mask = len(m.keys) - 1
+  var h = cm_hash(k, mask)
+  while int(m.used[h]) != 0 {
+    if m.keys[h] == k { return m.vals[h] }
+    h = (h + 1) & mask
+  }
+  return -1
+}
+function cm_put(m: CellMap, k: int, v: int) -> void {
+  if (m.n + 1) * 2 > len(m.keys) {
+    let ok = m.keys
+    let ov = m.vals
+    let ou = m.used
+    let c = len(ok) * 2
+    m.keys = words(c)
+    m.vals = words(c)
+    m.used = buffer(c)
+    m.n = 0
+    for i in 0 .. len(ok) { if int(ou[i]) != 0 { cm_put(m, ok[i], ov[i]) } }
+  }
+  let mask = len(m.keys) - 1
+  var h = cm_hash(k, mask)
+  while int(m.used[h]) != 0 {
+    if m.keys[h] == k {
+      m.vals[h] = v
+      return
+    }
+    h = (h + 1) & mask
+  }
+  m.used[h] = 1
+  m.keys[h] = k
+  m.vals[h] = v
+  m.n += 1
+}
+
+export property SurfaceGrid {
+  layers: []Layer = null
+  size: double = 6.0
+  cells: CellMap = null
+  start: []int = null
+  items: []int = null
+  layerOf: []int = null
+  base: []int = null
+  stamp: []int = null
+  q: int = 0
+  found: []int = null
+}
+
+function cell_key(cx: int, cz: int) -> int { return (cx + 32768) * 65536 + (cz + 32768) }
+
+function sg_each(g: SurfaceGrid, counts: []int, fill: []int) -> void {
+  let size = g.size
+  for li in 0 .. len(g.layers) {
+    let l = g.layers[li]
+    let nt = len(l.indices) / 3
+    for k in 0 .. nt {
+      var x0 = INF
+      var x1 = -INF
+      var z0 = INF
+      var z1 = -INF
+      for j in 0 .. 3 {
+        let i = l.indices[k * 3 + j] * 3
+        x0 = jmin(x0, l.positions[i])
+        x1 = jmax(x1, l.positions[i])
+        z0 = jmin(z0, l.positions[i + 2])
+        z1 = jmax(z1, l.positions[i + 2])
+      }
+      let cx1 = int(Math.floor(x1 / size))
+      let cz0 = int(Math.floor(z0 / size))
+      let cz1 = int(Math.floor(z1 / size))
+      var cx = int(Math.floor(x0 / size))
+      while cx <= cx1 {
+        var cz = cz0
+        while cz <= cz1 {
+          let key = cell_key(cx, cz)
+          var c = cm_get(g.cells, key)
+          if c < 0 {
+            c = len(counts)
+            cm_put(g.cells, key, c)
+            push(counts, 0)
+          }
+          if fill == null { counts[c] += 1 } else {
+            g.items[fill[c]] = g.base[li] + k
+            fill[c] += 1
+          }
+          cz += 1
+        }
+        cx += 1
+      }
+    }
+  }
+}
+
+export function surface_grid(layers: []Layer) -> SurfaceGrid {
+  let g = new SurfaceGrid
+  g.layers = layers
+  g.cells = cm_new()
+  g.base = new []int
+  var n = 0
+  for li in 0 .. len(layers) {
+    push(g.base, n)
+    n += len(layers[li].indices) / 3
+  }
+  g.layerOf = words(n)
+  for li in 0 .. len(layers) {
+    let nt = len(layers[li].indices) / 3
+    for t in 0 .. nt { g.layerOf[g.base[li] + t] = li }
+  }
+  let counts = new []int
+  sg_each(g, counts, null)
+  let nc = len(counts)
+  g.start = words(nc + 1)
+  for c in 0 .. nc { g.start[c + 1] = g.start[c] + counts[c] }
+  g.items = words(g.start[nc])
+  let fill = words(nc)
+  for c in 0 .. nc { fill[c] = g.start[c] }
+  sg_each(g, counts, fill)
+  g.stamp = words(n)
+  g.found = new []int
+  return g
+}
+# the surface layers of a builder: those of slot road or park, in the order they were drawn
+export function surface_of(b: Builder) -> []Layer {
+  let out = new []Layer
+  for i in 0 .. len(b.layers) {
+    let s = b_slot_of(b, b.layers[i].material)
+    if s == "road" or s == "park" { push(out, b.layers[i]) }
+  }
+  return out
+}
+# SurfaceGrid.near: the triangles of `level` under a plan box, each once, in the studio's order (global triangle ids into g.found)
+function sg_near(g: SurfaceGrid, x0: double, z0: double, x1: double, z1: double, level: int) -> int {
+  g.q += 1
+  var nf = 0
+  let size = g.size
+  let cx1 = int(Math.floor(x1 / size))
+  let cz0 = int(Math.floor(z0 / size))
+  let cz1 = int(Math.floor(z1 / size))
+  var cx = int(Math.floor(x0 / size))
+  while cx <= cx1 {
+    var cz = cz0
+    while cz <= cz1 {
+      let c = cm_get(g.cells, cell_key(cx, cz))
+      if c >= 0 {
+        for i in g.start[c] .. g.start[c + 1] {
+          let t = g.items[i]
+          if g.stamp[t] == g.q { continue }
+          g.stamp[t] = g.q
+          let li = g.layerOf[t]
+          let l = g.layers[li]
+          let k = t - g.base[li]
+          var lv = 0
+          if l.levels != null and k < len(l.levels) { lv = l.levels[k] }
+          if lv != level { continue }
+          if nf < len(g.found) { g.found[nf] = t } else { push(g.found, t) }
+          nf += 1
+        }
+      }
+      cz += 1
+    }
+    cx += 1
+  }
+  return nf
+}
+
+# lay: a convex plan polygon laid on the surface's triangles under it (those within tol of the height hint), up above each;
+# the triangles made
+function lay(b: Builder, mat: string, g: SurfaceGrid, poly: []double, level: int, yHint: double, up: double, tol: double) -> int {
+  var x0 = INF
+  var x1 = -INF
+  var z0 = INF
+  var z1 = -INF
+  var cx: double = 0.0
+  var cz: double = 0.0
+  let np = len(poly) / 2
+  let npd = double(np)
+  for i in 0 .. np {
+    let px = poly[i * 2]
+    let pz = poly[i * 2 + 1]
+    x0 = jmin(x0, px)
+    x1 = jmax(x1, px)
+    z0 = jmin(z0, pz)
+    z1 = jmax(z1, pz)
+    cx += px / npd
+    cz += pz / npd
+  }
+  var made = 0
+  let nf = sg_near(g, x0, z0, x1, z1, level)
+  let U = b.uv
+  for fi in 0 .. nf {
+    let t = g.found[fi]
+    let li = g.layerOf[t]
+    let l = g.layers[li]
+    let k = t - g.base[li]
+    let ia = l.indices[k * 3] * 3
+    let ib = l.indices[k * 3 + 1] * 3
+    let ic = l.indices[k * 3 + 2] * 3
+    let ax = l.positions[ia]
+    let ay = l.positions[ia + 1]
+    let az = l.positions[ia + 2]
+    let bx = l.positions[ib]
+    let by = l.positions[ib + 1]
+    let bz = l.positions[ib + 2]
+    let qx = l.positions[ic]
+    let qy = l.positions[ic + 1]
+    let qz = l.positions[ic + 2]
+    let det = (bx - ax) * (qz - az) - (qx - ax) * (bz - az)
+    if dabs(det) < 0.0000000001 { continue }
+    if dabs(y_at(cx, cz, ax, ay, az, bx, by, bz, qx, qy, qz, det) - yHint) > tol { continue }
+    let sgn = dsel(det > 0.0, 1.0, -1.0)
+    var piece = poly
+    var e = 0
+    while e < 3 and len(piece) > 0 {
+      var tax = ax
+      var taz = az
+      var tcx = bx
+      var tcz = bz
+      if e == 1 {
+        tax = bx
+        taz = bz
+        tcx = qx
+        tcz = qz
+      }
+      if e == 2 {
+        tax = qx
+        taz = qz
+        tcx = ax
+        tcz = az
+      }
+      let next = new []double
+      let pn = len(piece) / 2
+      for i in 0 .. pn {
+        let px = piece[i * 2]
+        let pz = piece[i * 2 + 1]
+        let j = (i + 1) % pn
+        let rx = piece[j * 2]
+        let rz = piece[j * 2 + 1]
+        let sp = ((tcx - tax) * (pz - taz) - (tcz - taz) * (px - tax)) * sgn
+        let sq = ((tcx - tax) * (rz - taz) - (tcz - taz) * (rx - tax)) * sgn
+        if sp >= 0.0 { pts_push(next, px, pz) }
+        if (sp >= 0.0) != (sq >= 0.0) {
+          let f = sp / (sp - sq)
+          pts_push(next, px + (rx - px) * f, pz + (rz - pz) * f)
+        }
+      }
+      piece = next
+      e += 1
+    }
+    let pn = len(piece) / 2
+    if pn < 3 { continue }
+    var i = 1
+    while i + 1 < pn {
+      let p0 = piece[0]
+      let p1 = piece[1]
+      let q0 = piece[i * 2]
+      let q1 = piece[i * 2 + 1]
+      let r0 = piece[(i + 1) * 2]
+      let r1 = piece[(i + 1) * 2 + 1]
+      let area = (q0 - p0) * (r1 - p1) - (r0 - p0) * (q1 - p1)
+      if dabs(area) < 0.00000001 {
+        i += 1
+        continue
+      }
+      b_tri(b, mat, p0, y_at(p0, p1, ax, ay, az, bx, by, bz, qx, qy, qz, det) + up, p1, q0, y_at(q0, q1, ax, ay, az, bx, by, bz, qx, qy, qz, det) + up, q1, r0, y_at(r0, r1, ax, ay, az, bx, by, bz, qx, qy, qz, det) + up, r1, p0 / U, p1 / U, q0 / U, q1 / U, r0 / U, r1 / U, UP_YES, 0.0, 0.0, 0.0)
+      made += 1
+      i += 1
+    }
+  }
+  return made
+}
+function y_at(x: double, z: double, ax: double, ay: double, az: double, bx: double, by: double, bz: double, qx: double, qy: double, qz: double, det: double) -> double {
+  let u = ((x - ax) * (qz - az) - (qx - ax) * (z - az)) / det
+  let w = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / det
+  return ay + (by - ay) * u + (qy - ay) * w
+}
+
+# ---- the station frame of a strip ----------------------------------------------------------------------------------------
+property Seg {
+  i: int = 0
+  f: double = 0.0
+}
+function sf_seg(es: PStations, s: double, out: Seg) -> void {
+  var i = 0
+  while i + 2 < es.n and st_s(es, i + 1) < s { i += 1 }
+  out.i = i
+  out.f = clamp01((s - st_s(es, i)) / jmax(st_s(es, i + 1) - st_s(es, i), 0.000000001))
+}
+# the point at fine metres s, d metres out: d from a line's band (which 0: lo, 1: hi) or the constant cd (which 2)
+function sf_point(es: PStations, s: double, d: LineDef, which: int, cd: double, sg: Seg, out: []double, at: int) -> void {
+  sf_seg(es, s, sg)
+  let i = sg.i
+  let f = sg.f
+  var d0 = cd
+  var d1 = cd
+  if which == 0 {
+    d0 = ld_lo(d, es, i)
+    d1 = ld_lo(d, es, i + 1)
+  } else if which == 1 {
+    d0 = ld_hi(d, es, i)
+    d1 = ld_hi(d, es, i + 1)
+  }
+  let px = st_at_x(es, i, d0)
+  let pz = st_at_z(es, i, d0)
+  let qx = st_at_x(es, i + 1, d1)
+  let qz = st_at_z(es, i + 1, d1)
+  out[at] = px + (qx - px) * f
+  out[at + 1] = pz + (qz - pz) * f
+}
+function sf_y(es: PStations, s: double, sg: Seg) -> double {
+  sf_seg(es, s, sg)
+  let i = sg.i
+  return st_y(es, i) + (st_y(es, i + 1) - st_y(es, i)) * sg.f
+}
+
+# ---- the queue of pieces -------------------------------------------------------------------------------------------------
+const Q_STRIP: int = 0
+const Q_PATH: int = 1
+const Q_HATCH: int = 2
+
+property QPiece {
+  a: double = 0.0
+  b: double = 0.0
+  caps: []double = null    # capA's two corners then capB's (x, z each), or null
+  kind: int = 0
+  es: PStations = null
+  level: int = 0
+  def: LineDef = null
+  path: PathLine = null
+  ba0: double = 0.0        # a through line's band at A and at C
+  ba1: double = 0.0
+  bc0: double = 0.0
+  bc1: double = 0.0
+  node: int = 0
+  poly: []double = null
+  y: double = 0.0
+}
+
+property PaintCtx<C> {
+  b: Builder = null
+  w: PaintWorld = null
+  g: SurfaceGrid = null
+  mat: string = ""
+  up: double = 0.02
+  lift: double = 0.0
+  meta: LPMeta = null
+  sg: Seg = null
+  yf: fn(C, int, double, double) -> double = null
+  yc: C = null
+}
+
+function count<C>(x: PaintCtx<C>, k: string, n: int) -> void {
+  let m = x.meta
+  for i in 0 .. len(m.pieceKeys) {
+    if m.pieceKeys[i] == k {
+      m.pieceN[i] += n
+      return
+    }
+  }
+  push(m.pieceKeys, k)
+  push(m.pieceN, n)
+}
+
+# layStrip: a quad strip along a strip's frame between fine metres a and b, between the line's band edges
+function lay_strip<C>(x: PaintCtx<C>, es: PStations, level: int, a: double, bb: double, d: LineDef) -> void {
+  let cuts = new []double
+  push(cuts, a)
+  for i in 0 .. es.n {
+    let s = st_s(es, i)
+    if s > a + 0.000001 and s < bb - 0.000001 { push(cuts, s) }
+  }
+  push(cuts, bb)
+  let poly = doubles(8)
+  for k in 0 .. len(cuts) - 1 {
+    let s0 = cuts[k]
+    let s1 = cuts[k + 1]
+    sf_point(es, s0, d, 0, 0.0, x.sg, poly, 0)
+    sf_point(es, s1, d, 0, 0.0, x.sg, poly, 2)
+    sf_point(es, s1, d, 1, 0.0, x.sg, poly, 4)
+    sf_point(es, s0, d, 1, 0.0, x.sg, poly, 6)
+    x.meta.tris += lay(x.b, x.mat, x.g, poly, level, sf_y(es, (s0 + s1) / 2.0, x.sg) + x.lift, x.up, 0.6)
+  }
+  count(x, d.kind, 1)
+}
+
+function band_at(q: QPiece, s: double, lo: bool) -> double {
+  let f = s / q.path.len
+  if lo { return q.ba0 + (q.bc0 - q.ba0) * f }
+  return q.ba1 + (q.bc1 - q.ba1) * f
+}
+# layPath: a piece of a through line along its path between metres a and b, its band blended along the path
+function lay_path<C>(x: PaintCtx<C>, q: QPiece, a: double, bb: double) -> void {
+  let path = q.path
+  let cuts = new []double
+  push(cuts, a)
+  for i in 0 .. len(path.s) {
+    let s = path.s[i]
+    if s > a + 0.000001 and s < bb - 0.000001 { push(cuts, s) }
+  }
+  push(cuts, bb)
+  let poly = doubles(8)
+  let p = doubles(2)
+  for k in 0 .. len(cuts) - 1 {
+    let s0 = cuts[k]
+    let s1 = cuts[k + 1]
+    let b00 = band_at(q, s0, true)
+    let b01 = band_at(q, s0, false)
+    let b10 = band_at(q, s1, true)
+    let b11 = band_at(q, s1, false)
+    path_point_to(path, s0, b00, p)
+    poly[0] = p[0]
+    poly[1] = p[1]
+    path_point_to(path, s1, b10, p)
+    poly[2] = p[0]
+    poly[3] = p[1]
+    path_point_to(path, s1, b11, p)
+    poly[4] = p[0]
+    poly[5] = p[1]
+    path_point_to(path, s0, b01, p)
+    poly[6] = p[0]
+    poly[7] = p[1]
+    path_point_to(path, (s0 + s1) / 2.0, (b00 + b11) / 2.0, p)
+    let yf = x.yf
+    x.meta.tris += lay(x.b, x.mat, x.g, poly, q.level, yf(x.yc, q.node, p[0], p[1]), x.up, 0.6)
+  }
+}
+
+function near_pt(ax: double, az: double, bx: double, bz: double) -> bool { return dabs(ax - bx) < LINE_NEAR and dabs(az - bz) < LINE_NEAR }
+# layQueued: the pieces laid in order, an end cap on a chunk line moved LINE_CLEAR back unless another piece has a cap there
+function lay_queued<C>(x: PaintCtx<C>, queue: []QPiece, size: double) -> void {
+  # the caps on a chunk line, flat (4 numbers each), and whose they are (queue index * 2 + 0 for capA, 1 for capB)
+  let on = new []double
+  let onOwner = new []int
+  let sized = size != 0.0 and size == size
+  if sized {
+    for qi in 0 .. len(queue) {
+      let c = queue[qi].caps
+      if c == null { continue }
+      for w in 0 .. 2 {
+        if on_chunk_line(c[w * 4], c[w * 4 + 1], c[w * 4 + 2], c[w * 4 + 3], size) {
+          for k in 0 .. 4 { push(on, c[w * 4 + k]) }
+          push(onOwner, qi * 2 + w)
+        }
+      }
+    }
+  }
+  let L = doubles(4)
+  for qi in 0 .. len(queue) {
+    let q = queue[qi]
+    var a = q.a
+    var b = q.b
+    if q.caps != null and len(onOwner) > 0 {
+      for w in 0 .. 2 {
+        let c = q.caps
+        if not on_chunk_line(c[w * 4], c[w * 4 + 1], c[w * 4 + 2], c[w * 4 + 3], size) { continue }
+        var shared = false
+        for k in 0 .. len(onOwner) {
+          if onOwner[k] == qi * 2 + w { continue }
+          for m in 0 .. 4 { L[m] = on[k * 4 + m] }
+          if same_cap2(c, w * 4, L) {
+            shared = true
+            break
+          }
+        }
+        if shared { continue }
+        if w == 0 { a += LINE_CLEAR } else { b -= LINE_CLEAR }
+      }
+    }
+    if b - a <= LINE_CLEAR {
+      a = q.a
+      b = q.b
+    }
+    if q.kind == Q_STRIP { lay_strip(x, q.es, q.level, a, b, q.def) } else if q.kind == Q_PATH { lay_path(x, q, a, b) } else {
+      x.meta.tris += lay(x.b, x.mat, x.g, q.poly, q.level, q.y, x.up, 0.6)
+    }
+  }
+}
+function same_cap2(c: []double, ci: int, d: []double) -> bool {
+  return (near_pt(c[ci], c[ci + 1], d[0], d[1]) and near_pt(c[ci + 2], c[ci + 3], d[2], d[3])) or (near_pt(c[ci], c[ci + 1], d[2], d[3]) and near_pt(c[ci + 2], c[ci + 3], d[0], d[1]))
+}
+
+# ---- paintLanes ----------------------------------------------------------------------------------------------------------
+property EdgeLines {
+  done: []byte = null
+  defs: [][]LineDef = null
+  flushDone: []byte = null
+  flush: []byte = null
+}
+
+property OkCtx {
+  w: PaintWorld = null
+  j: PJunction = null
+  el: EdgeLines = null
+  opt: LPOptions = null
+  planted: Val = null
+  areas: Val = null
+  fwdRight: bool = true
+  gore: bool = false
+}
+
+function rule_for(e: PEdge, opt: LPOptions) -> LPRule {
+  if e.profile == "" or not (e.steps <= 0.0) { return null }
+  return rule_of_key(opt, e.profile)
+}
+function is_flush(el: EdgeLines, w: PaintWorld, ei: int, planted: Val, areas: Val) -> bool {
+  if int(el.flushDone[ei]) == 0 {
+    el.flushDone[ei] = 1
+    if flush_median(w.edges[ei], planted, areas) { el.flush[ei] = 1 } else { el.flush[ei] = 0 }
+  }
+  return int(el.flush[ei]) != 0
+}
+function lines_for(el: EdgeLines, w: PaintWorld, ei: int, opt: LPOptions, fwdRight: bool, planted: Val, areas: Val) -> []LineDef {
+  if int(el.done[ei]) != 0 { return el.defs[ei] }
+  let e = w.edges[ei]
+  let rule = rule_for(e, opt)
+  let es = w_st(w, ei)
+  var d: []LineDef = null
+  if rule != null and es != null { d = lines_of(e, rule, opt.width, opt.inset, fwdRight, is_flush(el, w, ei, planted, areas), in_area(e, rule.centreArea, areas)) } else { d = new []LineDef }
+  el.done[ei] = 1
+  el.defs[ei] = d
+  return d
+}
+function paint_ok(o: OkCtx, k: int) -> bool {
+  let e = o.j.ends[k]
+  if len(lines_for(o.el, o.w, e.edge, o.opt, o.fwdRight, o.planted, o.areas)) == 0 { return false }
+  return len(o.j.ends) == 2 or has_str(o.opt.goreKinds, o.w.edges[e.edge].kind)
+}
+
+function level_code(s: string) -> int {
+  if s == "structure" { return 1 }
+  if s == "tunnel" { return 2 }
+  return 0
+}
+
+property Through {
+  kind: string = ""
+  paint: LinePaint = null
+  a0: double = 0.0
+  a1: double = 0.0
+  c0: double = 0.0
+  c1: double = 0.0
+  side: double = 0.0
+}
+
+# a sorted pair: JavaScript's [x, y].sort((p, q) => p - q)
+function sorted_pair(x: double, y: double) -> []double {
+  if y - x < 0.0 { return d_pair(y, x) }
+  return d_pair(x, y)
+}
+# intervals (pairs) sorted by their first number, stably
+function sort_pairs(v: []double) -> []double {
+  let n = len(v) / 2
+  let out = pts_copy(v)
+  for i in 1 .. n {
+    let a = out[i * 2]
+    let b = out[i * 2 + 1]
+    var j = i - 1
+    while j >= 0 and a - out[j * 2] < 0.0 {
+      out[(j + 1) * 2] = out[j * 2]
+      out[(j + 1) * 2 + 1] = out[j * 2 + 1]
+      j -= 1
+    }
+    out[(j + 1) * 2] = a
+    out[(j + 1) * 2 + 1] = b
+  }
+  return out
+}
+
+# armLine: a slip road's centre line from the end of its strip to the node, densified, with normals to the right toward the node
+property ArmLine {
+  pts: []double = null
+  nrm: []double = null
+}
+function arm_line(w: PaintWorld, e: PEnd) -> ArmLine {
+  let l = w_laid(w, e.edge)
+  let es = w_st(w, e.edge)
+  if l == null or es == null { return null }
+  let i = isel(e.out, 0, es.n - 1)
+  let sEnd = st_s(es, i)
+  let sNode = dsel(e.out, 0.0, l.len)
+  let n = int(jmax(2.0, Math.ceil(dabs(sEnd - sNode) / 1.0)))
+  let nd = double(n)
+  let pts = new []double
+  let ns = len(l.s)
+  for k in 0 .. n + 1 {
+    let s = sEnd + ((sNode - sEnd) * double(k)) / nd
+    var m = 0
+    while m + 2 < ns and l.s[m + 1] < s { m += 1 }
+    let f = clamp01((s - l.s[m]) / jmax(l.s[m + 1] - l.s[m], 0.000000001))
+    pts_push(pts, l.line[m * 2] + (l.line[(m + 1) * 2] - l.line[m * 2]) * f, l.line[m * 2 + 1] + (l.line[(m + 1) * 2 + 1] - l.line[m * 2 + 1]) * f)
+  }
+  let np = len(pts) / 2
+  let nrm = doubles(np * 2)
+  for k in 0 .. np {
+    let a = max(0, k - 1)
+    let b = min(np - 1, max(1, k + 1))
+    let dx = pts[b * 2] - pts[a * 2]
+    let dz = pts[b * 2 + 1] - pts[a * 2 + 1]
+    var d = hypot2(dx, dz)
+    if d == 0.0 or d != d { d = 1.0 }
+    nrm[k * 2] = -dz / d
+    nrm[k * 2 + 1] = dx / d
+  }
+  let out = new ArmLine
+  out.pts = pts
+  out.nrm = nrm
+  return out
+}
+
+function goes_key(e: PEdge, end: int, id: string) -> string { return `{e.key}|{end}|{id}` }
+
+function strip_cap(es: PStations, q: double, d: LineDef, sg: Seg, caps: []double, at: int) -> void {
+  sf_point(es, q, d, 0, 0.0, sg, caps, at)
+  sf_point(es, q, d, 1, 0.0, sg, caps, at + 2)
+}
+
+# paintLanes: the lane paint of a whole bake (every laid edge of `only`, or of the network) drawn into b in material mat on the
+# surface layers given (surface_of(b) before the paint); only: a Dict of edge keys or null; planted, areas: tagged values
+# (undefined for none); yf(yc, node, x, z): the node's surface height (Sidewalk.nodeY)
+export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt: LPOptions, mat: string, lift: double, only: Dict, planted: Val, areas: Val, yf: fn(C, int, double, double) -> double, yc: C) -> LPMeta {
+  let meta = new LPMeta
+  meta.pieceKeys = new []string
+  meta.pieceN = new []int
+  meta.flush = new []string
+  meta.planted = new []string
+  let stop = opt.stop
+  let minPiece = opt.minPiece
+  let chunk = opt.chunk
+  let hasChunk = chunk != 0.0
+  let queue = new []QPiece
+  let fwdRight = w.forward != "left"
+  let x = new PaintCtx<C>
+  x.b = b
+  x.w = w
+  x.g = surface_grid(surface)
+  x.mat = mat
+  x.up = opt.up
+  x.lift = lift
+  x.meta = meta
+  x.sg = new Seg
+  x.yf = yf
+  x.yc = yc
+  b_slot(b, mat, "marking")
+  let ne = len(w.edges)
+  let el = new EdgeLines
+  el.done = buffer(ne)
+  el.defs = new [][]LineDef
+  for i in 0 .. ne { push(el.defs, null) }
+  el.flushDone = buffer(ne)
+  el.flush = buffer(ne)
+  let goes = Dict.new()
+  let p2 = doubles(2)
+
+  # ---- through nodes ----
+  let nkeys = new []string
+  for i in 0 .. len(w.nodes) { push(nkeys, w.nodes[i].key) }
+  let norder = order_by_key(nkeys)
+  let okc = new OkCtx
+  okc.w = w
+  okc.el = el
+  okc.opt = opt
+  okc.planted = planted
+  okc.areas = areas
+  okc.fwdRight = fwdRight
+  for oi in 0 .. len(norder) {
+    let ni = norder[oi]
+    let n = w.nodes[ni]
+    if len(n.edges) < 2 { continue }
+    if only != null {
+      var any = false
+      for k in 0 .. len(n.edges) {
+        if Dict.has(only, w.edges[n.edges[k]].key) {
+          any = true
+          break
+        }
+      }
+      if not any { continue }
+    }
+    let j = w_junction(w, ni)
+    if j == null { continue }
+    if j.kind != "cross" or len(j.ends) < 2 { continue }
+    okc.j = j
+    let pair = through_pair(j, fn paint_ok, okc, 15.0, 30.0, 60.0)
+    if pair == null { continue }
+    let A = j.ends[pair.a]
+    let C = j.ends[pair.c]
+    let eA = w.edges[A.edge]
+    let eC = w.edges[C.edge]
+    if eA.level != eC.level { continue }
+    let path = through_path(w, A, C, 2.0)
+    let signA = dsel(A.out, -1.0, 1.0)
+    let signC = dsel(C.out, 1.0, -1.0)
+    let esA = w_st(w, A.edge)
+    let esC = w_st(w, C.edge)
+    let iA = isel(A.out, 0, esA.n - 1)
+    let iC = isel(C.out, 0, esC.n - 1)
+    let level = level_code(eA.level)
+    let la = lines_for(el, w, A.edge, opt, fwdRight, planted, areas)
+    let lc = lines_for(el, w, C.edge, opt, fwdRight, planted, areas)
+    let laB = new []double
+    for k in 0 .. len(la) {
+      ld_band(la[k], esA, iA)
+      pts_append(laB, sorted_pair(la[k].lo * signA, la[k].hi * signA))
+    }
+    let lcB = new []double
+    for k in 0 .. len(lc) {
+      ld_band(lc[k], esC, iC)
+      pts_append(lcB, sorted_pair(lc[k].lo * signC, lc[k].hi * signC))
+    }
+    let used = buffer(len(lc))
+    let through = new []Through
+    for pi in 0 .. len(la) {
+      let pl = la[pi]
+      let mid = (laB[pi * 2] + laB[pi * 2 + 1]) / 2.0
+      var best = -1
+      for k in 0 .. len(lc) {
+        if int(used[k]) != 0 or lc[k].kind != pl.kind or lc[k].paint.style != pl.paint.style { continue }
+        let mk = (lcB[k * 2] + lcB[k * 2 + 1]) / 2.0
+        if dabs(mk - mid) > 0.3 { continue }
+        if best < 0 or dabs(mk - mid) < dabs((lcB[best * 2] + lcB[best * 2 + 1]) / 2.0 - mid) { best = k }
+      }
+      if best < 0 { continue }
+      used[best] = 1
+      Dict.set(goes, goes_key(eA, isel(A.out, 0, 1), pl.id), 1)
+      Dict.set(goes, goes_key(eC, isel(C.out, 0, 1), lc[best].id), 1)
+      let t = new Through
+      t.kind = pl.kind
+      t.paint = pl.paint
+      t.a0 = laB[pi * 2]
+      t.a1 = laB[pi * 2 + 1]
+      t.c0 = lcB[best * 2]
+      t.c1 = lcB[best * 2 + 1]
+      t.side = jsign(mid)
+      push(through, t)
+    }
+    if path == null { continue }
+    if path.len < 0.05 { continue }
+    # the slip roads' gore lines; the merge intervals by side (+1, -1)
+    let mergeP = new []double
+    let mergeM = new []double
+    for bq in 0 .. len(pair.branches) {
+      let B = j.ends[pair.branches[bq]]
+      let eB = w.edges[B.edge]
+      let esB = w_st(w, B.edge)
+      let all = lines_for(el, w, B.edge, opt, fwdRight, planted, areas)
+      let lb = new []LineDef
+      for k in 0 .. len(all) { if all[k].kind == "edge" { push(lb, all[k]) } }
+      if esB == null or len(lb) == 0 { continue }
+      let iB = isel(B.out, 0, esB.n - 1)
+      let toNode = arm_line(w, B)
+      if toNode == null { continue }
+      let pB = path_coords(path, st_px(esB, iB), st_pz(esB, iB))
+      var side = jsign(pB[1])
+      if side == 0.0 or side != side { side = 1.0 }
+      var edgeLine: Through = null
+      for k in 0 .. len(through) {
+        if through[k].kind == "edge" and through[k].side == side {
+          edgeLine = through[k]
+          break
+        }
+      }
+      let hits = new []double
+      let signB = dsel(B.out, -1.0, 1.0)
+      for li in 0 .. len(lb) {
+        let l = lb[li]
+        ld_band(l, esB, iB)
+        let lo = l.lo
+        let hi = l.hi
+        let lw = hi - lo
+        let c = ((lo + hi) / 2.0) * signB
+        let pts = new []double
+        var hit: double = 0.0
+        var hasHit = false
+        let tn = len(toNode.pts) / 2
+        for k in 0 .. tn {
+          let qx = toNode.pts[k * 2] + toNode.nrm[k * 2] * c
+          let qz = toNode.pts[k * 2 + 1] + toNode.nrm[k * 2 + 1] * c
+          let pc = path_coords(path, qx, qz)
+          var lim = INF
+          if edgeLine != null { lim = dabs((edgeLine.a0 + edgeLine.a1 + edgeLine.c0 + edgeLine.c1) / 4.0) }
+          if side * pc[1] <= lim and len(pts) > 0 {
+            let prx = pts[len(pts) - 2]
+            let prz = pts[len(pts) - 1]
+            let pp = path_coords(path, prx, prz)
+            let f = clamp01((side * pp[1] - lim) / jmax(side * pp[1] - side * pc[1], 0.000000001))
+            pts_push(pts, prx + (qx - prx) * f, prz + (qz - prz) * f)
+            hit = pp[0] + (pc[0] - pp[0]) * f
+            hasHit = true
+            break
+          }
+          pts_push(pts, qx, qz)
+        }
+        if not hasHit or len(pts) < 4 { continue }
+        push(hits, hit)
+        let poly = doubles(8)
+        let np = len(pts) / 2
+        for k in 0 .. np - 1 {
+          let px = pts[k * 2]
+          let pz = pts[k * 2 + 1]
+          let qx = pts[(k + 1) * 2]
+          let qz = pts[(k + 1) * 2 + 1]
+          let dl = hypot2(qx - px, qz - pz)
+          if dl < 0.0001 { continue }
+          let nx = (-(qz - pz) / dl) * (lw / 2.0)
+          let nz = ((qx - px) / dl) * (lw / 2.0)
+          poly[0] = px - nx
+          poly[1] = pz - nz
+          poly[2] = qx - nx
+          poly[3] = qz - nz
+          poly[4] = qx + nx
+          poly[5] = qz + nz
+          poly[6] = px + nx
+          poly[7] = pz + nz
+          meta.tris += lay(b, mat, x.g, poly, level, yf(yc, ni, (px + qx) / 2.0, (pz + qz) / 2.0), x.up, 0.6)
+        }
+        Dict.set(goes, goes_key(eB, isel(B.out, 0, 1), l.id), 1)
+        count(x, "gore", 1)
+      }
+      if len(hits) >= 2 {
+        var hmin = INF
+        var hmax = -INF
+        for k in 0 .. len(hits) {
+          hmin = jmin(hmin, hits[k])
+          hmax = jmax(hmax, hits[k])
+        }
+        if side == 1.0 {
+          push(mergeP, hmin)
+          push(mergeP, hmax)
+        } else {
+          push(mergeM, hmin)
+          push(mergeM, hmax)
+        }
+      }
+    }
+    # the through lines, an edge line dashed over its merge intervals
+    for ti in 0 .. len(through) {
+      let t = through[ti]
+      var cuts = doubles(0)
+      if t.kind == "edge" {
+        if t.side == 1.0 { cuts = sort_pairs(mergeP) } else if t.side == -1.0 { cuts = sort_pairs(mergeM) }
+      }
+      let runs = new []double     # a, b, merge (0 or 1)
+      var s: double = 0.0
+      for k in 0 .. len(cuts) / 2 {
+        let m0 = cuts[k * 2]
+        let m1 = cuts[k * 2 + 1]
+        if m0 > s {
+          push(runs, s)
+          push(runs, m0)
+          push(runs, ZERO_D)
+        }
+        push(runs, jmax(s, m0))
+        push(runs, m1)
+        push(runs, ONE_D)
+        s = jmax(s, m1)
+      }
+      if s < path.len {
+        push(runs, s)
+        push(runs, path.len)
+        push(runs, ZERO_D)
+      }
+      for r in 0 .. len(runs) / 3 {
+        let merge = runs[r * 3 + 2] != 0.0
+        var paint = t.paint
+        if merge { paint = opt.merge }
+        let ps = pieces_of(paint, runs[r * 3], runs[r * 3 + 1], dsel(merge, minPiece, 0.0))
+        for k in 0 .. len(ps) / 2 {
+          let q = new QPiece
+          q.a = ps[k * 2]
+          q.b = ps[k * 2 + 1]
+          q.kind = Q_PATH
+          q.path = path
+          q.ba0 = t.a0
+          q.ba1 = t.a1
+          q.bc0 = t.c0
+          q.bc1 = t.c1
+          q.level = level
+          q.node = ni
+          if hasChunk {
+            q.caps = doubles(8)
+            path_point_to(path, q.a, band_at(q, q.a, true), p2)
+            q.caps[0] = p2[0]
+            q.caps[1] = p2[1]
+            path_point_to(path, q.a, band_at(q, q.a, false), p2)
+            q.caps[2] = p2[0]
+            q.caps[3] = p2[1]
+            path_point_to(path, q.b, band_at(q, q.b, true), p2)
+            q.caps[4] = p2[0]
+            q.caps[5] = p2[1]
+            path_point_to(path, q.b, band_at(q, q.b, false), p2)
+            q.caps[6] = p2[0]
+            q.caps[7] = p2[1]
+          }
+          push(queue, q)
+        }
+        if merge { count(x, "merge", 1) } else { count(x, "through", 1) }
+      }
+    }
+  }
+
+  # ---- along each strip ----
+  let ekeys = new []string
+  for i in 0 .. ne { push(ekeys, w.edges[i].key) }
+  let eorder = order_by_key(ekeys)
+  for oi in 0 .. len(eorder) {
+    let ei = eorder[oi]
+    let e = w.edges[ei]
+    if only != null and not Dict.has(only, e.key) { continue }
+    let rule = rule_for(e, opt)
+    if e.median > 0.01 and not v_undef(v_get(planted, e.profile)) {
+      if is_flush(el, w, ei, planted, areas) { push(meta.flush, e.key) } else { push(meta.planted, e.key) }
+    }
+    let defs = lines_for(el, w, ei, opt, fwdRight, planted, areas)
+    let es = w_st(w, ei)
+    let l = w_laid(w, ei)
+    if rule == null or len(defs) == 0 or es == null or l == null { continue }
+    let level = level_code(e.level)
+    let s0 = st_s(es, 0)
+    let s1 = st_s(es, es.n - 1)
+    let hw = (w.width / 2.0) * l.scale
+    let cr = w_cross(w, ei)
+    let bl = new []double
+    for k in 0 .. len(cr) {
+      push(bl, cr[k] * l.scale - hw - stop)
+      push(bl, cr[k] * l.scale + hw + stop)
+    }
+    let blocked = sort_pairs(bl)
+    for di in 0 .. len(defs) {
+      let d = defs[di]
+      let runs = runs_for(blocked, s0, s1, stop, Dict.has(goes, goes_key(e, 0, d.id)), Dict.has(goes, goes_key(e, 1, d.id)))
+      for r in 0 .. len(runs) / 2 {
+        let ps = pieces_of(d.paint, runs[r * 2], runs[r * 2 + 1], minPiece)
+        for k in 0 .. len(ps) / 2 {
+          let q = new QPiece
+          q.a = ps[k * 2]
+          q.b = ps[k * 2 + 1]
+          q.kind = Q_STRIP
+          q.es = es
+          q.level = level
+          q.def = d
+          if hasChunk {
+            q.caps = doubles(8)
+            strip_cap(es, q.a, d, x.sg, q.caps, 0)
+            strip_cap(es, q.b, d, x.sg, q.caps, 4)
+          }
+          push(queue, q)
+        }
+      }
+    }
+    # a flush median's hatching
+    var nfl = 0
+    for k in 0 .. len(defs) { if defs[k].kind == "flush" { nfl += 1 } }
+    if rule.hatch > 0.0 and nfl == 2 {
+      var hwid = opt.width
+      if rule.hasWidth { hwid = rule.width }
+      if rule.flush != null and rule.flush.hasWidth { hwid = rule.flush.width }
+      let runs = runs_for(blocked, s0, s1, stop, false, false)
+      for r in 0 .. len(runs) / 2 {
+        let a = runs[r * 2]
+        let bb = runs[r * 2 + 1]
+        var s = a + rule.hatch / 2.0
+        while s < bb {
+          sf_seg(es, s, x.sg)
+          let i = x.sg.i
+          let m = st_rmed(es, i) - hwid - opt.inset
+          let ml = st_lmed(es, i) - hwid - opt.inset
+          if m <= 0.1 or ml <= 0.1 {
+            s += rule.hatch
+            continue
+          }
+          let run = m + ml
+          let bw = hwid * 1.4142135623730951
+          if s + run + bw > bb { break }
+          let raw = doubles(8)
+          sf_point(es, s, null, 2, -ml, x.sg, raw, 0)
+          sf_point(es, s + bw, null, 2, -ml, x.sg, raw, 2)
+          sf_point(es, s + run + bw, null, 2, m, x.sg, raw, 4)
+          sf_point(es, s + run, null, 2, m, x.sg, raw, 6)
+          let q = new QPiece
+          q.a = 0.0
+          q.b = 1.0
+          q.kind = Q_HATCH
+          q.poly = off_chunk_lines(raw, chunk)
+          q.level = level
+          q.y = sf_y(es, s + run / 2.0, x.sg) + lift
+          push(queue, q)
+          count(x, "hatch", 1)
+          s += rule.hatch
+        }
+      }
+    }
+  }
+  lay_queued(x, queue, chunk)
+  return meta
+}
+
+function runs_for(blocked: []double, s0: double, s1: double, stop: double, startGoes: bool, endGoes: bool) -> []double {
+  let out = new []double
+  var a = s0 + dsel(startGoes, 0.0, stop)
+  let end = s1 - dsel(endGoes, 0.0, stop)
+  for k in 0 .. len(blocked) / 2 {
+    let c0 = blocked[k * 2]
+    let c1 = blocked[k * 2 + 1]
+    if c1 <= a { continue }
+    if c0 >= end { break }
+    if c0 > a {
+      push(out, a)
+      push(out, c0)
+    }
+    a = jmax(a, c1)
+  }
+  if end > a {
+    push(out, a)
+    push(out, end)
+  }
+  return out
+}

@@ -1,0 +1,924 @@
+# world.ludic - game-editor packages/core/src/world/sidewalk.ts sidewalkOf (and crossings.ts): the network's sidewalk as one bake
+# build reads it. `RWorld` is what every build of a bake shares (the network, its graded lines, the setbacks both ends of each edge
+# settled together, the crossings planned, the natural ground); `Sw` is one build's view of it (sidewalkOf: its lift and station
+# thinning, and the strips, junctions, junction surfaces and turning circles it makes, each once, as the studio's Maps cache them).
+# The same doubles as the TypeScript.
+
+# ---- the natural ground ---------------------------------------------------------------------------------------------------
+# the studio's tiled ground (mcp heights.ts tiledGround): 16-bit tiles on one global texel grid, bilinear between texel centres,
+# a neighbour with no tile reading the home tile's nearest texel; `pts` instead: the heights a recorded bake read (a scene)
+export property Ground {
+  kind: int = 0             # 0 none (undefined everywhere), 1 tiles, 2 recorded points
+  tileSize: double = 0.0
+  originX: double = 0.0
+  originZ: double = 0.0
+  hmin: double = 0.0
+  hmax: double = 0.0
+  hoff: double = 0.0
+  res: int = 0
+  tiles: Dict = null        # "tx,tz" -> index into data (-1: the studio loaded it but the job left it out)
+  data: [][]byte = null     # u16 little-endian samples, res x res
+  ptsK: Dict = null         # recorded: "x,z" (the doubles' bits) -> index into ptsY
+  ptsY: []double = null
+  miss: int = 0             # lookups the job could not answer as the studio would (a left-out tile, an unrecorded point)
+}
+
+function tile_key(tx: int, tz: int) -> string { return `{tx},{tz}` }
+function u16_at(d: []byte, i: int) -> double { return double(int(d[i * 2]) | (int(d[i * 2 + 1]) << 8)) }
+export function pt_key(x: double, z: double) -> string { return `{double_bits(x)},{double_bits(z)}` }
+
+# the ground's height at (x, z): NaN where there is none (groundSampler's undefined)
+export function ground_y(g: Ground, x: double, z: double) -> double {
+  if g == null or g.kind == 0 { return NAN }
+  if g.kind == 2 {
+    let i = Dict.get_or(g.ptsK, pt_key(x, z), -1)
+    if i < 0 {
+      g.miss += 1
+      return NAN
+    }
+    return g.ptsY[i]
+  }
+  let tx = int(Math.floor((x - g.originX) / g.tileSize))
+  let tz = int(Math.floor((z - g.originZ) / g.tileSize))
+  let hi = Dict.get_or(g.tiles, tile_key(tx, tz), -2)
+  if hi == -2 { return NAN }
+  if hi < 0 {
+    g.miss += 1
+    return NAN
+  }
+  let home = g.data[hi]
+  let res = g.res
+  let texel = g.tileSize / double(res)
+  let gx = (x - g.originX) / texel - 0.5
+  let gz = (z - g.originZ) / texel - 0.5
+  let x0d = Math.floor(gx)
+  let z0d = Math.floor(gz)
+  let fx = gx - x0d
+  let fz = gz - z0d
+  let x0 = int(x0d)
+  let z0 = int(z0d)
+  let a = g_at(g, home, tx, tz, x0, z0) * (1.0 - fx) + g_at(g, home, tx, tz, x0 + 1, z0) * fx
+  let b = g_at(g, home, tx, tz, x0, z0 + 1) * (1.0 - fx) + g_at(g, home, tx, tz, x0 + 1, z0 + 1) * fx
+  let raw = a * (1.0 - fz) + b * fz
+  return g.hmin + (raw / 65535.0) * (g.hmax - g.hmin) + g.hoff
+}
+function floor_div(a: int, b: int) -> int {
+  let q = a / b
+  if (a % b != 0) and ((a < 0) != (b < 0)) { return q - 1 }
+  return q
+}
+function g_at(g: Ground, home: []byte, tx: int, tz: int, ix: int, iz: int) -> double {
+  let res = g.res
+  let cx = floor_div(ix, res)
+  let cz = floor_div(iz, res)
+  let ti = Dict.get_or(g.tiles, tile_key(cx, cz), -2)
+  if ti >= 0 { return u16_at(g.data[ti], (iz - cz * res) * res + (ix - cx * res)) }
+  if ti == -1 { g.miss += 1 }
+  let jz = max(0, min(res - 1, iz - tz * res))
+  let jx = max(0, min(res - 1, ix - tx * res))
+  return u16_at(home, jz * res + jx)
+}
+
+# ---- crossings.ts ------------------------------------------------------------------------------------------------------------
+export property CrossingRule {
+  has: bool = false
+  minDegree: double = 0.0
+  midProfiles: []string = null
+  hasMid: bool = false
+  every: double = 0.0
+}
+export property Dims {
+  width: double = 3.0
+  gap: double = 0.5
+  ramp: double = 1.2
+  flare: double = 1.0
+  lip: double = 0.02
+}
+export property CrossPlan {
+  seg: string = ""
+  segIdx: int = 0
+  node: string = ""
+  s: double = 0.0
+}
+export property Crossing {
+  key: string = ""
+  seg: string = ""
+  node: string = ""
+  s: double = 0.0
+  x: double = 0.0
+  z: double = 0.0
+  yaw: double = 0.0
+  len: double = 0.0
+  w: double = 0.0
+  rx: double = 0.0
+  rz: double = 0.0
+  lx: double = 0.0
+  lz: double = 0.0
+}
+
+# the edges' indices in key order (JavaScript's sort of keys)
+export function edges_by_key(net: Net) -> []int {
+  let keys = new []string
+  for i in 0 .. len(net.edges) { push(keys, net.edges[i].key) }
+  return order_by_key(keys)
+}
+
+export function plan_crossings(w: RWorld, rule: CrossingRule) -> []CrossPlan {
+  let out = new []CrossPlan
+  if not rule.has { return out }
+  let d = w.dims
+  let half = d.width / 2.0 + d.flare
+  let order = edges_by_key(w.net)
+  for q in 0 .. len(order) {
+    let e = w.net.edges[order[q]]
+    if e.missing or e.level != "ground" or e.from == e.to { continue }
+    let sec = e.section
+    if not (sec.curbH > 0.001) or sec.steps > 0.0 { continue }
+    let both = sec.left.walk > 0.01 and sec.right.walk > 0.01
+    let s0 = w.sbFrom[e.idx]
+    let s1 = e.length - w.sbTo[e.idx]
+    if s1 - s0 < 2.0 * half + d.gap { continue }
+    let mine = new []CrossPlan
+    var lo = s0
+    var hi = s1
+    let mn = rule.minDegree
+    if both and mn > 0.0 {
+      if double(node_degree(w.net, e.from)) >= mn {
+        let s = s0 + d.gap + half
+        push(mine, cplan(e, e.from, s))
+        lo = s + half
+      }
+      if double(node_degree(w.net, e.to)) >= mn {
+        let s = s1 - d.gap - half
+        if s - half >= lo + 1.0 {
+          push(mine, cplan(e, e.to, s))
+          hi = s - half
+        }
+      }
+    }
+    var isMid = false
+    if rule.midProfiles != null and e.profile != "" { for k in 0 .. len(rule.midProfiles) { if rule.midProfiles[k] == e.profile { isMid = true } } }
+    if both and isMid and rule.hasMid and rule.every > 0.0 {
+      let free = hi - lo
+      let n = int(Math.floor(free / rule.every))
+      for k in 1 .. n + 1 {
+        let s = lo + (free * double(k)) / double(n + 1)
+        if s - half > lo + 1.0 and s + half < hi - 1.0 { push(mine, cplan(e, "", s)) }
+      }
+    }
+    # (by s, stable)
+    for i in 1 .. len(mine) {
+      let v = mine[i]
+      var k = i - 1
+      while k >= 0 and mine[k].s - v.s > 0.0 {
+        mine[k + 1] = mine[k]
+        k -= 1
+      }
+      mine[k + 1] = v
+    }
+    for i in 0 .. len(mine) { push(out, mine[i]) }
+  }
+  return out
+}
+function cplan(e: NetEdge, node: string, s: double) -> CrossPlan {
+  let c = new CrossPlan
+  c.seg = e.key
+  c.segIdx = e.idx
+  c.node = node
+  c.s = s
+  return c
+}
+export function node_degree(net: Net, key: string) -> int {
+  let i = Dict.get_or(net.nodeByKey, key, -1)
+  if i < 0 { return 0 }
+  return len(net.nodes[i].edges)
+}
+export function node_of(net: Net, key: string) -> NetNode {
+  let i = Dict.get_or(net.nodeByKey, key, -1)
+  if i < 0 { return null }
+  return net.nodes[i]
+}
+export function edge_of(net: Net, key: string) -> NetEdge {
+  let i = Dict.get_or(net.edgeByKey, key, -1)
+  if i < 0 { return null }
+  return net.edges[i]
+}
+# Math.round(v * 100) / 100 + 0
+function r2(v: double) -> double { return jround(v * 100.0) / 100.0 + 0.0 }
+
+export function crossing_at(e: NetEdge, plan: CrossPlan, k: int, px: double, pz: double, nx: double, nz: double, stretch: double, width: double) -> Crossing {
+  let t = taper_at(e.taper, plan.s / jmax(e.length, 0.000000001))
+  let sec = e.section
+  let r = offsets_of(sec.right, sec.gutter, sec.curbW, sec.median, t).gutter * stretch
+  let l = offsets_of(sec.left, sec.gutter, sec.curbW, sec.median, t).gutter * stretch
+  let c = new Crossing
+  c.key = `x{plan.seg}_{k}`
+  c.seg = plan.seg
+  c.node = plan.node
+  c.s = r2(plan.s)
+  c.x = r2(px)
+  c.z = r2(pz)
+  let y = r2((JsMath.atan2(-nx, -nz) * 180.0) / PI)
+  c.yaw = dsel(y <= -180.0, y + 360.0, y)
+  c.len = r2(r + l)
+  c.w = r2(width)
+  c.rx = r2(px + nx * r)
+  c.rz = r2(pz + nz * r)
+  c.lx = r2(px - nx * l)
+  c.lz = r2(pz - nz * l)
+  return c
+}
+
+# ---- what every build shares --------------------------------------------------------------------------------------------------
+export property RWorld {
+  net: Net = null
+  laid: []EdgeGrade = null    # by edge idx (null: not graded)
+  jopt: JOpt = null           # the bake's JunctionOptions (junctionOf)
+  sbFrom: []double = null     # setbacks by edge idx (setbacks with the strict arms: each end's strip as drawn)
+  sbTo: []double = null
+  dims: Dims = null
+  crossings: []CrossPlan = null
+  cs: [][]CrossPlan = null    # by edge idx: crossingsOn
+  ground: Ground = null
+  grid: Dict = null           # edgesNear's cells: "cx,cz" -> index into gridL
+  gridL: [][]int = null       # (edge idx, segment) pairs
+}
+
+# the strict bake's arms (sidewalkOf's fineArm): each end's arm as its strip draws it, in the edge's own metres
+export function fine_arm(w: RWorld, e: JEnd) -> ArmSide {
+  let l = w.laid[e.edge.idx]
+  if l == null { return null }
+  let s = doubles(len(l.s))
+  for i in 0 .. len(l.s) { s[i] = l.s[i] / l.scale }
+  return arm_of(l.line, s, e.out)
+}
+
+export function world_new(net: Net, laid: []EdgeGrade, jopt: JOpt, rule: CrossingRule, dims: Dims, ground: Ground) -> RWorld {
+  let w = new RWorld
+  w.net = net
+  w.laid = laid
+  w.jopt = jopt
+  w.dims = dims
+  w.ground = ground
+  # setbacks with each end's arm as its strip draws it (strict), else the junction options as they are
+  var so = jopt
+  if jopt.strict {
+    so = jopt_copy(jopt)
+    so.armLaid = laid
+  }
+  let sb = setbacks_par(net, so)
+  w.sbFrom = sb.from
+  w.sbTo = sb.to
+  grid_build(w)
+  w.crossings = plan_crossings(w, rule)
+  w.cs = new [][]CrossPlan
+  for i in 0 .. len(net.edges) { push(w.cs, null) }
+  for i in 0 .. len(w.crossings) {
+    let c = w.crossings[i]
+    if w.cs[c.segIdx] == null { w.cs[c.segIdx] = new []CrossPlan }
+    push(w.cs[c.segIdx], c)
+  }
+  return w
+}
+export function cs_of(w: RWorld, idx: int) -> []CrossPlan {
+  let c = w.cs[idx]
+  if c == null { return new []CrossPlan }
+  return c
+}
+
+# junction.ludic `setbacks` (no notes) with every node's junction made on its own core: each node's ends' needs, then the same
+# merge in the same order
+property SbJob {
+  net: Net = null
+  opt: JOpt = null
+  edge: [][]int = null        # by node: (edge idx, out) pairs
+  need: [][]double = null     # by node: each end's setback
+}
+function sb_node(i: int, j: SbJob) -> void {
+  let jn = junction_of(j.net.nodes[i], j.opt, true, fn settled_none, 0)
+  let e = new []int
+  let d = new []double
+  for k in 0 .. len(jn.ends) {
+    push(e, jn.ends[k].edge.idx)
+    push(e, isel(jn.ends[k].out, 1, 0))
+    push(d, jn.ends[k].setback)
+  }
+  j.edge[i] = e
+  j.need[i] = d
+}
+export function setbacks_par(net: Net, opt: JOpt) -> Setbacks {
+  let nn = len(net.nodes)
+  let j = new SbJob
+  j.net = net
+  j.opt = opt
+  j.edge = new [][]int
+  j.need = new [][]double
+  for i in 0 .. nn {
+    push(j.edge, null)
+    push(j.need, null)
+  }
+  Job.parallel_for(nn, fn sb_node, j)
+  let ne = len(net.edges)
+  let nf = doubles(ne)
+  let nt = doubles(ne)
+  for i in 0 .. ne {
+    nf[i] = 0.0
+    nt[i] = 0.0
+  }
+  for q in 0 .. nn {
+    let e = j.edge[q]
+    let d = j.need[q]
+    for k in 0 .. len(d) {
+      let x = e[k * 2]
+      if e[k * 2 + 1] == 1 { nf[x] = jmax(nf[x], d[k]) } else { nt[x] = jmax(nt[x], d[k]) }
+    }
+  }
+  let o = new Setbacks
+  o.from = doubles(ne)
+  o.to = doubles(ne)
+  for i in 0 .. ne {
+    let e = net.edges[i]
+    let room = jmax(0.0, e.length - MIN_STRIP)
+    if nf[i] + nt[i] <= room + 0.000000001 {
+      o.from[i] = nf[i]
+      o.to[i] = nt[i]
+      continue
+    }
+    var f: double = 0.0
+    if nf[i] + nt[i] > 0.000000001 { f = room / (nf[i] + nt[i]) }
+    o.from[i] = nf[i] * f
+    o.to[i] = nt[i] * f
+  }
+  return o
+}
+
+# ---- network.ts edgesNear: the edges whose centre line passes within r of p (their indices; the order does not matter to the
+# bake, which takes a minimum over them) ----------------------------------------------------------------------------------------
+const CELL: double = 64.0
+function grid_build(w: RWorld) -> void {
+  w.grid = Dict.new()
+  w.gridL = new [][]int
+  for q in 0 .. len(w.net.edges) {
+    let e = w.net.edges[q]
+    let n = len(e.line) / 2
+    for i in 0 .. n - 1 {
+      let ax = e.line[i * 2]
+      let az = e.line[i * 2 + 1]
+      let bx = e.line[i * 2 + 2]
+      let bz = e.line[i * 2 + 3]
+      let x0 = int(Math.floor(jmin(ax, bx) / CELL))
+      let x1 = int(Math.floor(jmax(ax, bx) / CELL))
+      let z0 = int(Math.floor(jmin(az, bz) / CELL))
+      let z1 = int(Math.floor(jmax(az, bz) / CELL))
+      for cx in x0 .. x1 + 1 {
+        for cz in z0 .. z1 + 1 {
+          let k = tile_key(cx, cz)
+          var at = Dict.get_or(w.grid, k, -1)
+          if at < 0 {
+            at = len(w.gridL)
+            Dict.set(w.grid, k, at)
+            push(w.gridL, new []int)
+          }
+          push(w.gridL[at], q)
+          push(w.gridL[at], i)
+        }
+      }
+    }
+  }
+}
+export function edges_near(w: RWorld, px: double, pz: double, r: double) -> []int {
+  if w.grid == null { grid_build(w) }
+  let best = new []int
+  let seen = Dict.new()
+  for cx in int(Math.floor((px - r) / CELL)) .. int(Math.floor((px + r) / CELL)) + 1 {
+    for cz in int(Math.floor((pz - r) / CELL)) .. int(Math.floor((pz + r) / CELL)) + 1 {
+      let at = Dict.get_or(w.grid, tile_key(cx, cz), -1)
+      if at < 0 { continue }
+      let L = w.gridL[at]
+      for m in 0 .. len(L) / 2 {
+        let q = L[m * 2]
+        let i = L[m * 2 + 1]
+        let e = w.net.edges[q]
+        let ax = e.line[i * 2]
+        let az = e.line[i * 2 + 1]
+        let vx = e.line[i * 2 + 2] - ax
+        let vz = e.line[i * 2 + 3] - az
+        let l2 = vx * vx + vz * vz
+        var t: double = 0.0
+        if not (l2 < 0.000000000001) { t = jmax(0.0, jmin(1.0, ((px - ax) * vx + (pz - az) * vz) / l2)) }
+        let d = hypot2(px - (ax + vx * t), pz - (az + vz * t))
+        if d > r { continue }
+        if Dict.has(seen, e.key) { continue }
+        Dict.set(seen, e.key, 1)
+        push(best, q)
+      }
+    }
+  }
+  return best
+}
+
+# ---- one build's sidewalk (sidewalkOf) ------------------------------------------------------------------------------------------
+export property Sw {
+  w: RWorld = null
+  net: Net = null
+  lift: double = 0.02
+  thin: StationThin = null
+  strips: []EdgeStations = null
+  stripDone: []bool = null
+  juncs: []Junction = null
+  surfs: []NodeSurface = null
+  bulbs: [][][]double = null
+  bulbDone: []bool = null
+}
+
+export function sw_new(w: RWorld, lift: double, thin: StationThin) -> Sw {
+  let sw = new Sw
+  sw.w = w
+  sw.net = w.net
+  sw.lift = lift
+  sw.thin = thin
+  let ne = len(w.net.edges)
+  let nn = len(w.net.nodes)
+  sw.strips = new []EdgeStations
+  sw.stripDone = new []bool
+  for i in 0 .. ne {
+    push(sw.strips, null)
+    push(sw.stripDone, false)
+  }
+  sw.juncs = new []Junction
+  sw.surfs = new []NodeSurface
+  sw.bulbs = new [][][]double
+  sw.bulbDone = new []bool
+  for i in 0 .. nn {
+    push(sw.juncs, null)
+    push(sw.surfs, null)
+    push(sw.bulbs, null)
+    push(sw.bulbDone, false)
+  }
+  return sw
+}
+
+export function side_off(es: EdgeStations, i: int, side: int) -> Offsets {
+  if side == 1 { return es.right[i] }
+  return es.left[i]
+}
+# a cross-section line by level: 0 gutter, 1 curb, 2 plant, else walk
+export function lv_of(o: Offsets, k: int) -> double {
+  if k == 0 { return o.gutter }
+  if k == 1 { return o.curb }
+  if k == 2 { return o.plant }
+  return o.walk
+}
+
+# an edge's strip (Sidewalk.stations): null when it is too short to draw
+export function sw_stations_i(sw: Sw, idx: int) -> EdgeStations {
+  if sw.stripDone[idx] { return sw.strips[idx] }
+  let w = sw.w
+  var out: EdgeStations = null
+  let l = w.laid[idx]
+  if l != null {
+    let cuts = new []double
+    let d = w.dims
+    let ds = doubles(4)
+    ds[0] = -d.width / 2.0 - d.flare
+    ds[1] = -d.width / 2.0
+    ds[2] = d.width / 2.0
+    ds[3] = d.width / 2.0 + d.flare
+    let cs = w.cs[idx]
+    if cs != null { for c in 0 .. len(cs) { for k in 0 .. 4 { push(cuts, (cs[c].s + ds[k]) * l.scale) } } }
+    out = edge_stations(l, w.sbFrom[idx], w.sbTo[idx], cuts, sw.thin)
+    if out != null { mitre_ends(sw, idx, out) }
+    if out != null and l.edge.section.steps > 0.0 {
+      let last = len(out.st) - 1
+      out.st[0] = st_with_y(out.st[0], l.y[0])
+      out.st[last] = st_with_y(out.st[last], l.y[len(l.y) - 1])
+    }
+  }
+  sw.strips[idx] = out
+  sw.stripDone[idx] = true
+  return out
+}
+export function sw_stations(sw: Sw, key: string) -> EdgeStations {
+  let i = Dict.get_or(sw.net.edgeByKey, key, -1)
+  if i < 0 { return null }
+  return sw_stations_i(sw, i)
+}
+function st_copy(q: Station) -> Station {
+  let o = new Station
+  o.px = q.px
+  o.pz = q.pz
+  o.nx = q.nx
+  o.nz = q.nz
+  o.k = q.k
+  o.s = q.s
+  o.y = q.y
+  return o
+}
+function st_with_y(q: Station, y: double) -> Station {
+  let o = st_copy(q)
+  o.y = y
+  return o
+}
+
+# the unit heading from a line's end (start or end) to its first point more than 1e-6 m away (null: none)
+function away(line: []double, atStart: bool) -> []double {
+  let n = len(line) / 2
+  for k in 1 .. n {
+    let ai = isel(atStart, 0, n - 1)
+    let ci = isel(atStart, k, n - 1 - k)
+    let ax = line[ai * 2]
+    let az = line[ai * 2 + 1]
+    let cx = line[ci * 2]
+    let cz = line[ci * 2 + 1]
+    let d = hypot2(cx - ax, cz - az)
+    if d > 0.000001 { return d_pair((cx - ax) / d, (cz - az) / d) }
+  }
+  return null
+}
+
+# a node of two roads with no junction surface between them: each strip's end there cut along the bisector of the two
+function mitre_ends(sw: Sw, idx: int, es: EdgeStations) -> void {
+  let w = sw.w
+  let e = w.net.edges[idx]
+  let l = w.laid[idx]
+  if l == null or len(es.st) < 2 { return }
+  for pass in 0 .. 2 {
+    let atStart = pass == 0
+    var nodeI = e.toIdx
+    var node = e.to
+    if atStart {
+      nodeI = e.fromIdx
+      node = e.from
+    }
+    if dsel(atStart, w.sbFrom[idx], w.sbTo[idx]) > 0.000001 or e.from == e.to { continue }
+    if nodeI < 0 { continue }
+    let nd = w.net.nodes[nodeI]
+    if len(nd.edges) != 2 { continue }
+    var o = nd.edges[0]
+    if nd.edges[0].key == e.key { o = nd.edges[1] }
+    let lo = w.laid[o.idx]
+    if lo == null or o.key == e.key { continue }
+    let oStart = o.from == node
+    if dsel(oStart, w.sbFrom[o.idx], w.sbTo[o.idx]) > 0.000001 { continue }
+    let ue = away(l.line, atStart)
+    let uo = away(lo.line, oStart)
+    if ue == null or uo == null { continue }
+    let tx = ue[0] - uo[0]
+    let tz = ue[1] - uo[1]
+    let tl = hypot2(tx, tz)
+    if tl < 0.000000001 { continue }
+    let i = isel(atStart, 0, len(es.st) - 1)
+    let q = es.st[i]
+    var nx = -tz / tl
+    var nz = tx / tl
+    if nx * q.nx + nz * q.nz < 0.0 {
+      nx = -nx
+      nz = -nz
+    }
+    let c = nx * q.nx + nz * q.nz
+    if c < 0.98 { continue }
+    let r = st_copy(q)
+    r.nx = nx
+    r.nz = nz
+    r.k = q.k / c
+    es.st[i] = r
+  }
+}
+
+# how far a crossing lowers the kerb at fine distance s along an edge: 1 in its strip, 0 beyond its flares
+function drop_along(sw: Sw, idx: int, s: double) -> double {
+  let w = sw.w
+  let l = w.laid[idx]
+  var a: double = 0.0
+  let cs = w.cs[idx]
+  if cs == null { return a }
+  var sc: double = 1.0
+  if l != null { sc = l.scale }
+  let hw = w.dims.width / 2.0
+  for c in 0 .. len(cs) {
+    let d = dabs(s / sc - cs[c].s)
+    if d <= hw + 0.000001 { return 1.0 }
+    if d < hw + w.dims.flare { a = jmax(a, 1.0 - (d - hw) / w.dims.flare) }
+  }
+  return a
+}
+function falsy(x: double) -> bool { return x == 0.0 or x != x }
+
+# the lateral offset a side's dropped kerb ramp ends at, at station i (Sidewalk.rampAt): NaN when it has none
+export function sw_ramp_at(sw: Sw, idx: int, i: int, side: int) -> double {
+  let es = sw_stations_i(sw, idx)
+  if es == null or falsy(drop_along(sw, idx, es.st[i].s)) { return NAN }
+  let o = side_off(es, i, side)
+  let walk = o.walk - o.gutter
+  let run = jmax(jmin(sw.w.dims.ramp, walk - 0.3), jmin(0.6, walk))
+  return o.gutter + run
+}
+
+# the height of the kerb's top, planting and walk above the road at station i, d metres out on `side` (Sidewalk.lvlAt)
+export function sw_lvl_at(sw: Sw, idx: int, i: int, side: int, d: double) -> double {
+  let es = sw_stations_i(sw, idx)
+  let e = sw.net.edges[idx]
+  var curbH: double = 0.0
+  if e.section.curbH > 0.001 { curbH = e.section.curbH }
+  if es == null or falsy(curbH) { return curbH }
+  let a = drop_along(sw, idx, es.st[i].s)
+  if falsy(a) { return curbH }
+  let o = side_off(es, i, side)
+  let end = sw_ramp_at(sw, idx, i, side)
+  let run = jmax(end - o.gutter, 0.000001)
+  let across = jmax(0.0, jmin(1.0, 1.0 - (d - o.gutter) / run))
+  return curbH - a * across * (curbH - jmin(sw.w.dims.lip, curbH))
+}
+
+# ---- junctions --------------------------------------------------------------------------------------------------------------
+property ELine {
+  px: double = 0.0
+  pz: double = 0.0
+  ux: double = 0.0
+  uz: double = 0.0
+}
+
+function settled_sb(w: RWorld, e: JEnd, need: double) -> double {
+  return dsel(e.out, w.sbFrom[e.edge.idx], w.sbTo[e.edge.idx])
+}
+
+# a rail's end point on a strip's own end (the strip's station, at the corner's level)
+function end_pt(sw: Sw, e: JEnd, right: bool, level: int, other: Offsets) -> []double {
+  let es = sw_stations_i(sw, e.edge.idx)
+  if es == null or len(es.st) < 2 { return null }
+  let i = isel(e.out, 0, len(es.st) - 1)
+  let edgeSide = isel(right == e.out, 1, -1)
+  let o = side_off(es, i, edgeSide)
+  return es_at(es, i, double(edgeSide) * corner_level(o, other, level))
+}
+# the strip's own end line at a node and the way into the strip from it
+function end_line(sw: Sw, e: JEnd) -> ELine {
+  let es = sw_stations_i(sw, e.edge.idx)
+  if es == null or len(es.st) < 2 { return null }
+  let i = isel(e.out, 0, len(es.st) - 1)
+  let q = es.st[i]
+  let nb = es.st[isel(e.out, 1, len(es.st) - 2)]
+  let l = new ELine
+  l.px = q.px
+  l.pz = q.pz
+  l.ux = q.nz
+  l.uz = -q.nx
+  if (nb.px - q.px) * l.ux + (nb.pz - q.pz) * l.uz >= 0.0 { return l }
+  l.ux = -l.ux
+  l.uz = -l.uz
+  return l
+}
+function beyond(line: ELine, x: double, z: double) -> bool { return line != null and (x - line.px) * line.ux + (z - line.pz) * line.uz > 0.001 }
+# the strip's other edge at a level, on its end line
+function far_pt(sw: Sw, e: JEnd, right: bool, level: int) -> []double {
+  let es = sw_stations_i(sw, e.edge.idx)
+  if es == null or len(es.st) < 2 { return null }
+  let i = isel(e.out, 0, len(es.st) - 1)
+  let edgeSide = isel(right == e.out, 1, -1)
+  let o = side_off(es, i, edgeSide)
+  return es_at(es, i, double(edgeSide) * lv_of(o, level))
+}
+function beside(ex: double, ez: double, far: []double, px: double, pz: double) -> bool {
+  if far == null { return true }
+  let fx = far[0] - ex
+  let fz = far[1] - ez
+  let fl = hypot2(fx, fz)
+  var w: double = 0.0
+  if not (fl < 0.000001) { w = ((px - ex) * fx + (pz - ez) * fz) / fl }
+  return not (w > 0.000001 and w < fl - 0.000001)
+}
+function crossing_pt(line: ELine, px: double, pz: double, qx: double, qz: double) -> []double {
+  let dp = (px - line.px) * line.ux + (pz - line.pz) * line.uz
+  let dq = (qx - line.px) * line.ux + (qz - line.pz) * line.uz
+  var t: double = 0.0
+  if not (dabs(dq - dp) < 0.000000000001) { t = dp / (dp - dq) }
+  return d_pair(px + (qx - px) * t, pz + (qz - pz) * t)
+}
+function clip_tail(r: []double, line: ELine, far: []double) -> []double {
+  let n = len(r) / 2
+  var m = -1
+  for i in 1 .. n - 1 {
+    if beyond(line, r[i * 2], r[i * 2 + 1]) {
+      m = i
+      break
+    }
+  }
+  if m < 0 { return r }
+  let ex = r[(n - 1) * 2]
+  let ez = r[(n - 1) * 2 + 1]
+  let keep = pts_slice(r, 0, m)
+  if beyond(line, r[(m - 1) * 2], r[(m - 1) * 2 + 1]) {
+    pts_push(keep, ex, ez)
+    return keep
+  }
+  let x = crossing_pt(line, r[(m - 1) * 2], r[(m - 1) * 2 + 1], r[m * 2], r[m * 2 + 1])
+  let kn = len(keep) / 2
+  if beside(ex, ez, far, x[0], x[1]) and hypot2(x[0] - keep[(kn - 1) * 2], x[1] - keep[(kn - 1) * 2 + 1]) > 0.001 and hypot2(x[0] - ex, x[1] - ez) > 0.001 { pts_push(keep, x[0], x[1]) }
+  pts_push(keep, ex, ez)
+  return keep
+}
+function max_rel(v: []double) -> double {
+  var m = -INF
+  for k in 0 .. len(v) { m = jmax(m, v[k] - v[0]) }
+  return m
+}
+function past(p0x: double, p0z: double, p1x: double, p1z: double, qx: double, qz: double, nx: double, nz: double) -> bool {
+  let ux = p1x - p0x
+  let uz = p1z - p0z
+  let sq = ux * (qz - p0z) - uz * (qx - p0x)
+  let sn = ux * (nz - p0z) - uz * (nx - p0x)
+  return hypot2(ux, uz) > 0.000001 and sq * sn < -0.000000001
+}
+function chord_plan(n: int, limA: double, limB: double) -> CornerPlan {
+  let p = new CornerPlan
+  p.kind = "flat"
+  p.rho = 0.0
+  p.levels = new []CornerLevel
+  for k in 0 .. n { push(p.levels, clevel(limA, limB, new []double)) }
+  p.needI = 0.0
+  p.needJ = 0.0
+  return p
+}
+
+# a node's junction, its corners' rails ending exactly on the strips' end points (Sidewalk.junction)
+export function sw_junction(sw: Sw, n: NetNode) -> Junction {
+  let have = sw.juncs[n.idx]
+  if have != null { return have }
+  let w = sw.w
+  let j = junction_of(n, w.jopt, true, fn settled_sb, w)
+  let rebuilt = new []bool
+  for ci in 0 .. len(j.corners) { push(rebuilt, false) }
+  if j.strict and j.kind == "cross" {
+    for ci in 0 .. len(j.corners) {
+      let c = j.corners[ci]
+      if c.sharp { continue }
+      let a = j.ends[c.i]
+      let b = j.ends[c.j]
+      let la = w.laid[a.edge.idx]
+      let lb = w.laid[b.edge.idx]
+      let esA = sw_stations_i(sw, a.edge.idx)
+      let esB = sw_stations_i(sw, b.edge.idx)
+      if la == null or esA == null or len(esA.st) < 2 { continue }
+      if lb == null or esB == null or len(esB.st) < 2 { continue }
+      let armA = fine_arm(w, a)
+      let limA = jmax(0.0, dsel(a.out, w.sbFrom[a.edge.idx], w.sbTo[a.edge.idx]))
+      let armB = fine_arm(w, b)
+      let limB = jmax(0.0, dsel(b.out, w.sbFrom[b.edge.idx], w.sbTo[b.edge.idx]))
+      var gap = JsMath.atan2(a.ux * b.uz - a.uz * b.ux, a.ux * b.ux + a.uz * b.uz)
+      if gap <= 0.000001 { gap += 2.0 * PI }
+      let oa = corner_offsets_a(a, b)
+      let ob = corner_offsets_b(a, b)
+      var plan: CornerPlan = null
+      var crushed = false
+      if gap < (GORE_DEG * PI) / 180.0 {
+        plan = chord_plan(len(oa), limA, limB)
+      } else if gap <= (175.0 * PI) / 180.0 {
+        let cr = corner_radius(a, b, gap, w.jopt)
+        let fit = fit_corner(armA, armB, oa, ob, cr.rho, limA, limB)
+        crushed = fit == null
+        if fit != null { for k in 1 .. len(fit.levels) { if len(fit.levels[k].mid) == 0 { crushed = true } } }
+        plan = fit
+        if plan == null { plan = chord_plan(len(oa), limA, limB) }
+        if cr.want == cr.want and plan.rho < cr.want - 0.001 and jo_has_radius(w.jopt) and a.edge.section.curbH > 0.001 and b.edge.section.curbH > 0.001 { push(j.notes, `node {n.key}: the corner between {a.edge.key} and {b.edge.key} cannot be {js_number(cr.want)} m round: {js_fixed(plan.rho, 2)} m fits between its strips`) }
+      } else {
+        plan = outside_corner(armA, armB, oa, ob, limA, limB, true, gap)
+      }
+      let rr = corner_rails(armA, armB, oa, ob, plan, limA, limB)
+      let rails = new [][]double
+      for k in 0 .. len(rr) { push(rails, rr[k].p) }
+      for k in 0 .. len(rails) {
+        let p = end_pt(sw, a, true, k, b.l)
+        let q = end_pt(sw, b, false, k, a.r)
+        if p != null {
+          rails[k][0] = p[0]
+          rails[k][1] = p[1]
+        }
+        if q != null {
+          let rn = len(rails[k]) / 2
+          rails[k][(rn - 1) * 2] = q[0]
+          rails[k][(rn - 1) * 2 + 1] = q[1]
+        }
+      }
+      if crushed and jmax(max_rel(oa), max_rel(ob)) > 0.000001 {
+        let ia = new []double
+        let ib = new []double
+        for k in 0 .. len(rails) {
+          let rn = len(rails[k]) / 2
+          pts_push(ia, rails[k][0], rails[k][1])
+          pts_push(ib, rails[k][(rn - 1) * 2], rails[k][(rn - 1) * 2 + 1])
+        }
+        c.crushedI = ia
+        c.crushedJ = ib
+        let la2 = len(ia) / 2 - 1
+        let lb2 = len(ib) / 2 - 1
+        let edge = new []double
+        pts_push(edge, ia[0], ia[1])
+        if past(ia[0], ia[1], ia[la2 * 2], ia[la2 * 2 + 1], ib[0], ib[1], n.x, n.z) { pts_push(edge, ia[la2 * 2], ia[la2 * 2 + 1]) }
+        if past(ib[0], ib[1], ib[lb2 * 2], ib[lb2 * 2 + 1], ia[0], ia[1], n.x, n.z) { pts_push(edge, ib[lb2 * 2], ib[lb2 * 2 + 1]) }
+        pts_push(edge, ib[0], ib[1])
+        rails[0] = edge
+        for k in 1 .. len(rails) { rails[k] = pts_copy(rails[0]) }
+      }
+      c.rails = new []Rail
+      for k in 0 .. len(rails) { push(c.rails, rail_of(rails[k])) }
+      c.kind = plan.kind
+      c.radius = plan.rho
+      c.hasCentre = plan.hasCentre
+      c.cx = plan.cx
+      c.cz = plan.cz
+      if plan.kind == "fillet" and len(plan.levels[0].mid) / 2 > 2 { c.kerb = pts_copy(plan.levels[0].mid) }
+      rebuilt[ci] = true
+    }
+  }
+  for ci in 0 .. len(j.corners) {
+    let c = j.corners[ci]
+    let ei = j.ends[c.i]
+    let ej = j.ends[c.j]
+    let lineI = end_line(sw, ei)
+    let lineJ = end_line(sw, ej)
+    for k in 0 .. len(c.rails) {
+      var r = c.rails[k].p
+      let a = end_pt(sw, ei, true, k, ej.l)
+      let b = end_pt(sw, ej, false, k, ei.r)
+      let rn = len(r) / 2
+      if a != null and rn > 0 {
+        r[0] = a[0]
+        r[1] = a[1]
+      }
+      if b != null and rn > 1 {
+        r[(rn - 1) * 2] = b[0]
+        r[(rn - 1) * 2 + 1] = b[1]
+      }
+      if not rebuilt[ci] and rn > 2 {
+        var any = false
+        for m in 1 .. rn - 1 { if beyond(lineI, r[m * 2], r[m * 2 + 1]) or beyond(lineJ, r[m * 2], r[m * 2 + 1]) { any = true } }
+        if any {
+          if lineI != null { r = pts_reversed(clip_tail(pts_reversed(r), lineI, far_pt(sw, ei, false, k))) }
+          if lineJ != null { r = clip_tail(r, lineJ, far_pt(sw, ej, true, k)) }
+          c.rails[k] = rail_of(r)
+        }
+      }
+      if len(r) / 2 > 2 {
+        r = rail_points(r, 0.02)
+        c.rails[k] = rail_of(r)
+      }
+      if j.strict {
+        if k == 0 and not rebuilt[ci] { c.kerb = pts_copy(r) }
+        c.rails[k] = rail_of(densify_line(r, 2.0))
+      }
+    }
+  }
+  sw.juncs[n.idx] = j
+  return j
+}
+
+# the junction surface of a node (heights inside it), made once
+function sw_strip_cb(sw: Sw, e: NetEdge) -> EdgeStations { return sw_stations_i(sw, e.idx) }
+function sw_ground_cb(g: Ground, x: double, z: double) -> double { return ground_y(g, x, z) }
+export function sw_surface(sw: Sw, n: NetNode) -> NodeSurface {
+  let have = sw.surfs[n.idx]
+  if have != null { return have }
+  let f = node_surface(n, sw_junction(sw, n), sw.w.laid, fn sw_strip_cb, sw, sw.lift, fn sw_ground_cb, sw.w.ground)
+  sw.surfs[n.idx] = f
+  return f
+}
+export function sw_node_y(sw: Sw, n: NetNode, x: double, z: double) -> double { return ns_y(sw_surface(sw, n), x, z) }
+export function sw_node_lvl(sw: Sw, n: NetNode, x: double, z: double) -> double { return ns_lvl(sw_surface(sw, n), x, z) }
+
+# a strict turning circle's four rails (Sidewalk.bulb): null for any other node
+export function sw_bulb(sw: Sw, n: NetNode) -> [][]double {
+  if sw.bulbDone[n.idx] { return sw.bulbs[n.idx] }
+  let j = sw_junction(sw, n)
+  var out: [][]double = null
+  if j.kind == "bulb" and j.strict {
+    let e0 = j.ends[0]
+    let es = sw_stations_i(sw, e0.edge.idx)
+    if es != null and len(es.st) >= 2 {
+      let i = isel(e0.out, 0, len(es.st) - 1)
+      var rO = es.left[i]
+      var lO = es.right[i]
+      if e0.out {
+        rO = es.right[i]
+        lO = es.left[i]
+      }
+      let sR = dsel(e0.out, 1.0, -1.0)
+      let ends = new [][]double
+      let g = doubles(4)
+      for k in 0 .. 4 {
+        let p = es_at(es, i, sR * lv_of(rO, k))
+        let q = es_at(es, i, -sR * lv_of(lO, k))
+        let pq = doubles(4)
+        pq[0] = p[0]
+        pq[1] = p[1]
+        pq[2] = q[0]
+        pq[3] = q[1]
+        push(ends, pq)
+        g[k] = (lv_of(rO, k) - rO.gutter + lv_of(lO, k) - lO.gutter) / 2.0
+      }
+      out = bulb_rails(n.x, n.z, e0.ux, e0.uz, j.radius, ends, g)
+    }
+  }
+  sw.bulbs[n.idx] = out
+  sw.bulbDone[n.idx] = true
+  return out
+}

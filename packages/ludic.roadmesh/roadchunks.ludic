@@ -1,0 +1,778 @@
+# roadchunks.ludic - game-editor packages/core/src/world/roadChunks.ts: a baked mesh cut into square chunks (every triangle that
+# crosses a chunk line clipped at it, each cut computed from the same two end points in the same order on both sides, positions to
+# the millimetre), the LOD1 cells and LOD2 far cells, a chunk's collision soup, and the lane centre lines (sampled every 2 m at the
+# baked surface's height, cut at the same lines) and their lanes.bin. The same numbers in the same order.
+
+export property MeshChunk {
+  cx: int = 0
+  cz: int = 0
+  layers: []Layer = null
+  tris: int = 0
+}
+
+# Math.round(v * 1000) / 1000 + 0
+export function mm(v: double) -> double { return jround(v * 1000.0) / 1000.0 + 0.0 }
+
+# a clipped polygon's vertex: position, normal, uv
+property CV {
+  px: double = 0.0
+  py: double = 0.0
+  pz: double = 0.0
+  nx: double = 0.0
+  ny: double = 0.0
+  nz: double = 0.0
+  u: double = 0.0
+  v: double = 0.0
+}
+function cv_axis(a: CV, axis: int) -> double {
+  if axis == 0 { return a.px }
+  return a.pz
+}
+function cut(a: CV, b: CV, axis: int, at: double) -> CV {
+  var s = b
+  var e = a
+  if a.px < b.px or (a.px == b.px and (a.pz < b.pz or (a.pz == b.pz and a.py <= b.py))) {
+    s = a
+    e = b
+  }
+  let t = (at - cv_axis(s, axis)) / (cv_axis(e, axis) - cv_axis(s, axis))
+  let o = new CV
+  o.px = s.px + (e.px - s.px) * t
+  o.py = s.py + (e.py - s.py) * t
+  o.pz = s.pz + (e.pz - s.pz) * t
+  if axis == 0 { o.px = at } else { o.pz = at }
+  o.nx = s.nx + (e.nx - s.nx) * t
+  o.ny = s.ny + (e.ny - s.ny) * t
+  o.nz = s.nz + (e.nz - s.nz) * t
+  o.u = s.u + (e.u - s.u) * t
+  o.v = s.v + (e.v - s.v) * t
+  return o
+}
+function clip(poly: []CV, axis: int, at: double, keepBelow: bool) -> []CV {
+  let out = new []CV
+  let n = len(poly)
+  for i in 0 .. n {
+    let a = poly[i]
+    let b = poly[(i + 1) % n]
+    let va = cv_axis(a, axis)
+    let vb = cv_axis(b, axis)
+    var ia = va >= at
+    var ib = vb >= at
+    if keepBelow {
+      ia = va <= at
+      ib = vb <= at
+    }
+    if ia { push(out, a) }
+    if ia != ib and va != at and vb != at { push(out, cut(a, b, axis, at)) }
+  }
+  return out
+}
+
+property ChunkSet {
+  size: double = 256.0
+  keys: Dict = null
+  list: []MeshChunk = null
+}
+function chunk_of(cs: ChunkSet, cx: int, cz: int) -> MeshChunk {
+  let k = `{cx},{cz}`
+  let i = Dict.get_or(cs.keys, k, -1)
+  if i >= 0 { return cs.list[i] }
+  let c = new MeshChunk
+  c.cx = cx
+  c.cz = cz
+  c.layers = new []Layer
+  Dict.set(cs.keys, k, len(cs.list))
+  push(cs.list, c)
+  return c
+}
+function chunk_layer(c: MeshChunk, src: Layer) -> Layer {
+  for i in 0 .. len(c.layers) { if c.layers[i].material == src.material { return c.layers[i] } }
+  let l = new Layer
+  l.material = src.material
+  l.slot = src.slot
+  l.positions = new []double
+  l.normals = new []double
+  l.uvs = new []double
+  l.indices = new []int
+  l.levels = new []int
+  push(c.layers, l)
+  return l
+}
+function nrm_push(l: Layer, nx: double, ny: double, nz: double) -> void {
+  var nl = hypot3(nx, ny, nz)
+  if nl == 0.0 or nl != nl { nl = 1.0 }
+  push(l.normals, nx / nl)
+  push(l.normals, ny / nl)
+  push(l.normals, nz / nl)
+}
+function emit(c: MeshChunk, src: Layer, poly: []CV, level: int) -> void {
+  let l = chunk_layer(c, src)
+  let n = len(poly)
+  for i in 1 .. n - 1 {
+    let a = poly[0]
+    let b = poly[i]
+    let d = poly[i + 1]
+    let ax = mm(a.px)
+    let ay = mm(a.py)
+    let az = mm(a.pz)
+    let bx = mm(b.px)
+    let by = mm(b.py)
+    let bz = mm(b.pz)
+    let dx = mm(d.px)
+    let dy = mm(d.py)
+    let dz = mm(d.pz)
+    let ux = bx - ax
+    let uy = by - ay
+    let uz = bz - az
+    let vx = dx - ax
+    let vy = dy - ay
+    let vz = dz - az
+    let cx = uy * vz - uz * vy
+    let cy = uz * vx - ux * vz
+    let cz = ux * vy - uy * vx
+    if hypot3(cx, cy, cz) < 0.000000001 { continue }
+    let base = len(l.positions) / 3
+    push(l.positions, ax)
+    push(l.positions, ay)
+    push(l.positions, az)
+    push(l.positions, bx)
+    push(l.positions, by)
+    push(l.positions, bz)
+    push(l.positions, dx)
+    push(l.positions, dy)
+    push(l.positions, dz)
+    nrm_push(l, a.nx, a.ny, a.nz)
+    nrm_push(l, b.nx, b.ny, b.nz)
+    nrm_push(l, d.nx, d.ny, d.nz)
+    push(l.uvs, a.u)
+    push(l.uvs, a.v)
+    push(l.uvs, b.u)
+    push(l.uvs, b.v)
+    push(l.uvs, d.u)
+    push(l.uvs, d.v)
+    push(l.indices, base)
+    push(l.indices, base + 1)
+    push(l.indices, base + 2)
+    push(l.levels, level)
+    c.tris += 1
+  }
+}
+function snap(v: double, size: double) -> double {
+  let k = jround(v / size) * size
+  if dabs(v - k) < 0.0005 { return k }
+  return v
+}
+function hi_of(v: double, c0: int, c1: int, size: double) -> int {
+  if c1 > c0 and v == double(c1) * size { return c1 - 1 }
+  return c1
+}
+function min3d(a: double, b: double, c: double) -> double { return jmin(jmin(a, b), c) }
+function max3d(a: double, b: double, c: double) -> double { return jmax(jmax(a, b), c) }
+function cv_of(src: Layer, i: int, size: double) -> CV {
+  let v = new CV
+  v.px = snap(src.positions[i * 3], size)
+  v.py = src.positions[i * 3 + 1]
+  v.pz = snap(src.positions[i * 3 + 2], size)
+  v.nx = src.normals[i * 3]
+  v.ny = src.normals[i * 3 + 1]
+  v.nz = src.normals[i * 3 + 2]
+  v.u = src.uvs[i * 2]
+  v.v = src.uvs[i * 2 + 1]
+  return v
+}
+function fdiv(x: double, size: double) -> int { return int(Math.floor(x / size)) }
+
+# chunkMesh: the layers cut into chunks of `size` metres, sorted by cz then cx (only chunks with triangles)
+export function chunk_mesh(layers: []Layer, size: double) -> []MeshChunk {
+  let cs = new ChunkSet
+  cs.size = size
+  cs.keys = Dict.new()
+  cs.list = new []MeshChunk
+  for li in 0 .. len(layers) {
+    let src = layers[li]
+    let P = src.positions
+    let N = src.normals
+    let U = src.uvs
+    let I = src.indices
+    var t = 0
+    while t + 2 < len(I) {
+      let i0 = I[t] * 3
+      let i1 = I[t + 1] * 3
+      let i2 = I[t + 2] * 3
+      var level = 0
+      if src.levels != null and t / 3 < len(src.levels) { level = src.levels[t / 3] }
+      let x0 = snap(P[i0], size)
+      let x1 = snap(P[i1], size)
+      let x2 = snap(P[i2], size)
+      let z0 = snap(P[i0 + 2], size)
+      let z1 = snap(P[i1 + 2], size)
+      let z2 = snap(P[i2 + 2], size)
+      let mx0 = min3d(x0, x1, x2)
+      let mx1 = max3d(x0, x1, x2)
+      let mz0 = min3d(z0, z1, z2)
+      let mz1 = max3d(z0, z1, z2)
+      let cx0 = fdiv(mx0, size)
+      let cz0 = fdiv(mz0, size)
+      if cx0 == hi_of(mx1, cx0, fdiv(mx1, size), size) and cz0 == hi_of(mz1, cz0, fdiv(mz1, size), size) {
+        let ax = mm(x0)
+        let ay = mm(P[i0 + 1])
+        let az = mm(z0)
+        let bx = mm(x1)
+        let by = mm(P[i1 + 1])
+        let bz = mm(z1)
+        let qx = mm(x2)
+        let qy = mm(P[i2 + 1])
+        let qz = mm(z2)
+        let ux = bx - ax
+        let uy = by - ay
+        let uz = bz - az
+        let vx = qx - ax
+        let vy = qy - ay
+        let vz = qz - az
+        let kx = uy * vz - uz * vy
+        let ky = uz * vx - ux * vz
+        let kz = ux * vy - uy * vx
+        if hypot3(kx, ky, kz) < 0.000000001 {
+          t += 3
+          continue
+        }
+        let c = chunk_of(cs, cx0, cz0)
+        let l = chunk_layer(c, src)
+        let base = len(l.positions) / 3
+        push(l.positions, ax)
+        push(l.positions, ay)
+        push(l.positions, az)
+        push(l.positions, bx)
+        push(l.positions, by)
+        push(l.positions, bz)
+        push(l.positions, qx)
+        push(l.positions, qy)
+        push(l.positions, qz)
+        for q in 0 .. 3 {
+          let i = I[t + q]
+          nrm_push(l, N[i * 3], N[i * 3 + 1], N[i * 3 + 2])
+          push(l.uvs, U[i * 2])
+          push(l.uvs, U[i * 2 + 1])
+        }
+        push(l.indices, base)
+        push(l.indices, base + 1)
+        push(l.indices, base + 2)
+        push(l.levels, level)
+        c.tris += 1
+        t += 3
+        continue
+      }
+      let tri = new []CV
+      push(tri, cv_of(src, I[t], size))
+      push(tri, cv_of(src, I[t + 1], size))
+      push(tri, cv_of(src, I[t + 2], size))
+      let ax0 = min3d(tri[0].px, tri[1].px, tri[2].px)
+      let ax1 = max3d(tri[0].px, tri[1].px, tri[2].px)
+      let az0 = min3d(tri[0].pz, tri[1].pz, tri[2].pz)
+      let az1 = max3d(tri[0].pz, tri[1].pz, tri[2].pz)
+      let X0 = fdiv(ax0, size)
+      let X1 = hi_of(ax1, X0, fdiv(ax1, size), size)
+      let Z0 = fdiv(az0, size)
+      let Z1 = hi_of(az1, Z0, fdiv(az1, size), size)
+      if X0 == X1 and Z0 == Z1 {
+        emit(chunk_of(cs, X0, Z0), src, tri, level)
+        t += 3
+        continue
+      }
+      for cx in X0 .. X1 + 1 {
+        var strip = clip(tri, 0, double(cx) * size, false)
+        strip = clip(strip, 0, double(cx + 1) * size, true)
+        if len(strip) < 3 { continue }
+        for cz in Z0 .. Z1 + 1 {
+          var piece = clip(strip, 2, double(cz) * size, false)
+          piece = clip(piece, 2, double(cz + 1) * size, true)
+          if len(piece) >= 3 { emit(chunk_of(cs, cx, cz), src, piece, level) }
+        }
+      }
+      t += 3
+    }
+  }
+  let out = new []MeshChunk
+  for i in 0 .. len(cs.list) { if cs.list[i].tris > 0 { push(out, cs.list[i]) } }
+  sort_chunks(out)
+  return out
+}
+# by cz, then cx (stable)
+export function sort_chunks(a: []MeshChunk) -> void {
+  for i in 1 .. len(a) {
+    let v = a[i]
+    var k = i - 1
+    while k >= 0 and (a[k].cz > v.cz or (a[k].cz == v.cz and a[k].cx > v.cx)) {
+      a[k + 1] = a[k]
+      k -= 1
+    }
+    a[k + 1] = v
+  }
+}
+
+export property LodCell {
+  cx: int = 0
+  cz: int = 0
+  pieces: []MeshChunk = null
+  tris: int = 0
+}
+
+function floor_div_i(a: int, b: int) -> int {
+  let q = a / b
+  if (a % b != 0) and ((a < 0) != (b < 0)) { return q - 1 }
+  return q
+}
+
+# lodCells: the coarse mesh cut at the chunk lines, a piece for exactly the chunks of `fine`, grouped into LOD cells
+export function lod_cells(coarse: []Layer, fine: []MeshChunk, chunk: double, lod: double) -> []LodCell { return lod_cells_of(chunk_mesh(coarse, chunk), fine, chunk, lod) }
+# the same over the coarse mesh's chunks already cut
+export function lod_cells_of(pieces: []MeshChunk, fine: []MeshChunk, chunk: double, lod: double) -> []LodCell {
+  let per = int(jround(lod / chunk))
+  let pk = Dict.new()
+  for i in 0 .. len(pieces) { Dict.set(pk, `{pieces[i].cx},{pieces[i].cz}`, i) }
+  let ck = Dict.new()
+  let cells = new []LodCell
+  for fi in 0 .. len(fine) {
+    let f = fine[fi]
+    let at = Dict.get_or(pk, `{f.cx},{f.cz}`, -1)
+    var p: MeshChunk = null
+    if at >= 0 { p = pieces[at] } else {
+      p = new MeshChunk
+      p.cx = f.cx
+      p.cz = f.cz
+      p.layers = new []Layer
+      for k in 0 .. len(f.layers) {
+        if f.layers[k].slot == "marking" { continue }
+        push(p.layers, f.layers[k])
+        p.tris += len(f.layers[k].indices) / 3
+      }
+      if p.tris == 0 { continue }
+    }
+    let kx = floor_div_i(f.cx, per)
+    let kz = floor_div_i(f.cz, per)
+    let key = `{kx},{kz}`
+    var ci = Dict.get_or(ck, key, -1)
+    if ci < 0 {
+      ci = len(cells)
+      Dict.set(ck, key, ci)
+      let c = new LodCell
+      c.cx = kx
+      c.cz = kz
+      c.pieces = new []MeshChunk
+      push(cells, c)
+    }
+    push(cells[ci].pieces, p)
+    cells[ci].tris += p.tris
+  }
+  for i in 0 .. len(cells) { sort_chunks(cells[i].pieces) }
+  for i in 1 .. len(cells) {
+    let v = cells[i]
+    var k = i - 1
+    while k >= 0 and (cells[k].cz > v.cz or (cells[k].cz == v.cz and cells[k].cx > v.cx)) {
+      cells[k + 1] = cells[k]
+      k -= 1
+    }
+    cells[k + 1] = v
+  }
+  return cells
+}
+
+# farCells: the far mesh's kept layers cut at the cells' lines, one piece a cell of `cells`
+export function far_cells(far: []Layer, cells: []LodCell, lod: double) -> []MeshChunk { return far_cells_of(far_chunks(far, lod), cells) }
+# the far mesh's kept layers cut at the cells' lines
+export function far_chunks(far: []Layer, lod: double) -> []MeshChunk {
+  let layers = new []Layer
+  for i in 0 .. len(far) {
+    let s = far[i].slot
+    if s != "curb" and s != "skirt" and s != "marking" { push(layers, far[i]) }
+  }
+  return chunk_mesh(layers, lod)
+}
+# those of the cells of `cells`
+export function far_cells_of(all: []MeshChunk, cells: []LodCell) -> []MeshChunk {
+  let want = Dict.new()
+  for i in 0 .. len(cells) { Dict.set(want, `{cells[i].cx},{cells[i].cz}`, 1) }
+  let out = new []MeshChunk
+  for i in 0 .. len(all) { if Dict.has(want, `{all[i].cx},{all[i].cz}`) { push(out, all[i]) } }
+  return out
+}
+
+# ---- a hash of fixed-width int keys (exact welds) ------------------------------------------------------------------------------
+# keys are w 32-bit ints (a double is two); vals hold the value + 1 (0: an empty slot)
+export property KeyMap {
+  w: int = 3
+  cap: int = 0
+  keys: []int = null
+  vals: []int = null
+  n: int = 0
+}
+export function km_new(w: int, hint: int) -> KeyMap {
+  let m = new KeyMap
+  m.w = w
+  var cap = 64
+  while cap < hint * 2 { cap = cap * 2 }
+  m.cap = cap
+  m.keys = words(cap * w)
+  m.vals = words(cap)
+  return m
+}
+function km_hash(k: []int, w: int) -> int {
+  var h = 2166136261
+  for i in 0 .. w {
+    h = ((h ^ k[i]) * 16777619) & 4294967295
+    h = h ^ (h >> 15)
+  }
+  return h
+}
+function km_grow(m: KeyMap) -> void {
+  let oldK = m.keys
+  let oldV = m.vals
+  let oldCap = m.cap
+  m.cap = oldCap * 2
+  m.keys = words(m.cap * m.w)
+  m.vals = words(m.cap)
+  let k = words(m.w)
+  for s in 0 .. oldCap {
+    if oldV[s] == 0 { continue }
+    for i in 0 .. m.w { k[i] = oldK[s * m.w + i] }
+    let t = km_slot(m, k)
+    for i in 0 .. m.w { m.keys[t * m.w + i] = k[i] }
+    m.vals[t] = oldV[s]
+  }
+}
+function km_slot(m: KeyMap, k: []int) -> int {
+  let mask = m.cap - 1
+  let w = m.w
+  var s = km_hash(k, w) & mask
+  while m.vals[s] != 0 {
+    var same = true
+    for i in 0 .. w {
+      if m.keys[s * w + i] != k[i] {
+        same = false
+        break
+      }
+    }
+    if same { return s }
+    s = (s + 1) & mask
+  }
+  return s
+}
+# the value under k, or else v put there (and -1 returned)
+export function km_get_or_put(m: KeyMap, k: []int, v: int) -> int {
+  if (m.n + 1) * 10 > m.cap * 7 { km_grow(m) }
+  let s = km_slot(m, k)
+  if m.vals[s] != 0 { return m.vals[s] - 1 }
+  for i in 0 .. m.w { m.keys[s * m.w + i] = k[i] }
+  m.vals[s] = v + 1
+  m.n += 1
+  return -1
+}
+
+# collisionOf: a chunk's layers but the paint, one soup with exactly equal positions welded (layers by name)
+export property Soup {
+  positions: []double = null
+  indices: []int = null
+}
+export function layer_order(layers: []Layer) -> []int {
+  let keys = new []string
+  for i in 0 .. len(layers) { push(keys, layers[i].material) }
+  return order_by_key(keys)
+}
+export function collision_of(c: MeshChunk) -> Soup {
+  let out = new Soup
+  out.positions = new []double
+  let idx = new []int
+  var total = 0
+  for i in 0 .. len(c.layers) { total += len(c.layers[i].indices) }
+  let m = km_new(6, total)
+  let k = words(6)
+  let ord = layer_order(c.layers)
+  for oi in 0 .. len(ord) {
+    let l = c.layers[ord[oi]]
+    if l.slot == "marking" { continue }
+    for q in 0 .. len(l.indices) {
+      let i = l.indices[q]
+      let x = l.positions[i * 3]
+      let y = l.positions[i * 3 + 1]
+      let z = l.positions[i * 3 + 2]
+      let bx = double_bits(x + 0.0)
+      let by = double_bits(y + 0.0)
+      let bz = double_bits(z + 0.0)
+      k[0] = int(bx & long(4294967295))
+      k[1] = int((bx >> 32) & long(4294967295))
+      k[2] = int(by & long(4294967295))
+      k[3] = int((by >> 32) & long(4294967295))
+      k[4] = int(bz & long(4294967295))
+      k[5] = int((bz >> 32) & long(4294967295))
+      let v = len(out.positions) / 3
+      let had = km_get_or_put(m, k, v)
+      if had >= 0 { push(idx, had) } else {
+        push(out.positions, x)
+        push(out.positions, y)
+        push(out.positions, z)
+        push(idx, v)
+      }
+    }
+  }
+  out.indices = new []int
+  var t = 0
+  while t + 2 < len(idx) {
+    if idx[t] != idx[t + 1] and idx[t + 1] != idx[t + 2] and idx[t] != idx[t + 2] {
+      push(out.indices, idx[t])
+      push(out.indices, idx[t + 1])
+      push(out.indices, idx[t + 2])
+    }
+    t += 3
+  }
+  return out
+}
+
+# ---- lanes ---------------------------------------------------------------------------------------------------------------------
+export property LaneLine {
+  seg: string = ""
+  lane: int = 0
+  dir: int = 1
+  pts: []double = null        # x, y, z
+}
+
+function lane_rings(sw: Sw, rings: [][]double, done: []bool, ni: int) -> []double {
+  if done[ni] { return rings[ni] }
+  let n = sw.net.nodes[ni]
+  var r = new []double
+  if len(n.edges) >= 2 { r = junction_ring(sw_junction(sw, n)) }
+  rings[ni] = r
+  done[ni] = true
+  return r
+}
+
+function sample_lane(sw: Sw, l: EdgeGrade, e: NetEdge, d: double, n: int, rings: [][]double, done: []bool) -> []double {
+  let at = new []double
+  let nd = double(n)
+  for k in 0 .. n + 1 { push(at, (l.len * double(k)) / nd) }
+  for q in 0 .. len(l.s) {
+    let s = l.s[q]
+    if s > 0.01 and s < l.len - 0.01 { push(at, s) }
+  }
+  sort_doubles(at)
+  let pts = new []double
+  let nl = len(l.line) / 2
+  var i = 0
+  let one = doubles(1)
+  for k in 0 .. len(at) {
+    let s = at[k]
+    if k > 0 and s - at[k - 1] < 0.01 { continue }
+    while i + 2 < nl and l.s[i + 1] < s { i += 1 }
+    let t = jmax(0.0, jmin(1.0, (s - l.s[i]) / jmax(l.s[i + 1] - l.s[i], 0.000000001)))
+    let ax = l.line[i * 2]
+    let az = l.line[i * 2 + 1]
+    let bx = l.line[i * 2 + 2]
+    let bz = l.line[i * 2 + 3]
+    let cx = ax + (bx - ax) * t
+    let cz = az + (bz - az) * t
+    one[0] = s
+    let fr = window_frames(l.line, l.s, one)
+    let px = cx + fr[0] * d
+    let pz = cz + fr[1] * d
+    var y = l.y[i] + (l.y[i + 1] - l.y[i]) * t + sw.lift
+    for pass in 0 .. 2 {
+      let ni = isel(pass == 0, e.fromIdx, e.toIdx)
+      if ni < 0 { continue }
+      let ring = lane_rings(sw, rings, done, ni)
+      if len(ring) / 2 >= 3 and inside_ring(ring, px, pz) {
+        y = sw_node_y(sw, sw.net.nodes[ni], px, pz)
+        break
+      }
+    }
+    push(pts, mm(px))
+    push(pts, mm(y))
+    push(pts, mm(pz))
+  }
+  return pts
+}
+# JavaScript's numeric sort (a - b), stable: insertion for the short lists, merge for the long
+export function sort_doubles(a: []double) -> void {
+  let n = len(a)
+  if n < 2 { return }
+  var src = a
+  var tmp = doubles(n)
+  var width = 1
+  var flip = false
+  while width < n {
+    var lo = 0
+    while lo < n {
+      let mid = min(lo + width, n)
+      let hi = min(lo + 2 * width, n)
+      var i = lo
+      var j = mid
+      var k = lo
+      while i < mid and j < hi {
+        if src[j] - src[i] < 0.0 {
+          tmp[k] = src[j]
+          j += 1
+        } else {
+          tmp[k] = src[i]
+          i += 1
+        }
+        k += 1
+      }
+      while i < mid {
+        tmp[k] = src[i]
+        i += 1
+        k += 1
+      }
+      while j < hi {
+        tmp[k] = src[j]
+        j += 1
+        k += 1
+      }
+      lo = hi
+    }
+    let sw = src
+    src = tmp
+    tmp = sw
+    flip = not flip
+    width = width * 2
+  }
+  if flip { for i in 0 .. n { a[i] = src[i] } }
+}
+
+# laneLines: the centre line of every lane of the drawn edges (all when drawn is null), key order
+export function lane_lines(sw: Sw, drawn: Dict, step: double) -> []LaneLine {
+  let net = sw.net
+  let out = new []LaneLine
+  let rings = new [][]double
+  let done = new []bool
+  for i in 0 .. len(net.nodes) {
+    push(rings, null)
+    push(done, false)
+  }
+  let order = edges_by_key(net)
+  let fwdRight = net.forward != "left"
+  for q in 0 .. len(order) {
+    let e = net.edges[order[q]]
+    if drawn != null and not Dict.has(drawn, e.key) { continue }
+    let l = sw.w.laid[e.idx]
+    if l == null or e.section.steps > 0.0 { continue }
+    let laneN = new []int
+    let laneDir = new []int
+    let laneD = new []double
+    let med = e.section.median / 2.0
+    let sF = dsel(fwdRight, 1.0, -1.0)
+    var k = 1
+    while double(k) <= e.lanesFwd {
+      push(laneN, k)
+      push(laneDir, 1)
+      push(laneD, sF * (med + (double(k) - 0.5) * e.laneWidth))
+      k += 1
+    }
+    k = 1
+    while double(k) <= e.lanesBack {
+      push(laneN, -k)
+      push(laneDir, -1)
+      push(laneD, -sF * (med + (double(k) - 0.5) * e.laneWidth))
+      k += 1
+    }
+    if len(laneN) == 0 { continue }
+    for li in 0 .. len(laneN) {
+      let d = laneD[li]
+      var pts = sample_lane(sw, l, e, d, int(jmax(1.0, Math.ceil(l.len / step))), rings, done)
+      for tries in 0 .. 4 {
+        var gap: double = 0.0
+        let np = len(pts) / 3
+        for m in 1 .. np { gap = jmax(gap, hypot2(pts[m * 3] - pts[m * 3 - 3], pts[m * 3 + 2] - pts[m * 3 - 1])) }
+        if gap <= step + 0.000001 { break }
+        pts = sample_lane(sw, l, e, d, int(Math.ceil((double(np - 1) * gap) / step)) + 1, rings, done)
+      }
+      if laneDir[li] < 0 { pts = rev3(pts) }
+      let ln = new LaneLine
+      ln.seg = e.key
+      ln.lane = laneN[li]
+      ln.dir = laneDir[li]
+      ln.pts = pts
+      push(out, ln)
+    }
+  }
+  return out
+}
+function rev3(p: []double) -> []double {
+  let n = len(p) / 3
+  let out = doubles(len(p))
+  for i in 0 .. n {
+    out[i * 3] = p[(n - 1 - i) * 3]
+    out[i * 3 + 1] = p[(n - 1 - i) * 3 + 1]
+    out[i * 3 + 2] = p[(n - 1 - i) * 3 + 2]
+  }
+  return out
+}
+
+export property LaneChunk {
+  name: string = ""
+  cx: int = 0
+  cz: int = 0
+  lines: []LaneLine = null
+}
+# chunkLanes: lane lines cut at the chunk lines, each piece keeping the crossing point (the map's insertion order)
+export function chunk_lanes(lines: []LaneLine, size: double) -> []LaneChunk {
+  let out = new []LaneChunk
+  let keys = Dict.new()
+  for q in 0 .. len(lines) {
+    let line = lines[q]
+    let P = line.pts
+    let n = len(P) / 3
+    var cur = new []double
+    var cx = fdiv(P[0], size)
+    var cz = fdiv(P[2], size)
+    for i in 0 .. n {
+      let px = fdiv(P[i * 3], size)
+      let pz = fdiv(P[i * 3 + 2], size)
+      if px != cx or pz != cz {
+        let axis = isel(px != cx, 0, 2)
+        var at: double = 0.0
+        if axis == 0 { at = double(max(px, cx)) * size } else { at = double(max(pz, cz)) * size }
+        let qx = P[i * 3 - 3]
+        let qy = P[i * 3 - 2]
+        let qz = P[i * 3 - 1]
+        let t = (at - P[i * 3 - 3 + axis]) / (P[i * 3 + axis] - P[i * 3 - 3 + axis])
+        var x0 = mm(qx + (P[i * 3] - qx) * t)
+        let x1 = mm(qy + (P[i * 3 + 1] - qy) * t)
+        var x2 = mm(qz + (P[i * 3 + 2] - qz) * t)
+        if axis == 0 { x0 = at } else { x2 = at }
+        push(cur, x0)
+        push(cur, x1)
+        push(cur, x2)
+        if len(cur) / 3 >= 2 { lane_add(out, keys, cx, cz, line, cur) }
+        cur = new []double
+        push(cur, x0)
+        push(cur, x1)
+        push(cur, x2)
+        cx = px
+        cz = pz
+      }
+      push(cur, P[i * 3])
+      push(cur, P[i * 3 + 1])
+      push(cur, P[i * 3 + 2])
+    }
+    if len(cur) / 3 >= 2 { lane_add(out, keys, cx, cz, line, cur) }
+  }
+  return out
+}
+function lane_add(out: []LaneChunk, keys: Dict, cx: int, cz: int, line: LaneLine, pts: []double) -> void {
+  let name = `{cx}_{cz}`
+  var i = Dict.get_or(keys, name, -1)
+  if i < 0 {
+    i = len(out)
+    Dict.set(keys, name, i)
+    let c = new LaneChunk
+    c.name = name
+    c.cx = cx
+    c.cz = cz
+    c.lines = new []LaneLine
+    push(out, c)
+  }
+  let l = new LaneLine
+  l.seg = line.seg
+  l.lane = line.lane
+  l.dir = line.dir
+  l.pts = pts
+  push(out[i].lines, l)
+}

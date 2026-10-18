@@ -1,0 +1,8 @@
+# trig.ludic - Math.sin, cos, tan and atan2 for the port, through the JsMath port. Unbound it is V8's own (jsmath.ludic: fdlibm with
+# Node's arm64 fused multiply-adds, the same bits as the studio's); a test may bind it to recorded answers instead.
+export port JsMath {
+  sin: fn(double) -> double = fn jsin
+  cos: fn(double) -> double = fn jcos
+  tan: fn(double) -> double = fn jtan
+  atan2: fn(double, double) -> double = fn jatan2
+}

@@ -1,0 +1,295 @@
+# sidewalk.ludic - game-editor packages/core/src/world/sidewalk.ts: the drawing helpers the road bake reads (deadCap, discVertices,
+# bulbRails, bulbArc, railPoints, densifyLine, thinRing). Sidewalk itself (sidewalkOf: stations, junction, lvlAt, rampAt, bulb,
+# nodeY, nodeLvl) is world.ludic, over the native network, junctions and strips. The same doubles as the TypeScript.
+
+let SW_PI: double = 3.141592653589793
+let SW_TAU: double = 6.283185307179586
+let EPS6: double = 0.000001
+let EPS9: double = 0.000000001
+let EPS12: double = 0.000000000001
+
+# ---- the drawing helpers ---------------------------------------------------------------------------------------------------
+
+# a rail with its ends kept and no point within `tol` of the one kept before it (nor of the end)
+export function rail_points(r: []double, tol: double) -> []double {
+  let n = len(r) / 2
+  let out = new []double
+  pts_push(out, r[0], r[1])
+  let ex = r[(n - 1) * 2]
+  let ez = r[(n - 1) * 2 + 1]
+  for i in 1 .. n - 1 {
+    let px = r[i * 2]
+    let pz = r[i * 2 + 1]
+    let m = len(out) / 2 - 1
+    if hypot2(px - out[m * 2], pz - out[m * 2 + 1]) < tol or hypot2(px - ex, pz - ez) < tol { continue }
+    pts_push(out, px, pz)
+  }
+  pts_push(out, ex, ez)
+  return out
+}
+
+# a polyline with points added so no stretch of it is longer than `max` (its own points kept)
+export function densify_line(line: []double, max: double) -> []double {
+  let out = new []double
+  let n = len(line) / 2
+  for i in 0 .. n - 1 {
+    let ax = line[i * 2]
+    let az = line[i * 2 + 1]
+    let cx = line[i * 2 + 2]
+    let cz = line[i * 2 + 3]
+    let m = int(jmax(1.0, Math.ceil(hypot2(cx - ax, cz - az) / max)))
+    let md = double(m)
+    for k in 0 .. m {
+      if k == 0 { pts_push(out, ax, az) } else { pts_push(out, ax + ((cx - ax) * double(k)) / md, az + ((cz - az) * double(k)) / md) }
+    }
+  }
+  if n > 0 { pts_push(out, line[(n - 1) * 2], line[(n - 1) * 2 + 1]) }
+  return out
+}
+
+# a dead end's rounded cap (deadCap): `e` the end's n and u, `ends` the strip's own end points (rx, rz, lx, lz) or null
+export function dead_cap(nx0: double, nz0: double, enx: double, enz: double, eux: double, euz: double, r: double, l: double, ends: []double) -> []double {
+  var rpx = nx0 + enx * r
+  var rpz = nz0 + enz * r
+  var lpx = nx0 - enx * l
+  var lpz = nz0 - enz * l
+  if ends != null {
+    rpx = ends[0]
+    rpz = ends[1]
+    lpx = ends[2]
+    lpz = ends[3]
+  }
+  let mx = (rpx + lpx) / 2.0
+  let mz = (rpz + lpz) / 2.0
+  var rad = (r + l) / 2.0
+  if ends != null { rad = hypot2(lpx - rpx, lpz - rpz) / 2.0 }
+  let a0 = jatan2(rpz - mz, rpx - mx)
+  let back = jatan2(-euz, -eux)
+  var d = back - a0
+  while d > SW_PI { d -= 2.0 * SW_PI }
+  while d < -SW_PI { d += 2.0 * SW_PI }
+  let sgn = dsel(d >= 0.0, 1.0, -1.0)
+  let pts = new []double
+  let nseg: double = 12.0
+  for k in 0 .. 13 {
+    if k == 0 {
+      pts_push(pts, rpx, rpz)
+    } else if k == 12 {
+      pts_push(pts, lpx, lpz)
+    } else {
+      let a = a0 + sgn * SW_PI * (double(k) / nseg)
+      pts_push(pts, mx + jcos(a) * rad, mz + jsin(a) * rad)
+    }
+  }
+  return pts
+}
+
+# a plaza's disc, or a turning circle's: the vertices the bake draws
+export function disc_vertices(nx0: double, nz0: double, radius: double) -> []double {
+  let nseg = int(jmax(24.0, Math.ceil(radius * 4.0)))
+  let nd = double(nseg)
+  let out = new []double
+  for k in 0 .. nseg {
+    let a = (double(k) / nd) * SW_PI * 2.0
+    pts_push(out, nx0 + jcos(a) * radius, nz0 + jsin(a) * radius)
+  }
+  return out
+}
+
+# JavaScript's a % b on doubles (C's fmod: exact)
+export function jfmod(a: double, b: double) -> double {
+  if a != a or b != b or b == 0.0 or a - a != 0.0 { return NAN }
+  if b - b != 0.0 { return a }
+  let bb = dabs(b)
+  var x = dabs(a)
+  while x >= bb {
+    # the largest bb * 2^k not over x: x less it is exact (Sterbenz)
+    var m = bb
+    while m * 2.0 <= x { m = m * 2.0 }
+    x = x - m
+  }
+  if neg_bit(a) { return -x }
+  return x
+}
+
+function smooth(x: double) -> double { return x * x * (3.0 - 2.0 * x) }
+function norm_from(a: double, mouth: double) -> double { return jfmod(jfmod(a - mouth, 2.0 * SW_PI) + 2.0 * SW_PI, 2.0 * SW_PI) }
+function signed_from(a: double, mouth: double) -> double {
+  let t = norm_from(a, mouth)
+  if t > SW_PI { return t - 2.0 * SW_PI }
+  return t
+}
+
+# the rails of a strict turning circle (bulbRails): `ends` per level (rx, rz, lx, lz), `gutter` per level
+export function bulb_rails(nx0: double, nz0: double, ux: double, uz: double, radius: double, ends: [][]double, gutter: []double) -> [][]double {
+  let mouth = jatan2(uz, ux)
+  let out = new [][]double
+  for k in 0 .. len(ends) {
+    let rx = ends[k][0]
+    let rz = ends[k][1]
+    let lx = ends[k][2]
+    let lz = ends[k][3]
+    let target = radius + jmax(0.0, gutter[k])
+    let ar = jatan2(rz - nz0, rx - nx0)
+    let al = jatan2(lz - nz0, lx - nx0)
+    let rr = hypot2(rx - nx0, rz - nz0)
+    let rl = hypot2(lx - nx0, lz - nz0)
+    var a0 = ar
+    var a1 = al
+    var t0 = norm_from(a0, mouth)
+    var t1 = norm_from(a1, mouth)
+    if t0 > SW_PI {
+      let u0 = 2.0 * SW_PI - t0
+      let u1 = 2.0 * SW_PI - t1
+      t0 = u0
+      t1 = u1
+      a0 = mouth - t0
+      a1 = mouth - t1
+    } else {
+      a0 = mouth + t0
+      a1 = mouth + t1
+    }
+    if not (t0 <= SW_PI and t1 >= SW_PI) {
+      let sr = signed_from(ar, mouth)
+      let sl = signed_from(al, mouth)
+      var dir: double = 1.0
+      if dabs(sr) > EPS6 { dir = jsign(sr) } else if dabs(sl) > EPS6 { dir = -jsign(sl) }
+      var T1 = dir * sl
+      if T1 <= EPS9 { T1 += 2.0 * SW_PI }
+      t0 = jmax(0.0, dir * sr)
+      t1 = T1
+      a0 = mouth + dir * t0
+      a1 = mouth + dir * t1
+    }
+    let steps: double = 32.0
+    let ease = (40.0 * SW_PI) / 180.0
+    let pts = new []double
+    pts_push(pts, rx, rz)
+    for s in 1 .. 32 {
+      let a = a0 + ((a1 - a0) * double(s)) / steps
+      let from0 = dabs(a - a0)
+      let from1 = dabs(a1 - a)
+      let w0 = jmin(1.0, from0 / ease)
+      let w1 = jmin(1.0, from1 / ease)
+      var rad = rl + (target - rl) * smooth(w1)
+      if from0 < from1 { rad = rr + (target - rr) * smooth(w0) }
+      pts_push(pts, nx0 + jcos(a) * rad, nz0 + jsin(a) * rad)
+    }
+    pts_push(pts, lx, lz)
+    push(out, pts)
+  }
+  return out
+}
+
+# a turning circle's arc at radius r, round but for the road's mouth (bulbArc)
+export function bulb_arc(nx0: double, nz0: double, mux: double, muz: double, radius: double, gutter: double, r: double) -> []double {
+  let mouth = jatan2(muz, mux)
+  let half = jasin(jmin(0.95, jmax(0.0, gutter) / radius))
+  let a0 = mouth + half
+  let a1 = mouth + 2.0 * SW_PI - half
+  let out = new []double
+  for k in 0 .. 25 {
+    let a = a0 + ((a1 - a0) * double(k)) / 24.0
+    pts_push(out, nx0 + jcos(a) * r, nz0 + jsin(a) * r)
+  }
+  return out
+}
+
+# a closed ring thinned to its turns (thinRing): the kept indices' points and heights, [pts, ys]
+export function thin_ring(pts: []double, ys: []double, tol: double, tolY: double) -> [][]double {
+  let n = len(pts) / 2
+  let out = new [][]double
+  if n < 4 {
+    push(out, pts_copy(pts))
+    push(out, pts_copy(ys))
+    return out
+  }
+  let keep = new []bool
+  for i in 0 .. n { push(keep, false) }
+  var far = 0
+  var fd: double = -1.0
+  for i in 1 .. n {
+    let d = hypot2(pts[i * 2] - pts[0], pts[i * 2 + 1] - pts[1])
+    if d > fd {
+      fd = d
+      far = i
+    }
+  }
+  keep[0] = true
+  keep[far] = true
+  # a stack of [i, j) spans (sp: its height, in ints)
+  let stack = new []int
+  var sp = 0
+  sp = stack_put(stack, sp, 0, far)
+  sp = stack_put(stack, sp, far, n)
+  while sp > 0 {
+    let i = stack[sp - 2]
+    let j = stack[sp - 1]
+    sp -= 2
+    var best = -1
+    var bd: double = 1.0
+    for k in i + 1 .. j {
+      let d = thin_dev(pts, ys, n, k, i, j, tol, tolY)
+      if d > bd {
+        bd = d
+        best = k
+      }
+    }
+    if best >= 0 {
+      keep[best % n] = true
+      sp = stack_put(stack, sp, i, best)
+      sp = stack_put(stack, sp, best, j)
+    }
+  }
+  let op = new []double
+  let oy = new []double
+  for i in 0 .. n {
+    if keep[i] {
+      pts_push(op, pts[i * 2], pts[i * 2 + 1])
+      push(oy, ys[i])
+    }
+  }
+  push(out, op)
+  push(out, oy)
+  return out
+}
+function stack_put(st: []int, sp: int, a: int, b: int) -> int {
+  if sp < len(st) { st[sp] = a } else { push(st, a) }
+  if sp + 1 < len(st) { st[sp + 1] = b } else { push(st, b) }
+  return sp + 2
+}
+function thin_dev(pts: []double, ys: []double, n: int, k0: int, i: int, j0: int, tol: double, tolY: double) -> double {
+  let j = j0 % n
+  let k = k0 % n
+  let ax = pts[i * 2]
+  let az = pts[i * 2 + 1]
+  let dx = pts[j * 2] - ax
+  let dz = pts[j * 2 + 1] - az
+  let l2 = dx * dx + dz * dz
+  var t: double = 0.0
+  if not (l2 < EPS12) { t = jmax(0.0, jmin(1.0, ((pts[k * 2] - ax) * dx + (pts[k * 2 + 1] - az) * dz) / l2)) }
+  let dxy = hypot2(pts[k * 2] - (ax + dx * t), pts[k * 2 + 1] - (az + dz * t))
+  let dy = dabs(ys[k] - (ys[i] + (ys[j] - ys[i]) * t))
+  return jmax(dxy / tol, dy / tolY)
+}
+
+# ---- numbers as JavaScript writes them (the junction's notes) --------------------------------------------------------------
+
+# String(x) for the numbers a note holds (an integer without ".0")
+export function js_num(x: double) -> string {
+  if x == Math.floor(x) and dabs(x) < 1000000000000000.0 { return `{long(x)}` }
+  return `{x}`
+}
+# x.toFixed(2) (rounded as the decimal nearest x*100; a tie the binary value decides is rare and not modelled)
+export function to_fixed2(x: double) -> string {
+  let neg = x < 0.0
+  let v = jround(dabs(x) * 100.0)
+  let w = long(v)
+  let ip = w / long(100)
+  let fp = w - ip * long(100)
+  var f = `{fp}`
+  if fp < long(10) { f = `0{fp}` }
+  if neg and w != long(0) { return `-{ip}.{f}` }
+  return `{ip}.{f}`
+}
+

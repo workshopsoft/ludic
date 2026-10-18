@@ -1,0 +1,70 @@
+# roadmesh_test.ludic - the port's fixture tests: each file a module's recorded calls (game-editor
+# packages/core/test/fixtures/roadnative/fix/<scene>/<module>.fix), run through the native module and compared to the bit.
+#
+#   roadmesh_test <file.fix> ...      (the module is the file's name: geom.fix runs test_geom)
+#
+# Exits 1 when any record differs. A module's test is test/<module>_test.ludic with `export function test_<module>(recs: []Rec) -> int`
+# (the records that differ); add its import and its line in run_one below.
+program RoadmeshTest {
+  friend module roadmesh_test
+  import "index.ludic"
+  import "test/geom_test.ludic"
+  import "test/profiles_test.ludic"
+  import "test/polyMesh_test.ludic"
+  import "test/meshBuilder_test.ludic"
+  import "test/junction_test.ludic"
+  import "test/trig_tab.ludic"
+  import "test/sidewalk_test.ludic"
+  import "test/throughPath_test.ludic"
+  import "test/lanePaint_test.ludic"
+
+  function base_name(path: string) -> string {
+    var a = 0
+    for i in 0 .. len(path) { if path[i] == 47 { a = i + 1 } }
+    var b = len(path)
+    for i in a .. len(path) { if path[i] == 46 { b = i } }
+    return path[a..b]
+  }
+
+  function run_one(tt: mut TrigTab, path: string) -> int {
+    var dir = ""
+    for i in 0 .. len(path) { if path[i] == 47 { dir = path[0..i + 1] } }
+    tt_load(tt, `{dir}trig.bin`)
+    let recs = read_fix(path)
+    if recs == null {
+      print(`roadmesh_test: cannot read {path}`)
+      return 1
+    }
+    let m = base_name(path)
+    print(`{path}: {len(recs)} records`)
+    if m == "geom" { return test_geom(recs) }
+    if m == "profiles" { return test_profiles(recs) }
+    if m == "polyMesh" { return test_polyMesh(recs) }
+    if m == "meshBuilder" { return test_meshBuilder(recs) }
+    if m == "junction" { return test_junction(recs) }
+    if m == "corners" { return test_corners(recs) }
+    if m == "junctionSurface" { return test_junctionSurface(recs) }
+    if m == "sidewalk" { return test_sidewalk(recs) }
+    if m == "throughPath" { return test_throughPath(recs) }
+    if m == "lanePaint" { return test_lanePaint(recs) }
+    if m == "medianThrough" { return test_medianThrough(recs) }
+    print(`roadmesh_test: no test for the module {m}`)
+    return 0
+  }
+
+  entry (tt: mut TrigTab) {
+    if arg_count() < 2 {
+      print("usage: roadmesh_test <file.fix> ...")
+      exit(2)
+      return
+    }
+    var bad = 0
+    for i in 1 .. arg_count() { bad += run_one(tt, arg(i)) }
+    if bad > 0 {
+      print(`roadmesh_test: {bad} records differ`)
+      exit(1)
+      return
+    }
+    print("roadmesh_test: all the same")
+  }
+}

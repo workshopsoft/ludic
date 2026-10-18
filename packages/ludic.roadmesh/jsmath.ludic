@@ -1,0 +1,418 @@
+# jsmath.ludic - JavaScript's Math.sin, Math.cos, Math.atan2 and Math.asin as V8 computes them (its fdlibm port,
+# v8/src/base/ieee754.cc: the studio's Node is built without V8_USE_LIBM_TRIG_FUNCTIONS), so a port that draws arcs gives the
+# same doubles. The platform's libm differs from them in the last bit for about 5% of sines and cosines and 17% of atan2s.
+# Node's arm64 build compiles that C++ with clang's default -ffp-contract=on: each `a * b + c` inside one expression is a fused
+# multiply-add (one rounding). The functions below make the same fusions with `fma` (exact, in software: Dekker's product and
+# Boldo and Melquiond's round-to-odd sum), so they match Node to the bit (1.2 million random arguments, none differ).
+# Arguments over 2^19 * pi / 2 (no angle the bake makes) fall back to the platform's own sin and cos.
+
+let LO32: long = (long(1) << 32) - long(1)
+# a double from its IEEE words
+function dw(hi: int, lo: int) -> double { return double_from_bits((long(hi) << 32) | (long(lo) & LO32)) }
+function hiw(x: double) -> int { return int(double_bits(x) >> 32) }
+function low(x: double) -> long { return double_bits(x) & LO32 }
+function with_low0(x: double) -> double { return double_from_bits(double_bits(x) & (LO32 << 32)) }
+
+let SPLITTER: double = 134217729.0
+# a + b as the rounded sum and its exact error (Knuth's TwoSum): s[0], s[1]
+function two_sum(a: double, b: double, out: []double) -> void {
+  let s = a + b
+  let bb = s - a
+  out[0] = s
+  out[1] = (a - (s - bb)) + (b - bb)
+}
+# a * b rounded once (C's fma): exact when nothing overflows or falls into the subnormals, which the kernels' terms never do
+export function fma(a: double, b: double, c: double) -> double {
+  let p = a * b
+  if p == 0.0 or c == 0.0 or p - p != 0.0 or c - c != 0.0 { return p + c }
+  # the exact product p + e (Dekker, Veltkamp's split)
+  let ca = SPLITTER * a
+  let ah = ca - (ca - a)
+  let al = a - ah
+  let cb = SPLITTER * b
+  let bh = cb - (cb - b)
+  let bl = b - bh
+  let e = ((ah * bh - p) + ah * bl + al * bh) + al * bl
+  # c + p as th + tl (TwoSum), then tl + e as v + ve
+  let th = c + p
+  let tb = th - c
+  let tl = (c - (th - tb)) + (p - tb)
+  var v = tl + e
+  let vb = v - tl
+  let ve = (tl - (v - vb)) + (e - vb)
+  # v rounded to odd: an inexact sum whose last bit is even moves one step towards the exact value
+  if ve != 0.0 and (double_bits(v) & long(1)) == long(0) {
+    if (ve > 0.0) == (v > 0.0) { v = double_from_bits(double_bits(v) + long(1)) } else { v = double_from_bits(double_bits(v) - long(1)) }
+  }
+  return th + v
+}
+
+let K_S1: double = dw(0xBFC55555, 0x55555549)
+let K_S2: double = dw(0x3F811111, 0x1110F8A6)
+let K_S3: double = dw(0xBF2A01A0, 0x19C161D5)
+let K_S4: double = dw(0x3EC71DE3, 0x57B1FE7D)
+let K_S5: double = dw(0xBE5AE5E6, 0x8A2B9CEB)
+let K_S6: double = dw(0x3DE5D93A, 0x5ACFD57C)
+let K_C1: double = dw(0x3FA55555, 0x5555554C)
+let K_C2: double = dw(0xBF56C16C, 0x16C15177)
+let K_C3: double = dw(0x3EFA01A0, 0x19CB1590)
+let K_C4: double = dw(0xBE927E4F, 0x809C52AD)
+let K_C5: double = dw(0x3E21EE9E, 0xBDB4B1C4)
+let K_C6: double = dw(0xBDA8FAE9, 0xBE8838D4)
+
+function k_sin(x: double, y: double, iy: int) -> double {
+  let ix = hiw(x) & 0x7FFFFFFF
+  if ix < 0x3E400000 { if int(x) == 0 { return x } }
+  let z = x * x
+  let v = z * x
+  let r = fma(z, fma(z, fma(z, fma(z, K_S6, K_S5), K_S4), K_S3), K_S2)
+  if iy == 0 { return fma(v, fma(z, r, K_S1), x) }
+  let half: double = 0.5
+  return x - fma(-v, K_S1, fma(z, fma(half, y, -(v * r)), -y))
+}
+
+function k_cos(x: double, y: double) -> double {
+  let one: double = 1.0
+  let ix = hiw(x) & 0x7FFFFFFF
+  if ix < 0x3E400000 { if int(x) == 0 { return one } }
+  let z = x * x
+  let r = z * fma(z, fma(z, fma(z, fma(z, fma(z, K_C6, K_C5), K_C4), K_C3), K_C2), K_C1)
+  let half: double = 0.5
+  if ix < 0x3FD33333 { return one - fma(half, z, -fma(z, r, -(x * y))) }
+  var qx: double = 0.28125
+  if not (ix > 0x3FE90000) { qx = dw(ix - 0x00200000, 0) }
+  let iz = fma(half, z, -qx)
+  let a = one - qx
+  return a - (iz - fma(z, r, -(x * y)))
+}
+
+let NPIO2_HW: []int = [0x3FF921FB, 0x400921FB, 0x4012D97C, 0x401921FB, 0x401F6A7A, 0x4022D97C, 0x4025FDBB, 0x402921FB, 0x402C463A, 0x402F6A7A, 0x4031475C, 0x4032D97C, 0x40346B9C, 0x4035FDBB, 0x40378FDB, 0x403921FB, 0x403AB41B, 0x403C463A, 0x403DD85A, 0x403F6A7A, 0x40407E4C, 0x4041475C, 0x4042106C, 0x4042D97C, 0x4043A28C, 0x40446B9C, 0x404534AC, 0x4045FDBB, 0x4046C6CB, 0x40478FDB, 0x404858EB, 0x404921FB]
+let INVPIO2: double = dw(0x3FE45F30, 0x6DC9C883)
+let PIO2_1: double = dw(0x3FF921FB, 0x54400000)
+let PIO2_1T: double = dw(0x3DD0B461, 0x1A626331)
+let PIO2_2: double = dw(0x3DD0B461, 0x1A600000)
+let PIO2_2T: double = dw(0x3BA3198A, 0x2E037073)
+let PIO2_3: double = dw(0x3BA3198A, 0x2E000000)
+let PIO2_3T: double = dw(0x397B839A, 0x252049C1)
+
+# __ieee754_rem_pio2 for |x| <= 2^19 * pi / 2: y[0] + y[1] = x - n pi / 2, answers n (y must hold 2)
+function rem_pio2(x: double, y: []double) -> int {
+  let hx = hiw(x)
+  let ix = hx & 0x7FFFFFFF
+  if ix <= 0x3FE921FB {
+    y[0] = x
+    y[1] = 0.0
+    return 0
+  }
+  if ix < 0x4002D97C {
+    if hx > 0 {
+      var z = x - PIO2_1
+      if ix != 0x3FF921FB {
+        y[0] = z - PIO2_1T
+        y[1] = (z - y[0]) - PIO2_1T
+      } else {
+        z -= PIO2_2
+        y[0] = z - PIO2_2T
+        y[1] = (z - y[0]) - PIO2_2T
+      }
+      return 1
+    }
+    var z = x + PIO2_1
+    if ix != 0x3FF921FB {
+      y[0] = z + PIO2_1T
+      y[1] = (z - y[0]) + PIO2_1T
+    } else {
+      z += PIO2_2
+      y[0] = z + PIO2_2T
+      y[1] = (z - y[0]) + PIO2_2T
+    }
+    return -1
+  }
+  var t = dabs(x)
+  let half: double = 0.5
+  let n = int(fma(t, INVPIO2, half))
+  let fn = double(n)
+  var r = fma(-fn, PIO2_1, t)
+  var w = fn * PIO2_1T
+  if n < 32 and ix != NPIO2_HW[n - 1] {
+    y[0] = r - w
+  } else {
+    let j = ix >> 20
+    y[0] = r - w
+    var i = j - ((hiw(y[0]) >> 20) & 0x7FF)
+    if i > 16 {
+      t = r
+      w = fn * PIO2_2
+      r = t - w
+      w = fma(fn, PIO2_2T, -((t - r) - w))
+      y[0] = r - w
+      i = j - ((hiw(y[0]) >> 20) & 0x7FF)
+      if i > 49 {
+        t = r
+        w = fn * PIO2_3
+        r = t - w
+        w = fma(fn, PIO2_3T, -((t - r) - w))
+        y[0] = r - w
+      }
+    }
+  }
+  y[1] = (r - y[0]) - w
+  if hx < 0 {
+    y[0] = -y[0]
+    y[1] = -y[1]
+    return -n
+  }
+  return n
+}
+
+export function jcos(x: double) -> double {
+  let ix = hiw(x) & 0x7FFFFFFF
+  if ix <= 0x3FE921FB { return k_cos(x, 0.0) }
+  if ix >= 0x7FF00000 { return x - x }
+  if ix > 0x413921FB { return Math.cos(x) }
+  let y = doubles(2)
+  let n = rem_pio2(x, y) & 3
+  if n == 0 { return k_cos(y[0], y[1]) }
+  if n == 1 { return -k_sin(y[0], y[1], 1) }
+  if n == 2 { return -k_cos(y[0], y[1]) }
+  return k_sin(y[0], y[1], 1)
+}
+
+export function jsin(x: double) -> double {
+  let ix = hiw(x) & 0x7FFFFFFF
+  if ix <= 0x3FE921FB { return k_sin(x, 0.0, 0) }
+  if ix >= 0x7FF00000 { return x - x }
+  if ix > 0x413921FB { return Math.sin(x) }
+  let y = doubles(2)
+  let n = rem_pio2(x, y) & 3
+  if n == 0 { return k_sin(y[0], y[1], 1) }
+  if n == 1 { return k_cos(y[0], y[1]) }
+  if n == 2 { return -k_sin(y[0], y[1], 1) }
+  return -k_cos(y[0], y[1])
+}
+
+let ATANHI: []double = [dw(0x3FDDAC67, 0x0561BB4F), dw(0x3FE921FB, 0x54442D18), dw(0x3FEF730B, 0xD281F69B), dw(0x3FF921FB, 0x54442D18)]
+let ATANLO: []double = [dw(0x3C7A2B7F, 0x222F65E2), dw(0x3C81A626, 0x33145C07), dw(0x3C700788, 0x7AF0CBBD), dw(0x3C91A626, 0x33145C07)]
+let AT: []double = [dw(0x3FD55555, 0x5555550D), dw(0xBFC99999, 0x9998EBC4), dw(0x3FC24924, 0x920083FF), dw(0xBFBC71C6, 0xFE231671), dw(0x3FB745CD, 0xC54C206E), dw(0xBFB3B0F2, 0xAF749A6D), dw(0x3FB10D66, 0xA0D03D51), dw(0xBFADDE2D, 0x52DEFD9A), dw(0x3FA97B4B, 0x24760DEB), dw(0xBFA2B444, 0x2C6A6C2F), dw(0x3F90AD3A, 0xE322DA11)]
+
+export function jatan(x0: double) -> double {
+  var x = x0
+  let one: double = 1.0
+  let hx = hiw(x)
+  let ix = hx & 0x7FFFFFFF
+  if ix >= 0x44100000 {
+    if x != x { return x + x }
+    if hx > 0 { return ATANHI[3] + ATANLO[3] }
+    return -ATANHI[3] - ATANLO[3]
+  }
+  var id = -1
+  if ix < 0x3FDC0000 {
+    if ix < 0x3E400000 { return x }
+  } else {
+    x = dabs(x)
+    if ix < 0x3FF30000 {
+      if ix < 0x3FE60000 {
+        id = 0
+        x = fma(2.0, x, -one) / (2.0 + x)
+      } else {
+        id = 1
+        x = (x - one) / (x + one)
+      }
+    } else {
+      if ix < 0x40038000 {
+        id = 2
+        x = (x - 1.5) / fma(1.5, x, one)
+      } else {
+        id = 3
+        x = -1.0 / x
+      }
+    }
+  }
+  var z = x * x
+  let w = z * z
+  let s1 = z * fma(w, fma(w, fma(w, fma(w, fma(w, AT[10], AT[8]), AT[6]), AT[4]), AT[2]), AT[0])
+  let s2 = w * fma(w, fma(w, fma(w, fma(w, AT[9], AT[7]), AT[5]), AT[3]), AT[1])
+  if id < 0 { return fma(-x, s1 + s2, x) }
+  z = ATANHI[id] - (fma(x, s1 + s2, -ATANLO[id]) - x)
+  if hx < 0 { return -z }
+  return z
+}
+
+let PI_O_4: double = dw(0x3FE921FB, 0x54442D18)
+let PI_O_2: double = dw(0x3FF921FB, 0x54442D18)
+let J_PI: double = dw(0x400921FB, 0x54442D18)
+let PI_LO: double = dw(0x3CA1A626, 0x33145C07)
+let TINY: double = dw(0x01A56E1F, 0xC2F8F359)
+
+export function jatan2(y: double, x: double) -> double {
+  if x != x or y != y { return x + y }
+  let hx = hiw(x)
+  let ix = hx & 0x7FFFFFFF
+  let lx = low(x)
+  let hy = hiw(y)
+  let iy = hy & 0x7FFFFFFF
+  let ly = low(y)
+  if hx == 0x3FF00000 and lx == long(0) { return jatan(y) }
+  var m = ((hy >> 31) & 1) | ((hx >> 30) & 2)
+  if iy == 0 and ly == long(0) {
+    if m <= 1 { return y }
+    if m == 2 { return J_PI + TINY }
+    return -J_PI - TINY
+  }
+  if ix == 0 and lx == long(0) {
+    if hy < 0 { return -PI_O_2 - TINY }
+    return PI_O_2 + TINY
+  }
+  if ix == 0x7FF00000 {
+    if iy == 0x7FF00000 {
+      if m == 0 { return PI_O_4 + TINY }
+      if m == 1 { return -PI_O_4 - TINY }
+      if m == 2 { return fma(3.0, PI_O_4, TINY) }
+      return fma(-3.0, PI_O_4, -TINY)
+    }
+    if m == 0 { return 0.0 }
+    if m == 1 { return -0.0 }
+    if m == 2 { return J_PI + TINY }
+    return -J_PI - TINY
+  }
+  if iy == 0x7FF00000 {
+    if hy < 0 { return -PI_O_2 - TINY }
+    return PI_O_2 + TINY
+  }
+  # (an int's >> is a logical shift: the difference may be negative)
+  let k = int(long(iy - ix) / long(1048576))
+  let kf = isel(long(iy - ix) < long(k) * long(1048576), k - 1, k)
+  var z: double = 0.0
+  if kf > 60 {
+    let half: double = 0.5
+    z = fma(half, PI_LO, PI_O_2)
+    m = m & 1
+  } else if hx < 0 and kf < -60 {
+    z = 0.0
+  } else {
+    z = jatan(dabs(y / x))
+  }
+  if m == 0 { return z }
+  if m == 1 { return -z }
+  if m == 2 { return J_PI - (z - PI_LO) }
+  return (z - PI_LO) - J_PI
+}
+
+let AS_PIO2_HI: double = dw(0x3FF921FB, 0x54442D18)
+let AS_PIO2_LO: double = dw(0x3C91A626, 0x33145C07)
+let AS_PIO4_HI: double = dw(0x3FE921FB, 0x54442D18)
+let PS0: double = dw(0x3FC55555, 0x55555555)
+let PS1: double = dw(0xBFD4D612, 0x03EB6F7D)
+let PS2: double = dw(0x3FC9C155, 0x0E884455)
+let PS3: double = dw(0xBFA48228, 0xB5688F3B)
+let PS4: double = dw(0x3F49EFE0, 0x7501B288)
+let PS5: double = dw(0x3F023DE1, 0x0DFDF709)
+let QS1: double = dw(0xC0033A27, 0x1C8A2D4B)
+let QS2: double = dw(0x40002AE5, 0x9C598AC8)
+let QS3: double = dw(0xBFE6066C, 0x1B8D0159)
+let QS4: double = dw(0x3FB3B8C5, 0xB12E9282)
+
+export function jasin(x: double) -> double {
+  let one: double = 1.0
+  let hx = hiw(x)
+  let ix = hx & 0x7FFFFFFF
+  var t: double = 0.0
+  if ix >= 0x3FF00000 {
+    if ix == 0x3FF00000 and low(x) == long(0) { return fma(x, AS_PIO2_HI, x * AS_PIO2_LO) }
+    return NAN
+  }
+  if ix < 0x3FE00000 {
+    if ix < 0x3E400000 { return x }
+    t = x * x
+    let p = t * fma(t, fma(t, fma(t, fma(t, fma(t, PS5, PS4), PS3), PS2), PS1), PS0)
+    let q = fma(t, fma(t, fma(t, fma(t, QS4, QS3), QS2), QS1), one)
+    let w = p / q
+    return fma(x, w, x)
+  }
+  var w = one - dabs(x)
+  let half: double = 0.5
+  t = w * half
+  var p = t * fma(t, fma(t, fma(t, fma(t, fma(t, PS5, PS4), PS3), PS2), PS1), PS0)
+  var q = fma(t, fma(t, fma(t, fma(t, QS4, QS3), QS2), QS1), one)
+  let s = Math.sqrt(t)
+  if ix >= 0x3FEF3333 {
+    w = p / q
+    t = AS_PIO2_HI - fma(2.0, fma(s, w, s), -AS_PIO2_LO)
+  } else {
+    w = with_low0(s)
+    let c = fma(-w, w, t) / (s + w)
+    let r = p / q
+    p = fma(2.0 * s, r, -fma(-2.0, c, AS_PIO2_LO))
+    q = fma(-2.0, w, AS_PIO4_HI)
+    t = AS_PIO4_HI - (p - q)
+  }
+  if hx > 0 { return t }
+  return -t
+}
+
+let TT: []double = [dw(0x3FD55555, 0x55555563), dw(0x3FC11111, 0x1110FE7A), dw(0x3FABA1BA, 0x1BB341FE), dw(0x3F9664F4, 0x8406D637), dw(0x3F8226E3, 0xE96E8493), dw(0x3F6D6D22, 0xC9560328), dw(0x3F57DBC8, 0xFEE08315), dw(0x3F4344D8, 0xF2F26501), dw(0x3F3026F7, 0x1A8D1068), dw(0x3F147E88, 0xA03792A6), dw(0x3F12B80F, 0x32F0A7E9), dw(0xBEF375CB, 0xDB605373), dw(0x3EFB2A70, 0x74BF7AD4)]
+let T_PIO4: double = dw(0x3FE921FB, 0x54442D18)
+let T_PIO4LO: double = dw(0x3C81A626, 0x33145C07)
+
+# __kernel_tan (fdlibm, with clang's contractions)
+function k_tan(x0: double, y0: double, iy: int) -> double {
+  let one: double = 1.0
+  var x = x0
+  var y = y0
+  let hx = hiw(x)
+  let ix = hx & 0x7FFFFFFF
+  if ix < 0x3E300000 {
+    if int(x) == 0 {
+      if ((ix | int(low(x))) | (iy + 1)) == 0 { return one / dabs(x) }
+      if iy == 1 { return x }
+      let w = x + y
+      let z = with_low0(w)
+      let v = y - (z - x)
+      let a = -one / w
+      let t = with_low0(a)
+      let s = fma(t, z, one)
+      return fma(a, fma(t, v, s), t)
+    }
+  }
+  let big = ix >= 0x3FE59428
+  if big {
+    if hx < 0 {
+      x = -x
+      y = -y
+    }
+    let z = T_PIO4 - x
+    let w = T_PIO4LO - y
+    x = z + w
+    y = 0.0
+  }
+  let z = x * x
+  let w = z * z
+  var r = fma(w, fma(w, fma(w, fma(w, fma(w, TT[11], TT[9]), TT[7]), TT[5]), TT[3]), TT[1])
+  var v = z * fma(w, fma(w, fma(w, fma(w, fma(w, TT[12], TT[10]), TT[8]), TT[6]), TT[4]), TT[2])
+  let s = z * x
+  r = fma(z, fma(s, r + v, y), y)
+  r = fma(TT[0], s, r)
+  let ww = x + r
+  if big {
+    v = double(iy)
+    let sg = double(1 - ((hx >> 30) & 2))
+    return sg * fma(-2.0, x - ((ww * ww) / (ww + v) - r), v)
+  }
+  if iy == 1 { return ww }
+  let zz = with_low0(ww)
+  let vv = r - (zz - x)
+  let a = -1.0 / ww
+  let t = with_low0(a)
+  let ss = fma(t, zz, one)
+  return fma(a, fma(t, vv, ss), t)
+}
+
+export function jtan(x: double) -> double {
+  let ix = hiw(x) & 0x7FFFFFFF
+  if ix <= 0x3FE921FB { return k_tan(x, 0.0, 1) }
+  if ix >= 0x7FF00000 { return x - x }
+  if ix > 0x413921FB { return Math.tan(x) }
+  let y = doubles(2)
+  let n = rem_pio2(x, y)
+  return k_tan(y[0], y[1], 1 - ((n & 1) << 1))
+}

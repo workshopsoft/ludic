@@ -1,0 +1,22 @@
+# polyMesh_test.ludic - polymesh.ludic against the studio's polyMesh.ts calls (fix/<scene>/polyMesh.fix)
+
+export function test_polyMesh(recs: []Rec) -> int {
+  let c = check_new("polyMesh")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "polyMesh" {
+      let pm = poly_mesh(arg_pt(r, 0), arg_nd(r, 1, 2.0))
+      check_nums(c, "pts", pm.pts, v_get(w, "pts"))
+      check_ints(c, "tris", pm.tris, v_get(w, "tris"))
+    } else if f == "starFrom" {
+      let p = arg_pt(r, 1)
+      check_bool(c, "v", star_from(arg_pt(r, 0), p[0], p[1]), w)
+    } else {
+      check_fail(c, "no such function in the port")
+    }
+  }
+  return check_report(c)
+}

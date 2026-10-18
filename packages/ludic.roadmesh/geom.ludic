@@ -1,0 +1,547 @@
+# geom.ludic - game-editor packages/core/src/world/geom.ts: plane geometry of polylines and rings (x, z metres), the same doubles.
+# Points are flat slices (x0, z0, x1, z1, ...); a "Pt | undefined" answer is null; a small record answer is a slice of its numbers.
+
+# Math.hypot of two numbers as V8 computes it (builtins/math.tq MathHypot: the largest magnitude scaled out, a Kahan sum)
+export function hypot2(x: double, y: double) -> double {
+  let ax = dabs(x)
+  let ay = dabs(y)
+  var mx: double = 0.0
+  var nan = false
+  if ax != ax { nan = true } else { if ax > mx { mx = ax } }
+  if ay != ay { nan = true } else { if ay > mx { mx = ay } }
+  if mx == INF { return INF }
+  if nan { return NAN }
+  if mx == 0.0 { return 0.0 }
+  var n = ax / mx
+  var sum = n * n
+  var comp = sum - n * n
+  n = ay / mx
+  let s = n * n - comp
+  let pre = sum + s
+  comp = pre - sum - s
+  sum = pre
+  return Math.sqrt(sum) * mx
+}
+
+export function hypot3(x: double, y: double, z: double) -> double {
+  let ax = dabs(x)
+  let ay = dabs(y)
+  let az = dabs(z)
+  var mx: double = 0.0
+  var nan = false
+  if ax != ax { nan = true } else { if ax > mx { mx = ax } }
+  if ay != ay { nan = true } else { if ay > mx { mx = ay } }
+  if az != az { nan = true } else { if az > mx { mx = az } }
+  if mx == INF { return INF }
+  if nan { return NAN }
+  if mx == 0.0 { return 0.0 }
+  var n = ax / mx
+  var sum = n * n
+  var comp = sum - n * n
+  n = ay / mx
+  var s = n * n - comp
+  var pre = sum + s
+  comp = pre - sum - s
+  sum = pre
+  n = az / mx
+  s = n * n - comp
+  pre = sum + s
+  comp = pre - sum - s
+  sum = pre
+  return Math.sqrt(sum) * mx
+}
+
+export function dist(ax: double, az: double, bx: double, bz: double) -> double { return hypot2(ax - bx, az - bz) }
+export function dist_at(p: []double, i: int, q: []double, j: int) -> double { return hypot2(p[i * 2] - q[j * 2], p[i * 2 + 1] - q[j * 2 + 1]) }
+
+export function ring_area(p: []double) -> double {
+  let n = len(p) / 2
+  var a: double = 0.0
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    a += p[i * 2] * p[j * 2 + 1] - p[j * 2] * p[i * 2 + 1]
+  }
+  return a / 2.0
+}
+
+export function polygon_area_of(p: []double) -> double { return dabs(ring_area(p)) }
+
+export function perimeter_of(p: []double, closed: bool) -> double {
+  let n = len(p) / 2
+  var s: double = 0.0
+  var i = 0
+  while i + 1 < n {
+    s += dist_at(p, i, p, i + 1)
+    i += 1
+  }
+  if closed and n > 2 { s += dist_at(p, n - 1, p, 0) }
+  return s
+}
+
+export function centroid_of(p: []double) -> []double {
+  let n = len(p) / 2
+  let a = ring_area(p)
+  if dabs(a) < 0.000000001 {
+    if n == 0 { return d_pair(0.0, 0.0) }
+    var sx: double = 0.0
+    var sz: double = 0.0
+    for i in 0 .. n { sx += p[i * 2] }
+    for i in 0 .. n { sz += p[i * 2 + 1] }
+    return d_pair(sx / double(n), sz / double(n))
+  }
+  var cx: double = 0.0
+  var cz: double = 0.0
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    let x0 = p[i * 2]
+    let z0 = p[i * 2 + 1]
+    let x1 = p[j * 2]
+    let z1 = p[j * 2 + 1]
+    let f = x0 * z1 - x1 * z0
+    cx += (x0 + x1) * f
+    cz += (z0 + z1) * f
+  }
+  return d_pair(cx / (6.0 * a), cz / (6.0 * a))
+}
+
+export function point_in_polygon(px: double, pz: double, p: []double) -> bool {
+  let n = len(p) / 2
+  var inside = false
+  var j = n - 1
+  for i in 0 .. n {
+    let xi = p[i * 2]
+    let zi = p[i * 2 + 1]
+    let xj = p[j * 2]
+    let zj = p[j * 2 + 1]
+    if (zi > pz) != (zj > pz) {
+      if px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi { inside = not inside }
+    }
+    j = i
+  }
+  return inside
+}
+
+# x0, z0, x1, z1
+export function bounds_of(p: []double) -> []double {
+  let out = doubles(4)
+  out[0] = INF
+  out[1] = INF
+  out[2] = -INF
+  out[3] = -INF
+  for i in 0 .. len(p) / 2 {
+    let x = p[i * 2]
+    let z = p[i * 2 + 1]
+    if x < out[0] { out[0] = x }
+    if x > out[2] { out[2] = x }
+    if z < out[1] { out[1] = z }
+    if z > out[3] { out[3] = z }
+  }
+  return out
+}
+
+# where a-b and c-d cross: t, u, x, z (null when they do not)
+export function seg_cross(ax: double, az: double, bx: double, bz: double, cx: double, cz: double, dx: double, dz: double) -> []double {
+  let rx = bx - ax
+  let rz = bz - az
+  let sx = dx - cx
+  let sz = dz - cz
+  let den = rx * sz - rz * sx
+  if dabs(den) < 0.000000000001 { return null }
+  let qx = cx - ax
+  let qz = cz - az
+  let t = (qx * sz - qz * sx) / den
+  let u = (qx * rz - qz * rx) / den
+  if t < 0.0 or t > 1.0 or u < 0.0 or u > 1.0 { return null }
+  let out = doubles(4)
+  out[0] = t
+  out[1] = u
+  out[2] = ax + rx * t
+  out[3] = az + rz * t
+  return out
+}
+
+# d, x, z, t
+export function closest_on_segment(px: double, pz: double, ax: double, az: double, bx: double, bz: double) -> []double {
+  let vx = bx - ax
+  let vz = bz - az
+  let l2 = vx * vx + vz * vz
+  var t: double = 0.0
+  if not (l2 < 0.000000000001) { t = clamp01(((px - ax) * vx + (pz - az) * vz) / l2) }
+  let x = ax + vx * t
+  let z = az + vz * t
+  let out = doubles(4)
+  out[0] = hypot2(px - x, pz - z)
+  out[1] = x
+  out[2] = z
+  out[3] = t
+  return out
+}
+export function closest_d(px: double, pz: double, ax: double, az: double, bx: double, bz: double) -> double {
+  let vx = bx - ax
+  let vz = bz - az
+  let l2 = vx * vx + vz * vz
+  var t: double = 0.0
+  if not (l2 < 0.000000000001) { t = clamp01(((px - ax) * vx + (pz - az) * vz) / l2) }
+  return hypot2(px - (ax + vx * t), pz - (az + vz * t))
+}
+
+# d, x, z, seg, t (null for a line of fewer than two points)
+export function closest_on_line(line: []double, px: double, pz: double) -> []double {
+  let n = len(line) / 2
+  var best: []double = null
+  var i = 0
+  while i + 1 < n {
+    let c = closest_on_segment(px, pz, line[i * 2], line[i * 2 + 1], line[i * 2 + 2], line[i * 2 + 3])
+    if best == null or c[0] < best[0] {
+      let b = doubles(5)
+      b[0] = c[0]
+      b[1] = c[1]
+      b[2] = c[2]
+      b[3] = double(i)
+      b[4] = c[3]
+      best = b
+    }
+    i += 1
+  }
+  return best
+}
+
+# Douglas-Peucker
+export function simplify_line(line: []double, tol: double, closed: bool) -> []double {
+  let n = len(line) / 2
+  if n < 3 { return pts_copy(line) }
+  let keep = buffer(n)
+  keep[0] = 1
+  keep[n - 1] = 1
+  let st = words(4 * n + 4)
+  var top = 0
+  st[0] = 0
+  st[1] = n - 1
+  top = 2
+  while top > 0 {
+    let i = st[top - 2]
+    let j = st[top - 1]
+    top -= 2
+    var far = -1
+    var fd = tol
+    for k in i + 1 .. j {
+      let d = closest_d(line[k * 2], line[k * 2 + 1], line[i * 2], line[i * 2 + 1], line[j * 2], line[j * 2 + 1])
+      if d > fd {
+        fd = d
+        far = k
+      }
+    }
+    if far >= 0 {
+      keep[far] = 1
+      st[top] = i
+      st[top + 1] = far
+      st[top + 2] = far
+      st[top + 3] = j
+      top += 4
+    }
+  }
+  let out = new []double
+  for k in 0 .. n { if keep[k] == 1 { pts_push(out, line[k * 2], line[k * 2 + 1]) } }
+  if closed and len(out) / 2 < 3 { return pts_copy(line) }
+  return out
+}
+
+# a closed ring without its collinear points (within eps)
+export function drop_collinear(ring: []double, eps: double) -> []double {
+  var out = pts_copy(ring)
+  var again = true
+  while again and len(out) / 2 > 3 {
+    again = false
+    var i = 0
+    while i < len(out) / 2 and len(out) / 2 > 3 {
+      let m = len(out) / 2
+      let a = (i + m - 1) % m
+      let b = (i + 1) % m
+      if closest_d(out[i * 2], out[i * 2 + 1], out[a * 2], out[a * 2 + 1], out[b * 2], out[b * 2 + 1]) <= eps {
+        out = pts_remove(out, i)
+        i -= 1
+        again = true
+      }
+      i += 1
+    }
+  }
+  return out
+}
+export function pts_remove(p: []double, i: int) -> []double {
+  let out = new []double
+  for k in 0 .. len(p) / 2 { if k != i { pts_push(out, p[k * 2], p[k * 2 + 1]) } }
+  return out
+}
+
+export function ccw(p: []double) -> []double {
+  if ring_area(p) < 0.0 { return pts_reversed(p) }
+  return pts_copy(p)
+}
+
+export function dedupe(p: []double, eps: double, closed: bool) -> []double {
+  let out = new []double
+  for i in 0 .. len(p) / 2 {
+    let m = len(out) / 2
+    if m == 0 or dist(out[m * 2 - 2], out[m * 2 - 1], p[i * 2], p[i * 2 + 1]) > eps { pts_push(out, p[i * 2], p[i * 2 + 1]) }
+  }
+  let m = len(out) / 2
+  if closed and m > 1 and dist(out[0], out[1], out[m * 2 - 2], out[m * 2 - 1]) <= eps { return pts_slice(out, 0, m - 1) }
+  return out
+}
+
+# the largest simple ring left when the loops of a self-crossing ring are cut out (null when none)
+export function clean_ring(pts: []double) -> []double {
+  var ring = dedupe(pts, 0.001, true)
+  var guard = 0
+  while guard < 64 and len(ring) / 2 >= 3 {
+    let n = len(ring) / 2
+    var ci = -1
+    var cj = -1
+    var cx: double = 0.0
+    var cz: double = 0.0
+    var i = 0
+    while i < n and ci < 0 {
+      var j = i + 2
+      while j < n {
+        if not (i == 0 and j == n - 1) {
+          let i1 = (i + 1) % n
+          let j1 = (j + 1) % n
+          let x = seg_cross(ring[i * 2], ring[i * 2 + 1], ring[i1 * 2], ring[i1 * 2 + 1], ring[j * 2], ring[j * 2 + 1], ring[j1 * 2], ring[j1 * 2 + 1])
+          if x != null and x[0] > 0.000001 and x[0] < 0.999999 and x[1] > 0.000001 and x[1] < 0.999999 {
+            ci = i
+            cj = j
+            cx = x[2]
+            cz = x[3]
+            break
+          }
+        }
+        j += 1
+      }
+      i += 1
+    }
+    if ci < 0 { return ring }
+    let a = new []double
+    pts_push(a, cx, cz)
+    pts_append(a, pts_slice(ring, ci + 1, cj + 1))
+    let b = new []double
+    pts_push(b, cx, cz)
+    pts_append(b, pts_slice(ring, cj + 1, n))
+    pts_append(b, pts_slice(ring, 0, ci + 1))
+    if dabs(ring_area(a)) >= dabs(ring_area(b)) { ring = a } else { ring = b }
+    guard += 1
+  }
+  if len(ring) / 2 >= 3 { return ring }
+  return null
+}
+
+# a unit vector (0, 0 for one shorter than 1e-12)
+export function unit_of(x: double, z: double) -> []double {
+  let l = hypot2(x, z)
+  if l < 0.000000000001 { return d_pair(0.0, 0.0) }
+  return d_pair(x / l, z / l)
+}
+
+# a ring moved inward by d (outward when negative), mitred corners (spikes cut at 3 d); null when nothing is left
+export function offset_ring(pts: []double, d: double) -> []double {
+  let ring = dedupe(ccw(pts), 0.001, true)
+  let n = len(ring) / 2
+  if n < 3 { return null }
+  let out = new []double
+  for i in 0 .. n {
+    let ip = (i + n - 1) % n
+    let iq = (i + 1) % n
+    let px = ring[ip * 2]
+    let pz = ring[ip * 2 + 1]
+    let cx = ring[i * 2]
+    let cz = ring[i * 2 + 1]
+    let qx = ring[iq * 2]
+    let qz = ring[iq * 2 + 1]
+    let n1 = unit_of(-(cz - pz), cx - px)
+    let n2 = unit_of(-(qz - cz), qx - cx)
+    let mx = n1[0] + n2[0]
+    let mz = n1[1] + n2[1]
+    let ml = hypot2(mx, mz)
+    if ml < 0.000001 {
+      pts_push(out, cx + n1[0] * d, cz + n1[1] * d)
+      continue
+    }
+    let scale = jmin(3.0, 2.0 / ml)
+    pts_push(out, cx + (mx / ml) * scale * d, cz + (mz / ml) * scale * d)
+  }
+  let clean = clean_ring(out)
+  if clean == null or ring_area(clean) <= 0.0 { return null }
+  let closed = pts_copy(ring)
+  pts_push(closed, ring[0], ring[1])
+  for k in 0 .. len(clean) / 2 {
+    let x = clean[k * 2]
+    let z = clean[k * 2 + 1]
+    if point_in_polygon(x, z, ring) != (d > 0.0) { return null }
+    let c = closest_on_line(closed, x, z)
+    var cd = INF
+    if c != null { cd = c[0] }
+    if cd < dabs(d) - 0.05 { return null }
+  }
+  return clean
+}
+
+property Split {
+  a: []double = null
+  b: []double = null
+  why: string = ""
+}
+
+# a ring cut by the line through a and b: its two halves when the line crosses it exactly twice within a-b, else why not
+export function split_ring(pts: []double, ax: double, az: double, bx: double, bz: double) -> Split {
+  let r = new Split
+  let n = len(pts) / 2
+  if n < 3 {
+    r.why = "the polygon has fewer than 3 points"
+    return r
+  }
+  let hi = new []int
+  let hx = new []double
+  for i in 0 .. n {
+    let j = (i + 1) % n
+    let x = seg_cross(pts[i * 2], pts[i * 2 + 1], pts[j * 2], pts[j * 2 + 1], ax, az, bx, bz)
+    if x != null {
+      push(hi, i)
+      push(hx, x[2])
+      push(hx, x[3])
+    }
+  }
+  if len(hi) != 2 {
+    if len(hi) < 2 { r.why = "the cut does not go across the polygon (it must start and end outside it)" } else { r.why = `the cut crosses the polygon {len(hi)} times: cut with a line that crosses it twice` }
+    return r
+  }
+  # (sorted by i already: found in order)
+  let r1 = new []double
+  pts_push(r1, hx[0], hx[1])
+  pts_append(r1, pts_slice(pts, hi[0] + 1, hi[1] + 1))
+  pts_push(r1, hx[2], hx[3])
+  let r2 = new []double
+  pts_push(r2, hx[2], hx[3])
+  pts_append(r2, pts_slice(pts, hi[1] + 1, n))
+  pts_append(r2, pts_slice(pts, 0, hi[0] + 1))
+  pts_push(r2, hx[0], hx[1])
+  let c1 = dedupe(r1, 0.001, true)
+  let c2 = dedupe(r2, 0.001, true)
+  if len(c1) / 2 < 3 or len(c2) / 2 < 3 {
+    r.why = "the cut runs along an edge"
+    return r
+  }
+  r.a = c1
+  r.b = c2
+  return r
+}
+
+property Merged {
+  ring: []double = null
+  why: string = ""
+}
+
+# an ordered map of directed edges by their keys (the four rounded numbers), as geom.ts's Map<string, ...> with its insertion order
+property EdgeList {
+  k: []double = null      # kx0 kz0 kx1 kz1 an edge
+  p: []double = null      # from x z, to x z
+  live: []int = null
+}
+function el_find(e: EdgeList, a0: double, a1: double, b0: double, b1: double) -> int {
+  for i in 0 .. len(e.live) {
+    if e.live[i] == 1 and e.k[i * 4] == a0 and e.k[i * 4 + 1] == a1 and e.k[i * 4 + 2] == b0 and e.k[i * 4 + 3] == b1 { return i }
+  }
+  return -1
+}
+
+# two rings that share one or more whole edges, made one; or why they cannot be
+export function merge_rings(a: []double, b: []double, tol: double) -> Merged {
+  let res = new Merged
+  let e = new EdgeList
+  e.k = new []double
+  e.p = new []double
+  e.live = new []int
+  # the reversed edges (a set of keys: only its size is read)
+  var reversed = 0
+  let rk = new []double
+  for pass in 0 .. 2 {
+    var ring = ccw(a)
+    if pass == 1 { ring = ccw(b) }
+    let n = len(ring) / 2
+    for i in 0 .. n {
+      let j = (i + 1) % n
+      let pk0 = jround(ring[i * 2] / tol)
+      let pk1 = jround(ring[i * 2 + 1] / tol)
+      let qk0 = jround(ring[j * 2] / tol)
+      let qk1 = jround(ring[j * 2 + 1] / tol)
+      let back = el_find(e, qk0, qk1, pk0, pk1)
+      if back >= 0 {
+        e.live[back] = 0
+        var had = false
+        for r in 0 .. len(rk) / 4 { if rk[r * 4] == qk0 and rk[r * 4 + 1] == qk1 and rk[r * 4 + 2] == pk0 and rk[r * 4 + 3] == pk1 { had = true } }
+        if not had {
+          push(rk, qk0);  push(rk, qk1);  push(rk, pk0);  push(rk, pk1)
+          reversed += 1
+        }
+      } else {
+        let f = el_find(e, pk0, pk1, qk0, qk1)
+        if f >= 0 {
+          # Map.set of a key it has: the value replaced, the place kept
+          e.p[f * 4] = ring[i * 2];  e.p[f * 4 + 1] = ring[i * 2 + 1];  e.p[f * 4 + 2] = ring[j * 2];  e.p[f * 4 + 3] = ring[j * 2 + 1]
+        } else {
+          push(e.k, pk0);  push(e.k, pk1);  push(e.k, qk0);  push(e.k, qk1)
+          push(e.p, ring[i * 2]);  push(e.p, ring[i * 2 + 1]);  push(e.p, ring[j * 2]);  push(e.p, ring[j * 2 + 1])
+          push(e.live, 1)
+        }
+      }
+    }
+  }
+  if reversed == 0 {
+    res.why = "the polygons share no edge (their outlines must meet along a whole edge, corner to corner)"
+    return res
+  }
+  # the live edges in order
+  let order = new []int
+  for i in 0 .. len(e.live) { if e.live[i] == 1 { push(order, i) } }
+  let ne = len(order)
+  # next: edges by the key of their from point, in the order the edges come
+  let seen = buffer(max(len(e.live), 1))
+  var seenN = 0
+  let ring = new []double
+  var cur = order[0]
+  let start = cur
+  var guard = 0
+  while guard < ne + 2 {
+    pts_push(ring, e.p[cur * 4], e.p[cur * 4 + 1])
+    if seen[cur] == 0 {
+      seen[cur] = 1
+      seenN += 1
+    }
+    var nx = -1
+    for q in 0 .. ne {
+      let c = order[q]
+      if e.k[c * 4] == e.k[cur * 4 + 2] and e.k[c * 4 + 1] == e.k[cur * 4 + 3] and seen[c] == 0 {
+        nx = c
+        break
+      }
+    }
+    if nx < 0 { break }
+    cur = nx
+    if e.k[cur * 4] == e.k[start * 4] and e.k[cur * 4 + 1] == e.k[start * 4 + 1] { break }
+    guard += 1
+  }
+  if seenN != ne {
+    res.why = "the polygons meet in more than one place: merging them would leave a hole"
+    return res
+  }
+  let m = len(ring) / 2
+  let out = new []double
+  for i in 0 .. m {
+    let q = (i + m - 1) % m
+    let r = (i + 1) % m
+    let px = ring[i * 2]
+    let pz = ring[i * 2 + 1]
+    let cr = (px - ring[q * 2]) * (ring[r * 2 + 1] - pz) - (pz - ring[q * 2 + 1]) * (ring[r * 2] - px)
+    if dabs(cr) > 0.000001 { pts_push(out, px, pz) }
+  }
+  if len(out) / 2 >= 3 { res.ring = out } else { res.ring = ring }
+  return res
+}

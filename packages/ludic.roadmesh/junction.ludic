@@ -1,0 +1,564 @@
+# junction.ludic - game-editor packages/core/src/world/junction.ts: where the roads at a node meet. The ends in order round it,
+# the corners between neighbours (rounded where the gap is a convex wedge, mitred where it is a reflex one, straight where the
+# roads carry on), how far back each road's straight section starts (its setback), and the plaza and dead-end caps.
+
+const CORNER_REACH: double = 100.0
+const GORE_DEG: double = 25.0
+const PLAZA_DEFAULT: double = 12.0
+const MIN_STRIP: double = 1.0
+
+# one road arriving at or leaving the node
+export property JEnd {
+  edge: NetEdge = null
+  # the edge leaves from its from node here (else it arrives at its to node)
+  out: bool = false
+  # unit heading away from the node, and the unit to its right (-uz, ux)
+  ux: double = 0.0
+  uz: double = 0.0
+  nx: double = 0.0
+  nz: double = 0.0
+  angle: double = 0.0
+  # metres from the centre line on the right and on the left of u
+  r: Offsets = null
+  l: Offsets = null
+  setback: double = 0.0
+}
+
+export property Corner {
+  i: int = 0
+  j: int = 0
+  # fillet, mitre or flat
+  kind: string = "flat"
+  # one polyline a level (gutter, curb, plant, walk)
+  rails: []Rail = null
+  hasCentre: bool = false
+  cx: double = 0.0
+  cz: double = 0.0
+  radius: double = 0.0
+  # the road rail's own points (null: none) and a crushed corner's strip ends at arm i and arm j (null: not crushed): set by
+  # the sidewalk, never here
+  kerb: []double = null
+  crushedI: []double = null
+  crushedJ: []double = null
+  sharp: bool = false
+}
+
+export property Junction {
+  node: NetNode = null
+  ends: []JEnd = null
+  corners: []Corner = null
+  # dead, cross, plaza or bulb
+  kind: string = "cross"
+  radius: double = 0.0
+  notes: []string = null
+  strict: bool = false
+}
+
+# JunctionOptions as data. The radius by edge pair is the bake's (sceneRadius): the larger of the two edges' profiles' radii
+# (radiiK null: no radius function). The arms (armK null: none, the edges' own lines) are each end's arm as its strip draws it,
+# by `<edge key>|<1 out, 0 in>` (null: undefined)
+export property JOpt {
+  hasFillet: bool = false
+  fillet: double = 4.5
+  strict: bool = false
+  radiiK: []string = null
+  radiiV: []double = null
+  armK: []string = null
+  armV: []ArmSide = null
+  # the assembled port's arms (sidewalkOf's fineArm): each end's arm along its graded line, by edge idx (null: not graded)
+  armLaid: []EdgeGrade = null
+}
+
+export function jopt_copy(o: JOpt) -> JOpt {
+  let c = new JOpt
+  c.hasFillet = o.hasFillet
+  c.fillet = o.fillet
+  c.strict = o.strict
+  c.radiiK = o.radiiK
+  c.radiiV = o.radiiV
+  c.armK = o.armK
+  c.armV = o.armV
+  c.armLaid = o.armLaid
+  return c
+}
+
+function jo_profile_radius(o: JOpt, e: NetEdge) -> double {
+  if e.profile == "" { return NAN }
+  for i in 0 .. len(o.radiiK) { if o.radiiK[i] == e.profile { return o.radiiV[i] } }
+  return NAN
+}
+export function jo_has_radius(o: JOpt) -> bool { return o.radiiK != null }
+# opt.radius?.(a, b): NaN for undefined
+export function jo_radius(o: JOpt, a: NetEdge, b: NetEdge) -> double {
+  if o.radiiK == null { return NAN }
+  let x = jo_profile_radius(o, a)
+  let y = jo_profile_radius(o, b)
+  if x != x { return y }
+  if y != y { return x }
+  return jmax(x, y)
+}
+export function jo_arm_key(e: JEnd) -> string {
+  if e.out { return `{e.edge.key}|1` }
+  return `{e.edge.key}|0`
+}
+# (opt.arms ?? edgeArm)(e)
+export function jo_arm(o: JOpt, e: JEnd) -> ArmSide {
+  if o.armLaid != null {
+    let l = o.armLaid[e.edge.idx]
+    if l == null { return null }
+    let s = doubles(len(l.s))
+    for i in 0 .. len(l.s) { s[i] = l.s[i] / l.scale }
+    return arm_of(l.line, s, e.out)
+  }
+  if o.armK == null { return edge_arm(e) }
+  let k = jo_arm_key(e)
+  for i in 0 .. len(o.armK) { if o.armK[i] == k { return o.armV[i] } }
+  return null
+}
+function jo_fillet(o: JOpt) -> double { return dsel(o.hasFillet, o.fillet, 4.5) }
+
+function level_of(o: Offsets, k: int) -> double {
+  if k == 0 { return o.gutter }
+  if k == 1 { return o.curb }
+  if k == 2 { return o.plant }
+  return o.walk
+}
+
+# the offset of line k of a corner's cross-section on one of its two arms (own), the other arm's side being other
+export function corner_level(own: Offsets, other: Offsets, k: int) -> double {
+  if k > 0 and own.walk - own.gutter <= 0.000001 and other.walk - other.gutter > 0.000001 { return own.gutter + level_of(other, k) - other.gutter }
+  return level_of(own, k)
+}
+
+# the levels' offsets of a corner from end a (its right side) to end b (its left side): a's, then b's
+export function corner_offsets_a(a: JEnd, b: JEnd) -> []double {
+  let o = doubles(4)
+  for k in 0 .. 4 { o[k] = corner_level(a.r, b.l, k) }
+  return o
+}
+export function corner_offsets_b(a: JEnd, b: JEnd) -> []double {
+  let o = doubles(4)
+  for k in 0 .. 4 { o[k] = corner_level(b.l, a.r, k) }
+  return o
+}
+
+# the round asked for the corner between two ends gap radians apart: rho, and the data's radius (NaN: none) as want
+export property CornerRadius {
+  rho: double = 0.0
+  want: double = 0.0
+}
+export function corner_radius(a: JEnd, b: JEnd, gap: double, opt: JOpt) -> CornerRadius {
+  let want = jo_radius(opt, a.edge, b.edge)
+  let curbW = jmax(a.r.curb - a.r.gutter, b.l.curb - b.l.gutter)
+  let rho = dsel(want == want, want, jmax(jo_fillet(opt), curbW + 1.0))
+  let pk: double = PI * 0.999
+  let cap = dsel(want == want, 60.0, 14.0) * JsMath.tan(jmin(gap, pk) / 2.0)
+  let o = new CornerRadius
+  o.rho = jmin(rho, cap)
+  o.want = want
+  return o
+}
+
+# an end's arm along the edge's own line
+export function edge_arm(e: JEnd) -> ArmSide { return arm_of(e.edge.line, e.edge.s, e.out) }
+
+# the heading of an edge a few metres in from the end it leaves at: x, z
+function heading_from(e: NetEdge, atFrom: bool) -> []double {
+  let l = e.line
+  let n = len(l) / 2
+  let ia = isel(atFrom, 0, n - 1)
+  let ax = l[ia * 2]
+  let az = l[ia * 2 + 1]
+  var ib = isel(atFrom, 1, n - 2)
+  var k = 2
+  while k < n and hypot2(l[ib * 2] - ax, l[ib * 2 + 1] - az) < 3.0 {
+    ib = isel(atFrom, k, n - 1 - k)
+    k += 1
+  }
+  return junit(l[ib * 2] - ax, l[ib * 2 + 1] - az)
+}
+
+function junit(x: double, z: double) -> []double {
+  let l = hypot2(x, z)
+  if l < 0.000000000001 { return d_pair(1.0, 0.0) }
+  return d_pair(x / l, z / l)
+}
+
+# the intersection of the lines p + u t and q + v s: t, s (null: parallel)
+function jmeet(px: double, pz: double, ux: double, uz: double, qx: double, qz: double, vx: double, vz: double) -> []double {
+  let den = ux * vz - uz * vx
+  if dabs(den) < 0.0001 { return null }
+  let dx = qx - px
+  let dz = qz - pz
+  return d_pair((dx * vz - dz * vx) / den, (dx * uz - dz * ux) / den)
+}
+
+# the ends of a node in the order round it, each with its offsets at that end and a setback of 0
+export function ends_of(node: NetNode) -> []JEnd {
+  let ends = new []JEnd
+  for q in 0 .. len(node.around) {
+    let a = node.around[q]
+    let e = a.edge
+    let u = heading_from(e, a.out)
+    let j = new JEnd
+    j.edge = e
+    j.out = a.out
+    j.ux = u[0]
+    j.uz = u[1]
+    j.nx = -u[1]
+    j.nz = u[0]
+    let k = taper_at(e.taper, dsel(a.out, 0.0, 1.0))
+    let sec = e.section
+    if a.out {
+      j.r = offsets_of(sec.right, sec.gutter, sec.curbW, sec.median, k)
+      j.l = offsets_of(sec.left, sec.gutter, sec.curbW, sec.median, k)
+    } else {
+      j.r = offsets_of(sec.left, sec.gutter, sec.curbW, sec.median, k)
+      j.l = offsets_of(sec.right, sec.gutter, sec.curbW, sec.median, k)
+    }
+    j.angle = JsMath.atan2(u[1], u[0])
+    j.setback = 0.0
+    push(ends, j)
+  }
+  # (sorted by angle, stable)
+  for i in 1 .. len(ends) {
+    let v = ends[i]
+    var k = i - 1
+    while k >= 0 and ends[k].angle - v.angle > 0.0 {
+      ends[k + 1] = ends[k]
+      k -= 1
+    }
+    ends[k + 1] = v
+  }
+  return ends
+}
+
+# the circle arc from a to b round c, turning the short way, the ends included, the radius moving from ra to rb
+export function arc(cx: double, cz: double, ax: double, az: double, bx: double, bz: double, ra: double, rb: double, maxStep: double) -> []double {
+  let a0 = JsMath.atan2(az - cz, ax - cx)
+  var d = JsMath.atan2(bz - cz, bx - cx) - a0
+  let tau: double = 2.0 * PI
+  while d > PI { d -= tau }
+  while d < -PI { d += tau }
+  let n = jmax(1.0, Math.ceil(dabs(d) / maxStep))
+  let out = new []double
+  if n != n { return out }
+  let N = int(n)
+  for k in 0 .. N + 1 {
+    let kd = double(k)
+    let r = ra + ((rb - ra) * kd) / n
+    if k == 0 { pts_push(out, ax, az) } else if k == N { pts_push(out, bx, bz) } else { pts_push(out, cx + JsMath.cos(a0 + (d * kd) / n) * r, cz + JsMath.sin(a0 + (d * kd) / n) * r) }
+  }
+  return out
+}
+
+# the point t metres along an end's centre line from the node (gore's `along`)
+function gore_along(line: []double, s: []double, t: double) -> []double {
+  let n = len(line) / 2
+  var i = 0
+  while i + 2 < n and s[i + 1] < t { i += 1 }
+  let l = s[i + 1] - s[i]
+  var f: double = 0.0
+  if not (l < 0.000000001) { f = jmin(1.0, jmax(0.0, (t - s[i]) / l)) }
+  return d_pair(line[i * 2] + (line[i * 2 + 2] - line[i * 2]) * f, line[i * 2 + 1] + (line[i * 2 + 3] - line[i * 2 + 1]) * f)
+}
+function gore_line(e: JEnd) -> []double {
+  if e.out { return e.edge.line }
+  return pts_reversed(e.edge.line)
+}
+function gore_s(line: []double) -> []double {
+  let n = len(line) / 2
+  let s = new []double
+  let z0: double = 0.0
+  push(s, z0)
+  for i in 1 .. n { push(s, s[i - 1] + hypot2(line[i * 2] - line[i * 2 - 2], line[i * 2 + 1] - line[i * 2 - 1])) }
+  return s
+}
+
+# how far from the node two roads leaving side by side must reach before their ribbons part
+function gore(a: JEnd, b: JEnd) -> double {
+  let need = jmax(a.r.walk, a.r.gutter) + jmax(b.l.walk, b.l.gutter) + 0.5
+  let la = gore_line(a)
+  let sa = gore_s(la)
+  let lb = gore_line(b)
+  let sb = gore_s(lb)
+  let reach = jmin(a.edge.length, b.edge.length)
+  var t: double = 0.0
+  while t <= reach {
+    let p = gore_along(la, sa, t)
+    let q = gore_along(lb, sb, t)
+    if hypot2(p[0] - q[0], p[1] - q[1]) >= need { return t }
+    t += 1.0
+  }
+  return reach
+}
+
+property Plan {
+  i: int = 0
+  j: int = 0
+  kind: string = "flat"
+  ti: double = 0.0
+  tj: double = 0.0
+  hasCentre: bool = false
+  cx: double = 0.0
+  cz: double = 0.0
+  rho: double = 0.0
+  phi: double = 0.0
+  sharp: bool = false
+}
+
+function settled_none(c: int, e: JEnd, need: double) -> double { return need }
+
+# the junction at a node; `settled` (when hasSettled) gives each end its setback from the setback it needs, else the need
+# capped so it never eats a short road whole
+export function junction_of<C>(node: NetNode, opt: JOpt, hasSettled: bool, settled: fn(C, JEnd, double) -> double, sc: C) -> Junction {
+  let ends = ends_of(node)
+  let cx = node.x
+  let cz = node.z
+  let out = new Junction
+  out.node = node
+  out.ends = ends
+  out.corners = new []Corner
+  out.kind = "cross"
+  if len(ends) <= 1 { out.kind = "dead" }
+  out.radius = 0.0
+  out.notes = new []string
+  out.strict = opt.strict
+  if len(ends) == 0 { return out }
+  if node.kind == "plaza" {
+    let radius = dsel(node.radius > 0.0, node.radius, PLAZA_DEFAULT)
+    out.kind = "plaza"
+    out.radius = radius
+    for q in 0 .. len(ends) {
+      let e = ends[q]
+      let w = jmax(e.r.walk, e.l.walk)
+      e.setback = Math.sqrt(jmax(0.0, radius * radius - w * w))
+    }
+    return out
+  }
+  if len(ends) == 1 {
+    if node.kind == "deadend" and node.radius > 0.0 {
+      out.kind = "bulb"
+      out.radius = node.radius
+      let e = ends[0]
+      let g = jmax(e.r.gutter, e.l.gutter)
+      if opt.strict and out.radius < g + 0.5 { push(out.notes, `node {node.key}: its turning circle ({js_str(out.radius)} m) is not wider than {e.edge.key} ({js_fixed(g, 2)} m to the kerb)`) }
+      if opt.strict { e.setback = Math.sqrt(jmax(0.0, out.radius * out.radius - g * g)) } else {
+        let w = jmax(e.r.walk, e.l.walk)
+        e.setback = Math.sqrt(jmax(0.0, out.radius * out.radius - w * w))
+      }
+    }
+    return out
+  }
+  let rho0 = jo_fillet(opt)
+  let m = len(ends)
+  let plans = new []Plan
+  let walkOnly = new []bool
+  for q in 0 .. m {
+    let e = ends[q]
+    push(walkOnly, jmax(e.r.gutter, e.l.gutter) <= 0.000001 and walkway_of(e.edge.prof))
+  }
+  let tau: double = 2.0 * PI
+  for i in 0 .. m {
+    let a = ends[i]
+    let bi = (i + 1) % m
+    let b = ends[bi]
+    var gap = JsMath.atan2(a.ux * b.uz - a.uz * b.ux, a.ux * b.ux + a.uz * b.uz)
+    if gap <= 0.000001 { gap += tau }
+    let deg = (gap * 180.0) / PI
+    let pax = cx + a.nx * a.r.gutter
+    let paz = cz + a.nz * a.r.gutter
+    let pbx = cx - b.nx * b.l.gutter
+    let pbz = cz - b.nz * b.l.gutter
+    let x = jmeet(pax, paz, a.ux, a.uz, pbx, pbz, b.ux, b.uz)
+    let sharp = walkOnly[i] != walkOnly[bi]
+    let plan = new Plan
+    plan.i = i
+    plan.j = bi
+    plan.kind = "flat"
+    plan.phi = gap
+    plan.sharp = sharp
+    let want = jo_radius(opt, a.edge, b.edge)
+    let hasWant = want == want
+    if opt.strict and deg >= GORE_DEG and deg <= 175.0 and not sharp {
+      let A = jo_arm(opt, a)
+      let B = jo_arm(opt, b)
+      let oa = corner_offsets_a(a, b)
+      let ob = corner_offsets_b(a, b)
+      var cp: CornerPlan = null
+      if A != null and B != null { cp = convex_corner(A, B, oa, ob, corner_radius(a, b, gap, opt).rho, jmin(A.len, CORNER_REACH), jmin(B.len, CORNER_REACH)) }
+      if cp != null {
+        plan.kind = cp.kind
+        plan.ti = cp.levels[0].si
+        plan.tj = cp.levels[0].sj
+        plan.rho = cp.rho
+        plan.hasCentre = cp.hasCentre
+        plan.cx = cp.cx
+        plan.cz = cp.cz
+        push(plans, plan)
+        a.setback = jmax(a.setback, cp.needI)
+        b.setback = jmax(b.setback, cp.needJ)
+        continue
+      }
+    }
+    var goreAt: double = 0.0
+    if opt.strict and deg < 25.0 { goreAt = gore(a, b) }
+    var near = false
+    if x != null {
+      if hasWant { near = x[0] < 120.0 and x[1] < 120.0 } else { near = x[0] < 35.0 and x[1] < 35.0 }
+    }
+    if deg >= 6.0 and deg <= 175.0 and x != null and near and not (goreAt > 0.0) {
+      let curbW = jmax(a.r.curb - a.r.gutter, b.l.curb - b.l.gutter)
+      var rho = dsel(hasWant, want, jmax(rho0, curbW + 1.0))
+      let cap = dsel(hasWant, 60.0, 14.0)
+      if rho / JsMath.tan(gap / 2.0) > cap {
+        if hasWant { push(out.notes, `node {node.key}: the corner between {a.edge.key} and {b.edge.key} ({js_fixed(deg, 0)} deg) cannot be {js_str(want)} m round: {js_fixed(cap * JsMath.tan(gap / 2.0), 2)} m`) }
+        rho = cap * JsMath.tan(gap / 2.0)
+      }
+      let c0x = pax + a.ux * x[0]
+      let c0z = paz + a.uz * x[0]
+      if rho < 0.35 or sharp {
+        plan.kind = "mitre"
+        plan.ti = x[0]
+        plan.tj = x[1]
+      } else {
+        let dt = rho / JsMath.tan(gap / 2.0)
+        let bis = junit(a.ux + b.ux, a.uz + b.uz)
+        plan.kind = "fillet"
+        plan.rho = rho
+        let f = rho / JsMath.sin(gap / 2.0)
+        plan.hasCentre = true
+        plan.cx = c0x + bis[0] * f
+        plan.cz = c0z + bis[1] * f
+        plan.ti = x[0] + dt
+        plan.tj = x[1] + dt
+      }
+    } else if deg > 185.0 and x != null and dabs(x[0]) < 40.0 and dabs(x[1]) < 40.0 {
+      plan.kind = "mitre"
+      plan.ti = x[0]
+      plan.tj = x[1]
+    } else if deg < 25.0 {
+      let t0 = jmax(jmax(jmax(a.r.walk, b.l.walk), 3.0) * 1.2 + 2.0, goreAt)
+      plan.ti = t0
+      plan.tj = t0
+    }
+    push(plans, plan)
+    a.setback = jmax(a.setback, plan.ti)
+    b.setback = jmax(b.setback, plan.tj)
+    if plan.kind == "fillet" or plan.kind == "mitre" {
+      for k in 1 .. 4 {
+        let la = corner_level(a.r, b.l, k)
+        let lb = corner_level(b.l, a.r, k)
+        let xk = jmeet(cx + a.nx * la, cz + a.nz * la, a.ux, a.uz, cx - b.nx * lb, cz - b.nz * lb, b.ux, b.uz)
+        if xk != null and (plan.kind == "mitre" or plan.rho - (corner_level(a.r, b.l, k) - a.r.gutter) < 0.3) {
+          a.setback = jmax(a.setback, xk[0])
+          b.setback = jmax(b.setback, xk[1])
+        }
+      }
+    }
+  }
+  for q in 0 .. m {
+    let e = ends[q]
+    if hasSettled {
+      e.setback = jmax(0.0, settled(sc, e, e.setback))
+      continue
+    }
+    let cap = jmax(8.0, e.edge.length * 0.45)
+    if e.setback > cap + 0.000001 and jo_has_radius(opt) { push(out.notes, `node {node.key}: {e.edge.key} is too short for its junction (needs {js_fixed(e.setback, 1)} m of it, {js_fixed(cap, 1)} m allowed)`) }
+    e.setback = jmax(0.0, jmin(e.setback, cap))
+  }
+  let step: double = PI / 12.0
+  for q in 0 .. len(plans) {
+    let p = plans[q]
+    let a = ends[p.i]
+    let b = ends[p.j]
+    let rails = new []Rail
+    for k in 0 .. 4 {
+      let oa = corner_level(a.r, b.l, k)
+      let ob = corner_level(b.l, a.r, k)
+      let sx = (cx + a.ux * a.setback) + a.nx * oa
+      let sz = (cz + a.uz * a.setback) + a.nz * oa
+      let ex = (cx - b.nx * ob) + b.ux * b.setback
+      let ez = (cz - b.nz * ob) + b.uz * b.setback
+      let rail = d_pair(sx, sz)
+      if p.kind == "fillet" and p.hasCentre {
+        let ra = p.rho - (oa - a.r.gutter)
+        let rb = p.rho - (ob - b.l.gutter)
+        if ra >= 0.3 and rb >= 0.3 {
+          let tax = (cx + a.ux * p.ti) + a.nx * oa
+          let taz = (cz + a.uz * p.ti) + a.nz * oa
+          let tbx = (cx - b.nx * ob) + b.ux * p.tj
+          let tbz = (cz - b.nz * ob) + b.uz * p.tj
+          let ar = arc(p.cx, p.cz, tax, taz, tbx, tbz, ra, rb, step)
+          if hypot2(tax - sx, taz - sz) > 0.02 { pts_append(rail, ar) } else { pts_append(rail, pts_slice(ar, 1, len(ar) / 2)) }
+        } else {
+          let qx = cx + a.nx * oa
+          let qz = cz + a.nz * oa
+          let xk = jmeet(qx, qz, a.ux, a.uz, cx - b.nx * ob, cz - b.nz * ob, b.ux, b.uz)
+          if xk != null { pts_push(rail, qx + a.ux * xk[0], qz + a.uz * xk[0]) }
+        }
+      } else if p.kind == "mitre" {
+        let qx = cx + a.nx * oa
+        let qz = cz + a.nz * oa
+        let xk = jmeet(qx, qz, a.ux, a.uz, cx - b.nx * ob, cz - b.nz * ob, b.ux, b.uz)
+        if xk != null { pts_push(rail, qx + a.ux * xk[0], qz + a.uz * xk[0]) }
+      }
+      pts_push(rail, ex, ez)
+      push(rails, rail_of(rail))
+    }
+    let c = new Corner
+    c.i = p.i
+    c.j = p.j
+    c.kind = p.kind
+    c.rails = rails
+    c.hasCentre = p.hasCentre
+    c.cx = p.cx
+    c.cz = p.cz
+    c.radius = p.rho
+    c.sharp = p.sharp
+    push(out.corners, c)
+  }
+  return out
+}
+
+# the setback of each end of every edge (by edge idx: from and to), both ends of an edge settled together
+export property Setbacks {
+  from: []double = null
+  to: []double = null
+}
+
+export function setbacks(net: Net, opt: JOpt, notes: []string) -> Setbacks {
+  let ne = len(net.edges)
+  let nf = doubles(ne)
+  let nt = doubles(ne)
+  for i in 0 .. ne {
+    nf[i] = 0.0
+    nt[i] = 0.0
+  }
+  for q in 0 .. len(net.nodes) {
+    let j = junction_of(net.nodes[q], opt, true, fn settled_none, 0)
+    for k in 0 .. len(j.ends) {
+      let e = j.ends[k]
+      let x = e.edge.idx
+      if e.out { nf[x] = jmax(nf[x], e.setback) } else { nt[x] = jmax(nt[x], e.setback) }
+    }
+  }
+  let o = new Setbacks
+  o.from = doubles(ne)
+  o.to = doubles(ne)
+  for i in 0 .. ne {
+    let e = net.edges[i]
+    let room = jmax(0.0, e.length - MIN_STRIP)
+    if nf[i] + nt[i] <= room + 0.000000001 {
+      o.from[i] = nf[i]
+      o.to[i] = nt[i]
+      continue
+    }
+    var f: double = 0.0
+    if nf[i] + nt[i] > 0.000000001 { f = room / (nf[i] + nt[i]) }
+    if jo_has_radius(opt) and notes != null { push(notes, `edge {e.key} is too short for the junctions at its ends (they need {js_fixed(nf[i], 1)} + {js_fixed(nt[i], 1)} m of its {js_fixed(e.length, 1)} m)`) }
+    o.from[i] = nf[i] * f
+    o.to[i] = nt[i] * f
+  }
+  return o
+}
