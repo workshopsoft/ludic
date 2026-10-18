@@ -231,6 +231,8 @@ export function kitbake_write(kb: KitBake, dir: string) -> int {
 
 # a float as a row writes it ("12.5", never "1e1")
 function kb_num(v: float) -> string { return `{v}` }
+# a colour component to the thousandth (a row's colour, not a measure: the file stays readable and the bake byte-stable)
+function kb_c3(v: float) -> float { return Math.floor(Math.clamp(v, 0.0, 1.0) * 1000.0 + 0.5) / 1000.0 }
 
 # The rows of RenderKits from kit `from` on, as the text of a render_kits.lres (`from` = the count that was seeded appends to an
 # existing file; 0 writes them all): the same fields the studio's RenderKits table edits.
@@ -243,6 +245,13 @@ export function kitbake_rows(kb: KitBake, from: int) -> string {
     if k.interior != "" { out = out + `  interior: "{k.interior}"\n  win_w: {kb_num(k.win_w)}, win_h: {kb_num(k.win_h)}\n` }
     if k.storey_h > 0.0 { out = out + `  storey_h: {kb_num(k.storey_h)}, storey_line: {kb_num(k.storey_line)}\n` }
     if k.box { out = out + "  box: true\n" }
+    let d = new RenderKit
+    if k.proxy_roof or k.proxy_r != d.proxy_r or k.proxy_g != d.proxy_g or k.proxy_b != d.proxy_b {
+      out = out + `  proxy_r: {kb_num(kb_c3(k.proxy_r))}, proxy_g: {kb_num(kb_c3(k.proxy_g))}, proxy_b: {kb_num(kb_c3(k.proxy_b))}\n`
+    }
+    if k.proxy_roof {
+      out = out + `  proxy_roof: true, proxy_roof_r: {kb_num(kb_c3(k.proxy_roof_r))}, proxy_roof_g: {kb_num(kb_c3(k.proxy_roof_g))}, proxy_roof_b: {kb_num(kb_c3(k.proxy_roof_b))}\n`
+    }
     out = out + "}\n"
   }
   return out

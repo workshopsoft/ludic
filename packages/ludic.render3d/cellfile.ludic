@@ -36,6 +36,10 @@ export property RenderKit {
   @Range(0, 1) proxy_r: float = 0.55                   # the colour of its HLOD box (times the instance's tint)
   @Range(0, 1) proxy_g: float = 0.53
   @Range(0, 1) proxy_b: float = 0.50
+  proxy_roof: bool = false                             # its HLOD box's roof has a colour of its own (below); else the roof is proxy_r/g/b too
+  @Range(0, 1) proxy_roof_r: float = 0.55              # the roof's colour (times the instance's tint). A bake derives both from the kit's
+  @Range(0, 1) proxy_roof_g: float = 0.53              # own materials (kit_proxy_read): the walls what a side view of the mesh sees, the
+  @Range(0, 1) proxy_roof_b: float = 0.50              # roof what a view from above sees, so a far block is the colour its buildings are near
   @Ref(InteriorAtlases) interior: string = ""          # the InteriorAtlases row its windows show (imi.ludic); "" = plain glass
   @Unit("m") @Range(0, 20) win_w: float = 3.0          # window cell size on the facade (interior mapping)
   @Unit("m") @Range(0, 20) win_h: float = 3.2

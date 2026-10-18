@@ -175,6 +175,94 @@ program HlodTest {
     expect_eq(m.source, 1)
   }
 
+  # the colour of every vertex of the faces whose normal's y is `up` (1 the roof, 0 the walls) is (r, g, b) to a byte
+  function faces_are(m: HlodMesh, up: float, r: float, g: float, b: float) -> bool {
+    var seen = 0
+    for v in 0 .. m.nv {
+      if Math.abs(m.vtx[v * HLOD_V + 4] - up) > 0.01 { continue }
+      let bits = float_bits(m.vtx[v * HLOD_V + 6])
+      if Math.abs(cell_rgba_r(bits) - r) > 0.003 or Math.abs(cell_rgba_g(bits) - g) > 0.003 or Math.abs(cell_rgba_b(bits) - b) > 0.003 { return false }
+      seen += 1
+    }
+    return seen > 0
+  }
+
+  # a quad (a, b, c, d round its edge) into the colour sums as two triangles, wound either way (no normals: its own winding says out)
+  function quad_into(acc: floats, q: floats, r: float, g: float, b: float) -> void {
+    hlod_colour_tri(acc, q, null, 0, 1, 2, r, g, b)
+    hlod_colour_tri(acc, q, null, 0, 2, 3, r, g, b)
+  }
+  function quad(ax: float, ay: float, az: float, bx: float, by: float, bz: float, cx: float, cy: float, cz: float, dx: float, dy: float, dz: float) -> floats {
+    let q = floats(12)
+    q[0] = ax;  q[1] = ay;  q[2] = az;  q[3] = bx;  q[4] = by;  q[5] = bz
+    q[6] = cx;  q[7] = cy;  q[8] = cz;  q[9] = dx;  q[10] = dy;  q[11] = dz
+    return q
+  }
+
+  test "a kit's proxy colours are what its mesh shows: the walls from the side, the roof from above" {
+    # a 10 m cube: four walls (0.6, 0.5, 0.4) and a flat roof (0.1, 0.1, 0.1), the roof's quad wound to face down (a two-sided mesh)
+    let acc = floats(HLOD_COL_ACC)
+    for i in 0 .. HLOD_COL_ACC { acc[i] = 0.0 }
+    quad_into(acc, quad(0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 10.0, 0.0), 0.6, 0.5, 0.4)
+    quad_into(acc, quad(0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0, 10.0), 0.6, 0.5, 0.4)
+    quad_into(acc, quad(0.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 10.0), 0.6, 0.5, 0.4)
+    quad_into(acc, quad(10.0, 0.0, 0.0, 10.0, 0.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 0.0), 0.6, 0.5, 0.4)
+    let roof = quad(0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0, 10.0, 10.0, 0.0, 10.0, 10.0)
+    let nrm = floats(12)
+    for v in 0 .. 4 { nrm[v * 3] = 0.0;  nrm[v * 3 + 1] = 1.0;  nrm[v * 3 + 2] = 0.0 }
+    hlod_colour_tri(acc, roof, nrm, 0, 1, 2, 0.1, 0.1, 0.1)
+    hlod_colour_tri(acc, roof, nrm, 0, 2, 3, 0.1, 0.1, 0.1)
+    let k = new RenderKit
+    expect(hlod_colour_apply(acc, k))
+    expect_near(k.proxy_r, 0.6, 0.0005)
+    expect_near(k.proxy_g, 0.5, 0.0005)
+    expect_near(k.proxy_b, 0.4, 0.0005)
+    expect(k.proxy_roof)
+    expect_near(k.proxy_roof_r, 0.1, 0.0005)
+    # a roof pitched at 45 degrees counts for both: as much of it is seen from the side as from above
+    let pitched = quad(0.0, 10.0, 0.0, 10.0, 10.0, 0.0, 10.0, 20.0, 10.0, 0.0, 20.0, 10.0)
+    let a2 = floats(HLOD_COL_ACC)
+    for i in 0 .. HLOD_COL_ACC { a2[i] = 0.0 }
+    hlod_colour_tri(a2, pitched, null, 0, 2, 1, 0.2, 0.2, 0.2)
+    hlod_colour_tri(a2, pitched, null, 0, 3, 2, 0.2, 0.2, 0.2)
+    expect_near(a2[3], a2[7], 0.001)
+    expect_near(a2[7], 100.0, 0.01)                      # its plan: 10 x 10 m
+    # nothing counted: the row stays as it was
+    let none = floats(HLOD_COL_ACC)
+    for i in 0 .. HLOD_COL_ACC { none[i] = 0.0 }
+    let k2 = new RenderKit
+    expect(not hlod_colour_apply(none, k2))
+    expect(not k2.proxy_roof)
+    expect_near(k2.proxy_r, 0.55, 0.0001)
+  }
+
+  test "a kit with a roof colour gives its proxy's roof that colour and its walls their own; one without keeps one colour" {
+    let rows = kits()
+    let k = rows[0]
+    k.proxy_roof = true
+    k.proxy_roof_r = 0.1;  k.proxy_roof_g = 0.2;  k.proxy_roof_b = 0.3
+    let c = cell_content_new(0, 0, 128.0, 4)
+    cell_add(c, 0, 10.0, 0.0, 10.0, 0.3, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, rows, 0.0, 6.0, 3.0, m)
+    expect(faces_are(m, 1.0, 0.1, 0.2, 0.3))
+    expect(faces_are(m, 0.0, k.proxy_r, k.proxy_g, k.proxy_b))
+    # two of them merged: the merged box's roof is their roofs' colour too
+    let c2 = cell_content_new(0, 0, 128.0, 4)
+    cell_add(c2, 0, 10.0, 0.0, 10.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    cell_add(c2, 0, 21.0, 0.0, 10.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let m2 = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c2, rows, 64.0, 6.0, 3.0, m2)
+    expect_eq(m2.boxes, 1)
+    expect(faces_are(m2, 1.0, 0.1, 0.2, 0.3))
+    expect(faces_are(m2, 0.0, k.proxy_r, k.proxy_g, k.proxy_b))
+    # the fixture's rows give no roof colour: walls and roof are one
+    let plain = kits()
+    let m3 = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, plain, 0.0, 6.0, 3.0, m3)
+    expect(faces_are(m3, 1.0, plain[0].proxy_r, plain[0].proxy_g, plain[0].proxy_b))
+  }
+
   test "the proxy's colour is the kit's times the instance's tint" {
     let c = cell_content_new(0, 0, 128.0, 4)
     cell_add(c, 0, 10.0, 0.0, 10.0, 0.0, 1.0, cell_rgba(128, 255, 0, 255), 0, 0)
