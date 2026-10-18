@@ -45,3 +45,68 @@ export function kitbox_read(render3d_st: mut Render3dState, dir: string, file: s
   return true
 }
 
+# Kit `k`'s proxy colours (its HLOD box's walls and roof: hlod_colour_tri, hlod_colour_apply) from node `node`'s mesh in dir/file, read
+# on the CPU as kitbox_read reads the anchors: every triangle in its material's base colour as the kit shader draws it (the
+# baseColorFactor; an untextured material that states none draws the renderer's white, 200 of 255). A box kit's mesh is its reference
+# instance, which is what the ratios of its faces need. false, and the row left as it is, when the file or node cannot be read or the
+# mesh has a texture or vertex colours (a picture's average is not this reader's: such a kit states its colours in its row).
+@alloc_ok("a bake: a kit's accessors, once")
+export function kit_proxy_read(render3d_st: mut Render3dState, dir: string, file: string, node: string, k: RenderKit) -> bool {
+  if not gltf_open(render3d_st, dir, file) { return false }
+  let doc = render3d_st.gltf_doc
+  let nodes = value_get(doc, "nodes")
+  var mi = -1
+  for i in 0 .. value_count(nodes) {
+    let nd = value_at(nodes, i)
+    if value_has(nd, "name") != 0 and value_as_str(value_get(nd, "name")) == node { mi = jint(nd, "mesh", -1) }
+  }
+  var ok = mi >= 0
+  let acc = floats(HLOD_COL_ACC)
+  for i in 0 .. HLOD_COL_ACC { acc[i] = 0.0 }
+  if ok {
+    let prims = value_get(value_at(value_get(doc, "meshes"), mi), "primitives")
+    for p in 0 .. value_count(prims) {
+      let pv = value_at(prims, p)
+      let attrs = value_get(pv, "attributes")
+      if value_has(attrs, "POSITION") == 0 { continue }
+      if value_has(attrs, "COLOR_0") != 0 { ok = false;  break }
+      var r = 200.0 / 255.0
+      var g = r
+      var b = r
+      if value_has(pv, "material") != 0 {
+        let mat = value_at(value_get(doc, "materials"), value_as_int(value_get(pv, "material")))
+        if gltf_mat_uri(render3d_st, mat, "baseColorTexture") != null or gltf_mat_bv(render3d_st, mat, "baseColorTexture") >= 0 { ok = false;  break }
+        if value_has(mat, "pbrMetallicRoughness") != 0 {
+          let pbr = value_get(mat, "pbrMetallicRoughness")
+          if value_has(pbr, "baseColorFactor") != 0 {
+            let f = value_get(pbr, "baseColorFactor")
+            if value_count(f) >= 3 { r = jnum(value_at(f, 0));  g = jnum(value_at(f, 1));  b = jnum(value_at(f, 2)) }
+          }
+        }
+      }
+      let pos = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "POSITION")))
+      let nv = len(pos) / 3
+      var nrm: floats = null
+      if value_has(attrs, "NORMAL") != 0 { nrm = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "NORMAL"))) }
+      if nrm != null and len(nrm) != nv * 3 { nrm = null }
+      if value_has(pv, "indices") != 0 {
+        let idx = gltf_accessor_ints(render3d_st, value_as_int(value_get(pv, "indices")))
+        var t = 0
+        while t + 2 < len(idx) {
+          if idx[t] < nv and idx[t + 1] < nv and idx[t + 2] < nv { hlod_colour_tri(acc, pos, nrm, idx[t], idx[t + 1], idx[t + 2], r, g, b) }
+          t += 3
+        }
+      } else {
+        var t = 0
+        while t + 2 < nv {
+          hlod_colour_tri(acc, pos, nrm, t, t + 1, t + 2, r, g, b)
+          t += 3
+        }
+      }
+    }
+  }
+  file_close(render3d_st.gltf_bin)
+  render3d_st.gltf_bin = null
+  if not ok { return false }
+  return hlod_colour_apply(acc, k)
+}

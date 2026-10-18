@@ -208,7 +208,10 @@ It is pure: the game does the loading and tells it what it cost.
 **HLOD.** `hlod_bake(content, kits, cluster_m, height_band, max_growth, out)` turns a cell into a merged proxy: each building a box
 (footprint x height, yaw, scale), buildings grouped by a ground grid of `cluster_m` metres *and* a height band, each group of two or more
 replaced by one box if it is not more than `max_growth` times the volume of what it replaces; no bottom faces (five faces a box,
-7 floats a vertex: position, normal, RGBA8 colour in the float's bits). The bake is **a person's task**, not a frame's:
+7 floats a vertex: position, normal, RGBA8 colour in the float's bits). A box's walls are its kit's `proxy_r/g/b` and its roof
+`proxy_roof_r/g/b` (when `proxy_roof`), times the instance's tint; a merged box takes its members' weighted by wall area and plan.
+A bake derives a kit's proxy colours from its own mesh with `kit_proxy_read` (the walls what a side view of it sees, the roof what
+a view from above sees), so the far city is the colour of the near one. The bake is **a person's task**, not a frame's:
 
 ```text
 ludic build packages/ludic.render3d/tools/hlod_bake.ludic
