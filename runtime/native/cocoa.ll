@@ -941,10 +941,15 @@ qpos:
   store i32 %iy, ptr @W_my
   br label %emit
 emit:
-  %mx = load i32, ptr @W_mx
+  ; the position in the DRAWABLE's pixels (what the game draws its UI in): W_mx / W_my are window points, and on a
+  ; Retina screen the drawable is W_pixscale times that (a click landed at half its distance from the corner)
+  %mxp = load i32, ptr @W_mx
+  %myp = load i32, ptr @W_my
+  %psc = load i32, ptr @W_pixscale
+  %mx = mul i32 %mxp, %psc
+  %my = mul i32 %myp, %psc
   %p0 = getelementptr i32, ptr %out, i32 0
   store i32 %mx, ptr %p0
-  %my = load i32, ptr @W_my
   %p1 = getelementptr i32, ptr %out, i32 1
   store i32 %my, ptr %p1
   %mb = load i32, ptr @W_mbtn
