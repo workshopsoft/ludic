@@ -295,7 +295,8 @@ vec3 facadeRoom(Fac f, vec3 ray, float lod, float rays) {
     tex = textureLod(u_rooms, imiAtlasUv(room, int(hit.x + 0.5), hit.yz, 0.01), lod).rgb;
   }
   if (show < 0.999) tex = mix(flatg, tex, show);
-  vec3 col = tex * amb * 0.45 * dayGain;
+  // the flat glass is lit by the sky's brightness, not its hue: far off a tower's thousands of panes read a calm grey, not a blue sheet
+  vec3 col = tex * mix(vec3(dot(amb, vec3(0.2126, 0.7152, 0.0722))), amb, show) * 0.45 * dayGain;
   if (lit) col += tex * u_im_lit * u_im_gain.x * night;
   return col;
 }
