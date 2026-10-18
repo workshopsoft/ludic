@@ -1,0 +1,1334 @@
+# conform_window.ludic - the ground conform's window, native: the per-texel work of the studio's conformWindow (game-editor
+# packages/core/src/world/groundConform.ts), every window of a job on its own core.
+#
+#   conform_window <job.bin> <out.bin>
+#
+# The studio plans (the road surfaces, the pads, the walls and their zones, the water) and writes a job of windows; this program
+# answers each window's heights, classes and kinds, the same rules in the same order:
+#   1. the road surfaces sampled SUB x SUB a texel (their top and class), one-sample gaps closed
+#   2. distances inside and outside the surfaces (exact, within the reach asked)
+#   3. per texel: the road's ground under its top, the verge's at its edge
+#   4. pads, jetty decks, the road bake's wing walls
+#   5. the edge fit (least squares of the band and verge to the edges' tops)
+#   6. the footprints' caps, abutments, decks and tubes, water
+#   7. the walls' zones and the slopes (4-neighbour cones from every fixed texel), the heights
+#   8. holes at a tube's mouth, and the classes
+# Job and answer are little-endian (i32 and f64); the layout is the studio's (mcp/src/groundNative.ts writes and reads it).
+program ConformWindow {
+
+  const SUB: int = 4
+  const INF: double = 1000000000000000000000.0
+  const K_FREE: int = 0
+  const K_ROAD: int = 1
+  const K_VERGE: int = 2
+  const K_PAD: int = 3
+  const K_ABUT: int = 4
+  const K_KEPT: int = 5
+  const K_WALL: int = 6
+  const WING_LOW: double = 1.5
+  const WING_CAP: double = 3.1
+
+  property Rings {
+    n: int = 0
+    off: words = null       # ring r's first point is off[r], its count off[r + 1] - off[r]
+    pts: doubles = null     # x, z pairs
+    val: doubles = null     # a value a ring (a pad's y, an abutment's top)
+  }
+
+  property Ribbons {
+    n: int = 0
+    off: words = null
+    pts: doubles = null
+    half: doubles = null    # a half width a point
+  }
+
+  property Win {
+    i0: int = 0
+    j0: int = 0
+    w: int = 0
+    h: int = 0
+    nat: doubles = null
+    keep: []byte = null
+    wetn: []byte = null
+    ns: int = 0
+    surf: doubles = null
+    scls: []byte = null
+    nd: int = 0
+    decks: doubles = null
+    nso: int = 0
+    soffits: doubles = null
+    nt: int = 0
+    tubes: doubles = null
+    pads: Rings = null
+    jetties: Rings = null
+    nwalls: int = 0
+    walls: doubles = null   # 13 a wall: ax az bx bz nx nz ta tb hold h0 h1 freeA freeB
+    nzones: int = 0
+    zones: doubles = null   # 10 a zone: pad ox oz dx dz nx nz t0 t1 depth
+    abut: Rings = null
+    lakes: Rings = null
+    rivers: Ribbons = null
+    # the answer
+    heights: doubles = null
+    cls: []byte = null
+    kind: []byte = null
+    fit: doubles = null     # worst, x, z
+    conf: []double = null   # x z d ...
+    cut: []double = null    # x z ...
+  }
+
+  property CJob {
+    x0: double = 0.0
+    z0: double = 0.0
+    tex: double = 1.0
+    edge: double = 0.03
+    mid: double = 0.11
+    under: double = 0.15
+    verge: double = 1.0
+    slope: double = 1.5
+    apron: double = 1.5
+    reach: double = 48.0
+    waterBand: double = 6.0
+    quantum: double = 0.01
+    roof: double = 6.5
+    cPad: int = 5
+    cSlope: int = 7
+    cLand: int = 2
+    cShore: int = 1
+    cBed: int = 1
+    cRock: int = -1
+    cHole: int = -1
+    wins: []Win = null
+  }
+
+  property Reader {
+    b: []byte = null
+    at: int = 0
+  }
+
+  # ---- reading and writing ---------------------------------------------------------------------------------------------
+  function ri(r: Reader) -> int {
+    let b = r.b
+    let a = r.at
+    r.at = a + 4
+    let v = b[a] | (b[a + 1] << 8) | (b[a + 2] << 16) | (b[a + 3] << 24)
+    if v >= 2147483648 { return v - 4294967296 }
+    return v
+  }
+  function rd(r: Reader) -> double {
+    let b = r.b
+    let a = r.at
+    r.at = a + 8
+    var bits: long = 0
+    var k = 7
+    while k >= 0 {
+      bits = (bits << 8) | long(b[a + k])
+      k -= 1
+    }
+    return double_from_bits(bits)
+  }
+  function rds(r: Reader, n: int) -> doubles {
+    let out = doubles(max(n, 1))
+    for i in 0 .. n { out[i] = rd(r) }
+    return out
+  }
+  function rbs(r: Reader, n: int) -> []byte {
+    let out = buffer(max(n, 1))
+    for i in 0 .. n { out[i] = r.b[r.at + i] }
+    r.at = r.at + n
+    return out
+  }
+  function rrings(r: Reader, withVal: bool) -> Rings {
+    let g = new Rings
+    g.n = ri(r)
+    g.off = words(g.n + 1)
+    let pts = new []double
+    let val = doubles(max(g.n, 1))
+    for k in 0 .. g.n {
+      let np = ri(r)
+      g.off[k] = len(pts) / 2
+      for q in 0 .. np * 2 { push(pts, rd(r)) }
+      if withVal { val[k] = rd(r) }
+    }
+    g.off[g.n] = len(pts) / 2
+    g.pts = doubles(max(len(pts), 1))
+    for q in 0 .. len(pts) { g.pts[q] = pts[q] }
+    g.val = val
+    return g
+  }
+  function rribbons(r: Reader) -> Ribbons {
+    let g = new Ribbons
+    g.n = ri(r)
+    g.off = words(g.n + 1)
+    let pts = new []double
+    let half = new []double
+    for k in 0 .. g.n {
+      let np = ri(r)
+      g.off[k] = len(half)
+      for q in 0 .. np { push(pts, rd(r));  push(pts, rd(r)) }
+      for q in 0 .. np { push(half, rd(r)) }
+    }
+    g.off[g.n] = len(half)
+    g.pts = doubles(max(len(pts), 1))
+    for q in 0 .. len(pts) { g.pts[q] = pts[q] }
+    g.half = doubles(max(len(half), 1))
+    for q in 0 .. len(half) { g.half[q] = half[q] }
+    return g
+  }
+
+  function read_job(path: string) -> CJob {
+    let r = new Reader
+    r.b = Fs.read_bytes(path)
+    if r.b == null or len(r.b) < 12 { return null }
+    if ri(r) != 1094932035 { return null }      # "CWJA"
+    let j = new CJob
+    let ver = ri(r)
+    let nw = ri(r)
+    j.x0 = rd(r);  j.z0 = rd(r);  j.tex = rd(r)
+    j.edge = rd(r);  j.mid = rd(r);  j.under = rd(r);  j.verge = rd(r);  j.slope = rd(r);  j.apron = rd(r)
+    j.reach = rd(r);  j.waterBand = rd(r);  j.quantum = rd(r);  j.roof = rd(r)
+    j.cPad = ri(r);  j.cSlope = ri(r);  j.cLand = ri(r);  j.cShore = ri(r);  j.cBed = ri(r);  j.cRock = ri(r);  j.cHole = ri(r)
+    j.wins = new []Win
+    for k in 0 .. nw {
+      let w = new Win
+      w.i0 = ri(r);  w.j0 = ri(r);  w.w = ri(r);  w.h = ri(r)
+      let n = w.w * w.h
+      w.nat = rds(r, n)
+      w.keep = rbs(r, n)
+      w.wetn = rbs(r, n)
+      w.ns = ri(r);  w.surf = rds(r, w.ns * 9);  w.scls = rbs(r, w.ns)
+      w.nd = ri(r);  w.decks = rds(r, w.nd * 9)
+      w.nso = ri(r);  w.soffits = rds(r, w.nso * 9)
+      w.nt = ri(r);  w.tubes = rds(r, w.nt * 9)
+      w.pads = rrings(r, true)
+      w.jetties = rrings(r, false)
+      w.nwalls = ri(r);  w.walls = rds(r, w.nwalls * 13)
+      w.nzones = ri(r);  w.zones = rds(r, w.nzones * 10)
+      w.abut = rrings(r, true)
+      w.lakes = rrings(r, false)
+      w.rivers = rribbons(r)
+      push(j.wins, w)
+    }
+    if ver < 1 { return null }
+    return j
+  }
+
+  function wi(b: []byte, at: int, v: int) -> void {
+    b[at] = v & 255;  b[at + 1] = (v >> 8) & 255;  b[at + 2] = (v >> 16) & 255;  b[at + 3] = (v >> 24) & 255
+  }
+  function wd(b: []byte, at: int, v: double) -> void {
+    var bits = double_bits(v)
+    for k in 0 .. 8 {
+      b[at + k] = int(bits & 255)
+      bits = bits >> 8
+    }
+  }
+
+  function write_answer(path: string, j: CJob) -> bool {
+    var size = 8
+    for k in 0 .. len(j.wins) {
+      let w = j.wins[k]
+      size = size + w.w * w.h * 10 + 24 + 8 + len(w.conf) * 8 + len(w.cut) * 8
+    }
+    let b = buffer(size)
+    wi(b, 0, 1094932033)      # "AWCA"
+    wi(b, 4, len(j.wins))
+    var at = 8
+    for k in 0 .. len(j.wins) {
+      let w = j.wins[k]
+      let n = w.w * w.h
+      for t in 0 .. n { wd(b, at, w.heights[t]);  at += 8 }
+      for t in 0 .. n { b[at] = w.cls[t];  at += 1 }
+      for t in 0 .. n { b[at] = w.kind[t];  at += 1 }
+      wd(b, at, w.fit[0]);  wd(b, at + 8, w.fit[1]);  wd(b, at + 16, w.fit[2]);  at += 24
+      wi(b, at, len(w.conf) / 3);  at += 4
+      for q in 0 .. len(w.conf) { wd(b, at, w.conf[q]);  at += 8 }
+      wi(b, at, len(w.cut) / 2);  at += 4
+      for q in 0 .. len(w.cut) { wd(b, at, w.cut[q]);  at += 8 }
+    }
+    return Fs.write_bytes(path, b, at)
+  }
+
+  # ---- small geometry ----------------------------------------------------------------------------------------------------
+  function isel(c: bool, a: int, b: int) -> int { if c { return a };  return b }
+  function dsel(c: bool, a: double, b: double) -> double { if c { return a };  return b }
+  function dmin(a: double, b: double) -> double { if a < b { return a };  return b }
+  function dmax(a: double, b: double) -> double { if a > b { return a };  return b }
+  function dabs(a: double) -> double { if a < 0.0 { return -a };  return a }
+  function hyp(x: double, z: double) -> double { return Math.sqrt(x * x + z * z) }
+
+  # the height of triangle q (9 numbers from q * 9) of P over (x, z), or -INF when outside it in plan
+  function tri_y(P: doubles, q: int, x: double, z: double) -> double {
+    let o = q * 9
+    let ax = P[o]
+    let az = P[o + 2]
+    let ux = P[o + 3] - ax
+    let uz = P[o + 5] - az
+    let vx = P[o + 6] - ax
+    let vz = P[o + 8] - az
+    let det = ux * vz - uz * vx
+    if dabs(det) < 0.000000000001 { return -INF }
+    let s = ((x - ax) * vz - (z - az) * vx) / det
+    let t = (ux * (z - az) - uz * (x - ax)) / det
+    if s < -0.000000001 or t < -0.000000001 or s + t > 1.000000001 { return -INF }
+    return P[o + 1] + s * (P[o + 4] - P[o + 1]) + t * (P[o + 7] - P[o + 1])
+  }
+
+  function inside_ring(g: Rings, r: int, px: double, pz: double) -> bool {
+    var inside = false
+    let p0 = g.off[r]
+    let np = g.off[r + 1] - p0
+    var k = np - 1
+    for i in 0 .. np {
+      let ax = g.pts[(p0 + i) * 2]
+      let az = g.pts[(p0 + i) * 2 + 1]
+      let bx = g.pts[(p0 + k) * 2]
+      let bz = g.pts[(p0 + k) * 2 + 1]
+      if (az > pz) != (bz > pz) {
+        if px < (bx - ax) * (pz - az) / (bz - az) + ax { inside = not inside }
+      }
+      k = i
+    }
+    return inside
+  }
+
+  # a ring's sides as the studio's padSides: counter-clockwise (shoelace > 0), each a, b, outward normal, |nx| + |nz|; 7 a side
+  function pad_sides(g: Rings, r: int) -> doubles {
+    let p0 = g.off[r]
+    let np = g.off[r + 1] - p0
+    var area: double = 0.0
+    for i in 0 .. np {
+      let k = (i + 1) % np
+      area = area + g.pts[(p0 + i) * 2] * g.pts[(p0 + k) * 2 + 1] - g.pts[(p0 + k) * 2] * g.pts[(p0 + i) * 2 + 1]
+    }
+    let rev = area < 0.0
+    let out = new []double
+    for i in 0 .. np {
+      let ia = isel(rev, np - 1 - i, i)
+      let ib = isel(rev, np - 1 - ((i + 1) % np), (i + 1) % np)
+      let ax = g.pts[(p0 + ia) * 2]
+      let az = g.pts[(p0 + ia) * 2 + 1]
+      let bx = g.pts[(p0 + ib) * 2]
+      let bz = g.pts[(p0 + ib) * 2 + 1]
+      let dx = bx - ax
+      let dz = bz - az
+      let l = hyp(dx, dz)
+      if l < 0.000001 { continue }
+      let nx = dz / l
+      let nz = -dx / l
+      push(out, ax);  push(out, az);  push(out, bx);  push(out, bz);  push(out, nx);  push(out, nz);  push(out, dabs(nx) + dabs(nz))
+    }
+    let s = doubles(max(len(out), 1))
+    for q in 0 .. len(out) { s[q] = out[q] }
+    return s
+  }
+
+  function convex(sd: doubles, ns: int) -> bool {
+    var sign = 0
+    for i in 0 .. ns {
+      let a = i * 7
+      let b = ((i + 1) % ns) * 7
+      let c = (sd[a + 2] - sd[a]) * (sd[b + 3] - sd[b + 1]) - (sd[a + 3] - sd[a + 1]) * (sd[b + 2] - sd[b])
+      if dabs(c) < 0.000000001 { continue }
+      let sg = isel(c > 0.0, 1, -1)
+      if sign == 0 { sign = sg } else if sg != sign { return false }
+    }
+    return true
+  }
+
+  # distance to the boundary (negative inside), the nearest side and whether it is at a corner: into out[0..2]
+  function pad_dist(sd: doubles, ns: int, g: Rings, r: int, px: double, pz: double, out: doubles) -> void {
+    var best: double = INF
+    var side = -1
+    var corner = false
+    for i in 0 .. ns {
+      let o = i * 7
+      let ax = sd[o]
+      let az = sd[o + 1]
+      let vx = sd[o + 2] - ax
+      let vz = sd[o + 3] - az
+      let l2 = vx * vx + vz * vz
+      var t: double = 0.0
+      if l2 >= 0.000000000001 { t = dmax(0.0, dmin(1.0, ((px - ax) * vx + (pz - az) * vz) / l2)) }
+      let d = hyp(px - (ax + vx * t), pz - (az + vz * t))
+      if d < best - 0.000000000001 {
+        best = d
+        side = i
+        corner = t <= 0.000000001 or t >= 0.999999999
+      }
+    }
+    out[0] = dsel(inside_ring(g, r, px, pz), -best, best)
+    out[1] = double(side)
+    out[2] = dsel(corner, 1.0, 0.0)
+  }
+
+  function in_pad(j: CJob, sd: doubles, ns: int, cvx: bool, g: Rings, r: int, px: double, pz: double, T: double, tmp: doubles) -> bool {
+    if cvx {
+      for i in 0 .. ns {
+        let o = i * 7
+        if (px - sd[o]) * sd[o + 4] + (pz - sd[o + 1]) * sd[o + 5] > j.apron + sd[o + 6] * T + 0.000000001 { return false }
+      }
+      return true
+    }
+    pad_dist(sd, ns, g, r, px, pz, tmp)
+    let side = int(tmp[1])
+    var s: double = 1.4142135623730951
+    if tmp[2] < 0.5 and side >= 0 { s = sd[side * 7 + 6] }
+    return tmp[0] <= j.apron + s * T
+  }
+
+  # ---- distances (edtWithin's arithmetic) --------------------------------------------------------------------------------
+  # every sample within R of one holding `to`: exact squared distance and nearest index; INF and -1 elsewhere
+  function edt_within(mask: []byte, W: int, H: int, to: int, R: int, d: doubles, idx: words) -> void {
+    let R2 = double(R * R)
+    let n = max(W, H)
+    let v = words(n)
+    let zz = doubles(n + 1)
+    let cols = words(W)
+    let askMin = words(H)
+    let askMax = words(H)
+    let finMin = words(H)
+    let finMax = words(H)
+    let last = words(W)
+    for x in 0 .. W { last[x] = -1 }
+    var at = 0
+    for y in 0 .. H {
+      for x in 0 .. W {
+        if mask[at] == to { last[x] = y }
+        idx[at] = last[x]
+        at += 1
+      }
+    }
+    for x in 0 .. W { last[x] = -1 }
+    var y = H - 1
+    while y >= 0 {
+      var a0 = W
+      var a1 = -1
+      var f0 = W
+      var f1 = -1
+      var x = W - 1
+      var at2 = y * W + W - 1
+      while x >= 0 {
+        var done = false
+        if mask[at2] == to { last[x] = y } else {
+          if a1 < 0 { a1 = x }
+          a0 = x
+        }
+        let up = idx[at2]
+        let dn = last[x]
+        let du = isel(up >= 0, y - up, -1)
+        let dd = isel(dn >= 0, dn - y, -1)
+        if du >= 0 and (dd < 0 or du <= dd) {
+          if du <= R {
+            d[at2] = double(du * du)
+            idx[at2] = up * W + x
+            if f1 < 0 { f1 = x }
+            f0 = x
+            done = true
+          }
+        } else if dd >= 0 and dd <= R {
+          d[at2] = double(dd * dd)
+          idx[at2] = dn * W + x
+          if f1 < 0 { f1 = x }
+          f0 = x
+          done = true
+        }
+        if not done {
+          d[at2] = INF
+          idx[at2] = -1
+        }
+        x -= 1
+        at2 -= 1
+      }
+      askMin[y] = a0
+      askMax[y] = a1
+      finMin[y] = f0
+      finMax[y] = f1
+      y -= 1
+    }
+    let fRow = doubles(W)
+    let iRow = words(W)
+    for yy in 0 .. H {
+      if askMax[yy] < 0 or finMax[yy] < 0 { continue }
+      let qlo = max(askMin[yy], finMin[yy] - R)
+      let qhi = min(askMax[yy], finMax[yy] + R)
+      if qlo > qhi { continue }
+      let plo = max(finMin[yy], qlo - R)
+      let phi = min(finMax[yy], qhi + R)
+      let o = yy * W
+      var m = 0
+      for q in plo .. phi + 1 {
+        fRow[q] = d[o + q]
+        iRow[q] = idx[o + q]
+        if fRow[q] < INF { cols[m] = q;  m += 1 }
+      }
+      if m == 0 { continue }
+      var k = 0
+      v[0] = cols[0]
+      zz[0] = -INF
+      zz[1] = INF
+      for c in 1 .. m {
+        let q = cols[c]
+        let fq = fRow[q] + double(q * q)
+        var vk = v[k]
+        var s = (fq - (fRow[vk] + double(vk * vk))) / double(2 * q - 2 * vk)
+        while s <= zz[k] {
+          k -= 1
+          vk = v[k]
+          s = (fq - (fRow[vk] + double(vk * vk))) / double(2 * q - 2 * vk)
+        }
+        k += 1
+        v[k] = q
+        zz[k] = s
+        zz[k + 1] = INF
+      }
+      k = 0
+      for q in qlo .. qhi + 1 {
+        while zz[k + 1] < double(q) { k += 1 }
+        let vk = v[k]
+        let val = double((q - vk) * (q - vk)) + fRow[vk]
+        if val > R2 {
+          d[o + q] = INF
+          idx[o + q] = -1
+        } else {
+          d[o + q] = val
+          idx[o + q] = iRow[vk]
+        }
+      }
+    }
+  }
+
+  # the full edt (no reach): squared distance to the nearest sample holding `to`
+  function edt_full(mask: []byte, W: int, H: int, to: int, d: doubles) -> void {
+    let idx = words(W * H)
+    edt_within(mask, W, H, to, W + H, d, idx)
+  }
+
+  # ---- one window ----------------------------------------------------------------------------------------------------------
+  function run_window(k: int, j: CJob) -> void {
+    let win = j.wins[k]
+    let w = win.w
+    let h = win.h
+    let T = j.tex
+    let N = w * h
+    let nat = win.nat
+    let gx0 = j.x0
+    let gz0 = j.z0
+    let i0 = win.i0
+    let j0 = win.j0
+    let SW = SUB * w + 1
+    let SH = SUB * h + 1
+    let ST = T / double(SUB)
+    let sx0 = gx0 + (double(i0) + 0.5) * T - double(SUB / 2) * ST
+    let sz0 = gz0 + (double(j0) + 0.5) * T - double(SUB / 2) * ST
+    let NS = SW * SH
+    # 1. the surfaces' top and class, sampled
+    let top = doubles(NS)
+    let has = buffer(NS)
+    let scl = buffer(NS)
+    for q in 0 .. NS { scl[q] = 255 }
+    let rowMin = words(SH)
+    let rowMax = words(SH)
+    for l in 0 .. SH { rowMin[l] = SW;  rowMax[l] = -1 }
+    let P = win.surf
+    for ti in 0 .. win.ns {
+      let q = ti * 9
+      let k0 = max(0, int(Math.ceil((dmin(P[q], dmin(P[q + 3], P[q + 6])) - sx0) / ST)))
+      let k1 = min(SW - 1, int(Math.floor((dmax(P[q], dmax(P[q + 3], P[q + 6])) - sx0) / ST)))
+      let l0 = max(0, int(Math.ceil((dmin(P[q + 2], dmin(P[q + 5], P[q + 8])) - sz0) / ST)))
+      let l1 = min(SH - 1, int(Math.floor((dmax(P[q + 2], dmax(P[q + 5], P[q + 8])) - sz0) / ST)))
+      if k0 <= k1 {
+        for l in l0 .. l1 + 1 {
+          if k0 < rowMin[l] { rowMin[l] = k0 }
+          if k1 > rowMax[l] { rowMax[l] = k1 }
+        }
+      }
+      for l in l0 .. l1 + 1 {
+        for kk in k0 .. k1 + 1 {
+          let y = tri_y(P, ti, sx0 + double(kk) * ST, sz0 + double(l) * ST)
+          if y == -INF { continue }
+          let at = l * SW + kk
+          if has[at] == 0 or y > top[at] {
+            top[at] = y
+            has[at] = 1
+            scl[at] = win.scls[ti]
+          }
+        }
+      }
+    }
+    # close one-sample gaps
+    let fillAt = new []int
+    let fillY = new []double
+    for l in 1 .. SH - 1 {
+      let n0 = min(rowMin[max(0, l - 1)], min(rowMin[l], rowMin[min(SH - 1, l + 1)])) - 1
+      let n1 = max(rowMax[max(0, l - 1)], max(rowMax[l], rowMax[min(SH - 1, l + 1)])) + 1
+      for kk in max(1, n0) .. min(SW - 2, n1) + 1 {
+        let at = l * SW + kk
+        if has[at] == 1 { continue }
+        var pi = 0
+        while pi < 4 {
+          let off = isel(pi == 0, 1, isel(pi == 1, SW, isel(pi == 2, SW + 1, SW - 1)))
+          if has[at - off] == 1 and has[at + off] == 1 {
+            push(fillAt, at)
+            push(fillY, dmin(top[at - off], top[at + off]))
+            break
+          }
+          pi += 1
+        }
+      }
+    }
+    for n in 0 .. len(fillAt) {
+      let at = fillAt[n]
+      top[at] = fillY[n]
+      has[at] = 1
+      if scl[at - 1] != 255 { scl[at] = scl[at - 1] } else if scl[at + 1] != 255 { scl[at] = scl[at + 1] } else if scl[at - SW] != 255 { scl[at] = scl[at - SW] } else { scl[at] = scl[at + SW] }
+    }
+    # 2. distances
+    let vergeOut = j.verge + 1.4142135623730951 * T
+    let rIn = int(Math.ceil((1.3 + ST) / ST)) + 1
+    let rOut = int(Math.ceil((dmax(vergeOut, dmax(j.verge, T)) + ST) / ST)) + 1
+    let dInD = doubles(NS)
+    let dInI = words(NS)
+    let dOutD = doubles(NS)
+    let dOutI = words(NS)
+    edt_within(has, SW, SH, 0, rIn, dInD, dInI)
+    edt_within(has, SW, SH, 1, rOut, dOutD, dOutI)
+    # 3. per texel
+    let kind = buffer(N)
+    let D = doubles(N)
+    let Dset = buffer(N)
+    let cls = buffer(N)
+    for b in 0 .. h {
+      for a in 0 .. w {
+        let t = b * w + a
+        let kk = SUB * a + SUB / 2
+        let l = SUB * b + SUB / 2
+        let at = l * SW + kk
+        if has[at] == 1 {
+          let dd = Math.sqrt(dInD[at]) * ST - ST / 2.0
+          let tc = top[at]
+          var v: double = 0.0
+          if dd < 0.8 { v = dmin(tc - j.edge, dmin(box_min(top, has, SW, SH, kk, l, 1) - 0.01, box_min_other(top, has, scl, SW, SH, kk, l, int(Math.round(0.5 / ST)), scl[at]) - 0.02)) }
+          else if dd < 1.3 { v = dmin(tc - j.mid, dmin(box_min(top, has, SW, SH, kk, l, 1) - 0.01, box_min_other(top, has, scl, SW, SH, kk, l, 1, scl[at]) - 0.02)) }
+          else { v = dmin(tc - j.under, box_min(top, has, SW, SH, kk, l, int(Math.round(1.0 / ST))) - 0.05) }
+          D[t] = v
+          Dset[t] = 1
+          kind[t] = K_ROAD
+          cls[t] = scl[at]
+          continue
+        }
+        let dd = Math.sqrt(dOutD[at]) * ST - ST / 2.0
+        if dOutI[at] >= 0 and dd < vergeOut {
+          D[t] = top[dOutI[at]] - j.edge
+          Dset[t] = 1
+          kind[t] = K_VERGE
+        }
+      }
+    }
+    # 4. pads
+    let padOf = words(N)
+    for t in 0 .. N { padOf[t] = -1 }
+    let capAt = doubles(N)
+    for t in 0 .. N { capAt[t] = INF }
+    let tmp = doubles(3)
+    let pads = win.pads
+    for pi in 0 .. pads.n {
+      let sd = pad_sides(pads, pi)
+      let ns = len(sd) / 7
+      if ns == 0 { continue }
+      let cvx = convex(sd, ns)
+      let py = pads.val[pi]
+      var bx0: double = INF
+      var bx1: double = -INF
+      var bz0: double = INF
+      var bz1: double = -INF
+      for q in pads.off[pi] .. pads.off[pi + 1] {
+        bx0 = dmin(bx0, pads.pts[q * 2]);  bx1 = dmax(bx1, pads.pts[q * 2])
+        bz0 = dmin(bz0, pads.pts[q * 2 + 1]);  bz1 = dmax(bz1, pads.pts[q * 2 + 1])
+      }
+      let m = j.apron + 1.4142135623730951 * T + T
+      let a0 = max(0, int(Math.floor((bx0 - m - gx0) / T)) - i0)
+      let a1 = min(w - 1, int(Math.ceil((bx1 + m - gx0) / T)) - i0)
+      let b0 = max(0, int(Math.floor((bz0 - m - gz0) / T)) - j0)
+      let b1 = min(h - 1, int(Math.ceil((bz1 + m - gz0) / T)) - j0)
+      for b in b0 .. b1 + 1 {
+        for a in a0 .. a1 + 1 {
+          let t = b * w + a
+          let pcx = gx0 + (double(i0 + a) + 0.5) * T
+          let pcz = gz0 + (double(j0 + b) + 0.5) * T
+          pad_dist(sd, ns, pads, pi, pcx, pcz, tmp)
+          if tmp[0] <= 1.5 * T and py < capAt[t] { capAt[t] = py }
+          if kind[t] == K_ROAD { continue }
+          if kind[t] == K_VERGE and D[t] + j.edge < py - 0.005 {
+            let sk = (SUB * b + SUB / 2) * SW + SUB * a + SUB / 2
+            let dd = Math.sqrt(dOutD[sk]) * ST - ST / 2.0
+            if dd <= T { continue }
+            pad_dist(sd, ns, pads, pi, pcx, pcz, tmp)
+            if tmp[0] > 0.0 {
+              if dd <= j.verge or not in_pad(j, sd, ns, cvx, pads, pi, pcx, pcz, T, tmp) { continue }
+              let graded = D[t] + (dd - j.verge) / j.slope
+              if graded < py - 0.005 {
+                D[t] = dmax(D[t], graded)
+                continue
+              }
+            }
+          }
+          if not in_pad(j, sd, ns, cvx, pads, pi, pcx, pcz, T, tmp) { continue }
+          if padOf[t] >= 0 {
+            if py < pads.val[padOf[t]] {
+              padOf[t] = pi
+              D[t] = py
+            }
+            continue
+          }
+          padOf[t] = pi
+          D[t] = py
+          Dset[t] = 1
+          kind[t] = K_PAD
+          cls[t] = j.cPad
+        }
+      }
+    }
+    # jetty decks: the natural ground under them
+    let jt = win.jetties
+    for ri2 in 0 .. jt.n {
+      let sd = pad_sides(jt, ri2)
+      let ns = len(sd) / 7
+      var bx0: double = INF
+      var bx1: double = -INF
+      var bz0: double = INF
+      var bz1: double = -INF
+      for q in jt.off[ri2] .. jt.off[ri2 + 1] {
+        bx0 = dmin(bx0, jt.pts[q * 2]);  bx1 = dmax(bx1, jt.pts[q * 2])
+        bz0 = dmin(bz0, jt.pts[q * 2 + 1]);  bz1 = dmax(bz1, jt.pts[q * 2 + 1])
+      }
+      let a0 = max(0, int(Math.floor((bx0 - T - gx0) / T)) - i0)
+      let a1 = min(w - 1, int(Math.ceil((bx1 + T - gx0) / T)) - i0)
+      let b0 = max(0, int(Math.floor((bz0 - T - gz0) / T)) - j0)
+      let b1 = min(h - 1, int(Math.ceil((bz1 + T - gz0) / T)) - j0)
+      for b in b0 .. b1 + 1 {
+        for a in a0 .. a1 + 1 {
+          let t = b * w + a
+          if kind[t] == K_ROAD { continue }
+          let px = gx0 + (double(i0 + a) + 0.5) * T
+          let pz = gz0 + (double(j0 + b) + 0.5) * T
+          if not inside_ring(jt, ri2, px, pz) {
+            pad_dist(sd, ns, jt, ri2, px, pz, tmp)
+            if tmp[0] > 0.5 * T { continue }
+          }
+          D[t] = nat[t]
+          Dset[t] = 1
+          kind[t] = K_KEPT
+          if padOf[t] >= 0 {
+            padOf[t] = -1
+            cls[t] = 0
+          }
+        }
+      }
+    }
+    # the road bake's wing walls
+    if win.nwalls > 0 {
+      let lowAt = doubles(N)
+      let highAt = doubles(N)
+      let lowSet = buffer(N)
+      let highSet = buffer(N)
+      for wi2 in 0 .. win.nwalls {
+        let o = wi2 * 13
+        let ax = win.walls[o]
+        let az = win.walls[o + 1]
+        let bx = win.walls[o + 2]
+        let bz = win.walls[o + 3]
+        let nx = win.walls[o + 4]
+        let nz = win.walls[o + 5]
+        let ta = win.walls[o + 6]
+        let tb = win.walls[o + 7]
+        let hold = win.walls[o + 8] > 0.5
+        let h0 = win.walls[o + 9]
+        let h1 = win.walls[o + 10]
+        let freeA = win.walls[o + 11] > 0.5
+        let freeB = win.walls[o + 12] > 0.5
+        let reach = (WING_CAP + 1.0) * 2.0 * T + T
+        let a0 = max(0, int(Math.floor((dmin(ax, bx) - reach - gx0) / T)) - i0)
+        let a1 = min(w - 1, int(Math.ceil((dmax(ax, bx) + reach - gx0) / T)) - i0)
+        let b0 = max(0, int(Math.floor((dmin(az, bz) - reach - gz0) / T)) - j0)
+        let b1 = min(h - 1, int(Math.ceil((dmax(az, bz) + reach - gz0) / T)) - j0)
+        let dx = bx - ax
+        let dz = bz - az
+        var len2 = hyp(dx, dz)
+        if len2 == 0.0 { len2 = 0.000000001 }
+        let kk = dabs(nx) + dabs(nz)
+        for b in b0 .. b1 + 1 {
+          for a in a0 .. a1 + 1 {
+            let t = b * w + a
+            if kind[t] == K_ROAD or kind[t] == K_PAD { continue }
+            let px = gx0 + (double(i0 + a) + 0.5) * T
+            let pz = gz0 + (double(j0 + b) + 0.5) * T
+            let along = ((px - ax) * dx + (pz - az) * dz) / len2
+            let back = (px - ax) * nx + (pz - az) * nz
+            let f = dmax(0.0, dmin(1.0, along / len2))
+            let qtop = ta + (tb - ta) * f
+            if along < -0.5 * T or along > len2 + 0.5 * T or back <= 0.0 { continue }
+            let lowD = WING_LOW * kk * T
+            if back <= lowD {
+              if (freeA and along < 0.0) or (freeB and along > len2) { continue }
+              let f0 = dmax(0.0, dmin(len2, along)) / len2
+              let fx = ax + dx * f0 - nx * 0.3
+              let fz = az + dz * f0 - nz * 0.3
+              var tp: double = -INF
+              for ti in 0 .. win.ns {
+                let y = tri_y(P, ti, fx, fz)
+                if y > tp { tp = y }
+              }
+              let y = dsel(tp > -INF, tp, qtop - 0.5) - 0.1
+              if lowSet[t] == 0 { lowAt[t] = y;  lowSet[t] = 1 } else { lowAt[t] = dmin(lowAt[t], y) }
+            } else if back <= (WING_CAP + 1.0) * kk * T {
+              let f1 = dmax(0.0, dmin(1.0, along / len2))
+              let y = dsel(hold, h0 + (h1 - h0) * f1, dmin(nat[t], qtop - 0.3))
+              if highSet[t] == 0 { highAt[t] = y;  highSet[t] = 1 } else { highAt[t] = dmin(highAt[t], y) }
+            }
+          }
+        }
+      }
+      for t in 0 .. N {
+        if lowSet[t] == 1 {
+          D[t] = lowAt[t];  Dset[t] = 1;  kind[t] = K_KEPT
+        } else if highSet[t] == 1 {
+          D[t] = highAt[t];  Dset[t] = 1;  kind[t] = K_WALL
+        }
+      }
+    }
+    # 5. the edge fit
+    let fit = doubles(3)
+    edge_fit(j, win, w, h, SW, SH, ST, sx0, sz0, top, has, dInD, dInI, dOutD, dOutI, D, kind, fit)
+    # 6. caps, abutments, decks and tubes, water
+    for t in 0 .. N { if capAt[t] < D[t] and kind[t] != K_FREE and kind[t] != K_KEPT { D[t] = capAt[t] } }
+    let ab = win.abut
+    for ai in 0 .. ab.n {
+      let sd = pad_sides(ab, ai)
+      let ns = len(sd) / 7
+      var bx0: double = INF
+      var bx1: double = -INF
+      var bz0: double = INF
+      var bz1: double = -INF
+      for q in ab.off[ai] .. ab.off[ai + 1] {
+        bx0 = dmin(bx0, ab.pts[q * 2]);  bx1 = dmax(bx1, ab.pts[q * 2])
+        bz0 = dmin(bz0, ab.pts[q * 2 + 1]);  bz1 = dmax(bz1, ab.pts[q * 2 + 1])
+      }
+      for b in max(0, int(Math.floor((bz0 - 1.0 - gz0) / T)) - j0) .. min(h - 1, int(Math.ceil((bz1 + 1.0 - gz0) / T)) - j0) + 1 {
+        for a in max(0, int(Math.floor((bx0 - 1.0 - gx0) / T)) - i0) .. min(w - 1, int(Math.ceil((bx1 + 1.0 - gx0) / T)) - i0) + 1 {
+          let t = b * w + a
+          if kind[t] == K_ROAD or kind[t] == K_PAD { continue }
+          pad_dist(sd, ns, ab, ai, gx0 + (double(i0 + a) + 0.5) * T, gz0 + (double(j0 + b) + 0.5) * T, tmp)
+          if tmp[0] > 0.5 { continue }
+          D[t] = dmax(nat[t], ab.val[ai])
+          Dset[t] = 1
+          kind[t] = K_ABUT
+        }
+      }
+    }
+    let tubeLow = doubles(N)
+    let deckCap = doubles(N)
+    let deckTop = doubles(N)
+    for t in 0 .. N { tubeLow[t] = INF;  deckCap[t] = INF;  deckTop[t] = INF }
+    if win.nd > 0 or win.nt > 0 {
+      let under = buffer(N)
+      let deckLow = doubles(N)
+      let soffitLow = doubles(N)
+      for t in 0 .. N { deckLow[t] = INF;  soffitLow[t] = INF }
+      lowest(win.decks, win.nd, deckLow, under, true, w, h, i0, j0, gx0, gz0, T)
+      if win.nso > 0 { lowest(win.soffits, win.nso, soffitLow, under, true, w, h, i0, j0, gx0, gz0, T) }
+      if win.nt > 0 { lowest(win.tubes, win.nt, tubeLow, under, false, w, h, i0, j0, gx0, gz0, T) }
+      let roof = j.roof
+      for t in 0 .. N {
+        if under[t] == 0 { continue }
+        let tl = tubeLow[t] < INF
+        if kind[t] == K_VERGE and not tl and soffitLow[t] < INF and soffitLow[t] - 0.05 > nat[t] and D[t] > soffitLow[t] - 0.05 { kind[t] = K_FREE }
+        if kind[t] == K_FREE {
+          if not tl {
+            deckCap[t] = dmin(nat[t], deckLow[t] - 0.05)
+            deckTop[t] = dsel(soffitLow[t] - 0.05 > nat[t], dmin(deckLow[t], soffitLow[t]), deckLow[t]) - 0.05
+            continue
+          }
+          # underDeckGround
+          if tl and nat[t] >= tubeLow[t] + roof and not (deckLow[t] < tubeLow[t] - 0.000001) { D[t] = nat[t] } else { D[t] = dmin(nat[t], deckLow[t] - 0.05) }
+          Dset[t] = 1
+          kind[t] = K_KEPT
+        } else if kind[t] != K_ROAD and not (tl and nat[t] >= tubeLow[t] + roof) { D[t] = dmin(D[t], deckLow[t] - 0.05) }
+      }
+    }
+    let wet = buffer(N)
+    for t in 0 .. N { if win.wetn[t] > 127 { wet[t] = 1 } }
+    let lk = win.lakes
+    for li in 0 .. lk.n {
+      var bx0: double = INF
+      var bx1: double = -INF
+      var bz0: double = INF
+      var bz1: double = -INF
+      for q in lk.off[li] .. lk.off[li + 1] {
+        bx0 = dmin(bx0, lk.pts[q * 2]);  bx1 = dmax(bx1, lk.pts[q * 2])
+        bz0 = dmin(bz0, lk.pts[q * 2 + 1]);  bz1 = dmax(bz1, lk.pts[q * 2 + 1])
+      }
+      for b in max(0, int(Math.ceil((bz0 - gz0) / T - 0.5)) - j0) .. min(h - 1, int(Math.floor((bz1 - gz0) / T - 0.5)) - j0) + 1 {
+        for a in max(0, int(Math.ceil((bx0 - gx0) / T - 0.5)) - i0) .. min(w - 1, int(Math.floor((bx1 - gx0) / T - 0.5)) - i0) + 1 {
+          if wet[b * w + a] == 0 and inside_ring(lk, li, gx0 + (double(i0 + a) + 0.5) * T, gz0 + (double(j0 + b) + 0.5) * T) { wet[b * w + a] = 1 }
+        }
+      }
+    }
+    let rv = win.rivers
+    for rr in 0 .. rv.n {
+      let p0 = rv.off[rr]
+      let np = rv.off[rr + 1] - p0
+      for i in 0 .. np - 1 {
+        let ax = rv.pts[(p0 + i) * 2]
+        let az = rv.pts[(p0 + i) * 2 + 1]
+        let bx = rv.pts[(p0 + i + 1) * 2]
+        let bz = rv.pts[(p0 + i + 1) * 2 + 1]
+        let ha = rv.half[p0 + i]
+        let hb = rv.half[p0 + i + 1]
+        let m = dmax(ha, hb)
+        for b in max(0, int(Math.ceil((dmin(az, bz) - m - gz0) / T - 0.5)) - j0) .. min(h - 1, int(Math.floor((dmax(az, bz) + m - gz0) / T - 0.5)) - j0) + 1 {
+          for a in max(0, int(Math.ceil((dmin(ax, bx) - m - gx0) / T - 0.5)) - i0) .. min(w - 1, int(Math.floor((dmax(ax, bx) + m - gx0) / T - 0.5)) - i0) + 1 {
+            if wet[b * w + a] == 1 { continue }
+            let px = gx0 + (double(i0 + a) + 0.5) * T
+            let pz = gz0 + (double(j0 + b) + 0.5) * T
+            let vx = bx - ax
+            let vz = bz - az
+            let l2 = vx * vx + vz * vz
+            var tt: double = 0.0
+            if l2 > 0.0 { tt = dmax(0.0, dmin(1.0, ((px - ax) * vx + (pz - az) * vz) / l2)) }
+            let dd = hyp(px - (ax + vx * tt), pz - (az + vz * tt))
+            if dd <= ha + (hb - ha) * tt { wet[b * w + a] = 1 }
+          }
+        }
+      }
+    }
+    var anyWet = false
+    for t in 0 .. N { if wet[t] == 1 { anyWet = true;  break } }
+    let nearWater = buffer(N)
+    if anyWet {
+      let dw = doubles(N)
+      edt_full(wet, w, h, 1, dw)
+      for t in 0 .. N {
+        if dw[t] < INF and Math.sqrt(dw[t]) * T <= j.waterBand {
+          nearWater[t] = 1
+          if kind[t] == K_FREE {
+            D[t] = nat[t];  Dset[t] = 1;  kind[t] = K_KEPT
+          }
+        }
+      }
+    }
+    # 7. zones and slopes
+    let zoneOf = words(N)
+    for t in 0 .. N { zoneOf[t] = -1 }
+    for zi in 0 .. win.nzones {
+      let o = zi * 10
+      let zpad = int(win.zones[o])
+      let ox = win.zones[o + 1]
+      let oz = win.zones[o + 2]
+      let dx = win.zones[o + 3]
+      let dz = win.zones[o + 4]
+      let nx = win.zones[o + 5]
+      let nz = win.zones[o + 6]
+      let t0 = win.zones[o + 7]
+      let t1 = win.zones[o + 8]
+      let depth = win.zones[o + 9]
+      let cxa = ox + dx * t0 - nx * 0.01
+      let cxb = ox + dx * t1 - nx * 0.01
+      let cxc = ox + dx * t0 + nx * depth
+      let cxd = ox + dx * t1 + nx * depth
+      let cza = oz + dz * t0 - nz * 0.01
+      let czb = oz + dz * t1 - nz * 0.01
+      let czc = oz + dz * t0 + nz * depth
+      let czd = oz + dz * t1 + nz * depth
+      let za0 = max(0, int(Math.floor((dmin(dmin(cxa, cxb), dmin(cxc, cxd)) - gx0) / T)) - i0 - 1)
+      let za1 = min(w - 1, int(Math.ceil((dmax(dmax(cxa, cxb), dmax(cxc, cxd)) - gx0) / T)) - i0 + 1)
+      let zb0 = max(0, int(Math.floor((dmin(dmin(cza, czb), dmin(czc, czd)) - gz0) / T)) - j0 - 1)
+      let zb1 = min(h - 1, int(Math.ceil((dmax(dmax(cza, czb), dmax(czc, czd)) - gz0) / T)) - j0 + 1)
+      for b in zb0 .. zb1 + 1 {
+        for a in za0 .. za1 + 1 {
+          let px = gx0 + (double(i0 + a) + 0.5) * T - ox
+          let pz = gz0 + (double(j0 + b) + 0.5) * T - oz
+          let along = px * dx + pz * dz
+          let out = px * nx + pz * nz
+          if along < t0 or along > t1 or out < -0.01 or out > depth { continue }
+          zoneOf[b * w + a] = zpad
+        }
+      }
+    }
+    let step = (T / j.slope) / 1.4142135623730951 - j.quantum * 1.05
+    let L = doubles(N)
+    let U = doubles(N)
+    let Ld = words(N)
+    let Ud = words(N)
+    let BIG = 1 << 30
+    for t in 0 .. N {
+      L[t] = -INF;  U[t] = INF;  Ld[t] = BIG;  Ud[t] = BIG
+      let kd = kind[t]
+      if kd == K_ROAD or kd == K_VERGE or kd == K_PAD or kd == K_ABUT or kd == K_WALL {
+        L[t] = D[t];  U[t] = D[t];  Ld[t] = 0;  Ud[t] = 0
+        if kd == K_WALL { L[t] = -INF;  Ld[t] = BIG }
+      }
+    }
+    let R = max(1, int(Math.round(j.reach)))
+    var pass = 0
+    while pass < 12 {
+      var ch = false
+      for b in 0 .. h {
+        for a in 0 .. w {
+          let t = b * w + a
+          if a > 0 and relax(t, t - 1, kind, zoneOf, padOf, L, U, Ld, Ud, nat, deckTop, step, R) { ch = true }
+          if b > 0 and relax(t, t - w, kind, zoneOf, padOf, L, U, Ld, Ud, nat, deckTop, step, R) { ch = true }
+        }
+      }
+      var b2 = h - 1
+      while b2 >= 0 {
+        var a2 = w - 1
+        while a2 >= 0 {
+          let t = b2 * w + a2
+          if a2 + 1 < w and relax(t, t + 1, kind, zoneOf, padOf, L, U, Ld, Ud, nat, deckTop, step, R) { ch = true }
+          if b2 + 1 < h and relax(t, t + w, kind, zoneOf, padOf, L, U, Ld, Ud, nat, deckTop, step, R) { ch = true }
+          a2 -= 1
+        }
+        b2 -= 1
+      }
+      if not ch { break }
+      pass += 1
+    }
+    let heights = doubles(N)
+    let conf = new []double
+    let cut = new []double
+    for b in 0 .. h {
+      for a in 0 .. w {
+        let t = b * w + a
+        if kind[t] != K_FREE {
+          heights[t] = D[t]
+          continue
+        }
+        var v = dmin(nat[t], deckCap[t])
+        if L[t] > U[t] + 0.01 {
+          push(conf, gx0 + (double(i0 + a) + 0.5) * T)
+          push(conf, gz0 + (double(j0 + b) + 0.5) * T)
+          push(conf, Math.round((L[t] - U[t]) * 100.0) / 100.0)
+          v = (L[t] + U[t]) / 2.0
+        } else {
+          if v < L[t] { v = L[t] }
+          if v > U[t] { v = U[t] }
+        }
+        if (v == L[t] and Ld[t] >= R) or (v == U[t] and Ud[t] >= R) {
+          push(cut, gx0 + (double(i0 + a) + 0.5) * T)
+          push(cut, gz0 + (double(j0 + b) + 0.5) * T)
+        }
+        heights[t] = dmin(v, dmin(capAt[t], deckTop[t]))
+      }
+    }
+    # 8. holes, classes
+    let hole = buffer(N)
+    if j.cHole >= 0 and win.nt > 0 {
+      for b in 1 .. h - 1 {
+        for a in 1 .. w - 1 {
+          let t = b * w + a
+          var floor: double = INF
+          for bb in 0 .. 3 { for aa in 0 .. 3 { floor = dmin(floor, tubeLow[t + (bb - 1) * w + aa - 1]) } }
+          if floor >= INF { continue }
+          let px = gx0 + (double(i0 + a) + 0.5) * T
+          let pz = gz0 + (double(j0 + b) + 0.5) * T
+          var over = false
+          for ti in 0 .. win.nt { if tri_y(win.tubes, ti, px, pz) > -INF { over = true;  break } }
+          if not over and kind[t] != K_ROAD { continue }
+          let c00 = corner(heights, w, h, a, b)
+          let c10 = corner(heights, w, h, a + 1, b)
+          let c01 = corner(heights, w, h, a, b + 1)
+          let c11 = corner(heights, w, h, a + 1, b + 1)
+          let lo = dmin(dmin(c00, c10), dmin(c01, c11))
+          let hi = dmax(dmax(c00, c10), dmax(c01, c11))
+          if hi > floor + 0.3 and lo < floor + j.roof - 0.02 { hole[t] = 1 }
+        }
+      }
+    }
+    for t in 0 .. N {
+      if hole[t] == 1 {
+        cls[t] = j.cHole
+        continue
+      }
+      if cls[t] != 0 { continue }
+      let a = t % w
+      let b = t / w
+      let kp = win.keep[t]
+      if wet[t] == 1 { cls[t] = j.cBed }
+      else if nearWater[t] == 1 { cls[t] = j.cShore }
+      else if kp != 0 { cls[t] = kp }
+      else if kind[t] != K_VERGE and dabs(heights[t] - nat[t]) > 0.25 { cls[t] = j.cSlope }
+      else if j.cRock >= 0 and kind[t] != K_VERGE and kind[t] != K_PAD and dabs(heights[t] - nat[t]) < 0.01 and steep(nat, w, h, a, b, T, j.slope) { cls[t] = j.cRock }
+      else { cls[t] = j.cLand }
+    }
+    win.heights = heights
+    win.cls = cls
+    win.kind = kind
+    win.fit = fit
+    win.conf = conf
+    win.cut = cut
+  }
+
+  function corner(H: doubles, w: int, h: int, a: int, b: int) -> double {
+    return (hat(H, w, h, a - 1, b - 1) + hat(H, w, h, a, b - 1) + hat(H, w, h, a - 1, b) + hat(H, w, h, a, b)) / 4.0
+  }
+  function hat(H: doubles, w: int, h: int, a: int, b: int) -> double { return H[min(h - 1, max(0, b)) * w + min(w - 1, max(0, a))] }
+
+  function steep(nat: doubles, w: int, h: int, a: int, b: int, T: double, slope: double) -> bool {
+    if a < 1 or b < 1 or a + 1 >= w or b + 1 >= h { return false }
+    let t = b * w + a
+    let gx = (nat[t + 1] - nat[t - 1]) / (2.0 * T)
+    let gz = (nat[t + w] - nat[t - w]) / (2.0 * T)
+    return hyp(gx, gz) > 1.0 / slope + 0.000001
+  }
+
+  function box_min(top: doubles, has: []byte, SW: int, SH: int, k: int, l: int, r: int) -> double {
+    var m: double = INF
+    for y in max(0, l - r) .. min(SH - 1, l + r) + 1 {
+      for x in max(0, k - r) .. min(SW - 1, k + r) + 1 {
+        let q = y * SW + x
+        if has[q] == 1 and top[q] < m { m = top[q] }
+      }
+    }
+    return m
+  }
+  function box_min_other(top: doubles, has: []byte, scl: []byte, SW: int, SH: int, k: int, l: int, r: int, own: int) -> double {
+    var m: double = INF
+    let oc = isel(own == 255, -1, own)
+    for y in max(0, l - r) .. min(SH - 1, l + r) + 1 {
+      for x in max(0, k - r) .. min(SW - 1, k + r) + 1 {
+        let q = y * SW + x
+        if has[q] == 0 or scl[q] == 255 or scl[q] == oc { continue }
+        if top[q] < m { m = top[q] }
+      }
+    }
+    return m
+  }
+
+  # the lowest of a triangle set within a texel's reach (nine offsets) or right over (one), and which texels any covers
+  function lowest(P: doubles, n: int, out: doubles, under: []byte, nine: bool, w: int, h: int, i0: int, j0: int, gx0: double, gz0: double, T: double) -> void {
+    for ti in 0 .. n {
+      let q = ti * 9
+      let a0 = max(0, int(Math.floor((dmin(P[q], dmin(P[q + 3], P[q + 6])) - T - gx0) / T)) - i0)
+      let a1 = min(w - 1, int(Math.ceil((dmax(P[q], dmax(P[q + 3], P[q + 6])) + T - gx0) / T)) - i0)
+      let b0 = max(0, int(Math.floor((dmin(P[q + 2], dmin(P[q + 5], P[q + 8])) - T - gz0) / T)) - j0)
+      let b1 = min(h - 1, int(Math.ceil((dmax(P[q + 2], dmax(P[q + 5], P[q + 8])) + T - gz0) / T)) - j0)
+      for b in b0 .. b1 + 1 {
+        for a in a0 .. a1 + 1 {
+          let t = b * w + a
+          let cx = gx0 + (double(i0 + a) + 0.5) * T
+          let cz = gz0 + (double(j0 + b) + 0.5) * T
+          let no = isel(nine, 9, 1)
+          for oi in 0 .. no {
+            var ox: double = 0.0
+            var oz: double = 0.0
+            if oi == 1 { ox = -T } else if oi == 2 { ox = T } else if oi == 3 { oz = -T } else if oi == 4 { oz = T } else if oi == 5 { ox = -T;  oz = -T } else if oi == 6 { ox = T;  oz = T } else if oi == 7 { ox = -T;  oz = T } else if oi == 8 { ox = T;  oz = -T }
+            let y = tri_y(P, ti, cx + ox, cz + oz)
+            if y == -INF { continue }
+            under[t] = 1
+            if y < out[t] { out[t] = y }
+          }
+        }
+      }
+    }
+  }
+
+  function relax(t: int, n: int, kind: []byte, zoneOf: words, padOf: words, L: doubles, U: doubles, Ld: words, Ud: words, nat: doubles, deckTop: doubles, step: double, R: int) -> bool {
+    if kind[t] != K_FREE or kind[n] == K_KEPT { return false }
+    let ps = zoneOf[t]
+    if ps >= 0 and ps == zoneOf[n] {
+      if (padOf[t] == ps) != (padOf[n] == ps) { return false }
+    }
+    var ch = false
+    let fromSrc = kind[n] != K_FREE
+    let lv = dmin(L[n] - step, deckTop[t])
+    if Ld[n] < R and (fromSrc or nat[n] <= L[n] + 0.000000001) and lv > L[t] + 0.000000001 {
+      L[t] = lv
+      Ld[t] = Ld[n] + 1
+      ch = true
+    }
+    if Ud[n] < R and (fromSrc or nat[n] >= U[n] - 0.000000001) and U[n] + step < U[t] - 0.000000001 {
+      U[t] = U[n] + step
+      Ud[t] = Ud[n] + 1
+      ch = true
+    }
+    return ch
+  }
+
+  # the edge's least-squares fit (Gauss-Seidel, the studio's sweeps)
+  function edge_fit(j: CJob, win: Win, w: int, h: int, SW: int, SH: int, ST: double, sx0: double, sz0: double, top: doubles, has: []byte, dInD: doubles, dInI: words, dOutD: doubles, dOutI: words, D: doubles, kind: []byte, fit: doubles) -> void {
+    let N = w * h
+    let T = j.tex
+    let unknown = words(N)
+    let ids = new []int
+    let ub = new []double
+    let d0 = new []double
+    for t in 0 .. N {
+      unknown[t] = -1
+      var band = false
+      if kind[t] == K_ROAD {
+        let a = t % w
+        let b = t / w
+        band = Math.sqrt(dInD[(SUB * b + SUB / 2) * SW + SUB * a + SUB / 2]) * ST - ST / 2.0 < 0.8
+      }
+      if kind[t] == K_VERGE or band {
+        unknown[t] = len(ids)
+        push(ids, t)
+        push(ub, dsel(band, D[t], INF))
+        push(d0, D[t])
+      }
+    }
+    let sT = new []double
+    let sW = new []double
+    let sX = new []double
+    let sZ = new []double
+    let sIdx = new []int
+    let sWt = new []double
+    for l in 1 .. SH - 1 {
+      for k in 1 .. SW - 1 {
+        let at = l * SW + k
+        var px: double = 0.0
+        var pz: double = 0.0
+        var target: double = 0.0
+        var weight: double = 0.0
+        if has[at] == 1 {
+          if has[at - 1] == 1 and has[at + 1] == 1 and has[at - SW] == 1 and has[at + SW] == 1 { continue }
+          let oi = dInI[at]
+          if oi < 0 { continue }
+          let ox = double((oi % SW) - k)
+          let oz = double((oi / SW) - l)
+          var ol = hyp(ox, oz)
+          if ol == 0.0 { ol = 1.0 }
+          px = sx0 + double(k) * ST + (ox / ol) * (ST / 2.0)
+          pz = sz0 + double(l) * ST + (oz / ol) * (ST / 2.0)
+          target = top[at] - j.edge
+          weight = 1.0
+        } else {
+          if (k + l) % 2 == 1 { continue }
+          let near = dOutI[at]
+          if near < 0 or Math.sqrt(dOutD[at]) * ST - ST / 2.0 > j.verge { continue }
+          px = sx0 + double(k) * ST
+          pz = sz0 + double(l) * ST
+          target = top[near] - j.edge
+          weight = 0.6
+        }
+        let fx = (px - j.x0) / T - 0.5 - double(win.i0)
+        let fz = (pz - j.z0) / T - 0.5 - double(win.j0)
+        let a = int(Math.floor(fx))
+        let b = int(Math.floor(fz))
+        if a < 0 or b < 0 or a + 1 >= w or b + 1 >= h { continue }
+        let u = fx - double(a)
+        let v = fz - double(b)
+        let t0 = b * w + a
+        let t1 = t0 + 1
+        let t2 = t0 + w
+        let t3 = t2 + 1
+        if theirs(kind[t0]) or theirs(kind[t1]) or theirs(kind[t2]) or theirs(kind[t3]) { continue }
+        if not (unknown[t0] >= 0 or unknown[t1] >= 0 or unknown[t2] >= 0 or unknown[t3] >= 0) { continue }
+        push(sT, target);  push(sW, weight);  push(sX, px);  push(sZ, pz)
+        push(sIdx, t0);  push(sIdx, t1);  push(sIdx, t2);  push(sIdx, t3)
+        push(sWt, (1.0 - u) * (1.0 - v));  push(sWt, u * (1.0 - v));  push(sWt, (1.0 - u) * v);  push(sWt, u * v)
+      }
+    }
+    fit[0] = 0.0
+    fit[1] = 0.0
+    fit[2] = 0.0
+    let ni = len(ids)
+    let S = len(sT)
+    if ni == 0 or S == 0 { return }
+    let count = words(ni + 1)
+    for q in 0 .. len(sIdx) {
+      let id = unknown[sIdx[q]]
+      if id >= 0 { count[id + 1] += 1 }
+    }
+    for i in 0 .. ni { count[i + 1] += count[i] }
+    let fillp = words(ni + 1)
+    for i in 0 .. ni + 1 { fillp[i] = count[i] }
+    let list = words(max(count[ni], 1))
+    for q in 0 .. len(sIdx) {
+      let id = unknown[sIdx[q]]
+      if id >= 0 {
+        list[fillp[id]] = q
+        fillp[id] += 1
+      }
+    }
+    let F = doubles(S)
+    for p in 0 .. S { for c in 0 .. 4 { F[p] = F[p] + sWt[p * 4 + c] * D[sIdx[p * 4 + c]] } }
+    let lambda: double = 0.02
+    let mu: double = 0.15
+    # neighbours (unknown texels sharing a side), 4 slots a texel
+    let nb = words(ni * 4)
+    let nbn = words(ni)
+    for i in 0 .. ni {
+      let t = ids[i]
+      let a = t % w
+      var c = 0
+      if a > 0 and unknown[t - 1] >= 0 { nb[i * 4 + c] = t - 1;  c += 1 }
+      if a + 1 < w and unknown[t + 1] >= 0 { nb[i * 4 + c] = t + 1;  c += 1 }
+      if t - w >= 0 and unknown[t - w] >= 0 { nb[i * 4 + c] = t - w;  c += 1 }
+      if t + w < N and unknown[t + w] >= 0 { nb[i * 4 + c] = t + w;  c += 1 }
+      nbn[i] = c
+    }
+    var it = 0
+    while it < 200 {
+      var moved: double = 0.0
+      for i in 0 .. ni {
+        let t = ids[i]
+        var num = double(lambda) * d0[i]
+        var den: double = lambda
+        for e in 0 .. nbn[i] {
+          num = num + mu * D[nb[i * 4 + e]]
+          den = den + mu
+        }
+        for e in count[i] .. count[i + 1] {
+          let q = list[e]
+          let p = q / 4
+          let a = sWt[q]
+          num = num + sW[p] * a * (sT[p] - F[p] + a * D[t])
+          den = den + sW[p] * a * a
+        }
+        let v = dmin(ub[i], num / den)
+        let dv = v - D[t]
+        if dv == 0.0 { continue }
+        if dabs(dv) > moved { moved = dabs(dv) }
+        D[t] = v
+        for e in count[i] .. count[i + 1] {
+          let q = list[e]
+          F[q / 4] = F[q / 4] + sWt[q] * dv
+        }
+      }
+      if moved < 0.0001 { break }
+      it += 1
+    }
+    for p in 0 .. S {
+      if sW[p] == 1.0 and dabs(F[p] - sT[p]) > fit[0] {
+        fit[0] = dabs(F[p] - sT[p])
+        fit[1] = sX[p]
+        fit[2] = sZ[p]
+      }
+    }
+  }
+
+  function theirs(k: int) -> bool { return k == K_PAD or k == K_ABUT or k == K_KEPT or k == K_WALL }
+
+  entry () {
+    if arg_count() < 3 {
+      print("usage: conform_window <job.bin> <out.bin>")
+      exit(2)
+      return
+    }
+    let j = read_job(arg(1))
+    if j == null {
+      print(`conform_window: cannot read the job {arg(1)}`)
+      exit(1)
+      return
+    }
+    Job.parallel_for(len(j.wins), fn run_window, j)
+    if not write_answer(arg(2), j) {
+      print(`conform_window: cannot write {arg(2)}`)
+      exit(1)
+      return
+    }
+    print(`conform_window: {len(j.wins)} windows`)
+  }
+}
