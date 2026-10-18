@@ -179,7 +179,7 @@ export function car_engine(cars_st: mut CarsState, nid: int, on: bool) -> bool {
   let c = car_by_nid(cars_st, nid)
   if c == null { return false }
   if on == c.engine_on { return true }
-  if on and (c.engine_hp <= 0.0 or c.phase == CarPhase.Wrecked or (CarModels[c.model].tank > 0.0 and c.fuel <= 0.0)) { return false }
+  if on and (c.engine_hp <= 0.0 or c.phase == CarPhase.Wrecked or car_broken(cars_st, c) or (CarModels[c.model].tank > 0.0 and c.fuel <= 0.0)) { return false }
   c.engine_on = on
   if on { cr_fact(cars_st, CAR_ENGINE_ON, c) } else { cr_fact(cars_st, CAR_ENGINE_OFF, c) }
   return true

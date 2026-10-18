@@ -71,7 +71,7 @@ function cr_powertrain(cars_st: mut CarsState, c: Car, dt: float, drv_front: flo
   }
   var dem = throttle
   var stop = brake
-  if c.gear < 0 {
+  if c.gear < 0 and c.engine_on {
     dem = brake
     stop = throttle
   }
@@ -183,9 +183,7 @@ function cr_powertrain(cars_st: mut CarsState, c: Car, dt: float, drv_front: flo
   }
   if c.shift_t > 0.0 or c.gear == 0 { t_eng = 0.0 }
   # a hurt engine gives less, a dead one nothing
-  if t_eng > 0.0 {
-    if c.engine_hp <= 0.0 { t_eng = 0.0 } else { t_eng = t_eng * (0.5 + 0.5 * Math.min(1.0, c.engine_hp / (0.5 * m.engine_health))) }
-  }
+  if t_eng > 0.0 { t_eng = t_eng * cr_engine_share(cars_st, c, dt) }
   c.throttle = dem
   # the engine turns with the wheels while the clutch is in: its inertia, through the gear, is theirs
   c.iref_front = 0.0

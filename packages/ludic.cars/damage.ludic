@@ -39,7 +39,10 @@ export function car_damage(cars_st: mut CarsState, nid: int, amount: float, whee
 function cr_hurt(cars_st: mut CarsState, c: Car, dmg: float, lx: float, ly: float, lz: float, dr: float, df: float) -> void {
   let m = CarModels[c.model]
   if dmg <= 0.0 { return }
+  let brk = cars_config(cars_st).breakdown
+  if brk and c.health <= 0.0 { return }
   c.health = c.health - dmg
+  if brk { c.health = Math.max(0.0, c.health) }
   let f = cr_fact(cars_st, CAR_DAMAGE, c)
   f.v = dmg
   f.w = Math.max(0.0, c.health)
@@ -72,7 +75,89 @@ function cr_hurt(cars_st: mut CarsState, c: Car, dmg: float, lx: float, ly: floa
     }
     if best >= 0 and rng_float(cars_st.cr_dice) < Math.min(0.85, dmg / 500.0) { car_pop_tyre(cars_st, c.nid, best) }
   }
+  if brk {
+    # broken down, not wrecked: the engine goes with the body (kept turning, sputtering, while the body lasts), nobody is thrown out
+    if c.health <= 0.0 { cr_break_down(cars_st, c) } else { c.engine_hp = Math.max(c.engine_hp, m.engine_health * 0.1) }
+    return
+  }
   if c.health <= 0.0 { dispatch CarWreckIn { who: c.ent } }
+}
+
+# body health gone with CarSettings.breakdown on: the engine dead and off (it will not start), the pedals' torque nothing; the steering and
+# the brakes work on, so the car rolls to a stop under its driver
+function cr_break_down(cars_st: mut CarsState, c: Car) -> void {
+  c.health = 0.0
+  c.engine_hp = 0.0
+  c.miss = false
+  c.miss_t = 0.0
+  if c.engine_on {
+    c.engine_on = false
+    cr_fact(cars_st, CAR_ENGINE_OFF, c)
+  }
+  cr_fact(cars_st, CAR_BROKEN, c)
+}
+
+# broken down: CarSettings.breakdown is on and the body's health is gone (a wreck is the machine's phase, not this)
+export function car_broken(cars_st: CarsState, c: Car) -> bool {
+  return c != null and cars_config(cars_st).breakdown and c.phase != CarPhase.Wrecked and c.health <= 0.0
+}
+
+# the body's health set outright (a saved car made again, a tow that patches a broken car up): a broken car given health has an engine
+# again (as much of it as of the body), and runs at once if somebody is at the wheel
+export function car_set_health(cars_st: mut CarsState, nid: int, hp: float) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null or c.phase == CarPhase.Wrecked { return false }
+  let m = CarModels[c.model]
+  let was = car_broken(cars_st, c)
+  c.health = Math.clamp(hp, 0.0, c.stats.health)
+  if c.health <= 0.0 {
+    if cars_config(cars_st).breakdown and not was { cr_break_down(cars_st, c) }
+    return true
+  }
+  if was {
+    c.engine_hp = Math.max(c.engine_hp, m.engine_health * c.health / Math.max(1.0, c.stats.health))
+    cr_engine_wake(cars_st, c)
+  }
+  return true
+}
+
+# a driver at the wheel of a car whose engine can run again: it starts
+function cr_engine_wake(cars_st: mut CarsState, c: Car) -> void {
+  if c.phase != CarPhase.Driven or c.engine_on or c.engine_hp <= 0.0 { return }
+  if CarModels[c.model].tank > 0.0 and c.fuel <= 0.0 { return }
+  c.engine_on = true
+  cr_fact(cars_st, CAR_ENGINE_ON, c)
+}
+
+# the share of its torque a hurt engine gives this step: half at worst while it lives, nothing dead; under CarSettings.sputter_at of body
+# health it misfires as well - spells of firing and of missing, the misses longer and more often the lower the health (CAR_MISFIRE)
+function cr_engine_share(cars_st: mut CarsState, c: Car, dt: float) -> float {
+  let m = CarModels[c.model]
+  if c.engine_hp <= 0.0 or car_broken(cars_st, c) { return 0.0 }
+  var k = 0.5 + 0.5 * Math.min(1.0, c.engine_hp / (0.5 * m.engine_health))
+  let at = cars_config(cars_st).sputter_at
+  let frac = c.health / Math.max(1.0, c.stats.health)
+  if at <= 0.0 or frac >= at or not c.engine_on or c.phase == CarPhase.Wrecked {
+    c.miss = false
+    c.miss_t = 0.0
+    return k
+  }
+  let sev = Math.clamp(1.0 - frac / at, 0.0, 1.0)
+  c.miss_t = c.miss_t - dt
+  if c.miss_t <= 0.0 {
+    let r = rng_float(cars_st.cr_dice)
+    if not c.miss and r < 0.35 + 0.4 * sev {
+      c.miss = true
+      c.miss_t = 0.08 + 0.22 * sev * rng_float(cars_st.cr_dice)
+      let f = cr_fact(cars_st, CAR_MISFIRE, c)
+      f.v = c.miss_t
+    } else {
+      c.miss = false
+      c.miss_t = 0.25 + 0.5 * (1.0 - sev) * rng_float(cars_st.cr_dice)
+    }
+  }
+  if c.miss { return k * 0.1 }
+  return k * (1.0 - 0.3 * sev)
 }
 
 # a tyre shot or blown out: it grips a third as well and drags
@@ -97,7 +182,10 @@ export function car_repair(cars_st: mut CarsState, nid: int) -> bool {
   c.health = c.stats.health
   c.engine_hp = CarModels[c.model].engine_health
   c.smoke = 0
+  c.miss = false
+  c.miss_t = 0.0
   cr_fact(cars_st, CAR_REPAIRED, c)
+  cr_engine_wake(cars_st, c)
   return true
 }
 
@@ -123,7 +211,7 @@ function cr_smoke_run(cars_st: mut CarsState, c: Car) -> void {
   let m = CarModels[c.model]
   let f = c.engine_hp / Math.max(1.0, m.engine_health)
   var level = 0
-  if c.phase == CarPhase.Wrecked { level = 3 } else if f <= 0.0 { level = 3 } else if f < 0.25 { level = 2 } else if f < 0.5 { level = 1 }
+  if c.phase == CarPhase.Wrecked { level = 3 } else if car_broken(cars_st, c) { level = 2 } else if f <= 0.0 { level = 3 } else if f < 0.25 { level = 2 } else if f < 0.5 { level = 1 }
   if level != c.smoke {
     c.smoke = level
     let e = cr_fact(cars_st, CAR_SMOKE, c)

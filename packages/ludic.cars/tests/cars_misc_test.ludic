@@ -90,6 +90,37 @@ program CarsMiscTest {
     expect(car_engine(cars_st, nid, true))
   }
 
+  test "with breakdown on, health at 0 breaks the car down: no wreck, nobody out, the engine dead until a tow or a repair" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    cars_st.cr_cfg.breakdown = true
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    expect(car_engine(cars_st, nid, true))
+    q_clear(cars_facts(cars_st))
+    # rounds take the body down; the engine lives (sputtering) while the body does
+    for i in 0 .. 9 { car_damage(cars_st, nid, 105.0, -1) }
+    expect(c.health > 0.0 and c.engine_hp > 0.0 and c.engine_on)
+    car_damage(cars_st, nid, 500.0, -1)
+    frames(cars_st, doors, owns, rig, 2)
+    expect(near(c.health, 0.0, 0.0001))
+    expect(c.phase != CarPhase.Wrecked)
+    expect(car_broken(cars_st, c))
+    expect(not c.engine_on)
+    expect(not car_engine(cars_st, nid, true))
+    expect_eq(c.smoke, 2)
+    let fs = q_drain(cars_facts(cars_st))
+    expect_eq(count(fs, CAR_BROKEN), 1)
+    expect_eq(count(fs, CAR_WRECKED), 0)
+    # more blows change nothing; a tow's quarter of health gives the engine back
+    car_damage(cars_st, nid, 50.0, -1)
+    expect_eq(count(q_drain(cars_facts(cars_st)), CAR_BROKEN), 0)
+    expect(car_set_health(cars_st, nid, 250.0))
+    expect(not car_broken(cars_st, c))
+    expect(c.engine_hp > 0.0)
+    expect(car_engine(cars_st, nid, true))
+    expect(car_repair(cars_st, nid))
+    expect(near(c.health, c.stats.health, 0.001))
+  }
+
   test "a hard blow can flatten a tyre; a flat tyre grips a third as well" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
     let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
     let c = car_by_nid(cars_st, nid)

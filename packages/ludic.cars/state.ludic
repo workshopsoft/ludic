@@ -70,6 +70,8 @@ export const CAR_RELEASED: int = 32        # out of the impound
 export const CAR_SNAP_REFUSED: int = 33    # a snapshot that could not be true
 export const CAR_BOARDING: int = 34        # an actor began to get in through the door (actor, v: the seat, word: its state_enter)
 export const CAR_DRAGGED: int = 35         # the driver is being dragged out by a thief (actor: the driver, v: the seat, word: its state_jacked)
+export const CAR_BROKEN: int = 36          # body health ran out with CarSettings.breakdown on: the engine is dead, the car can still be steered and braked
+export const CAR_MISFIRE: int = 37         # a hurt engine missed (v: how long, s): a sputter, a puff of smoke
 
 # why an action was refused
 export const CAR_NO_SUCH: int = 1
@@ -143,6 +145,8 @@ export property Car {
   vehicle: bool = false            # ... and that body is a vehicle that drives itself (CarBody.vehicle: Jolt's wheels and drivetrain)
   abs_k: float = 1.0               # a vehicle's anti-lock: the share of the brake pedal it lets through (1: all)
   tc: float = 1.0                  # a vehicle's traction control: the share of the throttle it lets through (1: all)
+  miss_t: float = 0.0              # a sputtering engine: seconds left of this firing or missing spell
+  miss: bool = false               # ... and whether it is missing
   vdir: int = 1                    # a vehicle's way: 1 forward, -1 backing up (the brake at a stand reverses, the throttle goes forward again)
   auth: int = 0                    # the machine that simulates it
   x: float = 0.0                   # the model's origin

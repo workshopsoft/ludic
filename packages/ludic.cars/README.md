@@ -215,7 +215,14 @@ over it costs `2 * excess^2 * (1 - armour)` of body health, part of it the engin
 a hard one may flatten the nearest tyre (the package's own dice, seeded). A dent is a **fact** (`CAR_DEFORM`: the
 model-space point, the depth, the direction) for the game to show on the mesh - the package keeps no vertices.
 Engine smoke is `CAR_SMOKE` (1 light, 2 heavy, 3 afire); health at 0 dispatches the machine's wreck: everybody
-out, the engine off, `CAR_WRECKED`; `car_repair` mends it. `car_engine`, `car_horn`, `car_lights` (`CAR_LIGHT_*`;
+out, the engine off, `CAR_WRECKED`; `car_repair` mends it. With `CarSettings.breakdown` on, health at 0 **breaks the car
+down** instead (`CAR_BROKEN`, `car_broken(c)`): health stays at 0, the engine is dead and off and will not start, nobody
+is thrown out, and the steering and the brakes work on (with the engine off the brake pedal is always a brake, never
+reverse); the engine keeps a tenth of its health while the body lives, so it dies with the body. `car_set_health(nid, hp)`
+sets the body's health (a broken car given some gets its engine back in proportion and runs at once with a driver);
+`car_repair` mends it and restarts the engine under a driver. Under `CarSettings.sputter_at` of body health a running
+engine misfires: spells of firing (less torque the lower the health) and of missing (a tenth), each miss a `CAR_MISFIRE`
+fact. `car_engine`, `car_horn`, `car_lights` (`CAR_LIGHT_*`;
 the brake and reverse lights are worked out), `car_indicator`, `car_shift`, `car_nitro`, `car_refuel`,
 `car_paint`, `car_livery`, `car_plate`, `car_fit` / `car_unfit` are the rest of what a game sets. Skids
 (`CAR_SKID`), a fall (`CAR_AIRBORNE`, `CAR_LANDED`), gear changes (`CAR_SHIFT`), nitrous (`CAR_NITRO`) and the
