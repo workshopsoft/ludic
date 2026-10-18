@@ -1,0 +1,4 @@
+# a primary whose control points come 33 m, then 4.8 m apart round a 5 degree bend (the island's en9686_12316_n9767_12162): its spline
+# has a cusp of centimetres
+a { x: -17.0, z: 34.0 }
+b { x: 30.1, z: -43.2 }
