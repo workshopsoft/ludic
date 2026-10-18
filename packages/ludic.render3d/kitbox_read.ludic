@@ -167,3 +167,79 @@ export function kit_parts_read(render3d_st: mut Render3dState, dir: string, file
   free(tri)
   return out
 }
+
+# Kit node `node`'s triangles read on the CPU for a collider (the drawn mesh itself, every primitive): its distinct vertices appended to
+# vtx (10 floats each: x y z, the anchors sx sz sh sd, the offset ox oy oz; anchors and offset 0 on an ordinary kit) and its triangles
+# to tri (3 indices each, counted from the first vertex this call appends). Vertices equal in all ten are one (a hard edge's split
+# normals are not a seam to a body). The vertices it appended, -1 when the file or node cannot be read.
+@alloc_ok("a kit read once for its collider: the file's accessors")
+export function kit_tris_read(render3d_st: mut Render3dState, dir: string, file: string, node: string, vtx: []float, tri: []int) -> int {
+  if not gltf_open(render3d_st, dir, file) { return -1 }
+  let doc = render3d_st.gltf_doc
+  let nodes = value_get(doc, "nodes")
+  var mi = -1
+  for i in 0 .. value_count(nodes) {
+    let nd = value_at(nodes, i)
+    if value_has(nd, "name") != 0 and value_as_str(value_get(nd, "name")) == node { mi = jint(nd, "mesh", -1) }
+  }
+  if mi < 0 { file_close(render3d_st.gltf_bin);  render3d_st.gltf_bin = null;  return -1 }
+  let base = len(vtx) / 10
+  let one = floats(10)
+  let prims = value_get(value_at(value_get(doc, "meshes"), mi), "primitives")
+  for p in 0 .. value_count(prims) {
+    let pv = value_at(prims, p)
+    let attrs = value_get(pv, "attributes")
+    if value_has(attrs, "POSITION") == 0 { continue }
+    let ps = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "POSITION")))
+    let nv = len(ps) / 3
+    var a: floats = null
+    var o: floats = null
+    if value_has(attrs, "_ANCHOR") != 0 { a = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "_ANCHOR"))) }
+    if a != null and value_has(attrs, "_OFFSET") != 0 { o = gltf_accessor_floats(render3d_st, value_as_int(value_get(attrs, "_OFFSET"))) }
+    # this primitive's vertices, each mapped to its distinct vertex
+    let map = words(max(nv, 1))
+    for v in 0 .. nv {
+      one[0] = ps[v * 3];  one[1] = ps[v * 3 + 1];  one[2] = ps[v * 3 + 2]
+      for k in 3 .. 10 { one[k] = 0.0 }
+      if a != null {
+        one[3] = a[v * 4];  one[4] = a[v * 4 + 1];  one[5] = a[v * 4 + 2];  one[6] = a[v * 4 + 3]
+        if o != null { one[7] = o[v * 3];  one[8] = o[v * 3 + 1];  one[9] = o[v * 3 + 2] }
+      }
+      var found = -1
+      let have = len(vtx) / 10
+      var u = base
+      while u < have and found < 0 {
+        var same = true
+        var k = 0
+        while k < 10 and same {
+          if vtx[u * 10 + k] != one[k] { same = false }
+          k += 1
+        }
+        if same { found = u }
+        u += 1
+      }
+      if found < 0 {
+        for k in 0 .. 10 { push(vtx, one[k]) }
+        found = have
+      }
+      map[v] = found - base
+    }
+    if value_has(pv, "indices") != 0 {
+      let idx = gltf_accessor_ints(render3d_st, value_as_int(value_get(pv, "indices")))
+      var t = 0
+      while t + 2 < len(idx) {
+        if idx[t] < nv and idx[t + 1] < nv and idx[t + 2] < nv { push(tri, map[idx[t]]);  push(tri, map[idx[t + 1]]);  push(tri, map[idx[t + 2]]) }
+        t += 3
+      }
+    } else {
+      var t = 0
+      while t + 2 < nv {
+        push(tri, map[t]);  push(tri, map[t + 1]);  push(tri, map[t + 2])
+        t += 3
+      }
+    }
+  }
+  file_close(render3d_st.gltf_bin)
+  render3d_st.gltf_bin = null
+  return len(vtx) / 10 - base
+}
