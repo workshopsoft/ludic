@@ -1,0 +1,131 @@
+# ============================================================================
+# zonelamp.ludic - ZONE LAMPS: point lights that light only inside light zones (lightzone.ludic), a tunnel's roof
+# fixtures. A zone's ambient alone lights a tube evenly, so its inside reads as one haze; lamps give it pools of light
+# under each fixture and darker stretches between. A lamp lights a surface by its distance (a windowed inverse square,
+# nothing past `reach`) and its facing, more downward than upward (a fixture on a roof throws its light down and along
+# the walls; the roof round it takes a little), scaled by how far inside a zone the surface is - so no lamp lights the
+# ground over a tube, its outside, or anything past a portal's dusk, and no shadow is needed.
+#
+#   zonelamp_light(st, 12.0, 10.0, 7.5, 14.0, 90.0)   # every lamp's radiance r g b, its reach (m), and how far from the
+#                                                      # camera lamps are lit at all (they fade out over its last quarter)
+#   let k = zonelamp_add(st, x, y, z)                  # a lamp at a point (render space, like an actor)
+#   zonelamp_clear(st);  zonelamp_rebase(st, dx, dy, dz)   # all gone; the floating origin moved by (dx, dy, dz)
+#
+# Lamps are kept on the CPU (ZL_CAP); the ZL_MAX nearest the camera, within its `far`, go to every lit program with the
+# sun (sky_bind_lighting: lighting.glsl zoneLamps, from shade), picked again when the camera moves a quarter metre or a
+# lamp changes; each carries its fade, so a lamp leaving the list has faded out first. The shaders' loop runs only for a
+# surface inside a zone and only while some lamp is near: with no lamp, or out of every zone, nothing changes and
+# nothing is paid.
+# ============================================================================
+numbers float
+
+const ZL_CAP: int = 4096           # lamps kept
+const ZL_MAX: int = 32             # lamps a frame's shaders see (lighting.glsl ZL_MAX)
+const ZL_MOVE: float = 0.25        # the camera moved this far (m): the lamps are picked again
+
+@alloc_ok("the lamps' tables, made once on the first lamp")
+function zl_make(render3d_st: mut Render3dState) -> void {
+  if render3d_st.zl != null { return }
+  render3d_st.zl = floats(ZL_CAP * 3)
+  render3d_st.zl_u = floats(ZL_MAX * 4)
+  render3d_st.zl_d = floats(ZL_MAX)
+  render3d_st.zl_idx = words(ZL_MAX)
+  render3d_st.zl_at = floats(3)
+  for i in 0 .. ZL_MAX * 4 { render3d_st.zl_u[i] = 0.0 }
+}
+
+# A lamp at (x, y, z), render space. Its index, -1 when ZL_CAP are kept already.
+export function zonelamp_add(render3d_st: mut Render3dState, x: float, y: float, z: float) -> int {
+  zl_make(render3d_st)
+  if render3d_st.zl_n >= ZL_CAP { return -1 }
+  let i = render3d_st.zl_n
+  render3d_st.zl[i * 3] = x;  render3d_st.zl[i * 3 + 1] = y;  render3d_st.zl[i * 3 + 2] = z
+  render3d_st.zl_n = i + 1
+  render3d_st.zl_dirty = true
+  return i
+}
+
+# every lamp's light: radiance (r, g, b), linear; how far it reaches (m); how far from the camera lamps are lit at all (m)
+export function zonelamp_light(render3d_st: mut Render3dState, r: float, g: float, b: float, reach: float, far: float) -> void {
+  render3d_st.zl_r = Math.max(r, 0.0);  render3d_st.zl_g = Math.max(g, 0.0);  render3d_st.zl_b = Math.max(b, 0.0)
+  render3d_st.zl_reach = Math.max(reach, 0.0)
+  render3d_st.zl_far = Math.max(far, 0.0)
+  render3d_st.zl_dirty = true
+}
+
+export function zonelamp_count(render3d_st: Render3dState) -> int { return render3d_st.zl_n }
+export function zonelamp_clear(render3d_st: mut Render3dState) -> void { render3d_st.zl_n = 0;  render3d_st.zl_dirty = true }
+
+# the floating origin moved: every lamp shifts with the world (as lightzone_rebase)
+export function zonelamp_rebase(render3d_st: mut Render3dState, dx: float, dy: float, dz: float) -> void {
+  for i in 0 .. render3d_st.zl_n {
+    let o = i * 3
+    render3d_st.zl[o] = render3d_st.zl[o] + dx;  render3d_st.zl[o + 1] = render3d_st.zl[o + 1] + dy;  render3d_st.zl[o + 2] = render3d_st.zl[o + 2] + dz
+  }
+  render3d_st.zl_dirty = true
+}
+
+# how much of a lamp `dist` metres from the camera is lit: 1 to three quarters of `far`, smoothly 0 at it
+export function zonelamp_fade(far: float, dist: float) -> float {
+  if far <= 0.0 { return 0.0 }
+  let t = Math.clamp((far - dist) / (far * 0.25), 0.0, 1.0)
+  return t * t * (3.0 - 2.0 * t)
+}
+
+# the lamp index the shaders see in slot k (zonelamp_pick's order, nearest first), -1 past the count
+export function zonelamp_slot(render3d_st: Render3dState, k: int) -> int {
+  if k < 0 or k >= render3d_st.zl_un { return -1 }
+  return render3d_st.zl_idx[k]
+}
+
+# the ZL_MAX lamps nearest (cx, cy, cz) within `far` into the shaders' table, nearest first: (x, y, z, fade) each
+export function zonelamp_pick(render3d_st: mut Render3dState, cx: float, cy: float, cz: float) -> void {
+  zl_make(render3d_st)
+  let u = render3d_st.zl_u
+  let dd = render3d_st.zl_d
+  let ix = render3d_st.zl_idx
+  let v = render3d_st.zl
+  let f2 = render3d_st.zl_far * render3d_st.zl_far
+  var n = 0
+  for i in 0 .. render3d_st.zl_n {
+    let o = i * 3
+    let dx = v[o] - cx;  let dy = v[o + 1] - cy;  let dz = v[o + 2] - cz
+    let d2 = dx * dx + dy * dy + dz * dz
+    if d2 >= f2 { continue }
+    var k = n
+    if k == ZL_MAX { k = ZL_MAX - 1;  if d2 >= dd[k] { continue } }
+    while k > 0 and dd[k - 1] > d2 {
+      for c in 0 .. 4 { u[k * 4 + c] = u[(k - 1) * 4 + c] }
+      dd[k] = dd[k - 1]
+      ix[k] = ix[k - 1]
+      k -= 1
+    }
+    u[k * 4] = v[o];  u[k * 4 + 1] = v[o + 1];  u[k * 4 + 2] = v[o + 2]
+    u[k * 4 + 3] = zonelamp_fade(render3d_st.zl_far, Math.sqrt(d2))
+    dd[k] = d2
+    ix[k] = i
+    if n < ZL_MAX { n += 1 }
+  }
+  render3d_st.zl_un = n
+  render3d_st.zl_at[0] = cx;  render3d_st.zl_at[1] = cy;  render3d_st.zl_at[2] = cz
+  render3d_st.zl_dirty = false
+}
+
+# the lamps for a lit program (sky_bind_lighting): picked again for the camera when it moved or a lamp changed
+function zonelamp_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  if render3d_st.zl_n == 0 and render3d_st.zl_un == 0 and not render3d_st.zl_dirty {
+    u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_zl_n"), 0)
+    return
+  }
+  let c = render3d_st.cam_pos
+  if render3d_st.zl_dirty or render3d_st.zl_at == null or Math.abs(c[0] - render3d_st.zl_at[0]) + Math.abs(c[1] - render3d_st.zl_at[1]) + Math.abs(c[2] - render3d_st.zl_at[2]) > ZL_MOVE {
+    zonelamp_pick(render3d_st, c[0], c[1], c[2])
+  }
+  u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_zl_n"), render3d_st.zl_un)
+  if render3d_st.zl_un == 0 { return }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_zl_reach"), render3d_st.zl_reach)
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_zl_color"), render3d_st.zl_r, render3d_st.zl_g, render3d_st.zl_b)
+  var loc = gpu_uniform(render3d_st, prog, "u_zl[0]")
+  if loc < 0 { loc = gpu_uniform(render3d_st, prog, "u_zl") }
+  u_f4v(render3d_st, loc, ZL_MAX, render3d_st.zl_u)
+}

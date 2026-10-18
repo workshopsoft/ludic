@@ -284,6 +284,32 @@ float lightZone(vec3 p, out vec4 amb) {
   return w;
 }
 
+// Zone lamps (zonelamp.ludic): point lights that light only inside a light zone (a tunnel's roof fixtures), the ZL_MAX
+// nearest the camera, (x, y, z, fade) each. A windowed inverse square out to the reach, thrown mostly down (a fixture on a
+// roof lights the road and the walls; the roof round it takes a share), diffuse only.
+#define ZL_MAX 32
+uniform vec4 u_zl[ZL_MAX];
+uniform int u_zl_n;
+uniform vec3 u_zl_color;
+uniform float u_zl_reach;
+vec3 zoneLamps(vec3 wpos, vec3 n, vec3 albedo) {
+  vec3 s = vec3(0.0);
+  float R2 = u_zl_reach * u_zl_reach;
+  for (int i = 0; i < ZL_MAX; i++) {
+    if (i >= u_zl_n) break;
+    vec4 q = u_zl[i];
+    vec3 d = q.xyz - wpos;
+    float r2 = dot(d, d);
+    if (r2 >= R2) continue;
+    vec3 l = d * inversesqrt(max(r2, 1e-4));
+    float win = 1.0 - r2 / R2;
+    float att = win * win / (1.0 + 0.08 * r2);
+    float down = mix(0.3, 1.0, smoothstep(-0.1, 0.4, l.y));
+    s += max(dot(n, l), 0.0) * att * down * q.w;
+  }
+  return albedo / PI * u_zl_color * s;
+}
+
 // what is left of the sun at p: 1 outside every light zone, 0 deep inside one
 float sunZone(vec3 p) { vec4 a; return 1.0 - lightZone(p, a); }
 
@@ -321,6 +347,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   vec3 groundAlb = groundAlbAt(wpos.y) * 0.55;
   vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI * sunK + irr * skyK) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5;
   vec3 zoneAmb = kdi * albedo * lzAmb.rgb * lz;
+  if (lz > 0.0 && u_zl_n > 0) zoneAmb += kdi * zoneLamps(wpos, n, albedo) * lz;
   // specular occlusion from ao
   float so = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
   // check for NaN before min(): on this GPU min(NaN, x) returns x, which would hide the fault as a hot pixel
