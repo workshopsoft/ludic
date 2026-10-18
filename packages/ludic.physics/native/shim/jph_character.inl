@@ -24,6 +24,9 @@ JPH_SHIM void *jph_char_new(void *w, float r, float h, float x, float y, float z
   st.mMass = mass;
   st.mMaxStrength = mass * 9.81f * 2.0f;
   st.mSupportingVolume = Plane(Vec3::sAxisY(), -r);
+  // the static world is triangle meshes (the drawn ground, roads, buildings): without this a seam between two triangles of one
+  // flat floor is an edge the capsule catches on and is pushed up by
+  st.mEnhancedInternalEdgeRemoval = true;
   Walker *wk = new Walker{ new CharacterVirtual(&st, RVec3(x, y, z), Quat::sIdentity(), 0, &ww->sys), 0.55f, 0.5f };
   return wk;
 }
