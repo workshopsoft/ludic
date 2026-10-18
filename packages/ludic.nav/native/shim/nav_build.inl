@@ -69,8 +69,9 @@ static bool nav_pipeline(rcConfig &cfg, const NavIn &in, int tx, int tz, unsigne
   if (ok) {
     nav_mark_cylinders(ctx, *chf, in.cyl, in.nc);
     nav_mark_footprints(ctx, *chf, in.foot, in.nf);
-    ok = rcErodeWalkableArea(&ctx, cfg.walkableRadius, *chf) && rcBuildDistanceField(&ctx, *chf) &&
-         rcBuildRegions(&ctx, *chf, cfg.borderSize, cfg.minRegionArea, cfg.mergeRegionArea) &&
+    // monotone partitioning: no distance field (watershed's cost), the fastest; paths are string-pulled, so long thin polygons do not show
+    ok = rcErodeWalkableArea(&ctx, cfg.walkableRadius, *chf) &&
+         rcBuildRegionsMonotone(&ctx, *chf, cfg.borderSize, cfg.minRegionArea, cfg.mergeRegionArea) &&
          rcBuildContours(&ctx, *chf, cfg.maxSimplificationError, cfg.maxEdgeLen, *cs) &&
          rcBuildPolyMesh(&ctx, *cs, cfg.maxVertsPerPoly, *pm) &&
          rcBuildPolyMeshDetail(&ctx, *pm, *chf, cfg.detailSampleDist, cfg.detailSampleMaxError, *dm);
