@@ -1,0 +1,644 @@
+# junction_test.ludic - junction.ludic, corners.ludic and junctionsurface.ludic against the studio's junction.ts, corners.ts and
+# junctionSurface.ts calls (fix/<scene>/junction.fix, corners.fix, junctionSurface.fix). The exporter writes the calls' networks,
+# edges, arms and callbacks as data (export.test.ts: an edge its key, line, metres, section and profile row; an ArmSide the line
+# it was made from; a callback the answers it gave): they are made native again here and every answer compared to the bit.
+
+# ---- a small string -> int map (edge keys) ------------------------------------------------------------------------------------
+property JtMap {
+  keys: []string = null
+  vals: []int = null
+  cap: int = 0
+}
+function jt_hash(s: string) -> int {
+  var h = 5381
+  for i in 0 .. len(s) { h = ((h * 33) + int(s[i])) & 1073741823 }
+  return h
+}
+function jt_map_new(n: int) -> JtMap {
+  let m = new JtMap
+  var cap = 16
+  while cap < n * 2 { cap = cap * 2 }
+  m.cap = cap
+  m.keys = new []string
+  m.vals = new []int
+  for i in 0 .. cap {
+    push(m.keys, "")
+    push(m.vals, -1)
+  }
+  return m
+}
+function jt_map_set(m: JtMap, k: string, v: int) -> void {
+  var i = jt_hash(k) & (m.cap - 1)
+  while m.vals[i] >= 0 and m.keys[i] != k { i = (i + 1) & (m.cap - 1) }
+  m.keys[i] = k
+  m.vals[i] = v
+}
+function jt_map_get(m: JtMap, k: string) -> int {
+  var i = jt_hash(k) & (m.cap - 1)
+  while m.vals[i] >= 0 {
+    if m.keys[i] == k { return m.vals[i] }
+    i = (i + 1) & (m.cap - 1)
+  }
+  return -1
+}
+
+function jt_bool(v: Val) -> bool { return v != null and v.tag == T_TRUE }
+
+# ---- values to native records -------------------------------------------------------------------------------------------------
+function jt_side(v: Val) -> SectionSide {
+  let s = new SectionSide
+  s.carriage = v_getn(v, "carriage", 0.0)
+  s.shoulder = v_getn(v, "shoulder", 0.0)
+  s.park = v_getn(v, "park", 0.0)
+  s.plant = v_getn(v, "plant", 0.0)
+  s.walk = v_getn(v, "walk", 0.0)
+  return s
+}
+function jt_section(v: Val) -> Section {
+  let s = new Section
+  s.left = jt_side(v_get(v, "left"))
+  s.right = jt_side(v_get(v, "right"))
+  s.median = v_getn(v, "median", 0.0)
+  s.gutter = v_getn(v, "gutter", 0.0)
+  s.curbW = v_getn(v, "curbW", 0.0)
+  s.curbH = v_getn(v, "curbH", 0.0)
+  s.tram = v_getn(v, "tram", 0.0)
+  s.steps = v_getn(v, "steps", 0.0)
+  return s
+}
+function jt_edge(v: Val, idx: int) -> NetEdge {
+  let e = new NetEdge
+  e.key = v_gets(v, "key", "")
+  e.idx = idx
+  if v_has(v, "line") { e.line = v_pts(v_get(v, "line")) }
+  if v_has(v, "s") { e.s = v_nums(v_get(v, "s")) }
+  e.length = v_getn(v, "length", 0.0)
+  e.taper = v_getn(v, "taper", 1.0)
+  e.section = jt_section(v_get(v, "section"))
+  e.profile = v_gets(v, "profile", "")
+  e.prof = profile_of_val(v_get(v, "prof"))
+  return e
+}
+function jt_offsets(v: Val) -> Offsets {
+  let o = new Offsets
+  o.median = v_getn(v, "median", 0.0)
+  o.lanes = v_getn(v, "lanes", 0.0)
+  o.road = v_getn(v, "road", 0.0)
+  o.park = v_getn(v, "park", 0.0)
+  o.gutter = v_getn(v, "gutter", 0.0)
+  o.curb = v_getn(v, "curb", 0.0)
+  o.plant = v_getn(v, "plant", 0.0)
+  o.walk = v_getn(v, "walk", 0.0)
+  return o
+}
+function jt_end_with(v: Val, e: NetEdge) -> JEnd {
+  let j = new JEnd
+  j.edge = e
+  j.out = jt_bool(v_get(v, "out"))
+  let u = v_nums(v_get(v, "u"))
+  let n = v_nums(v_get(v, "n"))
+  j.ux = u[0]
+  j.uz = u[1]
+  j.nx = n[0]
+  j.nz = n[1]
+  j.angle = v_getn(v, "angle", 0.0)
+  j.r = jt_offsets(v_get(v, "r"))
+  j.l = jt_offsets(v_get(v, "l"))
+  j.setback = v_getn(v, "setback", 0.0)
+  return j
+}
+function jt_end(v: Val) -> JEnd { return jt_end_with(v, jt_edge(v_get(v, "edge"), 0)) }
+function jt_node(v: Val) -> NetNode {
+  let n = new NetNode
+  n.key = v_gets(v, "key", "")
+  n.x = v_getn(v, "x", 0.0)
+  n.z = v_getn(v, "z", 0.0)
+  n.kind = v_gets(v, "kind", "")
+  n.radius = v_getn(v, "radius", 0.0)
+  n.around = new []NetArm
+  return n
+}
+function jt_around(v: Val) -> []NetArm {
+  let out = new []NetArm
+  for i in 0 .. v_len(v) {
+    let a = v_item(v, i)
+    let m = new NetArm
+    m.edge = jt_edge(v_get(a, "edge"), i)
+    m.out = jt_bool(v_get(a, "out"))
+    push(out, m)
+  }
+  return out
+}
+function jt_arm(v: Val) -> ArmSide {
+  if v_undef(v) { return null }
+  return arm_of(v_pts(v_get(v, "line")), v_nums(v_get(v, "s")), jt_bool(v_get(v, "fromStart")))
+}
+function jt_opt(v: Val) -> JOpt {
+  let o = new JOpt
+  if v_undef(v) { return o }
+  let f = v_get(v, "fillet")
+  if f != null and f.tag == T_NUM {
+    o.hasFillet = true
+    o.fillet = f.num
+  }
+  o.strict = jt_bool(v_get(v, "strict"))
+  let rd = v_get(v, "radii")
+  if not v_undef(rd) {
+    o.radiiK = new []string
+    o.radiiV = new []double
+    if rd.tag == T_OBJ {
+      for i in 0 .. len(rd.keys) {
+        push(o.radiiK, rd.keys[i])
+        push(o.radiiV, rd.arr[i].num)
+      }
+    }
+  }
+  let am = v_get(v, "arms")
+  if not v_undef(am) {
+    o.armK = new []string
+    o.armV = new []ArmSide
+    for i in 0 .. v_len(am) {
+      let a = v_item(am, i)
+      if jt_bool(v_get(a, "out")) { push(o.armK, `{v_gets(a, "key", "")}|1`) } else { push(o.armK, `{v_gets(a, "key", "")}|0`) }
+      push(o.armV, jt_arm(v_get(a, "arm")))
+    }
+  }
+  return o
+}
+# a junction as written (its edges numbered by first appearance: the laid grades are looked up by that number)
+function jt_junction(v: Val, m: JtMap, edges: []NetEdge) -> Junction {
+  let j = new Junction
+  j.node = jt_node(v_get(v, "node"))
+  j.ends = new []JEnd
+  let ev = v_get(v, "ends")
+  for i in 0 .. v_len(ev) {
+    let x = v_item(ev, i)
+    let ek = v_get(x, "edge")
+    let key = v_gets(ek, "key", "")
+    var idx = jt_map_get(m, key)
+    if idx < 0 {
+      idx = len(edges)
+      push(edges, jt_edge(ek, idx))
+      jt_map_set(m, key, idx)
+    }
+    push(j.ends, jt_end_with(x, edges[idx]))
+  }
+  j.corners = new []Corner
+  let cv = v_get(v, "corners")
+  for i in 0 .. v_len(cv) {
+    let x = v_item(cv, i)
+    let c = new Corner
+    c.i = int(v_getn(x, "i", 0.0))
+    c.j = int(v_getn(x, "j", 0.0))
+    c.kind = v_gets(x, "kind", "")
+    c.rails = new []Rail
+    let rv = v_get(x, "rails")
+    for k in 0 .. v_len(rv) { push(c.rails, rail_of(v_pts(v_item(rv, k)))) }
+    let ce = v_get(x, "centre")
+    if not v_undef(ce) {
+      c.hasCentre = true
+      c.cx = ce.nums[0]
+      c.cz = ce.nums[1]
+    }
+    c.radius = v_getn(x, "radius", 0.0)
+    c.sharp = jt_bool(v_get(x, "sharp"))
+    push(j.corners, c)
+  }
+  j.kind = v_gets(v, "kind", "")
+  j.radius = v_getn(v, "radius", 0.0)
+  j.notes = new []string
+  j.strict = jt_bool(v_get(v, "strict"))
+  return j
+}
+function jt_plan(v: Val) -> CornerPlan {
+  let p = new CornerPlan
+  p.kind = v_gets(v, "kind", "")
+  p.rho = v_getn(v, "rho", 0.0)
+  let ce = v_get(v, "centre")
+  if not v_undef(ce) {
+    p.hasCentre = true
+    p.cx = ce.nums[0]
+    p.cz = ce.nums[1]
+  }
+  p.levels = new []CornerLevel
+  let lv = v_get(v, "levels")
+  for i in 0 .. v_len(lv) {
+    let x = v_item(lv, i)
+    let l = new CornerLevel
+    l.si = v_getn(x, "si", 0.0)
+    l.sj = v_getn(x, "sj", 0.0)
+    l.mid = v_pts(v_get(x, "mid"))
+    push(p.levels, l)
+  }
+  p.needI = v_getn(v, "needI", 0.0)
+  p.needJ = v_getn(v, "needJ", 0.0)
+  return p
+}
+function jt_grade(v: Val, e: NetEdge) -> EdgeGrade {
+  if v_undef(v) { return null }
+  let g = new EdgeGrade
+  g.edge = e
+  if e == null { g.edge = jt_edge(v_get(v, "edge"), 0) }
+  g.line = v_pts(v_get(v, "line"))
+  g.s = v_nums(v_get(v, "s"))
+  g.y = v_nums(v_get(v, "y"))
+  g.len = v_getn(v, "len", 0.0)
+  g.scale = v_getn(v, "scale", 1.0)
+  g.maxGrade = v_getn(v, "maxGrade", 0.0)
+  return g
+}
+function jt_stations(v: Val) -> EdgeStations {
+  if v_undef(v) { return null }
+  let es = new EdgeStations
+  es.st = new []Station
+  es.right = new []Offsets
+  es.left = new []Offsets
+  let sv = v_get(v, "st")
+  for i in 0 .. v_len(sv) {
+    let x = v_item(sv, i)
+    let q = new Station
+    let p = v_nums(v_get(x, "p"))
+    let n = v_nums(v_get(x, "n"))
+    q.px = p[0]
+    q.pz = p[1]
+    q.nx = n[0]
+    q.nz = n[1]
+    q.k = v_getn(x, "k", 1.0)
+    q.s = v_getn(x, "s", 0.0)
+    q.y = v_getn(x, "y", 0.0)
+    push(es.st, q)
+  }
+  let rv = v_get(v, "right")
+  for i in 0 .. v_len(rv) { push(es.right, jt_offsets(v_item(rv, i))) }
+  let lv = v_get(v, "left")
+  for i in 0 .. v_len(lv) { push(es.left, jt_offsets(v_item(lv, i))) }
+  return es
+}
+
+# ---- the recorded callbacks ---------------------------------------------------------------------------------------------------
+property JtSettled {
+  pairs: []double = null
+  at: int = 0
+  c: Check = null
+}
+function jt_settled(t: JtSettled, e: JEnd, need: double) -> double {
+  if t.at * 2 + 1 >= len(t.pairs) {
+    check_fail(t.c, "settled: asked more often than the studio did")
+    return need
+  }
+  let w = t.pairs[t.at * 2]
+  if not same_d(need, w) { check_num(t.c, `settled need {t.at}`, need, w) }
+  let v = t.pairs[t.at * 2 + 1]
+  t.at += 1
+  return v
+}
+property JtSt {
+  keys: []string = null
+  es: []EdgeStations = null
+  c: Check = null
+}
+function jt_st(t: JtSt, e: NetEdge) -> EdgeStations {
+  for i in 0 .. len(t.keys) { if t.keys[i] == e.key { return t.es[i] } }
+  check_fail(t.c, `stations: {e.key} was not asked by the studio`)
+  return null
+}
+property JtGround {
+  pts: []double = null
+  ys: []double = null
+  c: Check = null
+}
+function jt_ground(t: JtGround, x: double, z: double) -> double {
+  for i in 0 .. len(t.ys) { if t.pts[i * 2] == x and t.pts[i * 2 + 1] == z { return t.ys[i] } }
+  check_fail(t.c, `ground: ({x}, {z}) was not asked by the studio`)
+  return NAN
+}
+
+# ---- checks -------------------------------------------------------------------------------------------------------------------
+function jt_chk_offsets(c: Check, what: string, o: Offsets, w: Val) -> void {
+  check_numv(c, `{what}.median`, o.median, v_get(w, "median"))
+  check_numv(c, `{what}.lanes`, o.lanes, v_get(w, "lanes"))
+  check_numv(c, `{what}.road`, o.road, v_get(w, "road"))
+  check_numv(c, `{what}.park`, o.park, v_get(w, "park"))
+  check_numv(c, `{what}.gutter`, o.gutter, v_get(w, "gutter"))
+  check_numv(c, `{what}.curb`, o.curb, v_get(w, "curb"))
+  check_numv(c, `{what}.plant`, o.plant, v_get(w, "plant"))
+  check_numv(c, `{what}.walk`, o.walk, v_get(w, "walk"))
+}
+function jt_chk_ends(c: Check, ends: []JEnd, w: Val) -> void {
+  check_int(c, "ends", len(ends), v_len(w))
+  if len(ends) != v_len(w) { return }
+  for i in 0 .. len(ends) {
+    let e = ends[i]
+    let x = v_item(w, i)
+    check_str(c, `ends[{i}].edge`, e.edge.key, v_get(v_get(x, "edge"), "key"))
+    check_bool(c, `ends[{i}].out`, e.out, v_get(x, "out"))
+    check_nums(c, `ends[{i}].u`, d_pair(e.ux, e.uz), v_get(x, "u"))
+    check_nums(c, `ends[{i}].n`, d_pair(e.nx, e.nz), v_get(x, "n"))
+    check_numv(c, `ends[{i}].angle`, e.angle, v_get(x, "angle"))
+    jt_chk_offsets(c, `ends[{i}].r`, e.r, v_get(x, "r"))
+    jt_chk_offsets(c, `ends[{i}].l`, e.l, v_get(x, "l"))
+    check_numv(c, `ends[{i}].setback`, e.setback, v_get(x, "setback"))
+  }
+}
+function jt_chk_strs(c: Check, what: string, got: []string, w: Val) -> void {
+  check_int(c, what, len(got), v_len(w))
+  if len(got) != v_len(w) { return }
+  for i in 0 .. len(got) { check_str(c, `{what}[{i}]`, got[i], v_item(w, i)) }
+}
+function jt_chk_rails(c: Check, what: string, rails: []Rail, w: Val) -> void {
+  check_int(c, what, len(rails), v_len(w))
+  if len(rails) != v_len(w) { return }
+  for k in 0 .. len(rails) { check_nums(c, `{what}[{k}]`, rails[k].p, v_item(w, k)) }
+}
+function jt_chk_centre(c: Check, what: string, has: bool, x: double, z: double, w: Val) -> void {
+  if has { check_nums(c, what, d_pair(x, z), w) } else { if not v_undef(w) { check_fail(c, `{what}: none, want one`) } }
+}
+function jt_chk_junction(c: Check, j: Junction, w: Val) -> void {
+  check_str(c, "kind", j.kind, v_get(w, "kind"))
+  check_numv(c, "radius", j.radius, v_get(w, "radius"))
+  jt_chk_strs(c, "notes", j.notes, v_get(w, "notes"))
+  if j.strict != jt_bool(v_get(w, "strict")) { check_fail(c, "strict") }
+  jt_chk_ends(c, j.ends, v_get(w, "ends"))
+  let cw = v_get(w, "corners")
+  check_int(c, "corners", len(j.corners), v_len(cw))
+  if len(j.corners) != v_len(cw) { return }
+  for i in 0 .. len(j.corners) {
+    let k = j.corners[i]
+    let x = v_item(cw, i)
+    check_numv(c, `corners[{i}].i`, double(k.i), v_get(x, "i"))
+    check_numv(c, `corners[{i}].j`, double(k.j), v_get(x, "j"))
+    check_str(c, `corners[{i}].kind`, k.kind, v_get(x, "kind"))
+    jt_chk_rails(c, `corners[{i}].rails`, k.rails, v_get(x, "rails"))
+    jt_chk_centre(c, `corners[{i}].centre`, k.hasCentre, k.cx, k.cz, v_get(x, "centre"))
+    check_numv(c, `corners[{i}].radius`, k.radius, v_get(x, "radius"))
+    if k.sharp != jt_bool(v_get(x, "sharp")) { check_fail(c, `corners[{i}].sharp`) }
+  }
+}
+function jt_chk_arm(c: Check, A: ArmSide, w: Val) -> void {
+  if A == null {
+    if not v_undef(w) { check_fail(c, "no arm, want one") }
+    return
+  }
+  check_numv(c, "len", A.len, v_get(w, "len"))
+  check_nums(c, "at", A.at, v_get(w, "at"))
+  check_nums(c, "out", d_pair(A.outx, A.outz), v_get(w, "out"))
+  let pr = v_get(w, "probe")
+  for i in 0 .. v_len(pr) {
+    let p = v_nums(v_item(pr, i))
+    let q = arm_point(A, p[0], p[1])
+    check_num(c, `point({p[0]}, {p[1]}).x`, q[0], p[2])
+    check_num(c, `point({p[0]}, {p[1]}).z`, q[1], p[3])
+  }
+}
+function jt_chk_plan(c: Check, p: CornerPlan, w: Val) -> void {
+  if p == null {
+    if not v_undef(w) { check_fail(c, "no plan, want one") }
+    return
+  }
+  if v_undef(w) {
+    check_fail(c, "a plan, want none")
+    return
+  }
+  check_str(c, "kind", p.kind, v_get(w, "kind"))
+  check_numv(c, "rho", p.rho, v_get(w, "rho"))
+  jt_chk_centre(c, "centre", p.hasCentre, p.cx, p.cz, v_get(w, "centre"))
+  let lv = v_get(w, "levels")
+  check_int(c, "levels", len(p.levels), v_len(lv))
+  if len(p.levels) == v_len(lv) {
+    for i in 0 .. len(p.levels) {
+      let x = v_item(lv, i)
+      check_numv(c, `levels[{i}].si`, p.levels[i].si, v_get(x, "si"))
+      check_numv(c, `levels[{i}].sj`, p.levels[i].sj, v_get(x, "sj"))
+      check_nums(c, `levels[{i}].mid`, p.levels[i].mid, v_get(x, "mid"))
+    }
+  }
+  check_numv(c, "needI", p.needI, v_get(w, "needI"))
+  check_numv(c, "needJ", p.needJ, v_get(w, "needJ"))
+}
+
+function jt_net(v: Val) -> Net {
+  let net = new Net
+  net.edges = new []NetEdge
+  net.nodes = new []NetNode
+  let ev = v_get(v, "edges")
+  let m = jt_map_new(v_len(ev))
+  for i in 0 .. v_len(ev) {
+    let e = jt_edge(v_item(ev, i), i)
+    push(net.edges, e)
+    jt_map_set(m, e.key, i)
+  }
+  let nv = v_get(v, "nodes")
+  for i in 0 .. v_len(nv) {
+    let x = v_item(nv, i)
+    let n = jt_node(x)
+    let av = v_get(x, "around")
+    for k in 0 .. v_len(av) {
+      let a = v_item(av, k)
+      let arm = new NetArm
+      arm.edge = net.edges[jt_map_get(m, v_gets(a, "key", ""))]
+      arm.out = jt_bool(v_get(a, "out"))
+      push(n.around, arm)
+    }
+    push(net.nodes, n)
+  }
+  return net
+}
+
+export function test_junction(recs: []Rec) -> int {
+  let c = check_new("junction")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "cornerLevel" {
+      check_numv(c, "v", corner_level(jt_offsets(rarg(r, 0)), jt_offsets(rarg(r, 1)), int(arg_n(r, 2))), w)
+    } else if f == "cornerOffsets" {
+      let a = jt_end(rarg(r, 0))
+      let b = jt_end(rarg(r, 1))
+      check_nums(c, "a", corner_offsets_a(a, b), v_item(w, 0))
+      check_nums(c, "b", corner_offsets_b(a, b), v_item(w, 1))
+    } else if f == "cornerRadius" {
+      let cr = corner_radius(jt_end(rarg(r, 0)), jt_end(rarg(r, 1)), arg_n(r, 2), jt_opt(rarg(r, 3)))
+      check_numv(c, "rho", cr.rho, v_get(w, "rho"))
+      if v_has(w, "want") { check_numv(c, "want", cr.want, v_get(w, "want")) } else { if cr.want == cr.want { check_fail(c, "want, want none") } }
+    } else if f == "edgeArm" {
+      jt_chk_arm(c, edge_arm(jt_end(rarg(r, 0))), w)
+    } else if f == "endsOf" {
+      let node = jt_node(rarg(r, 1))
+      node.around = jt_around(rarg(r, 0))
+      jt_chk_ends(c, ends_of(node), w)
+    } else if f == "arc" {
+      let cc = arg_pt(r, 0)
+      let a = arg_pt(r, 1)
+      let b = arg_pt(r, 2)
+      let ra = arg_n(r, 3)
+      let ms: double = PI / 12.0
+      check_nums(c, "v", arc(cc[0], cc[1], a[0], a[1], b[0], b[1], ra, arg_nd(r, 4, ra), arg_nd(r, 5, ms)), w)
+    } else if f == "junctionOf" {
+      let node = jt_node(rarg(r, 1))
+      node.around = jt_around(rarg(r, 0))
+      let opt = jt_opt(rarg(r, 2))
+      let sv = rarg(r, 3)
+      let t = new JtSettled
+      t.c = c
+      t.pairs = v_nums(sv)
+      let j = junction_of(node, opt, not v_undef(sv), fn jt_settled, t)
+      if not v_undef(sv) and t.at * 2 != len(t.pairs) { check_fail(c, `settled: asked {t.at} times, the studio {len(t.pairs) / 2}`) }
+      jt_chk_junction(c, j, w)
+    } else if f == "setbacks" {
+      let net = jt_net(rarg(r, 0))
+      let sb = setbacks(net, jt_opt(rarg(r, 1)), null)
+      let keys = v_get(w, "keys")
+      check_int(c, "edges", len(net.edges), v_len(keys))
+      for i in 0 .. len(net.edges) { if i < v_len(keys) { check_str(c, `keys[{i}]`, net.edges[i].key, v_item(keys, i)) } }
+      check_nums(c, "from", sb.from, v_get(w, "from"))
+      check_nums(c, "to", sb.to, v_get(w, "to"))
+    } else {
+      check_fail(c, "no such function in the port")
+    }
+  }
+  return check_report(c)
+}
+
+export function test_corners(recs: []Rec) -> int {
+  let c = check_new("corners")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "armOf" {
+      jt_chk_arm(c, arm_of(arg_pt(r, 0), v_nums(rarg(r, 1)), arg_bd(r, 2, false)), w)
+    } else if f == "convexCorner" or f == "fitCorner" or f == "outsideCorner" or f == "cornerRails" {
+      let A = jt_arm(rarg(r, 0))
+      let B = jt_arm(rarg(r, 1))
+      let oa = v_nums(rarg(r, 2))
+      let ob = v_nums(rarg(r, 3))
+      if f == "convexCorner" {
+        jt_chk_plan(c, convex_corner(A, B, oa, ob, arg_n(r, 4), arg_nd(r, 5, A.len), arg_nd(r, 6, B.len)), w)
+      } else if f == "fitCorner" {
+        jt_chk_plan(c, fit_corner(A, B, oa, ob, arg_n(r, 4), arg_n(r, 5), arg_n(r, 6)), w)
+      } else if f == "outsideCorner" {
+        let g = rarg(r, 6)
+        jt_chk_plan(c, outside_corner(A, B, oa, ob, arg_nd(r, 4, A.len), arg_nd(r, 5, B.len), g.tag == T_NUM, g.num), w)
+      } else {
+        jt_chk_rails(c, "rails", corner_rails(A, B, oa, ob, jt_plan(rarg(r, 4)), arg_n(r, 5), arg_n(r, 6)), w)
+      }
+    } else {
+      check_fail(c, "no such function in the port")
+    }
+  }
+  return check_report(c)
+}
+
+export function test_junctionSurface(recs: []Rec) -> int {
+  let c = check_new("junctionSurface")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "windowFrames" {
+      let fr = window_frames(arg_pt(r, 0), v_nums(rarg(r, 1)), v_nums(rarg(r, 2)))
+      check_int(c, "frames", len(fr) / 2, v_len(w))
+      if len(fr) / 2 == v_len(w) {
+        for i in 0 .. v_len(w) {
+          let x = v_item(w, i)
+          check_nums(c, `[{i}].n`, d_pair(fr[i * 2], fr[i * 2 + 1]), v_get(x, "n"))
+          check_numv(c, `[{i}].k`, 1.0, v_get(x, "k"))
+        }
+      }
+    } else if f == "yAtEdge" {
+      check_numv(c, "v", y_at_edge(jt_grade(rarg(r, 0), null), arg_n(r, 1)), w)
+    } else if f == "edgeStations" {
+      let l = jt_grade(rarg(r, 0), null)
+      let back = rarg(r, 1)
+      let cv = rarg(r, 2)
+      var cuts = doubles(0)
+      if not v_undef(cv) { cuts = v_nums(cv) }
+      let tv = rarg(r, 3)
+      var thin: StationThin = null
+      if not v_undef(tv) {
+        thin = new StationThin
+        thin.plan = v_getn(tv, "plan", 0.0)
+        thin.y = v_getn(tv, "y", 0.0)
+        thin.max = v_getn(tv, "max", 0.0)
+      }
+      let es = edge_stations(l, v_getn(back, "from", 0.0), v_getn(back, "to", 0.0), cuts, thin)
+      if es == null {
+        if not v_undef(w) { check_fail(c, "no strip, want one") }
+        continue
+      }
+      if v_undef(w) {
+        check_fail(c, "a strip, want none")
+        continue
+      }
+      let sv = v_get(w, "st")
+      check_int(c, "st", len(es.st), v_len(sv))
+      if len(es.st) != v_len(sv) { continue }
+      for i in 0 .. len(es.st) {
+        let x = v_item(sv, i)
+        let s = es.st[i]
+        check_nums(c, `st[{i}].p`, d_pair(s.px, s.pz), v_get(x, "p"))
+        check_nums(c, `st[{i}].n`, d_pair(s.nx, s.nz), v_get(x, "n"))
+        check_numv(c, `st[{i}].k`, s.k, v_get(x, "k"))
+        check_numv(c, `st[{i}].s`, s.s, v_get(x, "s"))
+        check_numv(c, `st[{i}].y`, s.y, v_get(x, "y"))
+        jt_chk_offsets(c, `right[{i}]`, es.right[i], v_item(v_get(w, "right"), i))
+        jt_chk_offsets(c, `left[{i}]`, es.left[i], v_item(v_get(w, "left"), i))
+      }
+    } else if f == "nodeSurface" {
+      let node = jt_node(rarg(r, 0))
+      let m = jt_map_new(16)
+      let edges = new []NetEdge
+      let j = jt_junction(rarg(r, 1), m, edges)
+      let laid = new []EdgeGrade
+      for i in 0 .. len(edges) { push(laid, null) }
+      let lv = rarg(r, 2)
+      for i in 0 .. v_len(lv) {
+        let x = v_item(lv, i)
+        let idx = jt_map_get(m, v_gets(x, "key", ""))
+        if idx >= 0 { laid[idx] = jt_grade(v_get(x, "grade"), edges[idx]) }
+      }
+      let st = new JtSt
+      st.c = c
+      st.keys = new []string
+      st.es = new []EdgeStations
+      let sv = rarg(r, 3)
+      for i in 0 .. v_len(sv) {
+        let x = v_item(sv, i)
+        let idx = jt_map_get(m, v_gets(x, "key", ""))
+        push(st.keys, v_gets(x, "key", ""))
+        var g: EdgeGrade = null
+        if idx >= 0 { g = laid[idx] }
+        let es = jt_stations(v_get(x, "es"))
+        if es != null { es.grade = g }
+        push(st.es, es)
+      }
+      let gv = rarg(r, 5)
+      let gt = new JtGround
+      gt.c = c
+      gt.pts = v_pts(v_get(gv, "pts"))
+      gt.ys = v_nums(v_get(gv, "ys"))
+      let ns = node_surface(node, j, laid, fn jt_st, st, arg_n(r, 4), fn jt_ground, gt)
+      let pts = v_pts(v_get(w, "pts"))
+      let ys = v_nums(v_get(w, "y"))
+      let lvl = v_nums(v_get(w, "lvl"))
+      for i in 0 .. len(ys) {
+        check_num(c, `y({pts[i * 2]}, {pts[i * 2 + 1]})`, ns_y(ns, pts[i * 2], pts[i * 2 + 1]), ys[i])
+        check_num(c, `lvl({pts[i * 2]}, {pts[i * 2 + 1]})`, ns_lvl(ns, pts[i * 2], pts[i * 2 + 1]), lvl[i])
+      }
+    } else if f == "junctionRing" {
+      let m = jt_map_new(16)
+      let edges = new []NetEdge
+      check_nums(c, "v", junction_ring(jt_junction(rarg(r, 0), m, edges)), w)
+    } else if f == "insideRing" {
+      let p = arg_pt(r, 1)
+      check_bool(c, "v", inside_ring(arg_pt(r, 0), p[0], p[1]), w)
+    } else {
+      check_fail(c, "no such function in the port")
+    }
+  }
+  return check_report(c)
+}

@@ -20,9 +20,11 @@ Branch `mvp/roadnative` in gpp, game-editor and occutown.
 | crossings.ts | 151 | crossings.ludic | geom, profiles, network | next |
 | roadGrade.ts (+ curve.ts as needed) | 289 | roadgrade.ludic | geom, network | next (the job may carry the grades instead: see the job) |
 | network.ts (only what the bake reads: around, edgesNear, nodeHeight, the edge and node records) | part | network.ludic | geom, profiles | next |
-| junction.ts | 443 | junction.ludic | corners, geom, network, profiles | to do |
-| junctionSurface.ts | 254 | junctionsurface.ludic | geom, junction, network, profiles, roadGrade, stationLine | to do |
-| corners.ts | 343 | corners.ludic | geom, junction, junctionSurface, stationLine | to do (one unit with junction and junctionSurface: they import each other) |
+| junction.ts | 443 | junction.ludic | corners, geom, netview, profiles, trig | ported, verified (cornerLevel, cornerOffsets, cornerRadius, edgeArm, endsOf, arc, junctionOf, setbacks) |
+| junctionSurface.ts | 254 | junctionsurface.ludic | geom, junction, netview, profiles | ported, verified (windowFrames, yAtEdge, edgeStations, nodeSurface, junctionRing, insideRing) |
+| corners.ts | 343 | corners.ludic | geom, junction, junctionsurface, netview | ported, verified (armOf, convexCorner, fitCorner, outsideCorner, cornerRails) |
+| (network.ts, roadGrade.ts, stationLine.ts: the part the junctions read) | | netview.ludic | profiles | the junction part's view: `NetEdge`, `NetNode` (with its `around`), `NetArm`, `Net`, `EdgeGrade`, and stationLine's pointAt and trim as `jn_point_at`, `jn_trim`. The network, roadGrade and stationLine parts add their fields to these records (TypeScript names) and take over the two functions |
+| (Math.sin, cos, tan, atan2) | | trig.ludic | | the `JsMath` port: libm unbound; the test binds V8's recorded answers (see Tests) |
 | sidewalk.ts | 773 | sidewalk.ludic | corners, crossings, geom, junction, junctionSurface, network, profiles, roadGrade, stationLine | to do |
 | throughPath.ts | 168 | throughpath.ludic | geom, junction, sidewalk | to do |
 | medianThrough.ts | 57 | medianthrough.ludic | geom, meshBuilder, network, sidewalk, throughPath | to do |
@@ -35,6 +37,14 @@ Branch `mvp/roadnative` in gpp, game-editor and occutown.
 | (the program) | | roadmesh_bake.ludic | all | to do: job in, chunk files out |
 
 Shared files:
+- `netview.ludic`: the network as the junctions read it. An edge carries `idx` (its place in the network's edges): where the
+  studio keys a Map by edge key (setbacks, the laid grades), the port uses `[]` by idx. `Network.around(node)` is the node's
+  `around` (the job carries it). JunctionOptions is `JOpt`: the radius is the bake's (`sceneRadius`: the larger of the two
+  profiles' `radii`), the arms are each end's arm (`armK` = `<edge key>|1` or `|0`); a `settled` callback and nodeSurface's
+  `stations` and `ground` are function values plus a context (`junction_of<C>`, `node_surface<C, D>`).
+- `trig.ludic`: V8's Math.sin, cos, tan and atan2 are fdlibm/glibc code built with fused multiply-adds and differ from libm in the
+  last bit (sin about 1 call in 25, tan 1 in 3 on random arguments). The port calls them as `JsMath.sin(x)` etc.; unbound that is
+  libm, which leaves differences of at most 4.5e-13 m in the junctions of the four scenes (far under the bake's millimetres).
 - `util.ludic`: JavaScript's `Math.max`, `Math.min`, `Math.round` and `Math.sign` with V8's NaN and signed-zero rules, `INF` and `NAN`,
   selects (Ludic has no if-expression), and points as flat `[]double` (x0, z0, x1, z1, ...).
 - `fixture.ludic`: the tagged-value reader (`Val`) and the checks (`Check`) every module test uses.
@@ -88,6 +98,14 @@ val     u8 tag: 0 undefined | 1 null | 2 false | 3 true | 4 f64 | 5 str | 6 arra
         8 object (i32 n, n x (str key, val)) | 9 pts (i32 n, 2n f64)
 str     i32 byte length, utf-8
 ```
+The junction modules' records (export.test.ts `wrapLite`, `junctionWrap`, `nodeSurfaceWrap`) write their arguments as data: an
+edge as `{key, line, s, length, taper, section, profile, prof}` (no line in junctionSurface's), an ArmSide as the line it was made
+from (`{len, at, out, line, s, fromStart}`; an answer also as `probe`: [s, d, x, z] points), JunctionOptions as `{fillet, strict,
+radii, arms: [{key, out, arm}]}`, a `settled` as its [need, answer] pairs in call order, the network as each node's `around`,
+nodeSurface's laid grades, stations and ground as the answers they gave, and its answer (closures) as its heights at probe points.
+`trig.bin` holds every Math.sin, cos, tan and atan2 call of the recording pass (i32 n, n x (u8 0 sin | 1 cos | 2 tan | 3 atan2,
+f64 x, f64 y, f64 answer)).
+
 An array of numbers is written as f64s and an array of `[x, z]` pairs as pts. Because the argument list is an array too, read
 arguments with `rarg(r, i)`, `arg_n`, `arg_nd` (with a default), `arg_bd`, `arg_pt`, and `v_item`. These take any of the three
 forms. A Builder method's record is `[uv, level, ...arguments]`, with a `yOf` replaced by the table of points it was asked
@@ -102,8 +120,9 @@ PATH=<gpp>/bin:$PATH LUDIC_HOME=<gpp> ludic build packages/ludic.roadmesh/roadme
 ./build/tools/roadmesh_test <game-editor worktree>/packages/core/test/fixtures/roadnative/fix/*/*.fix
 ```
 The module is the file's name (`geom.fix` runs `test_geom`). A record passes when every number is the same to the bit (NaN
-equals NaN, and -0 differs from 0). The program prints a tally for each function and the first 12 differences. It exits 1 if
-any record differs. The 16 fixtures (4 scenes x 4 modules) run in 0.4 s.
+equals NaN, and -0 differs from 0). The runner binds `JsMath` to the scene's `trig.bin` (beside the .fix), so the rest of the arithmetic is checked to the bit;
+without the table (unbound: libm) the junction modules differ in the last bit only. The program prints a tally for each function and the first 12 differences. It exits 1 if
+any record differs. The 28 fixtures (4 scenes x 7 modules) run in 3.5 s (most of it reading the junction fixtures, 40 MB a scene).
 
 **Adding a module (a part agent):**
 1. In game-editor `export.test.ts`, add the module to `MODULES` and a `vi.mock('../../../src/world/<module>', ...)` line with
@@ -142,7 +161,7 @@ per worker, and workers may allocate.
 
 1. Base, done: fixtures, skeleton, geom, profiles, polyMesh, meshBuilder.
 2. stationLine, crossings, the network's read side, roadGrade.
-3. junction, corners and junctionSurface as one unit, because they import each other.
+3. junction, corners and junctionSurface as one unit, because they import each other. Done (netview.ludic and trig.ludic with them).
 4. sidewalk, then throughPath and medianThrough.
 5. roadStructures and lanePaint (with the part of lanePaintChecks the bake calls), which can run in parallel.
 6. roadMesh. Its fixture is the whole build: every layer of `mesh`, `coarse` and `far` against the scene's meshes.
@@ -157,6 +176,9 @@ per worker, and workers may allocate.
 | profiles | 1070, same | 1163, same | 1151, same | 1200, same |
 | polyMesh | 328, same | 271, same | 170, same | 148, same |
 | meshBuilder | 1192, same | 1611, same | 1611, same | 1570, same |
+| junction | 994, same | 1938, same | 1890, same | 1963, same |
+| corners | 1115, same | 1341, same | 1351, same | 1370, same |
+| junctionSurface | 1011, same | 1550, same | 1489, same | 1667, same |
 
 To check that the harness catches a real difference, the ribbon's zip condition was inverted. The test then reported the
 ribbons' positions, normals (including -0 against 0) and uvs as different.

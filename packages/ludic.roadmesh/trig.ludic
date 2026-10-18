@@ -1,0 +1,15 @@
+# trig.ludic - Math.sin, cos, tan and atan2 for the port. The studio's V8 computes them with fdlibm and glibc code built with fused
+# multiply-adds, which differ from this machine's libm in the last bit now and then (about 1 call in 25 for sin, 1 in 3 for tan).
+# The port calls them through the JsMath port: unbound it is libm (last-bit noise against the studio, well under the bake's
+# millimetres); the fixture test binds it to the answers V8 gave in the recorded bake (fix/<scene>/trig.bin), so everything
+# else is checked to the bit.
+export port JsMath {
+  sin: fn(double) -> double = fn libm_sin
+  cos: fn(double) -> double = fn libm_cos
+  tan: fn(double) -> double = fn libm_tan
+  atan2: fn(double, double) -> double = fn libm_atan2
+}
+export function libm_sin(x: double) -> double { return Math.sin(x) }
+export function libm_cos(x: double) -> double { return Math.cos(x) }
+export function libm_tan(x: double) -> double { return Math.tan(x) }
+export function libm_atan2(y: double, x: double) -> double { return Math.atan2(y, x) }

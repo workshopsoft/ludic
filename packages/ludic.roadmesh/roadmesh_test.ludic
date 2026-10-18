@@ -12,6 +12,9 @@ program RoadmeshTest {
   import "test/profiles_test.ludic"
   import "test/polyMesh_test.ludic"
   import "test/meshBuilder_test.ludic"
+  import "test/junction_test.ludic"
+  import "test/trig_tab.ludic"
+  bind JsMath { sin: fn tt_sin, cos: fn tt_cos, tan: fn tt_tan, atan2: fn tt_atan2 }
 
   function base_name(path: string) -> string {
     var a = 0
@@ -21,7 +24,10 @@ program RoadmeshTest {
     return path[a..b]
   }
 
-  function run_one(path: string) -> int {
+  function run_one(tt: mut TrigTab, path: string) -> int {
+    var dir = ""
+    for i in 0 .. len(path) { if path[i] == 47 { dir = path[0..i + 1] } }
+    tt_load(tt, `{dir}trig.bin`)
     let recs = read_fix(path)
     if recs == null {
       print(`roadmesh_test: cannot read {path}`)
@@ -33,18 +39,21 @@ program RoadmeshTest {
     if m == "profiles" { return test_profiles(recs) }
     if m == "polyMesh" { return test_polyMesh(recs) }
     if m == "meshBuilder" { return test_meshBuilder(recs) }
+    if m == "junction" { return test_junction(recs) }
+    if m == "corners" { return test_corners(recs) }
+    if m == "junctionSurface" { return test_junctionSurface(recs) }
     print(`roadmesh_test: no test for the module {m}`)
     return 0
   }
 
-  entry () {
+  entry (tt: mut TrigTab) {
     if arg_count() < 2 {
       print("usage: roadmesh_test <file.fix> ...")
       exit(2)
       return
     }
     var bad = 0
-    for i in 1 .. arg_count() { bad += run_one(arg(i)) }
+    for i in 1 .. arg_count() { bad += run_one(tt, arg(i)) }
     if bad > 0 {
       print(`roadmesh_test: {bad} records differ`)
       exit(1)

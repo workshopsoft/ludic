@@ -1,0 +1,363 @@
+# junctionsurface.ludic - game-editor packages/core/src/world/junctionSurface.ts: the surface of a road between its junctions (its
+# stations) and of a junction (the heights inside its polygon), the junction's road ring, and the even-odd point test.
+
+const FRAME_WINDOW: double = 2.0
+
+# the frame at each of `at` (metres along the line): the unit normal to the chord from FRAME_WINDOW before to as far after,
+# clamped to the line's ends; nx, nz pairs (k is always 1)
+export function window_frames(line: []double, s: []double, at: []double) -> []double {
+  var L: double = 0.0
+  if len(s) > 0 { L = s[len(s) - 1] }
+  let out = new []double
+  for i in 0 .. len(at) {
+    let d = at[i]
+    let a = jn_point_at(line, s, jmax(0.0, d - FRAME_WINDOW))
+    let b = jn_point_at(line, s, jmin(L, d + FRAME_WINDOW))
+    let l = hypot2(b[0] - a[0], b[1] - a[1])
+    if l < 0.000000001 { pts_push(out, 0.0, 1.0) } else { pts_push(out, -(b[1] - a[1]) / l, (b[0] - a[0]) / l) }
+  }
+  return out
+}
+
+# the graded height of the road's centre line d metres along an edge (the fine line's metres)
+export function y_at_edge(l: EdgeGrade, d: double) -> double {
+  var i = 0
+  while i + 2 < len(l.s) and l.s[i + 1] < d { i += 1 }
+  let ln = l.s[i + 1] - l.s[i]
+  var t: double = 0.0
+  if not (ln < 0.000000001) { t = jmax(0.0, jmin(1.0, (d - l.s[i]) / ln)) }
+  return l.y[i] + (l.y[i + 1] - l.y[i]) * t
+}
+
+export property Station {
+  px: double = 0.0
+  pz: double = 0.0
+  # unit to the right of the road here, and how much a lateral offset is lengthened at a bend
+  nx: double = 0.0
+  nz: double = 0.0
+  k: double = 1.0
+  s: double = 0.0
+  y: double = 0.0
+}
+
+export property EdgeStations {
+  grade: EdgeGrade = null
+  st: []Station = null
+  right: []Offsets = null
+  left: []Offsets = null
+}
+
+# the point d metres from the centre line at station i (positive: right)
+export function es_at(es: EdgeStations, i: int, d: double) -> []double {
+  let q = es.st[i]
+  return d_pair(q.px + q.nx * d * q.k, q.pz + q.nz * d * q.k)
+}
+
+export property StationThin {
+  plan: double = 0.0
+  y: double = 0.0
+  max: double = 0.0
+}
+
+function thin_split(t: Trimmed, ys: []double, keep: []bool, thin: StationThin, a: int, b: int) -> void {
+  if b - a < 2 { return }
+  var worst: double = -1.0
+  var at = -1
+  let pax = t.line[a * 2]
+  let paz = t.line[a * 2 + 1]
+  let pbx = t.line[b * 2]
+  let pbz = t.line[b * 2 + 1]
+  let L = hypot2(pbx - pax, pbz - paz)
+  for i in a + 1 .. b {
+    let f = (t.s[i] - t.s[a]) / jmax(t.s[b] - t.s[a], 0.000000001)
+    var off: double = 0.0
+    if not (L < 0.000000001) { off = dabs((t.line[i * 2] - pax) * (pbz - paz) - (t.line[i * 2 + 1] - paz) * (pbx - pax)) / L }
+    let dy = dabs(ys[i] - (ys[a] + (ys[b] - ys[a]) * f))
+    let w = jmax(jmax(off / thin.plan, dy / thin.y), (t.s[b] - t.s[a]) / thin.max)
+    if w > worst {
+      worst = w
+      at = i
+    }
+  }
+  if worst > 1.0 {
+    keep[at] = true
+    thin_split(t, ys, keep, thin, a, at)
+    thin_split(t, ys, keep, thin, at, b)
+  }
+}
+
+# the strip of an edge between its setbacks (backFrom, backTo in the edge's own metres); null when shorter than 0.3 m. cuts are
+# extra stations (the fine line's metres); thin (null: none) a coarser level of detail
+export function edge_stations(l: EdgeGrade, backFrom: double, backTo: double, cuts: []double, thin: StationThin) -> EdgeStations {
+  let e = l.edge
+  let s0 = backFrom * l.scale
+  let s1 = l.len - backTo * l.scale
+  if s1 - s0 < 0.3 { return null }
+  var t = jn_trim(l.line, l.s, s0, s1, cuts)
+  if thin != null and len(t.s) > 2 and not (e.section.steps > 0.0) {
+    let n = len(t.s)
+    let ys = doubles(n)
+    for i in 0 .. n { ys[i] = y_at_edge(l, t.s[i]) }
+    let keep = new []bool
+    for i in 0 .. n {
+      var k = i <= 1 or i >= n - 2
+      if not k { for c in 0 .. len(cuts) { if dabs(cuts[c] - t.s[i]) < 0.001 { k = true } } }
+      push(keep, k)
+    }
+    var a = 0
+    for i in 1 .. n {
+      if keep[i] {
+        thin_split(t, ys, keep, thin, a, i)
+        a = i
+      }
+    }
+    let t2 = new Trimmed
+    t2.line = new []double
+    t2.s = new []double
+    for i in 0 .. n {
+      if keep[i] {
+        pts_push(t2.line, t.line[i * 2], t.line[i * 2 + 1])
+        push(t2.s, t.s[i])
+      }
+    }
+    t = t2
+  }
+  let fr = window_frames(l.line, l.s, t.s)
+  let es = new EdgeStations
+  es.grade = l
+  es.st = new []Station
+  es.right = new []Offsets
+  es.left = new []Offsets
+  let sec = e.section
+  for i in 0 .. len(t.s) {
+    let q = new Station
+    q.px = t.line[i * 2]
+    q.pz = t.line[i * 2 + 1]
+    q.nx = fr[i * 2]
+    q.nz = fr[i * 2 + 1]
+    q.k = 1.0
+    q.s = t.s[i]
+    q.y = y_at_edge(l, t.s[i])
+    push(es.st, q)
+  }
+  for i in 0 .. len(es.st) { push(es.right, offsets_of(sec.right, sec.gutter, sec.curbW, sec.median, taper_at(e.taper, es.st[i].s / l.len))) }
+  for i in 0 .. len(es.st) { push(es.left, offsets_of(sec.left, sec.gutter, sec.curbW, sec.median, taper_at(e.taper, es.st[i].s / l.len))) }
+  return es
+}
+
+# one arm of a junction's surface: its seam (a to b), its station c, the way u away from the node, the height y, grade g and bend
+# k there (y = y0 + g d + k d^2, d along u), and its kerb height
+property SArm {
+  ax: double = 0.0
+  az: double = 0.0
+  bx: double = 0.0
+  bz: double = 0.0
+  cx: double = 0.0
+  cz: double = 0.0
+  ux: double = 0.0
+  uz: double = 0.0
+  y: double = 0.0
+  g: double = 0.0
+  k: double = 0.0
+  lvl: double = 0.0
+}
+
+export property NodeSurface {
+  arms: []SArm = null
+  kerbed: []SArm = null
+  hasMean: bool = false
+  mean: double = 0.0
+  lift: double = 0.0
+}
+
+function sarm(ax: double, az: double, bx: double, bz: double, cx: double, cz: double, ux: double, uz: double, y: double, g: double, k: double, lvl: double) -> SArm {
+  let q = new SArm
+  q.ax = ax
+  q.az = az
+  q.bx = bx
+  q.bz = bz
+  q.cx = cx
+  q.cz = cz
+  q.ux = ux
+  q.uz = uz
+  q.y = y
+  q.g = g
+  q.k = k
+  q.lvl = lvl
+  return q
+}
+
+# the heights inside a node's junction: a Shepard blend of each arm's surface, weighted by the inverse square distance to the arm's
+# seam. laid: the graded edges by edge idx (null: none); stations: the edge's strip (null: none); ground: the natural ground (NaN
+# for none)
+export function node_surface<C, D>(node: NetNode, j: Junction, laid: []EdgeGrade, stations: fn(C, NetEdge) -> EdgeStations, sc: C, lift: double, ground: fn(D, double, double) -> double, gc: D) -> NodeSurface {
+  var sum: double = 0.0
+  var cnt = 0
+  for q in 0 .. len(j.ends) {
+    let e = j.ends[q]
+    let l = laid[e.edge.idx]
+    if l != null {
+      sum = sum + dsel(e.out, l.y[0], l.y[len(l.y) - 1])
+      cnt += 1
+    }
+  }
+  let ns = new NodeSurface
+  ns.hasMean = cnt > 0
+  if cnt > 0 { ns.mean = sum / double(cnt) }
+  ns.lift = lift
+  ns.arms = new []SArm
+  for q in 0 .. len(j.ends) {
+    let e = j.ends[q]
+    let l = laid[e.edge.idx]
+    let sec = e.edge.section
+    let lvl = dsel(sec.curbH > 0.001, sec.curbH, 0.0)
+    let es = stations(sc, e.edge)
+    if l != null and es != null and len(es.st) >= 2 {
+      let i = isel(e.out, 0, len(es.st) - 1)
+      let st = es.st[i]
+      let nb = es.st[isel(e.out, 1, len(es.st) - 2)]
+      var dl = hypot2(nb.px - st.px, nb.pz - st.pz)
+      if dl == 0.0 or dl != dl { dl = 1.0 }
+      let ux = (nb.px - st.px) / dl
+      let uz = (nb.pz - st.pz) / dl
+      var offR: double = 0.0
+      var offL: double = 0.0
+      if e.out {
+        offR = es.right[i].walk
+        offL = es.left[i].walk
+      } else {
+        offR = es.left[i].walk
+        offL = es.right[i].walk
+      }
+      let sgn = dsel(e.out, 1.0, -1.0)
+      let b = es_at(es, i, sgn * offR)
+      let a = es_at(es, i, -sgn * offL)
+      let yn = dsel(e.out, l.y[0], l.y[len(l.y) - 1])
+      var g: double = 0.0
+      if not (sec.steps > 0.0) { g = (nb.y - st.y) / dl }
+      let back = -((node.x - st.px) * ux + (node.z - st.pz) * uz)
+      var k: double = 0.0
+      if back > 0.05 and len(j.ends) > 1 { k = (yn - st.y + g * back) / (back * back) }
+      push(ns.arms, sarm(a[0], a[1], b[0], b[1], st.px, st.pz, ux, uz, st.y, g, k, lvl))
+      continue
+    }
+    let cx = node.x + e.ux * e.setback
+    let cz = node.z + e.uz * e.setback
+    let ax = cx - e.nx * e.l.walk
+    let az = cz - e.nz * e.l.walk
+    let bx = cx + e.nx * e.r.walk
+    let bz = cz + e.nz * e.r.walk
+    if l == null {
+      var y: double = 0.0
+      if ns.hasMean { y = ns.mean } else {
+        let gy = ground(gc, cx, cz)
+        if gy == gy { y = gy }
+      }
+      push(ns.arms, sarm(ax, az, bx, bz, cx, cz, e.ux, e.uz, y, 0.0, 0.0, lvl))
+      continue
+    }
+    let y = y_at_edge(l, dsel(e.out, e.setback, e.edge.length - e.setback) * l.scale)
+    let yn = dsel(e.out, l.y[0], l.y[len(l.y) - 1])
+    var g: double = 0.0
+    if e.setback > 0.000001 { g = (y - yn) / e.setback }
+    push(ns.arms, sarm(ax, az, bx, bz, cx, cz, e.ux, e.uz, y, g, 0.0, lvl))
+  }
+  ns.kerbed = new []SArm
+  for q in 0 .. len(ns.arms) { if ns.arms[q].lvl > 0.0 { push(ns.kerbed, ns.arms[q]) } }
+  return ns
+}
+
+# an arm's value at p: its surface's height (mode 0) or its kerb height (mode 1)
+function sarm_value(q: SArm, mode: int, px: double, pz: double) -> double {
+  if mode == 1 { return q.lvl }
+  let d = (px - q.cx) * q.ux + (pz - q.cz) * q.uz
+  return q.y + q.g * d + q.k * d * d
+}
+
+function ns_blend(ns: NodeSurface, among: []SArm, mode: int, px: double, pz: double) -> double {
+  var sw: double = 0.0
+  var sy: double = 0.0
+  for i in 0 .. len(among) {
+    let q = among[i]
+    let dx = q.bx - q.ax
+    let dz = q.bz - q.az
+    let l2 = dx * dx + dz * dz
+    var t: double = 0.0
+    if not (l2 < 0.000000000001) { t = jmax(0.0, jmin(1.0, ((px - q.ax) * dx + (pz - q.az) * dz) / l2)) }
+    let ex = px - q.ax - dx * t
+    let ez = pz - q.az - dz * t
+    let d2 = ex * ex + ez * ez
+    if d2 < 0.00000001 { return sarm_value(q, mode, px, pz) }
+    sw += 1.0 / d2
+    sy += sarm_value(q, mode, px, pz) / d2
+  }
+  if sw > 0.0 { return sy / sw }
+  return dsel(ns.hasMean, ns.mean, 0.0)
+}
+
+# the road surface height at a point of the junction (lift included)
+export function ns_y(ns: NodeSurface, px: double, pz: double) -> double { return ns_blend(ns, ns.arms, 0, px, pz) + ns.lift }
+# the height of the curb, planting and walk above that surface: the kerbed arms' own curb height, blended like ns_y
+export function ns_lvl(ns: NodeSurface, px: double, pz: double) -> double {
+  if len(ns.kerbed) > 0 { return ns_blend(ns, ns.kerbed, 1, px, pz) }
+  return 0.0
+}
+
+function ring_same(r: []double, a: int, b: int) -> bool { return hypot2(r[a * 2] - r[b * 2], r[a * 2 + 1] - r[b * 2 + 1]) < 0.01 }
+
+# the ring of a cross junction's road surface (inside the kerbs), from its corners' road rails
+export function junction_ring(j: Junction) -> []double {
+  var surface = new []double
+  for c in 0 .. len(j.corners) {
+    let r = j.corners[c].rails[0].p
+    for i in 0 .. len(r) / 2 {
+      let n = len(surface) / 2
+      if n == 0 or hypot2(surface[n * 2 - 2] - r[i * 2], surface[n * 2 - 1] - r[i * 2 + 1]) > 0.01 { pts_push(surface, r[i * 2], r[i * 2 + 1]) }
+    }
+  }
+  let n0 = len(surface) / 2
+  if n0 > 2 and hypot2(surface[0] - surface[n0 * 2 - 2], surface[1] - surface[n0 * 2 - 1]) < 0.01 { surface = pts_slice(surface, 0, n0 - 1) }
+  var guard = 0
+  var i = 0
+  while len(surface) / 2 > 3 and guard < 4 * (len(surface) / 2) + 8 {
+    let n = len(surface) / 2
+    let ia = (i + n - 1) % n
+    let ip = i % n
+    let ib = (i + 1) % n
+    let ux = surface[ip * 2] - surface[ia * 2]
+    let uz = surface[ip * 2 + 1] - surface[ia * 2 + 1]
+    let vx = surface[ib * 2] - surface[ip * 2]
+    let vz = surface[ib * 2 + 1] - surface[ip * 2 + 1]
+    let lu = hypot2(ux, uz)
+    let lv = hypot2(vx, vz)
+    let back = lu > 0.000000001 and lv > 0.000000001 and dabs(ux * vz - uz * vx) < 0.0001 * lu * lv and ux * vx + uz * vz < 0.0
+    if back or ring_same(surface, ia, ip) {
+      surface = pts_remove(surface, ip)
+      let m = len(surface) / 2
+      if m > 3 and ring_same(surface, (i + m - 1) % m, i % m) { surface = pts_remove(surface, i % m) }
+      i = max(0, i - 1)
+      guard += 1
+      continue
+    }
+    i += 1
+    guard += 1
+    if i >= n { break }
+  }
+  return surface
+}
+
+# whether a point lies inside a ring (even-odd)
+export function inside_ring(ring: []double, px: double, pz: double) -> bool {
+  var inside = false
+  let n = len(ring) / 2
+  var k = n - 1
+  for i in 0 .. n {
+    let ax = ring[i * 2]
+    let az = ring[i * 2 + 1]
+    let bx = ring[k * 2]
+    let bz = ring[k * 2 + 1]
+    if (az > pz) != (bz > pz) and px < ((bx - ax) * (pz - az)) / (bz - az) + ax { inside = not inside }
+    k = i
+  }
+  return inside
+}

@@ -1,0 +1,474 @@
+# corners.ludic - game-editor packages/core/src/world/corners.ts: the corners of a junction drawn along the arms' own side lines
+# (the centre line's points and the strips' frames, square to a 2 m chord), each rail along the first arm's side line, round the
+# corner and out along the next arm's; made smaller where the strips leave too little room, straight between the strips' ends
+# where not even a sharp corner fits.
+
+const TAPER: double = 4.0
+const FLAT_DEG: double = 5.0
+
+# one arm of a junction: its centre line from the node out (armOf's closure as data: the line it reads)
+export property ArmSide {
+  len: double = 0.0
+  # the metres from the node where the centre line has points (0 and len included), increasing
+  at: []double = null
+  # the unit way out along the arm at the node
+  outx: double = 0.0
+  outz: double = 0.0
+  line: []double = null
+  s: []double = null
+  fromStart: bool = true
+}
+
+function arm_frame_at(A: ArmSide, d: double) -> []double {
+  let a = jn_point_at(A.line, A.s, jmax(0.0, d - FRAME_WINDOW))
+  let b = jn_point_at(A.line, A.s, jmin(A.len, d + FRAME_WINDOW))
+  let l = hypot2(b[0] - a[0], b[1] - a[1])
+  if l < 0.000000001 { return d_pair(0.0, 1.0) }
+  return d_pair(-(b[1] - a[1]) / l, (b[0] - a[0]) / l)
+}
+
+# the point d metres off the centre line (positive: right of the way out from the node), so metres from the node
+export function arm_point(A: ArmSide, so: double, d: double) -> []double {
+  let sl = dsel(A.fromStart, so, A.len - so)
+  let c = jmax(0.0, jmin(A.len, sl))
+  let p = jn_point_at(A.line, A.s, c)
+  let n = arm_frame_at(A, c)
+  let k = dsel(A.fromStart, d, -d)
+  return d_pair(p[0] + n[0] * k, p[1] + n[1] * k)
+}
+
+# an arm from a centre line (its metres s), leaving the node at the line's start (fromStart) or arriving at its end
+export function arm_of(line: []double, s: []double, fromStart: bool) -> ArmSide {
+  let A = new ArmSide
+  A.line = line
+  A.s = s
+  A.fromStart = fromStart
+  var L: double = 0.0
+  if len(s) > 0 { L = s[len(s) - 1] }
+  A.len = L
+  # [...new Set([0, L, ...s mapped])] (the first of equal values kept), those in [0, L], sorted
+  let all = new []double
+  let z0: double = 0.0
+  push(all, z0)
+  push(all, L)
+  for i in 0 .. len(s) { push(all, dsel(fromStart, s[i], L - s[i])) }
+  let uniq = new []double
+  for i in 0 .. len(all) {
+    var seen = false
+    for k in 0 .. len(uniq) { if uniq[k] == all[i] { seen = true } }
+    if not seen { push(uniq, all[i]) }
+  }
+  let at = new []double
+  for i in 0 .. len(uniq) { if uniq[i] >= 0.0 and uniq[i] <= L { push(at, uniq[i]) } }
+  for i in 1 .. len(at) {
+    let v = at[i]
+    var k = i - 1
+    while k >= 0 and at[k] - v > 0.0 {
+      at[k + 1] = at[k]
+      k -= 1
+    }
+    at[k + 1] = v
+  }
+  A.at = at
+  let p0 = arm_point(A, 0.0, 0.0)
+  let p1 = arm_point(A, jmin(L, 1.0), 0.0)
+  var l = hypot2(p1[0] - p0[0], p1[1] - p0[1])
+  if l == 0.0 or l != l { l = 1.0 }
+  A.outx = (p1[0] - p0[0]) / l
+  A.outz = (p1[1] - p0[1]) / l
+  return A
+}
+
+# a side line of an arm d off its centre, sampled at its points up to reach metres
+property SideLine {
+  p: []double = null
+  s: []double = null
+}
+function side_line(A: ArmSide, d: double, reach: double) -> SideLine {
+  let o = new SideLine
+  o.p = new []double
+  o.s = new []double
+  for i in 0 .. len(A.at) {
+    let s = A.at[i]
+    if s < reach - 0.000001 {
+      let q = arm_point(A, s, d)
+      pts_push(o.p, q[0], q[1])
+      push(o.s, s)
+    }
+  }
+  let e = jmin(reach, A.len)
+  let q = arm_point(A, e, d)
+  pts_push(o.p, q[0], q[1])
+  push(o.s, e)
+  return o
+}
+
+property Meet {
+  x: double = 0.0
+  z: double = 0.0
+  s: double = 0.0
+  t: double = 0.0
+}
+
+# the first crossing (least s + t) of two sampled lines, with the metres along each; null for none
+function crossing(P: SideLine, Q: SideLine) -> Meet {
+  var best: Meet = null
+  let np = len(P.s)
+  let nq = len(Q.s)
+  var i = 0
+  while i + 1 < np {
+    let ax = P.p[i * 2]
+    let az = P.p[i * 2 + 1]
+    let ux = P.p[i * 2 + 2] - ax
+    let uz = P.p[i * 2 + 3] - az
+    var k = 0
+    while k + 1 < nq {
+      let cx = Q.p[k * 2]
+      let cz = Q.p[k * 2 + 1]
+      let vx = Q.p[k * 2 + 2] - cx
+      let vz = Q.p[k * 2 + 3] - cz
+      let den = ux * vz - uz * vx
+      if not (dabs(den) < 0.000000000001) {
+        let wx = cx - ax
+        let wz = cz - az
+        let f = (wx * vz - wz * vx) / den
+        let g = (wx * uz - wz * ux) / den
+        if not (f < -0.000000001 or f > 1.000000001 or g < -0.000000001 or g > 1.000000001) {
+          let s = P.s[i] + (P.s[i + 1] - P.s[i]) * f
+          let t = Q.s[k] + (Q.s[k + 1] - Q.s[k]) * g
+          if best == null or s + t < best.s + best.t {
+            best = new Meet
+            best.x = ax + ux * f
+            best.z = az + uz * f
+            best.s = s
+            best.t = t
+          }
+        }
+      }
+      k += 1
+    }
+    i += 1
+  }
+  return best
+}
+
+# Newton steps toward A.point(s, da) = B.point(t, db) from (s, t): the meeting point and its metres along each
+function refine(A: ArmSide, B: ArmSide, da: double, db: double, s0: double, t0: double) -> Meet {
+  let h: double = 0.001
+  var s = s0
+  var t = t0
+  for it in 0 .. 40 {
+    let pa = arm_point(A, s, da)
+    let pb = arm_point(B, t, db)
+    let fx = pa[0] - pb[0]
+    let fz = pa[1] - pb[1]
+    if hypot2(fx, fz) < 0.0000001 { break }
+    let as = arm_point(A, s + h, da)
+    let bt = arm_point(B, t + h, db)
+    let j11 = (as[0] - pa[0]) / h
+    let j21 = (as[1] - pa[1]) / h
+    let j12 = -(bt[0] - pb[0]) / h
+    let j22 = -(bt[1] - pb[1]) / h
+    let det = j11 * j22 - j12 * j21
+    if dabs(det) < 0.000000000001 { break }
+    let ds = (fx * j22 - fz * j12) / det
+    let dt = (j11 * fz - j21 * fx) / det
+    if not is_finite(ds) or not is_finite(dt) { break }
+    let f = jmin(1.0, 1.0 / jmax(jmax(dabs(ds), dabs(dt)), 0.000000000001))
+    s = jmax(0.0, jmin(A.len, s - ds * f))
+    t = jmax(0.0, jmin(B.len, t - dt * f))
+  }
+  let p = arm_point(A, s, da)
+  let o = new Meet
+  o.x = p[0]
+  o.z = p[1]
+  o.s = s
+  o.t = t
+  return o
+}
+
+# where a corner's rail at one level leaves the first arm's side line (metres), turns (points between), and joins the second's
+export property CornerLevel {
+  si: double = 0.0
+  sj: double = 0.0
+  mid: []double = null
+}
+
+function clevel(si: double, sj: double, mid: []double) -> CornerLevel {
+  let l = new CornerLevel
+  l.si = si
+  l.sj = sj
+  l.mid = mid
+  return l
+}
+
+function meet_on(A: ArmSide, B: ArmSide, da: double, db: double, x: Meet) -> CornerLevel {
+  let r = refine(A, B, da, db, x.s, x.t)
+  let q = arm_point(B, r.t, db)
+  if hypot2(r.x - q[0], r.z - q[1]) > 0.000001 or hypot2(r.x - x.x, r.z - x.z) > 1.0 { return clevel(x.s, x.t, d_pair(x.x, x.z)) }
+  return clevel(r.s, r.t, d_pair(r.x, r.z))
+}
+
+export property CornerPlan {
+  # fillet, mitre or flat
+  kind: string = "flat"
+  rho: double = 0.0
+  hasCentre: bool = false
+  cx: double = 0.0
+  cz: double = 0.0
+  levels: []CornerLevel = null
+  needI: double = 0.0
+  needJ: double = 0.0
+}
+
+# the corner of a convex wedge between arm A (its right side, oa per level) and arm B (its left side, ob), rounded at rho at the
+# kerb or sharp at the levels too far out for the round; null when the gutter lines do not meet within reach
+export function convex_corner(A: ArmSide, B: ArmSide, oa: []double, ob: []double, rho: double, reachA: double, reachB: double) -> CornerPlan {
+  let levels = new []CornerLevel
+  var hasC = false
+  var cx: double = 0.0
+  var cz: double = 0.0
+  var s0: double = 0.0
+  var t0: double = 0.0
+  if rho >= 0.3 {
+    let P = side_line(A, oa[0] + rho, reachA)
+    let Q = side_line(B, -(ob[0] + rho), reachB)
+    let x = crossing(P, Q)
+    if x == null { return null }
+    let r = refine(A, B, oa[0] + rho, -(ob[0] + rho), x.s, x.t)
+    hasC = true
+    cx = r.x
+    cz = r.z
+    s0 = r.s
+    t0 = r.t
+  }
+  for k in 0 .. len(oa) {
+    let ra = rho - (oa[k] - oa[0])
+    let rb = rho - (ob[k] - ob[0])
+    if hasC and ra >= 0.3 and rb >= 0.3 {
+      let pa = arm_point(A, s0, oa[k])
+      let pb = arm_point(B, t0, -ob[k])
+      var da = hypot2(pa[0] - cx, pa[1] - cz)
+      if da == 0.0 or da != da { da = 1.0 }
+      var db = hypot2(pb[0] - cx, pb[1] - cz)
+      if db == 0.0 or db != db { db = 1.0 }
+      let tax = cx + ((pa[0] - cx) * ra) / da
+      let taz = cz + ((pa[1] - cz) * ra) / da
+      let tbx = cx + ((pb[0] - cx) * rb) / db
+      let tbz = cz + ((pb[1] - cz) * rb) / db
+      push(levels, clevel(s0, t0, arc(cx, cz, tax, taz, tbx, tbz, ra, rb, PI / 12.0)))
+      continue
+    }
+    let P = side_line(A, oa[k] + 0.0, reachA)
+    let Q = side_line(B, -(ob[k] + 0.0), reachB)
+    let x = crossing(P, Q)
+    if x == null {
+      if k == 0 { return null }
+      push(levels, clevel(reachA, reachB, new []double))
+      continue
+    }
+    push(levels, meet_on(A, B, oa[k], -ob[k], x))
+  }
+  let o = new CornerPlan
+  o.kind = "mitre"
+  if hasC { o.kind = "fillet" }
+  o.rho = dsel(hasC, rho, 0.0)
+  o.hasCentre = hasC
+  o.cx = cx
+  o.cz = cz
+  o.levels = levels
+  var ni: double = 0.0
+  var nj: double = 0.0
+  for i in 0 .. len(levels) {
+    if len(levels[i].mid) > 0 {
+      ni = jmax(ni, levels[i].si)
+      nj = jmax(nj, levels[i].sj)
+    }
+  }
+  o.needI = ni
+  o.needJ = nj
+  return o
+}
+
+function plan_fits(p: CornerPlan, limA: double, limB: double) -> bool {
+  return p != null and p.levels[0].si <= limA + 0.000001 and p.levels[0].sj <= limB + 0.000001
+}
+
+# the convex corner that fits between strips that begin limA and limB metres out (null: not even the gutter lines meet in front)
+export function fit_corner(A: ArmSide, B: ArmSide, oa: []double, ob: []double, rho: double, limA: double, limB: double) -> CornerPlan {
+  var plan = convex_corner(A, B, oa, ob, rho, limA + 0.001, limB + 0.001)
+  if not plan_fits(plan, limA, limB) and rho >= 0.3 {
+    var lo: double = 0.0
+    var hi = rho
+    var best: CornerPlan = null
+    for it in 0 .. 20 {
+      let mid = (lo + hi) / 2.0
+      let p = convex_corner(A, B, oa, ob, dsel(mid < 0.3, 0.0, mid), limA + 0.001, limB + 0.001)
+      if plan_fits(p, limA, limB) {
+        best = p
+        lo = mid
+      } else { hi = mid }
+    }
+    if best != null { plan = best } else { plan = convex_corner(A, B, oa, ob, 0.0, limA + 0.001, limB + 0.001) }
+  }
+  if not plan_fits(plan, limA, limB) { return null }
+  for i in 0 .. len(plan.levels) {
+    let l = plan.levels[i]
+    if l.si > limA + 0.000001 or l.sj > limB + 0.000001 or len(l.mid) == 0 {
+      l.si = limA
+      l.sj = limB
+      l.mid = new []double
+    }
+  }
+  return plan
+}
+
+function taper_level(step: double, limA: double, limB: double) -> CornerLevel {
+  let room = 0.9 * (jmax(0.0, limA) + jmax(0.0, limB))
+  let T = jmin(room, jmax(2.0, TAPER * step))
+  let si = jmin(0.9 * jmax(0.0, limA), T / 2.0)
+  return clevel(si, jmin(0.9 * jmax(0.0, limB), T - si), new []double)
+}
+
+# the corner round the outside of two arms (a reflex or flat gap); hasGap false: gap undefined
+export function outside_corner(A: ArmSide, B: ArmSide, oa: []double, ob: []double, limA: double, limB: double, hasGap: bool, gap: double) -> CornerPlan {
+  var step = -INF
+  for k in 0 .. len(oa) { step = jmax(step, dabs(oa[k] - ob[k])) }
+  let flat = hasGap and dabs(gap - PI) < (FLAT_DEG * PI) / 180.0
+  let levels = new []CornerLevel
+  for k in 0 .. len(oa) {
+    if flat {
+      if step > 0.05 { push(levels, taper_level(step, limA, limB)) } else { push(levels, clevel(0.0, 0.0, new []double)) }
+      continue
+    }
+    let x = crossing(side_line(A, oa[k], jmin(A.len, 40.0)), side_line(B, -ob[k], jmin(B.len, 40.0)))
+    if x != null {
+      push(levels, meet_on(A, B, oa[k], -ob[k], x))
+      continue
+    }
+    let p = arm_point(A, 0.0, oa[k])
+    let q = arm_point(B, 0.0, -ob[k])
+    let ux = -A.outx
+    let uz = -A.outz
+    let vx = -B.outx
+    let vz = -B.outz
+    let den = ux * vz - uz * vx
+    var done = false
+    if dabs(den) > 0.000001 {
+      let wx = q[0] - p[0]
+      let wz = q[1] - p[1]
+      let t = (wx * vz - wz * vx) / den
+      let s = (wx * uz - wz * ux) / den
+      if t > 0.000001 and s > 0.000001 and t < 40.0 and s < 40.0 {
+        push(levels, clevel(0.0, 0.0, d_pair(p[0] + ux * t, p[1] + uz * t)))
+        done = true
+      }
+    }
+    if not done {
+      if step > 0.05 { push(levels, taper_level(step, limA, limB)) } else { push(levels, clevel(0.0, 0.0, new []double)) }
+    }
+  }
+  let o = new CornerPlan
+  o.kind = "flat"
+  if len(levels[0].mid) > 0 { o.kind = "mitre" }
+  o.rho = 0.0
+  var ni: double = 0.0
+  var nj: double = 0.0
+  for i in 0 .. len(levels) {
+    ni = jmax(ni, levels[i].si)
+    nj = jmax(nj, levels[i].sj)
+  }
+  o.levels = levels
+  o.needI = ni
+  o.needJ = nj
+  return o
+}
+
+export property Rail {
+  p: []double = null
+}
+
+export function rail_of(p: []double) -> Rail {
+  let r = new Rail
+  r.p = p
+  return r
+}
+
+function along_of(ax: double, az: double, ux: double, uz: double, p: []double, i: int) -> double { return (p[i * 2] - ax) * ux + (p[i * 2 + 1] - az) * uz }
+
+# the rails of a planned corner between strips that begin limA and limB metres out: one polyline a level
+export function corner_rails(A: ArmSide, B: ArmSide, oa: []double, ob: []double, plan: CornerPlan, limA: double, limB: double) -> []Rail {
+  let rails = new []Rail
+  for k in 0 .. len(plan.levels) {
+    let l0 = plan.levels[k]
+    var l = l0
+    if l0.si > limA + 0.000001 or l0.sj > limB + 0.000001 { l = clevel(limA, limB, new []double) }
+    let r = arm_point(A, limA, oa[k])
+    let si = jmin(l.si, limA)
+    var i = len(A.at) - 1
+    while i >= 0 {
+      if A.at[i] < limA - 0.000001 and A.at[i] > si + 0.000001 { pts_append(r, arm_point(A, A.at[i], oa[k])) }
+      i -= 1
+    }
+    if si < limA - 0.000001 { pts_append(r, arm_point(A, si, oa[k])) }
+    pts_append(r, l.mid)
+    let sj = jmin(l.sj, limB)
+    if sj < limB - 0.000001 { pts_append(r, arm_point(B, sj, -ob[k])) }
+    for b in 0 .. len(B.at) { if B.at[b] > sj + 0.000001 and B.at[b] < limB - 0.000001 { pts_append(r, arm_point(B, B.at[b], -ob[k])) } }
+    pts_append(r, arm_point(B, limB, -ob[k]))
+    let nr = len(r) / 2
+    var clean = d_pair(r[0], r[1])
+    for q in 1 .. nr {
+      let m = len(clean) - 2
+      if hypot2(r[q * 2] - clean[m], r[q * 2 + 1] - clean[m + 1]) > 0.0001 { pts_push(clean, r[q * 2], r[q * 2 + 1]) }
+    }
+    if plan.kind == "flat" and len(clean) > 4 {
+      let ax = clean[0]
+      let az = clean[1]
+      let nc = len(clean) / 2
+      let bx = clean[nc * 2 - 2]
+      let bz = clean[nc * 2 - 1]
+      let L = hypot2(bx - ax, bz - az)
+      if L > 0.000001 {
+        let ux = (bx - ax) / L
+        let uz = (bz - az) / L
+        let mono = d_pair(ax, az)
+        for q in 1 .. nc - 1 {
+          let m = len(mono) / 2 - 1
+          if along_of(ax, az, ux, uz, clean, q) > along_of(ax, az, ux, uz, mono, m) + 0.001 and along_of(ax, az, ux, uz, clean, q) < L - 0.001 { pts_push(mono, clean[q * 2], clean[q * 2 + 1]) }
+        }
+        pts_push(mono, bx, bz)
+        clean = mono
+      }
+    }
+    if len(clean) < 4 { pts_push(clean, r[nr * 2 - 2], r[nr * 2 - 1]) }
+    if k > 0 and crosses(clean, rails[k - 1].p) { push(rails, rail_of(pts_copy(rails[k - 1].p))) } else { push(rails, rail_of(clean)) }
+  }
+  return rails
+}
+
+function side3(px: double, pz: double, qx: double, qz: double, rx: double, rz: double) -> double { return (qx - px) * (rz - pz) - (qz - pz) * (rx - px) }
+
+# whether two polylines cross (properly, away from their shared ends)
+function crosses(a: []double, b: []double) -> bool {
+  let na = len(a) / 2
+  let nb = len(b) / 2
+  var i = 0
+  while i + 1 < na {
+    var k = 0
+    while k + 1 < nb {
+      let px = a[i * 2]
+      let pz = a[i * 2 + 1]
+      let qx = a[i * 2 + 2]
+      let qz = a[i * 2 + 3]
+      let rx = b[k * 2]
+      let rz = b[k * 2 + 1]
+      let sx = b[k * 2 + 2]
+      let sz = b[k * 2 + 3]
+      if side3(px, pz, qx, qz, rx, rz) * side3(px, pz, qx, qz, sx, sz) < -0.000000000001 and side3(rx, rz, sx, sz, px, pz) * side3(rx, rz, sx, sz, qx, qz) < -0.000000000001 { return true }
+      k += 1
+    }
+    i += 1
+  }
+  return false
+}
