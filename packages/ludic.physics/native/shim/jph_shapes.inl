@@ -74,3 +74,16 @@ JPH_SHIM void *jph_shape_heightfield_bspline(const float *tex, int n, float ox, 
   HeightFieldShapeSettings st(out.data(), Vec3(ox, 0.0f, oz), Vec3(cell, 1.0f, cell), uint32(n));
   return keep(st.Create());
 }
+
+// a compound of shapes: started, given its parts (each moved by x, y, z), made; the builder is freed by make, null when it has no part
+JPH_SHIM void *jph_compound_new(void) { return new StaticCompoundShapeSettings(); }
+JPH_SHIM void jph_compound_add(void *c, void *s, float x, float y, float z) {
+  if (c && s) static_cast<StaticCompoundShapeSettings *>(c)->AddShape(Vec3(x, y, z), Quat::sIdentity(), static_cast<Shape *>(s));
+}
+JPH_SHIM void *jph_compound_make(void *c) {
+  StaticCompoundShapeSettings *st = static_cast<StaticCompoundShapeSettings *>(c);
+  if (st == nullptr) return nullptr;
+  void *out = st->mSubShapes.empty() ? nullptr : keep(st->Create());
+  delete st;
+  return out;
+}

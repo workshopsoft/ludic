@@ -11,6 +11,7 @@ export function cars_reset(cars_st: mut CarsState) -> void {
     let c = tb_rec(tb, i)
     if c.body { CarBody.drop(c.nid) }
     c.body = false
+    c.vehicle = false
     CarWorld.gone(c.nid)
     c.ent = -1
   }

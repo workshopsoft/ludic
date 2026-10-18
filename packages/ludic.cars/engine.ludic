@@ -65,7 +65,7 @@ function cr_powertrain(cars_st: mut CarsState, c: Car, dt: float, drv_front: flo
   # the gear: a stopped car goes into reverse on the brake, forward on the throttle
   if c.engine_on and driven and c.shift_t <= 0.0 {
     if c.gear <= 0 and throttle > 0.05 and c.speed > -1.0 { cr_shift_to(cars_st, c, 1) }
-    else if c.gear > 0 and brake > 0.05 and throttle < 0.05 and c.speed < 0.8 { cr_shift_to(cars_st, c, -1) }
+    else if c.gear > 0 and brake > 0.05 and throttle < 0.05 and c.speed < 0.8 and not c.ai { cr_shift_to(cars_st, c, -1) }
     else if c.gear < 0 and c.speed > 1.0 { cr_shift_to(cars_st, c, 1) }
     else if c.gear > 0 and c.speed < -1.0 and throttle < 0.05 { cr_shift_to(cars_st, c, -1) }
   }

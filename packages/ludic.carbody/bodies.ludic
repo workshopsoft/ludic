@@ -1,15 +1,19 @@
-# bodies.ludic - the CarBody port and the wheel ray of CarWorld over ludic.physics. The raycast-wheel model (ludic.cars) puts
-# the suspension, the tyres and the drivetrain on the body as forces; Jolt only has to carry a rigid box and answer rays, so
-# the body is the model's own box (width, height, length about the body's centre, `car_body_centre` above the origin), its
-# mass the model's. The car's forward is the body's local +z and its up local +y; the body's yaw is the car's yaw.
+# bodies.ludic - the CarBody port and the wheel ray of CarWorld over ludic.physics. The body is the model's own box (width, height,
+# length about the body's centre, `car_body_centre` above the origin) with its centre of mass where the row puts it, its mass the
+# model's, and a Jolt wheeled vehicle on it (vehicle.ludic): the suspension, tyres and drivetrain are Jolt's, the package drives it
+# through `drive` and reads it through `wheel` and `gauge`. `push`, `torque` and `cast` serve the air, the assists and a game that
+# leaves `vehicle` unbound (the raycast-wheel model). The car's forward is the body's local +z and its up local +y.
 #
 # Every function takes the physics state (and this package's own state) by type, so a bind names nothing else. A pose or a
 # hit that is not a real number is never handed to the cars.
 state CarBodyState {
   ids: IntMap = imap_new()       # a car's nid -> the body's id in the physics world
-  cys: IntMap = imap_new()       # a car's nid -> the box's centre above the origin, in millimetres
+  cys: IntMap = imap_new()       # a car's nid -> its centre of mass above the origin, in millimetres
+  vids: IntMap = imap_new()      # a car's nid -> its vehicle in the physics world (vehicle.ludic), when it is one
   pose: PhysPose = new PhysPose
   hit: PhysHit = new PhysHit
+  wheel: PhysWheel = new PhysWheel
+  gauge: PhysVehicle = new PhysVehicle
 }
 
 function cbd_body(bodies_st: CarBodyState, nid: int) -> int { return imap_get(bodies_st.ids, nid, -1) }
@@ -22,8 +26,9 @@ export function carbody_make(physics_st: mut PhysicsState, bodies_st: mut CarBod
   if not is_finite(x + y + z + yaw + vx + vy + vz) { return false }
   if cbd_body(bodies_st, nid) >= 0 { carbody_drop(physics_st, bodies_st, nid) }
   let m = CarModels[model]
-  let centre = car_body_centre(model)
-  let shape = phys_offset(physics_st, phys_box(physics_st, m.width * 0.5, m.height * 0.5, m.length * 0.5), 0.0, centre, 0.0, 0.0)
+  let centre = car_com_y(model)
+  let shape = carbody_shape(physics_st, model, carbody_box(physics_st, model))
+  if shape < 0 { return false }
   let id = phys_body_add(physics_st, shape, x, y, z, yaw, m.mass)
   if id < 0 { return false }
   phys_own(physics_st, id, shape)
@@ -39,6 +44,31 @@ export function carbody_drop(physics_st: mut PhysicsState, bodies_st: mut CarBod
   phys_remove(physics_st, id)
   imap_del(bodies_st.ids, nid)
   imap_del(bodies_st.cys, nid)
+  imap_del(bodies_st.vids, nid)
+}
+
+# the car's body made a vehicle of the model's numbers tuned by `s` (again after a refit: the old one goes first)
+export function carbody_make_vehicle(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int, model: int, s: CarStats) -> bool {
+  let id = cbd_body(bodies_st, nid)
+  if id < 0 or s == null { return false }
+  phys_vehicle_remove(physics_st, imap_get(bodies_st.vids, nid, -1))
+  imap_del(bodies_st.vids, nid)
+  let v = carbody_vehicle(physics_st, model, s, id)
+  if v < 0 { return false }
+  imap_put(bodies_st.vids, nid, v)
+  return true
+}
+
+export function carbody_drive(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int, forward: float, right: float, brake: float, hand: float, torque: float) -> bool {
+  return carbody_vehicle_drive(physics_st, imap_get(bodies_st.vids, nid, -1), forward, right, brake, hand, torque)
+}
+
+export function carbody_wheel(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int, i: int, w: CarWheel) -> bool {
+  return carbody_vehicle_wheel(physics_st, imap_get(bodies_st.vids, nid, -1), i, w, bodies_st.wheel)
+}
+
+export function carbody_gauge(physics_st: mut PhysicsState, bodies_st: mut CarBodyState, nid: int, g: CarGauge) -> bool {
+  return carbody_vehicle_gauge(physics_st, imap_get(bodies_st.vids, nid, -1), g, bodies_st.gauge)
 }
 
 # the body's pose as the car reads it: its origin, its forward and up axes from the orientation, its velocity
@@ -70,7 +100,7 @@ export function carbody_push(physics_st: mut PhysicsState, bodies_st: mut CarBod
   if not is_finite(fx + fy + fz + px + py + pz) { return }
   let q = bodies_st.pose
   if not phys_pose(physics_st, id, q) { return }
-  # the body's centre: the origin lifted along the body's up by the box's middle
+  # the centre of mass: the origin lifted along the body's up
   let cy = float(imap_get(bodies_st.cys, nid, 0)) / 1000.0
   let cx = q.x + 2.0 * (q.qx * q.qy - q.qw * q.qz) * cy
   let cyy = q.y + (1.0 - 2.0 * (q.qx * q.qx + q.qz * q.qz)) * cy

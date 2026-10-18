@@ -1,0 +1,208 @@
+# vehicle.ludic - a body car whose body is a vehicle in the game's physics (CarBody.vehicle: Jolt's wheeled vehicle). The physics
+# owns the suspension, the tyres, the engine, the gearbox and the differentials; the package keeps what a driver and a game see:
+# the pedals made into forward, brake and handbrake (the brake at a stand backs up, as the raycast model's gearbox does), the
+# steering's lock, rate and speed curve, the nitrous, the turbo, the fuel, a hurt engine and the top speed as the engine's torque,
+# the air's drag and downforce, the yaw assists and a bike's balance; and it reads the wheels, the rpm and the gear back for the
+# drawing, the graphs and the facts. Nothing is allocated.
+
+# the most torque the engine gives at any speed, after tuning (N.m): what the physics' engine curve is a share of
+export function car_torque_peak(model: int, s: CarStats) -> float {
+  let m = CarModels[model]
+  var t = 0.0
+  if m.torque != null {
+    for i in 0 .. len(m.torque) { t = Math.max(t, m.torque[i].y) }
+  }
+  return t * s.torque
+}
+
+# where the centre of mass is, in the model's own space (x right, y up, z forward): the row's, its middle when com_y is 0
+export function car_com_y(model: int) -> float {
+  let m = CarModels[model]
+  if m.com_y <= 0.0 { return car_body_centre(model) }
+  return m.com_y
+}
+
+# the pedals of a vehicle for this step: forward (-1..1, negative backs up) and brake (0..1); also the way it goes and the brake
+# lights' pedal. Nobody at the wheel: no pedal, the handbrake on
+function cr_vehicle_pedals(cars_st: mut CarsState, c: Car) -> void {
+  let t = cars_st.cr_tmp
+  var throttle = c.in_throttle
+  var brake = c.in_brake
+  var hand = c.in_hand
+  let driven = c.phase == CarPhase.Driven or c.phase == CarPhase.Jacked
+  if not driven or not c.engine_on {
+    throttle = 0.0
+    if not driven {
+      # nobody in it: held by the handbrake once it is all but stopped; rolling, it coasts (a locked rear would spin it round)
+      brake = 0.0
+      hand = 0.0
+      if Math.abs(c.speed) < 1.5 { hand = 1.0 }
+    }
+  }
+  # the brake held at a stand backs a person's car up; an AI driver's brake only ever stops it (held at a stand it would back away and
+  # come forward again, a car waiting at a line rocking to and fro)
+  if c.ai { c.vdir = 1 }
+  if driven and c.engine_on and not c.ai {
+    if c.vdir > 0 and brake > 0.05 and throttle < 0.05 and c.speed < 0.8 { c.vdir = -1 }
+    else if c.vdir < 0 and throttle > 0.05 and c.speed > -0.8 { c.vdir = 1 }
+  }
+  var fwd = throttle
+  var stop = brake
+  if c.vdir < 0 {
+    fwd = -brake
+    stop = throttle
+  }
+  if not c.engine_on { fwd = 0.0 }
+  t[0] = fwd
+  t[1] = stop
+  t[2] = hand
+}
+
+# the engine's most torque this step: tuning, the turbo, nitrous, a hurt engine, no fuel; the speed limit fades it out
+function cr_vehicle_torque(cars_st: mut CarsState, c: Car, dem: float, dt: float) -> float {
+  let m = CarModels[c.model]
+  let s = c.stats
+  if s.boost > 0.0 {
+    if dem > 0.5 { c.spool = Math.min(1.0, c.spool + dt / Math.max(0.05, s.spool)) } else { c.spool = Math.max(0.0, c.spool - dt * 2.0 / Math.max(0.05, s.spool)) }
+  } else { c.spool = 0.0 }
+  var nitro = 0.0
+  if m.nitro_time > 0.0 {
+    let want = c.in_nitro and c.engine_on and dem > 0.3 and c.nitro_left > 0.0
+    if want {
+      nitro = 1.0
+      c.nitro_left = Math.max(0.0, c.nitro_left - dt)
+      if not c.nitro_on {
+        c.nitro_on = true
+        let f = cr_fact(cars_st, CAR_NITRO, c)
+        f.v = 1.0
+      }
+    } else {
+      if c.nitro_on {
+        c.nitro_on = false
+        let f = cr_fact(cars_st, CAR_NITRO, c)
+        f.v = 0.0
+      }
+      if m.nitro_recharge > 0.0 { c.nitro_left = Math.min(m.nitro_time, c.nitro_left + dt * m.nitro_time / m.nitro_recharge) }
+    }
+  }
+  var tq = car_torque_peak(c.model, s) * m.efficiency * (1.0 + s.boost * c.spool + m.nitro * nitro)
+  if c.engine_hp <= 0.0 { tq = 0.0 } else { tq = tq * (0.5 + 0.5 * Math.min(1.0, c.engine_hp / (0.5 * m.engine_health))) }
+  if s.top_speed > 0.0 { tq = tq * Math.clamp((s.top_speed - Math.abs(c.speed)) / 2.0, 0.0, 1.0) }
+  if m.tank > 0.0 {
+    if c.fuel <= 0.0 {
+      tq = 0.0
+      if not c.fuel_out {
+        c.fuel_out = true
+        cr_fact(cars_st, CAR_STALLED, c)
+      }
+    } else {
+      c.fuel = Math.max(0.0, c.fuel - m.burn * dt * (0.1 + 0.9 * dem))
+    }
+  }
+  return tq
+}
+
+# traction control: a driven wheel spinning past its grip (slip over 0.2, read the step before) takes the throttle back, quickly, and it is
+# given again as the wheel grips; how much it may take is the car's `assist_traction` (2.5 times it: the sedan's 0.35 takes up to 0.85)
+function cr_vehicle_tc(c: Car, fwd: float, dt: float) -> float {
+  var spin = 0.0
+  if fwd != 0.0 {
+    for i in 0 .. c.nwheels {
+      let w = c.wheels[i]
+      if w.contact and car_axle_driven(c.model, w.axle) { spin = Math.max(spin, Math.abs(w.slip_r)) }
+    }
+  }
+  if spin > 0.2 { c.tc = Math.max(0.0, c.tc - dt * 6.0) } else { c.tc = Math.min(1.0, c.tc + dt * 3.0) }
+  let k = Math.clamp(c.a_traction * 2.5, 0.0, 1.0)
+  return 1.0 - k * (1.0 - c.tc)
+}
+
+# anti-lock: the foot brake lets a wheel lock past 0.25 of slip for no more than a moment (a locked front wheel does not steer, a locked
+# rear one lets the car round); the pedal comes back as the wheel turns again. Under 5 m/s it lets the wheels stop (a car comes to rest
+# on its brakes). The handbrake is not held back: it locks the rear on purpose
+function cr_vehicle_abs(c: Car, stop: float, dt: float) -> float {
+  var lock = 0.0
+  if stop > 0.0 and Math.abs(c.speed) > 5.0 {
+    for i in 0 .. c.nwheels {
+      let w = c.wheels[i]
+      if w.contact { lock = Math.max(lock, Math.abs(w.slip_r)) }
+    }
+  }
+  if lock > 0.25 { c.abs_k = Math.max(0.2, c.abs_k - dt * 8.0) } else { c.abs_k = Math.min(1.0, c.abs_k + dt * 4.0) }
+  return c.abs_k
+}
+
+# one step of a vehicle body: the inputs for the physics' next step, the air on the body, the assists; then the wheels and the gauge
+# read back (the body's pose was read by cr_body_step)
+function cr_vehicle_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
+  let m = CarModels[c.model]
+  let s = c.stats
+  cr_vehicle_pedals(cars_st, c)
+  let t = cars_st.cr_tmp
+  let fwd = t[0]
+  let stop = t[1]
+  let hand = t[2]
+  let tq = cr_vehicle_torque(cars_st, c, Math.abs(fwd), dt)
+  let fwd_tc = fwd * cr_vehicle_tc(c, fwd, dt)
+  let stop_abs = stop * cr_vehicle_abs(c, stop, dt)
+  let lock = Math.max(0.001, m.steer_lock * 0.017453292)
+  if not CarBody.drive(c.nid, fwd_tc, c.steer_angle / lock, stop_abs, hand, tq) {
+    c.vehicle = false
+    return
+  }
+  c.throttle = Math.abs(fwd)
+  c.braking = stop
+  c.brake_hand = hand
+  # the gauge: the physics' rpm and gear (a change is a fact, as the package's own gearbox makes one)
+  let g = cars_st.cr_gauge
+  if CarBody.gauge(c.nid, g) {
+    var rpm = g.rpm
+    if not c.engine_on { rpm = 0.0 }
+    c.rpm = rpm
+    if g.gear != c.gear {
+      let f = cr_fact(cars_st, CAR_SHIFT, c)
+      f.v = float(c.gear)
+      f.w = float(g.gear)
+      c.gear = g.gear
+    }
+  }
+  # the wheels as the physics has them
+  var any = false
+  for i in 0 .. c.nwheels {
+    let w = c.wheels[i]
+    if CarBody.wheel(c.nid, i, w) {
+      let ax = m.axles[w.axle]
+      w.comp = Math.max(0.0, ax.travel - w.ext)
+      if w.contact { any = true }
+    }
+  }
+  let was_air = c.airborne
+  c.airborne = not any
+  # the air: drag against the motion and downforce, through the centre of mass
+  let cy = car_com_y(c.model)
+  let px = c.x + c.ux * cy
+  let py = c.y + c.uy * cy
+  let pz = c.z + c.uz * cy
+  let vl = Math.sqrt(c.vx * c.vx + c.vy * c.vy + c.vz * c.vz)
+  if vl > 0.01 {
+    let dragf = m.drag * s.drag * vl
+    CarBody.push(c.nid, -c.vx * dragf, -c.vy * dragf, -c.vz * dragf, px, py, pz)
+  }
+  if m.downforce > 0.0 and any {
+    let df = m.downforce * c.speed * c.speed
+    let l = (m.down_front - 0.5) * car_wheelbase(c.model)
+    CarBody.push(c.nid, -c.ux * df, -c.uy * df, -c.uz * df, px + c.fx * l, py + c.fy * l, pz + c.fz * l)
+  }
+  if any { cr_assist_torques(cars_st, c, dt) }
+  cr_skid_run(cars_st, c, dt)
+  if was_air != c.airborne {
+    if c.airborne {
+      c.fly_t = 0.0
+    } else if c.fly_t > 0.25 {
+      let f = cr_fact(cars_st, CAR_LANDED, c)
+      f.v = Math.abs(c.vy)
+    }
+  }
+  if c.airborne { c.fly_t += dt }
+  c.odometer += Math.abs(c.speed) * dt
+}

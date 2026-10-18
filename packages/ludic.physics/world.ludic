@@ -29,6 +29,7 @@ export function phys_close(physics_st: mut PhysicsState) -> void {
     }
   }
   if physics_st.ph_walkers != null { List.clear(physics_st.ph_walkers) }
+  ph_vehicles_free(physics_st)
   if physics_st.ph_world != null { jph_world_free(physics_st.ph_world) }
   physics_st.ph_world = null
   if physics_st.ph_shapes != null {

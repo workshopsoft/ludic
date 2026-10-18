@@ -100,3 +100,16 @@ export function phys_mesh(physics_st: mut PhysicsState, v: []float, nv: int, tri
   if len(v) < nv * 3 or len(tri) < nt * 3 { return -1 }
   return ph_keep(physics_st, jph_shape_mesh(v, nv, tri, nt))
 }
+
+# one shape of n others as they stand in their own space (a car's body as a hull a slice): the parts stay the caller's to free
+# (a compound holds its own reference); -1 when none of them is a shape
+@creates(PhysShape)
+export function phys_compound(physics_st: mut PhysicsState, parts: []int, n: int) -> int {
+  if n < 1 or len(parts) < n { return -1 }
+  let c = jph_compound_new()
+  for i in 0 .. n {
+    let s = ph_shape(physics_st, parts[i])
+    if s != null { jph_compound_add(c, s, 0.0, 0.0, 0.0) }
+  }
+  return ph_keep(physics_st, jph_compound_make(c))
+}

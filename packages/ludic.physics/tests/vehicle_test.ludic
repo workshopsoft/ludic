@@ -1,0 +1,155 @@
+# vehicle_test.ludic - Jolt's wheeled vehicle through the package: a 1400 kg car on four wheels settles on its springs at the height
+# they give and sleeps, drives off, changes gear, stops under the brakes without lifting a wheel, steers the way it is asked, and
+# leaves nothing behind when its body goes.
+import "ludic.physics"
+import "ludic.base"
+program VehicleTest {
+  numbers float
+  const MASS: float = 1400.0
+  const K: float = 35000.0       # N/m a wheel
+  const C: float = 3400.0        # N.s/m
+  const R: float = 0.33          # wheel radius
+  const TOP: float = 0.48        # suspension top above the car's origin
+  const TRAVEL: float = 0.25
+
+  function world(physics_st: mut PhysicsState) -> void {
+    expect(phys_open(physics_st, 1024, 1))
+    expect(phys_ground_add(physics_st, phys_box(physics_st, 500.0, 0.5, 500.0)) >= 0)
+    phys_settle(physics_st)
+  }
+
+  # the box body, its centre of mass 0.3 m over the origin, and its vehicle
+  function car(physics_st: mut PhysicsState, y: float) -> int {
+    let box = phys_offset(physics_st, phys_box(physics_st, 0.9, 0.6, 2.2), 0.0, 0.8, 0.0, 0.0)
+    let shape = phys_com(physics_st, box, 0.0, 0.3, 0.0)
+    expect(shape >= 0)
+    let id = phys_body_add(physics_st, shape, 0.0, y, 0.0, 0.0, MASS)
+    expect(id >= 0)
+    expect(phys_vehicle_begin(physics_st))
+    phys_vehicle_engine(physics_st, 500.0, 900.0, 6900.0, 0.3, 0.2, [0.0, 0.6, 0.6, 1.0, 1.0, 0.65], 3)
+    phys_vehicle_gears(physics_st, [3.6, 2.3, 1.6, 1.2, 0.95, 0.78], 6, 3.3, true, 0.2, 0.2, 6000.0, 2900.0, 10.0)
+    let lon = [0.0, 1.1, 0.1, 1.1, 1.0, 0.9]
+    let lat = [0.0, 1.1, 8.0, 1.1, 30.0, 0.9]
+    for a in 0 .. 2 {
+      var z = 1.3
+      var steer = 0.6
+      var hand = 0.0
+      if a == 1 { z = -1.3;  steer = 0.0;  hand = 3000.0 }
+      for s in 0 .. 2 {
+        var x = 0.78
+        if s == 1 { x = -0.78 }
+        expect(phys_vehicle_wheel(physics_st, x, TOP, z, R, 0.22, 0.0, TRAVEL, PHYS_SPRING_STIFFNESS, K, C, steer, 1500.0, hand, 1.1, 0.2, lon, 3, lat, 3) == a * 2 + s)
+      }
+    }
+    phys_vehicle_diff(physics_st, 2, 3, 4.1, 0.5, 1.4, 1.0)
+    phys_vehicle_bar(physics_st, 0, 1, 6000.0)
+    phys_vehicle_bar(physics_st, 2, 3, 4000.0)
+    let v = phys_vehicle_add(physics_st, id)
+    expect(v >= 0)
+    expect_eq(phys_vehicle_of(physics_st, id), v)
+    expect_eq(phys_vehicle_wheels(physics_st, v), 4)
+    return v
+  }
+
+  function steps(physics_st: mut PhysicsState, n: int) -> void { for i in 0 .. n { phys_step(physics_st) } }
+
+  test "a still car settles on its springs, wheels on the ground, and sleeps" (st: mut PhysicsState) {
+    world(st)
+    let v = car(st, 0.6)
+    let body = st.ph_vbody[v]
+    steps(st, 240)
+    let p = new PhysPose
+    expect(phys_pose(st, body, p))
+    let w = new PhysWheel
+    # the spring's sag: a quarter of the weight over the stiffness (the centre of mass is mid-wheelbase)
+    let sag = MASS * 9.81 / 4.0 / K
+    for i in 0 .. 4 {
+      expect(phys_vehicle_wheel_read(st, v, i, w))
+      expect(w.contact)
+      # the wheel's bottom on the ground (y = 0.5) within 1.5 cm
+      expect(Math.abs(w.y - R - 0.5) < 0.015)
+      expect(Math.abs(w.length - (TRAVEL - sag)) < 0.02)
+    }
+    # the origin on the ground: R + (travel - sag) - top
+    expect(Math.abs(p.y - 0.5 - (R + TRAVEL - sag - TOP)) < 0.02)
+    steps(st, 240)
+    expect(not phys_awake(st, body))
+    phys_close(st)
+  }
+
+  test "it drives off, changes up, and stops under the brakes with every wheel down" (st: mut PhysicsState) {
+    world(st)
+    let v = car(st, 0.6)
+    let body = st.ph_vbody[v]
+    steps(st, 60)
+    for i in 0 .. 600 {
+      phys_vehicle_drive(st, v, 1.0, 0.0, 0.0, 0.0)
+      phys_step(st)
+    }
+    let p = new PhysPose
+    expect(phys_pose(st, body, p))
+    let s = new PhysVehicle
+    expect(phys_vehicle_state(st, v, s))
+    expect(p.vz > 25.0)
+    expect(s.gear >= 3)
+    # full brake: no wheel leaves the ground, the body stays level enough, the car stops
+    var min_up = 1.0
+    var lifted = 0
+    let w = new PhysWheel
+    for i in 0 .. 480 {
+      phys_vehicle_drive(st, v, 0.0, 0.0, 1.0, 0.0)
+      phys_step(st)
+      expect(phys_pose(st, body, p))
+      let uy = 1.0 - 2.0 * (p.qx * p.qx + p.qz * p.qz)
+      if uy < min_up { min_up = uy }
+      for k in 0 .. 4 {
+        expect(phys_vehicle_wheel_read(st, v, k, w))
+        if not w.contact { lifted += 1 }
+      }
+    }
+    expect(Math.abs(p.vz) < 0.2)
+    expect(min_up > 0.98)
+    expect_eq(lifted, 0)
+    phys_close(st)
+  }
+
+  test "the wheel to the right turns it right, and the front wheels show it" (st: mut PhysicsState) {
+    world(st)
+    let v = car(st, 0.6)
+    let body = st.ph_vbody[v]
+    steps(st, 60)
+    for i in 0 .. 120 {
+      phys_vehicle_drive(st, v, 0.5, 0.0, 0.0, 0.0)
+      phys_step(st)
+    }
+    let w = new PhysWheel
+    for i in 0 .. 90 {
+      phys_vehicle_drive(st, v, 0.3, 1.0, 0.0, 0.0)
+      phys_step(st)
+    }
+    expect(phys_vehicle_wheel_read(st, v, 0, w))
+    expect(w.steer > 0.5)
+    expect(w.spin > 1.0)
+    let p = new PhysPose
+    expect(phys_pose(st, body, p))
+    # forward was +z; its right is -x: the heading has gone to -x
+    let fx = 2.0 * (p.qx * p.qz + p.qw * p.qy)
+    expect(fx < -0.2)
+    phys_close(st)
+  }
+
+  test "removing the body takes its vehicle; nothing is left" (st: mut PhysicsState) {
+    world(st)
+    let v = car(st, 0.6)
+    let body = st.ph_vbody[v]
+    steps(st, 30)
+    phys_remove(st, body)
+    expect_eq(phys_vehicle_of(st, body), -1)
+    expect_eq(phys_vehicle_wheels(st, v), 0)
+    phys_vehicle_drive(st, v, 1.0, 0.0, 0.0, 0.0)
+    steps(st, 30)
+    let v2 = car(st, 0.6)
+    expect_eq(v2, v)
+    phys_close(st)
+  }
+}

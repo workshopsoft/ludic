@@ -76,11 +76,11 @@ function cr_snap_plausible(cars_st: CarsState, c: Car, words: []int, at: int) ->
   if not c.net_ok or c.ring_n == 0 { return true }
   let newest = (c.ring_head + c.ring_n - 1) % CAR_NET_RING
   let b = newest * CAR_NET_FIELDS
-  let t = float(words[at + 1]) / 1000.0
+  let t = float(words [at + 1]) / 1000.0
   let dt = t - c.ring[b]
   if dt <= 0.0 { return true }
-  let dx = float(words[at + 2]) / 1000.0 - c.ring[b + 1]
-  let dz = float(words[at + 4]) / 1000.0 - c.ring[b + 3]
+  let dx = float(words [at + 2]) / 1000.0 - c.ring[b + 1]
+  let dz = float(words [at + 4]) / 1000.0 - c.ring[b + 3]
   let d = Math.sqrt(dx * dx + dz * dz)
   let lim = cars_config(cars_st).max_speed_check
   if lim <= 0.0 { return true }
@@ -90,7 +90,7 @@ function cr_snap_plausible(cars_st: CarsState, c: Car, words: []int, at: int) ->
 # a snapshot taken in: `from` is the machine it came from (-1 to skip the check that it is the car's authority).
 # Returns 0; 1 when it is for a car this machine simulates or does not know; CAR_SNAP_REFUSED when it could not be true
 export function car_snap_read(cars_st: mut CarsState, words: []int, at: int, from: int) -> int {
-  let c = car_by_nid(cars_st, words[at])
+  let c = car_by_nid(cars_st, words [at])
   if c == null { return 1 }
   if c.auth == CarWorld.me() and c.sim != CAR_SIM_REMOTE { return 1 }
   if from >= 0 and from != c.auth { return CAR_SNAP_REFUSED }
@@ -99,7 +99,7 @@ export function car_snap_read(cars_st: mut CarsState, words: []int, at: int, fro
     f.actor = from
     return CAR_SNAP_REFUSED
   }
-  let t = float(words[at + 1]) / 1000.0
+  let t = float(words [at + 1]) / 1000.0
   let d = t - cars_st.cr_net_clock
   if not cars_st.cr_net_have {
     cars_st.cr_net_off = d
@@ -117,20 +117,20 @@ export function car_snap_read(cars_st: mut CarsState, words: []int, at: int, fro
   } else { c.ring_n += 1 }
   let b = slot * CAR_NET_FIELDS
   c.ring[b] = t
-  c.ring[b + 1] = float(words[at + 2]) / 1000.0
-  c.ring[b + 2] = float(words[at + 3]) / 1000.0
-  c.ring[b + 3] = float(words[at + 4]) / 1000.0
-  c.ring[b + 4] = float(words[at + 5]) / 10000.0
-  c.ring[b + 5] = float(words[at + 6]) / 10000.0
-  c.ring[b + 6] = float(words[at + 7]) / 10000.0
-  c.ring[b + 7] = float(words[at + 8]) / 1000.0
-  c.ring[b + 8] = float(words[at + 9]) / 10000.0
-  c.ring[b + 9] = float(words[at + 11])
-  c.ring[b + 10] = float(words[at + 10])
+  c.ring[b + 1] = float(words [at + 2]) / 1000.0
+  c.ring[b + 2] = float(words [at + 3]) / 1000.0
+  c.ring[b + 3] = float(words [at + 4]) / 1000.0
+  c.ring[b + 4] = float(words [at + 5]) / 10000.0
+  c.ring[b + 5] = float(words [at + 6]) / 10000.0
+  c.ring[b + 6] = float(words [at + 7]) / 10000.0
+  c.ring[b + 7] = float(words [at + 8]) / 1000.0
+  c.ring[b + 8] = float(words [at + 9]) / 10000.0
+  c.ring[b + 9] = float(words [at + 11])
+  c.ring[b + 10] = float(words [at + 10])
   c.net_ok = true
-  c.net_mask = words[at + 12]
-  c.health = float(words[at + 13] & 65535) / 1000.0 * c.stats.health
-  c.engine_hp = float((words[at + 13] >> 16) & 65535) / 1000.0 * CarModels[c.model].engine_health
+  c.net_mask = words [at + 12]
+  c.health = float(words [at + 13] & 65535) / 1000.0 * c.stats.health
+  c.engine_hp = float((words [at + 13] >> 16) & 65535) / 1000.0 * CarModels[c.model].engine_health
   return 0
 }
 
@@ -279,15 +279,15 @@ export function car_input_write(cars_st: CarsState, nid: int, out: []int, at: in
 
 # a driver's controls taken in: applied only when `from` is the car's driver (nobody steers a car they are not in)
 export function car_input_read(cars_st: mut CarsState, words: []int, at: int, from: int) -> bool {
-  let c = car_by_nid(cars_st, words[at])
+  let c = car_by_nid(cars_st, words [at])
   if c == null { return false }
   if from != car_driver(c) { return false }
-  c.in_throttle = Math.clamp(float(words[at + 1]) / 1000.0, 0.0, 1.0)
-  c.in_brake = Math.clamp(float(words[at + 2]) / 1000.0, 0.0, 1.0)
-  c.in_steer = Math.clamp(float(words[at + 3]) / 1000.0, -1.0, 1.0)
-  c.in_hand = Math.clamp(float(words[at + 4]) / 1000.0, 0.0, 1.0)
-  c.in_nitro = (words[at + 5] & 1) != 0
-  c.in_horn = (words[at + 5] & 2) != 0
+  c.in_throttle = Math.clamp(float(words [at + 1]) / 1000.0, 0.0, 1.0)
+  c.in_brake = Math.clamp(float(words [at + 2]) / 1000.0, 0.0, 1.0)
+  c.in_steer = Math.clamp(float(words [at + 3]) / 1000.0, -1.0, 1.0)
+  c.in_hand = Math.clamp(float(words [at + 4]) / 1000.0, 0.0, 1.0)
+  c.in_nitro = (words [at + 5] & 1) != 0
+  c.in_horn = (words [at + 5] & 2) != 0
   if c.in_horn != c.horn { car_horn(cars_st, c.nid, c.in_horn) }
   return true
 }
@@ -303,6 +303,7 @@ export function car_set_authority(cars_st: mut CarsState, nid: int) -> bool {
     if c.body {
       CarBody.drop(c.nid)
       c.body = false
+      c.vehicle = false
     }
     c.sim = CAR_SIM_REMOTE
     c.ring_n = 0

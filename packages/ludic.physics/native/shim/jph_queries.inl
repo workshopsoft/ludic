@@ -140,3 +140,20 @@ JPH_SHIM float jph_step_top(void *w, float x, float z, float r, float feet, floa
   }
   return best;
 }
+
+// a ray from o along d against ONE body's shape (what a round meets on a car: its drawn hull, whatever else is round it); out[7] as
+// jph_ray. 1 when it hits, 0 when it misses, -1 when there is no such body
+JPH_SHIM int jph_ray_body(void *w, int id, float ox, float oy, float oz, float dx, float dy, float dz, float *out) {
+  World *ww = static_cast<World *>(w);
+  BodyLockRead lock(ww->sys.GetBodyLockInterface(), bid(id));
+  if (!lock.Succeeded()) return -1;
+  const Body &b = lock.GetBody();
+  RRayCast ray{ RVec3(ox, oy, oz), Vec3(dx, dy, dz) };
+  RayCastResult hit;
+  if (!b.GetTransformedShape().CastRay(ray, hit)) return 0;
+  RVec3 p = ray.GetPointOnRay(hit.mFraction);
+  Vec3 n = b.GetWorldSpaceSurfaceNormal(hit.mSubShapeID2, p);
+  float vals[7] = { hit.mFraction, float(p.GetX()), float(p.GetY()), float(p.GetZ()), n.GetX(), n.GetY(), n.GetZ() };
+  for (int i = 0; i < 7; i++) out[i] = vals[i];
+  return 1;
+}

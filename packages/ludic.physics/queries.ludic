@@ -3,7 +3,7 @@
 
 export property PhysHit {
   body: int = -1        # -1: nothing
-  fraction: float = 1.0 # how far along the ray, 0 to 1
+  fraction: float = 1.0  # how far along the ray, 0 to 1
   x: float = 0.0
   y: float = 0.0
   z: float = 0.0
@@ -21,6 +21,20 @@ export function phys_ray(physics_st: mut PhysicsState, ox: float, oy: float, oz:
   h.body = jph_ray(physics_st.ph_world, ox, oy, oz, dx, dy, dz, mask, physics_st.ph_vals)
   if h.body == -1 { return false }
   let v = physics_st.ph_vals
+  h.fraction = v[0]
+  h.x = v[1];  h.y = v[2];  h.z = v[3]
+  h.nx = v[4];  h.ny = v[5];  h.nz = v[6]
+  return true
+}
+
+# the same ray against one body alone (whatever else is in the way): true when it meets that body's shape (h.body is then the body)
+export function phys_ray_body(physics_st: mut PhysicsState, id: int, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, h: PhysHit) -> bool {
+  h.body = -1
+  h.fraction = 1.0
+  if physics_st.ph_world == null or id < 0 or not is_finite(ox + oy + oz + dx + dy + dz) { return false }
+  if jph_ray_body(physics_st.ph_world, id, ox, oy, oz, dx, dy, dz, physics_st.ph_vals) != 1 { return false }
+  let v = physics_st.ph_vals
+  h.body = id
   h.fraction = v[0]
   h.x = v[1];  h.y = v[2];  h.z = v[3]
   h.nx = v[4];  h.ny = v[5];  h.nz = v[6]

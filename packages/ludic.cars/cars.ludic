@@ -127,6 +127,7 @@ export function car_remove(cars_st: mut CarsState, nid: int) -> bool {
   cr_eject_all(cars_st, c, 0)
   if c.body { CarBody.drop(c.nid) }
   c.body = false
+  c.vehicle = false
   cr_fact(cars_st, CAR_GONE, c)
   CarWorld.gone(c.nid)
   imap_del(cars_st.cr_nids, c.nid)
@@ -277,6 +278,7 @@ export function car_place(cars_st: mut CarsState, nid: int, x: float, z: float, 
   if c.body {
     CarBody.drop(c.nid)
     c.body = false
+    c.vehicle = false
   }
   for i in 0 .. c.nwheels { c.wheels[i].spin = 0.0 }
   return true
@@ -320,6 +322,7 @@ export function car_fit(cars_st: CarsState, nid: int, part: int) -> bool {
   if slot < 0 or slot >= CAR_SLOTS { return false }
   c.parts[slot] = part
   car_stats_into(c.model, c.parts, c.stats)
+  if c.vehicle { c.vehicle = CarBody.vehicle(c.nid, c.model, c.stats) }
   return true
 }
 
@@ -328,5 +331,6 @@ export function car_unfit(cars_st: CarsState, nid: int, slot: int) -> bool {
   if c == null or slot < 0 or slot >= CAR_SLOTS { return false }
   c.parts[slot] = -1
   car_stats_into(c.model, c.parts, c.stats)
+  if c.vehicle { c.vehicle = CarBody.vehicle(c.nid, c.model, c.stats) }
   return true
 }
