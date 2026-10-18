@@ -1,0 +1,209 @@
+# vehicle.ludic - a CarModel row as a Jolt wheeled vehicle (ludic.physics' phys_vehicle_*), and the vehicle read back into the
+# cars' records. The row's own numbers, tuned by the car's CarStats:
+#   engine     the torque curve over rpm (its peak times `efficiency` the most torque; idle and the limiter the range), its inertia
+#   gearbox    `gears` and `reverse` times the gearing, shifting itself when `auto`, `shift_time` a change, up at `up_at` of the redline,
+#              down when the engine falls to `down_at` of it (in the lower gear: three quarters of that in the gear it is in)
+#   drive      an open differential on each driven axle with `final_drive` (traction control keeps a wheel from spinning away), the
+#              torque split by `drivetrain` (`front_share` for AWD)
+#   wheels     at each axle's `z`, `track` either side (the body's x is the car's LEFT), the suspension's top `y` above the origin, the
+#              wheel `radius` and `width`; the suspension from fully raised (0) to `travel`, its `spring` and the mean of `damper` and
+#              `rebound`; steering `steer_lock` times the axle's `steer`; the brakes' force (`brakes`, `brake_front` of it to the front,
+#              `handbrake` on the axles that hold) times the radius as torque; `wheel_inertia`
+#   tyres      the compound's normalised curves times its `mu`, the tuning's grip and the arcade's forgiveness (as the raycast model)
+#   bars       each two-wheel axle's `bar`
+# The centre of mass is the row's (`com_*`; com_y 0: the body's middle), set on the body's shape (`carbody_shape`).
+
+# Jolt casts a wheel's cylinder from the top of its suspension down; with the top at the hub of a fully raised wheel a kerb or a step as
+# high as the wheel's gap under it starts the cast inside it (the deepest point: the suspension fully raised at once, a jolt that trips
+# the car). The top is lifted this much over the row's `y` and the suspension made as much longer at both ends: the wheel moves exactly as
+# the row says, and the cast begins clear above what the wheel rolls onto.
+const CBV_LIFT: float = 0.3
+
+# the shape of car `model`'s body with its centre of mass where the row puts it: `body` is the drawn body's hull or its box
+@creates(PhysShape)
+export function carbody_shape(physics_st: mut PhysicsState, model: int, body: int) -> int {
+  let m = CarModels[model]
+  return phys_com(physics_st, body, -m.com_x, car_com_y(model), m.com_z)
+}
+
+# the model's box (width x height x length over the clearance), the reference shape when no hull of the drawn body is given
+@creates(PhysShape)
+export function carbody_box(physics_st: mut PhysicsState, model: int) -> int {
+  let m = CarModels[model]
+  return phys_offset(physics_st, phys_box(physics_st, m.width * 0.5, m.height * 0.5, m.length * 0.5), 0.0, car_body_centre(model), 0.0, 0.0)
+}
+
+# a tyre curve as Jolt asks it: the friction the tyre can give at a slip. Jolt holds the wheel to the ground with a constraint whose most
+# impulse is the curve's value at this slip times the load, so the curve's rising part (little friction at little slip) would let a wheel
+# spin up a step and be snapped back the next: below its peak the tyre gives the peak (it follows the ground as long as the force asked is
+# within its grip, as the raycast model's tyre does), past it the curve's own fall. Into out (x, y pairs); the points it wrote
+function cbv_curve(pts: []CarPoint, ky: float, out: floats, fallback: int) -> int {
+  var n = 0
+  if pts != null and len(pts) > 1 {
+    var top = 0
+    for i in 0 .. len(pts) { if pts[i].y > pts[top].y { top = i } }
+    out[0] = 0.0
+    out[1] = pts[top].y * ky
+    n = 1
+    var i = top
+    if pts[top].x <= 0.0 { i = top + 1 }
+    while i < len(pts) and n * 2 + 1 < len(out) {
+      out[n * 2] = pts[i].x
+      out[n * 2 + 1] = pts[i].y * ky
+      n += 1
+      i += 1
+    }
+    return n
+  }
+  # the raycast model's generic curves: a slip ratio peaking at 0.12, a slip angle at 8 degrees
+  out[0] = 0.0
+  out[1] = ky
+  if fallback == 0 {
+    out[2] = 0.12;  out[3] = ky;  out[4] = 0.72;  out[5] = 0.82 * ky
+  } else {
+    out[2] = 8.0;  out[3] = ky;  out[4] = 30.0;  out[5] = 0.8 * ky
+  }
+  return 3
+}
+
+# the vehicle for car `model` tuned by `s`, on its body `body` (made with carbody_shape); its id in the physics world, -1 refused
+@alloc_ok("a car's vehicle made: an event, its curves' scratch with it")
+export function carbody_vehicle(physics_st: mut PhysicsState, model: int, s: CarStats, body: int) -> int {
+  if model < 0 or model >= CARM_COUNT or body < 0 { return -1 }
+  let m = CarModels[model]
+  let nw = car_wheel_count(model)
+  if nw <= 0 or nw > 16 or not phys_vehicle_begin(physics_st) { return -1 }
+  # the engine
+  let peak = Math.max(1.0, car_torque_peak(model, s))
+  let curve = floats(64)
+  var nc = 0
+  if m.torque != null and len(m.torque) > 1 {
+    nc = Math.min(len(m.torque), 32)
+    for i in 0 .. nc {
+      curve[i * 2] = m.torque[i].x / m.limiter
+      curve[i * 2 + 1] = m.torque[i].y * s.torque / peak
+    }
+  } else {
+    curve[0] = 0.0;  curve[1] = 1.0;  curve[2] = 1.0;  curve[3] = 1.0
+    nc = 2
+  }
+  phys_vehicle_engine(physics_st, peak * m.efficiency, m.idle, m.limiter, m.engine_inertia, 0.2, curve, nc)
+  # the gearbox
+  let ng = car_gear_count(model)
+  let ratios = floats(Math.max(1, ng))
+  for i in 0 .. ng { ratios[i] = m.gears[i] * s.gearing }
+  if ng == 0 { ratios[0] = 1.0 }
+  phys_vehicle_gears(physics_st, ratios, Math.max(1, ng), m.reverse * s.gearing, m.auto, m.shift_time * s.shift, 0.2, m.redline * m.up_at, Math.max(m.idle * 1.2, m.redline * m.down_at * 0.75), 10.0)
+  # the brakes' shares
+  var nfront = 0
+  var nrear = 0
+  var nhand = 0
+  for a in 0 .. car_axle_count(model) {
+    let k = car_axle_wheels(model, a)
+    if car_axle_front(model, a) { nfront += k } else { nrear += k }
+    if m.axles[a].handbrake { nhand += k }
+  }
+  let total = m.brakes * s.brakes
+  var bf = 0.0
+  var br = 0.0
+  if nfront > 0 and nrear > 0 {
+    bf = total * m.brake_front / float(nfront)
+    br = total * (1.0 - m.brake_front) / float(nrear)
+  } else if nfront > 0 { bf = total / float(nfront) } else if nrear > 0 { br = total / float(nrear) }
+  var bh = 0.0
+  if nhand > 0 { bh = m.handbrake / float(nhand) }
+  # the wheels, in the cars' order (axle by axle, left then right)
+  let lock = m.steer_lock * 0.017453292
+  let lon = floats(64)
+  let lat = floats(64)
+  for a in 0 .. car_axle_count(model) {
+    let ax = m.axles[a]
+    let tyre = CarTyres[ax.tyre]
+    let mu = tyre.mu * s.grip * (1.0 + 0.35 * m.arcade)
+    let nlon = cbv_curve(tyre.lon, mu, lon, 0)
+    let nlat = cbv_curve(tyre.lat, mu * (1.0 + 0.3 * m.arcade), lat, 1)
+    var b = br
+    if car_axle_front(model, a) { b = bf }
+    var h = 0.0
+    if ax.handbrake { h = bh }
+    for side in 0 .. car_axle_wheels(model, a) {
+      var x = 0.0
+      if ax.track > 0.0 {
+        if side == 0 { x = ax.track } else { x = -ax.track }
+      }
+      let damp = (ax.damper + ax.rebound) * 0.5 * s.damper
+      phys_vehicle_wheel(physics_st, x, ax.y + CBV_LIFT, ax.z, ax.radius, ax.width, CBV_LIFT, CBV_LIFT + ax.travel, PHYS_SPRING_STIFFNESS, ax.spring * s.spring, damp, lock * ax.steer, b * ax.radius, h * ax.radius, Math.max(0.05, ax.wheel_inertia), 0.05, lon, nlon, lat, nlat)
+    }
+  }
+  # the differentials: one an axle that is driven, the torque split between the ends as the drivetrain says
+  var dfront = 0
+  var drear = 0
+  for a in 0 .. car_axle_count(model) {
+    if not car_axle_driven(model, a) { continue }
+    if car_axle_front(model, a) { dfront += 1 } else { drear += 1 }
+  }
+  var sf = 0.0
+  var sr = 0.0
+  if dfront > 0 and drear > 0 {
+    sf = m.front_share / float(dfront)
+    sr = (1.0 - m.front_share) / float(drear)
+  } else if dfront > 0 { sf = 1.0 / float(dfront) } else if drear > 0 { sr = 1.0 / float(drear) }
+  for a in 0 .. car_axle_count(model) {
+    if not car_axle_driven(model, a) { continue }
+    let i0 = car_wheel_first(model, a)
+    var right = -1
+    if car_axle_wheels(model, a) > 1 { right = i0 + 1 }
+    var share = sr
+    if car_axle_front(model, a) { share = sf }
+    phys_vehicle_diff(physics_st, i0, right, m.final_drive, 0.5, 0.0, share)
+  }
+  # the anti-roll bars
+  for a in 0 .. car_axle_count(model) {
+    if car_axle_wheels(model, a) != 2 or m.axles[a].bar <= 0.0 { continue }
+    let i0 = car_wheel_first(model, a)
+    phys_vehicle_bar(physics_st, i0, i0 + 1, m.axles[a].bar * s.bar)
+  }
+  let v = phys_vehicle_add(physics_st, body)
+  # a body made at speed (a car handed over from the planar model, a reset at speed) drives on as it was going
+  phys_vehicle_sync(physics_st, v)
+  return v
+}
+
+# the pedals, the wheel and the engine's torque for the next step (CarBody.drive)
+export function carbody_vehicle_drive(physics_st: mut PhysicsState, v: int, forward: float, right: float, brake: float, hand: float, torque: float) -> bool {
+  if v < 0 or phys_vehicle_wheels(physics_st, v) == 0 { return false }
+  phys_vehicle_torque(physics_st, v, torque)
+  phys_vehicle_drive(physics_st, v, forward, right, brake, hand)
+  return true
+}
+
+# wheel i read into the cars' record (CarBody.wheel), and the ground's grip under it (CarWorld.grip) handed to the tyre for the next step
+export function carbody_vehicle_wheel(physics_st: mut PhysicsState, v: int, i: int, w: CarWheel, pw: PhysWheel) -> bool {
+  if not phys_vehicle_wheel_read(physics_st, v, i, pw) { return false }
+  w.spin = pw.spin
+  w.roll = pw.angle
+  w.steer = pw.steer
+  w.ext = pw.length - CBV_LIFT
+  w.contact = pw.contact
+  w.hx = pw.cx
+  w.hy = pw.cy
+  w.hz = pw.cz
+  w.nx = pw.nx
+  w.ny = pw.ny
+  w.nz = pw.nz
+  w.slip_r = pw.slip_long
+  w.slip_a = pw.slip_lat
+  if pw.contact {
+    w.grip = CarWorld.grip(pw.cx, pw.cz)
+    phys_vehicle_grip(physics_st, v, i, w.grip)
+  }
+  return true
+}
+
+# rpm and gear (CarBody.gauge)
+export function carbody_vehicle_gauge(physics_st: mut PhysicsState, v: int, g: CarGauge, pv: PhysVehicle) -> bool {
+  if not phys_vehicle_state(physics_st, v, pv) { return false }
+  g.rpm = pv.rpm
+  g.gear = pv.gear
+  return true
+}

@@ -1,0 +1,244 @@
+# vehicle.ludic - a wheeled vehicle on a dynamic body: Jolt's VehicleConstraint with a WheeledVehicleController (the engine and its
+# torque curve, a gearbox that shifts itself, differentials, wheels with suspension, brakes and tyre curves, anti-roll bars; the
+# wheels cast as cylinders against the world). Built in calls - phys_vehicle_begin, then the engine, the gears, each wheel, the
+# differentials and bars - and made on a body with phys_vehicle_add. A vehicle is an int; it goes with its body (phys_remove) or
+# alone (phys_vehicle_remove), and every one goes with the world (phys_close).
+#
+# The body's own axes are the vehicle's: up +y, forward +z, so its right is -x (a wheel on the left has a positive x). A wheel's
+# position is the top of its suspension in the body's space (about the body's origin, not its centre of mass); the suspension
+# runs down -y from min_len to max_len.
+
+export const PHYS_SPRING_FREQUENCY: int = 0   # a wheel's spring as a frequency (Hz) and a damping ratio
+export const PHYS_SPRING_STIFFNESS: int = 1   # ... as a stiffness (N/m) and a damping (N.s/m)
+
+# a vehicle's engine and gearbox as read after a step
+export property PhysVehicle {
+  rpm: float = 0.0
+  gear: int = 0          # negative reverse, 0 neutral
+  shifting: bool = false
+  clutch: float = 0.0    # the clutch's friction, 0 .. 1
+}
+
+# a wheel as read after a step
+export property PhysWheel {
+  contact: bool = false
+  length: float = 0.0    # the suspension's length: the top of it to the wheel's centre
+  steer: float = 0.0     # radians, positive to the vehicle's right (Jolt's sign turned)
+  angle: float = 0.0     # radians turned about its axle, rolling forward positive
+  spin: float = 0.0      # rad/s
+  slip_long: float = 0.0
+  slip_lat: float = 0.0  # radians
+  cx: float = 0.0        # where it touches (its centre when it touches nothing)
+  cy: float = 0.0
+  cz: float = 0.0
+  nx: float = 0.0        # the ground's normal there
+  ny: float = 1.0
+  nz: float = 0.0
+  x: float = 0.0         # the wheel's centre in the world, and its rotation
+  y: float = 0.0
+  z: float = 0.0
+  qx: float = 0.0
+  qy: float = 0.0
+  qz: float = 0.0
+  qw: float = 1.0
+}
+
+function ph_vehicle(physics_st: PhysicsState, v: int) -> pointer {
+  if physics_st.ph_vehicles == null or v < 0 or v >= len(physics_st.ph_vehicles) { return null }
+  return physics_st.ph_vehicles[v]
+}
+
+function ph_fin(x: float) -> float {
+  if is_finite(x) { return x }
+  return 0.0
+}
+
+# a new vehicle's settings (one at a time: an unfinished one is dropped); false with no world
+export function phys_vehicle_begin(physics_st: mut PhysicsState) -> bool {
+  if physics_st.ph_world == null { return false }
+  if physics_st.ph_vs != null { jph_vs_free(physics_st.ph_vs) }
+  physics_st.ph_vs = jph_vs_new()
+  return physics_st.ph_vs != null
+}
+
+# the most the body may pitch or roll, radians (pi: free, the default)
+export function phys_vehicle_limit(physics_st: mut PhysicsState, max_pitch_roll: float) -> void {
+  if physics_st.ph_vs != null and is_finite(max_pitch_roll) { jph_vs_limit(physics_st.ph_vs, max_pitch_roll) }
+}
+
+# the engine: its most torque (N.m), idle and top rpm, inertia (kg.m2) and damping, and n points of its curve, each (rpm / max_rpm,
+# torque / max_torque)
+export function phys_vehicle_engine(physics_st: mut PhysicsState, max_torque: float, min_rpm: float, max_rpm: float, inertia: float, damping: float, curve: []float, n: int) -> void {
+  if physics_st.ph_vs == null or len(curve) < n * 2 { return }
+  if not is_finite(max_torque + min_rpm + max_rpm + inertia + damping) { return }
+  jph_vs_engine(physics_st.ph_vs, max_torque, min_rpm, max_rpm, inertia, damping, curve, n)
+}
+
+# the gearbox: n forward ratios, the reverse's, shifting itself or not, the time a change takes, the clutch's release time and
+# strength, and the rpm it changes up and down at
+export function phys_vehicle_gears(physics_st: mut PhysicsState, ratios: []float, n: int, reverse: float, auto: bool, switch_time: float, clutch_release: float, up_rpm: float, down_rpm: float, clutch_strength: float) -> void {
+  if physics_st.ph_vs == null or len(ratios) < n { return }
+  if not is_finite(reverse + switch_time + clutch_release + up_rpm + down_rpm + clutch_strength) { return }
+  var a = 0
+  if auto { a = 1 }
+  jph_vs_gears(physics_st.ph_vs, ratios, n, reverse, a, switch_time, clutch_release, up_rpm, down_rpm, clutch_strength)
+}
+
+# a wheel: the top of its suspension at (x, y, z) in the body's space, its radius and width, the suspension's min and max length,
+# its spring (`mode` PHYS_SPRING_*: a stiffness or a frequency, and its damping), the most it steers (radians), its brake and
+# handbrake torques (N.m), its inertia (kg.m2) and spin damping (dw/dt = -c w; Jolt's default 0.2), and its tyre: nlon points (slip ratio, friction) and nlat points (slip angle in
+# degrees, friction). The wheel's index (the order they were given), -1 refused
+export function phys_vehicle_wheel(physics_st: mut PhysicsState, x: float, y: float, z: float, radius: float, width: float, min_len: float, max_len: float, mode: int, k: float, damping: float, max_steer: float, brake: float, hand: float, inertia: float, spin_damping: float, lon: []float, nlon: int, lat: []float, nlat: int) -> int {
+  if physics_st.ph_vs == null or len(lon) < nlon * 2 or len(lat) < nlat * 2 { return -1 }
+  if not is_finite(x + y + z + radius + width + min_len + max_len + k + damping + max_steer + brake + hand + inertia + spin_damping) { return -1 }
+  if radius <= 0.0 or max_len < min_len { return -1 }
+  return jph_vs_wheel(physics_st.ph_vs, x, y, z, radius, width, min_len, max_len, mode, k, damping, max_steer, brake, hand, inertia, spin_damping, lon, nlon, lat, nlat)
+}
+
+# a differential between two wheels (-1 for none on a side): its ratio (the final drive), the left / right split (0.5 even), its
+# limited slip ratio (0: open) and its share of the engine's torque (the shares add up to 1)
+export function phys_vehicle_diff(physics_st: mut PhysicsState, left: int, right: int, ratio: float, split: float, limited_slip: float, share: float) -> void {
+  if physics_st.ph_vs == null or not is_finite(ratio + split + limited_slip + share) { return }
+  jph_vs_diff(physics_st.ph_vs, left, right, ratio, split, limited_slip, share)
+}
+
+# the limited slip between the differentials (0: open)
+export function phys_vehicle_diff_lsd(physics_st: mut PhysicsState, ratio: float) -> void {
+  if physics_st.ph_vs != null and is_finite(ratio) { jph_vs_diff_lsd(physics_st.ph_vs, ratio) }
+}
+
+# an anti-roll bar between two wheels, N/m
+export function phys_vehicle_bar(physics_st: mut PhysicsState, left: int, right: int, stiffness: float) -> void {
+  if physics_st.ph_vs != null and is_finite(stiffness) { jph_vs_bar(physics_st.ph_vs, left, right, stiffness) }
+}
+
+# the vehicle the settings describe, on dynamic body `body`: added to the world and stepped with it. The settings are used up.
+# -1 when there is no world, no settings, no wheel, or the body is not dynamic
+@creates(PhysVehicle)
+export function phys_vehicle_add(physics_st: mut PhysicsState, body: int) -> int {
+  if physics_st.ph_world == null or physics_st.ph_vs == null { return -1 }
+  let h = jph_vehicle_add(physics_st.ph_world, body, physics_st.ph_vs)
+  physics_st.ph_vs = null
+  if h == null { return -1 }
+  for i in 0 .. len(physics_st.ph_vehicles) {
+    if physics_st.ph_vehicles[i] == null {
+      physics_st.ph_vehicles[i] = h
+      physics_st.ph_vbody[i] = body
+      return i
+    }
+  }
+  @alloc_ok("a slot for the most vehicles at once; a removed one's slot is reused")
+  push(physics_st.ph_vehicles, h)
+  @alloc_ok("a slot for the most vehicles at once; a removed one's slot is reused")
+  push(physics_st.ph_vbody, body)
+  return len(physics_st.ph_vehicles) - 1
+}
+
+# the vehicle's wheels, gear and engine matched to its body's motion (a vehicle made under a body that already moves: a car handed over
+# at speed drives on in the gear it would be in, its wheels rolling)
+export function phys_vehicle_sync(physics_st: mut PhysicsState, v: int) -> void {
+  let h = ph_vehicle(physics_st, v)
+  if h != null { jph_vehicle_sync(h) }
+}
+
+# the vehicle on body `body`, -1 none
+export function phys_vehicle_of(physics_st: PhysicsState, body: int) -> int {
+  if body < 0 { return -1 }
+  for i in 0 .. len(physics_st.ph_vehicles) {
+    if physics_st.ph_vehicles[i] != null and physics_st.ph_vbody[i] == body { return i }
+  }
+  return -1
+}
+
+# the vehicle out of the world (its body stays, a plain body)
+@releases(PhysVehicle)
+export function phys_vehicle_remove(physics_st: mut PhysicsState, v: int) -> void {
+  let h = ph_vehicle(physics_st, v)
+  if h == null { return }
+  jph_vehicle_free(h)
+  physics_st.ph_vehicles[v] = null
+  physics_st.ph_vbody[v] = -1
+}
+
+# every vehicle out (before the world goes)
+function ph_vehicles_free(physics_st: mut PhysicsState) -> void {
+  for i in 0 .. len(physics_st.ph_vehicles) {
+    if physics_st.ph_vehicles[i] != null { jph_vehicle_free(physics_st.ph_vehicles[i]) }
+    physics_st.ph_vehicles[i] = null
+    physics_st.ph_vbody[i] = -1
+  }
+  if physics_st.ph_vs != null { jph_vs_free(physics_st.ph_vs) }
+  physics_st.ph_vs = null
+}
+
+# the driver's hands and feet for the next steps: forward -1..1 (negative backs up), right -1..1 (the wheel to the right), brake and
+# handbrake 0..1. Something that is not a number is nothing; a pedal or the wheel wakes a body asleep
+export function phys_vehicle_drive(physics_st: mut PhysicsState, v: int, forward: float, right: float, brake: float, hand: float) -> void {
+  let h = ph_vehicle(physics_st, v)
+  if h == null { return }
+  jph_vehicle_input(h, Math.clamp(ph_fin(forward), -1.0, 1.0), Math.clamp(ph_fin(right), -1.0, 1.0), Math.clamp(ph_fin(brake), 0.0, 1.0), Math.clamp(ph_fin(hand), 0.0, 1.0))
+}
+
+# the engine's most torque from now on, N.m (nitrous, a hurt engine)
+export function phys_vehicle_torque(physics_st: mut PhysicsState, v: int, max_torque: float) -> void {
+  let h = ph_vehicle(physics_st, v)
+  if h != null and is_finite(max_torque) { jph_vehicle_torque(h, Math.max(0.0, max_torque)) }
+}
+
+# the ground's grip under wheel i, a multiplier on its tyre's curves (1 tarmac, less on loose ground)
+export function phys_vehicle_grip(physics_st: mut PhysicsState, v: int, i: int, k: float) -> void {
+  let h = ph_vehicle(physics_st, v)
+  if h != null and is_finite(k) { jph_vehicle_grip(h, i, Math.max(0.0, k)) }
+}
+
+# how many wheels
+export function phys_vehicle_wheels(physics_st: PhysicsState, v: int) -> int {
+  let h = ph_vehicle(physics_st, v)
+  if h == null { return 0 }
+  return jph_vehicle_wheels(h)
+}
+
+# the engine and the gearbox into the caller's record; false (and out untouched) for no such vehicle or a read that is not a number
+export function phys_vehicle_state(physics_st: mut PhysicsState, v: int, out: PhysVehicle) -> bool {
+  let h = ph_vehicle(physics_st, v)
+  if h == null { return false }
+  let t = physics_st.ph_vals
+  jph_vehicle_read(h, t)
+  if not is_finite(t[0] + t[1] + t[3]) { return false }
+  out.rpm = t[0]
+  out.gear = int(t[1])
+  out.shifting = t[2] > 0.5
+  out.clutch = t[3]
+  return true
+}
+
+# wheel i into the caller's record; false (and out untouched) for no such wheel or a read that is not a number
+export function phys_vehicle_wheel_read(physics_st: mut PhysicsState, v: int, i: int, out: PhysWheel) -> bool {
+  let h = ph_vehicle(physics_st, v)
+  if h == null { return false }
+  let t = physics_st.ph_vals
+  if jph_vehicle_wheel(h, i, t) != 0 { return false }
+  var sum = 0.0
+  for k in 0 .. 20 { sum += t[k] }
+  if not is_finite(sum) { return false }
+  out.contact = t[0] > 0.5
+  out.length = t[1]
+  out.steer = -t[2]
+  out.angle = t[3]
+  out.spin = t[4]
+  out.slip_long = t[5]
+  out.slip_lat = t[6]
+  out.cx = t[7];  out.cy = t[8];  out.cz = t[9]
+  out.nx = t[10];  out.ny = t[11];  out.nz = t[12]
+  out.x = t[13];  out.y = t[14];  out.z = t[15]
+  out.qx = t[16];  out.qy = t[17];  out.qz = t[18];  out.qw = t[19]
+  return true
+}
+
+# another shape with its centre of mass moved to (x, y, z) in its own space: a car's, low between its wheels (the inertia follows)
+@creates(PhysShape)
+export function phys_com(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float) -> int {
+  let s = ph_shape(physics_st, shape)
+  if s == null or not is_finite(x + y + z) { return -1 }
+  return ph_keep(physics_st, jph_shape_com(s, x, y, z))
+}

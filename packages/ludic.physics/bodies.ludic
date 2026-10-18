@@ -64,6 +64,7 @@ export function phys_count(physics_st: PhysicsState) -> int {
 export function phys_remove(physics_st: mut PhysicsState, id: int) -> void {
   if physics_st.ph_world == null or id < 0 { return }
   phys_sink(physics_st, id)
+  phys_vehicle_remove(physics_st, phys_vehicle_of(physics_st, id))
   jph_body_remove(physics_st.ph_world, id)
   ph_own_free(physics_st, id)
 }

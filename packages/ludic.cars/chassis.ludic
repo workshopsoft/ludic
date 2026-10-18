@@ -356,16 +356,23 @@ function cr_assist_torques(cars_st: mut CarsState, c: Car, dt: float) -> void {
 function cr_body_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
   if not CarBody.read(c.nid, cars_st.cr_pose) {
     c.body = false
+    c.vehicle = false
     return
   }
   if not cr_pose_ok(cars_st.cr_pose) {
     # a body that has left the real line is no body: the planar model takes the car on from where it last was
     c.body = false
+    c.vehicle = false
     return
   }
   cr_adopt(c, cars_st.cr_pose, dt)
   cr_assists(cars_st, c)
   cr_steer_step(c, dt)
+  if c.vehicle {
+    # the game's physics drives it (vehicle.ludic): no ray, spring or tyre force of the package's
+    cr_vehicle_step(cars_st, c, dt)
+    return
+  }
   cr_powertrain(cars_st, c, dt, cr_mean_spin(c, true), cr_mean_spin(c, false))
   let was_air = c.airborne
   cr_wheels_suspend(cars_st, c, dt)

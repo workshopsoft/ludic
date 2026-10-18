@@ -105,7 +105,7 @@ export property CarModel {
   @Unit("m") @Range(0.2, 30) length: float = 4.4
   @Unit("m") @Range(0.1, 5) width: float = 1.8
   @Unit("m") @Range(0.1, 5) height: float = 1.4
-  @Unit("m") @Range(0, 2) ground_clear: float = 0.18 # the floor of the body above the ground
+  @Unit("m") @Range(0, 2) ground_clear: float = 0.18  # the floor of the body above the ground
   @Unit("m") @Range(-2, 2) com_x: float = 0.0        # the centre of mass from the model's origin: right
   @Unit("m") @Range(-0.5, 3) com_y: float = 0.0      # up (0: the body's own middle)
   @Unit("m") @Range(-5, 5) com_z: float = 0.0        # forward
@@ -132,7 +132,7 @@ export property CarModel {
   # brakes
   @Unit("N") @Range(0, 1000000) brakes: float = 14000.0   # the force all four give at a full pedal
   @Range(0, 1) brake_front: float = 0.62             # the front's share of it
-  @Unit("N") @Range(0, 1000000) handbrake: float = 7000.0 # the handbrake's axles, at a full pull
+  @Unit("N") @Range(0, 1000000) handbrake: float = 7000.0  # the handbrake's axles, at a full pull
   # steering
   @Unit("deg") @Range(1, 90) steer_lock: float = 34.0
   steer_curve: []CarPoint = null                     # speed (m/s) -> the share of the lock a full stick gives
@@ -144,7 +144,7 @@ export property CarModel {
   @Range(0, 100) downforce: float = 0.0              # N per (m/s)2 pressing it down
   @Range(0, 1) down_front: float = 0.45              # the front's share of the downforce
   @Range(0, 1) roll_res: float = 1.0                 # the tyres' rolling resistance, times this
-  @Unit("m/s") @Range(0, 500) top_speed: float = 0.0 # a limiter (0: what the engine and air give)
+  @Unit("m/s") @Range(0, 500) top_speed: float = 0.0  # a limiter (0: what the engine and air give)
   # nitrous
   @Range(0, 5) nitro: float = 0.0                    # extra torque while it burns, as a share (0.5: half as much again)
   @Unit("s") @Range(0, 120) nitro_time: float = 0.0  # a full tank's burn (0: none fitted)

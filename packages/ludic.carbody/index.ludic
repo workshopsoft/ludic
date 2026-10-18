@@ -1,10 +1,12 @@
 # ludic.carbody - a car's body in the game's ludic.physics world: a box of the model's dimensions about its origin,
 # forces pushed at the points they act, wheel rays cast against the solid world. Bind it once:
-#   bind CarBody { make: fn carbody_make, drop: fn carbody_drop, read: fn carbody_read, push: fn carbody_push, torque: fn carbody_torque, step: fn carbody_step }
+#   bind CarBody { make: fn carbody_make, drop: fn carbody_drop, read: fn carbody_read, push: fn carbody_push, torque: fn carbody_torque, step: fn carbody_step,
+#                  vehicle: fn carbody_make_vehicle, drive: fn carbody_drive, wheel: fn carbody_wheel, gauge: fn carbody_gauge }
 #   bind CarWorld { cast: fn carbody_cast }
 module ludic_carbody uses ludic_base, ludic_cars, ludic_physics
 numbers float
 import "ludic.base"
 import "ludic.cars"
 import "ludic.physics"
+import "vehicle.ludic"
 import "bodies.ludic"

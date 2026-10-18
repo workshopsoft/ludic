@@ -55,6 +55,9 @@ export state PhysicsState {
   ph_rx: float = 0.0               # where the last phys_resolve put a body
   ph_rz: float = 0.0
   @max(64) ph_walkers: []pointer = new []pointer   # a walker id is its place here; null once removed
+  @max(256) ph_vehicles: []pointer = new []pointer  # a vehicle id is its place here; null once removed (vehicle.ludic)
+  @max(256) ph_vbody: []int = new []int             # and the body each is on
+  ph_vs: pointer = null                             # a vehicle's settings being built (phys_vehicle_begin .. phys_vehicle_add)
   ph_ids: []int = words(PH_CAP * 2)
   ph_vals: []float = floats(PH_CAP * 4)
   ph_facts: Queue<PhysFact> = ph_facts__new()

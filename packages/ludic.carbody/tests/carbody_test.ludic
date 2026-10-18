@@ -13,7 +13,7 @@ program CarBodyTest {
   def CarSeats from "../../ludic.cars/tests/cars_seats.lres"
   def CarSockets from "../../ludic.cars/tests/cars_sockets.lres"
 
-  bind CarBody { make: fn carbody_make, drop: fn carbody_drop, read: fn carbody_read, push: fn carbody_push, torque: fn carbody_torque, step: fn carbody_step }
+  bind CarBody { make: fn carbody_make, drop: fn carbody_drop, read: fn carbody_read, push: fn carbody_push, torque: fn carbody_torque, step: fn carbody_step, vehicle: fn carbody_make_vehicle, drive: fn carbody_drive, wheel: fn carbody_wheel, gauge: fn carbody_gauge }
   bind CarWorld { cast: fn carbody_cast, grip: fn slippery }
 
   # the game's own grip: gravel past z = 200
@@ -63,6 +63,7 @@ program CarBodyTest {
     let c = car_by_nid(cars_st, nid)
     expect(c.sim == CAR_SIM_BODY)
     expect(c.body)
+    expect(c.vehicle)
     expect(near(c.y, 0.0, 0.06))
     expect(Math.abs(c.speed) < 0.1)
     expect(c.uy > 0.995)
@@ -73,6 +74,9 @@ program CarBodyTest {
     world(physics_st)
     let c = driver(cars_st, doors, owns, rig, 0.0, 0.0)
     go(cars_st, doors, owns, rig, c, 5.0, 1.0, 0.0, 0.0)
+    expect(c.vehicle)
+    expect(c.gear >= 2)
+    expect(c.wheels[2].spin > 30.0)
     expect(c.speed > 15.0)
     expect(c.sim == CAR_SIM_BODY)
     let v0 = Math.sqrt(c.vx * c.vx + c.vz * c.vz)

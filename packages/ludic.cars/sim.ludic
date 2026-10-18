@@ -31,6 +31,7 @@ function cr_go_sim(cars_st: mut CarsState, c: Car, to: int) -> void {
     let r = Math.sqrt(c.vx * c.vx + c.vz * c.vz)
     if CarBody.make(c.nid, c.model, c.x, c.y, c.z, c.yaw, c.vx, c.vy, c.vz) {
       c.body = true
+      c.vehicle = CarBody.vehicle(c.nid, c.model, c.stats)
       c.have_prev = false
       c.lod_t = 0.0
       for i in 0 .. c.nwheels { c.wheels[i].ext = CarModels[c.model].axles[c.wheels[i].axle].travel * 0.65 }
@@ -43,6 +44,7 @@ function cr_go_sim(cars_st: mut CarsState, c: Car, to: int) -> void {
   } else if from == CAR_SIM_BODY {
     CarBody.drop(c.nid)
     c.body = false
+    c.vehicle = false
   }
   if from == CAR_SIM_REMOTE { c.have_prev = false }
   if level == from { return }
@@ -86,12 +88,54 @@ function cr_anim_run(cars_st: CarsState, c: Car) -> void {
   }
 }
 
+# the pose before a step, kept for the drawn pose's blend
+function cr_draw_mark(c: Car) -> void {
+  c.qx = c.x;  c.qy = c.y;  c.qz = c.z
+  c.qfx = c.fx;  c.qfy = c.fy;  c.qfz = c.fz
+  c.qux = c.ux;  c.quy = c.uy;  c.quz = c.uz
+  c.q_ok = true
+}
+
+# the pose to draw: the step before and the last step blended by `alpha` (the share of a step the frame is past the last); a car moved
+# by more than 4 m between them was put somewhere (a reset, a hand-off) and is drawn where it is
+function cr_draw_pose(c: Car, alpha: float) -> void {
+  let jx = c.x - c.qx
+  let jy = c.y - c.qy
+  let jz = c.z - c.qz
+  if not c.q_ok or c.sim == CAR_SIM_REMOTE or jx * jx + jy * jy + jz * jz > 16.0 {
+    c.gx = c.x;  c.gy = c.y;  c.gz = c.z
+    c.gfx = c.fx;  c.gfy = c.fy;  c.gfz = c.fz
+    c.gux = c.ux;  c.guy = c.uy;  c.guz = c.uz
+    return
+  }
+  let b = 1.0 - alpha
+  c.gx = c.qx * b + c.x * alpha
+  c.gy = c.qy * b + c.y * alpha
+  c.gz = c.qz * b + c.z * alpha
+  var fx = c.qfx * b + c.fx * alpha
+  var fy = c.qfy * b + c.fy * alpha
+  var fz = c.qfz * b + c.fz * alpha
+  var fl = Math.sqrt(fx * fx + fy * fy + fz * fz)
+  if fl < 0.0001 { fl = 1.0;  fx = c.fx;  fy = c.fy;  fz = c.fz }
+  fx = fx / fl;  fy = fy / fl;  fz = fz / fl
+  var ux = c.qux * b + c.ux * alpha
+  var uy = c.quy * b + c.uy * alpha
+  var uz = c.quz * b + c.uz * alpha
+  let d = ux * fx + uy * fy + uz * fz
+  ux = ux - fx * d;  uy = uy - fy * d;  uz = uz - fz * d
+  var ul = Math.sqrt(ux * ux + uy * uy + uz * uz)
+  if ul < 0.0001 { ul = 1.0;  ux = c.ux;  uy = c.uy;  uz = c.uz }
+  c.gfx = fx;  c.gfy = fy;  c.gfz = fz
+  c.gux = ux / ul;  c.guy = uy / ul;  c.guz = uz / ul
+}
+
 # one fixed step of every car
 export function cars_step(cars_st: mut CarsState, dt: float) -> void {
   let tb = cars_st.cr_cars
   for i in 0 .. tb_len(tb) {
     let c = tb_rec(tb, i)
     if c.sim == CAR_SIM_REMOTE { continue }
+    cr_draw_mark(c)
     if c.ai and c.phase != CarPhase.Wrecked {
       if c.sim != CAR_SIM_LANE { cr_ai_drive(cars_st, c, dt) }
     }
@@ -138,6 +182,8 @@ export function cars_tick(cars_st: mut CarsState, doors: mut CarStepsMachine, ow
     n += 1
   }
   if cars_st.cr_acc > cfg.step or cars_st.cr_acc < 0.0 { cars_st.cr_acc = 0.0 }
+  let alpha = Math.clamp(cars_st.cr_acc / Math.max(cfg.step, 0.0001), 0.0, 1.0)
+  for k in 0 .. tb_len(tb) { cr_draw_pose(tb_rec(tb, k), alpha) }
   for k in 0 .. tb_len(tb) {
     let c = tb_rec(tb, k)
     if c.sim != CAR_SIM_LANE { cr_anim_run(cars_st, c) }
