@@ -1,0 +1,844 @@
+# roadglb.ludic - game-editor packages/core/src/world/roadGlb.ts (roadGlb, lodCellGlb, collisionGlb, weldVertices) and roadChunks.ts
+# lanesBin, with the JSON they hold written as JavaScript's JSON.stringify writes it (keys in order, numbers by Number::toString),
+# and the studio's textHash (studio/folder.ts). The same bytes as the TypeScript.
+
+# ---- bytes out -----------------------------------------------------------------------------------------------------------------
+export property BOut {
+  b: []byte = null
+  n: int = 0
+}
+export function bout_new(cap: int) -> BOut {
+  let o = new BOut
+  o.b = buffer(max(cap, 64))
+  return o
+}
+function bo_room(o: BOut, k: int) -> void {
+  if o.n + k <= len(o.b) { return }
+  var cap = len(o.b) * 2
+  while cap < o.n + k { cap = cap * 2 }
+  let nb = buffer(cap)
+  for i in 0 .. o.n { nb[i] = o.b[i] }
+  o.b = nb
+}
+export function bo_u8(o: BOut, v: int) -> void {
+  bo_room(o, 1)
+  o.b[o.n] = v & 255
+  o.n += 1
+}
+export function bo_u16(o: BOut, v: int) -> void {
+  bo_room(o, 2)
+  o.b[o.n] = v & 255
+  o.b[o.n + 1] = (v >> 8) & 255
+  o.n += 2
+}
+export function bo_u32(o: BOut, v: int) -> void {
+  bo_room(o, 4)
+  o.b[o.n] = v & 255
+  o.b[o.n + 1] = (v >> 8) & 255
+  o.b[o.n + 2] = (v >> 16) & 255
+  o.b[o.n + 3] = (v >> 24) & 255
+  o.n += 4
+}
+export function bo_str(o: BOut, s: string) -> void {
+  let n = len(s)
+  bo_room(o, n)
+  for i in 0 .. n { o.b[o.n + i] = s[i] }
+  o.n += n
+}
+export function bo_bytes(o: BOut, b: []byte, n: int) -> void {
+  bo_room(o, n)
+  for i in 0 .. n { o.b[o.n + i] = b[i] }
+  o.n += n
+}
+export function bo_pad(o: BOut, v: int) -> void { while (o.n & 3) != 0 { bo_u8(o, v) } }
+function bo_set_u32(o: BOut, at: int, v: int) -> void {
+  o.b[at] = v & 255
+  o.b[at + 1] = (v >> 8) & 255
+  o.b[at + 2] = (v >> 16) & 255
+  o.b[at + 3] = (v >> 24) & 255
+}
+
+# ---- float32 -------------------------------------------------------------------------------------------------------------------
+# the float32 nearest x (ties to even), as its bits
+export function f32_bits(x: double) -> int {
+  let bits = double_bits(x)
+  let sign = int((bits >> 63) & long(1))
+  let ex = int((bits >> 52) & long(2047))
+  let mant = bits & ((long(1) << 52) - long(1))
+  if ex == 2047 {
+    if mant == long(0) { return (sign << 31) | 0x7F800000 }
+    return (sign << 31) | 0x7FC00000
+  }
+  if ex == 0 and mant == long(0) { return sign << 31 }
+  var e = ex - 1023 + 127
+  var m = mant | (long(1) << 52)
+  if ex == 0 { m = mant }
+  if e >= 1 {
+    var top = m >> 29
+    let rem = m & ((long(1) << 29) - long(1))
+    let half = long(1) << 28
+    if rem > half or (rem == half and (top & long(1)) == long(1)) { top = top + long(1) }
+    if top >= (long(1) << 24) {
+      top = top >> 1
+      e += 1
+    }
+    if e >= 255 { return (sign << 31) | 0x7F800000 }
+    return (sign << 31) | (e << 23) | int(top & ((long(1) << 23) - long(1)))
+  }
+  # a float32 subnormal: the significand shifted down 29 + (1 - e) places
+  let sh = 29 + (1 - e)
+  if sh >= 64 { return sign << 31 }
+  var top = m >> sh
+  let rem = m & ((long(1) << sh) - long(1))
+  let half = long(1) << (sh - 1)
+  if rem > half or (rem == half and (top & long(1)) == long(1)) { top = top + long(1) }
+  return (sign << 31) | int(top)
+}
+# the double a float32's bits stand for
+export function f32_value(f: int) -> double {
+  let sign = (f >> 31) & 1
+  let e = (f >> 23) & 255
+  let m = f & 0x7FFFFF
+  var bits: long = long(sign) << 63
+  if e == 255 {
+    if m == 0 { return double_from_bits(bits | (long(2047) << 52)) }
+    return NAN
+  }
+  if e == 0 {
+    if m == 0 { return double_from_bits(bits) }
+    # subnormal: normalise
+    var mm2 = m
+    var ee = -126
+    while (mm2 & 0x800000) == 0 {
+      mm2 = mm2 << 1
+      ee -= 1
+    }
+    mm2 = mm2 & 0x7FFFFF
+    return double_from_bits(bits | (long(ee + 1023) << 52) | (long(mm2) << 29))
+  }
+  return double_from_bits(bits | (long(e - 127 + 1023) << 52) | (long(m) << 29))
+}
+export function bo_f32(o: BOut, x: double) -> void { bo_u32(o, f32_bits(x)) }
+
+# ---- JSON as JSON.stringify writes it ------------------------------------------------------------------------------------------
+export function json_str(o: BOut, s: string) -> void {
+  bo_u8(o, 34)
+  for i in 0 .. len(s) {
+    let c = s[i]
+    if c == 34 { bo_str(o, "\\\"") } else if c == 92 { bo_str(o, "\\\\") } else if c == 8 { bo_str(o, "\\b") } else if c == 12 { bo_str(o, "\\f") } else if c == 10 { bo_str(o, "\\n") } else if c == 13 { bo_str(o, "\\r") } else if c == 9 { bo_str(o, "\\t") } else if c < 32 {
+      bo_str(o, "\\u00")
+      let hx = "0123456789abcdef"
+      bo_u8(o, hx[c >> 4])
+      bo_u8(o, hx[c & 15])
+    } else { bo_u8(o, c) }
+  }
+  bo_u8(o, 34)
+}
+export function json_num(o: BOut, x: double) -> void {
+  if x != x or x == INF or x == -INF { bo_str(o, "null") } else { bo_str(o, js_number(x)) }
+}
+
+# a JSON value tree for the documents written (glb JSON, crossings, light zones)
+export property JV {
+  t: int = 0                  # 0 null, 1 false, 2 true, 3 number, 4 string, 5 array, 6 object
+  num: double = 0.0
+  str: string = ""
+  items: []JV = null
+  keys: []string = null
+}
+export function jv_num(x: double) -> JV {
+  let v = new JV
+  v.t = 3
+  v.num = x
+  return v
+}
+export function jv_str(s: string) -> JV {
+  let v = new JV
+  v.t = 4
+  v.str = s
+  return v
+}
+export function jv_bool(b: bool) -> JV {
+  let v = new JV
+  v.t = isel(b, 2, 1)
+  return v
+}
+export function jv_arr() -> JV {
+  let v = new JV
+  v.t = 5
+  v.items = new []JV
+  return v
+}
+export function jv_obj() -> JV {
+  let v = new JV
+  v.t = 6
+  v.items = new []JV
+  v.keys = new []string
+  return v
+}
+export function jv_put(o: JV, k: string, v: JV) -> JV {
+  push(o.keys, k)
+  push(o.items, v)
+  return o
+}
+export function jv_push(a: JV, v: JV) -> JV {
+  push(a.items, v)
+  return a
+}
+export function jv_nums(xs: []double) -> JV {
+  let a = jv_arr()
+  for i in 0 .. len(xs) { push(a.items, jv_num(xs[i])) }
+  return a
+}
+function json_indent(o: BOut, ind: int, depth: int) -> void {
+  bo_u8(o, 10)
+  for i in 0 .. ind * depth { bo_u8(o, 32) }
+}
+# JSON.stringify(v, null, ind) (ind 0: compact)
+export function json_write(o: BOut, v: JV, ind: int, depth: int) -> void {
+  if v.t == 0 { bo_str(o, "null") } else if v.t == 1 { bo_str(o, "false") } else if v.t == 2 { bo_str(o, "true") } else if v.t == 3 { json_num(o, v.num) } else if v.t == 4 { json_str(o, v.str) } else if v.t == 5 {
+    if len(v.items) == 0 {
+      bo_str(o, "[]")
+      return
+    }
+    bo_u8(o, 91)
+    for i in 0 .. len(v.items) {
+      if i > 0 { bo_u8(o, 44) }
+      if ind > 0 { json_indent(o, ind, depth + 1) }
+      json_write(o, v.items[i], ind, depth + 1)
+    }
+    if ind > 0 { json_indent(o, ind, depth) }
+    bo_u8(o, 93)
+  } else {
+    if len(v.items) == 0 {
+      bo_str(o, "{}")
+      return
+    }
+    bo_u8(o, 123)
+    for i in 0 .. len(v.items) {
+      if i > 0 { bo_u8(o, 44) }
+      if ind > 0 { json_indent(o, ind, depth + 1) }
+      json_str(o, v.keys[i])
+      bo_u8(o, 58)
+      if ind > 0 { bo_u8(o, 32) }
+      json_write(o, v.items[i], ind, depth + 1)
+    }
+    if ind > 0 { json_indent(o, ind, depth) }
+    bo_u8(o, 125)
+  }
+}
+
+# ---- textHash (studio/folder.ts): two FNV-1a style 32-bit passes over the UTF-16 code units (the hashed texts are ASCII) -------
+function imul(a: long, b: long) -> long { return (a * b) & long(4294967295) }
+function hex8(v: long) -> string {
+  let hx = "0123456789abcdef"
+  let out = buffer(8)
+  for i in 0 .. 8 { out[i] = hx[int((v >> long((7 - i) * 4)) & long(15))] }
+  return text_of(out, 8)
+}
+export function text_hash(s: string) -> string {
+  let M = long(4294967295)
+  var a = long(2166136261)
+  var b = long(16777619) ^ long(len(s))
+  for i in 0 .. len(s) {
+    let c = long(s[i])
+    a = imul(a ^ c, long(16777619))
+    b = imul(b ^ c ^ long(i & 255), long(2246822507))
+  }
+  a = (a ^ (a >> 15)) & M
+  b = (b ^ (b >> 13)) & M
+  return `{hex8(a)}{hex8(b)}`
+}
+
+# ---- weldVertices ---------------------------------------------------------------------------------------------------------------
+export property Welded {
+  pos: []int = null           # float32 bits
+  nor: []int = null
+  uv: []int = null
+  idx: []int = null
+}
+# one vertex for every set of exactly equal attributes (float32 bits); nor or uv null: positions only
+export function weld(positions: []double, indices: []int, normals: []double, uvs: []double) -> Welded {
+  let n = len(positions) / 3
+  var w = 3
+  if normals != null { w = 8 }
+  let m = km_new(w, n)
+  let k = words(w)
+  let remap = new []int
+  let out = new Welded
+  out.pos = new []int
+  if normals != null {
+    out.nor = new []int
+    out.uv = new []int
+  }
+  var kept = 0
+  for v in 0 .. n {
+    let px = f32_bits(positions[v * 3])
+    let py = f32_bits(positions[v * 3 + 1])
+    let pz = f32_bits(positions[v * 3 + 2])
+    k[0] = px
+    k[1] = py
+    k[2] = pz
+    var nx = 0
+    var ny = 0
+    var nz = 0
+    var u = 0
+    var vv = 0
+    if normals != null {
+      nx = f32_bits(normals[v * 3])
+      ny = f32_bits(normals[v * 3 + 1])
+      nz = f32_bits(normals[v * 3 + 2])
+      u = f32_bits(uvs[v * 2])
+      vv = f32_bits(uvs[v * 2 + 1])
+      k[3] = nx
+      k[4] = ny
+      k[5] = nz
+      k[6] = u
+      k[7] = vv
+    }
+    let had = km_get_or_put(m, k, kept)
+    if had >= 0 { push(remap, had) } else {
+      push(remap, kept)
+      push(out.pos, px)
+      push(out.pos, py)
+      push(out.pos, pz)
+      if normals != null {
+        push(out.nor, nx)
+        push(out.nor, ny)
+        push(out.nor, nz)
+        push(out.uv, u)
+        push(out.uv, vv)
+      }
+      kept += 1
+    }
+  }
+  out.idx = new []int
+  for i in 0 .. len(indices) { push(out.idx, remap[indices[i]]) }
+  return out
+}
+
+# ---- the greybox tones ----------------------------------------------------------------------------------------------------------
+# SLOT_TONES (null: none)
+export function slot_tone(s: string) -> []double {
+  if s == "road" { return tone3(0.3, 0.3, 0.32) }
+  if s == "park" { return tone3(0.34, 0.34, 0.36) }
+  if s == "tram" { return tone3(0.42, 0.4, 0.38) }
+  if s == "curb" { return tone3(0.7, 0.69, 0.66) }
+  if s == "walk" { return tone3(0.58, 0.57, 0.54) }
+  if s == "plant" { return tone3(0.36, 0.46, 0.3) }
+  if s == "marking" { return tone3(0.93, 0.93, 0.9) }
+  if s == "structure" { return tone3(0.63, 0.62, 0.59) }
+  if s == "skirt" { return tone3(0.42, 0.4, 0.37) }
+  return null
+}
+function tone3(a: double, b: double, c: double) -> []double {
+  let t = doubles(3)
+  t[0] = a
+  t[1] = b
+  t[2] = c
+  return t
+}
+# a layer's tone: tones on, by its slot (or its name), else 0.6 grey
+export function tone_of(tones: bool, name: string, slot: string) -> []double {
+  if not tones { return tone3(0.6, 0.6, 0.6) }
+  var s = slot
+  if s == "" { s = name }
+  var t = slot_tone(s)
+  if t == null { t = slot_tone(name) }
+  if t == null { return tone3(0.6, 0.6, 0.6) }
+  return t
+}
+
+# ---- the glb container ----------------------------------------------------------------------------------------------------------
+# a JSON document and its binary chunk (already 4-byte padded, n bytes; none when 0) as one .glb
+export function glb_of(json: JV, bin: BOut) -> BOut {
+  let js = bout_new(4096)
+  json_write(js, json, 0, 0)
+  while (js.n & 3) != 0 { bo_u8(js, 32) }
+  let binLen = (bin.n + 3) & (-4)
+  var total = 12 + 8 + js.n
+  if binLen > 0 { total = total + 8 + binLen }
+  let o = bout_new(total + 8)
+  bo_u32(o, 0x46546C67)
+  bo_u32(o, 2)
+  bo_u32(o, total)
+  bo_u32(o, js.n)
+  bo_u32(o, 0x4E4F534A)
+  bo_bytes(o, js.b, js.n)
+  if binLen > 0 {
+    bo_u32(o, binLen)
+    bo_u32(o, 0x004E4942)
+    bo_bytes(o, bin.b, bin.n)
+    while o.n < total { bo_u8(o, 0) }
+  }
+  return o
+}
+
+function minmax3(pos: []int) -> []double {
+  let mm6 = doubles(6)
+  for k in 0 .. 3 {
+    mm6[k] = INF
+    mm6[k + 3] = -INF
+  }
+  let n = len(pos) / 3
+  for i in 0 .. n {
+    for k in 0 .. 3 {
+      let v = f32_value(pos[i * 3 + k])
+      mm6[k] = jmin(mm6[k], v)
+      mm6[k + 3] = jmax(mm6[k + 3], v)
+    }
+  }
+  return mm6
+}
+function jv_view(buffer0: int, off: int, len0: int, target: int) -> JV {
+  let v = jv_obj()
+  jv_put(v, "buffer", jv_num(double(buffer0)))
+  jv_put(v, "byteOffset", jv_num(double(off)))
+  jv_put(v, "byteLength", jv_num(double(len0)))
+  if target != 0 { jv_put(v, "target", jv_num(double(target))) }
+  return v
+}
+function jv_asset(generator: string, extras: JV) -> JV {
+  let a = jv_obj()
+  jv_put(a, "version", jv_str("2.0"))
+  jv_put(a, "generator", jv_str(generator))
+  if extras != null { jv_put(a, "extras", extras) }
+  return a
+}
+function jv_scene(name: string, n: int) -> JV {
+  let scenes = jv_arr()
+  let s = jv_obj()
+  jv_put(s, "name", jv_str(name))
+  let ns = jv_arr()
+  for i in 0 .. n { jv_push(ns, jv_num(double(i))) }
+  jv_put(s, "nodes", ns)
+  jv_push(scenes, s)
+  return scenes
+}
+
+# roadGlb: a node per material layer (sorted by name), welded
+export function road_glb(layers: []Layer, extras: JV, tones: bool, weldOn: bool) -> BOut {
+  var size = 0
+  for i in 0 .. len(layers) { size += (len(layers[i].positions) + len(layers[i].normals) + len(layers[i].uvs) + len(layers[i].indices)) * 4 + 16 }
+  let bin = bout_new(size)
+  let views = jv_arr()
+  let accessors = jv_arr()
+  let meshes = jv_arr()
+  let nodes = jv_arr()
+  let materials = jv_arr()
+  let ord = layer_order(layers)
+  for oi in 0 .. len(ord) {
+    let l = layers[ord[oi]]
+    if len(l.indices) == 0 { continue }
+    var w: Welded = null
+    if weldOn { w = weld(l.positions, l.indices, l.normals, l.uvs) } else {
+      w = new Welded
+      w.pos = new []int
+      w.nor = new []int
+      w.uv = new []int
+      for i in 0 .. len(l.positions) { push(w.pos, f32_bits(l.positions[i])) }
+      for i in 0 .. len(l.normals) { push(w.nor, f32_bits(l.normals[i])) }
+      for i in 0 .. len(l.uvs) { push(w.uv, f32_bits(l.uvs[i])) }
+      w.idx = l.indices
+    }
+    let mm6 = minmax3(w.pos)
+    let a0 = len(accessors.items)
+    let vp = push_ints(bin, views, w.pos, 34962)
+    let vn = push_ints(bin, views, w.nor, 34962)
+    let vu = push_ints(bin, views, w.uv, 34962)
+    let vi = push_ints(bin, views, w.idx, 34963)
+    jv_push(accessors, acc(vp, -1, 5126, len(w.pos) / 3, "VEC3", mm6, false))
+    jv_push(accessors, acc(vn, -1, 5126, len(w.nor) / 3, "VEC3", null, false))
+    jv_push(accessors, acc(vu, -1, 5126, len(w.uv) / 2, "VEC2", null, false))
+    jv_push(accessors, acc(vi, -1, 5125, len(w.idx), "SCALAR", null, false))
+    let mat = len(materials.items)
+    let tone = tone_of(tones, l.material, l.slot)
+    let m = jv_obj()
+    jv_put(m, "name", jv_str(l.material))
+    let pbr = jv_obj()
+    let bc = jv_arr()
+    jv_push(bc, jv_num(tone[0]))
+    jv_push(bc, jv_num(tone[1]))
+    jv_push(bc, jv_num(tone[2]))
+    jv_push(bc, jv_num(1.0))
+    jv_put(pbr, "baseColorFactor", bc)
+    jv_put(pbr, "metallicFactor", jv_num(0.0))
+    jv_put(pbr, "roughnessFactor", jv_num(1.0))
+    jv_put(m, "pbrMetallicRoughness", pbr)
+    jv_put(m, "doubleSided", jv_bool(false))
+    jv_push(materials, m)
+    let me = jv_obj()
+    jv_put(me, "name", jv_str(l.material))
+    let prims = jv_arr()
+    let pr = jv_obj()
+    let at = jv_obj()
+    jv_put(at, "POSITION", jv_num(double(a0)))
+    jv_put(at, "NORMAL", jv_num(double(a0 + 1)))
+    jv_put(at, "TEXCOORD_0", jv_num(double(a0 + 2)))
+    jv_put(pr, "attributes", at)
+    jv_put(pr, "indices", jv_num(double(a0 + 3)))
+    jv_put(pr, "material", jv_num(double(mat)))
+    jv_put(pr, "mode", jv_num(4.0))
+    jv_push(prims, pr)
+    jv_put(me, "primitives", prims)
+    jv_push(meshes, me)
+    let nd = jv_obj()
+    jv_put(nd, "name", jv_str(l.material))
+    jv_put(nd, "mesh", jv_num(double(len(meshes.items) - 1)))
+    jv_push(nodes, nd)
+  }
+  let json = jv_obj()
+  jv_put(json, "asset", jv_asset("Ludic Studio roads bake", extras))
+  jv_put(json, "scene", jv_num(0.0))
+  jv_put(json, "scenes", jv_scene("roads", len(nodes.items)))
+  jv_put(json, "nodes", nodes)
+  jv_put(json, "meshes", meshes)
+  jv_put(json, "materials", materials)
+  jv_put(json, "accessors", accessors)
+  jv_put(json, "bufferViews", views)
+  let bufs = jv_arr()
+  let b0 = jv_obj()
+  jv_put(b0, "byteLength", jv_num(double(bin.n)))
+  jv_push(bufs, b0)
+  jv_put(json, "buffers", bufs)
+  return glb_of(json, bin)
+}
+# a block of 32-bit values into the binary (padded to 4) and its buffer view; the view's index
+function push_ints(bin: BOut, views: JV, v: []int, target: int) -> int {
+  let at = bin.n
+  for i in 0 .. len(v) { bo_u32(bin, v[i]) }
+  let lenB = len(v) * 4
+  bo_pad(bin, 0)
+  jv_push(views, jv_view(0, at, lenB, target))
+  return len(views.items) - 1
+}
+function acc(view: int, off: int, ct: int, count: int, type: string, mm6: []double, normalized: bool) -> JV {
+  let a = jv_obj()
+  jv_put(a, "bufferView", jv_num(double(view)))
+  if off > 0 { jv_put(a, "byteOffset", jv_num(double(off))) }
+  jv_put(a, "componentType", jv_num(double(ct)))
+  if normalized { jv_put(a, "normalized", jv_bool(true)) }
+  jv_put(a, "count", jv_num(double(count)))
+  jv_put(a, "type", jv_str(type))
+  if mm6 != null {
+    let lo = jv_arr()
+    let hi = jv_arr()
+    for k in 0 .. 3 {
+      jv_push(lo, jv_num(mm6[k]))
+      jv_push(hi, jv_num(mm6[k + 3]))
+    }
+    jv_put(a, "min", lo)
+    jv_put(a, "max", hi)
+  }
+  return a
+}
+
+# collisionGlb: one node, positions and indices only
+export function collision_glb(s: Soup, extras: JV, weldOn: bool) -> BOut {
+  var pos: []int = null
+  var idx: []int = null
+  if weldOn {
+    let w = weld(s.positions, s.indices, null, null)
+    pos = w.pos
+    idx = w.idx
+  } else {
+    pos = new []int
+    for i in 0 .. len(s.positions) { push(pos, f32_bits(s.positions[i])) }
+    idx = s.indices
+  }
+  let has = len(s.indices) > 0
+  let bin = bout_new((len(pos) + len(idx)) * 4 + 16)
+  for i in 0 .. len(pos) { bo_u32(bin, pos[i]) }
+  let posBytes = len(pos) * 4
+  bo_pad(bin, 0)
+  let idxAt = bin.n
+  for i in 0 .. len(idx) { bo_u32(bin, idx[i]) }
+  let idxBytes = len(idx) * 4
+  bo_pad(bin, 0)
+  let json = jv_obj()
+  jv_put(json, "asset", jv_asset("Ludic Studio roads bake (collision)", extras))
+  jv_put(json, "scene", jv_num(0.0))
+  let scenes = jv_arr()
+  let sc = jv_obj()
+  jv_put(sc, "name", jv_str("collision"))
+  let sn = jv_arr()
+  if has { jv_push(sn, jv_num(0.0)) }
+  jv_put(sc, "nodes", sn)
+  jv_push(scenes, sc)
+  jv_put(json, "scenes", scenes)
+  let nodes = jv_arr()
+  let meshes = jv_arr()
+  let accessors = jv_arr()
+  let views = jv_arr()
+  let bufs = jv_arr()
+  if has {
+    let nd = jv_obj()
+    jv_put(nd, "name", jv_str("collision"))
+    jv_put(nd, "mesh", jv_num(0.0))
+    jv_push(nodes, nd)
+    let me = jv_obj()
+    jv_put(me, "name", jv_str("collision"))
+    let prims = jv_arr()
+    let pr = jv_obj()
+    let at = jv_obj()
+    jv_put(at, "POSITION", jv_num(0.0))
+    jv_put(pr, "attributes", at)
+    jv_put(pr, "indices", jv_num(1.0))
+    jv_put(pr, "mode", jv_num(4.0))
+    jv_push(prims, pr)
+    jv_put(me, "primitives", prims)
+    jv_push(meshes, me)
+    jv_push(accessors, acc(0, -1, 5126, len(pos) / 3, "VEC3", minmax3(pos), false))
+    jv_push(accessors, acc(1, -1, 5125, len(idx), "SCALAR", null, false))
+    jv_push(views, jv_view(0, 0, posBytes, 34962))
+    jv_push(views, jv_view(0, idxAt, idxBytes, 34963))
+    let b0 = jv_obj()
+    jv_put(b0, "byteLength", jv_num(double(bin.n)))
+    jv_push(bufs, b0)
+  }
+  jv_put(json, "nodes", nodes)
+  jv_put(json, "meshes", meshes)
+  jv_put(json, "accessors", accessors)
+  jv_put(json, "bufferViews", views)
+  jv_put(json, "buffers", bufs)
+  if not has { bin.n = 0 }
+  return glb_of(json, bin)
+}
+
+# lodCellGlb: every slot of a piece merged into one primitive coloured by vertex; node `all` and a node a piece
+export function lod_cell_glb(pieces: []MeshChunk, extras: JV, generator: string, tones: bool, weldOn: bool) -> BOut {
+  let pos = new []int
+  let nor = new []int
+  let uv = new []int
+  let col = new []int
+  let all = new []int
+  let local = new []int
+  let spans = new []int       # per span: cx, cz, v0, nv, i0, ni
+  let spanMM = new [][]double
+  for pi in 0 .. len(pieces) {
+    let p = pieces[pi]
+    let v0 = len(pos) / 3
+    let i0 = len(all)
+    let mm6 = doubles(6)
+    for k in 0 .. 3 {
+      mm6[k] = INF
+      mm6[k + 3] = -INF
+    }
+    let ord = layer_order(p.layers)
+    for oi in 0 .. len(ord) {
+      let l = p.layers[ord[oi]]
+      if len(l.indices) == 0 { continue }
+      let base = len(pos) / 3 - v0
+      let t = tone_of(tones, l.material, l.slot)
+      let c0 = byte_of(t[0])
+      let c1 = byte_of(t[1])
+      let c2 = byte_of(t[2])
+      var w: Welded = null
+      if weldOn { w = weld(l.positions, l.indices, l.normals, l.uvs) } else {
+        w = new Welded
+        w.pos = new []int
+        w.nor = new []int
+        w.uv = new []int
+        for i in 0 .. len(l.positions) { push(w.pos, f32_bits(l.positions[i])) }
+        for i in 0 .. len(l.normals) { push(w.nor, f32_bits(l.normals[i])) }
+        for i in 0 .. len(l.uvs) { push(w.uv, f32_bits(l.uvs[i])) }
+        w.idx = l.indices
+      }
+      let nv = len(w.pos) / 3
+      for i in 0 .. nv {
+        for k in 0 .. 3 {
+          let b = w.pos[i * 3 + k]
+          push(pos, b)
+          let v = f32_value(b)
+          if v < mm6[k] { mm6[k] = v }
+          if v > mm6[k + 3] { mm6[k + 3] = v }
+        }
+        push(col, c0)
+        push(col, c1)
+        push(col, c2)
+        push(col, 255)
+      }
+      for i in 0 .. len(w.nor) { push(nor, w.nor[i]) }
+      for i in 0 .. len(w.uv) { push(uv, w.uv[i]) }
+      for i in 0 .. len(w.idx) {
+        push(local, base + w.idx[i])
+        push(all, v0 + base + w.idx[i])
+      }
+    }
+    let nv = len(pos) / 3 - v0
+    if nv > 0 {
+      push(spans, p.cx)
+      push(spans, p.cz)
+      push(spans, v0)
+      push(spans, nv)
+      push(spans, i0)
+      push(spans, len(all) - i0)
+      push(spanMM, mm6)
+    }
+  }
+  let ns = len(spanMM)
+  let bin = bout_new((len(pos) + len(nor) + len(uv) + len(all) + len(local)) * 4 + len(col) + 64)
+  let views = jv_arr()
+  let starts = new []int
+  # positions, normals, uvs, colours, all, local
+  push(starts, bin.n)
+  for i in 0 .. len(pos) { bo_u32(bin, pos[i]) }
+  let l0 = len(pos) * 4
+  bo_pad(bin, 0)
+  push(starts, bin.n)
+  for i in 0 .. len(nor) { bo_u32(bin, nor[i]) }
+  let l1 = len(nor) * 4
+  bo_pad(bin, 0)
+  push(starts, bin.n)
+  for i in 0 .. len(uv) { bo_u32(bin, uv[i]) }
+  let l2 = len(uv) * 4
+  bo_pad(bin, 0)
+  push(starts, bin.n)
+  for i in 0 .. len(col) { bo_u8(bin, col[i]) }
+  let l3 = len(col)
+  bo_pad(bin, 0)
+  push(starts, bin.n)
+  for i in 0 .. len(all) { bo_u32(bin, all[i]) }
+  let l4 = len(all) * 4
+  bo_pad(bin, 0)
+  push(starts, bin.n)
+  for i in 0 .. len(local) { bo_u32(bin, local[i]) }
+  let l5 = len(local) * 4
+  bo_pad(bin, 0)
+  let lens = new []int
+  push(lens, l0)
+  push(lens, l1)
+  push(lens, l2)
+  push(lens, l3)
+  push(lens, l4)
+  push(lens, l5)
+  let strides = new []int
+  push(strides, 12)
+  push(strides, 12)
+  push(strides, 8)
+  push(strides, 4)
+  push(strides, 0)
+  push(strides, 0)
+  for k in 0 .. 6 {
+    let v = jv_obj()
+    jv_put(v, "buffer", jv_num(0.0))
+    jv_put(v, "byteOffset", jv_num(double(starts[k])))
+    jv_put(v, "byteLength", jv_num(double(lens[k])))
+    if strides[k] > 0 {
+      jv_put(v, "byteStride", jv_num(double(strides[k])))
+      jv_put(v, "target", jv_num(34962.0))
+    } else {
+      jv_put(v, "target", jv_num(34963.0))
+    }
+    jv_push(views, v)
+  }
+  let accessors = jv_arr()
+  let meshes = jv_arr()
+  let nodes = jv_arr()
+  let lo = doubles(6)
+  for k in 0 .. 3 {
+    var a = INF
+    var b = -INF
+    for s in 0 .. ns {
+      a = jmin(a, spanMM[s][k])
+      b = jmax(b, spanMM[s][k + 3])
+    }
+    lo[k] = a
+    lo[k + 3] = b
+  }
+  jv_push(meshes, lod_mesh("all", lod_prim(accessors, 0, len(pos) / 3, lo, 4, 0, len(all))))
+  let nd0 = jv_obj()
+  jv_put(nd0, "name", jv_str("all"))
+  jv_put(nd0, "mesh", jv_num(0.0))
+  jv_push(nodes, nd0)
+  for s in 0 .. ns {
+    let name = `c{spans[s * 6]}_{spans[s * 6 + 1]}`
+    jv_push(meshes, lod_mesh(name, lod_prim(accessors, spans[s * 6 + 2], spans[s * 6 + 3], spanMM[s], 5, spans[s * 6 + 4], spans[s * 6 + 5])))
+    let nd = jv_obj()
+    jv_put(nd, "name", jv_str(name))
+    jv_put(nd, "mesh", jv_num(double(len(meshes.items) - 1)))
+    jv_push(nodes, nd)
+  }
+  let chunks = jv_arr()
+  for s in 0 .. ns {
+    let c = jv_arr()
+    for q in 0 .. 6 { jv_push(c, jv_num(double(spans[s * 6 + q]))) }
+    jv_push(chunks, c)
+  }
+  jv_put(extras, "chunks", chunks)
+  let json = jv_obj()
+  jv_put(json, "asset", jv_asset(generator, extras))
+  jv_put(json, "scene", jv_num(0.0))
+  jv_put(json, "scenes", jv_scene("roads", len(nodes.items)))
+  jv_put(json, "nodes", nodes)
+  jv_put(json, "meshes", meshes)
+  let mats = jv_arr()
+  let m = jv_obj()
+  let pbr = jv_obj()
+  jv_put(pbr, "baseColorFactor", jv_nums(tone4()))
+  jv_put(pbr, "metallicFactor", jv_num(0.0))
+  jv_put(pbr, "roughnessFactor", jv_num(1.0))
+  jv_put(m, "pbrMetallicRoughness", pbr)
+  jv_put(m, "doubleSided", jv_bool(false))
+  jv_push(mats, m)
+  jv_put(json, "materials", mats)
+  jv_put(json, "accessors", accessors)
+  jv_put(json, "bufferViews", views)
+  let bufs = jv_arr()
+  let b0 = jv_obj()
+  jv_put(b0, "byteLength", jv_num(double(bin.n)))
+  jv_push(bufs, b0)
+  jv_put(json, "buffers", bufs)
+  return glb_of(json, bin)
+}
+function tone4() -> []double {
+  let t = doubles(4)
+  for i in 0 .. 4 { t[i] = 1.0 }
+  return t
+}
+function byte_of(v: double) -> int { return int(jmax(0.0, jmin(255.0, jround(v * 255.0)))) }
+function lod_mesh(name: string, prim: JV) -> JV {
+  let me = jv_obj()
+  jv_put(me, "name", jv_str(name))
+  let prims = jv_arr()
+  jv_push(prims, prim)
+  jv_put(me, "primitives", prims)
+  return me
+}
+function lod_prim(accessors: JV, v0: int, nv: int, mm6: []double, view: int, i0: int, ni: int) -> JV {
+  let a = len(accessors.items)
+  jv_push(accessors, acc(0, v0 * 12, 5126, nv, "VEC3", mm6, false))
+  jv_push(accessors, acc(1, v0 * 12, 5126, nv, "VEC3", null, false))
+  jv_push(accessors, acc(2, v0 * 8, 5126, nv, "VEC2", null, false))
+  jv_push(accessors, acc(3, v0 * 4, 5121, nv, "VEC4", null, true))
+  jv_push(accessors, acc(view, i0 * 4, 5125, ni, "SCALAR", null, false))
+  let pr = jv_obj()
+  let at = jv_obj()
+  jv_put(at, "POSITION", jv_num(double(a)))
+  jv_put(at, "NORMAL", jv_num(double(a + 1)))
+  jv_put(at, "TEXCOORD_0", jv_num(double(a + 2)))
+  jv_put(at, "COLOR_0", jv_num(double(a + 3)))
+  jv_put(pr, "attributes", at)
+  jv_put(pr, "indices", jv_num(double(a + 4)))
+  jv_put(pr, "material", jv_num(0.0))
+  jv_put(pr, "mode", jv_num(4.0))
+  return pr
+}
+
+# lanesBin: "LNE1", u32 count; per line: u16 key length, the key, i16 lane, i8 dir, u8 0, u32 point count, f32 x, y, z each
+export function lanes_bin(lines: []LaneLine) -> BOut {
+  let o = bout_new(1024)
+  bo_str(o, "LNE1")
+  bo_u32(o, len(lines))
+  for i in 0 .. len(lines) {
+    let l = lines[i]
+    bo_u16(o, len(l.seg))
+    bo_str(o, l.seg)
+    bo_u16(o, l.lane)
+    bo_u8(o, l.dir)
+    bo_u8(o, 0)
+    bo_u32(o, len(l.pts) / 3)
+    for k in 0 .. len(l.pts) { bo_f32(o, l.pts[k]) }
+  }
+  return o
+}

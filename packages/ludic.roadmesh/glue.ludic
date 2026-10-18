@@ -1,0 +1,150 @@
+# glue.ludic - the parts' views of the network, filled from the native sidewalk (world.ludic): the lane paint's PaintWorld (each
+# answer made when first asked, as the studio's Maps make them) and the structures' context.
+
+export function paint_world_of(sw: Sw) -> PaintWorld {
+  let net = sw.net
+  let w = new PaintWorld
+  w.forward = net.forward
+  w.src = sw
+  w.edges = new []PEdge
+  w.byKey = net.edgeByKey
+  w.nodeByKey = net.nodeByKey
+  let ne = len(net.edges)
+  for i in 0 .. ne {
+    let e = net.edges[i]
+    let p = new PEdge
+    p.key = e.key
+    p.profile = e.profile
+    if e.prof != null { p.kind = e.prof.kind }
+    p.steps = e.section.steps
+    p.median = e.section.median
+    p.lanesFwd = e.lanesFwd
+    p.lanesBack = e.lanesBack
+    p.level = e.level
+    p.length = e.length
+    p.s = e.s
+    p.line = e.line
+    push(w.edges, p)
+  }
+  w.st = new []PStations
+  w.laid = new []PLaid
+  w.cross = new [][]double
+  w.known = buffer(max(ne, 1))
+  for i in 0 .. ne {
+    push(w.st, null)
+    push(w.laid, null)
+    push(w.cross, null)
+  }
+  w.nodes = new []PNode
+  for i in 0 .. len(net.nodes) {
+    let n = net.nodes[i]
+    let p = new PNode
+    p.key = n.key
+    p.edges = new []int
+    for k in 0 .. len(n.edges) { push(p.edges, n.edges[k].idx) }
+    push(w.nodes, p)
+  }
+  w.junction = new []PJunction
+  w.nknown = buffer(max(len(net.nodes), 1))
+  for i in 0 .. len(net.nodes) { push(w.junction, null) }
+  w.width = sw.w.dims.width
+  return w
+}
+
+export function pw_fill_st(w: PaintWorld, ei: int) -> void {
+  w.known[ei] = int(w.known[ei]) | 1
+  let es = sw_stations_i(w.src, ei)
+  if es == null { return }
+  let n = len(es.st)
+  let S = new PStations
+  S.st = doubles(n * 7)
+  S.off = doubles(n * 6)
+  S.n = n
+  for i in 0 .. n {
+    let q = es.st[i]
+    S.st[i * 7] = q.px
+    S.st[i * 7 + 1] = q.pz
+    S.st[i * 7 + 2] = q.nx
+    S.st[i * 7 + 3] = q.nz
+    S.st[i * 7 + 4] = q.k
+    S.st[i * 7 + 5] = q.s
+    S.st[i * 7 + 6] = q.y
+    let r = es.right[i]
+    let l = es.left[i]
+    S.off[i * 6] = r.median
+    S.off[i * 6 + 1] = r.lanes
+    S.off[i * 6 + 2] = r.road
+    S.off[i * 6 + 3] = l.median
+    S.off[i * 6 + 4] = l.lanes
+    S.off[i * 6 + 5] = l.road
+  }
+  w.st[ei] = S
+}
+export function pw_fill_laid(w: PaintWorld, ei: int) -> void {
+  w.known[ei] = int(w.known[ei]) | 2
+  let l = w.src.w.laid[ei]
+  if l == null { return }
+  let L = new PLaid
+  L.line = l.line
+  L.s = l.s
+  L.scale = l.scale
+  L.len = l.len
+  w.laid[ei] = L
+}
+export function pw_fill_cross(w: PaintWorld, ei: int) -> void {
+  w.known[ei] = int(w.known[ei]) | 4
+  let cs = w.src.w.cs[ei]
+  var n = 0
+  if cs != null { n = len(cs) }
+  let out = doubles(n)
+  for i in 0 .. n { out[i] = cs[i].s }
+  w.cross[ei] = out
+}
+export function pw_fill_junction(w: PaintWorld, ni: int) -> void {
+  w.nknown[ni] = 1
+  let j = sw_junction(w.src, w.src.net.nodes[ni])
+  let J = new PJunction
+  J.kind = j.kind
+  J.ends = new []PEnd
+  for k in 0 .. len(j.ends) {
+    let e = j.ends[k]
+    let E = new PEnd
+    E.edge = e.edge.idx
+    E.out = e.out
+    E.ux = e.ux
+    E.uz = e.uz
+    push(J.ends, E)
+  }
+  w.junction[ni] = J
+}
+
+# the structures' context (roadStructures.ts StructureContext) over the native sidewalk
+export function st_ctx_world(sw: Sw, opt: Val, matStructure: string, skirt: double, only: Dict, problems: []string) -> StCtx {
+  let c = st_ctx_new()
+  c.opt = opt
+  c.lift = sw.lift
+  c.skirt = skirt
+  c.matStructure = matStructure
+  c.sw = sw
+  c.problems = problems
+  c.onlyD = only
+  let net = sw.net
+  for i in 0 .. len(net.edges) {
+    let e = net.edges[i]
+    let s = new StEdge
+    s.key = e.key
+    s.idx = i
+    s.level = e.level
+    s.from = e.from
+    s.to = e.to
+    s.length = e.length
+    s.curbH = e.section.curbH
+    s.walkMat = e.section.mat.walk
+    s.roadMat = e.section.mat.road
+    s.outerLeft = e.outerLeft
+    s.outerRight = e.outerRight
+    push(c.edges, s)
+  }
+  for i in 0 .. len(net.structures) { push(c.rows, net.structures[i]) }
+  return c
+}

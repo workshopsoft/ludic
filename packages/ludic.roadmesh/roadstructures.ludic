@@ -1,0 +1,1022 @@
+# roadstructures.ludic - game-editor packages/core/src/world/roadStructures.ts: what a road at the `structure` or `tunnel` level
+# stands on or runs in. A deck: its slab's sides and underside, parapets, abutments, piers (never on or beside a road below) and
+# the spans between its supports; a tunnel: its tube, the outside where the ground does not cover it, the light zones, and at each
+# portal the headwall, its pillars and the wing walls along the approach's cut. The same triangles, meta and problems as the
+# TypeScript.
+#
+# The context (`StCtx`) holds the network's edges as the bake reads them, the structure rows, the sidewalk world (sidewalk.ludic:
+# the strips and lvlAt), and the two things another part answers: the ground's height at a point (the studio's sampler: the job
+# carries the heights) and the network's edgesNear (network.ts). For now both answer what the studio answered, in the order it was
+# asked (`ground`, `near`), each checked against the point asked.
+
+export property StEdge {
+  key: string = ""
+  idx: int = 0
+  level: string = ""
+  from: string = ""
+  to: string = ""
+  length: double = 0.0
+  curbH: double = 0.0
+  walkMat: string = ""
+  roadMat: string = ""
+  outerLeft: double = 0.0
+  outerRight: double = 0.0
+}
+# a row of meta (StructureMeta's lists): its numbers and words by name, the names whose value is undefined
+export property MRow {
+  nk: []string = null
+  nv: []double = null
+  sk: []string = null
+  sv: []string = null
+  uk: []string = null
+}
+export property StMeta {
+  piers: []MRow = null
+  abutments: []MRow = null
+  spans: []MRow = null
+  decks: []MRow = null
+  tubes: []MRow = null
+  portals: []MRow = null
+  lightZones: []MRow = null
+}
+export property StCtx {
+  opt: Val = null          # StructureOptions
+  lift: double = 0.02
+  skirt: double = 0.0
+  matStructure: string = ""
+  only: []string = null    # null: every edge
+  onlyD: Dict = null       # the assembled port's `only` (null: every edge)
+  edges: []StEdge = null
+  rows: []Val = null       # the structure rows
+  sw: Sw = null
+  problems: []string = null
+  meta: StMeta = null
+  ground: []double = null  # the ground's answers: x, z, y (NaN: none), in the order asked
+  gAt: int = 0
+  near: []Val = null       # edgesNear's answers: {p, r, keys}, in the order asked
+  nAt: int = 0
+  bad: string = ""         # the first call the answers did not expect
+}
+
+export function st_ctx_new() -> StCtx {
+  let c = new StCtx
+  c.edges = new []StEdge
+  c.rows = new []Val
+  c.problems = new []string
+  c.meta = new StMeta
+  c.meta.piers = new []MRow
+  c.meta.abutments = new []MRow
+  c.meta.spans = new []MRow
+  c.meta.decks = new []MRow
+  c.meta.tubes = new []MRow
+  c.meta.portals = new []MRow
+  c.meta.lightZones = new []MRow
+  return c
+}
+function mrow() -> MRow {
+  let m = new MRow
+  m.nk = new []string
+  m.nv = new []double
+  m.sk = new []string
+  m.sv = new []string
+  m.uk = new []string
+  return m
+}
+function mn(m: MRow, k: string, v: double) -> void {
+  push(m.nk, k)
+  push(m.nv, v)
+}
+function ms(m: MRow, k: string, v: string) -> void {
+  push(m.sk, k)
+  push(m.sv, v)
+}
+function st_edge(c: StCtx, key: string) -> StEdge {
+  let i = Dict.get_or(c.sw.net.edgeByKey, key, -1)
+  if i < 0 { return null }
+  return c.edges[i]
+}
+function r3(v: double) -> double { return jround(v * 1000.0) / 1000.0 }
+function opt_n(c: StCtx, k: string, d: double) -> double { return v_getn(c.opt, k, d) }
+
+# the ground at a point (NaN: none)
+function ground_at(c: StCtx, x: double, z: double) -> double { return ground_y(c.sw.w.ground, x, z) }
+# the edges near a point (network.ts edgesNear): their keys
+function st_edges_near(c: StCtx, x: double, z: double, r: double) -> []string {
+  let out = new []string
+  let ix = edges_near(c.sw.w, x, z, r)
+  for i in 0 .. len(ix) { push(out, c.sw.net.edges[ix[i]].key) }
+  return out
+}
+
+# ---- the structure rows ---------------------------------------------------------------------------------------------------
+
+property SRow {
+  key: string = ""
+  from: double = 0.0
+  to: double = 0.0
+  kind: string = ""
+  type: string = ""
+  deckW: double = 0.0
+  deckT: double = 1.0
+  parapet: double = 1.0
+  spacing: double = 0.0
+  gapA: []double = null
+  gapZ: []double = null
+}
+function field(c: StCtx, k: string) -> string {
+  let f = v_get(c.opt, "fields")
+  let s = v_get(f, k)
+  if s != null and s.tag == T_STR { return s.str }
+  return k
+}
+# typeof v === 'number' && isFinite(v) ? v : d
+function num_or(v: Val, d: double) -> double {
+  if v == null or v.tag != T_NUM or v.num - v.num != 0.0 { return d }
+  return v.num
+}
+# String(v ?? d)
+function str_or(v: Val, d: string) -> string {
+  if v_undef(v) { return d }
+  if v.tag == T_STR { return v.str }
+  if v.tag == T_NUM { return js_num(v.num) }
+  if v.tag == T_TRUE { return "true" }
+  if v.tag == T_FALSE { return "false" }
+  return d
+}
+function rows_of(c: StCtx, e: StEdge) -> []SRow {
+  let out = new []SRow
+  let fseg = field(c, "seg")
+  for i in 0 .. len(c.rows) {
+    let r = c.rows[i]
+    let seg = v_get(r, fseg)
+    if seg == null or seg.tag != T_STR or seg.str != e.key { continue }
+    let s = new SRow
+    s.key = v_gets(r, "key", "")
+    s.gapA = new []double
+    s.gapZ = new []double
+    let g = v_get(r, field(c, "gaps"))
+    if g != null and g.tag == T_ARR {
+      for k in 0 .. len(g.arr) {
+        let gv = g.arr[k]
+        let a = num_or(v_get(gv, "from"), 0.0)
+        let z = num_or(v_get(gv, "to"), 0.0)
+        if z > a {
+          push(s.gapA, a)
+          push(s.gapZ, z)
+        }
+      }
+    }
+    let to = num_or(v_get(r, field(c, "to")), 0.0)
+    s.from = num_or(v_get(r, field(c, "from")), 0.0)
+    s.to = dsel(to > 0.0, to, e.length)
+    s.kind = str_or(v_get(r, field(c, "kind")), dsel_s(e.level == "tunnel", "tunnel", "bridge"))
+    s.type = str_or(v_get(r, field(c, "type")), "beam")
+    s.deckW = num_or(v_get(r, field(c, "deck_w")), 0.0)
+    s.deckT = num_or(v_get(r, field(c, "deck_t")), 1.0)
+    s.parapet = num_or(v_get(r, field(c, "parapet")), 1.0)
+    s.spacing = num_or(v_get(r, field(c, "pier_spacing")), 0.0)
+    # sorted by from, stable
+    var at = len(out)
+    while at > 0 and out[at - 1].from > s.from { at -= 1 }
+    push(out, s)
+    var k = len(out) - 1
+    while k > at {
+      out[k] = out[k - 1]
+      k -= 1
+    }
+    out[at] = s
+  }
+  return out
+}
+
+# ---- drawing --------------------------------------------------------------------------------------------------------------
+
+# a vertical quad between two plan points, from y0 to y1 at each, facing `out`
+function wall(b: Builder, m: string, px: double, pz: double, qx: double, qz: double, yp0: double, yp1: double, yq0: double, yq1: double, ox: double, oy: double, oz: double) -> void {
+  if hypot2(qx - px, qz - pz) < 0.00001 { return }
+  b_quad(b, m, px, yp0, pz, qx, yq0, qz, qx, yq1, qz, px, yp1, pz, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, UP_VEC, ox, oy, oz)
+}
+function wallp(b: Builder, m: string, p: []double, q: []double, yp0: double, yp1: double, yq0: double, yq1: double, ox: double, oy: double, oz: double) -> void { wall(b, m, p[0], p[1], q[0], q[1], yp0, yp1, yq0, yq1, ox, oy, oz) }
+# a box standing on a plan rectangle from `foot` up to `tops` (one a corner), its four sides
+function box_sides(b: Builder, m: string, corners: []double, foot: double, tops: []double) -> void {
+  let n = len(corners) / 2
+  var sx: double = 0.0
+  var sz: double = 0.0
+  for k in 0 .. n { sx = sx + corners[k * 2] }
+  for k in 0 .. n { sz = sz + corners[k * 2 + 1] }
+  let cx = sx / double(n)
+  let cz = sz / double(n)
+  for k in 0 .. n {
+    let k2 = (k + 1) % n
+    let px = corners[k * 2]
+    let pz = corners[k * 2 + 1]
+    let qx = corners[k2 * 2]
+    let qz = corners[k2 * 2 + 1]
+    let mx = (px + qx) / 2.0
+    let mz = (pz + qz) / 2.0
+    wall(b, m, px, pz, qx, qz, foot, tops[k], foot, tops[k2], mx - cx, 0.0, mz - cz)
+  }
+}
+function same4(v: double) -> []double {
+  let t = doubles(4)
+  for k in 0 .. 4 { t[k] = v }
+  return t
+}
+
+# the station frame interpolated at fine distance s (frameAt)
+property Frame {
+  i: int = 0
+  t: double = 0.0
+  y: double = 0.0
+  ux: double = 0.0
+  uz: double = 0.0
+}
+function frame_at(es: EdgeStations, s: double) -> Frame {
+  let st = es.st
+  var i = 0
+  while i + 2 < len(st) and st[i + 1].s < s { i += 1 }
+  let f = new Frame
+  f.i = i
+  f.t = jmax(0.0, jmin(1.0, (s - st[i].s) / jmax(st[i + 1].s - st[i].s, EPS9)))
+  let dx = st[i + 1].px - st[i].px
+  let dz = st[i + 1].pz - st[i].pz
+  var l = hypot2(dx, dz)
+  if falsy(l) { l = 1.0 }
+  f.y = st[i].y + (st[i + 1].y - st[i].y) * f.t
+  f.ux = dx / l
+  f.uz = dz / l
+  return f
+}
+function frame_pt(es: EdgeStations, f: Frame, d: double) -> []double {
+  let p = es_at(es, f.i, d)
+  let q = es_at(es, f.i + 1, d)
+  return d_pair(p[0] + (q[0] - p[0]) * f.t, p[1] + (q[1] - p[1]) * f.t)
+}
+# the lowest ground under points (NaN: none under any)
+function lowest_ground(c: StCtx, pts: []double) -> double {
+  var lo = NAN
+  for k in 0 .. len(pts) / 2 {
+    let g = ground_at(c, pts[k * 2], pts[k * 2 + 1])
+    if g == g {
+      if lo != lo { lo = g } else { lo = jmin(lo, g) }
+    }
+  }
+  return lo
+}
+# points spread over a plan rectangle (its corners, edge midpoints and centre)
+function spread(corners: []double) -> []double {
+  let n = len(corners) / 2
+  let out = pts_copy(corners)
+  for k in 0 .. n {
+    let k2 = (k + 1) % n
+    pts_push(out, (corners[k * 2] + corners[k2 * 2]) / 2.0, (corners[k * 2 + 1] + corners[k2 * 2 + 1]) / 2.0)
+  }
+  var sx: double = 0.0
+  var sz: double = 0.0
+  for k in 0 .. n { sx = sx + corners[k * 2] }
+  for k in 0 .. n { sz = sz + corners[k * 2 + 1] }
+  pts_push(out, sx / double(n), sz / double(n))
+  return out
+}
+# how close a plan rectangle comes to the carriageway or sidewalk of any ground road below `under` (other than `self`)
+function clearance(c: StCtx, self: string, corners: []double, under: double) -> double {
+  var best = INF
+  let pts = spread(corners)
+  let near = new []string
+  for k in 0 .. len(pts) / 2 {
+    let ks = st_edges_near(c, pts[k * 2], pts[k * 2 + 1], 60.0)
+    for i in 0 .. len(ks) {
+      var seen = false
+      for j in 0 .. len(near) { if near[j] == ks[i] { seen = true } }
+      if not seen { push(near, ks[i]) }
+    }
+  }
+  for ni in 0 .. len(near) {
+    let e = st_edge(c, near[ni])
+    if e == null or e.key == self or e.level != "ground" { continue }
+    let l = c.sw.w.laid[e.idx]
+    if l == null { continue }
+    let half = jmax(e.outerLeft, e.outerRight)
+    let ln = l.line
+    for i in 0 .. len(ln) / 2 - 1 {
+      let ax = ln[i * 2]
+      let az = ln[i * 2 + 1]
+      let dx = ln[i * 2 + 2] - ax
+      let dz = ln[i * 2 + 3] - az
+      let l2 = dx * dx + dz * dz
+      for k in 0 .. len(pts) / 2 {
+        let px = pts[k * 2]
+        let pz = pts[k * 2 + 1]
+        var t: double = 0.0
+        if not (l2 < EPS12) { t = jmax(0.0, jmin(1.0, ((px - ax) * dx + (pz - az) * dz) / l2)) }
+        let d = hypot2(px - ax - dx * t, pz - az - dz * t) - half
+        let y = l.y[i] + (l.y[i + 1] - l.y[i]) * t
+        if d < best and y < under - 1.0 and d < 20.0 { best = d }
+      }
+    }
+  }
+  return best
+}
+
+# the outer edge of a side at station i: its offset (d) and the surface's height there (y)
+property Outer {
+  d: double = 0.0
+  y: double = 0.0
+}
+function outer(c: StCtx, e: StEdge, es: EdgeStations, i: int, side: int, extra: double) -> Outer {
+  let o = side_off(es, i, side)
+  let r = new Outer
+  r.d = jmax(o.walk, extra)
+  var lv: double = 0.0
+  if e.curbH > 0.001 { lv = sw_lvl_at(c.sw, e.idx, i, side, o.walk) }
+  r.y = es.st[i].y + c.lift + lv
+  return r
+}
+
+# a < b as JavaScript compares strings (by code unit; the keys are ASCII, so by byte)
+
+export function build_structures(b: Builder, c: StCtx) -> void {
+  let es0 = new []StEdge
+  for i in 0 .. len(c.edges) { if c.edges[i].level == "structure" or c.edges[i].level == "tunnel" { push(es0, c.edges[i]) } }
+  # by key (every key differs)
+  for i in 1 .. len(es0) {
+    let x = es0[i]
+    var j = i
+    while j > 0 and str_lt(x.key, es0[j - 1].key) {
+      es0[j] = es0[j - 1]
+      j -= 1
+    }
+    es0[j] = x
+  }
+  for q in 0 .. len(es0) {
+    let e = es0[q]
+    if c.onlyD != null and not Dict.has(c.onlyD, e.key) { continue }
+    let es = sw_stations(c.sw, e.key)
+    if es == null { continue }
+    b.level = isel(e.level == "structure", 1, 2)
+    let tun = e.level == "tunnel"
+    for k in 0 .. 2 {
+      let end = dsel_s(k == 0, e.from, e.to)
+      let node = node_of(c.sw.net, end)
+      if node != null and len(node.edges) >= 3 { push(c.problems, `node {end}: a junction on a {dsel_s(tun, "tunnel", "deck")} ({e.key}) has no {dsel_s(tun, "tube", "slab")} under its surface`) }
+    }
+    if tun { tunnel(b, c, e, es) } else { deck(b, c, e, es) }
+  }
+}
+
+property Foot {
+  s: double = 0.0
+  sIn: double = 0.0
+  corners: []double = null
+  top: double = 0.0
+  g: double = 0.0
+}
+
+function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
+  let m = c.matStructure
+  b_slot(b, m, "structure")
+  let st = es.st
+  let all_rows = rows_of(c, e)
+  var row: SRow = null
+  for i in 0 .. len(all_rows) { if row == null and all_rows[i].kind != "tunnel" { row = all_rows[i] } }
+  if row == null {
+    row = new SRow
+    row.to = e.length
+    row.kind = "bridge"
+    row.type = "beam"
+    row.gapA = new []double
+    row.gapZ = new []double
+  }
+  let scale = es.grade.scale
+  let tP = opt_n(c, "parapetThick", 0.3)
+  let deckT = row.deckT
+  let H = row.parapet
+  let half = row.deckW / 2.0
+  let n = len(st)
+  let R = new []Outer
+  let L = new []Outer
+  for i in 0 .. n { push(R, outer(c, e, es, i, 1, half)) }
+  for i in 0 .. n { push(L, outer(c, e, es, i, -1, half)) }
+  let walkMat = dsel_s(e.curbH > 0.001, e.walkMat, e.roadMat)
+  for pass in 0 .. 2 {
+    let side = isel(pass == 0, 1, -1)
+    let sd = double(side)
+    var E = L
+    if side == 1 { E = R }
+    let pts = new []double
+    let inner = new []double
+    for i in 0 .. n {
+      let p = es_at(es, i, sd * E[i].d)
+      pts_push(pts, p[0], p[1])
+    }
+    for i in 0 .. n {
+      let p = es_at(es, i, sd * (E[i].d - tP))
+      pts_push(inner, p[0], p[1])
+    }
+    if half > 0.0 {
+      let back = new []double
+      let ey = new []double
+      for i in 0 .. n {
+        let p = es_at(es, i, sd * side_off(es, i, side).walk)
+        pts_push(back, p[0], p[1])
+        push(ey, E[i].y)
+      }
+      b_strip(b, walkMat, back, ey, pts, ey, true)
+    }
+    for i in 0 .. n - 1 {
+      let ox = sd * st[i].nx
+      let oz = sd * st[i].nz
+      let ui = st[i].y + c.lift - deckT
+      let ui1 = st[i + 1].y + c.lift - deckT
+      wall(b, m, pts[i * 2], pts[i * 2 + 1], pts[i * 2 + 2], pts[i * 2 + 3], ui, E[i].y + H, ui1, E[i + 1].y + H, ox, 0.0, oz)
+      if H > 0.0 {
+        wall(b, m, inner[i * 2], inner[i * 2 + 1], inner[i * 2 + 2], inner[i * 2 + 3], E[i].y, E[i].y + H, E[i + 1].y, E[i + 1].y + H, -ox, 0.0, -oz)
+        b_quad(b, m, inner[i * 2], E[i].y + H, inner[i * 2 + 1], inner[i * 2 + 2], E[i + 1].y + H, inner[i * 2 + 3], pts[i * 2 + 2], E[i + 1].y + H, pts[i * 2 + 3], pts[i * 2], E[i].y + H, pts[i * 2 + 1], 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, UP_YES, 0.0, 0.0, 0.0)
+      }
+      let a = es_at(es, i, -L[i].d)
+      let d = es_at(es, i + 1, -L[i + 1].d)
+      let q = es_at(es, i + 1, R[i + 1].d)
+      let p = es_at(es, i, R[i].d)
+      b_quad(b, m, a[0], ui, a[1], d[0], ui1, d[1], q[0], ui1, q[1], p[0], ui, p[1], 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, UP_VEC, 0.0, -1.0, 0.0)
+    }
+  }
+  for pass in 0 .. 2 {
+    let k = isel(pass == 0, 0, n - 1)
+    let nb = st[isel(k == 0, 1, n - 2)]
+    let ax = st[k].px - nb.px
+    let az = st[k].pz - nb.pz
+    let a = es_at(es, k, -L[k].d)
+    let p = es_at(es, k, R[k].d)
+    let uk = st[k].y + c.lift - deckT
+    let top = st[k].y + c.lift - 0.001
+    wallp(b, m, a, p, uk, top, uk, top, ax, 0.0, az)
+    if H > 0.0 {
+      for sp in 0 .. 2 {
+        var E = L
+        var sd: double = -1.0
+        if sp == 0 {
+          E = R
+          sd = 1.0
+        }
+        let o1 = es_at(es, k, sd * E[k].d)
+        let o2 = es_at(es, k, sd * (E[k].d - tP))
+        wallp(b, m, o1, o2, E[k].y, E[k].y + H, E[k].y, E[k].y + H, ax, 0.0, az)
+      }
+    }
+  }
+  var maxL = -INF
+  var maxR = -INF
+  for i in 0 .. n { maxL = jmax(maxL, L[i].d) }
+  for i in 0 .. n { maxR = jmax(maxR, R[i].d) }
+  let dm = mrow()
+  ms(dm, "edge", e.key)
+  ms(dm, "structure", row.key)
+  mn(dm, "s0", r3(st[0].s / scale))
+  mn(dm, "s1", r3(st[n - 1].s / scale))
+  mn(dm, "parapet", H)
+  mn(dm, "deckT", deckT)
+  mn(dm, "left", r3(maxL))
+  mn(dm, "right", r3(maxR))
+  push(c.meta.decks, dm)
+
+  # ---- supports ----
+  let tA = opt_n(c, "abutmentThick", 1.5)
+  let depth = opt_n(c, "footDepth", 0.5)
+  let supports = new []double
+  let free = new []bool
+  for fi in 0 .. 2 {
+    let node = dsel_s(fi == 0, e.from, e.to)
+    let nd = node_of(c.sw.net, node)
+    var deg = 0
+    if nd != null { deg = len(nd.edges) }
+    if deg > 1 {
+      push(free, false)
+    } else {
+      let f = end_foot(c, es, isel(fi == 0, 0, n - 1), tA, L, R, deckT)
+      push(free, f.g != f.g or f.top - f.g >= 0.3)
+    }
+  }
+  for pass in 0 .. 2 {
+    let k = isel(pass == 0, 0, n - 1)
+    let node = dsel_s(pass == 0, e.from, e.to)
+    let nd = node_of(c.sw.net, node)
+    var onDeck = false
+    if nd != null {
+      for x in 0 .. len(nd.edges) {
+        let xe = st_edge(c, nd.edges[x].key)
+        if nd.edges[x].key != e.key and xe != null and xe.level == "structure" { onDeck = true }
+      }
+    }
+    if onDeck or free[pass] { continue }
+    let f = end_foot(c, es, k, tA, L, R, deckT)
+    if f.g != f.g {
+      push(c.problems, `edge {e.key}: no ground under its abutment at {dsel_s(k == 0, "its start", "its end")}`)
+      continue
+    }
+    let foot = jmin(f.g, f.top) - depth
+    box_sides(b, m, f.corners, foot, same4(f.top))
+    let mid = frame_at(es, (f.s + f.sIn) / 2.0)
+    let pc = frame_pt(es, mid, 0.0)
+    let am = mrow()
+    ms(am, "edge", e.key)
+    ms(am, "structure", row.key)
+    mn(am, "s", r3(f.s / scale))
+    mn(am, "x", r3(pc[0]))
+    mn(am, "z", r3(pc[1]))
+    mn(am, "top", r3(f.top))
+    mn(am, "foot", r3(foot))
+    mn(am, "groundMin", r3(f.g))
+    mn(am, "w", r3(L[k].d + R[k].d))
+    push(c.meta.abutments, am)
+    push(supports, f.s / scale)
+  }
+  let tPier = opt_n(c, "pierThick", 1.5)
+  let share = opt_n(c, "pierShare", 0.6)
+  let clearNeed = opt_n(c, "pierClear", 1.2)
+  let s0 = st[0].s / scale
+  let s1 = st[n - 1].s / scale
+  let at = new []double
+  if free[0] { push(at, s0 + tPier / 2.0) }
+  if row.spacing > 0.0 {
+    var s = row.from + row.spacing
+    while s < jmin(row.to, s1) - row.spacing * 0.25 {
+      push(at, s)
+      s += row.spacing
+    }
+  }
+  if free[1] { push(at, s1 - tPier / 2.0) }
+  let lo = dsel(free[0], s0, s0 + tA + tPier)
+  let hi = dsel(free[1], s1, s1 - tA - tPier)
+  for ai in 0 .. len(at) {
+    let s = at[ai]
+    if s < lo - EPS6 or s > hi + EPS6 { continue }
+    if not (free[0] and s == s0 + tPier / 2.0) and free[0] and s < s0 + tPier * 1.5 { continue }
+    if not (free[1] and s == s1 - tPier / 2.0) and free[1] and s > s1 - tPier * 1.5 { continue }
+    var gapped = false
+    for g in 0 .. len(row.gapA) { if s - row.from >= row.gapA[g] - tPier / 2.0 and s - row.from <= row.gapZ[g] + tPier / 2.0 { gapped = true } }
+    if gapped { continue }
+    let sf = s * scale
+    let f = frame_at(es, sf)
+    let i = f.i
+    let deckW = R[i].d + L[i].d
+    let w = jmax(2.0, deckW * share)
+    let centre = (R[i].d - L[i].d) / 2.0
+    let fa = frame_at(es, sf - tPier / 2.0)
+    let fb = frame_at(es, sf + tPier / 2.0)
+    let corners = new []double
+    pts_append(corners, frame_pt(es, fa, centre - w / 2.0))
+    pts_append(corners, frame_pt(es, fb, centre - w / 2.0))
+    pts_append(corners, frame_pt(es, fb, centre + w / 2.0))
+    pts_append(corners, frame_pt(es, fa, centre + w / 2.0))
+    let top = jmin(fa.y, fb.y) + c.lift - deckT
+    let under = lowest_ground(c, spread(corners))
+    if under == under and top - under < 0.3 { continue }
+    let clear = clearance(c, e.key, corners, top)
+    if clear < clearNeed {
+      push(c.problems, `edge {e.key}: no pier at {to_fixed(s, 1)} m: it would stand {to_fixed(clear, 2)} m from a road below ({js_num(clearNeed)} m needed)`)
+      continue
+    }
+    let g = lowest_ground(c, spread(corners))
+    if g != g {
+      push(c.problems, `edge {e.key}: no ground under the pier at {to_fixed(s, 1)} m`)
+      continue
+    }
+    let foot = jmin(g, top) - depth
+    let ua = fa.y + c.lift - deckT
+    let ub = fb.y + c.lift - deckT
+    let tops = doubles(4)
+    tops[0] = ua
+    tops[1] = ub
+    tops[2] = ub
+    tops[3] = ua
+    box_sides(b, m, corners, foot, tops)
+    let pc = frame_pt(es, f, centre)
+    let pm = mrow()
+    ms(pm, "edge", e.key)
+    ms(pm, "structure", row.key)
+    mn(pm, "s", r3(s))
+    mn(pm, "x", r3(pc[0]))
+    mn(pm, "z", r3(pc[1]))
+    mn(pm, "yaw", r3(jatan2(f.ux, f.uz)))
+    mn(pm, "top", r3(f.y + c.lift - deckT))
+    mn(pm, "foot", r3(foot))
+    mn(pm, "groundMin", r3(g))
+    mn(pm, "clear", dsel(clear - clear == 0.0, r3(clear), INF))
+    mn(pm, "w", r3(w))
+    mn(pm, "t", tPier)
+    push(c.meta.piers, pm)
+    push(supports, s)
+  }
+  let sLast = st[n - 1].s
+  var sf = st[0].s
+  while sf <= sLast + EPS6 {
+    let f = frame_at(es, jmin(sf, sLast))
+    let p = frame_pt(es, f, 0.0)
+    let g = ground_at(c, p[0], p[1])
+    if g == g and f.y + c.lift - deckT <= g + 0.3 { push(supports, jmin(sf, sLast) / scale) }
+    sf += 1.0
+  }
+  # numeric sort, stable
+  for i in 1 .. len(supports) {
+    let x = supports[i]
+    var j = i
+    while j > 0 and supports[j - 1] - x > 0.0 {
+      supports[j] = supports[j - 1]
+      j -= 1
+    }
+    supports[j] = x
+  }
+  let spans = v_get(c.opt, "spans")
+  var limit = v_get(spans, dsel_s(row.kind == "viaduct", "viaduct", row.type))
+  if v_undef(limit) { limit = v_get(spans, row.type) }
+  let hasLimit = not v_undef(limit)
+  let ns = len(supports)
+  let all = new []double
+  if not (ns > 0 and supports[0] <= s0 + tA + 0.01) { push(all, s0) }
+  for i in 0 .. ns { push(all, supports[i]) }
+  if not (ns > 0 and supports[ns - 1] >= s1 - tA - 0.01) { push(all, s1) }
+  for k in 0 .. len(all) - 1 {
+    let ln = all[k + 1] - all[k]
+    if ln <= 1.5 { continue }
+    let sm = mrow()
+    ms(sm, "edge", e.key)
+    ms(sm, "structure", row.key)
+    mn(sm, "from", r3(all[k]))
+    mn(sm, "to", r3(all[k + 1]))
+    mn(sm, "len", r3(ln))
+    if hasLimit { mn(sm, "max", limit.num) } else { push(sm.uk, "max") }
+    push(c.meta.spans, sm)
+    if hasLimit and ln > limit.num + EPS6 { push(c.problems, `edge {e.key}: a {row.type} span of {to_fixed(ln, 1)} m (from {to_fixed(all[k], 1)} m), over its {js_num(limit.num)} m`) }
+  }
+}
+
+# the footprint an abutment at end k would stand on, its top and the lowest ground under it (endFoot)
+function end_foot(c: StCtx, es: EdgeStations, k: int, tA: double, L: []Outer, R: []Outer, deckT: double) -> Foot {
+  let f = new Foot
+  f.s = es.st[k].s
+  f.sIn = dsel(k == 0, f.s + tA, f.s - tA)
+  let f0 = frame_at(es, jmin(f.s, f.sIn))
+  let f1 = frame_at(es, jmax(f.s, f.sIn))
+  f.corners = new []double
+  pts_append(f.corners, frame_pt(es, f0, -L[k].d))
+  pts_append(f.corners, frame_pt(es, f1, -L[k].d))
+  pts_append(f.corners, frame_pt(es, f1, R[k].d))
+  pts_append(f.corners, frame_pt(es, f0, R[k].d))
+  f.top = jmin(f0.y, f1.y) + c.lift - deckT
+  f.g = lowest_ground(c, spread(f.corners))
+  return f
+}
+
+property ZPt {
+  rx: double = 0.0
+  rz: double = 0.0
+  lx: double = 0.0
+  lz: double = 0.0
+  px: double = 0.0
+  pz: double = 0.0
+  y: double = 0.0
+}
+function zone_at(c: StCtx, es: EdgeStations, R: []Outer, L: []Outer, s: double) -> ZPt {
+  let f = frame_at(es, s)
+  let rd = R[f.i].d + (R[f.i + 1].d - R[f.i].d) * f.t
+  let ld = L[f.i].d + (L[f.i + 1].d - L[f.i].d) * f.t
+  let z = new ZPt
+  let r = frame_pt(es, f, rd)
+  let l = frame_pt(es, f, -ld)
+  let p = frame_pt(es, f, 0.0)
+  z.rx = r[0]
+  z.rz = r[1]
+  z.lx = l[0]
+  z.lz = l[1]
+  z.px = p[0]
+  z.pz = p[1]
+  z.y = f.y + c.lift
+  return z
+}
+function y_r(c: StCtx, es: EdgeStations, i: int) -> double { return es.st[i].y + c.lift }
+function max3(a: double, b: double, c: double) -> double { return jmax(jmax(a, b), c) }
+function min3(a: double, b: double, c: double) -> double { return jmin(jmin(a, b), c) }
+
+# the box over stations k0 .. k1 (zones' fit): null when none fits (unless `force`)
+function zone_fit(c: StCtx, es: EdgeStations, n: int, R: []Outer, L: []Outer, roof: double, wallT: double, feather: double, M: double, sPerM: double, k0: int, k1: int, e0: double, e1: double, force: bool) -> MRow {
+  let st = es.st
+  let ax = st[k0].px
+  let az = st[k0].pz
+  let zx = st[k1].px
+  let zz = st[k1].pz
+  let len = hypot2(zx - ax, zz - az)
+  if len < EPS6 { return null }
+  let sn = (zx - ax) / len
+  let cs = (zz - az) / len
+  let ox = (ax + zx) / 2.0
+  let oz = (az + zz) / 2.0
+  let za = sn * (ax - ox) + cs * (az - oz)
+  let zb = sn * (zx - ox) + cs * (zz - oz)
+  let g = (y_r(c, es, k1) - y_r(c, es, k0)) / (zb - za)
+  let yc = y_r(c, es, k0) - g * za
+  var hiMax = -INF
+  var hiMin = INF
+  var loMax = -INF
+  var loMin = INF
+  var relMax = -INF
+  var relMin = INF
+  let s0 = jmax(st[0].s, st[k0].s - e0 * sPerM)
+  let s1 = jmin(st[n - 1].s, st[k1].s + e1 * sPerM)
+  let steps = jmax(2.0, Math.ceil((s1 - s0) / sPerM))
+  var k: double = 0.0
+  while k <= steps {
+    let q = zone_at(c, es, R, L, s0 + ((s1 - s0) * k) / steps)
+    let xr = cs * (q.rx - ox) - sn * (q.rz - oz)
+    let xl = cs * (q.lx - ox) - sn * (q.lz - oz)
+    hiMax = max3(hiMax, xr, xl)
+    hiMin = jmin(hiMin, jmax(xr, xl))
+    loMin = min3(loMin, xr, xl)
+    loMax = jmax(loMax, jmin(xr, xl))
+    let rel = q.y - (yc + g * (sn * (q.px - ox) + cs * (q.pz - oz)))
+    relMax = jmax(relMax, rel)
+    relMin = jmin(relMin, rel)
+    k += 1.0
+  }
+  let b0 = hiMax + M
+  let b1 = hiMin + wallT - M
+  let a0 = loMax - wallT + M
+  let a1 = loMin - M
+  let t0 = relMax + roof + M
+  let t1 = relMin + roof + wallT - M
+  if not force and (b0 > b1 or a0 > a1 or t0 > t1) { return null }
+  let xB = (b0 + b1) / 2.0
+  let xA = (a0 + a1) / 2.0
+  let top = (t0 + t1) / 2.0
+  let bot = relMin - 1.0
+  let zl = za - e0
+  let zh = zb + e1
+  let xm = (xA + xB) / 2.0
+  let zm = (zl + zh) / 2.0
+  let z = mrow()
+  mn(z, "x", r3(ox + cs * xm + sn * zm))
+  mn(z, "y", r3(yc + g * zm + (top + bot) / 2.0))
+  mn(z, "z", r3(oz - sn * xm + cs * zm))
+  mn(z, "yaw", r3(jatan2(sn, cs)))
+  mn(z, "w", r3(xB - xA))
+  mn(z, "h", r3(top - bot))
+  mn(z, "d", r3(zh - zl))
+  mn(z, "feather", feather)
+  mn(z, "side", 0.0)
+  mn(z, "grade", jround(g * 1000000.0) / 1000000.0)
+  return z
+}
+function zones(c: StCtx, es: EdgeStations, n: int, R: []Outer, L: []Outer, roof: double, wallT: double, feather: double) -> void {
+  let st = es.st
+  let M = jmin(0.05, wallT / 4.0)
+  var plan: double = 0.0
+  for i in 0 .. n - 1 { plan += hypot2(st[i + 1].px - st[i].px, st[i + 1].pz - st[i].pz) }
+  var sPerM: double = 1.0
+  if plan > EPS9 { sPerM = (st[n - 1].s - st[0].s) / plan }
+  var k0 = 0
+  while k0 < n - 1 {
+    let e0 = dsel(k0 == 0, 0.5, feather + 0.5)
+    var k1 = k0 + 1
+    var best = zone_fit(c, es, n, R, L, roof, wallT, feather, M, sPerM, k0, k1, e0, dsel(k1 == n - 1, 0.5, feather + 0.5), false)
+    if best == null { best = zone_fit(c, es, n, R, L, roof, wallT, feather, M, sPerM, k0, k1, e0, dsel(k1 == n - 1, 0.5, feather + 0.5), true) }
+    while k1 + 1 <= n - 1 and hypot2(st[k1 + 1].px - st[k0].px, st[k1 + 1].pz - st[k0].pz) <= 60.0 {
+      let z = zone_fit(c, es, n, R, L, roof, wallT, feather, M, sPerM, k0, k1 + 1, e0, dsel(k1 + 1 == n - 1, 0.5, feather + 0.5), false)
+      if z == null { break }
+      best = z
+      k1 += 1
+    }
+    if best != null { push(c.meta.lightZones, best) }
+    k0 = k1
+  }
+}
+
+property RunPt {
+  px: double = 0.0
+  pz: double = 0.0
+  base: double = 0.0
+  top: double = 0.0
+  i: int = 0
+  cut: double = 0.0
+  walkTop: double = 0.0
+}
+
+function tunnel(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
+  let m = c.matStructure
+  b_slot(b, m, "structure")
+  let st = es.st
+  let n = len(st)
+  let T = v_get(c.opt, "tunnel")
+  let roof = v_getn(T, "roof", 6.5)
+  let wallT = v_getn(T, "wall", 0.5)
+  let cover = v_getn(T, "cover", 1.5)
+  let zone = v_getn(T, "portalZone", 45.0)
+  let feather = v_getn(T, "feather", 2.0)
+  let R = new []Outer
+  let L = new []Outer
+  for i in 0 .. n { push(R, outer(c, e, es, i, 1, 0.0)) }
+  for i in 0 .. n { push(L, outer(c, e, es, i, -1, 0.0)) }
+  for pass in 0 .. 2 {
+    var E = L
+    var sd: double = -1.0
+    if pass == 0 {
+      E = R
+      sd = 1.0
+    }
+    for i in 0 .. n - 1 {
+      let p = es_at(es, i, sd * E[i].d)
+      let q = es_at(es, i + 1, sd * E[i + 1].d)
+      wallp(b, m, p, q, E[i].y - c.skirt, y_r(c, es, i) + roof, E[i + 1].y - c.skirt, y_r(c, es, i + 1) + roof, -sd * st[i].nx, 0.0, -sd * st[i].nz)
+    }
+  }
+  for i in 0 .. n - 1 {
+    let a = es_at(es, i, -L[i].d)
+    let d = es_at(es, i + 1, -L[i + 1].d)
+    let q = es_at(es, i + 1, R[i + 1].d)
+    let p = es_at(es, i, R[i].d)
+    let y0 = y_r(c, es, i) + roof
+    let y1 = y_r(c, es, i + 1) + roof
+    b_quad(b, m, a[0], y0, a[1], d[0], y1, d[1], q[0], y1, q[1], p[0], y0, p[1], 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, UP_VEC, 0.0, -1.0, 0.0)
+  }
+  let exposed = new []bool
+  for i in 0 .. n {
+    let o1 = tube_out(es, R, L, i, 1, wallT)
+    let o2 = tube_out(es, R, L, i, -1, wallT)
+    let g1 = ground_at(c, o1[0], o1[1])
+    let g2 = ground_at(c, o2[0], o2[1])
+    let g3 = ground_at(c, st[i].px, st[i].pz)
+    let lim = y_r(c, es, i) + roof + wallT + c.skirt
+    push(exposed, g1 != g1 or g1 < lim or g2 != g2 or g2 < lim or g3 != g3 or g3 < lim)
+  }
+  for i in 0 .. n - 1 {
+    if not exposed[i] and not exposed[i + 1] { continue }
+    let ti = y_r(c, es, i) + roof + wallT
+    let ti1 = y_r(c, es, i + 1) + roof + wallT
+    for pass in 0 .. 2 {
+      let side = isel(pass == 0, 1, -1)
+      let sd = double(side)
+      var E = L
+      if side == 1 { E = R }
+      let p = tube_out(es, R, L, i, side, wallT)
+      let q = tube_out(es, R, L, i + 1, side, wallT)
+      let fp = tube_foot(c, es, E, i, p)
+      let fq = tube_foot(c, es, E, i + 1, q)
+      wallp(b, m, p, q, fp, ti, fq, ti1, sd * st[i].nx, 0.0, sd * st[i].nz)
+    }
+    let a = tube_out(es, R, L, i, -1, wallT)
+    let d = tube_out(es, R, L, i + 1, -1, wallT)
+    let q = tube_out(es, R, L, i + 1, 1, wallT)
+    let p = tube_out(es, R, L, i, 1, wallT)
+    b_quad(b, m, a[0], ti, a[1], d[0], ti1, d[1], q[0], ti1, q[1], p[0], ti, p[1], 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, UP_VEC, 0.0, 1.0, 0.0)
+  }
+  let tm = mrow()
+  ms(tm, "edge", e.key)
+  mn(tm, "s0", r3(st[0].s / es.grade.scale))
+  mn(tm, "s1", r3(st[n - 1].s / es.grade.scale))
+  mn(tm, "roof", roof)
+  mn(tm, "wall", wallT)
+  push(c.meta.tubes, tm)
+  zones(c, es, n, R, L, roof, wallT, feather)
+  for pass in 0 .. 2 {
+    let k = isel(pass == 0, 0, n - 1)
+    let node = dsel_s(pass == 0, e.from, e.to)
+    let nd = node_of(c.sw.net, node)
+    let next = new []StEdge
+    if nd != null {
+      for x in 0 .. len(nd.edges) {
+        let xe = st_edge(c, nd.edges[x].key)
+        if xe != null and xe.key != e.key { push(next, xe) }
+      }
+    }
+    var inTunnel = false
+    for x in 0 .. len(next) { if next[x].level == "tunnel" { inTunnel = true } }
+    if inTunnel { continue }
+    let nb = st[isel(k == 0, 1, n - 2)]
+    let dx = st[k].px - nb.px
+    let dz = st[k].pz - nb.pz
+    var l = hypot2(dx, dz)
+    if falsy(l) { l = 1.0 }
+    let awx = dx / l
+    let awz = dz / l
+    let left = es_at(es, k, -(L[k].d + wallT + 1.0))
+    let right = es_at(es, k, R[k].d + wallT + 1.0)
+    let y0 = y_r(c, es, k) + roof
+    let y1 = y0 + cover
+    wallp(b, m, left, right, y0, y1, y0, y1, awx, 0.0, awz)
+    b_quad(b, m, left[0], y1, left[1], right[0], y1, right[1], right[0] - awx * wallT, y1, right[1] - awz * wallT, left[0] - awx * wallT, y1, left[1] - awz * wallT, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, UP_YES, 0.0, 0.0, 0.0)
+    for sp in 0 .. 2 {
+      var E = L
+      var sd: double = -1.0
+      if sp == 0 {
+        E = R
+        sd = 1.0
+      }
+      let p = es_at(es, k, sd * E[k].d)
+      let q = es_at(es, k, sd * (E[k].d + wallT + 1.0))
+      wallp(b, m, p, q, E[k].y - c.skirt, y1, E[k].y - c.skirt, y1, awx, 0.0, awz)
+    }
+    let pm = mrow()
+    ms(pm, "edge", e.key)
+    ms(pm, "node", node)
+    mn(pm, "x", r3(st[k].px))
+    mn(pm, "z", r3(st[k].pz))
+    mn(pm, "y", r3(y_r(c, es, k)))
+    push(c.meta.portals, pm)
+    for x in 0 .. len(next) {
+      let a = next[x]
+      let ae = sw_stations(c.sw, a.key)
+      if ae == null { continue }
+      let fromHere = a.from == node
+      let an = len(ae.st)
+      let sEnd = dsel(fromHere, ae.st[0].s, ae.st[an - 1].s)
+      let order = new []int
+      for i in 0 .. an { if dabs(ae.st[i].s - sEnd) <= zone * ae.grade.scale { push(order, i) } }
+      if not fromHere {
+        let rev = new []int
+        var j = len(order) - 1
+        while j >= 0 {
+          push(rev, order[j])
+          j -= 1
+        }
+        for j2 in 0 .. len(order) { order[j2] = rev[j2] }
+      }
+      if len(order) < 2 { continue }
+      for pass2 in 0 .. 2 {
+        let side = isel(pass2 == 0, 1, -1)
+        let sd = double(side)
+        let raised = a.curbH > 0.001
+        let run = new []RunPt
+        for oi in 0 .. len(order) {
+          let i = order[oi]
+          let wk = side_off(ae, i, side).walk
+          let p = es_at(ae, i, sd * (wk + 0.001))
+          let yr = ae.st[i].y + c.lift
+          var lvl: double = 0.0
+          if raised { lvl = sw_lvl_at(c.sw, a.idx, i, side, wk) }
+          let walkTop = yr + lvl
+          let g = ground_at(c, p[0], p[1])
+          var cut: double = 0.0
+          if g == g { cut = g - walkTop }
+          let base = walkTop - c.skirt
+          if cut <= 0.05 {
+            if len(run) > 0 {
+              let prev = run[len(run) - 1]
+              let t = jmax(0.0, jmin(1.0, prev.cut / jmax(prev.cut - cut, EPS9)))
+              let r = new RunPt
+              r.px = prev.px + (p[0] - prev.px) * t
+              r.pz = prev.pz + (p[1] - prev.pz) * t
+              let wt = prev.walkTop + (walkTop - prev.walkTop) * t
+              r.base = wt - c.skirt
+              r.top = wt
+              r.i = i
+              r.cut = 0.0
+              r.walkTop = wt
+              push(run, r)
+            }
+            break
+          }
+          let r = new RunPt
+          r.px = p[0]
+          r.pz = p[1]
+          r.base = base
+          r.top = jmin(yr + roof + cover, g + 0.3)
+          r.i = i
+          r.cut = cut
+          r.walkTop = walkTop
+          push(run, r)
+        }
+        for j in 0 .. len(run) - 1 {
+          let i = run[j].i
+          var p0 = run[j]
+          var p1 = run[j + 1]
+          if not fromHere {
+            p0 = run[j + 1]
+            p1 = run[j]
+          }
+          wall(b, m, p0.px, p0.pz, p1.px, p1.pz, p0.base, p0.top, p1.base, p1.top, -sd * ae.st[i].nx, 0.0, -sd * ae.st[i].nz)
+        }
+      }
+    }
+  }
+}
+# a tube's outer face at station i
+function tube_out(es: EdgeStations, R: []Outer, L: []Outer, i: int, side: int, wallT: double) -> []double {
+  var d = L[i].d
+  if side == 1 { d = R[i].d }
+  return es_at(es, i, double(side) * (d + wallT))
+}
+function tube_foot(c: StCtx, es: EdgeStations, E: []Outer, k: int, r: []double) -> double {
+  var g = ground_at(c, r[0], r[1])
+  if g != g { g = y_r(c, es, k) }
+  return jmin(E[k].y - c.skirt, g - c.skirt)
+}
+
+# x.toFixed(d) for d of 1 or 2 (as to_fixed2)
+export function to_fixed(x: double, d: int) -> string {
+  if d == 2 { return to_fixed2(x) }
+  let neg = x < 0.0
+  let w = long(jround(dabs(x) * 10.0))
+  let ip = w / long(10)
+  let fp = w - ip * long(10)
+  if neg and w != long(0) { return `-{ip}.{fp}` }
+  return `{ip}.{fp}`
+}
+

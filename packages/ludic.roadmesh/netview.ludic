@@ -1,0 +1,204 @@
+# netview.ludic - the part of the studio's network (network.ts NetEdge, NetNode, Network.around), of its grading (roadGrade.ts
+# EdgeGrade) and of its station lines (stationLine.ts pointAt, trim) that the junctions read. Written by the junction part
+# (junction, corners, junctionSurface) as the smallest view it needs: the network part adds its own fields to these records
+# (the field names are the TypeScript's) instead of declaring them again, and stationline.ludic takes over jn_point_at and
+# jn_trim (the same arithmetic) when it is ported.
+
+# an edge as the junctions see it. `idx` is its place in the network's edges (the order Network.edges iterates), which the
+# native code uses where the studio keys a Map by edge key
+export property NetEdge {
+  key: string = ""
+  idx: int = 0
+  line: []double = null
+  s: []double = null
+  length: double = 0.0
+  taper: double = 1.0
+  section: Section = null
+  # the profile's name ("" for none) and its row (null when the network has none of that name)
+  profile: string = ""
+  prof: RoadProfile = null
+  # the rest of network.ts NetEdge the bake reads (the assembled port)
+  from: string = ""
+  to: string = ""
+  fromIdx: int = -1
+  toIdx: int = -1
+  level: string = "ground"
+  lanesFwd: double = 0.0
+  lanesBack: double = 0.0
+  laneWidth: double = 0.0
+  left: double = 0.0
+  right: double = 0.0
+  outerLeft: double = 0.0
+  outerRight: double = 0.0
+  missing: bool = false
+}
+
+# an end of an edge at a node, in Network.around's order (by heading)
+export property NetArm {
+  edge: NetEdge = null
+  out: bool = false
+}
+
+export property NetNode {
+  key: string = ""
+  x: double = 0.0
+  z: double = 0.0
+  # junction, roundabout, plaza or deadend ("" for a junction)
+  kind: string = ""
+  # 0 when the node has none
+  radius: double = 0.0
+  # Network.around(node.key)
+  around: []NetArm = null
+  # its place in the network's nodes, and its edges in the order the node lists them (NetNode.edges)
+  idx: int = 0
+  edges: []NetEdge = null
+}
+
+export property Net {
+  edges: []NetEdge = null
+  nodes: []NetNode = null
+  # the assembled port: the def's forward side, the profiles, the structure rows, and the keys' places
+  forward: string = "right"
+  profiles: []RoadProfile = null
+  structures: []Val = null
+  edgeByKey: Dict = null
+  nodeByKey: Dict = null
+}
+
+# roadGrade.ts EdgeGrade: the finely sampled centre line of an edge, the metres along it and the graded height of each sample
+export property EdgeGrade {
+  edge: NetEdge = null
+  line: []double = null
+  s: []double = null
+  y: []double = null
+  len: double = 0.0
+  scale: double = 1.0
+  maxGrade: double = 0.0
+}
+
+# ---- stationLine.ts (pointAt, trim) -----------------------------------------------------------------------------------------
+# the point d metres along a polyline whose distances are s (clamped to its ends): x, z
+export function jn_point_at(line: []double, s: []double, d: double) -> []double {
+  let n = len(line) / 2
+  var i = 0
+  while i + 2 < n and s[i + 1] < d { i += 1 }
+  let l = s[i + 1] - s[i]
+  var t: double = 0.0
+  if not (l < 0.000000001) { t = jmax(0.0, jmin(1.0, (d - s[i]) / l)) }
+  return d_pair(line[i * 2] + (line[i * 2 + 2] - line[i * 2]) * t, line[i * 2 + 1] + (line[i * 2 + 3] - line[i * 2 + 1]) * t)
+}
+
+export property Trimmed {
+  line: []double = null
+  s: []double = null
+}
+
+function jn_trim_push(o: Trimmed, x: double, z: double, d: double) -> void {
+  if d - o.s[len(o.s) - 1] < 0.01 { return }
+  pts_push(o.line, x, z)
+  push(o.s, d)
+}
+function jn_trim_push_at(o: Trimmed, line: []double, s: []double, d: double) -> void {
+  let p = jn_point_at(line, s, d)
+  jn_trim_push(o, p[0], p[1], d)
+}
+
+# the part of a polyline between two distances, with a point at each cut strictly inside
+export function jn_trim(line: []double, s: []double, s0: double, s1: double, cuts: []double) -> Trimmed {
+  let want = new []double
+  for i in 0 .. len(cuts) { if cuts[i] > s0 + 0.01 and cuts[i] < s1 - 0.01 { push(want, cuts[i]) } }
+  # (sorted, stable: insertion)
+  for i in 1 .. len(want) {
+    let v = want[i]
+    var k = i - 1
+    while k >= 0 and want[k] - v > 0.0 {
+      want[k + 1] = want[k]
+      k -= 1
+    }
+    want[k + 1] = v
+  }
+  let o = new Trimmed
+  o.line = jn_point_at(line, s, s0)
+  o.s = new []double
+  push(o.s, s0)
+  var w = 0
+  let n = len(line) / 2
+  for i in 0 .. n {
+    if not (s[i] > s0 + 0.01 and s[i] < s1 - 0.01) { continue }
+    while w < len(want) and want[w] < s[i] - 0.01 {
+      jn_trim_push_at(o, line, s, want[w])
+      w += 1
+    }
+    if w < len(want) and dabs(want[w] - s[i]) <= 0.01 {
+      jn_trim_push_at(o, line, s, want[w])
+      w += 1
+      continue
+    }
+    jn_trim_push(o, line[i * 2], line[i * 2 + 1], s[i])
+  }
+  while w < len(want) {
+    jn_trim_push_at(o, line, s, want[w])
+    w += 1
+  }
+  if len(o.s) > 1 and s1 - o.s[len(o.s) - 1] < 0.01 {
+    o.line = pts_slice(o.line, 0, len(o.s) - 1)
+    let s2 = new []double
+    for i in 0 .. len(o.s) - 1 { push(s2, o.s[i]) }
+    o.s = s2
+  }
+  let e = jn_point_at(line, s, s1)
+  pts_push(o.line, e[0], e[1])
+  push(o.s, s1)
+  return o
+}
+
+# ---- small things the junction files share ---------------------------------------------------------------------------------
+export function is_finite(x: double) -> bool { return x == x and x != INF and x != -INF }
+
+# a JavaScript number as `${x}` writes it (the numbers the junctions' notes name: metres, never in exponent form)
+export function js_str(x: double) -> string {
+  let s = string(x)
+  let n = len(s)
+  if n > 2 and s[n - 1] == 48 and s[n - 2] == 46 { return s[0..n - 2] }
+  return s
+}
+
+# Number.prototype.toFixed(f) for 0 <= f <= 3 and |x| < 1e15: the integer n nearest x * 10^f (the larger on a tie), exactly
+export function js_fixed(x: double, f: int) -> string {
+  if x != x { return "NaN" }
+  var neg = false
+  var v = x
+  if v < 0.0 {
+    neg = true
+    v = -v
+  }
+  var p10: long = 1
+  for i in 0 .. f { p10 = p10 * long(10) }
+  let bits = double_bits(v)
+  let ex = int((bits >> 52) & long(2047))
+  var m = bits & ((long(1) << 52) - long(1))
+  var e = 0
+  if ex == 0 { e = -1074 } else {
+    m = m | (long(1) << 52)
+    e = ex - 1075
+  }
+  let P = m * p10
+  var q: long = 0
+  if e >= 0 { q = P << e } else {
+    let sh = -e
+    if sh <= 62 {
+      q = P >> sh
+      let rem = P - (q << sh)
+      let half = long(1) << (sh - 1)
+      if rem >= half { q = q + long(1) }
+    }
+  }
+  var digits = string(q)
+  if f > 0 {
+    while len(digits) <= f { digits = `0{digits}` }
+    let k = len(digits) - f
+    digits = `{digits[0..k]}.{digits[k..len(digits)]}`
+  }
+  if neg { return `-{digits}` }
+  return digits
+}

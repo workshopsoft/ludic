@@ -1,0 +1,260 @@
+# profiles.ludic - game-editor packages/core/src/world/profiles.ts: a street's cross-section as data (ludic.roads' RoadProfiles).
+# Every number is metres across the street; a side is the left or right of the heading from the edge's from node to its to node.
+#
+#   centre ... carriageway | parking | gutter | curb | planting | sidewalk | (back of the sidewalk: where a block starts)
+
+export property Mats {
+  road: string = "road"
+  curb: string = "curb"
+  walk: string = "walk"
+  plant: string = "plant"
+  park: string = "park"
+  tram: string = "tram"
+}
+
+export property RoadProfile {
+  key: string = ""
+  title: string = ""
+  lanesFwd: double = 1.0
+  lanesBack: double = 1.0
+  laneWidth: double = 3.5
+  speed: double = 13.9
+  priority: double = 1.0
+  kind: string = "street"
+  carriage: double = 0.0
+  median: double = 0.0
+  shoulder: double = 0.0
+  curbH: double = 0.15
+  curbW: double = 0.15
+  gutter: double = 0.3
+  walkL: double = 0.0
+  walkR: double = 0.0
+  plantL: double = 0.0
+  plantR: double = 0.0
+  parkL: double = 0.0
+  parkR: double = 0.0
+  tram: bool = false
+  tramW: double = 2.8
+  steps: double = 0.0
+  maxGrade: double = 0.08
+  mat: Mats = null
+}
+
+export property SectionSide {
+  carriage: double = 0.0
+  shoulder: double = 0.0
+  park: double = 0.0
+  plant: double = 0.0
+  walk: double = 0.0
+}
+
+export property Section {
+  left: SectionSide = null
+  right: SectionSide = null
+  median: double = 0.0
+  gutter: double = 0.0
+  curbW: double = 0.0
+  curbH: double = 0.0
+  tram: double = 0.0
+  steps: double = 0.0
+  hasMaxGrade: bool = false
+  maxGrade: double = 0.0
+  mat: Mats = null
+  # the profile that made it ("" for none: the lanes and the network's sidewalk)
+  profile: string = ""
+}
+
+export property Offsets {
+  median: double = 0.0
+  lanes: double = 0.0
+  road: double = 0.0
+  park: double = 0.0
+  gutter: double = 0.0
+  curb: double = 0.0
+  plant: double = 0.0
+  walk: double = 0.0
+}
+
+export function mats_copy(m: Mats) -> Mats {
+  let o = new Mats
+  o.road = m.road
+  o.curb = m.curb
+  o.walk = m.walk
+  o.plant = m.plant
+  o.park = m.park
+  o.tram = m.tram
+  return o
+}
+
+# a walkway: no lanes, walked the whole of (a pedestrian way, stairs, anything with steps)
+export function walkway_of(p: RoadProfile) -> bool {
+  return p != null and p.lanesFwd + p.lanesBack == 0.0 and (p.kind == "pedestrian" or p.kind == "stairs" or p.steps > 0.0)
+}
+
+# ---- a profile from plain row values (ludic.roads' defaults for what is missing) ------------------------------------------
+function plain_n(p: Val, k: string, d: double) -> double {
+  let f = v_get(p, k)
+  if f == null or f.tag != T_NUM { return d }
+  let v = f.num
+  if v != v or v == INF or v == -INF { return d }
+  return v
+}
+function plain_s(p: Val, k: string, d: string) -> string {
+  let f = v_get(p, k)
+  if f == null or f.tag != T_STR or f.str == "" { return d }
+  return f.str
+}
+export function profile_of_plain(key: string, p: Val) -> RoadProfile {
+  let o = new RoadProfile
+  o.key = key
+  o.title = plain_s(p, "title", key)
+  o.lanesFwd = plain_n(p, "lanes_fwd", 1.0)
+  o.lanesBack = plain_n(p, "lanes_back", 1.0)
+  o.laneWidth = plain_n(p, "lane_width", 3.5)
+  o.speed = plain_n(p, "speed", 13.9)
+  o.priority = plain_n(p, "priority", 1.0)
+  o.kind = plain_s(p, "kind", "street")
+  o.carriage = plain_n(p, "carriage", 0.0)
+  o.median = plain_n(p, "median", 0.0)
+  o.shoulder = plain_n(p, "shoulder", 0.0)
+  o.curbH = plain_n(p, "curb_h", 0.15)
+  o.curbW = plain_n(p, "curb_w", 0.15)
+  o.gutter = plain_n(p, "gutter", 0.3)
+  o.walkL = plain_n(p, "walk_l", 0.0)
+  o.walkR = plain_n(p, "walk_r", 0.0)
+  o.plantL = plain_n(p, "plant_l", 0.0)
+  o.plantR = plain_n(p, "plant_r", 0.0)
+  o.parkL = plain_n(p, "park_l", 0.0)
+  o.parkR = plain_n(p, "park_r", 0.0)
+  let t = v_get(p, "tram")
+  o.tram = t != null and (t.tag == T_TRUE or (t.tag == T_STR and t.str == "true"))
+  o.tramW = plain_n(p, "tram_w", 2.8)
+  o.steps = plain_n(p, "steps", 0.0)
+  o.maxGrade = plain_n(p, "max_grade", 0.08)
+  let m = new Mats
+  m.road = plain_s(p, "mat_road", "road")
+  m.curb = plain_s(p, "mat_curb", "curb")
+  m.walk = plain_s(p, "mat_walk", "walk")
+  m.plant = plain_s(p, "mat_plant", "plant")
+  m.park = plain_s(p, "mat_park", "park")
+  m.tram = plain_s(p, "mat_tram", "tram")
+  o.mat = m
+  return o
+}
+
+# a profile as the studio holds it (RoadProfile's own field names), from a job or a fixture; null for none
+export function profile_of_val(v: Val) -> RoadProfile {
+  if v_undef(v) { return null }
+  let o = new RoadProfile
+  o.key = v_gets(v, "key", "")
+  o.title = v_gets(v, "title", "")
+  o.lanesFwd = v_getn(v, "lanesFwd", 0.0)
+  o.lanesBack = v_getn(v, "lanesBack", 0.0)
+  o.laneWidth = v_getn(v, "laneWidth", 0.0)
+  o.speed = v_getn(v, "speed", 0.0)
+  o.priority = v_getn(v, "priority", 0.0)
+  o.kind = v_gets(v, "kind", "")
+  o.carriage = v_getn(v, "carriage", 0.0)
+  o.median = v_getn(v, "median", 0.0)
+  o.shoulder = v_getn(v, "shoulder", 0.0)
+  o.curbH = v_getn(v, "curbH", 0.0)
+  o.curbW = v_getn(v, "curbW", 0.0)
+  o.gutter = v_getn(v, "gutter", 0.0)
+  o.walkL = v_getn(v, "walkL", 0.0)
+  o.walkR = v_getn(v, "walkR", 0.0)
+  o.plantL = v_getn(v, "plantL", 0.0)
+  o.plantR = v_getn(v, "plantR", 0.0)
+  o.parkL = v_getn(v, "parkL", 0.0)
+  o.parkR = v_getn(v, "parkR", 0.0)
+  o.tram = v_bool(v_get(v, "tram"))
+  o.tramW = v_getn(v, "tramW", 0.0)
+  o.steps = v_getn(v, "steps", 0.0)
+  o.maxGrade = v_getn(v, "maxGrade", 0.0)
+  o.mat = mats_of_val(v_get(v, "mat"))
+  return o
+}
+export function mats_of_val(v: Val) -> Mats {
+  let m = new Mats
+  if v_undef(v) { return m }
+  m.road = v_gets(v, "road", "road")
+  m.curb = v_gets(v, "curb", "curb")
+  m.walk = v_gets(v, "walk", "walk")
+  m.plant = v_gets(v, "plant", "plant")
+  m.park = v_gets(v, "park", "park")
+  m.tram = v_gets(v, "tram", "tram")
+  return m
+}
+
+# ---- the section of one edge -----------------------------------------------------------------------------------------------
+function side_of(carriage: double, shoulder: double, park: double, plant: double, walk: double) -> SectionSide {
+  let s = new SectionSide
+  s.carriage = carriage
+  s.shoulder = shoulder
+  s.park = park
+  s.plant = plant
+  s.walk = walk
+  return s
+}
+
+# forward: "right" or "left"; profile null for none
+export function section_of(lanesFwd: double, lanesBack: double, laneWidth: double, profile: RoadProfile, forward: string, sidewalk: double) -> Section {
+  let fwd = lanesFwd * laneWidth
+  let back = lanesBack * laneWidth
+  var r = dsel(forward == "right", fwd, back)
+  var l = dsel(forward == "right", back, fwd)
+  if lanesFwd + lanesBack == 0.0 {
+    var c: double = 3.0
+    if profile != null { c = profile.carriage }
+    r = c / 2.0
+    l = r
+  }
+  let s = new Section
+  if profile == null {
+    let curbW: double = 0.15
+    s.left = side_of(l, 0.0, 0.0, 0.0, jmax(0.0, sidewalk - curbW))
+    s.right = side_of(r, 0.0, 0.0, 0.0, jmax(0.0, sidewalk - curbW))
+    s.median = 0.0
+    s.gutter = 0.0
+    s.curbW = curbW
+    s.curbH = 0.15
+    s.tram = 0.0
+    s.steps = 0.0
+    s.mat = new Mats
+    return s
+  }
+  s.left = side_of(l, profile.shoulder, profile.parkL, profile.plantL, profile.walkL)
+  s.right = side_of(r, profile.shoulder, profile.parkR, profile.plantR, profile.walkR)
+  s.median = profile.median
+  s.gutter = profile.gutter
+  s.curbW = profile.curbW
+  s.curbH = profile.curbH
+  s.tram = 0.0
+  if profile.tram {
+    s.tram = profile.tramW
+    if s.tram == 0.0 or s.tram != s.tram { s.tram = 2.6 }
+  }
+  s.steps = profile.steps
+  s.hasMaxGrade = true
+  s.maxGrade = profile.maxGrade
+  s.mat = mats_copy(profile.mat)
+  if walkway_of(profile) and profile.mat.road == "road" { s.mat.road = profile.mat.walk }
+  s.profile = profile.key
+  return s
+}
+
+# where each strip of one side starts and ends at a taper factor k
+export function offsets_of(side: SectionSide, gutter: double, curbW: double, median0: double, k: double) -> Offsets {
+  let o = new Offsets
+  o.median = median0 / 2.0
+  o.lanes = o.median + side.carriage * k
+  o.road = o.lanes + side.shoulder * k
+  o.park = o.road + side.park * k
+  o.gutter = o.park + gutter
+  o.curb = o.gutter + curbW
+  o.plant = o.curb + side.plant
+  o.walk = o.plant + side.walk
+  return o
+}
+
+# the taper factor at t (0 at the from node, 1 at the to node) of an edge whose width ends at `taper` times its start
+export function taper_at(taper: double, t: double) -> double { return 1.0 + (taper - 1.0) * clamp01(t) }

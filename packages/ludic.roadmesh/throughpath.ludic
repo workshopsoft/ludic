@@ -1,0 +1,247 @@
+# throughpath.ludic - game-editor packages/core/src/world/throughPath.ts: a road that runs on through a node (two arms of a
+# junction that continue each other) and its centre line from the end of one arm's strip, through the node, to the end of the
+# other's: what a barrier median and the lane paint follow across the junction's surface.
+
+export property ThroughPair {
+  a: int = 0
+  c: int = 0
+  branches: []int = null
+}
+
+export property PathLine {
+  pts: []double = null     # x, z
+  s: []double = null
+  nrm: []double = null     # x, z: unit right, lengthened by the mitre at a bend
+  len: double = 0.0
+  sNode: double = 0.0
+  signA: double = 1.0
+  signC: double = 1.0
+}
+
+function tp_rad(deg: double) -> double { return (deg * 3.141592653589793) / 180.0 }
+# Math.cos of the default angles as V8 has them (the bake passes no options); other angles through libm
+function cos_deg(deg: double) -> double {
+  if deg == 15.0 { return 0.9659258262890683 }
+  if deg == 30.0 { return 0.8660254037844387 }
+  if deg == 60.0 { return 0.5000000000000001 }
+  return Math.cos(tp_rad(deg))
+}
+
+# the pair of a junction's arms that run on through it, both accepted by ok(oc, end index), or null (throughPair; options in degrees)
+export function through_pair<C>(j: PJunction, ok: fn(C, int) -> bool, oc: C, opposite: double, branch: double, turn: double) -> ThroughPair {
+  let ends = j.ends
+  let n = len(ends)
+  if n < 2 { return null }
+  if n == 2 {
+    if not ok(oc, 0) or not ok(oc, 1) { return null }
+    if ends[0].ux * ends[1].ux + ends[0].uz * ends[1].uz <= -cos_deg(turn) {
+      let p = new ThroughPair
+      p.a = 0
+      p.c = 1
+      p.branches = new []int
+      return p
+    }
+    return null
+  }
+  var best: ThroughPair = null
+  var bestDot = -cos_deg(opposite)
+  for a in 0 .. n {
+    for c in a + 1 .. n {
+      let d = ends[a].ux * ends[c].ux + ends[a].uz * ends[c].uz
+      if d > bestDot or not ok(oc, a) or not ok(oc, c) { continue }
+      let near = cos_deg(branch)
+      var all = true
+      let others = new []int
+      for k in 0 .. n {
+        if k == a or k == c { continue }
+        push(others, k)
+      }
+      for q in 0 .. len(others) {
+        let k = others[q]
+        if not (ends[k].ux * ends[a].ux + ends[k].uz * ends[a].uz > near or ends[k].ux * ends[c].ux + ends[k].uz * ends[c].uz > near) {
+          all = false
+          break
+        }
+      }
+      if not all { continue }
+      best = new ThroughPair
+      best.a = a
+      best.c = c
+      best.branches = others
+      bestDot = d
+    }
+  }
+  return best
+}
+
+# armToNode's core: the strip end's point, then the laid line's points between the strip's end (sEnd) and the node
+export function arm_points(px: double, pz: double, sEnd: double, out: bool, s: []double, line: []double) -> []double {
+  let pts = new []double
+  pts_push(pts, px, pz)
+  if out {
+    var k = len(s) - 1
+    while k >= 0 {
+      if s[k] < sEnd - 0.000001 { pts_push(pts, line[k * 2], line[k * 2 + 1]) }
+      k -= 1
+    }
+  } else {
+    for k in 0 .. len(s) { if s[k] > sEnd + 0.000001 { pts_push(pts, line[k * 2], line[k * 2 + 1]) } }
+  }
+  return pts
+}
+# armToNode: the part of an arm's fine centre line between the end of its strip and the node (null without a strip)
+export function arm_to_node(w: PaintWorld, e: PEnd) -> []double {
+  let l = w_laid(w, e.edge)
+  let es = w_st(w, e.edge)
+  if l == null or es == null { return null }
+  let i = isel(e.out, 0, es.n - 1)
+  return arm_points(st_px(es, i), st_pz(es, i), st_s(es, i), e.out, l.s, l.line)
+}
+
+function seg_n(pts: []double, k: int, out: []double) -> void {
+  let dx = pts[(k + 1) * 2] - pts[k * 2]
+  let dz = pts[(k + 1) * 2 + 1] - pts[k * 2 + 1]
+  var l = hypot2(dx, dz)
+  if l == 0.0 or l != l { l = 1.0 }
+  out[0] = -dz / l
+  out[1] = dx / l
+}
+
+# throughPath's core from the two arms (armToNode's answers): densified to step metres, mitred normals
+export function through_path_arms(a: []double, c: []double, step: double, outA: bool, outC: bool) -> PathLine {
+  let raw = pts_copy(a)
+  let nodeAt = len(raw) / 2 - 1
+  var k = len(c) / 2 - 2
+  while k >= 0 {
+    pts_push(raw, c[k * 2], c[k * 2 + 1])
+    k -= 1
+  }
+  let pts = new []double
+  pts_push(pts, raw[0], raw[1])
+  var sNode: double = 0.0
+  let s = new []double
+  push(s, ZERO_D)
+  let nr = len(raw) / 2
+  for q in 1 .. nr {
+    let px = raw[(q - 1) * 2]
+    let pz = raw[(q - 1) * 2 + 1]
+    let qx = raw[q * 2]
+    let qz = raw[q * 2 + 1]
+    let d = hypot2(qx - px, qz - pz)
+    if d < 0.000001 {
+      if q == nodeAt { sNode = s[len(s) - 1] }
+      continue
+    }
+    let n = int(jmax(1.0, Math.ceil(d / step)))
+    let nd = double(n)
+    for m in 1 .. n + 1 {
+      let md = double(m)
+      pts_push(pts, px + ((qx - px) * md) / nd, pz + ((qz - pz) * md) / nd)
+      push(s, s[len(s) - 1] + d / nd)
+    }
+    if q == nodeAt { sNode = s[len(s) - 1] }
+  }
+  let np = len(pts) / 2
+  if np < 2 { return null }
+  let nrm = doubles(np * 2)
+  let p = doubles(2)
+  let qn = doubles(2)
+  for i in 0 .. np {
+    if i == 0 {
+      seg_n(pts, 0, p)
+      nrm[0] = p[0]
+      nrm[1] = p[1]
+      continue
+    }
+    if i == np - 1 {
+      seg_n(pts, i - 1, p)
+      nrm[i * 2] = p[0]
+      nrm[i * 2 + 1] = p[1]
+      continue
+    }
+    seg_n(pts, i - 1, p)
+    seg_n(pts, i, qn)
+    let mx = p[0] + qn[0]
+    let mz = p[1] + qn[1]
+    let ml = hypot2(mx, mz)
+    if ml < 0.000001 {
+      nrm[i * 2] = p[0]
+      nrm[i * 2 + 1] = p[1]
+      continue
+    }
+    let ux = mx / ml
+    let uz = mz / ml
+    let k2: double = 1.0 / jmax(0.5, ux * p[0] + uz * p[1])
+    nrm[i * 2] = ux * k2
+    nrm[i * 2 + 1] = uz * k2
+  }
+  let out = new PathLine
+  out.pts = pts
+  out.s = s
+  out.nrm = nrm
+  out.len = s[len(s) - 1]
+  out.sNode = sNode
+  out.signA = dsel(outA, -1.0, 1.0)
+  out.signC = dsel(outC, 1.0, -1.0)
+  return out
+}
+
+# throughPath: the centre line from arm A's strip end through the node to arm C's (null without both strips)
+export function through_path(w: PaintWorld, A: PEnd, C: PEnd, step: double) -> PathLine {
+  let a = arm_to_node(w, A)
+  let c = arm_to_node(w, C)
+  if a == null or c == null { return null }
+  return through_path_arms(a, c, step, A.out, C.out)
+}
+
+# pathPoint: the point d metres right of a path at t metres along it (x, z into out)
+export function path_point_to(p: PathLine, t: double, d: double, out: []double) -> void {
+  var k = 0
+  let np = len(p.pts) / 2
+  while k + 2 < np and p.s[k + 1] < t { k += 1 }
+  let f = clamp01((t - p.s[k]) / jmax(p.s[k + 1] - p.s[k], 0.000000001))
+  let ax = p.pts[k * 2] + p.nrm[k * 2] * d
+  let az = p.pts[k * 2 + 1] + p.nrm[k * 2 + 1] * d
+  let bx = p.pts[(k + 1) * 2] + p.nrm[(k + 1) * 2] * d
+  let bz = p.pts[(k + 1) * 2 + 1] + p.nrm[(k + 1) * 2 + 1] * d
+  out[0] = ax + (bx - ax) * f
+  out[1] = az + (bz - az) * f
+}
+export function path_point(p: PathLine, t: double, d: double) -> []double {
+  let out = doubles(2)
+  path_point_to(p, t, d, out)
+  return out
+}
+
+# pathCoords: metres along a path and metres to its right of a plan point (nearest segment): t, d
+export function path_coords(p: PathLine, qx: double, qz: double) -> []double {
+  var bt: double = 0.0
+  var bd: double = 0.0
+  var bdist = INF
+  let np = len(p.pts) / 2
+  var k = 0
+  while k + 1 < np {
+    let ax = p.pts[k * 2]
+    let az = p.pts[k * 2 + 1]
+    let dx = p.pts[(k + 1) * 2] - ax
+    let dz = p.pts[(k + 1) * 2 + 1] - az
+    let l2 = dx * dx + dz * dz
+    if l2 < 0.000000000001 {
+      k += 1
+      continue
+    }
+    let f = clamp01(((qx - ax) * dx + (qz - az) * dz) / l2)
+    let cx = ax + dx * f
+    let cz = az + dz * f
+    let dist = hypot2(qx - cx, qz - cz)
+    if dist < bdist {
+      let l = Math.sqrt(l2)
+      let side = ((qx - ax) * -dz + (qz - az) * dx) / l
+      bt = p.s[k] + f * (p.s[k + 1] - p.s[k])
+      bd = side
+      bdist = dist
+    }
+    k += 1
+  }
+  return d_pair(bt, bd)
+}

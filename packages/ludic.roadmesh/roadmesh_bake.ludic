@@ -1,0 +1,37 @@
+# roadmesh_bake.ludic - the per-chunk road bake as a program the studio runs (game-editor mcp roadNative.ts):
+#
+#   roadmesh_bake <job.bin> <out dir> <answer.json>
+#
+# The job is one tagged value after "RNJB" (i32 1112166994) and version 1 (bake.ludic reads it); the files go under <out dir> and
+# the answer (what roads_bake_chunks reports, the files written) to <answer.json>. Exits 1 when the job cannot be read.
+program RoadmeshBake {
+  friend module roadmesh_bake
+  import "index.ludic"
+
+  entry () {
+    if arg_count() < 4 {
+      print("usage: roadmesh_bake <job.bin> <out dir> <answer.json>")
+      exit(2)
+      return
+    }
+    let t0 = Time.now_us()
+    let j = read_val_file(arg(1), 1112166994)
+    let tr = (Time.now_us() - t0) / long(1000)
+    if j == null {
+      print(`roadmesh_bake: cannot read the job {arg(1)}`)
+      exit(1)
+      return
+    }
+    let b = new Bake
+    b.job = j
+    b.dir = arg(2)
+    Fs.mkdir(b.dir)
+    run_bake(b)
+    if arg_count() > 4 { print(`roadmesh_bake: read {tr} ms;{b.times}`) }
+    if not Fs.write_bytes(arg(3), b.answer.b, b.answer.n) {
+      print(`roadmesh_bake: cannot write {arg(3)}`)
+      exit(1)
+      return
+    }
+  }
+}

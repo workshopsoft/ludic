@@ -1,0 +1,60 @@
+# sidewalk_test.ludic - sidewalk.ludic (its drawing helpers) against the studio's sidewalk.ts calls (fix/<scene>/sidewalk.fix). A Sidewalk method's record
+# carries the world it read (edges, strips, nodes) and the other parts' answers (stubs), and is run on a world made from it.
+
+function check_pts_list(c: Check, what: string, got: [][]double, w: Val) -> void {
+  if got == null or v_undef(w) {
+    if not (got == null and v_undef(w)) { check_fail(c, `{what}: one is undefined`) }
+    return
+  }
+  check_int(c, `{what}.length`, len(got), v_len(w))
+  if len(got) != v_len(w) { return }
+  for k in 0 .. len(got) { check_nums(c, `{what}[{k}]`, got[k], v_item(w, k)) }
+}
+
+export function test_sidewalk(recs: []Rec) -> int {
+  let c = check_new("sidewalk")
+  for q in 0 .. len(recs) {
+    let r = recs[q]
+    let f = r.fn
+    let w = r.res
+    check_rec(c, f)
+    if f == "deadCap" {
+      let n = rarg(r, 0)
+      let e = rarg(r, 1)
+      let en = v_nums(v_get(e, "n"))
+      let eu = v_nums(v_get(e, "u"))
+      var ends: []double = null
+      if not v_undef(rarg(r, 4)) { ends = v_pts(rarg(r, 4)) }
+      check_nums(c, "pts", dead_cap(v_getn(n, "x", 0.0), v_getn(n, "z", 0.0), en[0], en[1], eu[0], eu[1], arg_n(r, 2), arg_n(r, 3), ends), w)
+    } else if f == "discVertices" {
+      let n = rarg(r, 0)
+      check_nums(c, "pts", disc_vertices(v_getn(n, "x", 0.0), v_getn(n, "z", 0.0), arg_n(r, 1)), w)
+    } else if f == "bulbArc" {
+      let n = rarg(r, 0)
+      let u = arg_pt(r, 1)
+      check_nums(c, "pts", bulb_arc(v_getn(n, "x", 0.0), v_getn(n, "z", 0.0), u[0], u[1], arg_n(r, 2), arg_n(r, 3), arg_n(r, 4)), w)
+    } else if f == "railPoints" {
+      check_nums(c, "pts", rail_points(arg_pt(r, 0), arg_n(r, 1)), w)
+    } else if f == "densifyLine" {
+      check_nums(c, "pts", densify_line(arg_pt(r, 0), arg_n(r, 1)), w)
+    } else if f == "thinRing" {
+      let t = thin_ring(arg_pt(r, 0), v_nums(rarg(r, 1)), arg_n(r, 2), arg_n(r, 3))
+      check_nums(c, "pts", t[0], v_get(w, "pts"))
+      check_nums(c, "ys", t[1], v_get(w, "ys"))
+    } else if f == "bulbRails" {
+      let n = rarg(r, 0)
+      let u = arg_pt(r, 1)
+      let ev = rarg(r, 3)
+      let ends = new [][]double
+      for k in 0 .. v_len(ev) { push(ends, v_pts(v_item(ev, k))) }
+      check_pts_list(c, "rails", bulb_rails(v_getn(n, "x", 0.0), v_getn(n, "z", 0.0), u[0], u[1], arg_n(r, 2), ends, v_nums(rarg(r, 4))), w)
+    } else if f == "stations" or f == "junction" or f == "lvlAt" or f == "rampAt" or f == "bulb" {
+      # the Sidewalk's methods run on the native world now (world.ludic): the chunk bake's bytes check them
+      continue
+    } else {
+      check_fail(c, "no such function in the port")
+    }
+  }
+  return check_report(c)
+}
+
