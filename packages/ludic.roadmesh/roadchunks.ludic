@@ -324,9 +324,10 @@ function floor_div_i(a: int, b: int) -> int {
 }
 
 # lodCells: the coarse mesh cut at the chunk lines, a piece for exactly the chunks of `fine`, grouped into LOD cells
-export function lod_cells(coarse: []Layer, fine: []MeshChunk, chunk: double, lod: double) -> []LodCell {
+export function lod_cells(coarse: []Layer, fine: []MeshChunk, chunk: double, lod: double) -> []LodCell { return lod_cells_of(chunk_mesh(coarse, chunk), fine, chunk, lod) }
+# the same over the coarse mesh's chunks already cut
+export function lod_cells_of(pieces: []MeshChunk, fine: []MeshChunk, chunk: double, lod: double) -> []LodCell {
   let per = int(jround(lod / chunk))
-  let pieces = chunk_mesh(coarse, chunk)
   let pk = Dict.new()
   for i in 0 .. len(pieces) { Dict.set(pk, `{pieces[i].cx},{pieces[i].cz}`, i) }
   let ck = Dict.new()
@@ -377,15 +378,20 @@ export function lod_cells(coarse: []Layer, fine: []MeshChunk, chunk: double, lod
 }
 
 # farCells: the far mesh's kept layers cut at the cells' lines, one piece a cell of `cells`
-export function far_cells(far: []Layer, cells: []LodCell, lod: double) -> []MeshChunk {
+export function far_cells(far: []Layer, cells: []LodCell, lod: double) -> []MeshChunk { return far_cells_of(far_chunks(far, lod), cells) }
+# the far mesh's kept layers cut at the cells' lines
+export function far_chunks(far: []Layer, lod: double) -> []MeshChunk {
   let layers = new []Layer
   for i in 0 .. len(far) {
     let s = far[i].slot
     if s != "curb" and s != "skirt" and s != "marking" { push(layers, far[i]) }
   }
+  return chunk_mesh(layers, lod)
+}
+# those of the cells of `cells`
+export function far_cells_of(all: []MeshChunk, cells: []LodCell) -> []MeshChunk {
   let want = Dict.new()
   for i in 0 .. len(cells) { Dict.set(want, `{cells[i].cx},{cells[i].cz}`, 1) }
-  let all = chunk_mesh(layers, lod)
   let out = new []MeshChunk
   for i in 0 .. len(all) { if Dict.has(want, `{all[i].cx},{all[i].cz}`) { push(out, all[i]) } }
   return out

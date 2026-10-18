@@ -14,7 +14,9 @@ program RoadmeshBake {
       exit(2)
       return
     }
+    let t0 = Time.now_us()
     let j = read_val_file(arg(1), 1112166994)
+    let tr = (Time.now_us() - t0) / long(1000)
     if j == null {
       print(`roadmesh_bake: cannot read the job {arg(1)}`)
       exit(1)
@@ -25,6 +27,7 @@ program RoadmeshBake {
     b.dir = arg(2)
     Fs.mkdir(b.dir)
     run_bake(b)
+    if arg_count() > 4 { print(`roadmesh_bake: read {tr} ms;{b.times}`) }
     if not Fs.write_bytes(arg(3), b.answer.b, b.answer.n) {
       print(`roadmesh_bake: cannot write {arg(3)}`)
       exit(1)

@@ -266,9 +266,10 @@ export function world_new(net: Net, laid: []EdgeGrade, jopt: JOpt, rule: Crossin
     so = jopt_copy(jopt)
     so.armLaid = laid
   }
-  let sb = setbacks(net, so, null)
+  let sb = setbacks_par(net, so)
   w.sbFrom = sb.from
   w.sbTo = sb.to
+  grid_build(w)
   w.crossings = plan_crossings(w, rule)
   w.cs = new [][]CrossPlan
   for i in 0 .. len(net.edges) { push(w.cs, null) }
@@ -283,6 +284,72 @@ export function cs_of(w: RWorld, idx: int) -> []CrossPlan {
   let c = w.cs[idx]
   if c == null { return new []CrossPlan }
   return c
+}
+
+# junction.ludic `setbacks` (no notes) with every node's junction made on its own core: each node's ends' needs, then the same
+# merge in the same order
+property SbJob {
+  net: Net = null
+  opt: JOpt = null
+  edge: [][]int = null        # by node: (edge idx, out) pairs
+  need: [][]double = null     # by node: each end's setback
+}
+function sb_node(i: int, j: SbJob) -> void {
+  let jn = junction_of(j.net.nodes[i], j.opt, true, fn settled_none, 0)
+  let e = new []int
+  let d = new []double
+  for k in 0 .. len(jn.ends) {
+    push(e, jn.ends[k].edge.idx)
+    push(e, isel(jn.ends[k].out, 1, 0))
+    push(d, jn.ends[k].setback)
+  }
+  j.edge[i] = e
+  j.need[i] = d
+}
+export function setbacks_par(net: Net, opt: JOpt) -> Setbacks {
+  let nn = len(net.nodes)
+  let j = new SbJob
+  j.net = net
+  j.opt = opt
+  j.edge = new [][]int
+  j.need = new [][]double
+  for i in 0 .. nn {
+    push(j.edge, null)
+    push(j.need, null)
+  }
+  Job.parallel_for(nn, fn sb_node, j)
+  let ne = len(net.edges)
+  let nf = doubles(ne)
+  let nt = doubles(ne)
+  for i in 0 .. ne {
+    nf[i] = 0.0
+    nt[i] = 0.0
+  }
+  for q in 0 .. nn {
+    let e = j.edge[q]
+    let d = j.need[q]
+    for k in 0 .. len(d) {
+      let x = e[k * 2]
+      if e[k * 2 + 1] == 1 { nf[x] = jmax(nf[x], d[k]) } else { nt[x] = jmax(nt[x], d[k]) }
+    }
+  }
+  let o = new Setbacks
+  o.from = doubles(ne)
+  o.to = doubles(ne)
+  for i in 0 .. ne {
+    let e = net.edges[i]
+    let room = jmax(0.0, e.length - MIN_STRIP)
+    if nf[i] + nt[i] <= room + 0.000000001 {
+      o.from[i] = nf[i]
+      o.to[i] = nt[i]
+      continue
+    }
+    var f: double = 0.0
+    if nf[i] + nt[i] > 0.000000001 { f = room / (nf[i] + nt[i]) }
+    o.from[i] = nf[i] * f
+    o.to[i] = nt[i] * f
+  }
+  return o
 }
 
 # ---- network.ts edgesNear: the edges whose centre line passes within r of p (their indices; the order does not matter to the

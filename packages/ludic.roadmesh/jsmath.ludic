@@ -33,15 +33,16 @@ export function fma(a: double, b: double, c: double) -> double {
   let bh = cb - (cb - b)
   let bl = b - bh
   let e = ((ah * bh - p) + ah * bl + al * bh) + al * bl
-  let t = doubles(2)
-  two_sum(c, p, t)
-  let th = t[0]
-  let u = doubles(2)
-  two_sum(t[1], e, u)
-  # u[0] rounded to odd: an inexact sum whose last bit is even moves one step towards the exact value
-  var v = u[0]
-  if u[1] != 0.0 and (double_bits(v) & long(1)) == long(0) {
-    if (u[1] > 0.0) == (v > 0.0) { v = double_from_bits(double_bits(v) + long(1)) } else { v = double_from_bits(double_bits(v) - long(1)) }
+  # c + p as th + tl (TwoSum), then tl + e as v + ve
+  let th = c + p
+  let tb = th - c
+  let tl = (c - (th - tb)) + (p - tb)
+  var v = tl + e
+  let vb = v - tl
+  let ve = (tl - (v - vb)) + (e - vb)
+  # v rounded to odd: an inexact sum whose last bit is even moves one step towards the exact value
+  if ve != 0.0 and (double_bits(v) & long(1)) == long(0) {
+    if (ve > 0.0) == (v > 0.0) { v = double_from_bits(double_bits(v) + long(1)) } else { v = double_from_bits(double_bits(v) - long(1)) }
   }
   return th + v
 }

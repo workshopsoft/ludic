@@ -256,6 +256,8 @@ export function mesh_opt_of(o: Val, chunk: double, which: int) -> MeshOpt {
 # ---- the bake ------------------------------------------------------------------------------------------------------------------
 export property Bake {
   job: Val = null
+  t0: long = 0                # the phases' times (stderr when ROADMESH_TIMES is set)
+  times: string = ""
   dir: string = ""            # where the files go (a scratch folder the studio copies from)
   w: RWorld = null
   chunk: double = 256.0
@@ -279,6 +281,185 @@ function box_chunk(b: Bake, cx: int, cz: int) -> bool {
   let kx = floor_div_i(cx, per)
   let kz = floor_div_i(cz, per)
   return kx >= b.k0x and kx <= b.k1x and kz >= b.k0z and kz <= b.k1z
+}
+
+# a build of the bake on one core: 0 LOD0 (and its chunks and lanes), 1 LOD1's chunks, 2 LOD2's cells, 3 every tunnel's light zones
+property BuildJob {
+  b: Bake = null
+  w: RWorld = null
+  o: Val = null
+  lift: double = 0.02
+  meshes: []RoadMesh = null
+  cut: [][]MeshChunk = null
+  coarse: bool = false
+  far: Val = null
+  zones: bool = false
+  zonesAll: []MRow = null
+  lanes: []LaneChunk = null
+}
+function run_build(i: int, bj: BuildJob) -> void {
+  let b = bj.b
+  let w = bj.w
+  let o = bj.o
+  if i == 0 {
+    let mo = mesh_opt_of(o, b.chunk, 0)
+    let sw0 = sw_new(w, bj.lift, null)
+    let mesh = build_road_mesh(sw0, mo, b.only)
+    bj.meshes[0] = mesh
+    bj.cut[0] = chunk_mesh(mesh.b.layers, b.chunk)
+    bj.lanes = chunk_lanes(lane_lines(sw0, b.only, 2.0), b.chunk)
+  } else if i == 1 {
+    if not bj.coarse { return }
+    let co = mesh_opt_of(o, b.chunk, 1)
+    let thin = new StationThin
+    thin.plan = 0.03
+    thin.y = 0.02
+    thin.max = 24.0
+    let sw1 = sw_new(w, bj.lift, thin)
+    let coarse = build_road_mesh(sw1, co, b.only)
+    bj.cut[1] = chunk_mesh(coarse.b.layers, b.chunk)
+  } else if i == 2 {
+    if not (bj.coarse and not v_undef(bj.far)) { return }
+    let fo = mesh_opt_of(o, b.chunk, 2)
+    let thin = new StationThin
+    thin.plan = v_getn(bj.far, "plan", 0.25)
+    thin.y = v_getn(bj.far, "y", 0.15)
+    thin.max = v_getn(bj.far, "max", 64.0)
+    let sw2 = sw_new(w, bj.lift, thin)
+    let far = build_road_mesh(sw2, fo, b.only)
+    bj.cut[2] = far_chunks(far.b.layers, b.lod)
+  } else {
+    if not bj.zones { return }
+    let net = w.net
+    let tubes = Dict.new()
+    var nt = 0
+    for k in 0 .. len(net.edges) {
+      if net.edges[k].level == "tunnel" {
+        Dict.set(tubes, net.edges[k].key, 1)
+        nt += 1
+      }
+    }
+    bj.zonesAll = new []MRow
+    if nt > 0 {
+      let mo = mesh_opt_of(o, b.chunk, 0)
+      let swz = sw_new(w, bj.lift, null)
+      let zb = builder_new(4.0)
+      let c = st_ctx_world(swz, mo.structures, mo.matStructure, mo.skirt, tubes, new []string)
+      build_structures(zb, c)
+      bj.zonesAll = c.meta.lightZones
+    }
+  }
+}
+
+# the files of one chunk (task < chunks), LOD1 cell or LOD2 cell, and its line of the answer
+property FileJob {
+  b: Bake = null
+  chunks: []MeshChunk = null
+  cells: []LodCell = null
+  far: []MeshChunk = null
+  mesh: RoadMesh = null
+  laneKeep: []LaneChunk = null
+  laneD: Dict = null
+  tones: bool = true
+  lightZones: []MRow = null
+  names: [][]string = null
+  outs: [][]BOut = null
+  rows: []JV = null
+}
+function make_files(t: int, fj: FileJob) -> void {
+  let b = fj.b
+  let names = new []string
+  let outs = new []BOut
+  let nc = len(fj.chunks)
+  let nl = len(fj.cells)
+  if t < nc {
+    let ch = fj.chunks[t]
+    let name = `{ch.cx}_{ch.cz}`
+    let hash = hash_of(b, name)
+    let lo = double(ch.cx) * b.chunk
+    let lz = double(ch.cz) * b.chunk
+    let zones = jv_arr()
+    for q in 0 .. len(fj.lightZones) {
+      let zx = zone_n(fj.lightZones[q], "x")
+      let zz = zone_n(fj.lightZones[q], "z")
+      if zx >= lo and zx < lo + b.chunk and zz >= lz and zz < lz + b.chunk { jv_push(zones, zone_jv(fj.lightZones[q])) }
+    }
+    let ex = extras_base(b)
+    jv_put(ex, "chunk", pair(ch.cx, ch.cz))
+    jv_put(ex, "size", jv_num(b.chunk))
+    jv_put(ex, "hash", jv_str(hash))
+    if len(zones.items) > 0 { jv_put(ex, "light_zones", zones) }
+    push(names, `{name}.glb`)
+    push(outs, road_glb(ch.layers, ex, fj.tones, true))
+    let exc = extras_base(b)
+    for q in 3 .. len(ex.keys) { jv_put(exc, ex.keys[q], ex.items[q]) }
+    jv_put(exc, "collision", jv_bool(true))
+    push(names, `{name}.col.glb`)
+    push(outs, collision_glb(collision_of(ch), exc, true))
+    let xs = jv_arr()
+    let mx = fj.mesh.crossings
+    for q in 0 .. len(mx) {
+      let x = mx[q]
+      if int(Math.floor(x.x / b.chunk)) == ch.cx and int(Math.floor(x.z / b.chunk)) == ch.cz { jv_push(xs, crossing_jv(x)) }
+    }
+    let cj = jv_obj()
+    jv_put(cj, "schema", jv_str("road-crossings.v1"))
+    jv_put(cj, "chunk", pair(ch.cx, ch.cz))
+    jv_put(cj, "size", jv_num(b.chunk))
+    jv_put(cj, "crossings", xs)
+    let co = bout_new(256)
+    json_write(co, cj, 2, 0)
+    bo_u8(co, 10)
+    push(names, `{name}.crossings.json`)
+    push(outs, co)
+    let li = Dict.get_or(fj.laneD, name, -1)
+    var ls = new []LaneLine
+    if li >= 0 { ls = fj.laneKeep[li].lines }
+    push(names, `{name}.lanes.bin`)
+    push(outs, lanes_bin(ls))
+    let r = jv_obj()
+    jv_put(r, "chunk", jv_str(name))
+    jv_put(r, "tris", jv_num(double(ch.tris)))
+    jv_put(r, "materials", jv_num(double(len(ch.layers))))
+    jv_put(r, "crossings", jv_num(double(len(xs.items))))
+    jv_put(r, "lanes", jv_num(double(len(ls))))
+    fj.rows[t] = r
+  } else if t < nc + nl {
+    let c = fj.cells[t - nc]
+    let name = `{c.cx}_{c.cz}`
+    let ex = extras_base(b)
+    jv_put(ex, "lod", jv_num(1.0))
+    jv_put(ex, "layout", jv_num(2.0))
+    jv_put(ex, "cell", pair(c.cx, c.cz))
+    jv_put(ex, "size", jv_num(b.lod))
+    jv_put(ex, "chunk", jv_num(b.chunk))
+    jv_put(ex, "hash", jv_str(hash_of(b, `lod1:2:{name}`)))
+    push(names, `lod1/{name}.glb`)
+    push(outs, lod_cell_glb(c.pieces, ex, "Ludic Studio roads bake (LOD1)", fj.tones, true))
+    let r = jv_obj()
+    jv_put(r, "cell", jv_str(name))
+    jv_put(r, "tris", jv_num(double(c.tris)))
+    jv_put(r, "chunks", jv_num(double(len(c.pieces))))
+    fj.rows[t] = r
+  } else {
+    let c = fj.far[t - nc - nl]
+    let name = `{c.cx}_{c.cz}`
+    let ex = extras_base(b)
+    jv_put(ex, "lod", jv_num(2.0))
+    jv_put(ex, "cell", pair(c.cx, c.cz))
+    jv_put(ex, "size", jv_num(b.lod))
+    jv_put(ex, "hash", jv_str(hash_of(b, `lod2:1:{name}`)))
+    let one = new []MeshChunk
+    push(one, c)
+    push(names, `lod2/{name}.glb`)
+    push(outs, lod_cell_glb(one, ex, "Ludic Studio roads bake (LOD1)", fj.tones, true))
+    let r = jv_obj()
+    jv_put(r, "cell", jv_str(name))
+    jv_put(r, "tris", jv_num(double(c.tris)))
+    fj.rows[t] = r
+  }
+  fj.names[t] = names
+  fj.outs[t] = outs
 }
 
 function hash_of(b: Bake, name: string) -> string {
@@ -342,7 +523,14 @@ function crossing_jv(c: Crossing) -> JV {
   return o
 }
 
+function lap(b: Bake, what: string) -> void {
+  let t = Time.now_us()
+  b.times = `{b.times} {what} {(t - b.t0) / long(1000)}`
+  b.t0 = t
+}
+
 export function run_bake(b: Bake) -> void {
+  b.t0 = Time.now_us()
   let j = b.job
   let o = v_get(j, "opt")
   b.files = new []string
@@ -367,121 +555,74 @@ export function run_bake(b: Bake) -> void {
     b.k1z = int(n4[3])
     b.unit = n4[4]
   }
+  lap(b, "job")
   let w = world_new(net, laid, jopt_of_job(o), rule_of_job(o), dims_of_job(o), ground)
   b.w = w
+  lap(b, "world")
   let lift = v_getn(o, "lift", 0.02)
-  # LOD0
-  let mo = mesh_opt_of(o, b.chunk, 0)
-  let sw0 = sw_new(w, lift, null)
-  let mesh = build_road_mesh(sw0, mo, b.only)
+  # the three builds (LOD0 `mesh`, LOD1 `coarse`, LOD2 `far`) and every tunnel's light zones, each on its own core
+  let bj = new BuildJob
+  bj.b = b
+  bj.w = w
+  bj.o = o
+  bj.lift = lift
+  bj.meshes = new []RoadMesh
+  bj.cut = new [][]MeshChunk
+  for i in 0 .. 3 {
+    push(bj.meshes, null)
+    push(bj.cut, null)
+  }
+  bj.coarse = b.lod > 0.0
+  bj.far = v_get(j, "far")
+  bj.zones = b.hasBox and v_bool(v_get(j, "zonesAll"))
+  Job.parallel_for(4, fn run_build, bj)
+  let mesh = bj.meshes[0]
   for i in 0 .. len(mesh.problems) { push(b.problems, mesh.problems[i]) }
-  let all0 = chunk_mesh(mesh.b.layers, b.chunk)
+  let all0 = bj.cut[0]
   let chunks = new []MeshChunk
   for i in 0 .. len(all0) { if box_chunk(b, all0[i].cx, all0[i].cz) { push(chunks, all0[i]) } }
-  # LOD1
   var cells = new []LodCell
-  if b.lod > 0.0 {
-    let co = mesh_opt_of(o, b.chunk, 1)
-    let thin = new StationThin
-    thin.plan = 0.03
-    thin.y = 0.02
-    thin.max = 24.0
-    let sw1 = sw_new(w, lift, thin)
-    let coarse = build_road_mesh(sw1, co, b.only)
-    cells = lod_cells(coarse.b.layers, chunks, b.chunk, b.lod)
-  }
-  # LOD2
+  if bj.coarse { cells = lod_cells_of(bj.cut[1], chunks, b.chunk, b.lod) }
   var farList = new []MeshChunk
-  let farv = v_get(j, "far")
-  if b.lod > 0.0 and not v_undef(farv) {
-    let fo = mesh_opt_of(o, b.chunk, 2)
-    let thin = new StationThin
-    thin.plan = v_getn(farv, "plan", 0.25)
-    thin.y = v_getn(farv, "y", 0.15)
-    thin.max = v_getn(farv, "max", 64.0)
-    let sw2 = sw_new(w, lift, thin)
-    let far = build_road_mesh(sw2, fo, b.only)
-    farList = far_cells(far.b.layers, cells, b.lod)
-  }
-  # every tunnel's light zones (a box bake asked for light_zones.json): the tunnels alone, as the full bake builds them
-  var zonesAll: []MRow = null
-  if b.hasBox and v_bool(v_get(j, "zonesAll")) {
-    let tubes = Dict.new()
-    var nt = 0
-    for i in 0 .. len(net.edges) {
-      if net.edges[i].level == "tunnel" {
-        Dict.set(tubes, net.edges[i].key, 1)
-        nt += 1
-      }
-    }
-    zonesAll = new []MRow
-    if nt > 0 {
-      let swz = sw_new(w, lift, null)
-      let zb = builder_new(4.0)
-      let c = st_ctx_world(swz, mo.structures, mo.matStructure, mo.skirt, tubes, new []string)
-      build_structures(zb, c)
-      zonesAll = c.meta.lightZones
-    }
-  }
-  # lanes
-  let lanes = chunk_lanes(lane_lines(sw0, b.only, 2.0), b.chunk)
+  if bj.cut[2] != null { farList = far_cells_of(bj.cut[2], cells) }
+  let zonesAll = bj.zonesAll
+  let lanes = bj.lanes
+  lap(b, "builds")
   let laneKeep = new []LaneChunk
   for i in 0 .. len(lanes) { if box_chunk(b, lanes[i].cx, lanes[i].cz) { push(laneKeep, lanes[i]) } }
   let laneD = Dict.new()
   for i in 0 .. len(laneKeep) { Dict.set(laneD, laneKeep[i].name, i) }
+  lap(b, "lanes")
   # ---- the files ----
   let tones = not (v_get(j, "tones") != null and v_get(j, "tones").tag == T_FALSE)
   let lightZones = mesh.st.lightZones
+  # every chunk's four files, and every LOD cell's glb, each made on a core of its own; written in order
+  let fj = new FileJob
+  fj.b = b
+  fj.chunks = chunks
+  fj.cells = cells
+  fj.far = farList
+  fj.mesh = mesh
+  fj.laneKeep = laneKeep
+  fj.laneD = laneD
+  fj.tones = tones
+  fj.lightZones = lightZones
+  let nt = len(chunks) + len(cells) + len(farList)
+  fj.names = new [][]string
+  fj.outs = new [][]BOut
+  fj.rows = new []JV
+  for i in 0 .. nt {
+    push(fj.names, null)
+    push(fj.outs, null)
+    push(fj.rows, null)
+  }
+  Job.parallel_for(nt, fn make_files, fj)
   let report = jv_arr()
   let wroteLanes = Dict.new()
   for ci in 0 .. len(chunks) {
-    let ch = chunks[ci]
-    let name = `{ch.cx}_{ch.cz}`
-    let hash = hash_of(b, name)
-    let lo = double(ch.cx) * b.chunk
-    let lz = double(ch.cz) * b.chunk
-    let zones = jv_arr()
-    for q in 0 .. len(lightZones) {
-      let zx = zone_n(lightZones[q], "x")
-      let zz = zone_n(lightZones[q], "z")
-      if zx >= lo and zx < lo + b.chunk and zz >= lz and zz < lz + b.chunk { jv_push(zones, zone_jv(lightZones[q])) }
-    }
-    let ex = extras_base(b)
-    jv_put(ex, "chunk", pair(ch.cx, ch.cz))
-    jv_put(ex, "size", jv_num(b.chunk))
-    jv_put(ex, "hash", jv_str(hash))
-    if len(zones.items) > 0 { jv_put(ex, "light_zones", zones) }
-    write_file(b, `{name}.glb`, road_glb(ch.layers, ex, tones, true))
-    let exc = extras_base(b)
-    for q in 3 .. len(ex.keys) { jv_put(exc, ex.keys[q], ex.items[q]) }
-    jv_put(exc, "collision", jv_bool(true))
-    write_file(b, `{name}.col.glb`, collision_glb(collision_of(ch), exc, true))
-    let xs = jv_arr()
-    for q in 0 .. len(mesh.crossings) {
-      let x = mesh.crossings[q]
-      if int(Math.floor(x.x / b.chunk)) == ch.cx and int(Math.floor(x.z / b.chunk)) == ch.cz { jv_push(xs, crossing_jv(x)) }
-    }
-    let cj = jv_obj()
-    jv_put(cj, "schema", jv_str("road-crossings.v1"))
-    jv_put(cj, "chunk", pair(ch.cx, ch.cz))
-    jv_put(cj, "size", jv_num(b.chunk))
-    jv_put(cj, "crossings", xs)
-    let co = bout_new(256)
-    json_write(co, cj, 2, 0)
-    bo_u8(co, 10)
-    write_file(b, `{name}.crossings.json`, co)
-    let li = Dict.get_or(laneD, name, -1)
-    var ls = new []LaneLine
-    if li >= 0 { ls = laneKeep[li].lines }
-    write_file(b, `{name}.lanes.bin`, lanes_bin(ls))
-    Dict.set(wroteLanes, name, 1)
-    let r = jv_obj()
-    jv_put(r, "chunk", jv_str(name))
-    jv_put(r, "tris", jv_num(double(ch.tris)))
-    jv_put(r, "materials", jv_num(double(len(ch.layers))))
-    jv_put(r, "crossings", jv_num(double(len(xs.items))))
-    jv_put(r, "lanes", jv_num(double(len(ls))))
-    jv_push(report, r)
+    for q in 0 .. len(fj.names[ci]) { write_file(b, fj.names[ci][q], fj.outs[ci][q]) }
+    Dict.set(wroteLanes, `{chunks[ci].cx}_{chunks[ci].cz}`, 1)
+    jv_push(report, fj.rows[ci])
   }
   for i in 0 .. len(laneKeep) {
     if Dict.has(wroteLanes, laneKeep[i].name) { continue }
@@ -507,39 +648,17 @@ export function run_bake(b: Bake) -> void {
   }
   let lod1 = jv_arr()
   for i in 0 .. len(cells) {
-    let c = cells[i]
-    let name = `{c.cx}_{c.cz}`
-    let ex = extras_base(b)
-    jv_put(ex, "lod", jv_num(1.0))
-    jv_put(ex, "layout", jv_num(2.0))
-    jv_put(ex, "cell", pair(c.cx, c.cz))
-    jv_put(ex, "size", jv_num(b.lod))
-    jv_put(ex, "chunk", jv_num(b.chunk))
-    jv_put(ex, "hash", jv_str(hash_of(b, `lod1:2:{name}`)))
-    write_file(b, `lod1/{name}.glb`, lod_cell_glb(c.pieces, ex, "Ludic Studio roads bake (LOD1)", tones, true))
-    let r = jv_obj()
-    jv_put(r, "cell", jv_str(name))
-    jv_put(r, "tris", jv_num(double(c.tris)))
-    jv_put(r, "chunks", jv_num(double(len(c.pieces))))
-    jv_push(lod1, r)
+    let t = len(chunks) + i
+    write_file(b, fj.names[t][0], fj.outs[t][0])
+    jv_push(lod1, fj.rows[t])
   }
   let lod2 = jv_arr()
   for i in 0 .. len(farList) {
-    let c = farList[i]
-    let name = `{c.cx}_{c.cz}`
-    let ex = extras_base(b)
-    jv_put(ex, "lod", jv_num(2.0))
-    jv_put(ex, "cell", pair(c.cx, c.cz))
-    jv_put(ex, "size", jv_num(b.lod))
-    jv_put(ex, "hash", jv_str(hash_of(b, `lod2:1:{name}`)))
-    let one = new []MeshChunk
-    push(one, c)
-    write_file(b, `lod2/{name}.glb`, lod_cell_glb(one, ex, "Ludic Studio roads bake (LOD1)", tones, true))
-    let r = jv_obj()
-    jv_put(r, "cell", jv_str(name))
-    jv_put(r, "tris", jv_num(double(c.tris)))
-    jv_push(lod2, r)
+    let t = len(chunks) + len(cells) + i
+    write_file(b, fj.names[t][0], fj.outs[t][0])
+    jv_push(lod2, fj.rows[t])
   }
+  lap(b, "files")
   # ---- the answer ----
   let a = jv_obj()
   jv_put(a, "chunks", report)
