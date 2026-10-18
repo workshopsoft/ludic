@@ -97,6 +97,7 @@ export function bw_setup_kits(render3d_st: mut Render3dState, bw: BigWorld, impo
         else { print(`r3d: kit {k.key} says box but {k.model} {k.node} has no _ANCHOR: drawn as an ordinary kit`) }
       }
       if k.storey_h > 0.0 { kgpu_kit_storey(bw.gpu, id, k.storey_h, k.storey_line) }
+      if k.box and k.fac_bay > 0.0 and k.storey_h > 0.0 { kgpu_kit_facade(bw.gpu, id, k) }
       if k.impostor and impostor_n > 0 { kgpu_bake_kit(render3d_st, bw.gpu, id, k.w, k.d, k.h, impostor_n, frame_px) }
       if k.interior != "" {
         let ai = interioratlases_find(k.interior)

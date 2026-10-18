@@ -1,0 +1,88 @@
+# ============================================================================
+# fac.ludic - a box kit's FACADE grid, the CPU reference of kit.frag's FACADE variant: where the windows of a wall are, so a window
+# is never cut by a corner, a party wall or the eave, at any width and height of an instance. No device; the shader repeats this
+# arithmetic, and a game's planner (the studio's massingTypes.ts facadeGrid) places balconies and canopies on the same bays: the
+# tests here and there hold the same golden values.
+#
+#   bays    a wall of length L is cut into n = max(1, round((L - 2 pier) / bay)) bays of (L - 2 pier) / n, from `pier` metres in
+#           from each end; a wall shorter than 2 pier + bay / 2 has none
+#   rows    the storeys, counted down from the eave (the instance's own h): row k spans h - (k + 1) s .. h - k s. A row whose foot is
+#           under the base (a plinth's partial storey) or past the instance's storeys has none; the last row is the ground storey
+#   u       along a wall from its start, looking at the wall from outside, left to right (imi_facade_u + L / 2)
+#   flags   the instance's facade bits (cellfile.ludic RenderKit's note): blind walls, storeys, one masked door
+# ============================================================================
+numbers float
+
+# the bays of a wall `len` metres long: 0 when it is too short for one
+export function fac_bays(len: float, bay: float, pier: float) -> int {
+  if bay <= 0.0 { return 0 }
+  let span = len - 2.0 * pier
+  if span < 0.5 * bay { return 0 }
+  return max(1, int(Math.floor(span / bay + 0.5)))
+}
+
+# the bay a point `u` metres along a wall is in (-1 on a pier); out[0] the bay's start along the wall, out[1] its width
+export function fac_bay_of(u: float, len: float, bay: float, pier: float, out: floats) -> int {
+  let n = fac_bays(len, bay, pier)
+  if n == 0 { return -1 }
+  let cw = (len - 2.0 * pier) / float(n)
+  let cu = u - pier
+  if cu < 0.0 or cu >= len - 2.0 * pier { return -1 }
+  let i = min(int(Math.floor(cu / cw)), n - 1)
+  out[0] = pier + float(i) * cw
+  out[1] = cw
+  return i
+}
+
+# the middle of bay `i` of a wall (metres from its start)
+export function fac_bay_mid(i: int, len: float, bay: float, pier: float) -> float {
+  let n = fac_bays(len, bay, pier)
+  if n == 0 { return -1.0 }
+  let cw = (len - 2.0 * pier) / float(n)
+  return pier + (float(i) + 0.5) * cw
+}
+
+# the storeys an instance of eave height `h` holds at `storey` metres a storey (floors 0: as many as fit)
+export function fac_rows(h: float, storey: float, floors: int) -> int {
+  if storey <= 0.0 { return 0 }
+  let fit = int(Math.floor((h + 0.02) / storey))
+  if floors > 0 { return min(fit, floors) }
+  return fit
+}
+
+# the row (0 the top storey) a height `y` over the instance's base is in, -1 above the eave, under the last storey or in a plinth
+export function fac_row_of(y: float, h: float, storey: float, floors: int) -> int {
+  if storey <= 0.0 or y >= h or y < 0.0 { return -1 }
+  let k = int(Math.floor((h - y) / storey))
+  if k >= fac_rows(h, storey, floors) { return -1 }
+  return k
+}
+
+# a wall's length for an instance of w x d: walls 0 and 1 (+x, -x) run along d, 2 and 3 along w
+export function fac_wall_len(wall: int, w: float, d: float) -> float {
+  if wall < 2 { return d }
+  return w
+}
+
+# a model-frame point's distance along its wall from the wall's start (imi_facade_u moved by half the wall)
+export function fac_wall_u(wall: int, x: float, z: float, w: float, d: float) -> float {
+  return imi_facade_u(wall, x, z) + 0.5 * fac_wall_len(wall, w, d)
+}
+
+# the instance's facade flags: `blind` the party walls (bit 1 << wall), `floors` its storeys (0..127), a door on `door_wall` (-1 none)
+# at `door_u` metres along it
+export function fac_flags(blind: int, floors: int, door_wall: int, door_u: float) -> int {
+  var f = (blind & 15) | ((max(0, min(floors, 127)) & 127) << 4)
+  if door_wall >= 0 and door_wall < 4 {
+    let du = max(0, min(int(Math.floor(door_u * 10.0 + 0.5)), 1023))
+    f = f | 2048 | (door_wall << 12) | (du << 14)
+  }
+  return f
+}
+export function fac_flag_blind(f: int, wall: int) -> bool { return ((f >> wall) & 1) == 1 }
+export function fac_flag_floors(f: int) -> int { return (f >> 4) & 127 }
+export function fac_flag_door_wall(f: int) -> int {
+  if (f & 2048) == 0 { return -1 }
+  return (f >> 12) & 3
+}
+export function fac_flag_door_u(f: int) -> float { return float((f >> 14) & 1023) * 0.1 }
