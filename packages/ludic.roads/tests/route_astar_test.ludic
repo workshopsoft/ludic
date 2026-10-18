@@ -21,11 +21,11 @@ program RouteAstarTest {
 
   # a town of N x N junctions 60 m apart, jittered, with every fourth east-west street one way (alternating), every seventh
   # north-south street a fast avenue, a forbidden left at every fifth junction, and a few streets missing
-  function write_town(nodes: mut RoadNodes, n: int) -> void {
+  function write_town(nodes: mut RoadNodes, n: int, name: string) -> void {
     expect(road_nodes_load(nodes, "town"))
     let root = Path.dir(Path.dir(Path.dir(road_nodes_path(nodes, "roads/nodes.lres"))))
-    let dir = Path.join(Path.join(root, "astar"), "roads")
-    Fs.mkdir(Path.join(root, "astar"))
+    let dir = Path.join(Path.join(root, name), "roads")
+    Fs.mkdir(Path.join(root, name))
     Fs.mkdir(dir)
     let lines = new []string
     for j in 0 .. n {
@@ -67,19 +67,19 @@ program RouteAstarTest {
     if len(turns) == 0 { push(turns, "# none") }
     expect(Fs.write_text(Path.join(dir, "turns.lres"), Text.join(turns, "\n")))
   }
-  function remove_town(nodes: mut RoadNodes) -> void {
+  function remove_town(nodes: mut RoadNodes, name: string) -> void {
     let root = Path.dir(Path.dir(Path.dir(road_nodes_path(nodes, "roads/nodes.lres"))))
-    let dir = Path.join(Path.join(root, "astar"), "roads")
+    let dir = Path.join(Path.join(root, name), "roads")
     Fs.remove(Path.join(dir, "nodes.lres"))
     Fs.remove(Path.join(dir, "segs.lres"))
     Fs.remove(Path.join(dir, "turns.lres"))
     Fs.remove(dir)
-    Fs.remove(Path.join(root, "astar"))
+    Fs.remove(Path.join(root, name))
   }
 
   test "A* has the cost plain Dijkstra has on 500 random pairs, both by time and by length, and takes fewer edges off the heap" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
-    write_town(nodes, 30)
-    expect(load_map(roads_st, nodes, segs, turns, "astar"))
+    write_town(nodes, 30, "astar1")
+    expect(load_map(roads_st, nodes, segs, turns, "astar1"))
     let r = new []int
     let rng = rng_new(42)
     var pops_a = 0
@@ -117,12 +117,12 @@ program RouteAstarTest {
     expect(found >= 450)
     expect(pops_a * 2 < pops_d)
     expect(us / 500.0 < 2000.0)
-    remove_town(nodes)
+    remove_town(nodes, "astar1")
   }
 
   test "the route keeps the turn rules and one-way streets of the generated town edge by edge" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
-    write_town(nodes, 30)
-    expect(load_map(roads_st, nodes, segs, turns, "astar"))
+    write_town(nodes, 30, "astar2")
+    expect(load_map(roads_st, nodes, segs, turns, "astar2"))
     let r = new []int
     let rng = rng_new(7)
     for k in 0 .. 200 {
@@ -135,7 +135,7 @@ program RouteAstarTest {
         }
       }
     }
-    remove_town(nodes)
+    remove_town(nodes, "astar2")
   }
 
   test "a forbidden turn is gone round by the dead end, a one-way road is never driven back, a walk takes it" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
@@ -199,6 +199,32 @@ program RouteAstarTest {
     expect_eq(roads_route_points(roads_st, 2.0, ROADS_NO_HEIGHT, -50.0, ROADS_NO_HEADING, -50.0, ROADS_NO_HEIGHT, 1.0, ROADS_WALK, r), -1)
     expect_eq(roads_route_why(roads_st), ROADS_ROUTE_NO_START)
     roads_route_config_walk(roads_st, 1000000)
+  }
+
+  test "a near U-turn at a node is not driven once the sharpest turn is set: the route turns where a road ends instead" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {
+    expect(load_map(roads_st, nodes, segs, turns, "town"))
+    let nc = roads_seg_find(roads_st, "nc")
+    let cs = roads_seg_find(roads_st, "cs")
+    let r = new []int
+    # from the north street to the north street's other side is a U-turn, by the dead end n; from nc into cs is straight on (fine)
+    roads_route_config_max_turn(roads_st, 2.6)
+    let n = roads_route_points(roads_st, 2.0, ROADS_NO_HEIGHT, -50.0, 0.0, 2.0, ROADS_NO_HEIGHT, 50.0, ROADS_SHORTEST, r)
+    expect(n >= 2)
+    expect_eq(r[0], 2 * nc)
+    expect_eq(r[1], 2 * cs)
+    # every turn of a long route on the generated town under the limit, or a dead end's U-turn
+    for i in 1 .. n {
+      if r[i] != (r[i - 1] ^ 1) {
+        roads_pose(roads_st, r[i - 1], roads_edge_length(roads_st, r[i - 1]) - 0.5, 0)
+        let a = roads_pose_yaw(roads_st)
+        roads_pose(roads_st, r[i], 0.5, 0)
+        var d = roads_pose_yaw(roads_st) - a
+        while d > 3.1415927 { d -= 6.2831853 }
+        while d < -3.1415927 { d += 6.2831853 }
+        expect(Math.abs(d) <= 2.65)
+      }
+    }
+    roads_route_config_max_turn(roads_st, 4.0)
   }
 
   test "the route's line runs from the snapped start to the snapped goal along the roads, with no gap" (roads_st: mut RoadsState, nodes: mut RoadNodes, segs: mut RoadSegs, turns: mut RoadTurns) {

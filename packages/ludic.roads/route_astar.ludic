@@ -33,6 +33,10 @@ export function roads_route_config_walk(roads_st: mut RoadsState, max_priority: 
   roads_st.rd_ra_walk_prio = max_priority
   roads_st.rd_ra_prep = -1
 }
+# the sharpest change of heading a drive may make at a node that is not a dead end (radians; over pi: any). A near U-turn from one
+# road into another at the same node (a slip road on into the slip road off across a median, a Y-junction's acute branch) is not
+# driven; a route turns round where a road ends instead
+export function roads_route_config_max_turn(roads_st: mut RoadsState, rad: float) -> void { roads_st.rd_ra_max_turn = rad }
 # plain Dijkstra (no heuristic): the same answer, more edges taken off the heap; tests compare the two
 export function roads_route_config_astar(roads_st: mut RoadsState, on: bool) -> void { roads_st.rd_ra_noh = not on }
 
@@ -338,6 +342,7 @@ export function roads_route_points(roads_st: mut RoadsState, x0: float, y0: floa
         rule = roads_turn_rule(roads_st, e, f)
         if rule == ROAD_RULE_FORBID { continue }
         if f == (e ^ 1) and k1 - k0 > 1 { continue }               # a U-turn only where the road ends
+        if f != (e ^ 1) and roads_st.rd_ra_max_turn < 3.1415927 and Math.abs(ra_wrap(roads_st.rd_ra_hout[f] - roads_st.rd_ra_hin[e])) > roads_st.rd_ra_max_turn { continue }
       }
       let gt = g + ra_turn(roads_st, e, f, rule, n, mode)
       if f / 2 == seg1 {

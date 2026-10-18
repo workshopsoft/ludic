@@ -202,6 +202,7 @@ export state RoadsState {
   rd_ra_vmax: float = 1.0                # the fastest limit of the map: the heuristic's speed
   rd_ra_walk_prio: int = 1000000         # roads above this priority are not walked (roads_route_config_walk)
   rd_ra_noh: bool = false                # no heuristic: plain Dijkstra (tests compare the two)
+  rd_ra_max_turn: float = 4.0            # a drive's sharpest turn at a node, radians (over pi: any); a U-turn where a road ends is apart
   rd_ra_seg0: int = -1                   # the last search: the snapped roads and places, where it starts and ends on its first and last edge
   rd_ra_seg1: int = -1
   rd_ra_a: float = 0.0
