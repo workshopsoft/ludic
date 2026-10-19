@@ -360,6 +360,22 @@ program WeaponsTest {
     expect_eq(weapons_mag_size(weapons_st, h, p), 8)
   }
 
+  test "the magazine set outright: held to 0 .. capacity, the reserve untouched, refused for no gun" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    let h = weapons_add(weapons_st, 1, true)
+    let p = weapons_give(weapons_st, h, WPN_SIDEARM)
+    weapons_ammo_set(weapons_st, h, AMMO_STD, 12)
+    expect(weapons_set_mag(weapons_st, h, p, 3))
+    expect_eq(weapons_mag(weapons_st, h, p), 3)
+    expect_eq(weapons_ammo(weapons_st, h, AMMO_STD), 12)
+    expect(weapons_set_mag(weapons_st, h, p, 999))
+    expect_eq(weapons_mag(weapons_st, h, p), weapons_capacity(weapons_st, h, p))
+    expect(weapons_set_mag(weapons_st, h, p, -4))
+    expect_eq(weapons_mag(weapons_st, h, p), 0)
+    expect(not weapons_set_mag(weapons_st, h, 9, 1))
+    expect(not weapons_set_mag(weapons_st, 99, p, 1))
+  }
+
   test "a grant adds a fire mode and cycling walks the weapon's own then the granted" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
     fresh(weapons_st, arena_st)
     let h = weapons_add(weapons_st, 1, true)

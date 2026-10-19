@@ -143,6 +143,18 @@ export function weapons_ammo_set(weapons_st: mut WeaponsState, h: int, ammo: int
   return true
 }
 
+# the rounds in a gun's magazine set outright (a save read back, a shop's loaded gun): 0 up to what it holds (weapons_capacity); the reserve is
+# not touched. False for no such gun or while it reloads (the reload's own count would be lost)
+export function weapons_set_mag(weapons_st: mut WeaponsState, h: int, gun: int, n: int) -> bool {
+  let s = wp__shooter(weapons_st, h)
+  if s == null { return false }
+  let g = wp__gun(s, gun)
+  if g == null { return false }
+  if s.cur == gun and wp__busy_reloading(s) { return false }
+  g.mag = Math.clamp(n, 0, wp__cap(g))
+  return true
+}
+
 # loads another round type (from the weapon's own and its alternatives): the magazine goes back to the reserve
 export function weapons_set_ammo_type(weapons_st: mut WeaponsState, h: int, gun: int, ammo: int) -> int {
   let s = wp__shooter(weapons_st, h)
