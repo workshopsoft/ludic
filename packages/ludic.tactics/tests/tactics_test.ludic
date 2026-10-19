@@ -289,7 +289,14 @@ program TacticsTest {
     expect(mf.morale > 0.6)
     tac_suppress(mf, ft, 0.3)
     expect(mf.supp > 0.2)
-    for i in 0 .. 40 { tac_morale_step(mf, ft, 1, 0.1) }
+    for i in 0 .. 40 { tac_morale_step(mf, ft, 1, true, 0.1) }
+    # a lone runner's nerve sinks under its flee line within seconds of a fight
+    let rn = arch("runner")
+    let mr = new TacMorale
+    tac_morale_reset(mr, rn)
+    expect(mr.morale > rn.flee_morale)
+    for i in 0 .. 60 { tac_morale_step(mr, rn, 0, true, 0.1) }
+    expect(mr.morale < rn.flee_morale)
     expect(mf.supp == 0.0)
   }
 
