@@ -1,0 +1,205 @@
+# decide.ludic - morale and suppression, the utility scorer that turns what an enemy knows into one action, and the aim error that
+# keeps its fire fair.
+#
+# The scorer is a pure function of a context (TacCtx: what the game measured this tick) and an archetype row: every action gets a score
+# from a few considerations, the action under way a commitment bonus while it is young (no flicker), and the best is taken. A coward
+# and a fighter differ only by their rows.
+
+# ---- morale and suppression ----------------------------------------------------------------------------------------------------
+
+export property TacMorale {
+  morale: float = 1.0                      # 0 broken .. 1 steady
+  supp: float = 0.0                        # suppression: near misses pile it up, it drains (0 .. 1)
+  hits: int = 0
+  allies_down: int = 0
+  near_misses: int = 0
+}
+
+export function tac_morale_reset(m: TacMorale, a: TacArchetype) -> void {
+  m.morale = 0.6 + 0.4 * Math.clamp(a.courage, 0.0, 1.0)
+  m.supp = 0.0
+  m.hits = 0
+  m.allies_down = 0
+  m.near_misses = 0
+}
+
+function tac_fear(a: TacArchetype) -> float { return Math.max(0.05, 1.2 - a.courage) }
+
+# hit for `frac` of its health
+export function tac_morale_hit(m: TacMorale, a: TacArchetype, frac: float) -> void {
+  m.hits += 1
+  m.morale = Math.max(0.0, m.morale - tac_fear(a) * (0.08 + frac * 0.5))
+  m.supp = Math.min(1.0, m.supp + 0.35)
+}
+# an ally fell in sight or in earshot
+export function tac_morale_ally_down(m: TacMorale, a: TacArchetype) -> void {
+  m.allies_down += 1
+  m.morale = Math.max(0.0, m.morale - tac_fear(a) * 0.32)
+}
+# a round passed `miss` metres from its head (within 2.5 m counts; nearer counts more)
+export function tac_suppress(m: TacMorale, a: TacArchetype, miss: float) -> void {
+  if miss > 2.5 { return }
+  let k = 1.0 - miss / 2.5
+  m.near_misses += 1
+  m.supp = Math.min(1.0, m.supp + 0.22 * k + 0.05)
+  m.morale = Math.max(0.0, m.morale - tac_fear(a) * 0.015 * k)
+}
+# time: suppression drains, morale creeps back toward its rest (lower alone than with friends) while nothing presses it
+export function tac_morale_step(m: TacMorale, a: TacArchetype, allies: int, dt: float) -> void {
+  m.supp = Math.max(0.0, m.supp - 0.4 * dt)
+  var rest = 0.55 + 0.4 * Math.clamp(a.courage, 0.0, 1.0)
+  if allies == 0 { rest -= 0.25 * tac_fear(a) }
+  if m.supp < 0.15 and m.morale < rest { m.morale = Math.min(rest, m.morale + 0.012 * dt) }
+}
+
+# ---- the utility scorer ----------------------------------------------------------------------------------------------------------
+
+# what the game measured for one agent this tick
+export property TacCtx {
+  state: int = TAC_UNAWARE                 # its perceiver's
+  sees: bool = false
+  has_lk: bool = false
+  lk_age: float = 1000.0
+  dist: float = 1000.0                     # to the threat (seen) or its last-known place
+  health: float = 1.0                      # 0 .. 1
+  morale: float = 1.0
+  supp: float = 0.0
+  ammo: float = 1.0                        # the magazine's share left
+  reloading: bool = false
+  in_cover: bool = false                   # at its reserved cover, and the cover hides it from the threat
+  cover_ok: bool = false                   # a cover point is free for it (a pick found one)
+  advance_ok: bool = false                 # ... one nearer the threat
+  flank_ok: bool = false                   # ... one round its side, and the squad's flank is free or its own
+  retreat_ok: bool = false                 # ... one farther away
+  flee_ok: bool = false                    # an escape route away from the threat
+  allies: int = 0                          # squad mates still fighting
+  away: float = 0.0                        # metres from its post
+  hurt_t: float = 1000.0                   # seconds since it was last hit
+  cur: int = TACT_HOLD                     # the action under way, and for how long
+  cur_t: float = 0.0
+}
+
+export const TAC_COMMIT: float = 0.18     # the action under way: this much more, for its first TAC_COMMIT_S
+export const TAC_COMMIT_S: float = 1.6
+
+# every action's score into out (TACT_COUNT floats)
+export function tac_scores(a: TacArchetype, c: TacCtx, out: []float) -> void {
+  for i in 0 .. TACT_COUNT { out[i] = 0.0 }
+  let fighting = c.state == TAC_COMBAT or c.state == TAC_ALERT
+  let threat = c.state >= TAC_ALERT
+  # surrender: morale broken, and nobody left beside it or nowhere to run. Once given, it is kept
+  if c.cur == TACT_SURRENDER {
+    out[TACT_SURRENDER] = 10.0
+    return
+  }
+  if threat and a.surrender_morale > 0.0 and c.morale < a.surrender_morale and (c.allies == 0 or not c.flee_ok or c.morale < a.surrender_morale * 0.5) {
+    out[TACT_SURRENDER] = 1.2 + (a.surrender_morale - c.morale)
+  }
+  # flee: morale under its line and a way out (cornered, it fights)
+  if threat and a.flee_morale > 0.0 and c.morale < a.flee_morale and c.flee_ok { out[TACT_FLEE] = 1.0 + (a.flee_morale - c.morale) }
+  if c.cur == TACT_FLEE and c.flee_ok and c.morale < a.flee_morale + 0.2 { out[TACT_FLEE] = Math.max(out[TACT_FLEE], 1.05) }
+  # hurt: fall back to a farther cover
+  if fighting and c.health < a.retreat_health and c.retreat_ok { out[TACT_RETREAT] = 0.7 + (a.retreat_health - c.health) + 0.2 * c.supp }
+  # reload: behind cover when it can get there first
+  if c.reloading {
+    out[TACT_RELOAD] = 0.95
+  } else if c.ammo < 0.3 {
+    var r = 0.45 + (0.3 - c.ammo)
+    if c.ammo <= 0.0 { r = 0.9 }
+    if c.in_cover or not c.cover_ok or not threat { r += 0.15 } else { r -= 0.2 }
+    out[TACT_RELOAD] = r
+  }
+  if fighting {
+    if not c.in_cover and c.cover_ok {
+      var s = 0.55 + 0.35 * c.supp + 0.15 * (1.0 - a.aggression)
+      if c.hurt_t < 2.0 { s += 0.2 }
+      if c.ammo < 0.3 { s += 0.3 }
+      out[TACT_COVER] = s
+    }
+    if c.sees or c.lk_age < 1.5 {
+      if c.in_cover {
+        out[TACT_PEEK] = 0.5 + 0.3 * a.aggression - 0.45 * c.supp
+      } else if c.cover_ok {
+        out[TACT_PEEK] = 0.3 + 0.15 * a.aggression - 0.25 * c.supp
+      } else {
+        out[TACT_PEEK] = 0.5 + 0.2 * a.aggression - 0.2 * c.supp      # no cover to be had: stand and fight
+      }
+    }
+    if c.in_cover and c.advance_ok and c.dist > a.range * 0.8 {
+      var adv = 0.25 + 0.5 * a.aggression - 0.6 * c.supp
+      if c.dist > a.range * 1.4 { adv += 0.25 }
+      if not c.sees { adv += 0.1 }
+      out[TACT_ADVANCE] = adv
+    }
+    if c.flank_ok and c.allies >= 1 and c.state == TAC_COMBAT { out[TACT_FLANK] = 0.35 + 0.55 * a.flank + 0.15 * a.aggression - 0.5 * c.supp }
+    if c.in_cover and not c.sees and c.has_lk and c.lk_age < 6.0 and c.allies >= 1 { out[TACT_SUPPRESS] = 0.3 + 0.45 * a.suppress }
+    if c.state == TAC_ALERT and not c.sees and c.has_lk { out[TACT_INVESTIGATE] = 0.2 + 0.3 * a.aggression }
+  }
+  if c.state == TAC_SEARCHING { out[TACT_SEARCH] = 0.6 }
+  if c.state == TAC_SUSPICIOUS and c.has_lk { out[TACT_INVESTIGATE] = 0.6 }
+  out[TACT_HOLD] = 0.2
+  if c.state == TAC_UNAWARE and c.away > 2.0 { out[TACT_GIVE_UP] = 0.5 }
+  if a.hold_r > 0.0 and c.away > a.hold_r { out[TACT_GIVE_UP] = Math.max(out[TACT_GIVE_UP], 0.8) }
+  # commitment: the action under way keeps a lead while it is young
+  if c.cur >= 0 and c.cur < TACT_COUNT and out[c.cur] > 0.0 and c.cur_t < TAC_COMMIT_S { out[c.cur] += TAC_COMMIT }
+}
+
+# the action to do: the best score (out holds them after)
+export function tac_choose(a: TacArchetype, c: TacCtx, out: []float) -> int {
+  tac_scores(a, c, out)
+  var best = TACT_HOLD
+  var bs = out[TACT_HOLD]
+  for i in 0 .. TACT_COUNT {
+    if out[i] > bs {
+      bs = out[i]
+      best = i
+    }
+  }
+  return best
+}
+
+# ---- aim ------------------------------------------------------------------------------------------------------------------------
+
+# How far off (metres, one standard deviation at the target) a round goes: grows with the distance, the target's speed, the shooter's own
+# movement and suppression; shrinks as the aim settles on the target (settle: seconds on it) - never a laser. `accuracy` is the row's
+export function tac_aim_miss(a: TacArchetype, dist: float, target_speed: float, self_speed: float, supp: float, settle: float) -> float {
+  var m = 0.16 + 0.0135 * dist
+  m *= 1.0 + 0.12 * Math.clamp(target_speed, 0.0, 8.0)
+  m *= 1.0 + 0.35 * Math.clamp(self_speed, 0.0, 5.0)
+  m *= 1.0 + 1.6 * Math.clamp(supp, 0.0, 1.0)
+  m *= 1.0 + 0.9 * Math.exp(-Math.max(settle, 0.0) / 0.9)
+  return m * Math.max(a.accuracy, 0.05)
+}
+
+# Two draws of a normal distribution from (seed, n): out[0] across, out[1] up (Box-Muller on the hash)
+export function tac_gauss2(seed: int, n: int, out: []float) -> void {
+  let u1 = Math.max(tac_unit(tac_hash(seed, n, 11)), 0.000001)
+  let u2 = tac_unit(tac_hash(seed, n, 29))
+  let r = Math.sqrt(-2.0 * Math.log(u1))
+  out[0] = r * Math.cos(6.28318530717959 * u2)
+  out[1] = r * Math.sin(6.28318530717959 * u2)
+}
+
+# The direction a round leaves along, from (ox, oy, oz) at the point (tx, ty, tz) missed by `miss` metres (one sigma), into out[0..2] (unit)
+export function tac_aim_dir(ox: float, oy: float, oz: float, tx: float, ty: float, tz: float, miss: float, seed: int, n: int, out: []float) -> void {
+  tac_gauss2(seed, n, out)
+  let gx = out[0] * miss
+  let gy = out[1] * miss * 0.8
+  let dx = tx - ox
+  let dy = ty - oy
+  let dz = tz - oz
+  let hl = Math.max(Math.sqrt(dx * dx + dz * dz), 0.0001)
+  # across: the horizontal right of the line
+  let rx = dz / hl
+  let rz = -dx / hl
+  let px = tx + rx * gx
+  let py = ty + gy
+  let pz = tz + rz * gx
+  let ex = px - ox
+  let ey = py - oy
+  let ez = pz - oz
+  let l = Math.max(Math.sqrt(ex * ex + ey * ey + ez * ez), 0.0001)
+  out[0] = ex / l
+  out[1] = ey / l
+  out[2] = ez / l
+}

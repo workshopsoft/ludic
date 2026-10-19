@@ -1,0 +1,10 @@
+# ludic.tactics - the thinking of a shooter's enemies, without a body: the game moves the figures, fires the guns and
+# answers the world's questions (a ray, the walkable ground) through the TacticsWorld port.
+module ludic_tactics uses ludic_base
+numbers float
+import "ludic.base"
+import "defs.ludic"
+import "perception.ludic"
+import "cover.ludic"
+import "decide.ludic"
+import "squad.ludic"

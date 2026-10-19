@@ -1,0 +1,108 @@
+# defs.ludic - the alert states, the actions, the callouts, an archetype's row and the world's port.
+# Coordinates are the game's world frame: metres, y up. A facing is a unit vector (fx, fz) on the ground.
+
+# ---- alert states (TacPerceiver.state) ------------------------------------------------------------------------------------
+export const TAC_UNAWARE: int = 0       # nothing noticed: patrol, idle, hold
+export const TAC_SUSPICIOUS: int = 1    # half-seen or a far noise: look at it, walk over
+export const TAC_ALERT: int = 2         # knows a threat is about (a shot heard, an ally's call): take cover, look for it
+export const TAC_COMBAT: int = 3        # the threat is seen, or was a moment ago
+export const TAC_SEARCHING: int = 4     # lost it: search round the last-known position, then give up
+
+# ---- actions (what the utility scorer picks) -----------------------------------------------------------------------------
+export const TACT_HOLD: int = 0         # stand where it is (or patrol its post)
+export const TACT_INVESTIGATE: int = 1  # walk to the last-known position, wary
+export const TACT_COVER: int = 2        # run to the best cover from the threat
+export const TACT_PEEK: int = 3         # from cover: peek and shoot; in the open: shoot
+export const TACT_ADVANCE: int = 4      # cover to cover, nearer the threat
+export const TACT_FLANK: int = 5        # to a cover far round the threat's side (the squad's one flanker)
+export const TACT_SUPPRESS: int = 6     # fire at the last-known position from cover, to pin the threat while a flanker moves
+export const TACT_RETREAT: int = 7      # to a cover farther from the threat (hurt)
+export const TACT_FLEE: int = 8         # run for an escape point (or a car), out of sight
+export const TACT_SURRENDER: int = 9    # hands up, weapon down: stays (the game cuffs it)
+export const TACT_SEARCH: int = 10      # look round the last-known position
+export const TACT_RELOAD: int = 11      # reload (behind cover when it can)
+export const TACT_GIVE_UP: int = 12     # go back to its post
+export const TACT_COUNT: int = 13
+
+# ---- callouts (TacSquad's ring; the game says them as text or audio) ------------------------------------------------------
+export const TAC_CALL_SPOTTED: int = 0
+export const TAC_CALL_HEARD: int = 1
+export const TAC_CALL_FLANKING: int = 2
+export const TAC_CALL_COVER_ME: int = 3
+export const TAC_CALL_RELOADING: int = 4
+export const TAC_CALL_MAN_DOWN: int = 5
+export const TAC_CALL_LOST: int = 6
+export const TAC_CALL_SEARCHING: int = 7
+export const TAC_CALL_GIVE_UP: int = 8
+export const TAC_CALL_RUN: int = 9
+export const TAC_CALL_SURRENDER: int = 10
+export const TAC_CALL_HIT: int = 11
+export const TAC_CALL_COUNT: int = 12
+
+# what a noise is worth (TacticsWorld callers pass a loudness: the radius in metres it carries for a hearing of 1)
+export const TAC_LOUD_SHOT: float = 70.0
+export const TAC_LOUD_CRASH: float = 45.0
+export const TAC_LOUD_SPRINT: float = 9.0
+export const TAC_LOUD_STEP: float = 3.0
+
+# An archetype: how one kind of enemy weighs its choices, sees, hears and shoots. Rows of the game (`registry ... of TacArchetype`).
+export property TacArchetype {
+  key: string = ""
+  title: string = ""
+  aggression: float = 0.5                 # appetite to advance, flank and peek (0 .. 1)
+  courage: float = 0.5                    # morale lost to a hit, an ally down or a near miss scales with (1.2 - courage)
+  flee_morale: float = 0.0                # morale under this, and a way out: flee (0 never flees)
+  surrender_morale: float = 0.0           # morale under this, and alone or cornered: surrender (0 never)
+  retreat_health: float = 0.3             # health under this: fall back to a farther cover
+  flank: float = 0.5                      # appetite for the flanker's role
+  suppress: float = 0.5                   # appetite for pinning fire while another moves
+  hold_r: float = 0.0                     # a guard: never further than this from its post (0: goes anywhere)
+  range: float = 18.0                     # the distance it likes to fight at, metres
+  accuracy: float = 1.0                   # aim error multiplier (1 the norm, bigger misses more)
+  reaction: float = 0.5                   # seconds before the first shot at a target it has just seen
+  sight: float = 45.0                     # metres it sees a standing target in daylight, in its cone
+  fov: float = 120.0                      # the cone, degrees
+  hearing: float = 1.0                    # loudness multiplier
+  search_s: float = 18.0                  # seconds it searches before giving up
+  burst: int = 4                          # rounds a burst
+  burst_gap: float = 0.8                  # seconds between bursts
+  car: bool = false                       # takes a parked car to flee when one is near
+  run_speed: float = 4.6                  # m/s (the clips' jog)
+  walk_speed: float = 1.6
+}
+
+# The world, as the game answers it. Unbound, nothing blocks a ray and every place is walkable at the height asked.
+export port TacticsWorld {
+  ray: fn(float, float, float, float, float, float) -> float = fn tac__clear      # (ax, ay, az, bx, by, bz): the fraction of a->b before something blocks it, or -1 when nothing does
+  ground: fn(float, float, float) -> float = fn tac__ground                       # (x, y_hint, z): the walkable height there, or TAC_NO_GROUND
+}
+export const TAC_NO_GROUND: float = -1000000.0
+function tac__clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> float { return -1.0 }
+function tac__ground(x: float, y: float, z: float) -> float { return y }
+
+# a ray of the world between two points: true when nothing stops it before `slack` metres short of b
+export function tac_clear(ax: float, ay: float, az: float, bx: float, by: float, bz: float, slack: float) -> bool {
+  let f = TacticsWorld.ray(ax, ay, az, bx, by, bz)
+  if f < 0.0 { return true }
+  let d = Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay) + (bz - az) * (bz - az))
+  return f * d >= d - slack
+}
+
+# a small deterministic hash (seeds the aim's draws: the same seed, the same misses)
+export function tac_hash(a: int, b: int, c: int) -> int {
+  var x = a * 374761393 + b * 668265263 + c * 1597334677
+  x = (x ^ ((x >> 13) & 0x7FFFF)) * 1274126177
+  x = x ^ ((x >> 16) & 0xFFFF)
+  x = x * 668265263
+  x = x ^ ((x >> 15) & 0x1FFFF)
+  return x & 0x7FFFFFFF
+}
+# 0 .. 1 from a hash
+export function tac_unit(h: int) -> float { return float(h % 1000003) / 1000003.0 }
+
+export function tac_wrap(a: float) -> float {
+  var v = a
+  while v > 3.14159265358979 { v -= 6.28318530717959 }
+  while v < -3.14159265358979 { v += 6.28318530717959 }
+  return v
+}

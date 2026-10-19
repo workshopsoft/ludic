@@ -1,0 +1,312 @@
+# cover.ludic - cover points made by rays and picked by scores (an environment query in the manner of Killzone's position picking
+# and Unreal's EQS).
+#
+#   made     a grid of candidate points over a rectangle, each put on the walkable ground (the port's `ground`). A point is cover when a
+#            ray at knee height in one of 16 directions meets something within TAC_PROBE: low cover when it stops a crouched chest
+#            (0.95 m) but not a standing head (1.5 m: peek over it), high cover when it stops both (peek round its side, the side found
+#            by rays). The point is moved to TAC_BACK off the face. Points nearer than TAC_SPACING to a kept one are dropped.
+#   picked   by a query: the agent, the threat's eye, a mode (cover, advance, flank, retreat), the distance it likes. A point owned by
+#            another agent, outside the search radius or a guard's hold, too near an ally, or whose face does not stand between it and the
+#            threat is not looked at; the rest are scored on travel, range, the threat's view of it (a ray: protected or not), its line of
+#            fire from the peek, and the mode's own term (nearer, round the side, farther) and the best is taken and reserved.
+export const TAC_PROBE: float = 1.1         # m: a face within this of the point makes it cover
+export const TAC_BACK: float = 0.55         # m: the point stands this far off the face
+export const TAC_SPACING: float = 1.2
+export const TAC_COVER_MAX: int = 512
+export const TAC_CROUCH_CHEST: float = 0.95
+export const TAC_STAND_EYE: float = 1.5
+
+export const TAC_Q_COVER: int = 0
+export const TAC_Q_ADVANCE: int = 1
+export const TAC_Q_FLANK: int = 2
+export const TAC_Q_RETREAT: int = 3
+
+export property TacCover {
+  n: int = 0
+  x: []float = new []float
+  y: []float = new []float
+  z: []float = new []float
+  nx: []float = new []float                # the way to the face (unit, on the ground)
+  nz: []float = new []float
+  high: []bool = new []bool                # high cover (peek round the side) or low (peek over)
+  side: []int = new []int                  # high cover: +1 peek to the right of the face's normal, -1 the left, 0 no peek
+  owner: []int = new []int                 # the agent that holds it, -1 free
+  # the last pick's terms, for the debug overlay and the tests
+  last_score: float = 0.0
+  last_protect: bool = false
+  last_lof: bool = false
+  last_looked: int = 0                     # candidates scored (rays cast twice each)
+  pk: []float = floats(3)                  # scratch: a peek point
+}
+
+export property TacQuery {
+  me: int = 0                              # the agent asking (its own reservation is not in its way)
+  mode: int = TAC_Q_COVER
+  ax: float = 0.0                          # the agent's feet
+  ay: float = 0.0
+  az: float = 0.0
+  tx: float = 0.0                          # the threat's eye (or its last-known place, eye high)
+  ty: float = 0.0
+  tz: float = 0.0
+  range: float = 18.0                      # the distance it likes to the threat
+  reach: float = 25.0                      # the farthest point it looks at, from the agent
+  fx: float = 0.0                          # flank: the side it must come round from, a point (the squad's middle); the angle is the
+  fz: float = 0.0                          #   angle at the threat between this and the point
+  hold_x: float = 0.0                      # a guard's post and radius (hold_r 0: none)
+  hold_z: float = 0.0
+  hold_r: float = 0.0
+  max_looked: int = 28                     # candidates scored at most (the nearest that pass the filters)
+}
+
+@alloc_ok("cover made: once an area, not a frame")
+export function tac_cover_clear(cs: TacCover) -> void {
+  cs.n = 0
+  List.clear(cs.x)
+  List.clear(cs.y)
+  List.clear(cs.z)
+  List.clear(cs.nx)
+  List.clear(cs.nz)
+  List.clear(cs.high)
+  List.clear(cs.side)
+  List.clear(cs.owner)
+}
+
+@alloc_ok("cover made: once an area, not a frame")
+function tac_cover_push(cs: TacCover, x: float, y: float, z: float, nx: float, nz: float, high: bool, side: int) -> void {
+  push(cs.x, x)
+  push(cs.y, y)
+  push(cs.z, z)
+  push(cs.nx, nx)
+  push(cs.nz, nz)
+  push(cs.high, high)
+  push(cs.side, side)
+  push(cs.owner, -1)
+  cs.n += 1
+}
+
+# a horizontal ray of `len` from (x, y, z) along (dx, dz): the distance to what it meets, or -1
+function tac_probe(x: float, y: float, z: float, dx: float, dz: float, len: float) -> float {
+  let f = TacticsWorld.ray(x, y, z, x + dx * len, y, z + dz * len)
+  if f < 0.0 { return -1.0 }
+  return f * len
+}
+
+# Cover points over the rectangle (x0, z0) .. (x1, z1), candidates `step` apart, on the ground near y_hint. Returns how many it added
+@alloc_ok("cover made: once an area, not a frame")
+export function tac_cover_generate(cs: TacCover, x0: float, z0: float, x1: float, z1: float, step: float, y_hint: float) -> int {
+  let before = cs.n
+  let nx = int((x1 - x0) / step) + 1
+  let nz = int((z1 - z0) / step) + 1
+  for iz in 0 .. nz {
+    for ix in 0 .. nx {
+      if cs.n >= TAC_COVER_MAX { return cs.n - before }
+      let px = x0 + float(ix) * step
+      let pz = z0 + float(iz) * step
+      let gy = TacticsWorld.ground(px, y_hint, pz)
+      if gy <= TAC_NO_GROUND + 1.0 { continue }
+      # the nearest face round the point at knee height
+      var best = 1000.0
+      var bdx = 0.0
+      var bdz = 0.0
+      for k in 0 .. 16 {
+        let a = float(k) * 0.392699081698724
+        let dx = Math.sin(a)
+        let dz = Math.cos(a)
+        let d = tac_probe(px, gy + 0.6, pz, dx, dz, TAC_PROBE)
+        if d >= 0.0 and d < best {
+          best = d
+          bdx = dx
+          bdz = dz
+        }
+      }
+      if best > TAC_PROBE { continue }
+      # the point stands TAC_BACK off the face, on the ground there, clear of it
+      let cx = px + bdx * (best - TAC_BACK)
+      let cz = pz + bdz * (best - TAC_BACK)
+      let cy = TacticsWorld.ground(cx, gy, cz)
+      if cy <= TAC_NO_GROUND + 1.0 or Math.abs(cy - gy) > 0.6 { continue }
+      # the face again from there: it must stop a crouched chest
+      let dc = tac_probe(cx, cy + TAC_CROUCH_CHEST, cz, bdx, bdz, TAC_BACK + 0.5)
+      if dc < 0.0 { continue }
+      let dh = tac_probe(cx, cy + TAC_STAND_EYE, cz, bdx, bdz, TAC_BACK + 0.5)
+      let high = dh >= 0.0
+      # nothing else crowds the body (a corner the point would stand in)
+      if tac_probe(cx, cy + 1.0, cz, -bdx, -bdz, 0.45) >= 0.0 { continue }
+      var side = 0
+      if high {
+        # round which side a head at the eye sees past the face: the tangent's two ends
+        let rx = bdz
+        let rz = -bdx
+        for s in 0 .. 2 {
+          var sg = 1.0
+          if s == 1 { sg = -1.0 }
+          let ox = cx + rx * sg * 0.75
+          let oz = cz + rz * sg * 0.75
+          if tac_probe(cx, cy + TAC_STAND_EYE, cz, rx * sg, rz * sg, 0.8) >= 0.0 { continue }
+          if tac_probe(ox, cy + TAC_STAND_EYE, oz, bdx, bdz, TAC_BACK + 1.5) < 0.0 {
+            side = int(sg)
+            break
+          }
+        }
+      }
+      # spacing against the kept points
+      var crowded = false
+      for i in 0 .. cs.n {
+        let ex = cs.x[i] - cx
+        let ez = cs.z[i] - cz
+        if ex * ex + ez * ez < TAC_SPACING * TAC_SPACING and Math.abs(cs.y[i] - cy) < 1.5 {
+          crowded = true
+          break
+        }
+      }
+      if crowded { continue }
+      tac_cover_push(cs, cx, cy, cz, bdx, bdz, high, side)
+    }
+  }
+  return cs.n - before
+}
+
+# where a body at cover point i shows itself to shoot: over a low face, round the side of a high one (out[0..2]); false when it cannot
+export function tac_cover_peek(cs: TacCover, i: int, out: []float) -> bool {
+  if i < 0 or i >= cs.n { return false }
+  if not cs.high[i] {
+    out[0] = cs.x[i]
+    out[1] = cs.y[i] + TAC_STAND_EYE
+    out[2] = cs.z[i]
+    return true
+  }
+  if cs.side[i] == 0 { return false }
+  let sg = float(cs.side[i])
+  out[0] = cs.x[i] + cs.nz[i] * sg * 0.75
+  out[1] = cs.y[i] + TAC_STAND_EYE
+  out[2] = cs.z[i] - cs.nx[i] * sg * 0.75
+  return true
+}
+
+# does cover point i hide a body (crouched at low cover, standing at high) from an eye at (tx, ty, tz)? One ray
+export function tac_cover_protects(cs: TacCover, i: int, tx: float, ty: float, tz: float) -> bool {
+  if i < 0 or i >= cs.n { return false }
+  var h = TAC_CROUCH_CHEST
+  if cs.high[i] { h = 1.35 }
+  return not tac_clear(tx, ty, tz, cs.x[i], cs.y[i] + h, cs.z[i], 0.05)
+}
+
+# can a body at cover point i shoot an eye at (tx, ty, tz) from its peek? One ray
+export function tac_cover_fires(cs: TacCover, i: int, tx: float, ty: float, tz: float, tmp: []float) -> bool {
+  if not tac_cover_peek(cs, i, tmp) { return false }
+  return tac_clear(tmp[0], tmp[1], tmp[2], tx, ty - 0.3, tz, 0.4)
+}
+
+export function tac_cover_take(cs: TacCover, i: int, me: int) -> void {
+  tac_cover_release(cs, me)
+  if i >= 0 and i < cs.n { cs.owner[i] = me }
+}
+export function tac_cover_release(cs: TacCover, me: int) -> void {
+  for i in 0 .. cs.n { if cs.owner[i] == me { cs.owner[i] = -1 } }
+}
+export function tac_cover_owned(cs: TacCover, me: int) -> int {
+  for i in 0 .. cs.n { if cs.owner[i] == me { return i } }
+  return -1
+}
+
+# The best cover point for query q, or -1. `ax`/`az` hold the other agents' places (n of them): a point within 2 m of one is left out.
+# `scratch` needs 2 * max_looked floats. The pick is not reserved here (tac_cover_take)
+export function tac_cover_pick(cs: TacCover, q: TacQuery, ox: []float, oz: []float, n: int, scratch: []float) -> int {
+  cs.last_looked = 0
+  let cur_t = Math.sqrt((q.ax - q.tx) * (q.ax - q.tx) + (q.az - q.tz) * (q.az - q.tz))
+  # the nearest candidates that pass the cheap filters: scratch[k*2] index, scratch[k*2+1] distance (an insertion sort)
+  var m = 0
+  let cap = Math.max(1, q.max_looked)
+  for i in 0 .. cs.n {
+    if cs.owner[i] >= 0 and cs.owner[i] != q.me { continue }
+    let dx = cs.x[i] - q.ax
+    let dz = cs.z[i] - q.az
+    let d = Math.sqrt(dx * dx + dz * dz)
+    if d > q.reach { continue }
+    if q.hold_r > 0.0 {
+      let hx = cs.x[i] - q.hold_x
+      let hz = cs.z[i] - q.hold_z
+      if hx * hx + hz * hz > q.hold_r * q.hold_r { continue }
+    }
+    # the face must stand between the point and the threat
+    let tx = q.tx - cs.x[i]
+    let tz = q.tz - cs.z[i]
+    let td = Math.sqrt(tx * tx + tz * tz)
+    if td < 4.0 { continue }
+    if (tx * cs.nx[i] + tz * cs.nz[i]) / td < 0.3 { continue }
+    if q.mode == TAC_Q_ADVANCE and td > cur_t - 3.0 { continue }
+    if q.mode == TAC_Q_RETREAT and td < cur_t + 4.0 { continue }
+    var near_ally = false
+    for k in 0 .. n {
+      let ex = ox[k] - cs.x[i]
+      let ez = oz[k] - cs.z[i]
+      if ex * ex + ez * ez < 4.0 {
+        near_ally = true
+        break
+      }
+    }
+    if near_ally { continue }
+    if q.mode == TAC_Q_FLANK {
+      # round the side: the angle at the threat between the squad's side and the point
+      let ax = q.fx - q.tx
+      let az = q.fz - q.tz
+      let al = Math.sqrt(ax * ax + az * az)
+      if al > 0.1 {
+        let c = (-tx * ax + -tz * az) / (td * al)
+        if c > 0.45 { continue }     # under ~63 degrees round: not a flank
+      }
+    }
+    # insert by distance
+    var at = m
+    while at > 0 and scratch[(at - 1) * 2 + 1] > d { at -= 1 }
+    if at >= cap { continue }
+    var j = Math.min(m, cap - 1)
+    while j > at {
+      scratch[j * 2] = scratch[(j - 1) * 2]
+      scratch[j * 2 + 1] = scratch[(j - 1) * 2 + 1]
+      j -= 1
+    }
+    scratch[at * 2] = float(i)
+    scratch[at * 2 + 1] = d
+    if m < cap { m += 1 }
+  }
+  var best = -1
+  var bs = -1000000.0
+  for k in 0 .. m {
+    let i = int(scratch[k * 2])
+    let d = scratch[k * 2 + 1]
+    cs.last_looked += 1
+    let prot = tac_cover_protects(cs, i, q.tx, q.ty, q.tz)
+    if not prot { continue }
+    let tx = q.tx - cs.x[i]
+    let tz = q.tz - cs.z[i]
+    let td = Math.sqrt(tx * tx + tz * tz)
+    var s = 1.0 - d * 0.06 - Math.abs(td - q.range) * 0.035
+    var lof = false
+    if q.mode != TAC_Q_RETREAT {
+      lof = tac_cover_fires(cs, i, q.tx, q.ty, q.tz, cs.pk)
+      if lof { s += 0.6 }
+    }
+    if q.mode == TAC_Q_ADVANCE { s += (cur_t - td) * 0.05 }
+    if q.mode == TAC_Q_RETREAT { s += (td - cur_t) * 0.05 + d * 0.03 }
+    if q.mode == TAC_Q_FLANK {
+      let ax = q.fx - q.tx
+      let az = q.fz - q.tz
+      let al = Math.sqrt(ax * ax + az * az)
+      if al > 0.1 {
+        let c = (-tx * ax + -tz * az) / (td * al)
+        s += (1.0 - c) * 0.6
+      }
+      s += d * 0.03      # a flank is a trip: travel counts less
+    }
+    if cs.owner[i] == q.me { s += 0.15 }     # staying put beats a sideways shuffle
+    if s > bs {
+      bs = s
+      best = i
+      cs.last_protect = prot
+      cs.last_lof = lof
+    }
+  }
+  cs.last_score = bs
+  return best
+}

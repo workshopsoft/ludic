@@ -1,0 +1,121 @@
+# squad.ludic - a small group that fights as one: a shared contact (where the threat was last known, and how long ago), one flanker at a
+# time while the others pin the threat down, and callouts (said by one member, kept a few seconds, each kind not repeated within its
+# cooldown) so the player can read what the squad decided.
+export const TAC_CALL_KEEP: float = 2.6      # seconds a callout stays said
+export const TAC_CALLS: int = 16             # callouts kept (a ring)
+
+export property TacSquad {
+  key: string = ""
+  members: []int = new []int               # the game's agent numbers
+  has_contact: bool = false
+  cx: float = 0.0
+  cy: float = 0.0
+  cz: float = 0.0
+  c_age: float = 1000.0
+  flanker: int = -1                        # the member flanking now, -1 none
+  flanks: int = 0                          # flanks begun (counter)
+  time: float = 0.0
+  last_call: []float = floats(TAC_CALL_COUNT)   # when each kind was last said (squad time)
+  call_code: []int = new []int             # the ring
+  call_who: []int = new []int
+  call_t: []float = new []float
+  call_next: int = 0
+  n_calls: int = 0
+}
+
+@alloc_ok("a squad made: once a spawn, not a frame")
+export function tac_squad_reset(sq: TacSquad, key: string) -> void {
+  sq.key = key
+  List.clear(sq.members)
+  sq.has_contact = false
+  sq.c_age = 1000.0
+  sq.flanker = -1
+  sq.flanks = 0
+  sq.time = 0.0
+  for i in 0 .. TAC_CALL_COUNT { sq.last_call[i] = -1000.0 }
+  List.clear(sq.call_code)
+  List.clear(sq.call_who)
+  List.clear(sq.call_t)
+  for i in 0 .. TAC_CALLS {
+    push(sq.call_code, -1)
+    push(sq.call_who, -1)
+    push(sq.call_t, -1000.0)
+  }
+  sq.call_next = 0
+  sq.n_calls = 0
+}
+
+@alloc_ok("a squad made: once a spawn, not a frame")
+export function tac_squad_join(sq: TacSquad, who: int) -> void { push(sq.members, who) }
+
+export function tac_squad_step(sq: TacSquad, dt: float) -> void {
+  sq.time += dt
+  sq.c_age += dt
+}
+
+# a member saw (or heard) the threat at (x, y, z) `age` seconds ago: the squad's contact when it is fresher
+export function tac_squad_report(sq: TacSquad, x: float, y: float, z: float, age: float) -> void {
+  if sq.has_contact and age >= sq.c_age { return }
+  sq.has_contact = true
+  sq.cx = x
+  sq.cy = y
+  sq.cz = z
+  sq.c_age = age
+}
+
+# the flanker's role: true when `who` has it (taken now if it was free)
+export function tac_squad_flank_claim(sq: TacSquad, who: int) -> bool {
+  if sq.flanker == who { return true }
+  if sq.flanker >= 0 { return false }
+  sq.flanker = who
+  sq.flanks += 1
+  return true
+}
+export function tac_squad_flank_free(sq: TacSquad, who: int) -> bool { return sq.flanker < 0 or sq.flanker == who }
+export function tac_squad_flank_release(sq: TacSquad, who: int) -> void { if sq.flanker == who { sq.flanker = -1 } }
+
+# `who` says callout `code` unless that kind was said within `cooldown` seconds: true when said
+export function tac_callout(sq: TacSquad, who: int, code: int, cooldown: float) -> bool {
+  if code < 0 or code >= TAC_CALL_COUNT or len(sq.call_code) < TAC_CALLS { return false }
+  if sq.time - sq.last_call[code] < cooldown { return false }
+  sq.last_call[code] = sq.time
+  let i = sq.call_next
+  sq.call_code[i] = code
+  sq.call_who[i] = who
+  sq.call_t[i] = sq.time
+  sq.call_next = (i + 1) % TAC_CALLS
+  sq.n_calls += 1
+  return true
+}
+
+# the callout `who` is saying now (said within TAC_CALL_KEEP), its code or -1
+export function tac_saying(sq: TacSquad, who: int) -> int {
+  var best = -1
+  var bt = -1000.0
+  for i in 0 .. len(sq.call_code) {
+    if sq.call_who[i] != who or sq.call_code[i] < 0 { continue }
+    if sq.time - sq.call_t[i] > TAC_CALL_KEEP { continue }
+    if sq.call_t[i] > bt {
+      bt = sq.call_t[i]
+      best = sq.call_code[i]
+    }
+  }
+  return best
+}
+
+# the plain English of a callout (a game with audio plays a line instead)
+export function tac_call_text(code: int) -> string {
+  if code == TAC_CALL_SPOTTED { return "There he is!" }
+  if code == TAC_CALL_HEARD { return "You hear that?" }
+  if code == TAC_CALL_FLANKING { return "Flanking!" }
+  if code == TAC_CALL_COVER_ME { return "Cover me!" }
+  if code == TAC_CALL_RELOADING { return "Reloading!" }
+  if code == TAC_CALL_MAN_DOWN { return "Man down!" }
+  if code == TAC_CALL_LOST { return "Lost him!" }
+  if code == TAC_CALL_SEARCHING { return "Spread out, find him" }
+  if code == TAC_CALL_GIVE_UP { return "He's gone." }
+  if code == TAC_CALL_RUN { return "I'm out of here!" }
+  if code == TAC_CALL_SURRENDER { return "Don't shoot! I give up!" }
+  if code == TAC_CALL_HIT { return "I'm hit!" }
+  return ""
+}

@@ -1,0 +1,343 @@
+# tactics_test.ludic - ludic.tactics on a world of boxes: what an enemy sees and hears, how it alerts and gives up, cover made beside a
+# wall and picked against a threat (reserved, flanked), the utility scorer per archetype, the aim's misses, a squad's roles and callouts.
+import "ludic.tactics"
+import "ludic.base"
+program TacticsTest {
+  numbers float
+
+  # the test's world: boxes (x0 y0 z0 x1 y1 z1), flat ground at y 0
+  state Boxes { b: []float = new []float }
+
+  function boxes_add(w: mut Boxes, x0: float, y0: float, z0: float, x1: float, y1: float, z1: float) -> void {
+    push(w.b, x0)
+    push(w.b, y0)
+    push(w.b, z0)
+    push(w.b, x1)
+    push(w.b, y1)
+    push(w.b, z1)
+  }
+
+  # the fraction along a->b of the first box it enters, or -1
+  function world_ray(w: Boxes, ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> float {
+    var best = 2.0
+    let d = [bx - ax, by - ay, bz - az]
+    let o = [ax, ay, az]
+    let n = len(w.b) / 6
+    for i in 0 .. n {
+      var t0 = 0.0
+      var t1 = 1.0
+      var hit = true
+      for k in 0 .. 3 {
+        let lo = w.b[i * 6 + k]
+        let hi = w.b[i * 6 + 3 + k]
+        if Math.abs(d[k]) < 0.0000001 {
+          if o[k] < lo or o[k] > hi { hit = false }
+        } else {
+          var ta = (lo - o[k]) / d[k]
+          var tb = (hi - o[k]) / d[k]
+          if ta > tb {
+            let s = ta
+            ta = tb
+            tb = s
+          }
+          t0 = Math.max(t0, ta)
+          t1 = Math.min(t1, tb)
+          if t0 > t1 { hit = false }
+        }
+      }
+      if hit and t0 < best { best = t0 }
+    }
+    if best > 1.0 { return -1.0 }
+    return best
+  }
+  function world_ground(w: Boxes, x: float, y: float, z: float) -> float {
+    # inside a box's footprint nobody stands
+    let n = len(w.b) / 6
+    for i in 0 .. n {
+      if x > w.b[i * 6] and x < w.b[i * 6 + 3] and z > w.b[i * 6 + 2] and z < w.b[i * 6 + 5] { return TAC_NO_GROUND }
+    }
+    return 0.0
+  }
+  bind TacticsWorld { ray: fn world_ray, ground: fn world_ground }
+
+  function arch(key: string) -> TacArchetype {
+    let a = new TacArchetype
+    a.key = key
+    if key == "coward" {
+      a.courage = 0.1
+      a.aggression = 0.2
+      a.surrender_morale = 0.45
+      a.flee_morale = 0.0
+    } else if key == "runner" {
+      a.courage = 0.3
+      a.flee_morale = 0.6
+    } else if key == "fighter" {
+      a.courage = 0.85
+      a.aggression = 0.85
+      a.flank = 0.8
+    }
+    return a
+  }
+
+  test "the eye: a cone, a range that darkness shortens, the corner of the eye, a crouch" (w: mut Boxes) {
+    let a = arch("fighter")
+    # facing +z: a target 10 m ahead is seen, one behind is not, one 3 m behind is felt
+    expect(tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 0.0, 1.5, 10.0, 1.0, 1.0) > 0.6)
+    expect(tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 0.0, 1.5, -10.0, 1.0, 1.0) == 0.0)
+    expect(tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 0.0, 1.5, -2.0, 1.0, 1.0) >= 0.9)
+    # 40 m: seen at noon, not on a dark night (45 m * 0.35)
+    expect(tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 0.0, 1.5, 40.0, 1.0, 1.0) > 0.0)
+    expect(tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 0.0, 1.5, 40.0, 0.0, 1.0) == 0.0)
+    # a crouched target is harder to see than a standing one, the cone's edge than its middle
+    expect(tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 0.0, 1.0, 20.0, 1.0, 0.6) < tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 0.0, 1.5, 20.0, 1.0, 1.0))
+    expect(tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 12.0, 1.5, 12.0, 1.0, 1.0) < tac_sight(a, 0.0, 1.6, 0.0, 0.0, 1.0, 0.0, 1.5, 17.0, 1.0, 1.0))
+  }
+
+  test "awareness fills to combat, a lost target is searched for and given up" (w: mut Boxes) {
+    let a = arch("fighter")
+    a.search_s = 5.0
+    let p = new TacPerceiver
+    # half visibility: suspicious first, then seen
+    var t = 0.0
+    var suspicious_at = -1.0
+    while t < 3.0 and p.state != TAC_COMBAT {
+      tac_perceive(p, a, 0.5, 4.0, 1.5, 9.0, 0.05)
+      if p.state == TAC_SUSPICIOUS and suspicious_at < 0.0 { suspicious_at = t }
+      t += 0.05
+    }
+    expect(suspicious_at >= 0.0)
+    expect_eq(p.state, TAC_COMBAT)
+    expect(p.seen and p.has_lk and p.lkx == 4.0 and p.lkz == 9.0)
+    # out of sight: combat for TAC_LOSE_S, then searching, then it gives up
+    for i in 0 .. 60 { tac_perceive(p, a, 0.0, 0.0, 0.0, 0.0, 0.05) }
+    expect_eq(p.state, TAC_COMBAT)
+    for i in 0 .. 20 { tac_perceive(p, a, 0.0, 0.0, 0.0, 0.0, 0.05) }
+    expect_eq(p.state, TAC_SEARCHING)
+    expect(p.lkx == 4.0)
+    for i in 0 .. 120 { tac_perceive(p, a, 0.0, 0.0, 0.0, 0.0, 0.05) }
+    expect_eq(p.state, TAC_UNAWARE)
+    expect_eq(p.gave_up, 1)
+  }
+
+  test "a gunshot alerts within its reach, a footstep only makes it suspicious, an ally's word alerts" (w: mut Boxes) {
+    let a = arch("fighter")
+    let p = new TacPerceiver
+    expect(not tac_hear(p, a, 90.0, TAC_LOUD_SHOT, 1.0, 0.0, 1.0))
+    expect_eq(p.state, TAC_UNAWARE)
+    expect(tac_hear(p, a, 50.0, TAC_LOUD_SHOT, 1.0, 0.0, 1.0))
+    expect_eq(p.state, TAC_ALERT)
+    let q = new TacPerceiver
+    expect(tac_hear(q, a, 2.0, TAC_LOUD_STEP, 3.0, 0.0, 3.0))
+    expect_eq(q.state, TAC_SUSPICIOUS)
+    let r = new TacPerceiver
+    expect(tac_tell(r, 5.0, 0.0, 6.0, 0.5))
+    expect_eq(r.state, TAC_ALERT)
+    expect(r.lkx == 5.0 and r.lk_age == 0.5)
+    expect(not tac_tell(r, 9.0, 0.0, 9.0, 2.0))     # older than what it knows
+  }
+
+  test "cover beside a wall: low and high faces, it hides from the far side, reservations, a flank" (w: mut Boxes) {
+    # a low wall (1.1 m) along x at z 10..10.4 from x -3..3, and a high one (2.5 m) at x 8..8.4, z 6..14
+    boxes_add(w, -3.0, 0.0, 10.0, 3.0, 1.1, 10.4)
+    boxes_add(w, 8.0, 0.0, 6.0, 8.4, 2.5, 14.0)
+    let cs = new TacCover
+    let n = tac_cover_generate(cs, -6.0, 4.0, 14.0, 16.0, 0.5, 0.0)
+    expect(n >= 6)
+    var low = 0
+    var high = 0
+    var peek_side = 0
+    for i in 0 .. cs.n {
+      if cs.high[i] { high += 1 } else { low += 1 }
+      if cs.high[i] and cs.side[i] != 0 { peek_side += 1 }
+      # off the face, never inside a wall
+      expect(world_ground(w, cs.x[i], 0.0, cs.z[i]) == 0.0)
+    }
+    expect(low >= 3 and high >= 3 and peek_side >= 1)
+    # spacing
+    for i in 0 .. cs.n {
+      for j in i + 1 .. cs.n {
+        let dx = cs.x[i] - cs.x[j]
+        let dz = cs.z[i] - cs.z[j]
+        expect(dx * dx + dz * dz >= TAC_SPACING * TAC_SPACING - 0.0001)
+      }
+    }
+    # the threat south of the low wall (z 25): the pick is on the wall's near side (z < 10), and it hides there
+    let q = new TacQuery
+    q.me = 1
+    q.ax = 0.0
+    q.az = 4.0
+    q.tx = 0.0
+    q.ty = 1.6
+    q.tz = 25.0
+    let scratch = floats(64)
+    let ox = new []float
+    let oz = new []float
+    let i1 = tac_cover_pick(cs, q, ox, oz, 0, scratch)
+    expect(i1 >= 0)
+    expect(cs.z[i1] < 10.0)
+    expect(tac_cover_protects(cs, i1, q.tx, q.ty, q.tz))
+    expect(cs.last_lof)
+    tac_cover_take(cs, i1, 1)
+    expect_eq(tac_cover_owned(cs, 1), i1)
+    # a second agent beside it does not get the same point, nor one within 2 m of the first
+    q.me = 2
+    push(ox, cs.x[i1])
+    push(oz, cs.z[i1])
+    let i2 = tac_cover_pick(cs, q, ox, oz, 1, scratch)
+    expect(i2 >= 0 and i2 != i1)
+    let ex = cs.x[i2] - cs.x[i1]
+    let ez = cs.z[i2] - cs.z[i1]
+    expect(ex * ex + ez * ez >= 4.0)
+    # a threat right next to a point is not hidden from by that point
+    expect(not tac_cover_protects(cs, i1, cs.x[i1] + 0.5, 1.6, cs.z[i1] - 2.0))
+    # flank: the threat east of the high wall (x 20, z 10), the squad at (0, 10): the flank's point is round the side (south or north of it)
+    let f = new TacQuery
+    f.me = 3
+    f.mode = TAC_Q_FLANK
+    f.ax = 0.0
+    f.az = 5.0
+    f.tx = 20.0
+    f.ty = 1.6
+    f.tz = 10.0
+    f.fx = 0.0
+    f.fz = 10.0
+    f.reach = 40.0
+    let empty_x = new []float
+    let empty_z = new []float
+    let fi = tac_cover_pick(cs, f, empty_x, empty_z, 0, scratch)
+    if fi >= 0 {
+      let vx = cs.x[fi] - 20.0
+      let vz = cs.z[fi] - 10.0
+      let c = (vx * -20.0) / (Math.sqrt(vx * vx + vz * vz) * 20.0)
+      expect(c <= 0.45)
+    }
+    tac_cover_release(cs, 1)
+    expect_eq(tac_cover_owned(cs, 1), -1)
+  }
+
+  test "the scorer: a broken coward surrenders, a runner flees while it can, a fighter takes cover then fights from it" (w: mut Boxes) {
+    let out = floats(TACT_COUNT)
+    let c = new TacCtx
+    c.state = TAC_COMBAT
+    c.sees = true
+    c.has_lk = true
+    c.lk_age = 0.0
+    c.dist = 20.0
+    c.cover_ok = true
+    c.flee_ok = true
+    c.allies = 2
+    # the coward, steady: not surrendering; broken and alone: surrenders, and stays surrendered
+    let cw = arch("coward")
+    c.morale = 0.8
+    expect(tac_choose(cw, c, out) != TACT_SURRENDER)
+    c.morale = 0.2
+    c.allies = 0
+    expect_eq(tac_choose(cw, c, out), TACT_SURRENDER)
+    c.cur = TACT_SURRENDER
+    c.morale = 0.9
+    expect_eq(tac_choose(cw, c, out), TACT_SURRENDER)
+    # the runner: morale under its line flees; cornered it does not
+    let rn = arch("runner")
+    c.cur = TACT_HOLD
+    c.allies = 2
+    c.morale = 0.4
+    expect_eq(tac_choose(rn, c, out), TACT_FLEE)
+    c.flee_ok = false
+    expect(tac_choose(rn, c, out) != TACT_FLEE)
+    # the fighter in the open: cover; in cover and seeing: shoots; empty: reloads in cover
+    let ft = arch("fighter")
+    c.flee_ok = true
+    c.morale = 0.9
+    c.in_cover = false
+    expect_eq(tac_choose(ft, c, out), TACT_COVER)
+    c.in_cover = true
+    expect_eq(tac_choose(ft, c, out), TACT_PEEK)
+    c.ammo = 0.0
+    expect_eq(tac_choose(ft, c, out), TACT_RELOAD)
+    # with a flank free and a mate to pin the threat, a fighter in cover goes round
+    c.ammo = 1.0
+    c.flank_ok = true
+    c.supp = 0.0
+    c.sees = false
+    c.lk_age = 2.0
+    expect_eq(tac_choose(ft, c, out), TACT_FLANK)
+    # searching and suspicious
+    let s = new TacCtx
+    s.state = TAC_SEARCHING
+    s.has_lk = true
+    expect_eq(tac_choose(ft, s, out), TACT_SEARCH)
+    s.state = TAC_SUSPICIOUS
+    expect_eq(tac_choose(ft, s, out), TACT_INVESTIGATE)
+    s.state = TAC_UNAWARE
+    s.away = 10.0
+    expect_eq(tac_choose(ft, s, out), TACT_GIVE_UP)
+  }
+
+  test "morale: hits and fallen allies break a coward long before a fighter; suppression drains" (w: mut Boxes) {
+    let cw = arch("coward")
+    let ft = arch("fighter")
+    let mc = new TacMorale
+    let mf = new TacMorale
+    tac_morale_reset(mc, cw)
+    tac_morale_reset(mf, ft)
+    tac_morale_ally_down(mc, cw)
+    tac_morale_ally_down(mf, ft)
+    tac_morale_ally_down(mc, cw)
+    tac_morale_ally_down(mf, ft)
+    expect(mc.morale < cw.surrender_morale)
+    expect(mf.morale > 0.6)
+    tac_suppress(mf, ft, 0.3)
+    expect(mf.supp > 0.2)
+    for i in 0 .. 40 { tac_morale_step(mf, ft, 1, 0.1) }
+    expect(mf.supp == 0.0)
+  }
+
+  test "aim: misses grow with distance, movement and suppression, shrink as it settles; the same seed misses the same" (w: mut Boxes) {
+    let a = arch("fighter")
+    expect(tac_aim_miss(a, 50.0, 0.0, 0.0, 0.0, 3.0) > tac_aim_miss(a, 10.0, 0.0, 0.0, 0.0, 3.0))
+    expect(tac_aim_miss(a, 20.0, 5.0, 0.0, 0.0, 3.0) > tac_aim_miss(a, 20.0, 0.0, 0.0, 0.0, 3.0))
+    expect(tac_aim_miss(a, 20.0, 0.0, 3.0, 0.0, 3.0) > tac_aim_miss(a, 20.0, 0.0, 0.0, 0.0, 3.0))
+    expect(tac_aim_miss(a, 20.0, 0.0, 0.0, 0.8, 3.0) > tac_aim_miss(a, 20.0, 0.0, 0.0, 0.0, 3.0))
+    expect(tac_aim_miss(a, 20.0, 0.0, 0.0, 0.0, 0.0) > tac_aim_miss(a, 20.0, 0.0, 0.0, 0.0, 3.0))
+    # the draws: mean near 0, spread near 1, repeatable
+    let g = floats(3)
+    var sx = 0.0
+    var sxx = 0.0
+    for i in 0 .. 4000 {
+      tac_gauss2(7, i, g)
+      sx += g[0]
+      sxx += g[0] * g[0]
+    }
+    expect(Math.abs(sx / 4000.0) < 0.06)
+    expect(Math.abs(Math.sqrt(sxx / 4000.0) - 1.0) < 0.06)
+    let d1 = floats(3)
+    let d2 = floats(3)
+    tac_aim_dir(0.0, 1.5, 0.0, 0.0, 1.2, 20.0, 0.5, 9, 3, d1)
+    tac_aim_dir(0.0, 1.5, 0.0, 0.0, 1.2, 20.0, 0.5, 9, 3, d2)
+    expect(d1[0] == d2[0] and d1[1] == d2[1] and d1[2] == d2[2])
+    expect(Math.abs(d1[0] * d1[0] + d1[1] * d1[1] + d1[2] * d1[2] - 1.0) < 0.0001)
+  }
+
+  test "a squad: one flanker at a time, the freshest contact, callouts with a cooldown" (w: mut Boxes) {
+    let sq = new TacSquad
+    tac_squad_reset(sq, "g")
+    tac_squad_join(sq, 1)
+    tac_squad_join(sq, 2)
+    expect(tac_squad_flank_claim(sq, 1))
+    expect(not tac_squad_flank_claim(sq, 2))
+    expect(tac_squad_flank_free(sq, 1) and not tac_squad_flank_free(sq, 2))
+    tac_squad_flank_release(sq, 1)
+    expect(tac_squad_flank_claim(sq, 2))
+    tac_squad_report(sq, 1.0, 0.0, 2.0, 3.0)
+    tac_squad_report(sq, 5.0, 0.0, 6.0, 1.0)
+    tac_squad_report(sq, 9.0, 0.0, 9.0, 2.0)
+    expect(sq.cx == 5.0)
+    expect(tac_callout(sq, 1, TAC_CALL_SPOTTED, 4.0))
+    expect(not tac_callout(sq, 2, TAC_CALL_SPOTTED, 4.0))
+    expect_eq(tac_saying(sq, 1), TAC_CALL_SPOTTED)
+    for i in 0 .. 50 { tac_squad_step(sq, 0.1) }
+    expect_eq(tac_saying(sq, 1), -1)
+    expect(tac_callout(sq, 2, TAC_CALL_SPOTTED, 4.0))
+    expect(tac_call_text(TAC_CALL_FLANKING) == "Flanking!")
+  }
+}

@@ -1,0 +1,164 @@
+# perception.ludic - what an enemy knows: an awareness meter that a sighting fills (faster near, in the cone's middle, in light) and
+# time drains, a last-known position that a sighting, a noise or an ally refreshes, and the five alert states between them.
+#
+#   unaware     -> suspicious   awareness over TAC_SUSPECT (half-seen, a far noise): it looks there and walks over
+#   *           -> combat       awareness full while the target is in sight: it is SEEN
+#   * < alert   -> alert        a gunshot heard, an ally's call: it knows a threat is about and where it was
+#   combat      -> searching    not seen for TAC_LOSE_S
+#   alert       -> searching    nothing new for TAC_ALERT_S
+#   searching   -> unaware      the archetype's search_s without a sighting: it gives up (gave_up counts it)
+#   suspicious  -> unaware      awareness drained to nothing
+
+export const TAC_SUSPECT: float = 0.35
+export const TAC_LOSE_S: float = 3.5
+export const TAC_ALERT_S: float = 6.0
+export const TAC_FILL: float = 2.2         # awareness a second at full visibility
+export const TAC_DRAIN: float = 0.1        # ... lost a second unseen while not yet alert
+export const TAC_NEAR_R: float = 3.0       # within this a target is felt all round (no cone)
+
+export property TacPerceiver {
+  state: int = TAC_UNAWARE
+  aware: float = 0.0
+  vis: float = 0.0                         # the visibility the last step was given (0 none)
+  seen: bool = false                       # the target is seen now
+  seen_t: float = 1000.0                   # seconds since it was last seen
+  has_lk: bool = false                     # a last-known position
+  lkx: float = 0.0
+  lky: float = 0.0
+  lkz: float = 0.0
+  lk_age: float = 1000.0                   # seconds since it was refreshed
+  state_t: float = 0.0                     # seconds in this state
+  changed: bool = false                    # the state changed in the last step
+  prev: int = TAC_UNAWARE                  # the state before that change
+  heard: int = 0                           # noises heard (counter)
+  gave_up: int = 0                         # searches given up (counter)
+}
+
+export function tac_perceiver_reset(p: TacPerceiver) -> void {
+  p.state = TAC_UNAWARE
+  p.aware = 0.0
+  p.vis = 0.0
+  p.seen = false
+  p.seen_t = 1000.0
+  p.has_lk = false
+  p.lk_age = 1000.0
+  p.state_t = 0.0
+  p.changed = false
+  p.prev = TAC_UNAWARE
+}
+
+function tac_become(p: TacPerceiver, s: int) -> void {
+  if p.state == s { return }
+  p.prev = p.state
+  p.state = s
+  p.state_t = 0.0
+  p.changed = true
+}
+
+# How well an eye at (ex, ey, ez) facing (fx, fz) would see a target at (tx, ty, tz), its line of sight aside: 0 .. 1. `light` is the
+# daylight at the target (1 noon, 0 a dark night: the range shrinks to 35 %); `stance` scales it (0.6 a crouched target, 1.3 one sprinting)
+export function tac_sight(a: TacArchetype, ex: float, ey: float, ez: float, fx: float, fz: float, tx: float, ty: float, tz: float, light: float, stance: float) -> float {
+  let dx = tx - ex
+  let dz = tz - ez
+  let dy = ty - ey
+  let d = Math.sqrt(dx * dx + dz * dz + dy * dy)
+  let reach = a.sight * (0.35 + 0.65 * Math.clamp(light, 0.0, 1.0)) * Math.clamp(stance, 0.3, 1.5)
+  if d >= reach { return 0.0 }
+  let near = 1.0 - Math.pow(d / reach, 1.5)
+  if d < TAC_NEAR_R { return Math.max(0.9, near) }
+  let hd = Math.sqrt(dx * dx + dz * dz)
+  if hd < 0.001 { return near }
+  let fl = Math.sqrt(fx * fx + fz * fz)
+  var cosang = 1.0
+  if fl > 0.0001 { cosang = (dx * fx + dz * fz) / (hd * fl) }
+  let ang = Math.acos(Math.clamp(cosang, -1.0, 1.0)) * 57.29577951308232
+  let half = a.fov * 0.5
+  if ang <= half { return near * (1.0 - 0.45 * ang / Math.max(half, 1.0)) }
+  # the corner of the eye: a little, near only
+  if ang <= half + 25.0 and d < reach * 0.5 { return near * 0.25 }
+  return 0.0
+}
+
+# One step of perception: `vis` is tac_sight with the line of sight already applied (0 when something blocks it), the target at
+# (tx, ty, tz) now. Fills or drains the meter, refreshes the memory and moves between the states
+export function tac_perceive(p: TacPerceiver, a: TacArchetype, vis: float, tx: float, ty: float, tz: float, dt: float) -> void {
+  p.changed = false
+  p.state_t += dt
+  p.lk_age += dt
+  p.seen_t += dt
+  p.vis = vis
+  if vis > 0.0 {
+    var fill = vis * TAC_FILL
+    if p.state >= TAC_ALERT { fill *= 4.0 }
+    p.aware = Math.min(1.0, p.aware + fill * dt)
+  } else if p.state <= TAC_SUSPICIOUS {
+    p.aware = Math.max(0.0, p.aware - TAC_DRAIN * dt)
+  }
+  p.seen = vis > 0.0 and p.aware >= 1.0
+  if p.seen {
+    p.seen_t = 0.0
+    tac_remember(p, tx, ty, tz)
+    tac_become(p, TAC_COMBAT)
+    return
+  }
+  # half-seen: it knows where to look
+  if vis > 0.0 and p.aware >= TAC_SUSPECT and p.state <= TAC_SUSPICIOUS { tac_remember(p, tx, ty, tz) }
+  if p.state == TAC_UNAWARE {
+    if p.aware >= TAC_SUSPECT and p.has_lk { tac_become(p, TAC_SUSPICIOUS) }
+  } else if p.state == TAC_SUSPICIOUS {
+    if p.aware <= 0.0 and p.state_t > 4.0 { tac_become(p, TAC_UNAWARE) }
+  } else if p.state == TAC_COMBAT {
+    if p.seen_t > TAC_LOSE_S { tac_become(p, TAC_SEARCHING) }
+  } else if p.state == TAC_ALERT {
+    if p.lk_age > TAC_ALERT_S { tac_become(p, TAC_SEARCHING) }
+  } else if p.state == TAC_SEARCHING {
+    if p.state_t > a.search_s {
+      p.gave_up += 1
+      p.aware = 0.0
+      tac_become(p, TAC_UNAWARE)
+    }
+  }
+}
+
+export function tac_remember(p: TacPerceiver, x: float, y: float, z: float) -> void {
+  p.has_lk = true
+  p.lkx = x
+  p.lky = y
+  p.lkz = z
+  p.lk_age = 0.0
+}
+
+# A noise of `loud` (TAC_LOUD_*: the metres it carries) at (x, y, z), `d` metres away: heard when within loud * hearing. A gunshot or a
+# crash alerts; a lesser noise makes it suspicious. True when heard
+export function tac_hear(p: TacPerceiver, a: TacArchetype, d: float, loud: float, x: float, y: float, z: float) -> bool {
+  if d > loud * a.hearing { return false }
+  p.heard += 1
+  if not p.seen { tac_remember(p, x, y, z) }
+  if loud >= TAC_LOUD_CRASH {
+    p.aware = Math.max(p.aware, 0.6)
+    if p.state < TAC_ALERT { tac_become(p, TAC_ALERT) }
+    if p.state == TAC_SEARCHING { p.state_t = 0.0 }
+  } else {
+    p.aware = Math.max(p.aware, TAC_SUSPECT + 0.05)
+    if p.state == TAC_UNAWARE { tac_become(p, TAC_SUSPICIOUS) }
+  }
+  return true
+}
+
+# An ally's word: the threat was at (x, y, z) `age` seconds ago. Taken when it is fresher than what it knows; it alerts
+export function tac_tell(p: TacPerceiver, x: float, y: float, z: float, age: float) -> bool {
+  if p.seen or age >= p.lk_age { return false }
+  tac_remember(p, x, y, z)
+  p.lk_age = age
+  p.aware = Math.max(p.aware, 0.6)
+  if p.state < TAC_ALERT { tac_become(p, TAC_ALERT) }
+  if p.state == TAC_SEARCHING and age < 1.0 { tac_become(p, TAC_ALERT) }
+  return true
+}
+
+# shot at: whoever fired is a threat now (alerted at once, the shooter's place remembered when it is not seen)
+export function tac_shot_at(p: TacPerceiver, x: float, y: float, z: float) -> void {
+  if not p.seen { tac_remember(p, x, y, z) }
+  p.aware = Math.max(p.aware, 0.8)
+  if p.state < TAC_ALERT or p.state == TAC_SEARCHING { tac_become(p, TAC_ALERT) }
+}
