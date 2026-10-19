@@ -57,6 +57,7 @@ export property TacQuery {
   hold_z: float = 0.0
   hold_r: float = 0.0
   max_looked: int = 28                     # candidates scored at most (the nearest that pass the filters)
+  need_lof: bool = false                   # only points it can shoot the threat from (a man tired of hiding where he sees nothing)
 }
 
 @alloc_ok("cover made: once an area, not a frame")
@@ -301,6 +302,7 @@ export function tac_cover_pick(cs: TacCover, q: TacQuery, ox: []float, oz: []flo
       lof = tac_cover_fires(cs, i, q.tx, q.ty, q.tz, cs.pk)
       if lof { s += 0.6 }
     }
+    if q.need_lof and not lof { continue }
     if q.mode == TAC_Q_ADVANCE { s += (cur_t - td) * 0.05 }
     if q.mode == TAC_Q_RETREAT { s += (td - cur_t) * 0.05 + d * 0.03 }
     if q.mode == TAC_Q_FLANK {
