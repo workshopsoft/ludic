@@ -1,0 +1,3 @@
+bump: minor
+type: feat
+ludic.render3d: `bw_cut(render3d_st, bw, wx, wz, yaw, hw, hd)` leaves out of the drawn world every instance whose origin stands inside a turned rectangle: a building the game draws itself (an enterable shop with a real doorway and room) and the detail kits on its walls. A cell already in is read again without them; cells that load later never have them. `bw_cut_rect` records one without the reload, `bw_apply_cuts` is the filter a cell's content goes through as it loads (the GPU and the CPU culler both see the cut list), `bw_cut_count` and `bw_cut_out` say how many. The far HLOD proxies are not cut. Tested in bigworld_gpu_test.

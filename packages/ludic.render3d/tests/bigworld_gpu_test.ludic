@@ -50,6 +50,23 @@ program BigWorldGpuTest {
     expect_eq(kc.kit[0], 2)
   }
 
+  test "a cut leaves out the instances inside its turned rectangle, keeps the rest in order, boxes counted" {
+    let bw = new BigWorld
+    let c = cell_content_new(1, 2, 128.0, 4)
+    cell_add(c, 0, 10.0, 0.0, 20.0, 0.0, 1.0, cell_rgba(255, 0, 0, 255), 1, 0)
+    cell_add(c, 1, 14.0, 0.0, 20.0, 0.0, 1.0, cell_rgba(0, 255, 0, 255), 2, 0)
+    cell_add(c, 2, 30.0, 0.0, 40.0, 0.0, 1.0, cell_rgba(0, 0, 255, 255), 3, 0)
+    # a rectangle at world (138, 276) turned 90 degrees: 1 m across its x (world z), 3 m along its z (world x)
+    expect(bw_cut_rect(bw, 128.0 + 10.0, 256.0 + 20.0, 1.5707963, 1.0, 3.0))
+    bw_apply_cuts(bw, c)
+    expect_eq(c.n, 2)
+    expect_eq(c.kit[0], 1)
+    expect_eq(c.kit[1], 2)
+    expect(c.xf[0] == 14.0 and c.xf[CELL_XF] == 30.0)
+    expect_eq(c.vari[1], 3)
+    expect_eq(bw_cut_out(bw), 1)
+  }
+
   test "the preparation hook is registered and called by the frame" {
     let src = Fs.read_text(`{r3d_package_dir()}/render.ludic`)
     expect(Text.contains(src, "r3d_scene_prepare(render3d_st)"))

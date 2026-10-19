@@ -42,8 +42,13 @@ export property BigWorld {
   wz: double = 0.0,
   seen_ox: double = 0.0,     # the origin the CPU culler's cells were last placed against (bw_stream follows any move of it)
   seen_oy: double = 0.0,
-  seen_oz: double = 0.0
+  seen_oz: double = 0.0,
+  cuts: floats,              # the rectangles bw_cut left out: x z yaw half-w half-d (world metres, radians), CUT_N floats each
+  ncuts: int = 0,
+  cut_out: int = 0           # instances left out of the cells loaded so far
 }
+const BW_CUT_N: int = 5
+const BW_CUTS_MAX: int = 64
 
 # Open a large world over a directory of cells (cells.lwi and the cell files: cellfile.ludic, hlod.ludic), the map's kit rows and its
 # partition row. `use_gpu`: cull and bin on the GPU (kgpu.ludic); `max_instances` is how many instances the arena holds.
@@ -63,6 +68,87 @@ export function bw_open(render3d_st: mut Render3dState, dir: string, row: WorldP
   let g = kgpu_new(render3d_st, len(kits), max_instances, max(max_instances / 2, 1024), 2048, not use_gpu)
   if g.ready { bw.gpu = g }
   return bw
+}
+
+# Leave out of the drawn world every instance whose origin stands inside a rectangle (its middle wx, wz; yaw in radians, a box kit's
+# convention: the rectangle's x axis is (cos yaw, -sin yaw); half sizes hw across x, hd along z): a building the game draws itself (an
+# enterable shop with a real door and room) and the detail kits on its walls. A cell already in is loaded again without them. At most
+# BW_CUTS_MAX; false past that or for a world with no cells. The far proxies (HLOD) are not cut: they are only drawn where no cell is.
+export function bw_cut(render3d_st: mut Render3dState, bw: BigWorld, wx: float, wz: float, yaw: float, hw: float, hd: float) -> bool {
+  if not bw_cut_rect(bw, wx, wz, yaw, hw, hd) { return false }
+  # the cells the rectangle reaches that are in: dropped and read again (the cut applies as they load)
+  let r = Math.sqrt(hw * hw + hd * hd)
+  let size = bw.sched.size
+  let cx0 = int(Math.floor((wx - r) / size))
+  let cx1 = int(Math.floor((wx + r) / size))
+  let cz0 = int(Math.floor((wz - r) / size))
+  let cz1 = int(Math.floor((wz + r) / size))
+  for cx in cx0 .. cx1 + 1 {
+    for cz in cz0 .. cz1 + 1 {
+      let slot = ws_find(bw.sched, cx, cz)
+      if slot < 0 or not ws_has_full(bw.sched, slot) { continue }
+      bw_drop(render3d_st, bw, slot, WS_FULL)
+      if not bw_load(render3d_st, bw, slot, WS_FULL) { bw.fails += 1 }
+    }
+  }
+  return true
+}
+
+# the rectangle recorded (what bw_cut does before it reloads the cells it reaches): the cells that load from now on leave it out
+@alloc_ok("a cut: an event at a map's set-up, its table made once")
+export function bw_cut_rect(bw: BigWorld, wx: float, wz: float, yaw: float, hw: float, hd: float) -> bool {
+  if bw == null or bw.ncuts >= BW_CUTS_MAX { return false }
+  if bw.cuts == null { bw.cuts = floats(BW_CUTS_MAX * BW_CUT_N) }
+  let o = bw.ncuts * BW_CUT_N
+  bw.cuts[o] = wx
+  bw.cuts[o + 1] = wz
+  bw.cuts[o + 2] = yaw
+  bw.cuts[o + 3] = hw
+  bw.cuts[o + 4] = hd
+  bw.ncuts += 1
+  return true
+}
+
+export function bw_cut_count(bw: BigWorld) -> int { return bw.ncuts }
+export function bw_cut_out(bw: BigWorld) -> int { return bw.cut_out }
+
+# is the point inside cut k?
+function bw_in_cut(bw: BigWorld, k: int, x: float, z: float) -> bool {
+  let o = k * BW_CUT_N
+  let dx = x - bw.cuts[o]
+  let dz = z - bw.cuts[o + 1]
+  let c = Math.cos(bw.cuts[o + 2])
+  let s = Math.sin(bw.cuts[o + 2])
+  let lx = dx * c - dz * s
+  let lz = dx * s + dz * c
+  return Math.abs(lx) <= bw.cuts[o + 3] and Math.abs(lz) <= bw.cuts[o + 4]
+}
+
+# a cell's content with the cut instances taken out (the rest moved down in order)
+export function bw_apply_cuts(bw: BigWorld, c: CellContent) -> void {
+  if bw.ncuts == 0 or c.n == 0 { return }
+  var j = 0
+  for i in 0 .. c.n {
+    let x = float(cell_world_x(c, i))
+    let z = float(cell_world_z(c, i))
+    var cut = false
+    for k in 0 .. bw.ncuts { if bw_in_cut(bw, k, x, z) { cut = true } }
+    if cut {
+      bw.cut_out += 1
+      if cell_is_box(c, i) { c.boxes -= 1 }
+      continue
+    }
+    if j != i {
+      for q in 0 .. CELL_XF { c.xf[j * CELL_XF + q] = c.xf[i * CELL_XF + q] }
+      c.kit[j] = c.kit[i]
+      c.tint[j] = c.tint[i]
+      c.vari[j] = c.vari[i]
+      c.flags[j] = c.flags[i]
+      if c.box != null { for q in 0 .. CELL_BOX { c.box[j * CELL_BOX + q] = c.box[i * CELL_BOX + q] } }
+    }
+    j += 1
+  }
+  c.n = j
 }
 
 # the directory part of "a/b/c.glb" and its file name
@@ -184,6 +270,13 @@ function bw_load(render3d_st: mut Render3dState, bw: BigWorld, slot: int, layer:
   if layer == WS_FULL {
     let c = cell_load(bw.dir, cx, cz)
     if c == null { return false }
+    bw_apply_cuts(bw, c)
+    if c.n == 0 {
+      # everything it held was cut: nothing to draw, and nothing for a drop to give back
+      cell_content_free(c)
+      bw.loads_full += 1
+      return true
+    }
     var ok = true
     if bw_gpu_culls(bw) {
       ok = kgpu_add_cell(render3d_st, bw.gpu, slot, c, bw.origin)
