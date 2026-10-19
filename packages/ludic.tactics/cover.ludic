@@ -10,7 +10,7 @@
 #            threat is not looked at; the rest are scored on travel, range, the threat's view of it (a ray: protected or not), its line of
 #            fire from the peek, and the mode's own term (nearer, round the side, farther) and the best is taken and reserved.
 export const TAC_PROBE: float = 1.1         # m: a face within this of the point makes it cover
-export const TAC_BACK: float = 0.55         # m: the point stands this far off the face
+export const TAC_BACK: float = 0.55         # m: the point stands this far off the face (TacCover.back, a game's walker radius and margin)
 export const TAC_SPACING: float = 1.2
 export const TAC_COVER_MAX: int = 512
 export const TAC_CROUCH_CHEST: float = 0.95
@@ -23,6 +23,7 @@ export const TAC_Q_RETREAT: int = 3
 
 export property TacCover {
   n: int = 0
+  back: float = TAC_BACK                   # how far off the face a point stands (set before tac_cover_generate)
   x: []float = new []float
   y: []float = new []float
   z: []float = new []float
@@ -104,6 +105,16 @@ export function tac_cover_generate(cs: TacCover, x0: float, z0: float, x1: float
       let pz = z0 + float(iz) * step
       let gy = TacticsWorld.ground(px, y_hint, pz)
       if gy <= TAC_NO_GROUND + 1.0 { continue }
+      # open ground (most candidates): four rays a little longer than the probe find nothing, and the point is skipped
+      var any = false
+      for k in 0 .. 4 {
+        let a = float(k) * 1.5707963267949 + 0.392699081698724
+        if tac_probe(px, gy + 0.6, pz, Math.sin(a), Math.cos(a), TAC_PROBE * 1.42) >= 0.0 {
+          any = true
+          break
+        }
+      }
+      if not any { continue }
       # the nearest face round the point at knee height
       var best = 1000.0
       var bdx = 0.0
@@ -119,16 +130,16 @@ export function tac_cover_generate(cs: TacCover, x0: float, z0: float, x1: float
           bdz = dz
         }
       }
-      if best > TAC_PROBE { continue }
+      if best > TAC_PROBE or best < cs.back - 0.6 { continue }
       # the point stands TAC_BACK off the face, on the ground there, clear of it
-      let cx = px + bdx * (best - TAC_BACK)
-      let cz = pz + bdz * (best - TAC_BACK)
+      let cx = px + bdx * (best - cs.back)
+      let cz = pz + bdz * (best - cs.back)
       let cy = TacticsWorld.ground(cx, gy, cz)
       if cy <= TAC_NO_GROUND + 1.0 or Math.abs(cy - gy) > 0.6 { continue }
       # the face again from there: it must stop a crouched chest
-      let dc = tac_probe(cx, cy + TAC_CROUCH_CHEST, cz, bdx, bdz, TAC_BACK + 0.5)
+      let dc = tac_probe(cx, cy + TAC_CROUCH_CHEST, cz, bdx, bdz, cs.back + 0.5)
       if dc < 0.0 { continue }
-      let dh = tac_probe(cx, cy + TAC_STAND_EYE, cz, bdx, bdz, TAC_BACK + 0.5)
+      let dh = tac_probe(cx, cy + TAC_STAND_EYE, cz, bdx, bdz, cs.back + 0.5)
       let high = dh >= 0.0
       # nothing else crowds the body (a corner the point would stand in)
       if tac_probe(cx, cy + 1.0, cz, -bdx, -bdz, 0.45) >= 0.0 { continue }
@@ -143,7 +154,7 @@ export function tac_cover_generate(cs: TacCover, x0: float, z0: float, x1: float
           let ox = cx + rx * sg * 0.75
           let oz = cz + rz * sg * 0.75
           if tac_probe(cx, cy + TAC_STAND_EYE, cz, rx * sg, rz * sg, 0.8) >= 0.0 { continue }
-          if tac_probe(ox, cy + TAC_STAND_EYE, oz, bdx, bdz, TAC_BACK + 1.5) < 0.0 {
+          if tac_probe(ox, cy + TAC_STAND_EYE, oz, bdx, bdz, cs.back + 1.5) < 0.0 {
             side = int(sg)
             break
           }
@@ -281,7 +292,10 @@ export function tac_cover_pick(cs: TacCover, q: TacQuery, ox: []float, oz: []flo
     let tx = q.tx - cs.x[i]
     let tz = q.tz - cs.z[i]
     let td = Math.sqrt(tx * tx + tz * tz)
-    var s = 1.0 - d * 0.06 - Math.abs(td - q.range) * 0.035
+    # near beats far; the distance it likes counts for an advance and a flank, little for a dive into cover
+    var rk = 0.035
+    if q.mode == TAC_Q_COVER or q.mode == TAC_Q_RETREAT { rk = 0.008 }
+    var s = 1.0 - d * 0.075 - Math.abs(td - q.range) * rk
     var lof = false
     if q.mode != TAC_Q_RETREAT {
       lof = tac_cover_fires(cs, i, q.tx, q.ty, q.tz, cs.pk)

@@ -67,6 +67,7 @@ export property TacCtx {
   ammo: float = 1.0                        # the magazine's share left
   reloading: bool = false
   in_cover: bool = false                   # at its reserved cover, and the cover hides it from the threat
+  cover_t: float = 0.0                     # seconds it has held that cover
   cover_ok: bool = false                   # a cover point is free for it (a pick found one)
   advance_ok: bool = false                 # ... one nearer the threat
   flank_ok: bool = false                   # ... one round its side, and the squad's flank is free or its own
@@ -116,6 +117,9 @@ export function tac_scores(a: TacArchetype, c: TacCtx, out: []float) -> void {
       if c.ammo < 0.3 { s += 0.3 }
       out[TACT_COVER] = s
     }
+    if c.in_cover and not c.sees and c.has_lk and c.lk_age >= 1.5 and c.lk_age < 8.0 {
+      out[TACT_PEEK] = 0.38 + 0.2 * a.aggression - 0.3 * c.supp      # up to look for it where it was
+    }
     if c.sees or c.lk_age < 1.5 {
       if c.in_cover {
         out[TACT_PEEK] = 0.5 + 0.3 * a.aggression - 0.45 * c.supp
@@ -125,13 +129,17 @@ export function tac_scores(a: TacArchetype, c: TacCtx, out: []float) -> void {
         out[TACT_PEEK] = 0.5 + 0.2 * a.aggression - 0.2 * c.supp      # no cover to be had: stand and fight
       }
     }
-    if c.in_cover and c.advance_ok and c.dist > a.range * 0.8 {
-      var adv = 0.25 + 0.5 * a.aggression - 0.6 * c.supp
-      if c.dist > a.range * 1.4 { adv += 0.25 }
+    # forward, cover to cover: after holding one a while, when the fight is farther than it likes
+    if c.in_cover and c.advance_ok and c.cover_t > 4.0 and c.dist > a.range * 1.25 {
+      var adv = 0.2 + 0.45 * a.aggression - 0.6 * c.supp
+      if c.dist > a.range * 1.8 { adv += 0.2 }
       if not c.sees { adv += 0.1 }
       out[TACT_ADVANCE] = adv
     }
-    if c.flank_ok and c.allies >= 1 and c.state == TAC_COMBAT { out[TACT_FLANK] = 0.35 + 0.55 * a.flank + 0.15 * a.aggression - 0.5 * c.supp }
+    # round the side: once the fight has settled (it has held a cover a few seconds), while a mate pins the threat
+    if c.flank_ok and c.allies >= 1 and c.state == TAC_COMBAT and (c.cover_t > 3.0 or c.cur == TACT_FLANK) {
+      out[TACT_FLANK] = 0.35 + 0.55 * a.flank + 0.15 * a.aggression - 0.5 * c.supp
+    }
     if c.in_cover and not c.sees and c.has_lk and c.lk_age < 6.0 and c.allies >= 1 { out[TACT_SUPPRESS] = 0.3 + 0.45 * a.suppress }
     if c.state == TAC_ALERT and not c.sees and c.has_lk { out[TACT_INVESTIGATE] = 0.2 + 0.3 * a.aggression }
   }

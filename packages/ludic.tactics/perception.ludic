@@ -10,7 +10,7 @@
 #   suspicious  -> unaware      awareness drained to nothing
 
 export const TAC_SUSPECT: float = 0.35
-export const TAC_LOSE_S: float = 3.5
+export const TAC_LOSE_S: float = 8.0
 export const TAC_ALERT_S: float = 6.0
 export const TAC_FILL: float = 2.2         # awareness a second at full visibility
 export const TAC_DRAIN: float = 0.1        # ... lost a second unseen while not yet alert

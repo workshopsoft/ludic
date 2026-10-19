@@ -109,7 +109,7 @@ program TacticsTest {
     expect_eq(p.state, TAC_COMBAT)
     expect(p.seen and p.has_lk and p.lkx == 4.0 and p.lkz == 9.0)
     # out of sight: combat for TAC_LOSE_S, then searching, then it gives up
-    for i in 0 .. 60 { tac_perceive(p, a, 0.0, 0.0, 0.0, 0.0, 0.05) }
+    for i in 0 .. 150 { tac_perceive(p, a, 0.0, 0.0, 0.0, 0.0, 0.05) }
     expect_eq(p.state, TAC_COMBAT)
     for i in 0 .. 20 { tac_perceive(p, a, 0.0, 0.0, 0.0, 0.0, 0.05) }
     expect_eq(p.state, TAC_SEARCHING)
@@ -257,6 +257,7 @@ program TacticsTest {
     # with a flank free and a mate to pin the threat, a fighter in cover goes round
     c.ammo = 1.0
     c.flank_ok = true
+    c.cover_t = 5.0
     c.supp = 0.0
     c.sees = false
     c.lk_age = 2.0
