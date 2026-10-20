@@ -86,6 +86,21 @@ program KitBakeTest {
     expect(Text.contains(rows, "interior: \"office\""))
   }
 
+  test "a kit drawn and not collided with says so in its row; every other kit is collided with (the default, not written)" {
+    let kb = kitbake_new(256.0)
+    let a = kitbake_kit(kb, "m.glb", "wall", 10.0, 10.0, 10.0, "")
+    let b = kitbake_kit(kb, "m.glb", "trim", 1.0, 0.2, 1.5, "")
+    expect(kb.kits[a].collide)
+    kitbake_collide(kb, b, false)
+    expect(not kb.kits[b].collide)
+    let rows = kitbake_rows(kb, 0)
+    expect(Text.contains(rows, "trim {"))
+    expect_eq(len(Text.split(rows, "collide: false")), 2)
+    let parts = Text.split(rows, "trim {")
+    expect(not Text.contains(parts[0], "collide: false"))
+    expect(Text.contains(parts[1], "collide: false"))
+  }
+
   test "seeded rows keep their ids and a second bake appends only what is new" {
     let first = kitbake_new(256.0)
     kitbake_kit(first, "m.glb", "a", 10.0, 10.0, 10.0, "")

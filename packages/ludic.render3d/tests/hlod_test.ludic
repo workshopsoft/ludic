@@ -175,6 +175,28 @@ program HlodTest {
     expect_eq(m.source, 1)
   }
 
+  test "a detail (drawn to its own distance, no impostor card) has no far look: the far layer leaves it out" {
+    let ks = kits()
+    let c = cell_content_new(0, 0, 128.0, 4)
+    cell_add(c, 0, 30.0, 0.0, 10.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    cell_add(c, 1, 90.0, 0.0, 90.0, 0.0, 1.0, cell_rgba(255, 255, 255, 255), 0, 0)
+    let m = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, ks, 0.0, 6.0, 3.0, m)
+    expect_eq(m.source, 2)
+    # kit 1 made a detail: kitbake_dists(near, near, false)
+    ks[1].impostor = false
+    ks[1].far = ks[1].near
+    expect(hlod_is_detail(ks[1]))
+    expect(not hlod_is_detail(ks[0]))
+    let m2 = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, ks, 0.0, 6.0, 3.0, m2)
+    expect_eq(m2.source, 1)
+    expect_eq(m2.boxes, 1)
+    let m3 = hlod_new(0, 0, 128.0, 1)
+    hlod_bake(c, ks, 16.0, 6.0, 3.0, m3)
+    expect_eq(m3.source, 1)
+  }
+
   # the colour of every vertex of the faces whose normal's y is `up` (1 the roof, 0 the walls) is (r, g, b) to a byte
   function faces_are(m: HlodMesh, up: float, r: float, g: float, b: float) -> bool {
     var seen = 0

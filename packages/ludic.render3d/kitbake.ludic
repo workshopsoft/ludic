@@ -205,6 +205,12 @@ export function kitbake_dists(kb: KitBake, id: int, near: float, far: float, imp
   k.impostor = impostor
 }
 
+# kit `id` is drawn and not collided with (`on` false): a trim too thin to stop anything, left out of a game's colliders from the drawn meshes
+export function kitbake_collide(kb: KitBake, id: int, on: bool) -> void {
+  if id < 0 or id >= len(kb.kits) { return }
+  kb.kits[id].collide = on
+}
+
 # kit `id`'s walls carry a line every `h` metres (from a box instance's eave down, from an ordinary instance's base up), `line` metres thick (0: none): the RenderKits row
 # says `storey_h` and `storey_line`, and kit.frag draws them
 export function kitbake_storey(kb: KitBake, id: int, h: float, line: float) -> void {
@@ -289,6 +295,7 @@ export function kitbake_rows(kb: KitBake, from: int) -> string {
     if k.storey_h > 0.0 { out = out + `  storey_h: {kb_num(k.storey_h)}, storey_line: {kb_num(k.storey_line)}\n` }
     if k.box { out = out + "  box: true\n" }
     if not k.impostor { out = out + "  impostor: false\n" }
+    if not k.collide { out = out + "  collide: false\n" }
     if k.facade != "" or k.fac_bay > 0.0 {
       if k.interior == "" { out = out + `  win_w: {kb_num(k.win_w)}, win_h: {kb_num(k.win_h)}\n` }
       out = out + `  facade: "{k.facade}", fac_bay: {kb_num(k.fac_bay)}, fac_glass: {kb_num(k.fac_glass)}, fac_sill: {kb_num(k.fac_sill)}, fac_head: {kb_num(k.fac_head)}\n`

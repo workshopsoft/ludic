@@ -203,6 +203,10 @@ export function hlod_bake(c: CellContent, kits: []RenderKit, cluster_m: float, h
 # drawn as its parts, in the kit's proxy colours, and never merged with its neighbours: a crane is a tower and a jib from far away, not
 # the box round both (a landmark's one box stood for everything under its jib, centred on its place where the mesh is not).
 @alloc_ok("a bake: its sort keys and the mesh are made once per cell")
+# a detail (kitbake_dists: drawn to its own distance, no impostor card, gone past it: a window's surround, a canopy, a roof item) has no far
+# look: the far layer leaves it out, so a merged box is the buildings' and not their trim's
+export function hlod_is_detail(k: RenderKit) -> bool { return not k.impostor and k.far <= k.near + 0.01 }
+
 export function hlod_bake_parts(c: CellContent, kits: []RenderKit, parts: []floats, cluster_m: float, height_band: float, max_growth: float, out: HlodMesh) -> void {
   out.cx = c.cx
   out.cz = c.cz
@@ -215,6 +219,7 @@ export function hlod_bake_parts(c: CellContent, kits: []RenderKit, parts: []floa
   if cl <= 0.0 {
     for i in 0 .. n {
       if c.kit[i] < 0 or c.kit[i] >= len(kits) { continue }
+      if hlod_is_detail(kits[c.kit[i]]) { continue }
       if hlod_has_parts(c, i, parts) { hlod_parted(c, i, kits[c.kit[i]], parts[c.kit[i]], px, pz, out) } else { hlod_single(c, i, kits[c.kit[i]], px, pz, out) }
     }
     return
@@ -225,6 +230,7 @@ export function hlod_bake_parts(c: CellContent, kits: []RenderKit, parts: []floa
   var m = 0
   for i in 0 .. n {
     if c.kit[i] < 0 or c.kit[i] >= len(kits) { continue }
+    if hlod_is_detail(kits[c.kit[i]]) { continue }
     if hlod_has_parts(c, i, parts) {
       hlod_parted(c, i, kits[c.kit[i]], parts[c.kit[i]], px, pz, out)
       continue

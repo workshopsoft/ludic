@@ -33,6 +33,7 @@ export property RenderKit {
   @Unit("m") @Range(0, 20000) far: float = 2500.0      # ... an impostor card to here, nothing past it
   impostor: bool = true                                # has an impostor atlas (oimp.ludic); else it goes straight to the proxy
   box: bool = false                                    # a box kit (kitbox.ludic): its mesh carries anchors and each instance its own w, d, h; the row's w, d, h are the instance its impostor is baked at
+  collide: bool = true                                 # a game that collides with what is drawn takes this kit's mesh; false: a trim too thin to stop anything (a window's surround, a string course)
   @Range(0, 1) proxy_r: float = 0.55                   # the colour of its HLOD box (times the instance's tint)
   @Range(0, 1) proxy_g: float = 0.53
   @Range(0, 1) proxy_b: float = 0.50
