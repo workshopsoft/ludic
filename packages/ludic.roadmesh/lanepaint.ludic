@@ -26,6 +26,13 @@ export property LPRule {
   hatch: double = 0.0
   width: double = 0.0
   hasWidth: bool = false
+  arrows: bool = false        # a one-way road's direction arrows (lanePaint.ts ArrowPaint), with their sizes
+  arSpacing: double = 50.0
+  arFirst: double = 4.0
+  arLength: double = 5.0
+  arHead: double = 1.8
+  arWidth: double = 0.3
+  arHeadWidth: double = 0.9
 }
 
 export property LPOptions {
@@ -98,6 +105,16 @@ export function lp_options_of(v: Val) -> LPOptions {
       if w != null and w.tag == T_NUM {
         r.hasWidth = true
         r.width = w.num
+      }
+      let av = v_get(rv, "arrows")
+      if not v_undef(av) and av.tag == T_OBJ {
+        r.arrows = true
+        r.arSpacing = v_getn(av, "spacing", 50.0)
+        r.arFirst = v_getn(av, "first", 4.0)
+        r.arLength = v_getn(av, "length", 5.0)
+        r.arHead = v_getn(av, "head", 1.8)
+        r.arWidth = v_getn(av, "width", 0.3)
+        r.arHeadWidth = v_getn(av, "headWidth", 0.9)
       }
       push(o.rules, r)
     }
@@ -554,10 +571,10 @@ export function surface_grid(layers: []Layer) -> SurfaceGrid {
   sg_each(g, counts, null)
   let nc = len(counts)
   g.start = words(nc + 1)
-  for c in 0 .. nc { g.start[c + 1] = g.start[c] + counts[c] }
-  g.items = words(g.start[nc])
+  for c in 0 .. nc { g.start [c + 1] = g.start [c] + counts[c] }
+  g.items = words(g.start [nc])
   let fill = words(nc)
-  for c in 0 .. nc { fill[c] = g.start[c] }
+  for c in 0 .. nc { fill[c] = g.start [c] }
   sg_each(g, counts, fill)
   g.stamp = words(n)
   g.found = new []int
@@ -586,7 +603,7 @@ function sg_near(g: SurfaceGrid, x0: double, z0: double, x1: double, z1: double,
     while cz <= cz1 {
       let c = cm_get(g.cells, cell_key(cx, cz))
       if c >= 0 {
-        for i in g.start[c] .. g.start[c + 1] {
+        for i in g.start [c] .. g.start [c + 1] {
           let t = g.items[i]
           if g.stamp[t] == g.q { continue }
           g.stamp[t] = g.q
@@ -899,7 +916,7 @@ function lay_queued<C>(x: PaintCtx<C>, queue: []QPiece, size: double) -> void {
         var shared = false
         for k in 0 .. len(onOwner) {
           if onOwner[k] == qi * 2 + w { continue }
-          for m in 0 .. 4 { L[m] = on[k * 4 + m] }
+          for m in 0 .. 4 { L[m] = on [k * 4 + m] }
           if same_cap2(c, w * 4, L) {
             shared = true
             break
@@ -1356,7 +1373,9 @@ export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt:
     let defs = lines_for(el, w, ei, opt, fwdRight, planted, areas)
     let es = w_st(w, ei)
     let l = w_laid(w, ei)
-    if rule == null or len(defs) == 0 or es == null or l == null { continue }
+    let oneWay = (e.lanesFwd > 0.0) != (e.lanesBack > 0.0)
+    if rule == null or es == null or l == null { continue }
+    if len(defs) == 0 and not (rule.arrows and oneWay) { continue }
     let level = level_code(e.level)
     let s0 = st_s(es, 0)
     let s1 = st_s(es, es.n - 1)
@@ -1429,6 +1448,84 @@ export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt:
           push(queue, q)
           count(x, "hatch", 1)
           s += rule.hatch
+        }
+      }
+    }
+    # a one-way road's direction arrows: in each lane of its one direction, from each run's start on the side the traffic comes from
+    if rule.arrows and oneWay {
+      let alen = rule.arLength
+      let head = jmin(rule.arHead, alen)
+      let half = rule.arWidth / 2.0
+      let headHalf = rule.arHeadWidth / 2.0
+      let first = rule.arFirst
+      let spacing = jmax(rule.arSpacing, alen + 1.0)
+      let fwd = e.lanesFwd > 0.0
+      let n = dsel(fwd, e.lanesFwd, e.lanesBack)
+      let side = isel(fwd == fwdRight, 1, -1)
+      let sgn = dsel(side == 1, 1.0, -1.0)
+      let runs = runs_for(blocked, s0, s1, stop, false, false)
+      for r in 0 .. len(runs) / 2 {
+        let a = runs[r * 2]
+        let bb = runs[r * 2 + 1]
+        var tail = dsel(fwd, a + first, bb - first)
+        while (fwd and tail + alen <= bb) or (not fwd and tail - alen >= a) {
+          sf_seg(es, tail, x.sg)
+          let i = x.sg.i
+          let med = off_med(es, side, i)
+          let lns = off_lanes(es, side, i)
+          let baseS = dsel(fwd, tail + (alen - head), tail - (alen - head))
+          let tipS = dsel(fwd, tail + alen, tail - alen)
+          let lo = jmin(tail, baseS)
+          let hi = jmax(tail, baseS)
+          for j in 0 .. int(n) {
+            let c = sgn * (med + ((lns - med) * (double(j) + 0.5)) / n)
+            # the shaft, cut at the stations it passes so it bends with the lane
+            let cuts = new []double
+            push(cuts, lo)
+            for k in 0 .. es.n {
+              let sk = st_s(es, k)
+              if sk > lo + 0.000001 and sk < hi - 0.000001 { push(cuts, sk) }
+            }
+            push(cuts, hi)
+            for k in 0 .. len(cuts) - 1 {
+              let c0 = cuts[k]
+              let c1 = cuts[k + 1]
+              let raw = doubles(8)
+              sf_point(es, c0, null, 2, c - half, x.sg, raw, 0)
+              sf_point(es, c1, null, 2, c - half, x.sg, raw, 2)
+              sf_point(es, c1, null, 2, c + half, x.sg, raw, 4)
+              sf_point(es, c0, null, 2, c + half, x.sg, raw, 6)
+              let q = new QPiece
+              q.a = 0.0
+              q.b = 1.0
+              q.kind = Q_HATCH
+              q.poly = off_chunk_lines(raw, chunk)
+              q.level = level
+              q.y = sf_y(es, (c0 + c1) / 2.0, x.sg) + lift
+              push(queue, q)
+            }
+            # the head
+            let tri = doubles(6)
+            if fwd {
+              sf_point(es, baseS, null, 2, c - headHalf, x.sg, tri, 0)
+              sf_point(es, tipS, null, 2, c, x.sg, tri, 2)
+              sf_point(es, baseS, null, 2, c + headHalf, x.sg, tri, 4)
+            } else {
+              sf_point(es, tipS, null, 2, c, x.sg, tri, 0)
+              sf_point(es, baseS, null, 2, c - headHalf, x.sg, tri, 2)
+              sf_point(es, baseS, null, 2, c + headHalf, x.sg, tri, 4)
+            }
+            let q = new QPiece
+            q.a = 0.0
+            q.b = 1.0
+            q.kind = Q_HATCH
+            q.poly = off_chunk_lines(tri, chunk)
+            q.level = level
+            q.y = sf_y(es, (baseS + tipS) / 2.0, x.sg) + lift
+            push(queue, q)
+          }
+          count(x, "arrow", 1)
+          tail = dsel(fwd, tail + spacing, tail - spacing)
         }
       }
     }
