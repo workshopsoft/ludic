@@ -11,7 +11,8 @@
 #   4. pads, jetty decks, the road bake's wing walls
 #   5. the edge fit (least squares of the band and verge to the edges' tops)
 #   6. the footprints' caps, abutments, decks and tubes, water
-#   7. the walls' zones and the slopes (4-neighbour cones from every fixed texel), the heights
+#   7. the walls' zones and the slopes (4-neighbour cones from every fixed texel, following a natural ground steeper than they are), the
+#      heights, the hard clamp under the surfaces, the spikes and pits
 #   8. holes at a tube's mouth, and the classes
 # Job and answer are little-endian (i32 and f64); the layout is the studio's (mcp/src/groundNative.ts writes and reads it).
 program ConformWindow {
@@ -27,6 +28,10 @@ program ConformWindow {
   const K_WALL: int = 6
   const WING_LOW: double = 1.5
   const WING_CAP: double = 3.1
+  const STEEP_FOLLOW: double = 1.5
+  const CLAMP_UNDER: double = 0.01
+  const DESPIKE: double = 0.3
+  const TUBE_COVER: double = 2.0
 
   property Rings {
     n: int = 0
@@ -829,7 +834,8 @@ program ConformWindow {
     let tubeLow = doubles(N)
     let deckCap = doubles(N)
     let deckTop = doubles(N)
-    for t in 0 .. N { tubeLow[t] = INF;  deckCap[t] = INF;  deckTop[t] = INF }
+    let tubeFloor = doubles(N)
+    for t in 0 .. N { tubeLow[t] = INF;  deckCap[t] = INF;  deckTop[t] = INF;  tubeFloor[t] = -INF }
     if win.nd > 0 or win.nt > 0 {
       let under = buffer(N)
       let deckLow = doubles(N)
@@ -847,6 +853,11 @@ program ConformWindow {
           if not tl {
             deckCap[t] = dmin(nat[t], deckLow[t] - 0.05)
             deckTop[t] = dsel(soffitLow[t] - 0.05 > nat[t], dmin(deckLow[t], soffitLow[t]), deckLow[t]) - 0.05
+            continue
+          }
+          # over a tube with TUBE_COVER of natural ground over its roof and no deck lower: free over a floor of roof and cover
+          if nat[t] >= tubeLow[t] + roof + TUBE_COVER and not (deckLow[t] < tubeLow[t] - 0.000001) {
+            tubeFloor[t] = tubeLow[t] + roof + TUBE_COVER
             continue
           }
           # underDeckGround
@@ -1018,7 +1029,47 @@ program ConformWindow {
           push(cut, gx0 + (double(i0 + a) + 0.5) * T)
           push(cut, gz0 + (double(j0 + b) + 0.5) * T)
         }
-        heights[t] = dmin(v, dmin(capAt[t], deckTop[t]))
+        heights[t] = dmax(dmin(v, dmin(capAt[t], deckTop[t])), tubeFloor[t])
+      }
+    }
+    # the hard clamp under the surfaces: no texel but a pad's over the lowest surface sample within its bilinear reach (a texel either way)
+    # less CLAMP_UNDER (the studio's, after the heights)
+    for b in 0 .. h {
+      let l0 = SUB * b + SUB / 2 - SUB
+      if l0 + 2 * SUB < 0 or l0 >= SH { continue }
+      for a in 0 .. w {
+        let t = b * w + a
+        if kind[t] == K_PAD { continue }
+        let k0 = SUB * a + SUB / 2 - SUB
+        var m: double = INF
+        for l in max(0, l0) .. min(SH - 1, l0 + 2 * SUB) + 1 {
+          for kk in max(0, k0) .. min(SW - 1, k0 + 2 * SUB) + 1 {
+            let at = l * SW + kk
+            if has[at] == 1 and top[at] < m { m = top[at] }
+          }
+        }
+        if m < INF and heights[t] > m - CLAMP_UNDER { heights[t] = m - CLAMP_UNDER }
+      }
+    }
+    # spikes and pits: a free texel over (under) all eight neighbours by more than DESPIKE is brought to the nearest of them, read from the
+    # heights as they were
+    let was = doubles(N)
+    for t in 0 .. N { was[t] = heights[t] }
+    for b in 1 .. h - 1 {
+      for a in 1 .. w - 1 {
+        let t = b * w + a
+        if kind[t] != K_FREE { continue }
+        var hi: double = -INF
+        var lo: double = INF
+        for bb in 0 .. 3 {
+          for aa in 0 .. 3 {
+            if bb == 1 and aa == 1 { continue }
+            let v = was[t + (bb - 1) * w + aa - 1]
+            if v > hi { hi = v }
+            if v < lo { lo = v }
+          }
+        }
+        if was[t] > hi + DESPIKE { heights[t] = hi } else if was[t] < lo - DESPIKE { heights[t] = lo }
       }
     }
     # 8. holes, classes
@@ -1141,16 +1192,30 @@ program ConformWindow {
     }
     var ch = false
     let fromSrc = kind[n] != K_FREE
-    let lv = dmin(L[n] - step, deckTop[t])
-    if Ld[n] < R and (fromSrc or nat[n] <= L[n] + 0.000000001) and lv > L[t] + 0.000000001 {
-      L[t] = lv
-      Ld[t] = Ld[n] + 1
-      ch = true
+    # where the natural ground falls away (rises) between the two texels more steeply than a slope may, the fill (cut) follows it, steeper
+    # by half the excess (the studio's fillStep / cutStep): over a cliff an embankment closes on the natural ground instead of running on
+    # at 1 : slope until the reach cuts it off as a wall of the whole height
+    let fall = nat[n] - nat[t]
+    var sL = step
+    if fall > step { sL = step + (fall - step) * STEEP_FOLLOW }
+    let rise = nat[t] - nat[n]
+    var sU = step
+    if rise > step { sU = step + (rise - step) * STEEP_FOLLOW }
+    if Ld[n] < R and (fromSrc or nat[n] <= L[n] + 0.000000001) {
+      let lv = dmin(L[n] - sL, deckTop[t])
+      if lv > L[t] + 0.000000001 {
+        L[t] = lv
+        Ld[t] = Ld[n] + 1
+        ch = true
+      }
     }
-    if Ud[n] < R and (fromSrc or nat[n] >= U[n] - 0.000000001) and U[n] + step < U[t] - 0.000000001 {
-      U[t] = U[n] + step
-      Ud[t] = Ud[n] + 1
-      ch = true
+    if Ud[n] < R and (fromSrc or nat[n] >= U[n] - 0.000000001) {
+      let uv = U[n] + sU
+      if uv < U[t] - 0.000000001 {
+        U[t] = uv
+        Ud[t] = Ud[n] + 1
+        ch = true
+      }
     }
     return ch
   }
