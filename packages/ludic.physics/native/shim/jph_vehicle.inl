@@ -259,6 +259,10 @@ JPH_SHIM void *jph_vehicle_add(void *w, int id, void *vs) {
     v->tester = new WheelCast(body.GetObjectLayer());
     v->tester->SetObjectLayerFilter(&v->ground);
     v->c->SetVehicleCollisionTester(v->tester);
+    // a vehicle asleep (its body and every body under its wheels at rest) does not cast its wheels again: nothing it stands on moves
+    // while nothing wakes it, and Jolt's simplified test keeps the last contacts (a body under a wheel taken away is let go). Jolt's
+    // default casts every wheel every step even asleep: about 5 us a vehicle a step, a car park of parked cars a frame's budget
+    v->c->SetNumStepsBetweenCollisionTestInactive(0);
     for (int i = 0; i < 16; i++) { v->grip[i] = 1.0f; v->steer[i] = 0.0f; }
     float rz = 0.0f;
     int nr = 0;

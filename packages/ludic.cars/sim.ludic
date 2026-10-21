@@ -15,6 +15,7 @@ function cr_lod_want(cars_st: CarsState, c: Car) -> int {
   if cr_driver_is_player(c) or c.phase == CarPhase.Entering or c.phase == CarPhase.Jacked or c.phase == CarPhase.Exiting { return CAR_SIM_BODY }
   let d = CarWorld.focus(c.x, c.z)
   var near = cfg.body_dist
+  if c.near > 0.0 { near = Math.min(c.near, cfg.body_dist) }
   var mid = cfg.planar_dist
   if c.sim == CAR_SIM_BODY { near = near + cfg.lod_margin }
   if c.sim == CAR_SIM_BODY or c.sim == CAR_SIM_PLANAR { mid = mid + cfg.lod_margin }
@@ -129,8 +130,28 @@ function cr_draw_pose(c: Car, alpha: float) -> void {
   c.gux = ux / ul;  c.guy = uy / ul;  c.guz = uz / ul
 }
 
+# a body car left alone whose body sleeps (CarBody.awake): nobody in it or at its doors, no driver of the package's, nothing pressed
+function cr_sleeps(c: Car) -> bool {
+  if c.phase != CarPhase.Free and c.phase != CarPhase.Locked { return false }
+  if c.ai or c.horn or car_occupants(c) > 0 { return false }
+  return not CarBody.awake(c.nid)
+}
+
+# a planar (or lane-following) car left alone that has stood still CAR_REST_T: not stepped (nothing touches a planar car; a viewer coming near makes it a
+# body, which sleeps or not by its own physics). Anything that moves it or is done to it (a driver, a door, the package's AI) steps it again
+function cr_rests(c: Car, dt: float) -> bool {
+  let idle = (c.phase == CarPhase.Free or c.phase == CarPhase.Locked) and not c.ai and not c.horn and car_occupants(c) == 0
+  if not idle or c.airborne or Math.abs(c.vx) + Math.abs(c.vy) + Math.abs(c.vz) > CAR_REST_V {
+    c.rest_t = 0.0
+    return false
+  }
+  c.rest_t += dt
+  return c.rest_t >= CAR_REST_T
+}
+
 # one fixed step of every car
 export function cars_step(cars_st: mut CarsState, dt: float) -> void {
+  cars_st.cr_asleep = 0
   let tb = cars_st.cr_cars
   for i in 0 .. tb_len(tb) {
     let c = tb_rec(tb, i)
@@ -140,11 +161,26 @@ export function cars_step(cars_st: mut CarsState, dt: float) -> void {
       if c.sim != CAR_SIM_LANE { cr_ai_drive(cars_st, c, dt) }
     }
     if c.sim == CAR_SIM_BODY and c.body {
+      c.asleep = cr_sleeps(c)
+      if c.asleep {
+        cars_st.cr_asleep += 1
+        continue
+      }
       cr_body_step(cars_st, c, dt)
       if not c.body { c.sim = CAR_SIM_PLANAR }
     } else if c.sim == CAR_SIM_LANE {
+      c.asleep = cr_rests(c, dt)
+      if c.asleep {
+        cars_st.cr_asleep += 1
+        continue
+      }
       cr_lane_step(cars_st, c, dt)
     } else {
+      c.asleep = cr_rests(c, dt)
+      if c.asleep {
+        cars_st.cr_asleep += 1
+        continue
+      }
       cr_planar_step(cars_st, c, dt)
     }
   }

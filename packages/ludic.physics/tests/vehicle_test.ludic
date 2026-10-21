@@ -77,6 +77,41 @@ program VehicleTest {
     phys_close(st)
   }
 
+  test "asleep it casts no wheel but keeps its contacts and its height; a push wakes it and it lands on its wheels again" (st: mut PhysicsState) {
+    world(st)
+    let v = car(st, 0.6)
+    let body = st.ph_vbody[v]
+    steps(st, 480)
+    expect(not phys_awake(st, body))
+    let p = new PhysPose
+    expect(phys_pose(st, body, p))
+    let y0 = p.y
+    let w = new PhysWheel
+    # ten seconds asleep: the wheels still on the ground where they were, the body where it was
+    steps(st, 600)
+    expect(not phys_awake(st, body))
+    expect(phys_pose(st, body, p))
+    expect(Math.abs(p.y - y0) < 0.001)
+    for i in 0 .. 4 {
+      expect(phys_vehicle_wheel_read(st, v, i, w))
+      expect(w.contact)
+      expect(Math.abs(w.y - R - 0.5) < 0.015)
+    }
+    # a shove sideways: awake, it slides and settles on its springs at the same height, and sleeps again
+    phys_impulse(st, body, 3000.0, 0.0, 0.0)
+    phys_step(st)
+    expect(phys_awake(st, body))
+    steps(st, 600)
+    expect(phys_pose(st, body, p))
+    expect(Math.abs(p.y - y0) < 0.01)
+    for i in 0 .. 4 {
+      expect(phys_vehicle_wheel_read(st, v, i, w))
+      expect(w.contact)
+    }
+    expect(not phys_awake(st, body))
+    phys_close(st)
+  }
+
   test "it drives off, changes up, and stops under the brakes with every wheel down" (st: mut PhysicsState) {
     world(st)
     let v = car(st, 0.6)
