@@ -456,7 +456,12 @@ program CrowdTest {
       if not sat {
         for i in 0 .. crowd_count(crowd_st) {
           let u = crowd_ped_at(crowd_st, i)
-          if crowd_act(crowd_st, u) == CROWD_SIT and dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 20.0, 20.0) < 2.0 { sat = true }
+          if crowd_act(crowd_st, u) == CROWD_SIT and dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 20.0, 20.0) < 2.0 {
+            sat = true
+            # on its seat, not short of it: bench_a faces +x (yaw 90), its two places 0.7 m apart along it, at z 19.65 and 20.35
+            let off = Math.min(dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 20.0, 19.65), dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), 20.0, 20.35))
+            expect(off < 0.01)
+          }
         }
       }
     }

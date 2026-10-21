@@ -327,6 +327,10 @@ function cw_follow(crowd_st: mut CrowdState, p: CrowdPed, row: int, lrow: int, t
 function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
   if p.scn >= 0 and not p.scn_used {
     p.scn_used = true
+    # its very place (a seat, a spot at a wall): a walk ends within 0.8 m of its goal, and a sitter short of its bench sits on air. The
+    # step is no more than that, taken while the game's graph blends into the act
+    p.x = p.dest_x
+    p.z = p.dest_z
     p.act = crowd_st.cw_sn_act[p.scn]
     p.key = crowd_st.cw_sn_anim[p.scn]
     p.yaw = crowd_st.cw_sn_yaw[p.scn]
