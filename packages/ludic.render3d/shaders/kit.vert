@@ -39,6 +39,7 @@ out vec3 v_lcam;
 // a box instance's own w, d, h (the eave) and its facade flags (cellfile.ludic: blind walls, storeys, a masked door)
 out vec3 v_box;
 out vec2 v_flags;          // the flags in two 12-bit halves: exact through interpolation
+out float v_low;           // the variation word's bits 16..23 (fac_vari): each wall's blind lower storeys, 2 bits a wall
 #endif
 void main() {
   float s = i_rot.x, c = i_rot.y;
@@ -52,7 +53,9 @@ void main() {
   v_wpos = w;
   v_nrm = n;
   v_uv = a_uv;
-  v_tint = i_tint;
+  // the variation's seed alone (bits 0..15): its bits 16..23 are the facade's blind lower storeys (v_low), and a value under 65536
+  // stays exact through interpolation
+  v_tint = vec4(i_tint.rgb, mod(floor(i_tint.w + 0.5), 65536.0));
   v_col = (a_col == vec4(0.0)) ? vec4(1.0) : a_col;
   v_seed = i_rot.z;
   v_h = p.y;
@@ -67,6 +70,7 @@ void main() {
   v_box = boxed ? i_box.xyz : vec3(0.0);
   float fl = floor(i_rot.w + 0.5);
   v_flags = vec2(mod(fl, 4096.0), floor(fl / 4096.0));
+  v_low = floor(floor(i_tint.w + 0.5) / 65536.0);
 #endif
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * vec4(w, 1.0);

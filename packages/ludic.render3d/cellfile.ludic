@@ -76,6 +76,9 @@ export property RenderKit {
 #   bit 11       a door is masked: no glass in the ground storey where it stands
 #   bits 12..13  its wall (0 +x, 1 -x, 2 +z, 3 -z)
 #   bits 14..23  its middle along that wall from the wall's start, in tenths of a metre (fac_wall_u)
+# and in its variation word (CellContent.vari, fac_vari; kit.vert hands it over as a float too):
+#   bits 0..15   the seed of its facade and its rooms
+#   bits 16..23  each wall's blind lower storeys, 2 bits a wall (+x, -x, +z, -z), 0..3: a back or alley wall with no windows down low
 
 @PerMap @ByKey
 export registry RenderKits of RenderKit from "render_kits.lres"

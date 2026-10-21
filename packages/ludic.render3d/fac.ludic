@@ -10,6 +10,8 @@
 #           under the base (a plinth's partial storey) or past the instance's storeys has none; the last row is the ground storey
 #   u       along a wall from its start, looking at the wall from outside, left to right (imi_facade_u + L / 2)
 #   flags   the instance's facade bits (cellfile.ludic RenderKit's note): blind walls, storeys, one masked door
+#   low     each wall's blind lower storeys (0..3), in the variation word's bits 16..23 (fac_vari): a shop's or an office's back and
+#           alley walls have no windows on their lowest storeys, the rows above them do
 # ============================================================================
 numbers float
 
@@ -86,3 +88,16 @@ export function fac_flag_door_wall(f: int) -> int {
   return (f >> 12) & 3
 }
 export function fac_flag_door_u(f: int) -> float { return float((f >> 14) & 1023) * 0.1 }
+
+# the variation word of a box instance with blind lower storeys: `seed` 0..65535 (its facade's and rooms' seed), `low` each wall's lowest
+# storeys without windows, 2 bits a wall (wall w's count at bits 2w .. 2w + 1, 0..3), in bits 16..23 (a float holds 24 bits exactly)
+export function fac_vari(seed: int, low: int) -> int { return (seed & 65535) | ((low & 255) << 16) }
+# `low`'s bits for wall `wall` blind up to `storeys` storeys (0..3)
+export function fac_low(wall: int, storeys: int) -> int {
+  if wall < 0 or wall > 3 { return 0 }
+  return (max(0, min(storeys, 3)) & 3) << (2 * wall)
+}
+export function fac_vari_seed(v: int) -> int { return v & 65535 }
+export function fac_vari_low(v: int, wall: int) -> int { return (v >> (16 + 2 * wall)) & 3 }
+# row `k` (0 the top storey, fac_row_of) of `rows` is a blind lower storey of a wall `low` storeys blind: no windows in it
+export function fac_row_blind(k: int, rows: int, low: int) -> bool { return k >= 0 and rows - 1 - k < low }

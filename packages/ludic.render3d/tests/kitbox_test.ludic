@@ -299,17 +299,24 @@ program KitBoxTest {
     expect(kitbake_place_box(kb, id, 300.0, 0.0, 40.0, 0.0, 30.0, 20.0, 12.0 * STOREY, 0xffffffff, 7, 0))
     expect(not kitbake_place_box(kb, plain, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0xffffffff, 0, 0))
     expect(kitbake_place(kb, plain, 310.0, 0.0, 50.05, 0.0, 1.0, 0xffffffff, 0, 0))
+    # a box placed with its whole variation word keeps the blind lower storeys (fac_vari); one placed with a seed alone drops bits 16 up
+    expect(kitbake_place_box_fac(kb, id, 320.0, 0.0, 60.0, 0.0, 30.0, 20.0, 12.0 * STOREY, 0xffffffff, fac_vari(7, fac_low(3, 2)), 0))
+    expect(kitbake_place_box(kb, id, 330.0, 0.0, 70.0, 0.0, 30.0, 20.0, 12.0 * STOREY, 0xffffffff, fac_vari(9, 255), 0))
     expect(Text.contains(kitbake_rows(kb, 0), "box: true"))
     let c = kb.cells[0]
     expect_eq(c.cx, 1)
-    expect_eq(c.n, 2)
+    expect_eq(c.n, 4)
     expect(cell_is_box(c, 0) and not cell_is_box(c, 1))
+    expect_eq(c.vari[0], 7)
+    expect_eq(fac_vari_low(c.vari[2], 3), 2)
+    expect_eq(fac_vari_seed(c.vari[2]), 7)
+    expect_eq(c.vari[3], 9)
     expect_near(c.box[2], 12.0 * STOREY, 0.0001)
     expect_near(c.box[3 + 3], 12.0 * STOREY + 1.0, 0.001)    # its drawn top, the parapet included
     let dir = Os.temp_dir() + "/r3d_kitbox_bake"
     expect_eq(kitbake_write(kb, dir), 1)
     let back = cell_load(dir, 1, 0)
-    expect(back != null and back.boxes == 1)
+    expect(back != null and back.boxes == 3)
   }
 
   test "a kit's coarse shape is read from its own mesh: a few boxes inside the mesh's bounds holding every vertex" (render3d_st: mut Render3dState) {

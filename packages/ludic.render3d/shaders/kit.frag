@@ -166,6 +166,7 @@ vec4 interiorAt(float lod) {
 // ---- FACADE: a window grid fitted to each wall of a box instance (fac.ludic is the reference of this arithmetic) ----
 in vec3 v_box;
 in vec2 v_flags;
+in float v_low;                  // each wall's blind lower storeys, 2 bits a wall (fac_vari)
 uniform vec4 u_fac_a;            // bay, glass share of a bay, sill, head (m over the storey's floor)
 uniform vec4 u_fac_b;            // pier (m), upright bars, level bars, reveal depth (m)
 uniform vec4 u_fac_c;            // ground storey mode (0 windows, 1 shopfront, 2 doors, 3 blank), spandrel darkening, storey height, rooms on
@@ -196,6 +197,9 @@ Fac facadeAt(vec3 ray) {
   int rows = floors > 0 ? min(fit, floors) : fit;
   int k = int(floor((h - y) / s));
   if (k >= rows) return f;
+  // a back or alley wall's lower storeys are blind: no window, no shopfront (fac_row_blind)
+  int low = (int(v_low + 0.5) >> (2 * wall)) & 3;
+  if (rows - 1 - k < low) return f;
   float yy = y - (h - float(k + 1) * s);
   bool ground = k == rows - 1;
   int gmode = int(u_fac_c.x + 0.5);

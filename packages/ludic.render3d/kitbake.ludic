@@ -244,18 +244,25 @@ export function kitbake_place(kb: KitBake, kit: int, x: float, y: float, z: floa
 
 # One box instance at world (x, y, z) of kit `kit` (kitbake_kit_box), its own width `w` (along its x), depth `d` and height `h`
 # (kitbox.ludic): its drawn bounds are worked out from the kit's tuples and kept with it (the culling sphere, the HLOD box).
-# false for a kit that is not a box kit of this bake.
+# false for a kit that is not a box kit of this bake. `vari` is the whole variation word (fac_vari: the seed and each wall's blind lower
+# storeys); kitbake_place_box takes a seed alone.
 @alloc_ok("a bake: the cell's columns grow while it is filled")
-export function kitbake_place_box(kb: KitBake, kit: int, x: float, y: float, z: float, yaw: float, w: float, d: float, h: float, tint: int, variation: int, flags: int) -> bool {
+export function kitbake_place_box_fac(kb: KitBake, kit: int, x: float, y: float, z: float, yaw: float, w: float, d: float, h: float, tint: int, vari: int, flags: int) -> bool {
   if kit < 0 or kit >= len(kb.kits) or kb.boxes[kit] == null { return false }
   let b = floats(6)
   kitbox_bounds(kb.boxes[kit], w, d, h, b)
   let cx = int(Math.floor(x / kb.size))
   let cz = int(Math.floor(z / kb.size))
-  cell_add_box(kb_cell(kb, cx, cz), kit, x - float(cx) * kb.size, y, z - float(cz) * kb.size, yaw, w, d, h, b, tint, variation & 65535, flags)
+  cell_add_box(kb_cell(kb, cx, cz), kit, x - float(cx) * kb.size, y, z - float(cz) * kb.size, yaw, w, d, h, b, tint, vari & 0xffffff, flags)
   free(b)
   kb.placed += 1
   return true
+}
+
+# kitbake_place_box_fac with no blind lower storeys: `variation` 0 .. 65535 seeds the facade and each window's room
+@alloc_ok("a bake: the cell's columns grow while it is filled")
+export function kitbake_place_box(kb: KitBake, kit: int, x: float, y: float, z: float, yaw: float, w: float, d: float, h: float, tint: int, variation: int, flags: int) -> bool {
+  return kitbake_place_box_fac(kb, kit, x, y, z, yaw, w, d, h, tint, variation & 65535, flags)
 }
 
 export function kitbake_kit_count(kb: KitBake) -> int { return len(kb.kits) }
