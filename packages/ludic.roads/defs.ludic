@@ -207,7 +207,7 @@ export property RoadFurnitureRule {
   @OneOf("to_road", "from_road", "along") yaw: string = "to_road"
   @Range(0.1, 10) scale: float = 1.0
   @Unit("m") @Range(0, 2000) min_length: float = 0.0
-  @OneOf("street", "junction", "signal", "stop", "yield", "deadend", "named") at: string = "street"
+  @OneOf("street", "junction", "signal", "stop", "yield", "deadend", "named", "oneway_exit", "oneway_entry") at: string = "street"   # a one-way road's ends: where its traffic leaves it, comes in
 }
 
 @PerMap @ByKey
