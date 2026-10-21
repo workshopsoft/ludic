@@ -13,6 +13,8 @@ export function car_by_nid(cars_st: CarsState, nid: int) -> Car {
 }
 
 export function car_count(cars_st: CarsState) -> int { return tb_len(cars_st.cr_cars) }
+# cars the last step left alone: body cars asleep (CarBody.awake), planar cars at rest
+export function cars_asleep(cars_st: CarsState) -> int { return cars_st.cr_asleep }
 export function car_at(cars_st: CarsState, i: int) -> Car { return tb_rec(cars_st.cr_cars, i) }
 export function car_handle(cars_st: CarsState, nid: int) -> int { return imap_get(cars_st.cr_nids, nid, -1) }
 
@@ -250,6 +252,15 @@ export function car_follow_lane(cars_st: CarsState, nid: int, on: bool, pace: fl
   return true
 }
 
+# a car that needs a body only close up (a parked car: a car park of them is a planar model past `near` m, drawn the same, not stepped
+# while it rests): a body within `near` of a viewer, if under CarSettings.body_dist; 0 gives it the settings' distance again
+export function car_body_near(cars_st: CarsState, nid: int, near: float) -> bool {
+  let c = car_by_nid(cars_st, nid)
+  if c == null { return false }
+  c.near = Math.max(0.0, cr_real(near))
+  return true
+}
+
 # put a car on the ground somewhere, at rest (a teleport: the body, if it has one, is made again)
 export function car_place(cars_st: mut CarsState, nid: int, x: float, z: float, yaw: float) -> bool {
   let c = car_by_nid(cars_st, nid)
@@ -275,6 +286,8 @@ export function car_place(cars_st: mut CarsState, nid: int, x: float, z: float, 
   c.yaw_rate = 0.0
   c.have_prev = false
   c.net_ok = false
+  c.rest_t = 0.0
+  c.asleep = false
   if c.body {
     CarBody.drop(c.nid)
     c.body = false

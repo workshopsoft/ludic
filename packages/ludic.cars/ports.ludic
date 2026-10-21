@@ -71,6 +71,10 @@ export port CarBody {
   drive: fn(int, float, float, float, float, float) -> bool = fn cr__no_drive   # (nid, forward -1..1, right -1..1, brake 0..1, handbrake 0..1, the engine's most torque N.m) for the next step
   wheel: fn(int, int, CarWheel) -> bool = fn cr__no_wheel        # (nid, i, wheel): wheel i after the step: spin, roll, steer, ext, contact, the point, the normal, the slips
   gauge: fn(int, CarGauge) -> bool = fn cr__no_gauge             # (nid, gauge): rpm and gear after the step
+  # (nid): the body moves or something is about to move it. A body car nobody is in, getting into or driving whose body the physics
+  # has put to sleep (at rest, untouched) is not stepped: no read, no pedals, no wheels (a car park full of parked cars costs nothing).
+  # The first contact, push or shot wakes the body and the car is stepped again from that step. Unbound: always awake (stepped)
+  awake: fn(int) -> bool = fn cr__yes1i
 }
 
 # a lane to follow: ludic.roads, through the game. aim is asked where a car is; its answer is read back

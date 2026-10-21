@@ -206,6 +206,35 @@ program CarsBodyTest {
     expect(fast > 4.0)
   }
 
+  test "a car given a nearer body distance (a parked car) is a planar model past it and a body within it; 0 gives it the settings' distance again" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState, bodies_st: mut Bodies) {
+    world(physics_st)
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    let c = car_by_nid(cars_st, nid)
+    expect(car_body_near(cars_st, nid, 60.0))
+    expect(not car_body_near(cars_st, 12345, 60.0))
+    bodies_st.focus = 100.0
+    frames(cars_st, doors, owns, rig, 30)
+    expect(c.sim == CAR_SIM_PLANAR)
+    expect(not c.body)
+    bodies_st.focus = 40.0
+    frames(cars_st, doors, owns, rig, 30)
+    expect(c.sim == CAR_SIM_BODY)
+    expect(c.body)
+    # past its distance and the margin: planar again
+    bodies_st.focus = 100.0
+    frames(cars_st, doors, owns, rig, 5)
+    expect(c.sim == CAR_SIM_PLANAR)
+    # the settings' distance (150 m) again: a body at 100 m
+    expect(car_body_near(cars_st, nid, 0.0))
+    frames(cars_st, doors, owns, rig, 150)
+    expect(c.sim == CAR_SIM_BODY)
+    # a distance past the settings' is the settings'
+    expect(car_body_near(cars_st, nid, 1000.0))
+    bodies_st.focus = 200.0
+    frames(cars_st, doors, owns, rig, 5)
+    expect(c.sim == CAR_SIM_PLANAR)
+  }
+
   test "a person's car is a body whatever the distance" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState, bodies_st: mut Bodies) {
     world(physics_st)
     let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, 0.0, 0.0, 0.0)

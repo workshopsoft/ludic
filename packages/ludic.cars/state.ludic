@@ -14,6 +14,8 @@ export const CAR_SIM_BODY: int = 0         # a body in the game's physics, rayca
 export const CAR_SIM_PLANAR: int = 1       # the package's own planar model of the same tyres, engine and gearbox
 export const CAR_SIM_LANE: int = 2         # a lane follower: no forces, the lane's line and a speed
 export const CAR_SIM_REMOTE: int = 3       # simulated on another machine: snapshots, interpolated
+export const CAR_REST_V: float = 0.02      # m/s (the three axes summed): a planar car this slow is standing still
+export const CAR_REST_T: float = 1.0       # s: a planar car left standing this long is not stepped (cr_rests)
 
 export const CAR_MAX_SEATS: int = 8
 export const CAR_NET_RING: int = 8         # snapshots a remote car keeps
@@ -281,6 +283,9 @@ export property Car {
   net_mask: int = 0               # the tyres a snapshot said are flat
   # the level of detail
   lod_t: float = 0.0
+  near: float = 0.0                # a body only within this of a viewer, if under CarSettings.body_dist (0: body_dist; car_body_near)
+  asleep: bool = false             # not stepped the last step: nobody at it, and its body asleep (CarBody.awake) or a planar car at rest
+  rest_t: float = 0.0              # a planar car: how long it has stood still with nobody at it
   ent: int = -1
   tab: Table<Car> = null
 }
@@ -356,6 +361,7 @@ export state CarsState {
   cr_net_off: float = 0.0          # how far the senders' clock runs ahead of it
   cr_net_have: bool = false
   cr_steps: int = 0
+  cr_asleep: int = 0               # cars not stepped the last step (asleep, at rest)
 }
 function cr_cars__new() -> Table<Car> {
   let t: Table<Car> = table_new(0, 0)

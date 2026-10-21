@@ -325,4 +325,39 @@ program CarsPlanarTest {
       expect(is_finite(e.x) and is_finite(e.z))
     }
   }
+
+  test "a car nobody is at that has stood still a second is not stepped; a driver getting in steps it again, and a driven car is never left" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig) {
+    let nid = car_spawn(cars_st, CARM_SEDAN, 0.0, 0.0, 0.0, -1)
+    expect(nid >= 0)
+    let c = car_by_nid(cars_st, nid)
+    frame(cars_st, doors, owns, rig, 30)
+    expect(not c.asleep)
+    frame(cars_st, doors, owns, rig, 60)
+    expect(c.asleep)
+    expect_eq(cars_asleep(cars_st), 1)
+    let x = c.x
+    let z = c.z
+    frame(cars_st, doors, owns, rig, 600)
+    expect(c.asleep)
+    expect(c.x == x and c.z == z)
+    # a driver: stepped from the next step, and it drives off
+    expect_eq(car_seat_driver(cars_st, nid, 1), 0)
+    frame(cars_st, doors, owns, rig, 3)
+    expect(not c.asleep)
+    expect_eq(cars_asleep(cars_st), 0)
+    for i in 0 .. 120 {
+      car_drive(cars_st, nid, 1.0, 0.0, 0.0, 0.0)
+      frame(cars_st, doors, owns, rig, 1)
+      expect(not c.asleep)
+    }
+    expect(c.speed > 3.0)
+    # stopped on the handbrake (the brake pedal is reverse once stopped) with the driver still in it: never left
+    for i in 0 .. 300 {
+      car_drive(cars_st, nid, 0.0, 0.0, 0.0, 1.0)
+      frame(cars_st, doors, owns, rig, 1)
+    }
+    expect(Math.abs(c.speed) < 0.1)
+    expect(not c.asleep)
+  }
 }
+
