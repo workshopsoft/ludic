@@ -228,10 +228,10 @@ Fac facadeAt(vec3 ray) {
   if (gh <= 0.1 || gw <= 0.1) return f;
   // a door on this wall's ground storey: no glass where it stands (a shopfront keeps its glass beside it)
   if (ground && (flags & 2048) != 0 && ((flags >> 12) & 3) == wall) {
-    float du = float((flags >> 14) & 1023) * 0.1;
+    float du = float((flags >> 14) & 1023) * 0.25;
     float bx0 = pier + float(ci) * cw + gx0;
     if (shop) { if (abs(u - du) < 0.8) return f; }
-    else if (bx0 + gw > du - 0.95 && bx0 < du + 0.95) return f;
+    else if (bx0 + gw > du - 1.45 && bx0 < du + 1.45) return f;   // a double door's width and its frame
   }
   float a = lu - gx0, b = yy - g0;
   // the sill: a lighter ledge under the opening

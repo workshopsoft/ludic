@@ -45,12 +45,13 @@ program FacTest {
 
   test "flags pack blind walls, storeys and one door into 24 bits and read back" {
     let f = fac_flags(5, 12, 2, 7.25)
-    expect_eq(f, 1206469)
+    expect_eq(f, 485573)
     expect(f < 16777216)
     expect(fac_flag_blind(f, 0) and not fac_flag_blind(f, 1) and fac_flag_blind(f, 2) and not fac_flag_blind(f, 3))
     expect_eq(fac_flag_floors(f), 12)
     expect_eq(fac_flag_door_wall(f), 2)
-    expect(Math.abs(fac_flag_door_u(f) - 7.3) < 0.0001)
+    expect(Math.abs(fac_flag_door_u(f) - 7.25) < 0.0001)
+    expect(Math.abs(fac_flag_door_u(fac_flags(0, 3, 0, 125.0)) - 125.0) < 0.0001)   # a 250 m wall's middle
     expect_eq(fac_flag_door_wall(fac_flags(0, 3, -1, 0.0)), -1)
     expect(fac_flags(15, 200, 3, 500.0) < 16777216)
   }

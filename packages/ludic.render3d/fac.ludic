@@ -76,7 +76,7 @@ export function fac_wall_u(wall: int, x: float, z: float, w: float, d: float) ->
 export function fac_flags(blind: int, floors: int, door_wall: int, door_u: float) -> int {
   var f = (blind & 15) | ((max(0, min(floors, 127)) & 127) << 4)
   if door_wall >= 0 and door_wall < 4 {
-    let du = max(0, min(int(Math.floor(door_u * 10.0 + 0.5)), 1023))
+    let du = max(0, min(int(Math.floor(door_u * 4.0 + 0.5)), 1023))     # quarter metres: a wall up to 255 m long
     f = f | 2048 | (door_wall << 12) | (du << 14)
   }
   return f
@@ -87,7 +87,7 @@ export function fac_flag_door_wall(f: int) -> int {
   if (f & 2048) == 0 { return -1 }
   return (f >> 12) & 3
 }
-export function fac_flag_door_u(f: int) -> float { return float((f >> 14) & 1023) * 0.1 }
+export function fac_flag_door_u(f: int) -> float { return float((f >> 14) & 1023) * 0.25 }
 
 # the variation word of a box instance with blind lower storeys: `seed` 0..65535 (its facade's and rooms' seed), `low` each wall's lowest
 # storeys without windows, 2 bits a wall (wall w's count at bits 2w .. 2w + 1, 0..3), in bits 16..23 (a float holds 24 bits exactly)
