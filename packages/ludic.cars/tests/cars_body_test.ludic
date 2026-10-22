@@ -96,13 +96,41 @@ program CarsBodyTest {
     expect(v0 > 15.0)
     go(cars_st, doors, owns, rig, c, 0.5, 0.0, 1.0, 0.0, 0.0)
     expect(c.fy < 0.0)
-    go(cars_st, doors, owns, rig, c, 3.0, 0.0, 1.0, 0.0, 0.0)
-    expect(c.speed < 1.0)
-    let dist = c.z - z0
+    # the furthest it goes: held, the brake is the reverse pedal once the car stands, so it backs away after
+    var zmax = c.z
+    var stood = false
+    for i in 0 .. 30 {
+      go(cars_st, doors, owns, rig, c, 0.1, 0.0, 1.0, 0.0, 0.0)
+      if c.z > zmax { zmax = c.z }
+      if Math.abs(c.speed) < 1.0 { stood = true }
+    }
+    expect(stood)
+    let dist = zmax - z0
     # from v0 at about 1 g: v0 squared over 2 g, with slack for the pedal and the engine
     expect(dist > v0 * v0 / (2.0 * 12.0))
     expect(dist < v0 * v0 / (2.0 * 4.0) + 10.0)
     expect(Math.abs(c.x) < 1.5)
+  }
+
+  test "S rolling forward brakes the car to a standstill before it reverses, and W rolling back the same before it drives on" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {
+    world(physics_st)
+    let c = driver(cars_st, doors, owns, rig, CARM_SEDAN, 0.0, 0.0, 0.0)
+    go(cars_st, doors, owns, rig, c, 3.0, 1.0, 0.0, 0.0, 0.0)
+    expect(c.speed > 5.0)
+    # the brake held: never in reverse while it still rolls forward
+    for i in 0 .. 60 {
+      go(cars_st, doors, owns, rig, c, 0.05, 0.0, 1.0, 0.0, 0.0)
+      if c.speed > CR_STANDSTILL { expect(c.gear > 0) }
+    }
+    expect(c.gear < 0)
+    expect(c.speed < -0.5)
+    # backing: the throttle brakes it to a stand first, then takes it forward
+    for i in 0 .. 60 {
+      go(cars_st, doors, owns, rig, c, 0.05, 1.0, 0.0, 0.0, 0.0)
+      if c.speed < -CR_STANDSTILL { expect(c.gear < 0) }
+    }
+    expect(c.gear > 0)
+    expect(c.speed > 0.5)
   }
 
   test "steering right at speed turns the car right, pulling a fair share of a g, and it stays on its wheels" (cars_st: mut CarsState, doors: mut CarStepsMachine, owns: mut CarOwnStepsMachine, rig: Rig, physics_st: mut PhysicsState) {

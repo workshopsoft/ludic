@@ -44,6 +44,9 @@ function cr_shift_to(cars_st: mut CarsState, c: Car, to: int) -> void {
   }
 }
 
+# how slow a car is standing (m/s, either way): the gear changes its way only then
+export const CR_STANDSTILL: float = 0.15
+
 # the pedals and the speed make a step's torque and braking. `drv_front` and `drv_rear` are the mean spins
 # (rad/s) of the driven wheels of each end. A driver's brake is the reverse pedal once the car is stopped
 function cr_powertrain(cars_st: mut CarsState, c: Car, dt: float, drv_front: float, drv_rear: float) -> void {
@@ -62,10 +65,11 @@ function cr_powertrain(cars_st: mut CarsState, c: Car, dt: float, drv_front: flo
       hand = 1.0
     }
   }
-  # the gear: a stopped car goes into reverse on the brake, forward on the throttle
+  # the gear: a STOPPED car goes into reverse on the brake, forward on the throttle. Until it stands (CR_STANDSTILL) the other pedal
+  # only brakes it: a driver's S while rolling forward, or W while rolling back, stops the car first and never flips its way
   if c.engine_on and driven and c.shift_t <= 0.0 {
-    if c.gear <= 0 and throttle > 0.05 and c.speed > -1.0 { cr_shift_to(cars_st, c, 1) }
-    else if c.gear > 0 and brake > 0.05 and throttle < 0.05 and c.speed < 0.8 and not c.ai { cr_shift_to(cars_st, c, -1) }
+    if c.gear <= 0 and throttle > 0.05 and c.speed > -CR_STANDSTILL { cr_shift_to(cars_st, c, 1) }
+    else if c.gear > 0 and brake > 0.05 and throttle < 0.05 and c.speed < CR_STANDSTILL and not c.ai { cr_shift_to(cars_st, c, -1) }
     else if c.gear < 0 and c.speed > 1.0 { cr_shift_to(cars_st, c, 1) }
     else if c.gear > 0 and c.speed < -1.0 and throttle < 0.05 { cr_shift_to(cars_st, c, -1) }
   }
