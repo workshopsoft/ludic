@@ -150,6 +150,7 @@ export property Car {
   miss_t: float = 0.0              # a sputtering engine: seconds left of this firing or missing spell
   miss: bool = false               # ... and whether it is missing
   vdir: int = 1                    # a vehicle's way: 1 forward, -1 backing up (the brake at a stand reverses, the throttle goes forward again)
+  vstand: float = 0.0              # how long it has stood with the other pedal held (s): the way changes at CR_STAND_HOLD
   auth: int = 0                    # the machine that simulates it
   x: float = 0.0                   # the model's origin
   y: float = 0.0

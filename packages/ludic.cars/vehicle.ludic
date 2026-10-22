@@ -22,9 +22,14 @@ export function car_com_y(model: int) -> float {
   return m.com_y
 }
 
+# a person's car changes its way only standing (m/s) and after the other pedal has held it so this long (s)
+export const CR_STAND_SPEED: float = 0.15
+export const CR_STAND_HOLD: float = 0.4
+export const CR_REVERSE_MAX: float = 7.0   # m/s backing up (25 km/h)
+
 # the pedals of a vehicle for this step: forward (-1..1, negative backs up) and brake (0..1); also the way it goes and the brake
 # lights' pedal. Nobody at the wheel: no pedal, the handbrake on
-function cr_vehicle_pedals(cars_st: mut CarsState, c: Car) -> void {
+function cr_vehicle_pedals(cars_st: mut CarsState, c: Car, dt: float) -> void {
   let t = cars_st.cr_tmp
   var throttle = c.in_throttle
   var brake = c.in_brake
@@ -43,9 +48,16 @@ function cr_vehicle_pedals(cars_st: mut CarsState, c: Car) -> void {
   # come forward again, a car waiting at a line rocking to and fro)
   # an AI driver, and an engine that is off (no reverse without it: the brake pedal is a brake), go forward
   if c.ai or not c.engine_on { c.vdir = 1 }
+  # The way changes only once the car STANDS (CR_STAND_SPEED) with the other pedal held for CR_STAND_HOLD: S rolling forward brakes the
+  # car to a stop and holds it there, and only then (still held) backs it up; W rolling back the same. Flipped at 0.8 m/s with no
+  # pause, the other pedal took the car the other way before it had stopped
   if driven and c.engine_on and not c.ai {
-    if c.vdir > 0 and brake > 0.05 and throttle < 0.05 and c.speed < 0.8 { c.vdir = -1 }
-    else if c.vdir < 0 and throttle > 0.05 and c.speed > -0.8 { c.vdir = 1 }
+    let other = (c.vdir > 0 and brake > 0.05 and throttle < 0.05) or (c.vdir < 0 and throttle > 0.05 and brake < 0.05)
+    if other and Math.abs(c.speed) < CR_STAND_SPEED { c.vstand = c.vstand + dt } else { c.vstand = 0.0 }
+    if c.vstand >= CR_STAND_HOLD {
+      c.vdir = -c.vdir
+      c.vstand = 0.0
+    }
   }
   var fwd = throttle
   var stop = brake
@@ -54,6 +66,8 @@ function cr_vehicle_pedals(cars_st: mut CarsState, c: Car) -> void {
     stop = throttle
   }
   if not c.engine_on { fwd = 0.0 }
+  # backing up is slow: the reverse pedal gives out past CR_REVERSE_MAX
+  if c.vdir < 0 and c.speed < -CR_REVERSE_MAX { fwd = 0.0 }
   t[0] = fwd
   t[1] = stop
   t[2] = hand
@@ -140,7 +154,7 @@ function cr_vehicle_abs(c: Car, stop: float, dt: float) -> float {
 function cr_vehicle_step(cars_st: mut CarsState, c: Car, dt: float) -> void {
   let m = CarModels[c.model]
   let s = c.stats
-  cr_vehicle_pedals(cars_st, c)
+  cr_vehicle_pedals(cars_st, c, dt)
   let t = cars_st.cr_tmp
   let fwd = t[0]
   let stop = t[1]
