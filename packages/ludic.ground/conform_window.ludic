@@ -777,12 +777,18 @@ program ConformWindow {
             if back <= lowD {
               if (freeA and along < 0.0) or (freeB and along > len2) { continue }
               let f0 = dmax(0.0, dmin(len2, along)) / len2
-              let fx = ax + dx * f0 - nx * 0.3
-              let fz = az + dz * f0 - nz * 0.3
+              # the surface in front of the face: 0.3 m out, and on in half metres to 3.3 m (a wall standing back from its road's edge, a
+              # metro cut's, found none at 0.3 m and took its top: its low strip stood at the coping and the ground rose in teeth before it)
               var tp: double = -INF
-              for ti in 0 .. win.ns {
-                let y = tri_y(P, ti, fx, fz)
-                if y > tp { tp = y }
+              var probe: double = 0.3
+              while tp == -INF and probe <= 3.31 {
+                let fx = ax + dx * f0 - nx * probe
+                let fz = az + dz * f0 - nz * probe
+                for ti in 0 .. win.ns {
+                  let y = tri_y(P, ti, fx, fz)
+                  if y > tp { tp = y }
+                }
+                probe = probe + 0.5
               }
               let y = dsel(tp > -INF, tp, qtop - 0.5) - 0.1
               if lowSet[t] == 0 { lowAt[t] = y;  lowSet[t] = 1 } else { lowAt[t] = dmin(lowAt[t], y) }
