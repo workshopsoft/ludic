@@ -74,8 +74,9 @@ A map holds at most **16,384 roads** (`RD_MAX_SEGS`); a turn is keyed `in * 3276
   `seg` (`@Ref(RoadSegs)`), `from` and `to` (metres along it, `to` 0: to its end), `kind` (`bridge`, `viaduct`,
   `flyover`, `tunnel`), `type` (`beam`, `arch`, `cable`, `box`), `over` (what it crosses: `water`, `road`, `rail`,
   `valley` ... the game's word), `deck_w` (0: the road's own width), `deck_t`, `parapet`, `pier_spacing` (0: none) and
-  `gaps` (`{ from, to }` ranges in metres from `from` that keep clear of piers). Driving ignores it; the studio
-  bakes the structure from it.
+  `gaps` (`{ from, to }` ranges in metres from `from` that keep clear of piers), `support` (`pier`, or `frame`: a portal
+  frame at each support, a column each side `frame_span` metres apart centre to centre and a crosshead under the deck, for
+  a viaduct over a street). Driving ignores it; the studio bakes the structure from it.
 - `RoadProfile` also has `median` (a strip down the middle: half of it is added to each side), `shoulder` (added to
   each side beside the outer lane) and `max_grade` (rise over run, default 0.08; stairs are exempt).
 

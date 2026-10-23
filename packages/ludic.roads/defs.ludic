@@ -126,7 +126,9 @@ export registry RoadSegs of RoadSeg from "roads/segs.lres"
 # `kind` says what it is for, `type` how it is built; `over` says what it crosses ("water", "road", "rail", "valley" ...,
 # the game's word). `deck_w` is the deck's width (0: the road's own), `deck_t` its thickness, `parapet` the height of the
 # railing; piers stand every `pier_spacing` metres (0: none), except inside `gaps`: ranges, in metres from `from`, that
-# keep clear of piers (a channel, a road or a railway below). A road with several structures on it has a row for each
+# keep clear of piers (a channel, a road or a railway below). `support` "frame" stands a portal frame at each support instead of a
+# pier: a column each side, `frame_span` metres apart centre to centre, and a crosshead under the deck (a viaduct over a street, its
+# columns outside the road below). A road with several structures on it has a row for each
 export property RoadGap {
   @Unit("m") from: float = 0.0
   @Unit("m") to: float = 0.0
@@ -146,6 +148,8 @@ export property RoadStructure {
   @Unit("m") @Range(0, 5) parapet: float = 1.0
   @Unit("m") @Range(0, 500) pier_spacing: float = 0.0
   gaps: []RoadGap = new []RoadGap
+  @OneOf("pier", "frame") support: string = "pier"   # frame: a portal frame at each support, a column each side frame_span apart (a viaduct over a street)
+  @Unit("m") @Range(0, 60) frame_span: float = 0.0
 }
 
 @PerMap @ByKey

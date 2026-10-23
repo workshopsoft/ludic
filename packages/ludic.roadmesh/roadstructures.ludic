@@ -122,6 +122,8 @@ property SRow {
   spacing: double = 0.0
   gapA: []double = null
   gapZ: []double = null
+  support: string = "pier"   # "frame": a portal frame at each support (frameSpan, the columns apart centre to centre)
+  frameSpan: double = 0.0
 }
 function field(c: StCtx, k: string) -> string {
   let f = v_get(c.opt, "fields")
@@ -175,6 +177,8 @@ function rows_of(c: StCtx, e: StEdge) -> []SRow {
     s.deckT = num_or(v_get(r, field(c, "deck_t")), 1.0)
     s.parapet = num_or(v_get(r, field(c, "parapet")), 1.0)
     s.spacing = num_or(v_get(r, field(c, "pier_spacing")), 0.0)
+    s.support = str_or(v_get(r, field(c, "support")), "pier")
+    s.frameSpan = num_or(v_get(r, field(c, "frame_span")), 0.0)
     # sorted by from, stable
     var at = len(out)
     while at > 0 and out[at - 1].from > s.from { at -= 1 }
@@ -571,6 +575,10 @@ function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
     let top = jmin(fa.y, fb.y) + c.lift - deckT
     let under = lowest_ground(c, spread(corners))
     if under == under and top - under < 0.3 { continue }
+    if row.support == "frame" and row.frameSpan > 0.0 {
+      if frame(b, c, e, es, m, row, fa, fb, centre, deckT, tPier, clearNeed, depth, s, f) { push(supports, s) }
+      continue
+    }
     let clear = clearance(c, e.key, corners, top)
     if clear < clearNeed {
       push(c.problems, `edge {e.key}: no pier at {to_fixed(s, 1)} m: it would stand {to_fixed(clear, 2)} m from a road below ({js_num(clearNeed)} m needed)`)
@@ -651,6 +659,78 @@ function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
 }
 
 # the footprint an abutment at end k would stand on, its top and the lowest ground under it (endFoot)
+# a portal frame at fine stations fa..fb (a support's thickness along the deck): a column each side, `frameSpan` apart centre to centre
+# about `centre` (the row's span keeps them outside the road below: a viaduct over a street), and the crosshead from one column's outer
+# face to the other's, `crossheadDepth` deep under the deck's underside, its top following the deck. A column with no ground under it, or
+# nearer than `clearNeed` to a road of this network below, is a problem and the frame is not built. True when it is.
+function frame(b: Builder, c: StCtx, e: StEdge, es: EdgeStations, m: string, row: SRow, fa: Frame, fb: Frame, centre: double, deckT: double, tC: double, clearNeed: double, depth: double, s: double, f: Frame) -> bool {
+  let hs = row.frameSpan / 2.0
+  let ua = fa.y + c.lift - deckT
+  let ub = fb.y + c.lift - deckT
+  let cap = jmin(ua, ub) - opt_n(c, "crossheadDepth", 1.2)
+  let colC = new [][]double
+  let colG = new []double
+  let colClear = new []double
+  let ds = doubles(2)
+  ds[0] = centre - hs
+  ds[1] = centre + hs
+  for k in 0 .. 2 {
+    let d = ds[k]
+    let corners = new []double
+    pts_append(corners, frame_pt(es, fa, d - tC / 2.0))
+    pts_append(corners, frame_pt(es, fb, d - tC / 2.0))
+    pts_append(corners, frame_pt(es, fb, d + tC / 2.0))
+    pts_append(corners, frame_pt(es, fa, d + tC / 2.0))
+    let clear = clearance(c, e.key, corners, cap)
+    if clear < clearNeed {
+      push(c.problems, `edge {e.key}: no frame at {to_fixed(s, 1)} m: a column would stand {to_fixed(clear, 2)} m from a road below ({js_num(clearNeed)} m needed)`)
+      return false
+    }
+    let g = lowest_ground(c, spread(corners))
+    if g != g {
+      push(c.problems, `edge {e.key}: no ground under the frame's column at {to_fixed(s, 1)} m`)
+      return false
+    }
+    push(colC, corners)
+    push(colG, g)
+    push(colClear, clear)
+  }
+  for k in 0 .. 2 { box_sides(b, m, colC[k], jmin(colG[k], cap) - depth, same4(cap)) }
+  let xl = centre - hs - tC / 2.0
+  let xr = centre + hs + tC / 2.0
+  let cross = new []double
+  pts_append(cross, frame_pt(es, fa, xl))
+  pts_append(cross, frame_pt(es, fb, xl))
+  pts_append(cross, frame_pt(es, fb, xr))
+  pts_append(cross, frame_pt(es, fa, xr))
+  let tops = doubles(4)
+  tops[0] = ua
+  tops[1] = ub
+  tops[2] = ub
+  tops[3] = ua
+  box_sides(b, m, cross, cap, tops)
+  b_quad(b, m, cross[0], cap, cross[1], cross[6], cap, cross[7], cross[4], cap, cross[5], cross[2], cap, cross[3], 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, UP_VEC, 0.0, -1.0, 0.0)
+  let pc = frame_pt(es, f, centre)
+  let g = jmin(colG[0], colG[1])
+  let clear = jmin(colClear[0], colClear[1])
+  let pm = mrow()
+  ms(pm, "edge", e.key)
+  ms(pm, "structure", row.key)
+  mn(pm, "s", r3(s))
+  mn(pm, "x", r3(pc[0]))
+  mn(pm, "z", r3(pc[1]))
+  mn(pm, "yaw", r3(jatan2(f.ux, f.uz)))
+  mn(pm, "top", r3(cap))
+  mn(pm, "foot", r3(jmin(g, cap) - depth))
+  mn(pm, "groundMin", r3(g))
+  mn(pm, "clear", dsel(clear - clear == 0.0, r3(clear), INF))
+  mn(pm, "w", r3(row.frameSpan + tC))
+  mn(pm, "t", tC)
+  mn(pm, "span", r3(row.frameSpan))
+  push(c.meta.piers, pm)
+  return true
+}
+
 function end_foot(c: StCtx, es: EdgeStations, k: int, tA: double, L: []Outer, R: []Outer, deckT: double) -> Foot {
   let f = new Foot
   f.s = es.st[k].s
