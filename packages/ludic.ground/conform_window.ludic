@@ -867,7 +867,8 @@ program ConformWindow {
             continue
           }
           # underDeckGround
-          if tl and nat[t] >= tubeLow[t] + roof and not (deckLow[t] < tubeLow[t] - 0.000001) { D[t] = nat[t] } else { D[t] = dmin(nat[t], deckLow[t] - 0.05) }
+          # (a tube whose roof stands out of the natural ground: its inside clear, the ground under its floor)
+          if tl and not (deckLow[t] < tubeLow[t] - 0.000001) { D[t] = dsel(nat[t] >= tubeLow[t] + roof, nat[t], dmin(nat[t], tubeLow[t] - 0.05)) } else { D[t] = dmin(nat[t], deckLow[t] - 0.05) }
           Dset[t] = 1
           kind[t] = K_KEPT
         } else if kind[t] != K_ROAD and not (tl and nat[t] >= tubeLow[t] + roof) { D[t] = dmin(D[t], deckLow[t] - 0.05) }
