@@ -112,6 +112,35 @@ export function tmd_steep_set(td: TileDraw, slope: float, r: float, g: float, b:
   tmk_redraw(td)
 }
 
+# The classes no skirt hangs from: a patch's skirt (a strip hung from its edge to close a crack against a coarser neighbour) is
+# not hung from an edge vertex with a texel of one of these round it at the full mask's levels: a hole's edge has no ground to close
+# a crack for, and over a tunnel's shallow roof (the conform's cover) the strip hung into the tube. Patches drawn already are made again.
+@alloc_ok("a map being opened: the table, once")
+export function tmd_noskirt(td: TileDraw, classes: []int) -> void {
+  if td.noskirt == null { td.noskirt = words(256) }
+  for c in 0 .. 256 { td.noskirt[c] = 0 }
+  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { td.noskirt[classes[i]] = 1 } }
+  tmk_redraw(td)
+}
+
+# does the full mask fk have a no-skirt class among the texels round texel corner (ci, cj) (2 x 2 at level 0, cs x cs at a level of
+# cs-texel cells)?
+function tmk_noskirt_at(td: TileDraw, fk: int, ci: int, cj: int, cs: int) -> bool {
+  if td.noskirt == null or fk < 0 { return false }
+  let res = td.tm.res
+  let top = res - 1
+  let h = Math.max(cs / 2, 1)
+  let fo = fk * res * res
+  for j in cj - h .. cj + h {
+    let jj = min(max(j, 0), top)
+    for i in ci - h .. ci + h {
+      let ii = min(max(i, 0), top)
+      if td.noskirt[int(td.fk_data[fo + jj * res + ii])] == 1 { return true }
+    }
+  }
+  return false
+}
+
 # the tone of class c into out[o .. o + 2]; a class with no tone takes `plain` (the ground's tint, or the steep tone)
 function tmk_tone(td: TileDraw, c: int, plain: floats, out: floats, o: int) -> void {
   if c >= 0 and c < TMK_TONES and td.tone_on[c] == 1 {
@@ -222,6 +251,8 @@ export function tmk_colours(render3d_st: mut Render3dState, td: TileDraw, slot: 
     for p in 0 .. ms.np {
       let e = ms.per[p]
       for k in 0 .. 4 { out[(sk + p) * 4 + k] = out[e * 4 + k] }
+      # no skirt from a hole's edge or thin ground over a tunnel: its vertex up at its edge vertex (the strip has no height)
+      if tmk_noskirt_at(td, fk, x0 + ms.vga[e], z0 + ms.vgb[e], cs) { ms.vbuf[(sk + p) * TM_VERT + 1] = ms.vbuf[e * TM_VERT + 1] }
     }
     return true
   }
@@ -235,6 +266,7 @@ export function tmk_colours(render3d_st: mut Render3dState, td: TileDraw, slot: 
   for p in 0 .. 4 * c {
     let e = lwt_perimeter(c, p)
     for k in 0 .. 4 { out[(sk + p) * 4 + k] = out[e * 4 + k] }
+    if tmk_noskirt_at(td, fk, x0 + (e % n1) * cs, z0 + (e / n1) * cs, cs) { ms.vbuf[(sk + p) * TM_VERT + 1] = ms.vbuf[e * TM_VERT + 1] }
   }
   return true
 }

@@ -32,6 +32,7 @@ program ConformWindow {
   const CLAMP_UNDER: double = 0.01
   const DESPIKE: double = 0.3
   const TUBE_COVER: double = 2.0
+  const COVER_SKIRT: double = 6.0             # metres over a tube's roof under which no terrain skirt may hang (a level 1 patch's and a margin)
   const BACKFILL: double = 0.8                # over a tube's roof slab (0.5 m) by 0.3 m of earth
 
   property Rings {
@@ -104,6 +105,7 @@ program ConformWindow {
     cBed: int = 1
     cRock: int = -1
     cHole: int = -1
+    cCover: int = -1                       # ground thinner over a tube's roof than a terrain skirt hangs (no skirt hung there)
     wins: []Win = null
   }
 
@@ -193,7 +195,7 @@ program ConformWindow {
     j.x0 = rd(r);  j.z0 = rd(r);  j.tex = rd(r)
     j.edge = rd(r);  j.mid = rd(r);  j.under = rd(r);  j.verge = rd(r);  j.slope = rd(r);  j.apron = rd(r)
     j.reach = rd(r);  j.waterBand = rd(r);  j.quantum = rd(r);  j.roof = rd(r)
-    j.cPad = ri(r);  j.cSlope = ri(r);  j.cLand = ri(r);  j.cShore = ri(r);  j.cBed = ri(r);  j.cRock = ri(r);  j.cHole = ri(r)
+    j.cPad = ri(r);  j.cSlope = ri(r);  j.cLand = ri(r);  j.cShore = ri(r);  j.cBed = ri(r);  j.cRock = ri(r);  j.cHole = ri(r);  j.cCover = ri(r)
     j.wins = new []Win
     for k in 0 .. nw {
       let w = new Win
@@ -842,7 +844,8 @@ program ConformWindow {
     let deckCap = doubles(N)
     let deckTop = doubles(N)
     let tubeFloor = doubles(N)
-    for t in 0 .. N { tubeLow[t] = INF;  deckCap[t] = INF;  deckTop[t] = INF;  tubeFloor[t] = -INF }
+    let tubeNear = doubles(N)                  # the lowest tube road within a texel's reach: the backfill, the cover
+    for t in 0 .. N { tubeLow[t] = INF;  deckCap[t] = INF;  deckTop[t] = INF;  tubeFloor[t] = -INF;  tubeNear[t] = INF }
     if win.nd > 0 or win.nt > 0 {
       let under = buffer(N)
       let deckLow = doubles(N)
@@ -852,8 +855,6 @@ program ConformWindow {
       if win.nso > 0 { lowest(win.soffits, win.nso, soffitLow, under, true, w, h, i0, j0, gx0, gz0, T) }
       if win.nt > 0 { lowest(win.tubes, win.nt, tubeLow, under, false, w, h, i0, j0, gx0, gz0, T) }
       # ... and within a texel's reach of it: where its roof stands out of the ground the backfill covers its walls too
-      let tubeNear = doubles(N)
-      for t in 0 .. N { tubeNear[t] = INF }
       if win.nt > 0 { lowest(win.tubes, win.nt, tubeNear, under, true, w, h, i0, j0, gx0, gz0, T) }
       let roof = j.roof
       for t in 0 .. N {
@@ -1107,8 +1108,12 @@ program ConformWindow {
           if floor >= INF { continue }
           let px = gx0 + (double(i0 + a) + 0.5) * T
           let pz = gz0 + (double(j0 + b) + 0.5) * T
+          # over the tube within half a texel (its walls, a median's gap between its floors) or a road
           var over = false
-          for ti in 0 .. win.nt { if tri_y(win.tubes, ti, px, pz) > -INF { over = true;  break } }
+          let q = T * 0.5
+          for ti in 0 .. win.nt {
+            if tri_y(win.tubes, ti, px, pz) > -INF or tri_y(win.tubes, ti, px + q, pz) > -INF or tri_y(win.tubes, ti, px - q, pz) > -INF or tri_y(win.tubes, ti, px, pz + q) > -INF or tri_y(win.tubes, ti, px, pz - q) > -INF { over = true;  break }
+          }
           if not over and kind[t] != K_ROAD { continue }
           let c00 = corner(heights, w, h, a, b)
           let c10 = corner(heights, w, h, a + 1, b)
@@ -1120,9 +1125,18 @@ program ConformWindow {
         }
       }
     }
+    # the ground over a tube's roof thinner than a terrain skirt hangs: drawn with no skirt (the studio's cover)
+    let cover = buffer(N)
+    if j.cCover >= 0 and win.nt > 0 {
+      for t in 0 .. N { if hole[t] == 0 and kind[t] != K_ROAD and tubeNear[t] < INF and heights[t] - (tubeNear[t] + j.roof) < COVER_SKIRT { cover[t] = 1 } }
+    }
     for t in 0 .. N {
       if hole[t] == 1 {
         cls[t] = j.cHole
+        continue
+      }
+      if cover[t] == 1 {
+        cls[t] = j.cCover
         continue
       }
       if cls[t] != 0 { continue }

@@ -65,6 +65,8 @@ export property TmMeshes {
   cz: words = null
   cs: words = null
   chole: words = null               # its cells' hole flags
+  hgrid: words = null               # ... and per level 0 cell (c0 x c0): 1 in a hole cell, for the skirt
+  perg: words = null                # its perimeter's level 0 grid points, in the skirt's order
   ring: words = null                # one cell's boundary points
   stale: int = 0                    # files refused for another row's numbers or another cut
   no_file: int = 0
@@ -123,6 +125,7 @@ export function tmm_new(tm: TileMap, slots: int) -> TmMeshes {
   ms.here = words((c0 + 1) * (c0 + 1));  ms.vid = words((c0 + 1) * (c0 + 1))
   ms.cx = words(c0 * c0 + 64);  ms.cz = words(c0 * c0 + 64);  ms.cs = words(c0 * c0 + 64)   # the cells, and a stack at the top
   ms.chole = words(c0 * c0 + 64)
+  ms.hgrid = words(c0 * c0);  ms.perg = words(4 * c0)
   ms.ring = words(4 * c0 + 4)
   return ms
 }
@@ -421,6 +424,14 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
     }
   }
   if bit != nbits or (nhole > 0 and nc != nhole) { return false }
+  # the level 0 cells a hole covers: a skirt is not hung on the patch's edge beside one (no ground there to close a crack for: it hung
+  # from the ground over a tunnel's mouth down into the tube)
+  for g in 0 .. c0 * c0 { ms.hgrid[g] = 0 }
+  if nhole > 0 {
+    for c in 0 .. nc {
+      if ms.chole[c] == 1 { for zz in ms.cz[c] .. ms.cz[c] + ms.cs[c] { for xx in ms.cx[c] .. ms.cx[c] + ms.cs[c] { ms.hgrid[zz * c0 + xx] = 1 } } }
+    }
+  }
   let size = tmap_patch_size(tm)
   let tex = size / float(c0)
   let drop = 2.0 * size / float(c0 >> lod) + tm.skirt
@@ -466,7 +477,7 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
   var np = 0
   for p in 0 .. 4 * c0 {
     let g = lwt_perimeter(c0, p)
-    if ms.here[g] == 1 { ms.per[np] = ms.vid[g];  np += 1 }
+    if ms.here[g] == 1 { ms.per[np] = ms.vid[g];  ms.perg[np] = g;  np += 1 }
   }
   if k + 6 * np > cap { return false }
   for p in 0 .. np {
@@ -475,6 +486,7 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
   }
   for p in 0 .. np {
     let q = (p + 1) % np
+    if nhole > 0 and lwt_edge_hole(ms.hgrid, c0, ms.perg[p], ms.perg[q]) { continue }
     let g0 = ms.per[p]
     let g1 = ms.per[q]
     ix[k] = g0;  ix[k + 1] = g1;  ix[k + 2] = nv + p
@@ -487,6 +499,22 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
   ms.ni = k
   ms.locked = true
   return true
+}
+
+# is any level 0 cell along the patch's edge between perimeter grid points g0 and g1 (one side of it: the corners are always
+# vertices) a hole? the cells just inside that stretch of the edge
+export function lwt_edge_hole(hgrid: words, c0: int, g0: int, g1: int) -> bool {
+  let n0 = c0 + 1
+  let a0 = g0 % n0;  let b0 = g0 / n0
+  let a1 = g1 % n0;  let b1 = g1 / n0
+  if b0 == b1 {
+    let z = min(b0, c0 - 1)
+    for x in min(a0, a1) .. max(a0, a1) { if hgrid[z * c0 + x] == 1 { return true } }
+    return false
+  }
+  let x = min(a0, c0 - 1)
+  for z in min(b0, b1) .. max(b0, b1) { if hgrid[z * c0 + x] == 1 { return true } }
+  return false
 }
 
 function lwt_vert(v: floats, i: int, x: float, y: float, z: float, nx: float, ny: float, nz: float, u: float, w: float) -> void {

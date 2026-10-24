@@ -115,4 +115,42 @@ program TileMaskTest {
     }
     expect(same)
   }
+
+  test "no skirt hangs from an edge vertex on a no-skirt class (a hole's edge, thin ground over a tunnel); every other one hangs as before" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    let cl = new []int
+    push(cl, 3)                                               # the road (z 14 .. 20 across tile 1) stands in for the cover
+    tmd_noskirt(td, cl)
+    expect(colour(render3d_st, td, 1, 0))
+    let c = 64
+    let n1 = c + 1
+    let sk = n1 * n1
+    # every vertex up at its edge stands on the patch's x edges by the road (z 14 .. 20: rows 46 .. 52 of texels, within a texel), and
+    # along the road on both x edges; every other one hangs
+    var flat = 0
+    var stray = 0
+    for p in 0 .. 4 * c {
+      let e = lwt_perimeter(c, p)
+      let b = e / n1
+      if td.ms.vbuf[(sk + p) * TM_VERT + 1] != td.ms.vbuf[e * TM_VERT + 1] { continue }
+      flat += 1
+      if not ((e % n1 == 0 or e % n1 == c) and b >= 45 and b <= 54) { stray += 1 }
+    }
+    expect(flat >= 14)
+    expect_eq(stray, 0)
+  }
+
+  test "a compact level's skirt is not hung along a stretch of its edge beside a hole cell" {
+    let c0 = 4
+    let hg = words(c0 * c0)
+    for i in 0 .. c0 * c0 { hg[i] = 0 }
+    hg[0 * c0 + 2] = 1                                        # the low-z edge's third cell
+    let n0 = c0 + 1
+    expect(lwt_edge_hole(hg, c0, 2, 3))                       # grid (2, 0) to (3, 0): beside it
+    expect(lwt_edge_hole(hg, c0, 0, 4))                       # a long stretch over it
+    expect(not lwt_edge_hole(hg, c0, 0, 2))                   # the stretch before it
+    expect(not lwt_edge_hole(hg, c0, 4, 4 + n0))              # the high-x edge
+    hg[3 * c0 + 3] = 1                                        # the high-x edge's top cell
+    expect(lwt_edge_hole(hg, c0, 3 * n0 + 4, 4 * n0 + 4))
+  }
 }

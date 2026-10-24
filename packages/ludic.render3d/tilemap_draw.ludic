@@ -54,6 +54,7 @@ export property TileDraw {
   mk_fine: int = 0                   # the coarsest level that reads the full texels
   mk_scratch: []byte = null          # a decode's samples, reused
   mk_tone: floats = floats(3)
+  noskirt: words = null              # 256: 1 for a class no skirt hangs from (tmd_noskirt: a hole's edge, thin ground over a tunnel), null none
   steep_ny: float = 0.0              # a texel no class names draws steep_color where the ground's normal y is below this (0: never)
   steep_color: floats = floats(3)
   fk_n: int = 0                      # the pool of full masks: places, their tiles, when last wanted, the texels
