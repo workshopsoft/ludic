@@ -16,6 +16,8 @@ fullscreen.vert|sharpen.frag|
 fullscreen.vert|sky.frag|
 fullscreen.vert|ssao_blur.frag|
 fullscreen.vert|ssgi.frag|
+fullscreen.vert|taa.frag|
+fullscreen.vert|taa_mv.frag|
 fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;#define TS_AUX;
@@ -75,3 +77,5 @@ kit.vert|shadow.frag|#define SHADOW_PASS;
 oimp.vert|oimp.frag|
 hlod.vert|hlod.frag|
 kit.vert|bake.frag|
+skin.vert|velocity.frag|#define VELOCITY;
+skin.vert|velocity.frag|#define VELOCITY;#define ALPHA_TEST;

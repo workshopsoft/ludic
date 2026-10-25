@@ -65,9 +65,9 @@ void main() {
   }
   int steps = int(u_vol_steps);
   float dt = march / float(steps);
-  // A dither per pixel, not per frame. Advancing it every frame only helps if something
-  // averages the frames, and there is no temporal resolve here (post.ludic); it would just
-  // be noise that changes, which is what the old TAA attempt was removed for.
+  // A dither per pixel, not per frame. The shafts are composited before the temporal resolve
+  // (taa.ludic) now, so a per-frame dither could be averaged; it stays fixed so the picture with
+  // R3D_NOTAA is the same as it was.
   float jitter = ign(gl_FragCoord.xy);
   float ph = phaseHG(dot(dir, u_sun_dir), u_vol_g);
   vec3 acc = vec3(0.0);

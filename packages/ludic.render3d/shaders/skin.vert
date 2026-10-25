@@ -18,6 +18,15 @@ uniform mat4 u_light_vp;
 #ifdef OUTLINE
 uniform float u_outline;                    // metres the shell is pushed out
 #endif
+#ifdef VELOCITY
+// the motion pass (taa.ludic): last frame's placement and pose of the same vertex, through clean view-projections
+uniform mat4 u_prev_model;
+uniform mat4 u_prev_bones[160];
+uniform mat4 u_vp_cur;
+uniform mat4 u_vp_prev;
+out vec4 v_cur_clip;
+out vec4 v_prev_clip;
+#endif
 out vec3 v_wpos;
 out vec3 v_nrm;
 out vec2 v_uv;
@@ -42,6 +51,22 @@ void main() {
     m = u_model * sk;
   }
   vec4 w = m * vec4(a_pos, 1.0);
+#ifdef VELOCITY
+  mat4 pm = u_prev_model;
+  if (u_skinned > 0.5) {
+    mat4 psk = a_weights.x * u_prev_bones[int(a_joints.x + 0.5)]
+             + a_weights.y * u_prev_bones[int(a_joints.y + 0.5)]
+             + a_weights.z * u_prev_bones[int(a_joints.z + 0.5)]
+             + a_weights.w * u_prev_bones[int(a_joints.w + 0.5)]
+             + a_weights1.x * u_prev_bones[int(a_joints1.x + 0.5)]
+             + a_weights1.y * u_prev_bones[int(a_joints1.y + 0.5)]
+             + a_weights1.z * u_prev_bones[int(a_joints1.z + 0.5)]
+             + a_weights1.w * u_prev_bones[int(a_joints1.w + 0.5)];
+    pm = u_prev_model * psk;
+  }
+  v_cur_clip = u_vp_cur * w;
+  v_prev_clip = u_vp_prev * (pm * vec4(a_pos, 1.0));
+#endif
 #ifdef OUTLINE
   // an inverted hull: the shell is pushed out along the world normal and drawn with the
   // front faces culled, so what survives is a rim of `u_outline` metres around the model

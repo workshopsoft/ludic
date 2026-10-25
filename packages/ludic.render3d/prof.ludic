@@ -11,7 +11,7 @@
 # never introduces the very stall it is trying to measure.
 # ============================================================================
 
-const PROF_SLOTS: int = 16
+const PROF_SLOTS: int = 24          # the frame has 19 named passes with TAA (taa.ludic adds three)
 const PROF_RING:  int = 4            # frames of latency before a result is read
 
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")

@@ -23,8 +23,8 @@
 # interpenetrate show the nearer one's centre's order; an additive actor is drawn after every "over"
 # one, so a glow behind smoke is not dimmed by it. A blended actor writes no depth, so whatever reads the
 # scene's depth after this pass (ambient occlusion, depth of field, a DLSS upscale's reprojection) sees
-# the surface behind it: render3d has no temporal anti-aliasing of its own (post.ludic) and so nothing
-# here reprojects or smears; under DLSS a fast blended actor is reprojected with the motion of what is
+# the surface behind it: the temporal resolve (taa.ludic) finds these pixels by comparing the frame with
+# the opaque copy taken before them and keeps them responsive, so nothing here is smeared; under DLSS a fast blended actor is reprojected with the motion of what is
 # behind it, which is the usual cost of drawing effects into the frame the upscaler reads. Blended
 # actors are not drawn into the water's reflection, and cast no shadow unless `blend_casts` (then
 # alpha-tested at 0.5 like a cut-out).

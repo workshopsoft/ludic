@@ -66,7 +66,7 @@ Geometry, terrain and world
 40a. The open sea: a plane in sea style - baked tiling swell slopes (spread over a cone of directions, mipped) bend the light with the surface kept flat, fading out before a pixel can alias them and flat toward the horizon, a colour that deepens to plain sea by nine metres, a foam band where the water over the bed is under a metre (swash, lace, none at a metre) drawn on the sea only, a rectangle that reaches the horizon from anywhere on the map, drawn on the wet mask's wet texels with no reflection pass, a mesh body at the same height wins over it, its own shader program and one sky read for reflection and haze (3 times cheaper than the first sea: `lab/sea_budget.py`) - `water_sea.ludic`, `shaders/water.frag`
 
 Anti-aliasing, camera and post-processing
-41. Temporal anti-aliasing: Halton-jittered projection, depth reprojection, YCoCg neighbourhood clamping, history ping-pong — `camera.ludic` `cam_set_jitter`, `shaders/taa.frag`
+41. Temporal anti-aliasing, on by default (`R3D_NOTAA=1` or `r3d_taa(false)` off; DLSS replaces it when live): an 8-phase Halton (2, 3) projection jitter; an RG16F motion target - the camera's motion from depth plus every moving or skinned actor's own from last frame's model matrix and bone palette (skin.vert `VELOCITY`), which DLSS is fed too; a resolve after Karis 2014 and Unreal's TAA - 3x3 jitter-aware reconstruction, Catmull-Rom history, YCoCg variance clip in a reversible tonemapped space, 4 % to 20 % current frame by speed, depth disocclusion rejection, responsive pixels wherever water, puddles or blended actors were laid over the opaque scene - then an RCAS sharpen in place of FXAA. Measured with R3D_PROF at 1920x1080 on an Apple M4 Pro (gym, 240 frames): resolve 0.45 ms, camera motion 0.04-0.16 ms, the moving actors' redraw 0.09 ms with ~25 figure parts and cars in view (it scales with them); the 0.03 ms colour copy for the bounce is no longer made — `taa.ludic`, `shaders/taa.frag`, `shaders/taa_mv.frag`, `shaders/velocity.frag`, `shaders/sharpen.frag`
 42. Optional MSAA with alpha-to-coverage and per-mip alpha sharpening — `post.ludic`, `shaders/impostor.frag`
 43. HDR pipeline (RGBA16F) with NaN/inf sanitising at every stage — `post.ludic`, `shaders/lighting.glsl` `sane`
 44. Bloom: 13-tap downsample pyramid with soft threshold, tent upsample — `shaders/bloom_down.frag`, `shaders/bloom_up.frag`
@@ -124,7 +124,7 @@ Large worlds (cities of hundreds of thousands of buildings on 16 km and more; RE
 |---|---|---|
 | Physically based shading, IBL, split-sum | both | implemented (1–4) |
 | Cascaded shadow maps with PCF | both (UE5 also virtual shadow maps) | implemented (18–21); no virtual shadow maps |
-| Temporal AA / upsampling | TSR / TAA | TAA implemented (41), no upscaling |
+| Temporal AA / upsampling | TSR / TAA | TAA implemented (41), on by default; upscaling only through DLSS (Windows, NVIDIA) |
 | Screen-space AO / GI | SSAO, SSGI, Lumen | SSGI + AO implemented (14); no Lumen-class GI, no ray tracing |
 | Volumetric clouds and fog | both | HDRI sky with cloud shadows and analytic fog; no ray-marched clouds |
 | Foliage: impostors, wind, translucency | both | implemented (30–34) |

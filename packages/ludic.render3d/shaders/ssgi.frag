@@ -1,5 +1,5 @@
 // screen-space ambient occlusion + one indirect diffuse bounce (SSGI) from the previous
-// frame's lit colour; half resolution, denoised over time by the TAA history it feeds
+// frame's lit colour (the TAA resolve's this frame while it runs, taa.ludic; else last frame's copy)
 in vec2 v_uv;
 out vec4 o_color;
 uniform float u_ao_far;
@@ -34,8 +34,8 @@ void main() {
   vec3 N = normalize(cross(dx, dy));
   // A fixed per-pixel dither, not a per-frame one. Advancing the sequence every frame
   // spreads the sampling error over time, which is only an improvement if something
-  // then averages the frames; with no temporal anti-aliasing left it is just noise that
-  // changes every frame, and it was the largest single source of the flicker on movement.
+  // then averages the frames - and this pass runs after the temporal resolve (it is applied in
+  // the tonemap), so nothing does: it would be noise that changes every frame.
   float noise = ign(gl_FragCoord.xy);
   float ao = 0.0;
   vec3 gi = vec3(0.0);

@@ -34,9 +34,10 @@ function post_free(render3d_st: mut Render3dState) -> void {
   target_free(render3d_st, render3d_st.post_hdr);  target_free(render3d_st, render3d_st.post_ao);  target_free(render3d_st, render3d_st.post_ao_blur);  target_free(render3d_st, render3d_st.post_ldr)
   target_free(render3d_st, render3d_st.post_depth_copy);  target_free(render3d_st, render3d_st.post_prev);  target_free(render3d_st, render3d_st.post_scene);  target_free(render3d_st, render3d_st.post_vol);  target_free(render3d_st, render3d_st.post_dof)
   for i in 0 .. len(render3d_st.post_bloom) { target_free(render3d_st, render3d_st.post_bloom[i]) }
+  taa_free(render3d_st)
   render3d_st.post_hdr = null
 }
-# Multisampled scene: 1 (temporal AA alone), 2 or 4, remade at once. Vulkan draws it into
+# Multisampled scene: 1 (temporal AA alone, taa.ludic), 2 or 4, remade at once. Vulkan draws it into
 # multisampled renderbuffers and resolves them in a pass; a device that cannot take the count asked
 # for gets the most it can (gpu_msaa_max).
 function post_msaa_live(render3d_st: Render3dState) -> bool { return gpu_msaa_max(render3d_st) > 1 }
@@ -116,6 +117,7 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_prev = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
   render3d_st.post_scene = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
   if render3d_st.post_p_sharp == 0 { render3d_st.post_p_sharp = r3d_program(render3d_st, "fullscreen.vert", "sharpen.frag", "") }
+  taa_init(render3d_st, w, h)
   render3d_st.post_sharpen = 1.2
   render3d_st.post_grain = float_bits(0.025)
   render3d_st.post_ao_radius = 0.7
@@ -196,13 +198,12 @@ function post_resolve(render3d_st: mut Render3dState) -> void {
   gpu_fb_bind(render3d_st, 0)
 }
 
-# There is no temporal anti-aliasing. It was reprojecting every pixel through the
-# scene depth, which on water is the surface plane while the pixel's content is the
-# reflection behind it — so the mirror image was fetched from the wrong place and, at
-# 0.92 history, dragged several frames behind the camera as it turned. Geometry edges
-# and the alpha-tested vegetation are covered by the 4x MSAA + alpha-to-coverage the
-# scene already renders with, and the projection is no longer jittered, so nothing is
-# left needing a temporal resolve.
+# Temporal anti-aliasing is taa.ludic (the jitter, the motion target, the resolve). An earlier one
+# was removed for reprojecting every pixel through the scene depth, which on water is the surface plane
+# while the pixel's content is the reflection behind it: at 0.92 history the mirror image dragged
+# several frames behind a turning camera. The present one clips its history into this frame's
+# neighbourhood and treats everything laid over the opaque scene (water, puddles, blended actors) as
+# responsive, so a reflection cannot trail.
 
 # The lake bed, as drawn, before any water goes over it. Water reads this to refract and
 # then absorb it, which is what makes the surface read as a body of water rather than a
@@ -218,6 +219,7 @@ function post_capture_scene(render3d_st: mut Render3dState) -> void {
 
 # Keep a copy of the finished scene colour: the SSGI bounce reads last frame's colour.
 function post_capture_prev(render3d_st: mut Render3dState) -> void {
+  if taa_ran(render3d_st) { render3d_st.post_frame += 1;  return }    # the bounce reads the resolved frame itself (post_ssao_pass)
   gpu_fb_bind_read(render3d_st, render3d_st.post_hdr.fbo)
   gpu_fb_bind_draw(render3d_st, render3d_st.post_prev.fbo)
   gpu_blit(render3d_st, render3d_st.post_w, render3d_st.post_h, GPU_COLOR_BUFFER_BIT)
@@ -231,7 +233,10 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   target_bind(render3d_st, render3d_st.post_ao)
   gpu_use_program(render3d_st, render3d_st.post_p_ao)
   r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_depth", 0, render3d_st.post_hdr.depth)
-  r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_prev_color", 1, render3d_st.post_prev.color)
+  # the bounce's colour: the resolved frame while TAA runs (no copy is made then), else last frame's copy
+  var prev_col = render3d_st.post_prev.color
+  if taa_ran(render3d_st) { prev_col = taa_color(render3d_st) }
+  r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_prev_color", 1, prev_col)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_frame"), float(render3d_st.post_frame % 64))
   u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_inv_proj"), render3d_st.cam_inv_proj)
   u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_proj"), render3d_st.cam_proj)
@@ -406,7 +411,9 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_texel"), 1.0 / float(render3d_st.post_ldr.w), 1.0 / float(render3d_st.post_ldr.h))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_amount"), render3d_st.post_sharpen)
   var fx = render3d_st.post_fxaa
-  if r3d_env_has(render3d_st, "R3D_NOFXAA") { fx = 0.0 }
+  if r3d_env_has(render3d_st, "R3D_NOFXAA") or taa_ran(render3d_st) { fx = 0.0 }
+  # after the temporal resolve the frame is sharpened by RCAS instead of FXAA and the unsharp mask (sharpen.frag)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_rcas"), taa_rcas(render3d_st))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_fxaa"), fx)
   # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves
   var grain = render3d_st.post_grain

@@ -504,8 +504,9 @@ glow.emissive = 3.0                                   # bloom catches it
 - **Trade-offs.** The sort is per actor, not per triangle: two blended actors that pass through each other swap
   at once when their middles do. Additive actors come after every "over" one, so a glow behind smoke is not
   dimmed by it. Nothing after the pass sees a blended actor's depth (ambient occlusion, depth of field, a DLSS
-  upscale reproject by the surface behind it). render3d has no temporal anti-aliasing (`post.ludic`), so nothing
-  reprojects or smears a blended actor; under DLSS a fast one is moved with what is behind it, the usual cost of
+  upscale reproject by the surface behind it). The temporal resolve (`taa.ludic`) finds a blended actor's pixels by
+  comparing the frame with the opaque copy taken before the transparent passes and keeps them responsive, so it is
+  not smeared; under DLSS a fast one is moved with what is behind it, the usual cost of
   drawing effects into the frame an upscaler reads. The pass draws at one sample over the resolved frame, so where
   a blended surface passes behind a multisampled edge that edge's pixels show the stair-step.
 - **Cost.** Two lists made at start-up with room for 2048 actors each, filled every frame and sorted in place
