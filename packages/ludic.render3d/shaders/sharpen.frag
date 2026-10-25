@@ -9,11 +9,9 @@ float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.545
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
 // ---- anti-aliasing -------------------------------------------------------------------------
-// THE SHIPPING DEFAULT HAS BEEN NO ANTI-ALIASING AT ALL. The temporal resolve was removed
-// (post.ludic says why, and it was right to go: it reprojected water through the surface plane
-// and dragged the mirror image behind the camera), the setting's first option went on saying
-// "Temporal", and post_ms_samples defaults to 1 - so a frame full of grass blades and needle
-// cards shimmered on every machine without DLSS, which is every Mac.
+// The default is the temporal resolve (taa.ludic), and with it this pass runs RCAS (below) instead.
+// What follows is the fallback with TAA off (R3D_NOTAA) - before taa.ludic there was no anti-aliasing
+// at all on a machine without DLSS, which is every Mac.
 //
 // This is a spatial pass with NO history: it cannot drag, it cannot smear a reflection, and it
 // costs four taps on a pass that was already sampling its own neighbourhood for the unsharp
@@ -49,8 +47,39 @@ vec3 fxaa(vec2 uv, vec2 texel) {
   return mix(rgbM, blended, 0.75);
 }
 
+// ---- after the temporal resolve -------------------------------------------------------------
+// With TAA on (taa.ludic) the frame arrives anti-aliased but a little soft - the reconstruction
+// filter and the history's resampling both blur - so it is sharpened back with a robust contrast-
+// adaptive sharpen (the method of AMD's RCAS, FidelityFX FSR 1): a negative-lobed cross whose lobe is
+// limited per pixel so the result never leaves the range of its four neighbours. It cannot ring or
+// halo, and cannot bring back the aliasing the resolve took away the way the unsharp mask would.
+// u_rcas is the sharpness, 0 (off) .. 1 (the most the limit allows).
+uniform float u_rcas;
+vec3 rcas(vec2 uv, vec2 texel) {
+  vec3 b = texture(u_src, uv - vec2(0.0, texel.y)).rgb;
+  vec3 d = texture(u_src, uv - vec2(texel.x, 0.0)).rgb;
+  vec3 e = texture(u_src, uv).rgb;
+  vec3 f = texture(u_src, uv + vec2(texel.x, 0.0)).rgb;
+  vec3 h = texture(u_src, uv + vec2(0.0, texel.y)).rgb;
+  vec3 mn = min(min(b, d), min(f, h));
+  vec3 mx = max(max(b, d), max(f, h));
+  // the largest negative lobe that keeps the result inside [min, max] of the ring, per channel
+  vec3 hitMin = min(mn, e) / (4.0 * mx + 1e-4);
+  vec3 hitMax = (1.0 - max(mx, e)) / (4.0 * mn - 4.0 - 1e-4);
+  vec3 lobeRGB = max(-hitMin, hitMax);
+  float lobe = max(-0.1875, min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0)) * u_rcas;
+  return clamp((lobe * (b + d + f + h) + e) / (4.0 * lobe + 1.0), 0.0, 1.0);
+}
+
 uniform float u_fxaa;
 void main() {
+  if (u_rcas > 0.0) {
+    vec3 rc = rcas(v_uv, u_texel);
+    float gr = (hash(v_uv * 1731.0 + fract(u_time)) - 0.5) * u_grain;
+    rc += gr * (0.6 + 0.4 * (1.0 - luma(rc)));
+    o_color = vec4(clamp(rc, 0.0, 1.0), 1.0);
+    return;
+  }
   // The unsharp mask's delta is computed from the RAW image and only then applied to the
   // anti-aliased colour. Taking the centre from the FXAA result and the neighbours from the
   // raw texture measures a difference that is half smoothing and half signal, so the mask

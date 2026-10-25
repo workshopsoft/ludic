@@ -59,7 +59,12 @@ property Actor {
   fmap:      words,           # per joint of this model: the leader's node, or -1
   fbones:    floats,          # 16 per joint: the palette this part skins with
   fbones_v:  [][]float,
-  held:      bool = false     # its owner keeps it across the next actor_release_all (actor_hold)
+  held:      bool = false,    # its owner keeps it across the next actor_release_all (actor_hold)
+  # last frame's placement and pose, for its motion (taa.ludic): what it was when the motion pass last drew it
+  prev_mat:   floats,
+  prev_bones: floats,
+  prev_n:     int = 0,         # joints in prev_bones (0: rigid last frame)
+  prev_seen:  int = -1         # the TAA frame it was last drawn by the motion pass
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
@@ -84,6 +89,10 @@ property AcProg {
   l_fbase:  int = -1,          # a primitive's glTF factors (prim_factors, by location)
   l_fmr:    int = -1,
   l_femis:  int = -1,
+  l_pmodel: int = -1,          # the motion pass's: last frame's model matrix and palette, both clean view-projections
+  l_pbones: int = -1,
+  l_vpc:    int = -1,
+  l_vpp:    int = -1,
   scene_frame: int = -1    # the frame its scene uniforms were bound
 }
 
@@ -97,6 +106,8 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   a.l_view = gpu_uniform(render3d_st, p, "u_view");  a.l_proj = gpu_uniform(render3d_st, p, "u_proj");  a.l_mh = gpu_uniform(render3d_st, p, "u_model_h")
   a.l_out = gpu_uniform(render3d_st, p, "u_outline");  a.l_ocol = gpu_uniform(render3d_st, p, "u_outline_col")
   a.l_tr = gpu_uniform(render3d_st, p, "u_tr")
+  a.l_pmodel = gpu_uniform(render3d_st, p, "u_prev_model");  a.l_vpc = gpu_uniform(render3d_st, p, "u_vp_cur");  a.l_vpp = gpu_uniform(render3d_st, p, "u_vp_prev")
+  a.l_pbones = gpu_uniform(render3d_st, p, "u_prev_bones[0]");  if a.l_pbones < 0 { a.l_pbones = gpu_uniform(render3d_st, p, "u_prev_bones") }
   a.l_fbase = gpu_uniform(render3d_st, p, "u_fac_base_inv");  a.l_fmr = gpu_uniform(render3d_st, p, "u_fac_mr_inv");  a.l_femis = gpu_uniform(render3d_st, p, "u_fac_emis")
   # the samplers never move: units 0, 1, 2
   gpu_use_program(render3d_st, p)
@@ -124,6 +135,8 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
   render3d_st.ac_out = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n")
   render3d_st.ac_out_cut = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
+  render3d_st.ac_vel = ac_prog_new(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n")
+  render3d_st.ac_vel_cut = ac_prog_new(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n#define ALPHA_TEST\n")
   actor_blend_init(render3d_st)
   let stage = render3d_st.ac_actors           # made above with its room; a new valley starts empty
   List.clear(stage)
@@ -549,6 +562,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.cutout = false;  a.emissive = 0.0;  a.radius = 0.0;  a.cull = 0.0;  a.outline = 0.0
   a.blend = 0;  a.alpha = 1.0;  a.soft = 0.0;  a.unlit = false;  a.blend_casts = false;  a.blend_d = 0.0
   a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
+  a.prev_seen = -1;  a.prev_n = 0
   return a
 }
 
@@ -749,4 +763,94 @@ function r3d_warm_commands(render3d_st: mut Render3dState) -> void {
   mesh_release(render3d_st, m)
   free(v)
   free(ix)
+}
+
+# ---- motion (taa.ludic) --------------------------------------------------------------------
+# Each actor that moved since last frame, or is skinned (a pose is assumed to change every frame), is
+# drawn once more into the motion target with last frame's matrix and palette beside this frame's
+# (skin.vert VELOCITY), depth-tested GEQUAL against the scene so only the pixels it won take its motion.
+# A still rigid actor - a building, a road chunk, a parked car - is left to the camera's motion from
+# depth, which is exact for it. An actor the pass did not see last frame (new, culled, recycled) has no
+# last frame: it is stamped and drawn from the next. Blended actors have no motion of their own (the
+# resolve treats them as responsive).
+@alloc_ok("an actor's first frame in the motion pass: its last-frame matrix and palette, kept with the record")
+function ac_prev_room(a: Actor, skinned: bool) -> void {
+  if a.prev_mat == null { a.prev_mat = m4_new() }
+  if skinned and a.prev_bones == null { a.prev_bones = floats(SKIN_MAX_JOINTS * 16) }
+}
+function ac_same_m4(a: floats, b: floats) -> bool {
+  for i in 0 .. 16 { if a[i] != b[i] { return false } }
+  return true
+}
+# An actor smaller on screen than this many pixels across is left to the camera's motion: the history
+# clip covers so few pixels, and a crowd's far figures (five parts each, two palettes) were most of the pass.
+const AC_VEL_MIN_PX: float = 12.0
+function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, frame: int) -> void {
+  if render3d_st.ac_actors == null or render3d_st.ac_vel == null { return }
+  # pixels per metre at one metre's distance
+  let ppm = float(render3d_st.post_h) * 0.5 / Math.tan(render3d_st.cam_fov * 0.5)
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.blend != 0 { continue }
+    if not ac_visible(render3d_st, a, false) { continue }
+    if a.blend != 0 { continue }                 # a part that follows a blended leader
+    # this frame's palette: a part's (from its leader), its own clone's, its model's - or none
+    var bones: floats = null
+    var n = 0
+    if a.leader != null and a.fmap != null {
+      var ls = a.leader.skin
+      if ls == null { ls = a.leader.model.skin }
+      skin_follow_pose(a.model.skin, ls, a.fmap, a.fbones, a.fbones_v)
+      bones = a.fbones;  n = a.model.skin.n_joints
+    }
+    else if a.skin != null { bones = a.skin.bones;  n = a.skin.n_joints }
+    else if a.model.skin != null { bones = a.model.skin.bones;  n = a.model.skin.n_joints }
+    if n > SKIN_MAX_JOINTS { n = SKIN_MAX_JOINTS }
+    ac_prev_room(a, n > 0)
+    var seen = a.prev_seen == frame - 1 and a.prev_n == n
+    let size = Math.max(a.model.height, a.model.radius) * a.scale
+    if size > 0.0 {
+      let dx = a.x - render3d_st.cam_pos[0];  let dy = a.y - render3d_st.cam_pos[1];  let dz = a.z - render3d_st.cam_pos[2]
+      let dist = Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 0.1)
+      if size * ppm / dist < AC_VEL_MIN_PX { seen = false }
+    }
+    if seen and (n > 0 or not ac_same_m4(a.mat, a.prev_mat)) { ac_draw_velocity_one(render3d_st, a, bones, n, prev_vp);  render3d_st.taa_vel_draws += 1 }
+    m4_copy(a.prev_mat, a.mat)
+    if n > 0 { for k in 0 .. n * 16 { a.prev_bones[k] = bones[k] } }
+    a.prev_n = n
+    a.prev_seen = frame
+  }
+}
+function ac_draw_velocity_one(render3d_st: mut Render3dState, a: Actor, bones: floats, n: int, prev_vp: floats) -> void {
+  var ap = render3d_st.ac_vel
+  if a.cutout { ap = render3d_st.ac_vel_cut }
+  let p = ap.prog
+  gpu_use_program(render3d_st, p)
+  if ap.scene_frame != render3d_st.ac_frame {
+    ap.scene_frame = render3d_st.ac_frame
+    u_mat4(render3d_st, ap.l_view, render3d_st.cam_view)
+    u_mat4(render3d_st, ap.l_proj, render3d_st.cam_proj)
+    u_mat4(render3d_st, ap.l_vpc, render3d_st.cam_vp_clean)
+    u_mat4(render3d_st, ap.l_vpp, prev_vp)
+  }
+  u_mat4(render3d_st, ap.l_model, a.mat)
+  u_mat4(render3d_st, ap.l_pmodel, a.prev_mat)
+  var skinned = 0.0
+  if n > 0 {
+    skinned = 1.0
+    u_mat4n(render3d_st, ap.l_bones, n, bones)
+    u_mat4n(render3d_st, ap.l_pbones, n, a.prev_bones)
+  }
+  u_f(render3d_st, ap.l_skin, skinned)
+  gpu_cull(render3d_st, a.one_sided)
+  let model = a.model
+  for i in 0 .. len(model.prims) {
+    let pr = model.prims[i]
+    if a.hide != null and a.hide[i] != 0 { continue }
+    if a.cutout {
+      gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+      prim_factors(render3d_st, p, pr)
+    }
+    mesh_draw(render3d_st, pr.mesh)
+  }
 }
