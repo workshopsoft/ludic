@@ -13,7 +13,7 @@
 # (G_p^-1 D G_p) * R_rest.
 # ============================================================================
 
-const SKIN_MAX_JOINTS: int = 48
+const SKIN_MAX_JOINTS: int = 160      # a MetaHuman body with its twist and finger bones; skin.vert's u_bones[160]
 
 property Skin {
   n_nodes:  int = 0,
@@ -52,25 +52,33 @@ function skin_jv3(o: floats, at: int, nd: Val, key: pointer, dx: float, dy: floa
   for i in 0 .. 3 { o[at + i] = jnum(value_at(arr, i)) }
 }
 
-# JOINTS_0 / WEIGHTS_0 onto attributes 5 and 6 of the VAO being built (gltf_prim)
-function skin_attribs(render3d_st: mut Render3dState, m: Mesh, attrs: Val) -> bool {
-  if value_has(attrs, "JOINTS_0") == 0 or value_has(attrs, "WEIGHTS_0") == 0 { return false }
-  let jd = gltf_accessor(render3d_st, value_as_int(value_get(attrs, "JOINTS_0")))
+# one set of four influences (JOINTS_n / WEIGHTS_n) onto attributes jloc and wloc of the VAO being built (gltf_prim)
+function skin_attrib_set(render3d_st: mut Render3dState, m: Mesh, attrs: Val, jname: string, wname: string, jloc: int, wloc: int) -> bool {
+  if value_has(attrs, jname) == 0 or value_has(attrs, wname) == 0 { return false }
+  let jd = gltf_accessor(render3d_st, value_as_int(value_get(attrs, jname)))
   var jsz = 1
   var jtype = GPU_U8
   if render3d_st.gltf_ctype == 5123 { jsz = 2;  jtype = GPU_U16 }
   gpu_mesh_vertices(render3d_st, m, jd, render3d_st.gltf_count * render3d_st.gltf_comps * jsz, GPU_STATIC)
-  gpu_mesh_attr(render3d_st, m, 5, render3d_st.gltf_comps, jtype, 0, 0, false)             # integers, read as floats
+  gpu_mesh_attr(render3d_st, m, jloc, render3d_st.gltf_comps, jtype, 0, 0, false)          # integers, read as floats
   free(jd)
-  let wd = gltf_accessor(render3d_st, value_as_int(value_get(attrs, "WEIGHTS_0")))
+  let wd = gltf_accessor(render3d_st, value_as_int(value_get(attrs, wname)))
   var wsz = 4
   var wtype = GPU_F32
   var norm = false
   if render3d_st.gltf_ctype == 5123 { wsz = 2;  wtype = GPU_U16;  norm = true }
   if render3d_st.gltf_ctype == 5121 { wsz = 1;  wtype = GPU_U8;  norm = true }
   gpu_mesh_vertices(render3d_st, m, wd, render3d_st.gltf_count * render3d_st.gltf_comps * wsz, GPU_STATIC)
-  gpu_mesh_attr(render3d_st, m, 6, render3d_st.gltf_comps, wtype, 0, 0, norm)
+  gpu_mesh_attr(render3d_st, m, wloc, render3d_st.gltf_comps, wtype, 0, 0, norm)
   free(wd)
+  return true
+}
+
+# JOINTS_0 / WEIGHTS_0 onto attributes 5 and 6, and a second four (JOINTS_1 / WEIGHTS_1, eight influences a vertex: a
+# realistic body's twist bones) onto 10 and 11; a mesh without the second set reads zero weights there
+function skin_attribs(render3d_st: mut Render3dState, m: Mesh, attrs: Val) -> bool {
+  if not skin_attrib_set(render3d_st, m, attrs, "JOINTS_0", "WEIGHTS_0", 5, 6) { return false }
+  skin_attrib_set(render3d_st, m, attrs, "JOINTS_1", "WEIGHTS_1", 10, 11)
   return true
 }
 

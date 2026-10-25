@@ -198,6 +198,7 @@ float terrainShadow(vec3 wpos) {
 
 uniform int u_force_cascade;
 // the far-field version: one hardware 2x2 tap in the cascade, no rotated disc, no blend
+uniform float u_shadow_tan_max;     // a small caster's cap on the grazing push (actors: characters, cars); 0: the terrain's 10
 float sunShadowCheap(vec3 wpos, vec3 n, float viewDepth) {
   int c = CASCADES - 1;
   for (int i = 0; i < CASCADES - 1; i++) { if (viewDepth < u_cascade_split[i]) { c = i; break; } }
@@ -219,7 +220,9 @@ float sunShadow(vec3 wpos, vec3 n, float viewDepth) {
   // (1 - NoL): at NoL = 0.2 that is 0.8 where tan(theta) is 4.9, six times short. With
   // the caster and receiver now the same mesh, that shortfall is what let the terrain
   // shadow itself along its own triangle edges — a faint grid over the whole slope.
-  float tanT = min(sqrt(max(1.0 - NoL * NoL, 0.0)) / max(NoL, 0.05), 10.0);
+  // (a small caster, a character or a car, takes a lower cap: on a torso's curve the terrain's 10 pushed the lookup a hand's
+  // width out of the body at grazing light, where it read lit: rings of light on a shaded back)
+  float tanT = min(sqrt(max(1.0 - NoL * NoL, 0.0)) / max(NoL, 0.05), (u_shadow_tan_max > 0.0) ? u_shadow_tan_max : 10.0);
   float s = shadowSlope(c, wpos, n, tanT);
   // blend across the cascade edge
   float edge = u_cascade_split[c];
@@ -354,6 +357,30 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   vec3 c = direct + (diffuseIBL * ao + specIBL * so) + bounce * ao + zoneAmb * ao + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
   if (any(isnan(direct)) || any(isnan(diffuseIBL)) || any(isnan(specIBL)) || isnan(so)) return vec3(0.0);
   return sane(min(c, vec3(4096.0)));
+}
+
+// A clear coat over a shaded surface (glTF KHR_materials_clearcoat, Filament's model): a dielectric layer (f0 0.04) of its own
+// roughness on the geometric normal Ng, its sun highlight and its sky reflection added, the base under it dimmed by the coat's
+// Fresnel at the view. `base` is shade()'s result for the paint under it
+vec3 clearCoat(vec3 base, vec3 wpos, vec3 Ng, float coat, float cRough, float shadow) {
+  vec3 v = normalize(u_cam_pos - wpos);
+  vec3 l = u_sun_dir;
+  vec3 h = normalize(v + l);
+  float NoV = max(dot(Ng, v), 1e-2);
+  float NoL = max(dot(Ng, l), 0.0);
+  float NoH = max(dot(Ng, h), 0.0);
+  float VoH = max(dot(v, h), 0.0);
+  float cr = clamp(cRough, 0.045, 1.0);
+  float a = cr * cr;
+  float Fc = F_Schlick(VoH, vec3(0.04)).x * coat;
+  float Fcv = F_Schlick(NoV, vec3(0.04)).x * coat;
+  vec4 lzAmb;
+  float lz = lightZone(wpos, lzAmb);
+  float sunK = 1.0 - lz;
+  float skyK = mix(1.0, lzAmb.a, lz);
+  vec3 sunSpec = min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * Fc * u_spec_scale * u_sun_color * NoL * shadow * cloudShadow(wpos) * sunK;
+  vec3 skySpec = skyPrefiltered(reflect(-v, Ng), cr) * Fcv * u_spec_scale * skyK;
+  return sane(min(base * (1.0 - Fcv) + sunSpec + skySpec, vec3(4096.0)));
 }
 
 // aerial perspective: exponential height fog toward the horizon sky, with sun inscatter.

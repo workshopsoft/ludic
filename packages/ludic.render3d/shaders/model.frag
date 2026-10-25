@@ -16,6 +16,8 @@ uniform sampler2D u_diff;
 // a glTF material's factors, as 1 - factor (a program never given them reads 1) and its emission
 uniform vec4 u_fac_base_inv;
 uniform vec2 u_fac_mr_inv;
+uniform vec2 u_mr_scale;      // the metal/roughness texture's uv scale (KHR_texture_transform; 0 or 1: none)
+uniform vec2 u_fac_coat;      // clear coat: factor, roughness (KHR_materials_clearcoat; 0: none)
 uniform vec3 u_fac_emis;
 uniform sampler2D u_nrm;
 uniform sampler2D u_arm;
@@ -242,6 +244,8 @@ void main() {
   mat3 tbn = cotangentFrame(N, v_wpos, v_uv);
   n = normalize(tbn * tn);
   arm = texture(u_arm, v_uv).rgb;
+  // the roughness and metal at their own tiling (a car paint's flake noise is its texture 20 times over; the occlusion is not)
+  if (u_mr_scale.x > 0.0 && u_mr_scale != vec2(1.0)) arm.gb = texture(u_arm, v_uv * u_mr_scale).gb;
   arm.gb *= vec2(1.0) - u_fac_mr_inv;
   n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
   alb = d.rgb;
@@ -308,14 +312,32 @@ void main() {
   // leaves and needles are matte at every angle: no grazing Fresnel on a two-sided card
   float roughF = 1.0;
 #else
-  float roughF = clamp(arm.g * u_rough_scale, 0.35, 1.0);
+  // Down to a near mirror (car paint, chrome, glass, a wet eye). The highlight a curved glossy surface
+  // makes is narrower than a pixel at distance and would sparkle without a temporal resolve: the
+  // normal's change across the pixel widens it (Kaplanyan 2016, specular antialiasing)
+  float roughF = clamp(arm.g * u_rough_scale, 0.05, 1.0);
+  {
+    vec3 dnx = dFdx(n), dny = dFdy(n);
+    float kern = min(0.25 * (dot(dnx, dnx) + dot(dny, dny)), 0.18);
+    float a2 = roughF * roughF * roughF * roughF + kern;
+    roughF = clamp(sqrt(sqrt(a2)), 0.05, 1.0);
+  }
+#endif
+#ifdef FOLIAGE
+  float metalF = 0.0;
+#else
+  float metalF = arm.b;                     // (a material with none reads the default's 0)
 #endif
 #ifdef TRANSLUCENT
   // unlit: the base colour x emissive (added below; the base colour itself when emissive is 0) and the
   // material's emission, and no light at all
-  vec3 col = (u_tr.w > 0.5) ? ((u_emissive > 0.0) ? vec3(0.0) : alb) : shade(v_wpos, n, alb, roughF, 0.0, arm.r, shadow, viewDepth);
+  vec3 col = (u_tr.w > 0.5) ? ((u_emissive > 0.0) ? vec3(0.0) : alb) : shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
 #else
-  vec3 col = shade(v_wpos, n, alb, roughF, 0.0, arm.r, shadow, viewDepth);
+  vec3 col = shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
+#ifndef FOLIAGE
+  // a clear coat over it (car paint): a second, smooth reflection on the surface's own normal, the paint under it dimmed by it
+  if (u_fac_coat.x > 0.0) col = clearCoat(col, v_wpos, N, u_fac_coat.x, u_fac_coat.y, shadow);
+#endif
 #endif
 #ifdef FOLIAGE
   // thin-leaf translucency: light leaking through toward the viewer, and a wrapped diffuse

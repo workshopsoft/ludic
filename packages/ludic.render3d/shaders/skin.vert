@@ -1,4 +1,4 @@
-// a skinned glTF model (skin.ludic / actor.ludic): four joint influences per vertex
+// a skinned glTF model (skin.ludic / actor.ludic): four joint influences per vertex, or eight (JOINTS_1 / WEIGHTS_1)
 // blended on the GPU, then one model matrix. Writes the same varyings as model.vert so
 // model.frag (lit) and shadow.frag (casters) shade it unchanged.
 layout(location = 0) in vec3 a_pos;
@@ -6,9 +6,11 @@ layout(location = 1) in vec3 a_nrm;
 layout(location = 2) in vec2 a_uv;
 layout(location = 5) in vec4 a_joints;      // integer indices, read as floats
 layout(location = 6) in vec4 a_weights;
-layout(location = 7) in vec4 a_col;         // COLOR_0 as RGBA8 (gltf_colour); a mesh without it leaves it unfed (zero)
+layout(location = 7) in vec4 a_col;
+layout(location = 10) in vec4 a_joints1;     // the second four influences; unfed (zero weights) on a mesh with four
+layout(location = 11) in vec4 a_weights1;         // COLOR_0 as RGBA8 (gltf_colour); a mesh without it leaves it unfed (zero)
 uniform mat4 u_model;
-uniform mat4 u_bones[48];
+uniform mat4 u_bones[160];                  // skin.ludic SKIN_MAX_JOINTS
 uniform float u_skinned;                    // 0: a rigid model on the same path
 uniform mat4 u_view;
 uniform mat4 u_proj;
@@ -32,7 +34,11 @@ void main() {
     mat4 sk = a_weights.x * u_bones[int(a_joints.x + 0.5)]
             + a_weights.y * u_bones[int(a_joints.y + 0.5)]
             + a_weights.z * u_bones[int(a_joints.z + 0.5)]
-            + a_weights.w * u_bones[int(a_joints.w + 0.5)];
+            + a_weights.w * u_bones[int(a_joints.w + 0.5)]
+            + a_weights1.x * u_bones[int(a_joints1.x + 0.5)]
+            + a_weights1.y * u_bones[int(a_joints1.y + 0.5)]
+            + a_weights1.z * u_bones[int(a_joints1.z + 0.5)]
+            + a_weights1.w * u_bones[int(a_joints1.w + 0.5)];
     m = u_model * sk;
   }
   vec4 w = m * vec4(a_pos, 1.0);

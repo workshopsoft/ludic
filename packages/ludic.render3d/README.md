@@ -462,8 +462,8 @@ actor_unfollow(shirt)                 # back to a plain actor (actor_release doe
 
 Each frame a follower copies the leader's placement, visibility and cull, and skins with
 `leader.gmat[node by name] * part.inv_bind[j]` (`skin_follow_pose`); a joint with no same-named node stays at rest. Shadows
-and the outline pass use the same palette. Releasing the leader hides its followers. The 48-joint cap (`SKIN_MAX_JOINTS`,
-`u_bones[48]`) applies per mesh, so a part skinned to few joints is cheaper than the body. Hiding is per primitive, the unit
+and the outline pass use the same palette. Releasing the leader hides its followers. The 160-joint cap (`SKIN_MAX_JOINTS`,
+`u_bones[160]`, eight influences a vertex with JOINTS_1 / WEIGHTS_1) applies per mesh, so a part skinned to few joints is cheaper than the body. Hiding is per primitive, the unit
 the glTF gives: export the body with one material per region. `actor_show_all` undoes it.
 
 ## Blended actors: smoke, a shield's bubble, a glow

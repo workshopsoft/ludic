@@ -1,0 +1,246 @@
+# ============================================================================
+# morph.ludic — a glTF primitive's morph targets (blend shapes): read with the model, applied on the CPU when
+# their weights change (model_morph) — a person's build set on a wardrobe's sliders, not every frame. The
+# primitive's POSITION and NORMAL buffers are filled again: base + the sum of weight x delta, the normals
+# renormalised. A buffer refilled while a frame still reads it swaps to its second (gvk_buf_reserve).
+# ============================================================================
+
+property Morph {
+  n: int = 0,              # vertices
+  pos: pointer,            # the base positions (n x 3 floats), and normals (null: the mesh has none)
+  nrm: pointer,
+  dpos: []pointer,         # per target: its position deltas, its normal deltas (null: none)
+  dnrm: []pointer,
+  names: []string,         # per target: its name (the mesh's extras.targetNames), "" unnamed
+  pbuf: int = 0,           # the mesh's POSITION buffer, its NORMAL buffer (0 none)
+  nbuf: int = 0,
+  outp: pointer,           # scratch: the morphed positions and normals
+  outn: pointer,
+  idx: pointer,            # the primitive's own indices (isz bytes each, ntri x 3): a body hides the triangles clothes cover
+  isz: int = 4,
+  ntri: int = 0,
+  outi: pointer            # scratch: the indices drawn
+}
+
+# a copy of an accessor's floats (n x comps), as a float buffer of our own
+@alloc_ok("loading a model: a morph target's data, once")
+function morph_floats(render3d_st: mut Render3dState, acc: int) -> pointer {
+  let data = gltf_accessor(render3d_st, acc)
+  let k = render3d_st.gltf_count * render3d_st.gltf_comps
+  let out = fbuf_floats(k)
+  for i in 0 .. k { fbuf_put_bits(out, i, mem_get_f32_bits(data, i)) }
+  free(data)
+  return out
+}
+
+# the morph targets of glTF primitive p (mesh: its mesh, for the names) onto pr; nothing when it has none. The
+# targets' accessors must be dense (Blender: export_try_sparse_sk off)
+@alloc_ok("loading a model: a primitive's morph targets, once")
+function morph_load(render3d_st: mut Render3dState, pr: Prim, p: Val, mesh: Val) -> void {
+  var nt = 0
+  if value_has(p, "targets") != 0 { nt = value_count(value_get(p, "targets")) }
+  if nt == 0 {
+    # no targets: only the indices, and only when asked (a body clothes hide triangles of: model_hide_triangles)
+    if not render3d_st.gltf_keep_idx or value_has(p, "indices") == 0 { return }
+    let mi = new Morph
+    mi.dpos = new []pointer
+    mi.dnrm = new []pointer
+    mi.names = new []string
+    morph_indices(render3d_st, mi, p)
+    pr.morph = mi
+    return
+  }
+  let ts = value_get(p, "targets")
+  let attrs = value_get(p, "attributes")
+  let mo = new Morph
+  mo.pos = morph_floats(render3d_st, value_as_int(value_get(attrs, "POSITION")))
+  mo.n = render3d_st.gltf_count
+  if value_has(attrs, "NORMAL") != 0 { mo.nrm = morph_floats(render3d_st, value_as_int(value_get(attrs, "NORMAL"))) }
+  mo.dpos = new []pointer
+  mo.dnrm = new []pointer
+  mo.names = new []string
+  var names: Val = null
+  if mesh != null and value_has(mesh, "extras") != 0 and value_has(value_get(mesh, "extras"), "targetNames") != 0 {
+    names = value_get(value_get(mesh, "extras"), "targetNames")
+  }
+  for t in 0 .. nt {
+    let tg = value_at(ts, t)
+    var dp: pointer = null
+    var dn: pointer = null
+    if value_has(tg, "POSITION") != 0 { dp = morph_floats(render3d_st, value_as_int(value_get(tg, "POSITION"))) }
+    if value_has(tg, "NORMAL") != 0 and mo.nrm != null { dn = morph_floats(render3d_st, value_as_int(value_get(tg, "NORMAL"))) }
+    push(mo.dpos, dp)
+    push(mo.dnrm, dn)
+    var nm = ""
+    if names != null and t < value_count(names) { let s = value_as_str(value_at(names, t));  nm = s[0..len(s)] }
+    push(mo.names, nm)
+  }
+  # the buffers gltf_prim made: POSITION first, NORMAL second when there is one
+  let m = pr.mesh
+  if m.n_vbufs > 0 { mo.pbuf = m.vbufs[0] }
+  if mo.nrm != null and m.n_vbufs > 1 { mo.nbuf = m.vbufs[1] }
+  mo.outp = fbuf_floats(mo.n * 3)
+  if mo.nrm != null { mo.outn = fbuf_floats(mo.n * 3) }
+  morph_indices(render3d_st, mo, p)
+  pr.morph = mo
+}
+
+# the primitive's own indices kept on mo (a copy the triangles hidden are left out of when the index buffer is filled again)
+@alloc_ok("loading a model: a primitive's indices, once")
+function morph_indices(render3d_st: mut Render3dState, mo: Morph, p: Val) -> void {
+  if value_has(p, "indices") == 0 { return }
+  mo.idx = gltf_accessor(render3d_st, value_as_int(value_get(p, "indices")))
+  mo.isz = 4
+  if render3d_st.gltf_ctype == 5123 { mo.isz = 2 }
+  mo.ntri = render3d_st.gltf_count / 3
+  mo.outi = bytes(render3d_st.gltf_count * mo.isz + 8)
+}
+
+# The model's first primitive drawn without the triangles flagged in `hidden` (one word a triangle, in the primitive's order: nonzero
+# hides it); null shows them all. The index buffer is filled again; the vertices stay. True when it was
+export function model_hide_triangles(render3d_st: mut Render3dState, model: Model, hidden: words) -> bool {
+  if model == null or len(model.prims) == 0 { return false }
+  let pr = model.prims[0]
+  let mo = pr.morph
+  if mo == null or mo.idx == null { return false }
+  var k = 0
+  for t in 0 .. mo.ntri {
+    if hidden != null and t < len(hidden) and hidden[t] != 0 { continue }
+    let at = t * 3 * mo.isz
+    for b in 0 .. 3 * mo.isz { mo.outi[k * 3 * mo.isz + b] = mo.idx[at + b] }
+    k += 1
+  }
+  gpu_buffer_upload(render3d_st, pr.mesh.ebo, k * 3 * mo.isz, mo.outi, GPU_STATIC)
+  pr.mesh.count = k * 3
+  return true
+}
+
+# The model's morph targets at these weights: names[i] at w[i] (a target not named is at 0). Every primitive with
+# targets is filled again; true when any was
+export function model_morph(render3d_st: mut Render3dState, model: Model, names: []string, w: floats) -> bool {
+  if model == null { return false }
+  var any = false
+  for pi in 0 .. len(model.prims) {
+    let mo = model.prims[pi].morph
+    if mo == null or mo.pbuf == 0 { continue }
+    let nt = len(mo.names)
+    let k = mo.n * 3
+    for i in 0 .. k { fbuf_put_bits(mo.outp, i, mem_get_f32_bits(mo.pos, i)) }
+    if mo.outn != null { for i in 0 .. k { fbuf_put_bits(mo.outn, i, mem_get_f32_bits(mo.nrm, i)) } }
+    for t in 0 .. nt {
+      var wt = 0.0
+      for j in 0 .. len(names) { if names[j] == mo.names[t] { wt = w[j] } }
+      if wt == 0.0 { continue }
+      let dp = mo.dpos[t]
+      if dp != null {
+        for i in 0 .. k { fbuf_put_bits(mo.outp, i, float_bits(float_from_bits(mem_get_f32_bits(mo.outp, i)) + wt * float_from_bits(mem_get_f32_bits(dp, i)))) }
+      }
+      let dn = mo.dnrm[t]
+      if dn != null and mo.outn != null {
+        for i in 0 .. k { fbuf_put_bits(mo.outn, i, float_bits(float_from_bits(mem_get_f32_bits(mo.outn, i)) + wt * float_from_bits(mem_get_f32_bits(dn, i)))) }
+      }
+    }
+    if mo.outn != null {
+      for v in 0 .. mo.n {
+        let x = float_from_bits(mem_get_f32_bits(mo.outn, v * 3))
+        let y = float_from_bits(mem_get_f32_bits(mo.outn, v * 3 + 1))
+        let z = float_from_bits(mem_get_f32_bits(mo.outn, v * 3 + 2))
+        let l = Math.sqrt(x * x + y * y + z * z)
+        if l > 0.000001 {
+          fbuf_put_bits(mo.outn, v * 3, float_bits(x / l))
+          fbuf_put_bits(mo.outn, v * 3 + 1, float_bits(y / l))
+          fbuf_put_bits(mo.outn, v * 3 + 2, float_bits(z / l))
+        }
+      }
+      if mo.nbuf != 0 { gpu_buffer_upload(render3d_st, mo.nbuf, fbuf_bytes_of(k), mo.outn, GPU_STATIC) }
+    }
+    gpu_buffer_upload(render3d_st, mo.pbuf, fbuf_bytes_of(k), mo.outp, GPU_STATIC)
+    any = true
+  }
+  return any
+}
+
+# Every primitive of the model in the colour texture at `path` (a PNG, sRGB), loaded once through the glTF texture cache (keyed by path):
+# a modular person's parts take their atlas this way (a body worn with any face's skin), not one copy of it in every file. `cutout`: the
+# texture's alpha cuts (its edges dilated as a cut-out atlas's are). False when it would not load (the textures stay)
+@alloc_ok("a look put on: an event, not a frame")
+export function model_set_texture(render3d_st: mut Render3dState, model: Model, path: string, cutout: bool) -> bool {
+  if model == null { return false }
+  var dil = 0
+  if cutout { dil = 24 }
+  let id = tex_cached(render3d_st, path, true, dil)
+  if id == 0 { return false }
+  for pi in 0 .. len(model.prims) {
+    # counted, as the loader counts its own: a part let go of releases this one reference, never the last one another part holds
+    gltf_tex_ref(render3d_st, id)
+    gltf_tex_unref(render3d_st, model.prims[pi].diff)
+    model.prims[pi].diff = id
+  }
+  return true
+}
+
+# The model's surface detail from PNGs beside its colour: a normal map (tangent space, glTF's: green up) and an
+# occlusion/roughness/metal map (R, G, B), both linear. "" keeps what the model has. True when both given loaded
+@alloc_ok("a look put on: an event, not a frame")
+export function model_set_maps(render3d_st: mut Render3dState, model: Model, nrm: string, arm: string) -> bool {
+  if model == null { return false }
+  var ok = true
+  if nrm != "" {
+    let id = tex_cached(render3d_st, nrm, false, 0)
+    if id == 0 { ok = false } else {
+      for pi in 0 .. len(model.prims) {
+        gltf_tex_ref(render3d_st, id)
+        gltf_tex_unref(render3d_st, model.prims[pi].nrm)
+        model.prims[pi].nrm = id
+      }
+    }
+  }
+  if arm != "" {
+    let id = tex_cached(render3d_st, arm, false, 0)
+    if id == 0 { ok = false } else {
+      for pi in 0 .. len(model.prims) {
+        gltf_tex_ref(render3d_st, id)
+        gltf_tex_unref(render3d_st, model.prims[pi].arm)
+        model.prims[pi].arm = id
+        # the map carries the roughness and metal: the file's own factors (a placeholder's 0.7) no longer scale them
+        let f = model.prims[pi].fac
+        if f != null { f[4] = 1.0;  f[5] = 1.0 }
+      }
+    }
+  }
+  return ok
+}
+
+# a PNG's texture, loaded once per path (the path cache gltf shares)
+@alloc_ok("a texture loaded once per path")
+function tex_cached(render3d_st: mut Render3dState, path: string, srgb: bool, dil: int) -> int {
+  if render3d_st.gltf_tex_paths == null { render3d_st.gltf_tex_paths = new []pointer;  render3d_st.gltf_tex_ids = words(256);  render3d_st.gltf_tex_refs = words(256) }
+  var i = 0
+  while i < render3d_st.gltf_tex_n {
+    if render3d_st.gltf_tex_paths[i] == path { return render3d_st.gltf_tex_ids[i] }
+    i += 1
+  }
+  let key = path[0..len(path)]
+  let id = tex_load_ex(render3d_st, key, srgb, dil)
+  if id == 0 { return 0 }
+  # (counted from 0: each primitive that takes it adds itself, gltf_tex_ref)
+  if render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, key);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_refs[render3d_st.gltf_tex_n] = 0;  render3d_st.gltf_tex_n += 1 }
+  return id
+}
+
+# the names of the model's morph targets (every primitive's, once each), for a caller that lists its sliders
+@alloc_ok("a list made when asked: a wardrobe opening, not a frame")
+export function model_morph_names(model: Model) -> []string {
+  let out = new []string
+  if model == null { return out }
+  for pi in 0 .. len(model.prims) {
+    let mo = model.prims[pi].morph
+    if mo == null { continue }
+    for t in 0 .. len(mo.names) {
+      var seen = false
+      for j in 0 .. len(out) { if out[j] == mo.names[t] { seen = true } }
+      if not seen { push(out, mo.names[t]) }
+    }
+  }
+  return out
+}

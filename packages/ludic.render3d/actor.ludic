@@ -49,6 +49,8 @@ property Actor {
   radius:  float = 0.0,        # float bits: bounding radius for culling (0 = never culled)
   cull:    float = 0.0,        # float bits: not drawn beyond this distance (0 = always)
   outline: float = 0.0,        # float bits: metres of rim drawn around it (0 = none)
+  one_sided: bool = false,    # back faces culled: a closed or layered mesh (a garment's hem and collar, folded twice) whose inner
+                              # faces would show their unlit side; cards (hair) stay two-sided
   ocol:    floats,          # the rim's colour (null = white)
   # a part of a modular character (actor_follow): it takes the leader's placement and pose, binds its joints
   # to the leader's by name once, and draws its own mesh with its own palette (fbones)
@@ -60,6 +62,9 @@ property Actor {
   held:      bool = false     # its owner keeps it across the next actor_release_all (actor_hold)
 }
 const ACTOR_POOL: int = 512
+# the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
+# out of a torso (rings of light on a shaded back); 2.5 still clears the cloth's own acne
+const ACTOR_SHADOW_TAN: float = 2.5
 # a program and its uniform locations
 property AcProg {
   prog:     int = 0,
@@ -239,7 +244,10 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
     u_f(render3d_st, ap.l_emis, a.emissive)
     u_f(render3d_st, ap.l_rough, a.rough)
   }
-  gpu_cull(render3d_st, false)
+  # one-sided for the eye only: a shadow needs both sides (a shirt's far side, faced away from the sun, is what shades its back; culled,
+  # with the skin under it hidden, sunlight leaked through the torso as rings)
+  gpu_cull(render3d_st, a.one_sided and not shadow)
+  if not shadow { u_f(render3d_st, gpu_uniform(render3d_st, p, "u_shadow_tan_max"), ACTOR_SHADOW_TAN) }
   let model = a.model
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
@@ -363,7 +371,11 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     var ap = render3d_st.ac_lit
     if a.cutout { ap = render3d_st.ac_lit_cut }
     ac_bind_scene(render3d_st, ap)
+    # a cut-out's edge (a hair card's, a flame's) resolved by the samples' coverage, as the foliage's is (model.frag ALPHA_TEST)
+    let a2c = a.cutout and render3d_st.sc_a2c
+    if a2c { gpu_alpha_to_coverage(render3d_st, true) }
     actor_draw_one(render3d_st, a, ap, false)
+    if a2c { gpu_alpha_to_coverage(render3d_st, false) }
   }
   actor_draw_outlines(render3d_st)
   gpu_cull(render3d_st, true)
@@ -533,7 +545,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.x = 0.0;  a.y = 0.0;  a.z = 0.0;  a.yaw = 0.0;  a.scale = 0.0;  a.rough = 0.0
   a.tint[0] = 1.0;  a.tint[1] = 1.0;  a.tint[2] = 1.0
   m4_identity(a.mat)
-  a.visible = true;  a.cast_hidden = false;  a.casts = true;  a.row = -1
+  a.visible = true;  a.cast_hidden = false;  a.casts = true;  a.row = -1;  a.one_sided = false
   a.cutout = false;  a.emissive = 0.0;  a.radius = 0.0;  a.cull = 0.0;  a.outline = 0.0
   a.blend = 0;  a.alpha = 1.0;  a.soft = 0.0;  a.unlit = false;  a.blend_casts = false;  a.blend_d = 0.0
   a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
