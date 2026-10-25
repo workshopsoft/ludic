@@ -211,6 +211,37 @@ export function model_set_maps(render3d_st: mut Render3dState, model: Model, nrm
   return ok
 }
 
+# a garment's fabric on every primitive of a model (model.frag FABRIC, Epic's M_fabric_simpler): p, 68 floats (u_fp's 17 vec4), and
+# its textures by path, linear: the garment's masks, material A's tiled kit and normals, material B's ("" for none: the program
+# binds the mask there). False when the mask could not be loaded (the model is left as it was)
+@alloc_ok("a garment's fabric, set once when it is first worn")
+export function model_set_fabric(render3d_st: mut Render3dState, model: Model, p: floats, mask: string, kit: string, dn: string, kitb: string, dnb: string) -> bool {
+  if model == null or len(p) != 68 { return false }
+  let paths = [mask, kit, dn, kitb, dnb]
+  let ids = words(5)
+  for k in 0 .. 5 {
+    ids[k] = 0
+    if paths[k] != "" { ids[k] = tex_cached(render3d_st, paths[k], false, 0) }
+  }
+  if ids[0] == 0 {
+    free(ids)
+    return false
+  }
+  for pi in 0 .. len(model.prims) {
+    let pr = model.prims[pi]
+    if pr.ftex == null { pr.ftex = words(5);  for k in 0 .. 5 { pr.ftex[k] = 0 } }
+    for k in 0 .. 5 {
+      gltf_tex_ref(render3d_st, ids[k])
+      gltf_tex_unref(render3d_st, pr.ftex[k])
+      pr.ftex[k] = ids[k]
+    }
+    if pr.fab == null { pr.fab = floats(68) }
+    for k in 0 .. 68 { pr.fab[k] = p[k] }
+  }
+  free(ids)
+  return true
+}
+
 # a PNG's texture, loaded once per path (the path cache gltf shares)
 @alloc_ok("a texture loaded once per path")
 function tex_cached(render3d_st: mut Render3dState, path: string, srgb: bool, dil: int) -> int {
@@ -224,7 +255,7 @@ function tex_cached(render3d_st: mut Render3dState, path: string, srgb: bool, di
   let id = tex_load_ex(render3d_st, key, srgb, dil)
   if id == 0 { return 0 }
   # (counted from 0: each primitive that takes it adds itself, gltf_tex_ref)
-  if render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, key);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_refs[render3d_st.gltf_tex_n] = 0;  render3d_st.gltf_tex_n += 1 }
+  gltf_tex_add(render3d_st, key, id, 0)
   return id
 }
 

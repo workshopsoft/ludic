@@ -45,6 +45,7 @@ property Actor {
   @owns(SkinClone) skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
   skin_owned: bool = false,  # made by actor_own_skin: actor_release frees it
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
+  fcol:    floats,         # a garment's four colours (actor_fabric_set: 4 x r g b -), over its model's own; null: the model's
   hide:    words,          # 1 per primitive: skip it (a cap taken off)
   radius:  float = 0.0,        # float bits: bounding radius for culling (0 = never culled)
   cull:    float = 0.0,        # float bits: not drawn beyond this distance (0 = always)
@@ -84,6 +85,7 @@ property AcProg {
   l_fbase:  int = -1,          # a primitive's glTF factors (prim_factors, by location)
   l_fmr:    int = -1,
   l_femis:  int = -1,
+  l_fp:     int = -1,          # u_fp[0] (FABRIC)
   scene_frame: int = -1    # the frame its scene uniforms were bound
 }
 
@@ -97,10 +99,16 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   a.l_view = gpu_uniform(render3d_st, p, "u_view");  a.l_proj = gpu_uniform(render3d_st, p, "u_proj");  a.l_mh = gpu_uniform(render3d_st, p, "u_model_h")
   a.l_out = gpu_uniform(render3d_st, p, "u_outline");  a.l_ocol = gpu_uniform(render3d_st, p, "u_outline_col")
   a.l_tr = gpu_uniform(render3d_st, p, "u_tr")
+  a.l_fp = gpu_uniform(render3d_st, p, "u_fp[0]");  if a.l_fp < 0 { a.l_fp = gpu_uniform(render3d_st, p, "u_fp") }
   a.l_fbase = gpu_uniform(render3d_st, p, "u_fac_base_inv");  a.l_fmr = gpu_uniform(render3d_st, p, "u_fac_mr_inv");  a.l_femis = gpu_uniform(render3d_st, p, "u_fac_emis")
   # the samplers never move: units 0, 1, 2
   gpu_use_program(render3d_st, p)
   u_i(render3d_st, gpu_uniform(render3d_st, p, "u_diff"), 0);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_nrm"), 1);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_arm"), 2)
+  # a garment's (FABRIC): the units the light leaves free (5-7 and 12-15 are its)
+  if a.l_fp >= 0 {
+    u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fmask"), 3);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fkit"), 4);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fdn"), 8)
+    u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fkitb"), 9);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fdnb"), 11)
+  }
   return a
 }
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
@@ -120,6 +128,8 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   }
   render3d_st.ac_lit = ac_prog_new(render3d_st, "skin.vert", "model.frag", "")
   render3d_st.ac_lit_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n")
+  render3d_st.ac_fab = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n")
+  render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
   render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
   render3d_st.ac_out = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n")
@@ -258,12 +268,59 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
     }
     gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
     prim_factors(render3d_st, ap.prog, pr)
+    if not shadow and ap.l_fp >= 0 { ac_bind_fabric(render3d_st, a, ap, pr) }
     if not shadow {
       gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
       gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
     }
     mesh_draw(render3d_st, pr.mesh)
   }
+}
+
+# a garment's fabric for the FABRIC program: the primitive's parameters with the actor's colours over them, and its textures (a
+# missing one: the mask, so every unit holds something); a plain primitive in the program has the switch (u_fp[16].w) off
+const AC_FAB_FLOATS: int = 68
+function ac_bind_fabric(render3d_st: mut Render3dState, a: Actor, ap: AcProg, pr: Prim) -> void {
+  let t = render3d_st.ac_fab_tmp
+  if pr.fab == null {
+    for k in 0 .. AC_FAB_FLOATS { t[k] = 0.0 }
+    gvk_u_set(render3d_st, ap.l_fp, data_of(t), 16, AC_FAB_FLOATS / 4)
+    return
+  }
+  for k in 0 .. AC_FAB_FLOATS { t[k] = pr.fab[k] }
+  if a.fcol != null { for k in 0 .. 16 { t[k] = a.fcol[k] } }
+  gvk_u_set(render3d_st, ap.l_fp, data_of(t), 16, AC_FAB_FLOATS / 4)
+  ac_fab_tex(render3d_st, 3, pr, 0);  ac_fab_tex(render3d_st, 4, pr, 1);  ac_fab_tex(render3d_st, 8, pr, 2)
+  ac_fab_tex(render3d_st, 9, pr, 3);  ac_fab_tex(render3d_st, 11, pr, 4)
+}
+function ac_fab_tex(render3d_st: mut Render3dState, unit: int, pr: Prim, k: int) -> void {
+  var id = pr.ftex[k]
+  if id == 0 { id = pr.ftex[0] }
+  gpu_tex_unit(render3d_st, unit);  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+}
+function ac_has_fabric(m: Model) -> bool {
+  if m == null { return false }
+  for i in 0 .. len(m.prims) { if m.prims[i].fab != null { return true } }
+  return false
+}
+
+# a garment's colour region on this actor (a player's wardrobe choice): k 0 colour 1, 1 colour 2, 2 material B's, 3 material C's
+# (linear r g b), over its model's own (model_set_fabric); false when its model has no fabric. actor_fabric_reset: the model's again
+@alloc_ok("an actor's garment colours, made once per actor and given back by actor_release")
+export function actor_fabric_set(a: Actor, k: int, r: float, g: float, b: float) -> bool {
+  if a == null or a.model == null or k < 0 or k > 3 { return false }
+  var src: floats = null
+  for i in 0 .. len(a.model.prims) { if src == null and a.model.prims[i].fab != null { src = a.model.prims[i].fab } }
+  if src == null { return false }
+  if a.fcol == null {
+    a.fcol = floats(16)
+    for j in 0 .. 16 { a.fcol[j] = src[j] }
+  }
+  a.fcol[k * 4] = r;  a.fcol[k * 4 + 1] = g;  a.fcol[k * 4 + 2] = b
+  return true
+}
+export function actor_fabric_reset(a: Actor) -> void {
+  if a != null and a.fcol != null { free(a.fcol);  a.fcol = null }
 }
 
 # the actor's pose for the program in use: a part's palette from its leader, its own clone's, its model's, or rigid
@@ -369,10 +426,12 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }
     var ap = render3d_st.ac_lit
-    if a.cutout { ap = render3d_st.ac_lit_cut }
+    # a garment's fabric is opaque cloth (its part may be marked cut-out with the hair's: the program has no alpha test)
+    let fab = ac_has_fabric(a.model)
+    if fab { ap = render3d_st.ac_fab } else if a.cutout { ap = render3d_st.ac_lit_cut }
     ac_bind_scene(render3d_st, ap)
     # a cut-out's edge (a hair card's, a flame's) resolved by the samples' coverage, as the foliage's is (model.frag ALPHA_TEST)
-    let a2c = a.cutout and render3d_st.sc_a2c
+    let a2c = a.cutout and not fab and render3d_st.sc_a2c
     if a2c { gpu_alpha_to_coverage(render3d_st, true) }
     actor_draw_one(render3d_st, a, ap, false)
     if a2c { gpu_alpha_to_coverage(render3d_st, false) }
@@ -560,6 +619,7 @@ function actor_release(render3d_st: mut Render3dState, a: Actor) -> void {
   if a == null or a.id == 0 { return }        # released already
   actor_remove(render3d_st, a)
   if a.ptint != null { free(a.ptint);  a.ptint = null }
+  if a.fcol != null { free(a.fcol);  a.fcol = null }
   if a.hide != null { free(a.hide);  a.hide = null }
   if a.skin_owned and a.skin != null { skin_clone_free(a.skin) }
   a.skin_owned = false

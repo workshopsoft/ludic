@@ -15,7 +15,9 @@ property Prim {
   fac: floats,          # the material's factors, or null (all 1, no emission): base r g b a, roughness, metallic, emissive r g b
   ext: floats,          # glTF extensions read, or null: clear coat factor and roughness (KHR_materials_clearcoat), the metal/roughness
                         # texture's uv scale u v (KHR_texture_transform: a car paint's flakes are its noise tiled 20 times)
-  morph: Morph          # its morph targets (morph.ludic), or null
+  morph: Morph,         # its morph targets (morph.ludic), or null
+  fab: floats,          # a garment's fabric (model_set_fabric: model.frag FABRIC's u_fp, 17 vec4), or null
+  ftex: words           # its five textures: mask, material A's kit and normals, material B's kit and normals
 }
 property Model {
   prims:  []Prim,
@@ -75,7 +77,7 @@ function gltf_texture(render3d_st: mut Render3dState, uri: string, srgb: bool) -
   var dil = 0
   if render3d_st.gltf_cutout { dil = 24 }
   let id = tex_load_ex(render3d_st, path, srgb, dil)
-  if render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, path);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_refs[render3d_st.gltf_tex_n] = 1;  render3d_st.gltf_tex_n += 1 } else { free(path) }
+  gltf_tex_add(render3d_st, path, id, 1)
   return id
 }
 
@@ -141,7 +143,7 @@ function gltf_texture_bv(render3d_st: mut Render3dState, bv: int, srgb: bool) ->
   var dil = 0
   if render3d_st.gltf_cutout { dil = 24 }
   let id = tex_load_png_mem(render3d_st, buf, n, key, srgb, dil)
-  if id != 0 and render3d_st.gltf_tex_n < 256 { push(render3d_st.gltf_tex_paths, key);  render3d_st.gltf_tex_ids[render3d_st.gltf_tex_n] = id;  render3d_st.gltf_tex_refs[render3d_st.gltf_tex_n] = 1;  render3d_st.gltf_tex_n += 1 } else { free(key) }
+  if id != 0 { gltf_tex_add(render3d_st, key, id, 1) } else { free(key) }
   return id
 }
 

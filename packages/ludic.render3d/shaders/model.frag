@@ -25,6 +25,25 @@ uniform mat4 u_view;
 uniform vec3 u_tint;
 uniform float u_rough_scale;
 uniform float u_emissive;     // self-lit (a flame): albedo added back after shading
+#ifdef FABRIC
+// A MetaHuman garment as Epic's M_fabric_simpler builds it (its graph read from the editor, MaterialEditingLibrary): the colours
+// from the garment's masks, two materials' tiled variation, fuzz and the trims' material C. u_fp (actor_fabric, prim.fab):
+//  0..3  colour 1, colour 2, material B's, material C's (linear; B's w: its mix of colours 1 and 2 when it takes them, -1 its own)
+//  4..7  material A: (detail tiling, u distort, v distort, macro tiling), (detail variation, macro, wear strengths, overlay amount),
+//        (exponent low, high, detail normal strength, sculpted detail 0/1), (detail colour overlay, multiply, roughness scale, metallic)
+//  8..11 material B: the same
+//  12    fuzz on, its amount, its amount on stitches, its exponent
+//  13    fuzz power, pilling strength, pilling tiling, wrinkle strength
+//  14    wrinkle tiling, the garment normal's strength, the stitches' normal strength, material B on
+//  15    material C on, its mask overlay amount, its occlusion multiply, stitches take colour 2 (CustomStitchtx_diffuse_color_2)
+//  16    C metal (-1: the map's), C roughness (-1: the map's), C takes material A's colour, on (0: a plain primitive in this program)
+uniform vec4 u_fp[17];
+uniform sampler2D u_fmask;    // the garment's Masks: R wear, G colour 2, B material B, A sculpted detail
+uniform sampler2D u_fkit;     // material A's tiled maps: R detail variation, G macro variation, B pilling, A detail colour / its mean / 2
+uniform sampler2D u_fdn;      // material A's tiled normals: RG detail, BA wrinkles (x, y in glTF's frame)
+uniform sampler2D u_fkitb;    // material B's tiled maps, as u_fkit
+uniform sampler2D u_fdnb;     // material B's detail normal in RG
+#endif
 #ifdef GBLADE
 in vec3 v_tint;               // grass.vert's colour field (the mesh-shader and scatter blades work it out here)
 #endif
@@ -64,6 +83,34 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   float invmax = inversesqrt(max(dot(T, T), dot(B, B)) + 1e-12);
   return mat3(T * invmax, B * invmax, N);
 }
+
+#ifdef FABRIC
+// Unreal's Blend_Overlay, a channel at a time
+float fabOv(float b, float l) { return b > 0.5 ? 1.0 - 2.0 * (1.0 - b) * (1.0 - l) : 2.0 * b * l; }
+vec3 fabOv3(vec3 b, float l) { return vec3(fabOv(b.r, l), fabOv(b.g, l), fabOv(b.b, l)); }
+// BlendAngleCorrectedNormals (reoriented normal mapping)
+vec3 fabRnm(vec3 b, vec3 a) { b += vec3(0.0, 0.0, 1.0);  a *= vec3(-1.0, -1.0, 1.0);  return b * dot(b, a) / b.z - a; }
+vec3 fabN2(vec2 t) { vec2 xy = t * 2.0 - 1.0;  return vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0))); }
+// MF_NormalStrength: from flat towards the normal
+vec3 fabNs(vec3 n, float s) { return mix(vec3(0.0, 0.0, 1.0), n, s); }
+// one material's base colour: AvgColorReplace (the detail colour over its mean), then MF_PowerVariation (the colour to an exponent
+// the variation picks: low at 0, 1 at 0.5, high at 1) and Blend_Overlay with the variation. The variation is the detail's, the
+// macro's and the wear mask's, each from 0.5 by its strength, overlaid in that order
+vec3 fabLayer(vec3 avgc, vec4 msk, sampler2D kit, vec4 p0, vec4 p1, vec4 p2, vec4 p3, vec2 duv) {
+  vec4 k = texture(kit, duv);
+  float macro = texture(kit, v_uv * p0.w).g;
+  vec3 det = avgc * (k.a * 2.0);
+  vec3 c = mix(det, avgc, p3.x);
+  c = mix(c, det * c, p3.y);
+  float d = mix(0.5, p2.w > 0.5 ? msk.a : k.r, p1.x);
+  float m = mix(0.5, macro, p1.y);
+  float w = mix(0.5, msk.r, p1.z);
+  float var = fabOv(fabOv(d, m), w);
+  float t = var * 2.0;
+  float e = mix(mix(p2.x, 1.0, clamp(t, 0.0, 1.0)), p2.y, clamp(t - 1.0, 0.0, 1.0));
+  return fabOv3(pow(max(c, vec3(0.0)), vec3(e)), mix(0.5, var, p1.w));
+}
+#endif
 
 void main() {
 #ifndef EQ_PASS
@@ -247,6 +294,68 @@ void main() {
   // the roughness and metal at their own tiling (a car paint's flake noise is its texture 20 times over; the occlusion is not)
   if (u_mr_scale.x > 0.0 && u_mr_scale != vec2(1.0)) arm.gb = texture(u_arm, v_uv * u_mr_scale).gb;
   arm.gb *= vec2(1.0) - u_fac_mr_inv;
+#ifdef FABRIC
+  if (u_fp[16].w > 0.5) {
+    vec4 msk = texture(u_fmask, v_uv);
+    vec4 nm = texture(u_nrm, v_uv);
+    vec4 ao = texture(u_arm, v_uv);
+    float stitch = 1.0 - nm.a;                       // CustomStitch (stored inverted: a map with no alpha has none)
+    vec3 c1 = u_fp[0].rgb, c2 = u_fp[1].rgb;
+    // material A: colour 1 to colour 2 by the mask's green (or by the stitches), the stitches colour 2 outright
+    vec3 avgA = mix(c1, c2, u_fp[15].w > 0.5 ? stitch : msk.g);
+    vec2 duvA = v_uv * u_fp[4].yz * u_fp[4].x;
+    vec3 col = mix(fabLayer(avgA, msk, u_fkit, u_fp[4], u_fp[5], u_fp[6], u_fp[7], duvA), c2, stitch);
+    float rough = u_fp[7].z * ao.g;
+    float metal = u_fp[7].w;
+    vec3 fn = mix(fabNs(fabN2(texture(u_fdn, duvA).rg), u_fp[6].z), vec3(0.0, 0.0, 1.0), stitch);
+    // material B over it by the mask's blue (MatLayerBlend)
+    if (u_fp[14].w > 0.5) {
+      vec2 duvB = v_uv * u_fp[8].yz * u_fp[8].x;
+      // (B_UseAColor: material B's colour is colours 1 and 2 mixed, u_fp[2].w the mix; -1 its own)
+      vec3 cB = u_fp[2].w < 0.0 ? u_fp[2].rgb : mix(c1, c2, u_fp[2].w);
+      vec3 colB = fabLayer(mix(cB, c2, msk.g), msk, u_fkitb, u_fp[8], u_fp[9], u_fp[10], u_fp[11], duvB);
+      vec3 fnB = fabNs(fabN2(texture(u_fdnb, duvB).rg), u_fp[10].z);
+      col = mix(col, colB, msk.b);
+      rough = mix(rough, u_fp[11].z * ao.g, msk.b);
+      metal = mix(metal, u_fp[11].w, msk.b);
+      fn = mix(fn, fnB, msk.b);
+    }
+    // pilling: the fibre balls lighten (Blend_Lighten), not on the stitches
+    if (u_fp[13].y != 0.0) {
+      float pa = texture(u_fkit, v_uv * u_fp[13].z).b;
+      col = mix(max(col, pa * avgA * u_fp[13].y), col, stitch);
+    }
+    // the tiled crease wrinkles over the material's normal
+    if (u_fp[13].w != 0.0) fn = fabRnm(fn, fabNs(fabN2(texture(u_fdn, v_uv * u_fp[14].x).ba), u_fp[13].w));
+    // the garment's own normal (and its stitches'), with the materials' over it
+    vec3 gn = nm.rgb * 2.0 - 1.0;
+    vec3 base = fabRnm(fabNs(gn, u_fp[14].y), mix(vec3(0.0, 0.0, 1.0), fabNs(gn, u_fp[14].z), stitch));
+    // material C (buttons, zips, trims) over everything by the occlusion map's alpha: no normal of its own
+    float ca = u_fp[15].x > 0.5 ? ao.a : 0.0;
+    if (ca > 0.0) {
+      rough = mix(rough, u_fp[16].y < 0.0 ? ao.g : u_fp[16].y, ca);
+      metal = mix(metal, u_fp[16].x < 0.0 ? ao.b : u_fp[16].x, ca);
+      fn = mix(fn, vec3(0.0, 0.0, 1.0), ca);
+    }
+    mat3 ftbn = cotangentFrame(N, v_wpos, v_uv);
+    n = normalize(ftbn * fabRnm(base, fn));
+    // fuzz on the base materials (the pixel's final normal at a graze, Fresnel with Unreal's 0.04 floor): the colour raised to an
+    // exponent below 1
+    if (u_fp[12].x > 0.5) {
+      float nv = max(dot(n, normalize(u_cam_pos - v_wpos)), 0.0);
+      float fr = pow(1.0 - nv, u_fp[13].x) * 0.96 + 0.04;
+      col = mix(col, pow(max(col, vec3(0.0)), vec3(u_fp[12].w)), mix(u_fp[12].y, u_fp[12].z, stitch) * fr);
+    }
+    // material C laid over it
+    if (ca > 0.0) {
+      vec3 cc = u_fp[16].z > 0.5 ? mix(c1, c2, msk.g) : u_fp[3].rgb;
+      col = mix(col, fabOv3(cc, mix(0.5, msk.r, u_fp[15].y)) * mix(1.0, ao.r, u_fp[15].z), ca);
+    }
+    alb = col;
+    arm = vec3(ao.r, clamp(rough, 0.0, 1.0), clamp(metal, 0.0, 1.0));
+    d.rgb = alb;
+  }
+#endif
   n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
   alb = d.rgb;
   // a crown's interior is occluded by its own cards

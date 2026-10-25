@@ -23,6 +23,25 @@ function gltf_tex_unref(render3d_st: mut Render3dState, id: int) -> void {
   }
 }
 
+# a texture remembered by its path with refs references (the path is the table's from now on): the table grows as it fills. It held 256,
+# and a town's own textures filled it before a player's look was loaded: every texture of a look was then loaded afresh at each wear
+# and never freed (a sweep through the wardrobe ran the device out)
+@alloc_ok("a texture's entry: a load, not a frame")
+function gltf_tex_add(render3d_st: mut Render3dState, path: string, id: int, refs: int) -> void {
+  let n = render3d_st.gltf_tex_n
+  if n >= len(render3d_st.gltf_tex_ids) {
+    let ids = words(n * 2)
+    let rs = words(n * 2)
+    for k in 0 .. n { ids[k] = render3d_st.gltf_tex_ids[k];  rs[k] = render3d_st.gltf_tex_refs[k] }
+    free(render3d_st.gltf_tex_ids);  free(render3d_st.gltf_tex_refs)
+    render3d_st.gltf_tex_ids = ids;  render3d_st.gltf_tex_refs = rs
+  }
+  push(render3d_st.gltf_tex_paths, path)
+  render3d_st.gltf_tex_ids[n] = id
+  render3d_st.gltf_tex_refs[n] = refs
+  render3d_st.gltf_tex_n = n + 1
+}
+
 # the cache entry i goes; the last entry takes its place
 function gltf_tex_forget(render3d_st: mut Render3dState, i: int) -> void {
   let last = render3d_st.gltf_tex_n - 1
@@ -71,6 +90,12 @@ function model_release(render3d_st: mut Render3dState, m: Model) -> void {
       if pr.mesh != null { mesh_release(render3d_st, pr.mesh) }
       if pr.name != null { free(pr.name) }
       if pr.fac != null { free(pr.fac) }
+      if pr.ext != null { free(pr.ext) }
+      if pr.fab != null { free(pr.fab) }
+      if pr.ftex != null {
+        for k in 0 .. len(pr.ftex) { gltf_tex_unref(render3d_st, pr.ftex[k]) }
+        free(pr.ftex)
+      }
       free(pr)
     }
     free(m.prims)
