@@ -29,6 +29,10 @@ uniform vec2 u_mr_scale;      // the metal/roughness texture's uv scale (KHR_tex
 uniform vec2 u_fac_coat;      // clear coat: factor, roughness (KHR_materials_clearcoat; 0: none)
 uniform vec3 u_fac_emis;
 uniform sampler2D u_nrm;
+#if defined(EYE) || defined(SSS_SPLIT)
+uniform sampler2D u_headmap;  // a face's full-resolution head map (model_set_headmap): RGB normal, A roughness, over u, v < 0.5 x 2
+uniform float u_head_on;
+#endif
 uniform sampler2D u_arm;
 uniform mat4 u_view;
 uniform vec3 u_tint;
@@ -179,7 +183,8 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   vec3 dp2perp = cross(dp2, N), dp1perp = cross(N, dp1);
   vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
   vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-  float invmax = inversesqrt(max(dot(T, T), dot(B, B)) + 1e-12);
+  // (scale-free: up close a pixel's dp x duv is ~1e-15, so an added epsilon (once 1e-12) shrank the frame and flattened the map)
+  float invmax = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-36));
   return mat3(T * invmax, B * invmax, N);
 }
 
@@ -458,10 +463,19 @@ void main() {
 #endif
   vec4 nt = texture(u_nrm, v_uv);
   bool skin = skinMap(nt.a);
+#if defined(EYE) || defined(SSS_SPLIT)
+  // a face's head at its own full resolution (model_set_headmap): its normal and roughness in place of the atlas's quadrant
+  vec4 hm = vec4(0.0);
+  bool head = u_head_on > 0.5 && v_uv.x < 0.5 && v_uv.y < 0.5;
+  if (head) { hm = texture(u_headmap, v_uv * 2.0);  nt.rgb = hm.rgb; }
+#endif
   vec4 sm = skin ? skinMicro(nt.rgb * 2.0 - 1.0, nt.a) : vec4(nt.rgb * 2.0 - 1.0, 0.0);
   mat3 tbn = normalFrame(N, v_wpos, v_uv);
   n = normalize(tbn * sm.xyz);
   arm = texture(u_arm, v_uv).rgb;
+#if defined(EYE) || defined(SSS_SPLIT)
+  if (head) arm.g = hm.a;
+#endif
   if (skin) {
     // the skin's micro cavities rougher (Roughness Micro Cavity Multiply 1.35) and less specular (Micro Skin Cavity Specular Multiply
     // 0.6); its Specular 0.9 x 0.8 (MI_Skin_*: the regions' x Specular Base), Unreal's F0 = 0.08 x Specular

@@ -310,6 +310,7 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
     prim_factors(render3d_st, ap.prog, pr)
     if not shadow and ap.l_fp >= 0 { ac_bind_fabric(render3d_st, a, ap, pr) }
     if not shadow and ap.l_eye >= 0 and pr.eye != null { ac_bind_eye(render3d_st, ap, pr) }
+    if not shadow { ac_bind_headmap(render3d_st, ap, pr) }
     if not shadow {
       gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
       gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
@@ -338,6 +339,17 @@ function ac_fab_tex(render3d_st: mut Render3dState, unit: int, pr: Prim, k: int)
   var id = pr.ftex[k]
   if id == 0 { id = pr.ftex[0] }
   gpu_tex_unit(render3d_st, unit);  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+}
+# a face's full-resolution head map (model_set_headmap) for the programs that read it (model.frag EYE, SSS_SPLIT), on unit 17, or its
+# switch off (a black texel on the unit)
+function ac_bind_headmap(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {
+  let lp = gpu_uniform(render3d_st, ap.prog, "u_head_on")
+  if lp < 0 { return }
+  var t = pr.hmap
+  var on = 1.0
+  if t == 0 { t = strands_shadow_black(render3d_st);  on = 0.0 }
+  r3d_bind_2d(render3d_st, ap.prog, "u_headmap", 17, t)
+  u_f(render3d_st, lp, on)
 }
 # a face's eyes for the EYE program: the cells and the five maps on the units the fabric's take
 function ac_bind_eye(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {

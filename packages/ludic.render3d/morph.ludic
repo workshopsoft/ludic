@@ -182,6 +182,20 @@ export function model_set_texture(render3d_st: mut Render3dState, model: Model, 
 # The model's surface detail from PNGs beside its colour: a normal map (tangent space, glTF's: green up) and an
 # occlusion/roughness/metal map (R, G, B), both linear. "" keeps what the model has. True when both given loaded
 @alloc_ok("a look put on: an event, not a frame")
+# A MetaHuman face's head at its own full resolution (Unreal's T_Head_N and T_Head_SRMF, 8K there; the parts converter's head_maps.py):
+# one map, RGB the normal (green up), A the roughness, over the head's own uvs, which the look's atlas packs into its quadrant u, v < 0.5.
+# The face's programs (model.frag EYE, SSS_SPLIT) read it there in place of the atlas's texels; the atlas keeps the micro detail's tile
+export function model_set_headmap(render3d_st: mut Render3dState, model: Model, path: string) -> bool {
+  if model == null { return false }
+  let id = tex_cached(render3d_st, path, false, 0)
+  if id == 0 { return false }
+  for pi in 0 .. len(model.prims) {
+    gltf_tex_ref(render3d_st, id)
+    gltf_tex_unref(render3d_st, model.prims[pi].hmap)
+    model.prims[pi].hmap = id
+  }
+  return true
+}
 export function model_set_maps(render3d_st: mut Render3dState, model: Model, nrm: string, arm: string) -> bool {
   if model == null { return false }
   var ok = true
