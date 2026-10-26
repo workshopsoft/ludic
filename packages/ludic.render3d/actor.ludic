@@ -44,6 +44,7 @@ property Actor {
   blend_d: float = 0.0,        # its squared distance from the camera this frame (the sort's key)
   shell:   bool = false,       # a MetaHuman's eye occlusion shell (eyeshell.frag): drawn over the opaque scene from its copy (actor_draw_shells)
   own_blend: bool = false,     # a part blended on its own (a face's lashes over an opaque body): its blend, alpha and soft not its leader's
+  spec:    float = 1.0,        # blended: its specular's scale (u_spec_scale; Epic's lashes have none)
   @owns(SkinClone) skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
   skin_owned: bool = false,  # made by actor_own_skin: actor_release frees it
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
