@@ -132,7 +132,7 @@ function actor_draw_strands(render3d_st: mut Render3dState) -> void {
     let a = render3d_st.ac_actors[i]
     if a.strands and ac_visible(render3d_st, a, false) { any = true }
   }
-  if not any { return }
+  if not any or r3d_env_has(render3d_st, "R3D_NOSTRANDS") { return }
   prof_begin(render3d_st, "strands")
   strands_ensure(render3d_st)
   # a pixel at a metre: 2 tan(fov/2) / h; the least radius there, as ComputeMinStrandRadiusAtDepth1 takes it, at one sample and at the

@@ -737,7 +737,7 @@ T 428caa3a u_tershadow 8
 T 428caa3a u_tershadow_aux 9
 T 428caa3a u_ts_height 10
 P 3e4b62f9 fullscreen.vert ssao_blur.frag 
-B 3e4b62f9 frag 1 1944
+B 3e4b62f9 frag 0 1944
 U 3e4b62f9 frag u_cascade_vp 0 mat4 5 64
 U 3e4b62f9 frag u_cascade_split 320 float 5 16
 U 3e4b62f9 frag u_cascade_range 400 float 5 16
@@ -1287,6 +1287,7 @@ U 725523d9 frag u_sky_relight 1928 float 1 0
 U 725523d9 frag u_ao_strength 1932 float 1 0
 U 725523d9 frag u_gi_strength 1936 float 1 0
 U 725523d9 frag u_hair_on 1940 float 1 0
+U 725523d9 frag u_ao_view 1944 float 1 0
 U 725523d9 frag u_wb 1952 vec3 1 0
 U 725523d9 frag u_lift 1968 vec3 1 0
 U 725523d9 frag u_gain 1984 vec3 1 0
@@ -1360,6 +1361,7 @@ U a4683767 frag u_sky_relight 1928 float 1 0
 U a4683767 frag u_ao_strength 1932 float 1 0
 U a4683767 frag u_gi_strength 1936 float 1 0
 U a4683767 frag u_hair_on 1940 float 1 0
+U a4683767 frag u_ao_view 1944 float 1 0
 U a4683767 frag u_wb 1952 vec3 1 0
 U a4683767 frag u_lift 1968 vec3 1 0
 U a4683767 frag u_gain 1984 vec3 1 0

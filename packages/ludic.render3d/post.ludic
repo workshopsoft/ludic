@@ -124,7 +124,7 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_sharpen = 1.2
   render3d_st.post_grain = float_bits(0.025)
   render3d_st.post_ao_radius = 0.7
-  render3d_st.post_ao_intensity = 1.4
+  render3d_st.post_ao_intensity = 0.5           # Unreal's AmbientOcclusionIntensity (ssgi.frag: its forward-shading AO)
   render3d_st.post_ao_strength = 0.8
   render3d_st.post_fs = mesh_fullscreen(render3d_st)
   render3d_st.post_exposure = 0.36
@@ -388,6 +388,11 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   var ao_strength = render3d_st.post_ao_strength
   var gi_strength = render3d_st.post_gi_strength
   if render3d_st.r3d_env_no_gi { ao_strength = 0.0;  gi_strength = 0.0 }
+  if r3d_env_has(render3d_st, "R3D_NOAO") { ao_strength = 0.0 }
+  if r3d_env_has(render3d_st, "R3D_NOBOUNCE") { gi_strength = 0.0 }
+  var ao_view = 0.0
+  if r3d_env_has(render3d_st, "R3D_AO_VIEW") { ao_view = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ao_view"), ao_view)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ao_strength"), ao_strength)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_gi_strength"), gi_strength)
   var hair_on = 0.0
