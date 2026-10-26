@@ -1,0 +1,100 @@
+# ============================================================================
+# sss.ludic — skin's subsurface scattering, as Unreal's Burley screen-space subsurface (sss.frag).
+#
+# A model marked as skin (model_set_subsurface: its texels below a u, a MetaHuman atlas's skin) is drawn a second time after the MSAA
+# resolve, over the scene's depth (GEQUAL: only where it is what was drawn), by model.frag SSS_SPLIT into two targets: its diffuse light
+# with the base colour taken out and its view depth, and its base colour. sss.frag then blurs that light by the skin's diffusion profile
+# and adds the base colour x (scattered - sharp) to the scene: Unreal's recombine. Nothing marked in view: neither pass runs.
+#
+# The profile is the MetaHuman skin's SSP_skin_unified (read from the editor): surface albedo 1, mean free path colour
+# (0.35, 0.135624, 0.0875) x distance 0.3 cm, world unit scale 0.1 - turned into the diffuse mean free path as Unreal's
+# GetDMFPFromMFPApprox does. R3D_NOSSS=1 turns it off.
+# ============================================================================
+
+const SSS_SAMPLES: int = 24
+const SSS_MFP_R: float = 0.35
+const SSS_MFP_G: float = 0.135624
+const SSS_MFP_B: float = 0.0875
+const SSS_MFP_CM: float = 0.3
+const SSS_WUS: float = 0.1
+
+# skin: the model's texels below u (a MetaHuman atlas: 0.5, where the eyes, teeth, lashes and hair begin); 0 takes it off
+export function model_set_subsurface(model: Model, u: float) -> void { if model != null { model.sss = u } }
+
+function sss_wanted(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.sss_want < 0 {
+    render3d_st.sss_want = 1
+    if r3d_env_has(render3d_st, "R3D_NOSSS") { render3d_st.sss_want = 0 }
+  }
+  return render3d_st.sss_want == 1
+}
+
+# the two targets at post's size, with the scene's depth (post_init / post_free)
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function sss_init(render3d_st: mut Render3dState, w: int, h: int) -> void {
+  render3d_st.sss_light = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_NEAREST)
+  render3d_st.sss_alb = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_NEAREST)
+  render3d_st.sss_fb = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, render3d_st.sss_fb)
+  gpu_fb_color(render3d_st, 0, render3d_st.sss_light.color)
+  gpu_fb_color(render3d_st, 1, render3d_st.sss_alb.color)
+  gpu_fb_depth(render3d_st, render3d_st.post_hdr.depth)
+  gpu_fb_draw_buffers(render3d_st, 2)
+  gpu_fb_bind(render3d_st, 0)
+  if render3d_st.sss_p == 0 { render3d_st.sss_p = r3d_program(render3d_st, "fullscreen.vert", "sss.frag", "") }
+}
+function sss_free(render3d_st: mut Render3dState) -> void {
+  if render3d_st.sss_light == null { return }
+  if render3d_st.sss_fb != 0 { gpu_fb_free(render3d_st, render3d_st.sss_fb);  render3d_st.sss_fb = 0 }
+  target_free(render3d_st, render3d_st.sss_light);  render3d_st.sss_light = null
+  target_free(render3d_st, render3d_st.sss_alb);  render3d_st.sss_alb = null
+}
+
+# After the MSAA resolve and the motion target, before the opaque copy: the skin's light split out, then scattered into post_hdr
+function sss_pass(render3d_st: mut Render3dState) -> void {
+  render3d_st.sss_draws = 0
+  if not sss_wanted(render3d_st) or render3d_st.sss_light == null or render3d_st.ac_actors == null or render3d_st.ac_sss == null { return }
+  prof_begin(render3d_st, "skin light")
+  gpu_fb_bind(render3d_st, render3d_st.sss_fb)
+  gpu_viewport(render3d_st, 0, 0, render3d_st.sss_light.w, render3d_st.sss_light.h)
+  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_GEQUAL)
+  gpu_depth_write(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  actor_draw_sss(render3d_st)
+  gpu_depth_func(render3d_st, GPU_GREATER)
+  gpu_depth_write(render3d_st, true)
+  gpu_cull(render3d_st, true)
+  prof_end(render3d_st)
+  if render3d_st.sss_draws == 0 { gpu_fb_bind(render3d_st, 0);  return }
+  prof_begin(render3d_st, "skin scatter")
+  target_bind(render3d_st, render3d_st.post_hdr)
+  gpu_depth_test(render3d_st, false)
+  gpu_depth_write(render3d_st, false)
+  gpu_blend(render3d_st, true)
+  gpu_blend_func(render3d_st, GPU_ONE, GPU_ONE)
+  gpu_cull(render3d_st, false)
+  let p = render3d_st.sss_p
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_sss_light", 0, render3d_st.sss_light.color)
+  r3d_bind_2d(render3d_st, p, "u_sss_alb", 1, render3d_st.sss_alb.color)
+  # the diffuse mean free path from the mean free path (GetDMFPFromMFPApprox at the surface albedo, 1): mm
+  let a = 1.0
+  let perp = 1.85 - a + 7.0 * Math.pow(Math.abs(a - 0.8), 3.0)
+  let sl = 3.5 + 100.0 * Math.pow(a - 0.33, 4.0)
+  let k = 10.0 * SSS_MFP_CM / (0.6 * perp / sl)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_sss_dmfp"), SSS_MFP_R * k, SSS_MFP_G * k, SSS_MFP_B * k, Math.max(SSS_MFP_R, Math.max(SSS_MFP_G, SSS_MFP_B)) * k)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_sss_albedo"), a, a, a, a)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_sss_scale"), render3d_st.cam_proj[0] * 0.5, render3d_st.cam_proj[5] * 0.5)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sss_wus"), SSS_WUS * 10.0)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_sss_px"), 1.0 / float(render3d_st.sss_light.w), 1.0 / float(render3d_st.sss_light.h))
+  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_sss_n"), SSS_SAMPLES)
+  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_sss_frame"), render3d_st.ac_frame)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  gpu_blend(render3d_st, false)
+  gpu_cull(render3d_st, true)
+  gpu_fb_bind(render3d_st, 0)
+  prof_end(render3d_st)
+}

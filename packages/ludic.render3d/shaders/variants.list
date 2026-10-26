@@ -16,6 +16,7 @@ fullscreen.vert|sharpen.frag|
 fullscreen.vert|sky.frag|
 fullscreen.vert|ssao_blur.frag|
 fullscreen.vert|ssgi.frag|
+fullscreen.vert|sss.frag|
 fullscreen.vert|taa.frag|
 fullscreen.vert|taa_mv.frag|
 fullscreen.vert|ternormal.frag|
@@ -55,6 +56,7 @@ skin.vert|model.frag|#define ALPHA_TEST;
 skin.vert|model.frag|#define TRANSLUCENT;
 skin.vert|model.frag|#define FABRIC;
 skin.vert|model.frag|#define FABRIC;#define ALPHA_TEST;
+skin.vert|model.frag|#define SSS_SPLIT;
 skin.vert|outline.frag|#define OUTLINE;
 skin.vert|outline.frag|#define OUTLINE;#define ALPHA_TEST;
 skin.vert|shadow.frag|#define SHADOW_PASS;
