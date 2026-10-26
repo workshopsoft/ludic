@@ -3,18 +3,31 @@
 #
 # An actor marked strands (actor.strands) is a mesh of ribbons: each strand point twice, its tangent times its radius, its side, the skin's
 # normal at its root and the strand's seed (skin.vert STRANDS). Unreal widens each ribbon toward the camera to the least radius a strand
-# is rasterised at and takes the strand's share of it as its coverage; here that least radius is half a pixel (a ribbon a pixel wide at
-# one sample, where Unreal's eight MSAA samples have a sixteenth of one: the same coverage over the pixel, less of it lost between
-# samples). Three passes after the opaque scene, its subsurface and the eyes' shells, depth-tested against the scene and writing none:
-#   the transmittance: each strand's 1 - coverage multiplied in (HairStrandsVisibility's transmittance pass)
-#   the light: each strand lit (strands.frag: Epic's HairShading with the dual scattering's local term, the sky over the sphere) and
-#     weighted by its coverage, added up
-#   the resolve over the scene (strands_resolve.frag: the pixel's coverage from the transmittance at the threshold 0.98, its colour the
-#     weighted average, premultiplied over)
+# is rasterised at (ComputeMinStrandRadiusAtDepth1: half of r.HairStrands.RasterizationScale 0.5 x SampleCountToSubPixelSize x a pixel).
+# Its default path (HairVisibilityRenderMode_MSAA_Visibility), here, after the opaque scene, its subsurface and the eyes' shells:
+#   the transmittance (one sample, a quarter pixel's radius): each strand's 1 - r / max(r, that radius) multiplied in, depth-tested
+#     against the scene and writing none (HairStrandsVisibilityPS TRANSMITTANCE)
+#   the visibility (eight samples, a sixteenth of a pixel's radius): the strands depth-tested among themselves into a multisampled
+#     target, so each sample holds its front strand alone. Unreal stores that strand's id and lights each distinct one once, weighted
+#     by the samples it holds over the samples hit (HairStrandsVisibilityCompaction); the hardware does the same here: each strand lit
+#     once a pixel (strands.frag: Epic's HairShading with the dual scattering, the sky over the sphere) into the samples it won, and
+#     the resolve's average over the samples hit is that weighted sum
+#   the composition over the scene (strands_resolve.frag: the pixel's coverage from the transmittance at the threshold 0.98, its colour
+#     the visibility samples', premultiplied over)
 # The targets are made when a groom is first in view; the dual scattering LUT (hair_lut.frag) is drawn then, once.
 # ============================================================================
 
 const ST_LUT_SIZE: int = 256
+const ST_MSAA: int = 8
+const ST_RASTER_SCALE: float = 0.5          # r.HairStrands.RasterizationScale
+const ST_SCENE_DEPTH_UNIT: int = 10         # the visibility pass's scene depth (actor_blend's unit; unused by the strand programs)
+
+# SampleCountToSubPixelSize (HairStrandsUtils.cpp): a strand's least diameter in pixels at n samples
+function strands_subpixel(n: int) -> float {
+  if n >= 8 { return 0.25 }
+  if n >= 2 { return 0.5 }
+  return 1.0
+}
 
 @alloc_ok("made when a groom is first in view, at post's size, and kept until post is remade")
 function strands_ensure(render3d_st: mut Render3dState) -> void {
@@ -31,7 +44,16 @@ function strands_ensure(render3d_st: mut Render3dState) -> void {
   render3d_st.st_fb_a = gpu_fb_new(render3d_st)
   gpu_fb_bind(render3d_st, render3d_st.st_fb_a)
   gpu_fb_color(render3d_st, 0, render3d_st.st_acc.color)
-  gpu_fb_depth(render3d_st, render3d_st.post_hdr.depth)
+  # Unreal's r.HairStrands.Visibility.MSAA.SamplePerPixel 8, or the most the device has
+  render3d_st.st_ms_n = min(ST_MSAA, max(gpu_msaa_max(render3d_st), 1))
+  render3d_st.st_ms_fb = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, render3d_st.st_ms_fb)
+  render3d_st.st_ms_c = gpu_rb_new(render3d_st)
+  gpu_rb_storage(render3d_st, render3d_st.st_ms_c, GPU_RGBA16F, w, h, render3d_st.st_ms_n)
+  gpu_fb_color_rb(render3d_st, 0, render3d_st.st_ms_c)
+  render3d_st.st_ms_d = gpu_rb_new(render3d_st)
+  gpu_rb_storage(render3d_st, render3d_st.st_ms_d, GPU_DEPTH_COMPONENT32F, w, h, render3d_st.st_ms_n)
+  gpu_fb_depth_rb(render3d_st, render3d_st.st_ms_d)
   gpu_fb_bind(render3d_st, 0)
   if render3d_st.st_p_resolve == 0 { render3d_st.st_p_resolve = r3d_program(render3d_st, "fullscreen.vert", "strands_resolve.frag", "") }
   if render3d_st.st_lut == null {
@@ -51,6 +73,9 @@ function strands_free(render3d_st: mut Render3dState) -> void {
   if render3d_st.st_trans == null { return }
   gpu_fb_free(render3d_st, render3d_st.st_fb_t);  render3d_st.st_fb_t = 0
   gpu_fb_free(render3d_st, render3d_st.st_fb_a);  render3d_st.st_fb_a = 0
+  gpu_fb_free(render3d_st, render3d_st.st_ms_fb);  render3d_st.st_ms_fb = 0
+  gpu_rb_free(render3d_st, render3d_st.st_ms_c);  render3d_st.st_ms_c = 0
+  gpu_rb_free(render3d_st, render3d_st.st_ms_d);  render3d_st.st_ms_d = 0
   target_free(render3d_st, render3d_st.st_trans);  render3d_st.st_trans = null
   target_free(render3d_st, render3d_st.st_acc);  render3d_st.st_acc = null
 }
@@ -110,8 +135,11 @@ function actor_draw_strands(render3d_st: mut Render3dState) -> void {
   if not any { return }
   prof_begin(render3d_st, "strands")
   strands_ensure(render3d_st)
-  # the least radius at a metre: half a pixel there (tan(fov/2) / (h/2) is a pixel)
-  let minr = 1.0 / (render3d_st.cam_proj[5] * float(render3d_st.post_h))
+  # a pixel at a metre: 2 tan(fov/2) / h; the least radius there, as ComputeMinStrandRadiusAtDepth1 takes it, at one sample and at the
+  # visibility's samples
+  let px = 2.0 / (render3d_st.cam_proj[5] * float(render3d_st.post_h))
+  let minr_t = 0.5 * ST_RASTER_SCALE * strands_subpixel(1) * px
+  let minr_v = 0.5 * ST_RASTER_SCALE * strands_subpixel(render3d_st.st_ms_n) * px
   gpu_depth_test(render3d_st, true)
   gpu_depth_func(render3d_st, GPU_GEQUAL)
   gpu_depth_write(render3d_st, false)
@@ -122,20 +150,29 @@ function actor_draw_strands(render3d_st: mut Render3dState) -> void {
   gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
   gpu_blend(render3d_st, true)
   gpu_blend_func(render3d_st, GPU_ZERO, GPU_SRC_COLOR)
-  strands_draw(render3d_st, render3d_st.ac_strand_t, render3d_st.ac_strand_t_i, minr, render3d_st.cam_view, render3d_st.cam_proj)
-  # the light, weighted by coverage, added up
-  gpu_fb_bind(render3d_st, render3d_st.st_fb_a)
-  gpu_viewport(render3d_st, 0, 0, render3d_st.st_acc.w, render3d_st.st_acc.h)
+  strands_draw(render3d_st, render3d_st.ac_strand_t, render3d_st.ac_strand_t_i, minr_t, render3d_st.cam_view, render3d_st.cam_proj)
+  gpu_blend(render3d_st, false)
+  # the visibility: the front strand of each sample, lit, the scene's depth tested in the shader (its own depth buffer holds the strands')
+  gpu_fb_bind(render3d_st, render3d_st.st_ms_fb)
+  gpu_viewport(render3d_st, 0, 0, render3d_st.post_w, render3d_st.post_h)
   gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
-  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
-  gpu_blend_func(render3d_st, GPU_ONE, GPU_ONE)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
+  gpu_depth_func(render3d_st, GPU_GREATER)
+  gpu_depth_write(render3d_st, true)
   let lp = render3d_st.ac_strand_l
   lp.scene_frame = -1
   ac_bind_scene(render3d_st, lp)
+  r3d_bind_2d(render3d_st, lp.prog, "u_scene_depth", ST_SCENE_DEPTH_UNIT, render3d_st.post_depth_copy.depth)
   let lpi = render3d_st.ac_strand_l_i
   lpi.scene_frame = -1
   ac_bind_scene(render3d_st, lpi)
-  strands_draw(render3d_st, lp, lpi, minr, render3d_st.cam_view, render3d_st.cam_proj)
+  r3d_bind_2d(render3d_st, lpi.prog, "u_scene_depth", ST_SCENE_DEPTH_UNIT, render3d_st.post_depth_copy.depth)
+  strands_draw(render3d_st, lp, lpi, minr_v, render3d_st.cam_view, render3d_st.cam_proj)
+  # its samples averaged: the hit ones' light summed over all (alpha: the share hit)
+  gpu_fb_bind_read(render3d_st, render3d_st.st_ms_fb)
+  gpu_fb_bind_draw(render3d_st, render3d_st.st_fb_a)
+  gpu_blit(render3d_st, render3d_st.post_w, render3d_st.post_h, GPU_COLOR_BUFFER_BIT)
+  gpu_blend(render3d_st, true)
   # the resolve, premultiplied over the scene
   target_bind(render3d_st, render3d_st.post_hdr)
   gpu_depth_test(render3d_st, false)
@@ -145,6 +182,9 @@ function actor_draw_strands(render3d_st: mut Render3dState) -> void {
   gpu_use_program(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_st_trans", 0, render3d_st.st_trans.color)
   r3d_bind_2d(render3d_st, p, "u_st_acc", 1, render3d_st.st_acc.color)
+  var dbg = 0.0
+  if r3d_env_has(render3d_st, "R3D_STRAND_COV") { dbg = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_st_dbg"), dbg)
   mesh_draw(render3d_st, render3d_st.post_fs)
   gpu_blend(render3d_st, false)
   gpu_depth_test(render3d_st, true)

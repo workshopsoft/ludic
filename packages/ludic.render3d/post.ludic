@@ -390,6 +390,9 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   if render3d_st.r3d_env_no_gi { ao_strength = 0.0;  gi_strength = 0.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ao_strength"), ao_strength)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_gi_strength"), gi_strength)
+  var hair_on = 0.0
+  if render3d_st.st_draws > 0 and render3d_st.st_trans != null { hair_on = 1.0;  r3d_bind_2d(render3d_st, prog, "u_hair_t", 4, render3d_st.st_trans.color) }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hair_on"), hair_on)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_exposure"), render3d_st.post_exposure)
   var auto = 0.0
   if render3d_st.post_auto and render3d_st.post_adapt_t != null { auto = 1.0;  r3d_bind_2d(render3d_st, prog, "u_adapt", 3, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color) }

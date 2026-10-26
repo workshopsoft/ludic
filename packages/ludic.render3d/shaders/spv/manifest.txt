@@ -1286,6 +1286,7 @@ U 725523d9 frag u_fog_cut 1920 vec2 1 0
 U 725523d9 frag u_sky_relight 1928 float 1 0
 U 725523d9 frag u_ao_strength 1932 float 1 0
 U 725523d9 frag u_gi_strength 1936 float 1 0
+U 725523d9 frag u_hair_on 1940 float 1 0
 U 725523d9 frag u_wb 1952 vec3 1 0
 U 725523d9 frag u_lift 1968 vec3 1 0
 U 725523d9 frag u_gain 1984 vec3 1 0
@@ -1299,14 +1300,15 @@ T 725523d9 u_adapt 2
 T 725523d9 u_ao 3
 T 725523d9 u_bloom 4
 T 725523d9 u_brdf 5
-T 725523d9 u_hairsh 6
-T 725523d9 u_hdr 7
-T 725523d9 u_irradiance 8
-T 725523d9 u_prefilter 9
-T 725523d9 u_shadow 10
-T 725523d9 u_tershadow 11
-T 725523d9 u_tershadow_aux 12
-T 725523d9 u_ts_height 13
+T 725523d9 u_hair_t 6
+T 725523d9 u_hairsh 7
+T 725523d9 u_hdr 8
+T 725523d9 u_irradiance 9
+T 725523d9 u_prefilter 10
+T 725523d9 u_shadow 11
+T 725523d9 u_tershadow 12
+T 725523d9 u_tershadow_aux 13
+T 725523d9 u_ts_height 14
 P a4683767 fullscreen.vert tonemap.frag #define HDR10;
 B a4683767 frag 1 2032
 U a4683767 frag u_cascade_vp 0 mat4 5 64
@@ -1357,6 +1359,7 @@ U a4683767 frag u_fog_cut 1920 vec2 1 0
 U a4683767 frag u_sky_relight 1928 float 1 0
 U a4683767 frag u_ao_strength 1932 float 1 0
 U a4683767 frag u_gi_strength 1936 float 1 0
+U a4683767 frag u_hair_on 1940 float 1 0
 U a4683767 frag u_wb 1952 vec3 1 0
 U a4683767 frag u_lift 1968 vec3 1 0
 U a4683767 frag u_gain 1984 vec3 1 0
@@ -1373,14 +1376,15 @@ T a4683767 u_adapt 2
 T a4683767 u_ao 3
 T a4683767 u_bloom 4
 T a4683767 u_brdf 5
-T a4683767 u_hairsh 6
-T a4683767 u_hdr 7
-T a4683767 u_irradiance 8
-T a4683767 u_prefilter 9
-T a4683767 u_shadow 10
-T a4683767 u_tershadow 11
-T a4683767 u_tershadow_aux 12
-T a4683767 u_ts_height 13
+T a4683767 u_hair_t 6
+T a4683767 u_hairsh 7
+T a4683767 u_hdr 8
+T a4683767 u_irradiance 9
+T a4683767 u_prefilter 10
+T a4683767 u_shadow 11
+T a4683767 u_tershadow 12
+T a4683767 u_tershadow_aux 13
+T a4683767 u_ts_height 14
 P 74258189 fullscreen.vert volumetric.frag 
 B 74258189 frag 1 2028
 U 74258189 frag u_cascade_vp 0 mat4 5 64
@@ -6936,10 +6940,11 @@ T fcc1042e u_hair_lut 3
 T fcc1042e u_hairsh 4
 T fcc1042e u_irradiance 5
 T fcc1042e u_prefilter 6
-T fcc1042e u_shadow 7
-T fcc1042e u_tershadow 8
-T fcc1042e u_tershadow_aux 9
-T fcc1042e u_ts_height 10
+T fcc1042e u_scene_depth 7
+T fcc1042e u_shadow 8
+T fcc1042e u_tershadow 9
+T fcc1042e u_tershadow_aux 10
+T fcc1042e u_ts_height 11
 P fcf235c8 skin.vert strands.frag #define STRANDS;#define TRANSMITTANCE;
 B fcf235c8 vert 0 10516
 U fcf235c8 vert u_model 0 mat4 1 0
@@ -7014,12 +7019,13 @@ T fcf235c8 u_hair_lut 3
 T fcf235c8 u_hairsh 4
 T fcf235c8 u_irradiance 5
 T fcf235c8 u_prefilter 6
-T fcf235c8 u_shadow 7
-T fcf235c8 u_tershadow 8
-T fcf235c8 u_tershadow_aux 9
-T fcf235c8 u_ts_height 10
+T fcf235c8 u_scene_depth 7
+T fcf235c8 u_shadow 8
+T fcf235c8 u_tershadow 9
+T fcf235c8 u_tershadow_aux 10
+T fcf235c8 u_ts_height 11
 P 75aabf3d fullscreen.vert strands_resolve.frag 
-B 75aabf3d frag 0 1932
+B 75aabf3d frag 1 1936
 U 75aabf3d frag u_cascade_vp 0 mat4 5 64
 U 75aabf3d frag u_cascade_split 320 float 5 16
 U 75aabf3d frag u_cascade_range 400 float 5 16
@@ -7066,6 +7072,7 @@ U 75aabf3d frag u_fog_wall 1912 float 1 0
 U 75aabf3d frag u_fog_haze 1916 float 1 0
 U 75aabf3d frag u_fog_cut 1920 vec2 1 0
 U 75aabf3d frag u_sky_relight 1928 float 1 0
+U 75aabf3d frag u_st_dbg 1932 float 1 0
 T 75aabf3d u_brdf 2
 T 75aabf3d u_hairsh 3
 T 75aabf3d u_irradiance 4
@@ -7206,10 +7213,11 @@ T 339fddc9 u_hair_lut 3
 T 339fddc9 u_hairsh 4
 T 339fddc9 u_irradiance 5
 T 339fddc9 u_prefilter 6
-T 339fddc9 u_shadow 7
-T 339fddc9 u_tershadow 8
-T 339fddc9 u_tershadow_aux 9
-T 339fddc9 u_ts_height 10
+T 339fddc9 u_scene_depth 7
+T 339fddc9 u_shadow 8
+T 339fddc9 u_tershadow 9
+T 339fddc9 u_tershadow_aux 10
+T 339fddc9 u_ts_height 11
 P c0548d95 skin.vert strands.frag #define STRANDS;#define INST;
 B c0548d95 vert 0 10516
 U c0548d95 vert u_model 0 mat4 1 0
@@ -7293,10 +7301,11 @@ T c0548d95 u_hair_lut 3
 T c0548d95 u_hairsh 4
 T c0548d95 u_irradiance 5
 T c0548d95 u_prefilter 6
-T c0548d95 u_shadow 7
-T c0548d95 u_tershadow 8
-T c0548d95 u_tershadow_aux 9
-T c0548d95 u_ts_height 10
+T c0548d95 u_scene_depth 7
+T c0548d95 u_shadow 8
+T c0548d95 u_tershadow 9
+T c0548d95 u_tershadow_aux 10
+T c0548d95 u_ts_height 11
 P e635df33 skin.vert strands.frag #define STRANDS;#define INST;#define TRANSMITTANCE;
 B e635df33 vert 0 10516
 U e635df33 vert u_model 0 mat4 1 0
@@ -7377,10 +7386,11 @@ T e635df33 u_hair_lut 3
 T e635df33 u_hairsh 4
 T e635df33 u_irradiance 5
 T e635df33 u_prefilter 6
-T e635df33 u_shadow 7
-T e635df33 u_tershadow 8
-T e635df33 u_tershadow_aux 9
-T e635df33 u_ts_height 10
+T e635df33 u_scene_depth 7
+T e635df33 u_shadow 8
+T e635df33 u_tershadow 9
+T e635df33 u_tershadow_aux 10
+T e635df33 u_ts_height 11
 P 7b87e0f2 skin.vert strands.frag #define STRANDS;#define INST;#define DOM;
 B 7b87e0f2 vert 0 10516
 U 7b87e0f2 vert u_model 0 mat4 1 0
@@ -7461,8 +7471,9 @@ T 7b87e0f2 u_hair_lut 3
 T 7b87e0f2 u_hairsh 4
 T 7b87e0f2 u_irradiance 5
 T 7b87e0f2 u_prefilter 6
-T 7b87e0f2 u_shadow 7
-T 7b87e0f2 u_tershadow 8
-T 7b87e0f2 u_tershadow_aux 9
-T 7b87e0f2 u_ts_height 10
+T 7b87e0f2 u_scene_depth 7
+T 7b87e0f2 u_shadow 8
+T 7b87e0f2 u_tershadow 9
+T 7b87e0f2 u_tershadow_aux 10
+T 7b87e0f2 u_ts_height 11
 E 90

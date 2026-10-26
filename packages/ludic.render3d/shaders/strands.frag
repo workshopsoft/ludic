@@ -16,6 +16,7 @@ out vec4 o_color;
 uniform float u_strand_minr;
 uniform vec4 u_fp[17];        // the hair's parameters in model.frag's hair-mode layout (mhHairColour; 2 Spec0, Spec1, SpecEdge, SpecFront),
                               // but 3 Backlit
+uniform sampler2D u_scene_depth; // the opaque scene's depth (the visibility pass: its own depth buffer holds the strands')
 uniform sampler2D u_hair_lut;  // hair_lut.frag
 uniform float u_frame;
 uniform float u_hs_d0;        // DOM: the map's plane, metres from the sun's eye
@@ -80,7 +81,8 @@ void main() {
   float n = c * 2.0;
   o_color = vec4(n, n * (v_sdep - u_hs_d0), 0.0, 0.0);
 #else
-  if (c <= 0.0) discard;
+  // the visibility pass: behind the opaque scene (reversed depth) is no sample of the hair's
+  if (gl_FragCoord.z < texelFetch(u_scene_depth, ivec2(gl_FragCoord.xy), 0).r) discard;
   vec3 T = normalize(v_nrm);
   vec3 V = normalize(u_cam_pos - v_wpos);
   vec3 Ns = normalize(v_snrm);
@@ -112,6 +114,6 @@ void main() {
   col += sky * (4.0 * PI / float(SKY_SAMPLES)) * mix(1.0, lzA.a, lz);
   col += base * lzA.rgb * lz;
   col = applyFog(sane(col), v_wpos, length(u_cam_pos - v_wpos));
-  o_color = vec4(max(col, vec3(0.0)) * c, c);
+  o_color = vec4(max(col, vec3(0.0)), 1.0);
 #endif
 }

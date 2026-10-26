@@ -6,6 +6,8 @@ uniform sampler2D u_bloom;
 uniform sampler2D u_ao;
 uniform float u_ao_strength;
 uniform float u_gi_strength;
+uniform sampler2D u_hair_t;       // the strands' transmittance this frame (strands.ludic), when u_hair_on
+uniform float u_hair_on;
 uniform vec3 u_wb;                // white balance multiplier
 uniform vec3 u_lift;
 uniform vec3 u_gain;
@@ -94,6 +96,10 @@ vec3 pq_encode(vec3 nits) {
 void main() {
   vec3 hdr = sane(texture(u_hdr, v_uv).rgb);
   vec4 gi = texture(u_ao, v_uv);
+  // the screen-space occlusion and bounce are the opaque scene's (its depth): none over the hair laid on it, as Unreal's hair pixels
+  // take none of the scene's (their coverage, TransmittanceToCoverage at 0.98)
+  float hairCov = u_hair_on > 0.5 ? clamp((1.0 - texture(u_hair_t, v_uv).r) / 0.98, 0.0, 1.0) : 0.0;
+  gi = mix(gi, vec4(0.0, 0.0, 0.0, 1.0), hairCov);
   hdr *= mix(1.0, gi.a, u_ao_strength);
   // the indirect bounce arrives in the surface's own hue (no albedo buffer in a forward renderer)
   float l = dot(hdr, vec3(0.2126, 0.7152, 0.0722));
