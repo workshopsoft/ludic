@@ -152,6 +152,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_out_cut = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
   render3d_st.ac_vel = ac_prog_new(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n")
   render3d_st.ac_vel_cut = ac_prog_new(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n#define ALPHA_TEST\n")
+  render3d_st.ac_sss = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define SSS_SPLIT\n")
   actor_blend_init(render3d_st)
   let stage = render3d_st.ac_actors           # made above with its room; a new valley starts empty
   List.clear(stage)
@@ -464,6 +465,22 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   }
   actor_draw_outlines(render3d_st)
   gpu_cull(render3d_st, true)
+}
+# Skin's light for the subsurface pass (sss.ludic): every visible actor whose model is marked as skin, again, over the scene's depth
+function actor_draw_sss(render3d_st: mut Render3dState) -> void {
+  let ap = render3d_st.ac_sss
+  ap.scene_frame = -1                    # this pass's own binding of the frame's light and camera
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.model == null or a.model.sss <= 0.0 { continue }
+    if a.blend != 0 and a.leader == null { continue }
+    if not ac_visible(render3d_st, a, false) { continue }
+    if a.blend != 0 { continue }
+    ac_bind_scene(render3d_st, ap)
+    u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_sss_u"), a.model.sss)
+    actor_draw_one(render3d_st, a, ap, false)
+    render3d_st.sss_draws += 1
+  }
 }
 # The rim around a highlighted actor: the model again, its vertices pushed out along their
 # normals (skin.vert, OUTLINE) and its front faces culled, so only the far side of the

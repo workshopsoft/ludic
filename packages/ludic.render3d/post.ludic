@@ -35,6 +35,7 @@ function post_free(render3d_st: mut Render3dState) -> void {
   target_free(render3d_st, render3d_st.post_depth_copy);  target_free(render3d_st, render3d_st.post_prev);  target_free(render3d_st, render3d_st.post_scene);  target_free(render3d_st, render3d_st.post_vol);  target_free(render3d_st, render3d_st.post_dof)
   for i in 0 .. len(render3d_st.post_bloom) { target_free(render3d_st, render3d_st.post_bloom[i]) }
   taa_free(render3d_st)
+  sss_free(render3d_st)
   render3d_st.post_hdr = null
 }
 # Multisampled scene: 1 (temporal AA alone, taa.ludic), 2 or 4, remade at once. Vulkan draws it into
@@ -118,6 +119,7 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_scene = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
   if render3d_st.post_p_sharp == 0 { render3d_st.post_p_sharp = r3d_program(render3d_st, "fullscreen.vert", "sharpen.frag", "") }
   taa_init(render3d_st, w, h)
+  sss_init(render3d_st, w, h)
   render3d_st.post_sharpen = 1.2
   render3d_st.post_grain = float_bits(0.025)
   render3d_st.post_ao_radius = 0.7

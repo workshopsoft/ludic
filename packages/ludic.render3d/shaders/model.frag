@@ -11,7 +11,16 @@ in float v_near;    // 0 in the camera's face, 1 past arm's length (NEAR_FADE)
 in float v_lh;      // height above the model's base (model.vert)
 #endif
 uniform float u_model_h;
+#ifdef SSS_SPLIT
+// Skin's light for the subsurface pass (sss.frag, Epic's Burley): the diffuse light with the base colour taken out and the view depth,
+// and the base colour as the fog leaves it. Only the skin's texels: u below u_sss_u (a MetaHuman atlas keeps the eyes, teeth, lashes and
+// hair right of 0.5; actor.ludic actor_draw_sss)
+layout(location = 0) out vec4 o_color;
+layout(location = 1) out vec4 o_sss_alb;
+uniform float u_sss_u;
+#else
 out vec4 o_color;
+#endif
 uniform sampler2D u_diff;
 // a glTF material's factors, as 1 - factor (a program never given them reads 1) and its emission
 uniform vec4 u_fac_base_inv;
@@ -171,6 +180,9 @@ vec3 fabLayer(vec3 avgc, vec4 msk, sampler2D kit, vec4 p0, vec4 p1, vec4 p2, vec
 #endif
 
 void main() {
+#ifdef SSS_SPLIT
+  if (v_uv.x >= u_sss_u) discard;
+#endif
 #ifndef EQ_PASS
   // (the EQ_PASS variant draws over the foliage prepass: any discard at all would switch
   //  early depth rejection off and bring the overdraw back, and the prepass has already
@@ -560,6 +572,18 @@ void main() {
   // material's emission, and no light at all
   vec3 col = (u_tr.w > 0.5) ? ((u_emissive > 0.0) ? vec3(0.0) : alb) : shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
 #else
+#ifdef SSS_SPLIT
+  // shade() is linear in the base colour for a dielectric (its Fresnel holds f0 0.04 at metal 0): the diffuse light alone is the
+  // difference of a white and a black surface, as Unreal's subsurface stores it (its recombine multiplies the base colour back in)
+  vec3 sss0 = shade(v_wpos, n, vec3(0.0), roughF, 0.0, arm.r, shadow, viewDepth);
+  vec3 sss1 = shade(v_wpos, n, vec3(1.0), roughF, 0.0, arm.r, shadow, viewDepth);
+  o_color = vec4(max(sane(sss1 - sss0), vec3(0.0)), viewDepth);
+  // its alpha the subsurface opacity, as M_skin_unified builds it: Scatter Distance Base 0.5 x the regions' 1 (MF_skin_region_scatter),
+  // x 2 lum(base colour) + 0.95 (MF_skin_scatterCompensation), x Global Multiply 0.5 (MF_skin_globalAdjustments)
+  float sssOp = 0.5 * (2.0 * dot(alb, vec3(0.213, 0.715, 0.0722)) + 0.95) * 0.5;
+  o_sss_alb = vec4(applyFog(alb, v_wpos, dist) - applyFog(vec3(0.0), v_wpos, dist), sssOp);
+  return;
+#endif
   vec3 col = shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
 #ifdef FABRIC
   // a hair card lit as Epic's hair: the sun through HairShading, the sky as Unreal's hair environment (pi x the shading toward the light

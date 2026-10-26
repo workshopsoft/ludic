@@ -25,6 +25,7 @@ property Model {
   height: float = 0.0,       # float bits: y extent above ymin
   ymin:   float = 0.0,
   tris:   int = 0,
+  sss:    float = 0.0,       # skin for the subsurface pass (sss.ludic): its texels below this u; 0 none
   @owns(Skin) skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
 }
 
