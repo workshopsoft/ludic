@@ -96,6 +96,38 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   return mat3(T * invmax, B * invmax, N);
 }
 
+// A normal map's frame. glTF's uvs run down the image (v 0 its top row) and its normal maps are green up (OpenGL's), so the map's +y
+// is the surface's -dp/dv: the cotangent frame's B, along +v, read every glTF map's green upside down (a face's horizontal creases,
+// its neck's rings and its eyelids, lit from the wrong side)
+mat3 normalFrame(vec3 N, vec3 p, vec2 uv) {
+  mat3 f = cotangentFrame(N, p, uv);
+  f[1] = -f[1];
+  return f;
+}
+
+// A MetaHuman skin's micro detail (Unreal's MF_skin_microSkinDetails: T_SkinMicro3_N and its cavity tiled 44 times over the face's and
+// the body's uvs). It rides in the skin's own normal map (the parts converter's skin_micro.py): an alpha in 0.5 .. 1 is the skin, its
+// micro normal at strength (1 - a) x 2; the pattern a 512 px tile at u 0.5 .. 0.75, v 0.75 .. 1 of the 2048 px atlas, 496 px wrapped
+// 8 px past each edge, x and y in R and G (green up), 1 - cavity in B; its first texel (1024, 1536) magenta and clear, the mark that
+// says the map is one (a garment's maps have alphas of their own). Any other map has none.
+// tn the map's normal at the texel, a its alpha: the normal with the micro one over it (reoriented), and the cavity (0 .. 1) in w
+vec4 skinMicro(vec3 tn, float a) {
+  if (a >= 0.998 || a < 0.5) return vec4(tn, 0.0);
+  if (textureSize(u_nrm, 0) != ivec2(2048)) return vec4(tn, 0.0);
+  vec4 mark = texelFetch(u_nrm, ivec2(1024, 1536), 0);
+  if (any(greaterThan(abs(mark - vec4(1.0, 0.0, 1.0, 0.0)), vec4(0.02)))) return vec4(tn, 0.0);
+  float s = (1.0 - a) * 2.0;
+  vec2 mu = v_uv * 88.0;                    // 44 over each mesh's uvs, which take half the atlas each way
+  const float CORE = 496.0 / 2048.0, PADU = 8.0 / 2048.0;
+  vec2 tuv = vec2(0.5, 0.75) + PADU + fract(mu) * CORE;
+  vec4 m = textureGrad(u_nrm, tuv, dFdx(mu) * CORE, dFdy(mu) * CORE);
+  vec2 xy = (m.rg * 2.0 - 1.0) * s;
+  vec3 mn = vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
+  vec3 b = tn + vec3(0.0, 0.0, 1.0);
+  mn *= vec3(-1.0, -1.0, 1.0);
+  return vec4(b * dot(b, mn) / b.z - mn, 1.0 - m.b);
+}
+
 #ifdef FABRIC
 // ---- hair cards (mode 3): Epic's HairShading (HairBsdf.ush) with the cards' transmittance data (InitHairTransmittanceData: legacy
 // absorption, a separable R, no backlit), the material M_hair_v4 feeds it (MF_Variation, GetHairColorFromMelanin's absorption) -------
@@ -382,10 +414,12 @@ void main() {
   }
 #endif
 #endif
-  vec3 tn = texture(u_nrm, v_uv).rgb * 2.0 - 1.0;
-  mat3 tbn = cotangentFrame(N, v_wpos, v_uv);
-  n = normalize(tbn * tn);
+  vec4 nt = texture(u_nrm, v_uv);
+  vec4 sm = skinMicro(nt.rgb * 2.0 - 1.0, nt.a);
+  mat3 tbn = normalFrame(N, v_wpos, v_uv);
+  n = normalize(tbn * sm.xyz);
   arm = texture(u_arm, v_uv).rgb;
+  arm.g *= 1.0 + 0.35 * sm.w;               // rougher in the skin's micro cavities (Roughness Micro Cavity Multiply 1.35)
   // the roughness and metal at their own tiling (a car paint's flake noise is its texture 20 times over; the occlusion is not)
   if (u_mr_scale.x > 0.0 && u_mr_scale != vec2(1.0)) arm.gb = texture(u_arm, v_uv * u_mr_scale).gb;
   arm.gb *= vec2(1.0) - u_fac_mr_inv;
@@ -492,7 +526,7 @@ void main() {
     vec3 zn = fabNs(fabN2(texture(u_fdn, v_uv * u_fp[4].z).ba), u_fp[5].x);
     vec3 bn = texture(u_nrm, v_uv).rgb * 2.0 - 1.0;
     vec3 tn = mix(fabRnm(fabRnm(bn, wn), zn), bn, plain);
-    n = normalize(cotangentFrame(N, v_wpos, v_uv) * tn);
+    n = normalize(normalFrame(N, v_wpos, v_uv) * tn);
     d.rgb = alb;
   } else if (u_fp[16].w > 0.5) {
     vec4 msk = texture(u_fmask, v_uv);
@@ -538,7 +572,7 @@ void main() {
       metal = mix(metal, u_fp[16].x < 0.0 ? ao.b : u_fp[16].x, ca);
       fn = mix(fn, vec3(0.0, 0.0, 1.0), ca);
     }
-    mat3 ftbn = cotangentFrame(N, v_wpos, v_uv);
+    mat3 ftbn = normalFrame(N, v_wpos, v_uv);
     n = normalize(ftbn * fabRnm(base, fn));
     // fuzz on the base materials (the pixel's final normal at a graze, Fresnel with Unreal's 0.04 floor): the colour raised to an
     // exponent below 1
