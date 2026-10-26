@@ -316,6 +316,10 @@ vec3 zoneLamps(vec3 wpos, vec3 n, vec3 albedo) {
 // what is left of the sun at p: 1 outside every light zone, 0 deep inside one
 float sunZone(vec3 p) { vec4 a; return 1.0 - lightZone(p, a); }
 
+// a dielectric's reflectance at normal incidence: 0.04, Unreal's Specular 0.5 (0.08 x Specular). A material that keys its own
+// specular sets it before shade() (the jeans: spec_basic_intensity times the weave)
+float g_dielF0 = 0.04;
+
 // direct + image-based lighting for one surface
 vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, float shadow, float viewDepth) {
   vec3 v = normalize(u_cam_pos - wpos);
@@ -327,7 +331,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   float VoH = max(dot(v, h), 0.0);
   rough = clamp(rough, 0.045, 1.0);
   float a = rough * rough;
-  vec3 f0 = mix(vec3(0.04), albedo, metal);
+  vec3 f0 = mix(vec3(g_dielF0), albedo, metal);
   vec3 F = F_Schlick(VoH, f0);
   vec3 spec = min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale;   // cap the highlight: no half-float overflow, no fireflies
   vec3 kd = (1.0 - F) * (1.0 - metal);

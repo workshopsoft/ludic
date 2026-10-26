@@ -160,6 +160,11 @@ vec3 fabRnm(vec3 b, vec3 a) { b += vec3(0.0, 0.0, 1.0);  a *= vec3(-1.0, -1.0, 1
 vec3 fabN2(vec2 t) { vec2 xy = t * 2.0 - 1.0;  return vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0))); }
 // MF_NormalStrength: from flat towards the normal
 vec3 fabNs(vec3 n, float s) { return mix(vec3(0.0, 0.0, 1.0), n, s); }
+// Unreal's Blend_SoftLight (MaterialFunctions03/Blends, its graph read from the editor): a blend over a half b (1 - (1 - 2s)(1 - b)),
+// up to it 1 - (1 - b)(1 - 2bs); the If's missing equal input takes the first
+vec3 jeansSoftLight(vec3 b, float s) {
+  return s >= 0.5 ? b * (1.0 - (1.0 - 2.0 * s) * (1.0 - b)) : 1.0 - (1.0 - b) * (1.0 - b * (2.0 * s));
+}
 // one material's base colour: AvgColorReplace (the detail colour over its mean), then MF_PowerVariation (the colour to an exponent
 // the variation picks: low at 0, 1 at 0.5, high at 1) and Blend_Overlay with the variation. The variation is the detail's, the
 // macro's and the wear mask's, each from 0.5 by its strength, overlaid in that order
@@ -407,21 +412,36 @@ void main() {
   } else if (u_fp[16].w > 1.5) {
     // Epic's M_jeans_nrm_custom_master: the denim baked untinted (fabric.py: the pair's colour over its fabric average, Unreal's power
     // and multiply, the stitches white by their SmoothCurve mask) at half in u_diff; the tints multiplied over it by region (u_fmask:
-    // R stitches, G rivets, B the leather patch): colour 1 the denim, 2 the stitches, B's the leather, C's the metal. The weave tiled
-    // u_fp[4].x times (turned u_fp[4].y turns) and the fuzz u_fp[4].z times over the baked normal, at strengths u_fp[4].w, u_fp[5].x
+    // R stitches, G rivets, B the leather patch, A the plain parts): colour 1 the denim, 2 the stitches (times Diffuse_mult_stitch,
+    // u_fp[6].z), B's the leather, C's the metal. The weave tiled u_fp[4].x times (turned u_fp[4].y turns) and the fuzz u_fp[4].z
+    // times over the baked normal, at strengths u_fp[4].w, u_fp[5].x. With its kit (u_fp[6].y; u_fkit: R the fuzz's roughness, G its
+    // lines, B the weave's mix, A its tone) the denim as Unreal colours it: the weave's tone multiplied in and its white threads
+    // (weave_white_d, u_fp[5].w), the fuzz's lines over it in soft light (lines_d u_fp[5].z, tiled u_fp[6].x times), the fuzz added
+    // to the roughness, and the specular spec_basic_intensity (u_fp[5].y) times the weave's tone; the plain parts keep their colour
     vec4 msk = texture(u_fmask, v_uv);
+    bool jk = u_fp[6].y > 0.5;
     vec3 tint = mix(mix(mix(u_fp[0].rgb, u_fp[1].rgb, msk.r), u_fp[3].rgb, msk.g), u_fp[2].rgb, msk.b);
     alb = texture(u_diff, v_uv).rgb * 2.0 * tint;
     float ra = u_fp[4].y * 6.2831853;
     vec2 wuv = mat2(cos(ra), -sin(ra), sin(ra), cos(ra)) * (v_uv * u_fp[4].x - 0.5) + 0.5;
+    // (the rivets, the patch and, with the kit, the stitches keep the baked normal alone, as Unreal's final mix does)
+    float plain = jk ? msk.a : clamp(max(msk.g, msk.b), 0.0, 1.0);
+    arm = texture(u_arm, v_uv).rgb;
+    if (jk) {
+      alb *= mix(1.0, u_fp[6].z, msk.r);
+      vec4 wk = texture(u_fkit, wuv);
+      vec3 l18 = mix(wk.a * alb, alb, wk.b);
+      vec3 l19 = mix(l18, vec3(wk.a), wk.b * u_fp[5].w);
+      float bl = clamp(texture(u_fkit, v_uv * u_fp[6].x).g, 0.0, 1.0) * u_fp[5].z * 0.5;
+      alb = mix(jeansSoftLight(l19, bl), alb, plain);
+      arm.g += texture(u_fkit, v_uv * u_fp[4].z).r;
+      g_dielF0 = 0.08 * u_fp[5].y * mix(wk.a, 1.0, plain);
+    }
     vec3 wn = fabNs(fabN2(texture(u_fdn, wuv).rg), u_fp[4].w);
     vec3 zn = fabNs(fabN2(texture(u_fdn, v_uv * u_fp[4].z).ba), u_fp[5].x);
     vec3 bn = texture(u_nrm, v_uv).rgb * 2.0 - 1.0;
-    // (the rivets and the patch keep the baked normal alone, as Unreal's final mix does)
-    float plain = clamp(max(msk.g, msk.b), 0.0, 1.0);
     vec3 tn = mix(fabRnm(fabRnm(bn, wn), zn), bn, plain);
     n = normalize(cotangentFrame(N, v_wpos, v_uv) * tn);
-    arm = texture(u_arm, v_uv).rgb;
     d.rgb = alb;
   } else if (u_fp[16].w > 0.5) {
     vec4 msk = texture(u_fmask, v_uv);
