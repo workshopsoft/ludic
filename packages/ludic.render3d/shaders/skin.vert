@@ -28,16 +28,31 @@ out float v_srad;
 out float v_sdep;
 out vec3 v_snrm;
 #ifdef INST
-// a head of hair (model_set_strand_points): one 96-byte record a strand point, read per instance (one segment: its point, A, and the
-// next, B, carried in the same record); the mesh is the segment's quad, TEXCOORD_0 (which end, side). A: (position, radius), (tangent,
-// u root to tip), the hair toward the sky (x + yzw.w), (the skin's normal at the root, seed); B: its first two. A strand's last point
-// (u 1) draws nothing
-layout(location = 3) in vec4 i_a0;
-layout(location = 4) in vec4 i_a1;
-layout(location = 8) in vec4 i_a2;
-layout(location = 12) in vec4 i_a3;
-layout(location = 13) in vec4 i_b0;
-layout(location = 14) in vec4 i_b1;
+// a head of hair (model_set_strand_points): Unreal's packed control points, a segment an instance, read at four offsets of one buffer: the
+// previous point, A, B and the next. Each point: three halves (its position from u_strand_c) and u 8 | radius 6 | type 2 bits, read as
+// four 16-bit integers; the sky's four halves; the root's normal (octahedral) and the strand's seed, 8 bits each
+layout(location = 8) in vec4 i_p;
+layout(location = 3) in vec4 i_a;
+layout(location = 13) in vec4 i_as;
+layout(location = 15) in vec4 i_an;
+layout(location = 4) in vec4 i_b;
+layout(location = 14) in vec4 i_bs;
+layout(location = 12) in vec4 i_n;
+uniform vec3 u_strand_c;
+uniform float u_strand_rmax;
+vec3 stPos(vec4 v) { uvec4 q = uvec4(v + 0.5); return vec3(unpackHalf2x16(q.x).x, unpackHalf2x16(q.y).x, unpackHalf2x16(q.z).x) + u_strand_c; }
+uint stType(vec4 v) { return uint(v.w + 0.5) >> 14u; }
+float stU(vec4 v) { return float(uint(v.w + 0.5) & 255u) / 255.0; }
+float stR(vec4 v) { return float((uint(v.w + 0.5) >> 8u) & 63u) / 63.0 * u_strand_rmax; }
+vec4 stSky(vec4 v) { uvec4 q = uvec4(v + 0.5); return vec4(unpackHalf2x16(q.x).x, unpackHalf2x16(q.y).x, unpackHalf2x16(q.z).x, unpackHalf2x16(q.w).x); }
+// UnitVectorToOctahedron's inverse (Unreal's OctahedronToUnitVector)
+vec3 stOct(vec2 e) {
+  e = e * 2.0 - 1.0;
+  vec3 n = vec3(e, 1.0 - abs(e.x) - abs(e.y));
+  float t = max(-n.z, 0.0);
+  n.xy += vec2(n.x >= 0.0 ? -t : t, n.y >= 0.0 ? -t : t);
+  return normalize(n);
+}
 #endif
 #endif
 #ifdef VELOCITY
@@ -109,17 +124,27 @@ void main() {
   // Unreal's view-facing ribbon (HairStrandsVertexFactory): the point moved across the strand, at right angles to it and to the camera's
   // forward axis, by its radius or the least one at its distance, whichever is more
 #ifdef INST
-  bool cut = i_a1.w > 0.9999;
+  // HAIR_CONTROLPOINT_INSIDE 0, START 1, END 2: a segment from a strand's tip is none; the tangent at a point the mean of its two
+  // segments' directions, one at a root or a tip
+  uint tA = stType(i_a), tB = stType(i_b);
+  bool cut = tA == 2u;
   bool atB = a_uv.x > 0.5 && !cut;
-  vec4 sP = atB ? i_b0 : i_a0;
-  vec4 sT = atB ? i_b1 : i_a1;
-  w = m * vec4(sP.xyz, 1.0);
-  vec3 tw = mat3(m) * (normalize(sT.xyz) * sP.w);
+  vec3 pA = stPos(i_a), pB = stPos(i_b);
+  vec3 dAB = pB - pA;
+  dAB /= max(length(dAB), 1e-12);
+  vec3 TA = dAB, TB = dAB;
+  if (tA != 1u) { vec3 d = pA - stPos(i_p); TA += d / max(length(d), 1e-12); }
+  if (tB != 2u) { vec3 d = stPos(i_n) - pB; TB += d / max(length(d), 1e-12); }
+  vec3 sP = atB ? pB : pA;
+  vec3 sT = atB ? TB : TA;
+  float sR = atB ? stR(i_b) : stR(i_a);
+  w = m * vec4(sP, 1.0);
+  vec3 tw = mat3(m) * (normalize(sT) * sR);
   float sSide = cut ? 0.0 : a_uv.y;
-  float sU = sT.w;
-  vec3 sN = i_a3.xyz;
-  float sSeed = i_a3.w;
-  vec4 sSky = i_a2;
+  float sU = atB ? stU(i_b) : stU(i_a);
+  vec3 sN = stOct(i_an.xy);
+  float sSeed = i_an.z;
+  vec4 sSky = atB ? stSky(i_bs) : stSky(i_as);
 #else
   vec3 tw = mat3(m) * a_nrm;
   float sSide = a_uv.y;

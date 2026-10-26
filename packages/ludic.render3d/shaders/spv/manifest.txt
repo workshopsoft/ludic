@@ -7221,7 +7221,7 @@ T 339fddc9 u_tershadow 9
 T 339fddc9 u_tershadow_aux 10
 T 339fddc9 u_ts_height 11
 P c0548d95 skin.vert strands.frag #define STRANDS;#define INST;
-B c0548d95 vert 0 10516
+B c0548d95 vert 0 10544
 U c0548d95 vert u_model 0 mat4 1 0
 U c0548d95 vert u_bones 64 mat4 160 64
 U c0548d95 vert u_skinned 10304 float 1 0
@@ -7229,6 +7229,8 @@ U c0548d95 vert u_view 10320 mat4 1 0
 U c0548d95 vert u_proj 10384 mat4 1 0
 U c0548d95 vert u_light_vp 10448 mat4 1 0
 U c0548d95 vert u_strand_minr 10512 float 1 0
+U c0548d95 vert u_strand_c 10528 vec3 1 0
+U c0548d95 vert u_strand_rmax 10540 float 1 0
 I c0548d95 a_weights 6 vec4
 I c0548d95 a_joints 5 vec4
 I c0548d95 a_weights1 11 vec4
@@ -7237,12 +7239,13 @@ I c0548d95 a_pos 0 vec3
 I c0548d95 a_nrm 1 vec3
 I c0548d95 a_uv 2 vec2
 I c0548d95 a_col 7 vec4
-I c0548d95 i_a1 4 vec4
-I c0548d95 i_b0 13 vec4
-I c0548d95 i_a0 3 vec4
-I c0548d95 i_b1 14 vec4
-I c0548d95 i_a3 12 vec4
-I c0548d95 i_a2 8 vec4
+I c0548d95 i_a 3 vec4
+I c0548d95 i_b 4 vec4
+I c0548d95 i_p 8 vec4
+I c0548d95 i_n 12 vec4
+I c0548d95 i_an 15 vec4
+I c0548d95 i_bs 14 vec4
+I c0548d95 i_as 13 vec4
 I c0548d95 a_sky 9 vec4
 B c0548d95 frag 1 2376
 U c0548d95 frag u_cascade_vp 0 mat4 5 64
@@ -7309,7 +7312,7 @@ T c0548d95 u_tershadow 9
 T c0548d95 u_tershadow_aux 10
 T c0548d95 u_ts_height 11
 P e635df33 skin.vert strands.frag #define STRANDS;#define INST;#define TRANSMITTANCE;
-B e635df33 vert 0 10516
+B e635df33 vert 0 10544
 U e635df33 vert u_model 0 mat4 1 0
 U e635df33 vert u_bones 64 mat4 160 64
 U e635df33 vert u_skinned 10304 float 1 0
@@ -7317,6 +7320,8 @@ U e635df33 vert u_view 10320 mat4 1 0
 U e635df33 vert u_proj 10384 mat4 1 0
 U e635df33 vert u_light_vp 10448 mat4 1 0
 U e635df33 vert u_strand_minr 10512 float 1 0
+U e635df33 vert u_strand_c 10528 vec3 1 0
+U e635df33 vert u_strand_rmax 10540 float 1 0
 I e635df33 a_weights 6 vec4
 I e635df33 a_joints 5 vec4
 I e635df33 a_weights1 11 vec4
@@ -7325,12 +7330,13 @@ I e635df33 a_pos 0 vec3
 I e635df33 a_nrm 1 vec3
 I e635df33 a_uv 2 vec2
 I e635df33 a_col 7 vec4
-I e635df33 i_a1 4 vec4
-I e635df33 i_b0 13 vec4
-I e635df33 i_a0 3 vec4
-I e635df33 i_b1 14 vec4
-I e635df33 i_a3 12 vec4
-I e635df33 i_a2 8 vec4
+I e635df33 i_a 3 vec4
+I e635df33 i_b 4 vec4
+I e635df33 i_p 8 vec4
+I e635df33 i_n 12 vec4
+I e635df33 i_an 15 vec4
+I e635df33 i_bs 14 vec4
+I e635df33 i_as 13 vec4
 I e635df33 a_sky 9 vec4
 B e635df33 frag 1 2216
 U e635df33 frag u_cascade_vp 0 mat4 5 64
@@ -7394,7 +7400,7 @@ T e635df33 u_tershadow 9
 T e635df33 u_tershadow_aux 10
 T e635df33 u_ts_height 11
 P 7b87e0f2 skin.vert strands.frag #define STRANDS;#define INST;#define DOM;
-B 7b87e0f2 vert 0 10516
+B 7b87e0f2 vert 0 10544
 U 7b87e0f2 vert u_model 0 mat4 1 0
 U 7b87e0f2 vert u_bones 64 mat4 160 64
 U 7b87e0f2 vert u_skinned 10304 float 1 0
@@ -7402,6 +7408,8 @@ U 7b87e0f2 vert u_view 10320 mat4 1 0
 U 7b87e0f2 vert u_proj 10384 mat4 1 0
 U 7b87e0f2 vert u_light_vp 10448 mat4 1 0
 U 7b87e0f2 vert u_strand_minr 10512 float 1 0
+U 7b87e0f2 vert u_strand_c 10528 vec3 1 0
+U 7b87e0f2 vert u_strand_rmax 10540 float 1 0
 I 7b87e0f2 a_weights 6 vec4
 I 7b87e0f2 a_joints 5 vec4
 I 7b87e0f2 a_weights1 11 vec4
@@ -7410,12 +7418,13 @@ I 7b87e0f2 a_pos 0 vec3
 I 7b87e0f2 a_nrm 1 vec3
 I 7b87e0f2 a_uv 2 vec2
 I 7b87e0f2 a_col 7 vec4
-I 7b87e0f2 i_a1 4 vec4
-I 7b87e0f2 i_b0 13 vec4
-I 7b87e0f2 i_a0 3 vec4
-I 7b87e0f2 i_b1 14 vec4
-I 7b87e0f2 i_a3 12 vec4
-I 7b87e0f2 i_a2 8 vec4
+I 7b87e0f2 i_a 3 vec4
+I 7b87e0f2 i_b 4 vec4
+I 7b87e0f2 i_p 8 vec4
+I 7b87e0f2 i_n 12 vec4
+I 7b87e0f2 i_an 15 vec4
+I 7b87e0f2 i_bs 14 vec4
+I 7b87e0f2 i_as 13 vec4
 I 7b87e0f2 a_sky 9 vec4
 B 7b87e0f2 frag 1 2216
 U 7b87e0f2 frag u_cascade_vp 0 mat4 5 64

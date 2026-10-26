@@ -187,31 +187,47 @@ export function model_set_texture(render3d_st: mut Render3dState, model: Model, 
 # two (a segment's other end, in the same record), one instance a segment;
 # the model's mesh the segment's quad (skin.vert STRANDS INST). Its strands then drawn by strands.ludic as a groom's
 @alloc_ok("a look put on: an event, not a frame")
+# A head of hair's strand points (art/character/hair strands_mh.py pack_points), Unreal's packed control points (FPackedHairVertex:
+# position as three halves from the groom's centre, u 8 bits, radius 6 bits of the groom's largest, type 2 bits: inside, root, tip) and
+# what we bake beside them: the hair toward the sky (four halves: x + yzw.L) and the skin's normal at the root (octahedral, 2 x 8 bits) with
+# the strand's seed (8 bits, Unreal's RandHelper(255) / 255). 20 bytes a point after a 32-byte header ("STR2", the count, the centre, the
+# largest radius); one point of padding before and two after. Each instance is a segment (skin.vert INST): the same buffer read at four
+# offsets gives its previous point, its two ends and the next, the tangents made from them as Unreal's tangent pass makes them
+const ST_REC: int = 20
+const ST_MAGIC: int = 0x32525453              # "STR2"
 export function model_set_strand_points(render3d_st: mut Render3dState, model: Model, path: string) -> bool {
   if model == null or not Fs.exists(path) { return false }
   let b = Fs.read_bytes(path)
   if b == null { return false }
-  let n = len(b) / 96
-  if n < 1 {
+  if len(b) < 32 + 3 * ST_REC or mem_get_i32(data_of(b), 0) != ST_MAGIC {
     free(b)
     return false
   }
+  let n = mem_get_i32(data_of(b), 4)
+  if 32 + (n + 3) * ST_REC > len(b) or n < 2 {
+    free(b)
+    return false
+  }
+  let cx = float_from_bits(mem_get_f32_bits(data_of(b), 2));  let cy = float_from_bits(mem_get_f32_bits(data_of(b), 3))
+  let cz = float_from_bits(mem_get_f32_bits(data_of(b), 4));  let rmax = float_from_bits(mem_get_f32_bits(data_of(b), 5))
   let buf = gpu_buffer_new(render3d_st)
-  gpu_buffer_upload(render3d_st, buf, n * 96, data_of(b), GPU_STATIC)
+  gpu_buffer_upload(render3d_st, buf, (n + 3) * ST_REC, mem_off(data_of(b), 32), GPU_STATIC)
   free(b)
   for pi in 0 .. len(model.prims) {
     let pr = model.prims[pi]
     let m = pr.mesh
     gpu_mesh_bind_instances(render3d_st, m, buf)
-    gpu_mesh_attr_inst(render3d_st, m, 3, 4, GPU_F32, 96, 0)
-    gpu_mesh_attr_inst(render3d_st, m, 4, 4, GPU_F32, 96, 16)
-    gpu_mesh_attr_inst(render3d_st, m, 8, 4, GPU_F32, 96, 32)
-    gpu_mesh_attr_inst(render3d_st, m, 12, 4, GPU_F32, 96, 48)
-    gpu_mesh_attr_inst(render3d_st, m, 13, 4, GPU_F32, 96, 64)
-    gpu_mesh_attr_inst(render3d_st, m, 14, 4, GPU_F32, 96, 80)
+    gpu_mesh_attr_inst(render3d_st, m, 8, 4, GPU_U16, ST_REC, 0)                # the previous point
+    gpu_mesh_attr_inst(render3d_st, m, 3, 4, GPU_U16, ST_REC, ST_REC)           # A
+    gpu_mesh_attr_inst(render3d_st, m, 13, 4, GPU_U16, ST_REC, ST_REC + 8)      # its sky
+    gpu_mesh_record(m, 15, 4, GPU_U8, ST_REC, ST_REC + 16, true, true)          # its root's normal and seed
+    gpu_mesh_attr_inst(render3d_st, m, 4, 4, GPU_U16, ST_REC, 2 * ST_REC)       # B
+    gpu_mesh_attr_inst(render3d_st, m, 14, 4, GPU_U16, ST_REC, 2 * ST_REC + 8)  # its sky
+    gpu_mesh_attr_inst(render3d_st, m, 12, 4, GPU_U16, ST_REC, 3 * ST_REC)      # the next point
     gpu_mesh_done(render3d_st, m)
     if pi == 0 { pr.inst_buf = buf }
     pr.inst_n = n
+    pr.st_cx = cx;  pr.st_cy = cy;  pr.st_cz = cz;  pr.st_rmax = rmax
   }
   return true
 }
