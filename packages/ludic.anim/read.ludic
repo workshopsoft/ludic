@@ -59,7 +59,7 @@ function read_one(anim_st: AnimState, render3d_st: mut Render3dState, a: Val) ->
   }
   if n_keep == 0 { return null }
   let c = new Clip
-  c.name = nm[0 .. len(nm)]              # a copy: the document goes, strings and all, at the next load
+  c.name = nm[0..len(nm)]              # a copy: the document goes, strings and all, at the next load
   c.n = n_keep
   c.cnode = words(n_keep)
   c.cpath = words(n_keep)
@@ -68,6 +68,9 @@ function read_one(anim_st: AnimState, render3d_st: mut Render3dState, a: Val) ->
   c.cvoff = words(n_keep)
   c.times = floats(n_t)
   c.vals = floats(n_v)
+  c.crest = floats(n_keep * 3)
+  var nodes: Val = null
+  if value_has(render3d_st.gltf_doc, "nodes") != 0 { nodes = value_get(render3d_st.gltf_doc, "nodes") }
   var k = 0
   var at = 0
   var av = 0
@@ -78,6 +81,11 @@ function read_one(anim_st: AnimState, render3d_st: mut Render3dState, a: Val) ->
     let sp = value_at(samps, value_as_int(value_get(ch, "sampler")))
     c.cnode[k] = value_as_int(value_get(value_get(ch, "target"), "node"))
     if path == "rotation" { c.cpath[k] = AC_ROT } else { c.cpath[k] = AC_POS }
+    let tn = c.cnode[k]
+    if nodes != null and tn >= 0 and tn < value_count(nodes) and value_has(value_at(nodes, tn), "translation") != 0 {
+      let tr = value_get(value_at(nodes, tn), "translation")
+      for e in 0 .. 3 { c.crest[k * 3 + e] = value_as_float(value_at(tr, e)) }
+    }
     let tb = gltf_accessor_floats(render3d_st, value_as_int(value_get(sp, "input")))
     let nk = render3d_st.gltf_count
     c.ckeys[k] = nk

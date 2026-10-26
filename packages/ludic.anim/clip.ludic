@@ -14,6 +14,8 @@ export property Clip {
   cvoff: words,                    # where it starts in `vals`
   times: floats,
   vals:  floats,
+  crest: floats,                   # 3 per channel: its node's rest translation in the clip's own file (a translation key is a
+                                   # place measured against it: mix.ludic puts it on the skin's own bone)
   oz:    pointer = null,           # the clip built in ozz for a skeleton of oz_n joints (ozz_play.ludic), made the first time it is sampled
   oz_n:  int = 0,
   oz_p:  int = 0            # 1 when it was built with its translations

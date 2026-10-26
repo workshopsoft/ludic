@@ -114,6 +114,32 @@ program AnimTest {
     expect_near(sk.pose_t[4], 2.0, 0.0001)
   }
 
+  # a translation keyed on another rig's bone (1 m up) goes on this skin's own bone: a constant key is the bone's
+  # length there, not here, and a move away from that rig's rest is scaled by the bones' ratio
+  test "a translation keyed on a rig of other proportions lands on the skin's own bone" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    anim_set_positions(anim_st, true)
+    render3d_st.gltf_doc = Json.parse("{\"nodes\": [{\"name\": \"root\", \"children\": [1]}, {\"name\": \"bone\", \"translation\": [0, 0.8, 0]}], \"skins\": [{\"joints\": [0, 1]}]}")
+    let short = skin_load(render3d_st, 0)
+    let same = skin(render3d_st)
+    let c = turn("t")
+    c.cpath[0] = AC_POS
+    c.crest = floats(3)
+    c.crest[1] = 1.0
+    c.vals[1] = 1.0                       # held at the keyed rig's rest: its bone length
+    c.vals[4] = 1.0
+    anim_play(anim_st, short, c, 0.0, null, 0.0, 0.0)
+    expect_near(short.pose_t[4], 0.0, 0.0001)
+    anim_play(anim_st, same, c, 0.0, null, 0.0, 0.0)
+    expect_near(same.pose_t[4], 0.0, 0.0001)
+    c.vals[1] = 1.2                       # 0.2 m up from that rest: 0.16 on a bone of 0.8
+    c.vals[4] = 1.2
+    anim_play(anim_st, short, c, 0.0, null, 0.0, 0.0)
+    expect_near(short.pose_t[4], 0.16, 0.0001)
+    anim_play(anim_st, same, c, 0.0, null, 0.0, 0.0)
+    expect_near(same.pose_t[4], 0.2, 0.0001)
+    anim_set_positions(anim_st, false)
+  }
+
   function put_f(b: []byte, at: int, x: float) -> void {
     let v = float_bits(x)
     b[at] = v & 255

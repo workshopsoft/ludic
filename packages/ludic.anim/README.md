@@ -20,7 +20,7 @@ anim_play(sk, walk, t, idle, t2, 0.3)              # 70% walk, 30% idle, into th
 
 | | |
 | --- | --- |
-| `Clip { name, dur, n, cnode, cpath, ckeys, coff, cvoff, times, vals }`, `AC_ROT`, `AC_POS` | a clip, its channels flattened: a channel's keys are `times[coff..coff+ckeys]`, its values 4 (rotation) or 3 (translation) per key from `cvoff` |
+| `Clip { name, dur, n, cnode, cpath, ckeys, coff, cvoff, times, vals, crest }`, `AC_ROT`, `AC_POS` | a clip, its channels flattened: a channel's keys are `times[coff..coff+ckeys]`, its values 4 (rotation) or 3 (translation) per key from `cvoff`; `crest` the clip file's rest translation per channel (a translation key is put on the skin's own bone as a move from it, scaled by the bones' length ratio: one library plays on bodies of other proportions) |
 | `anim_read_doc(dir) -> int` | every rotation and translation channel of every animation in `gltf_doc`, reading the `.bin` beside it in `dir`; how many clips were new |
 | `anim_find(name) -> Clip`, `anim_count()`, `anim_add(c) -> bool`, `anim_clear()` | the table, by name; a name already held is skipped on read and refused on add |
 | `anim_play(sk, a, ta, b, tb, blend) -> bool` | `a` at `ta`, cross-faded toward `b` at `tb` by `blend` (0 all a, 1 all b; `b` may be null), folded into the joint matrices |

@@ -46,9 +46,32 @@ export function mix_clip(anim_st: mut AnimState, c: Clip, sk: Skin, tt: float, w
         }
         if (ex & 2) != 0 { anim_st.v_a[1] = anim_st.v_b[1] }
       }
+      pos_onto_skin(anim_st, c, ch, sk, node, add)
       mix_pos(anim_st, node, w, pos, hit)
     }
   }
+}
+
+# A translation key (in anim_st.v_a) put on the skin's own bone. The clip was keyed on its file's rig, whose bones
+# may be longer or shorter than this skin's (one clip library, several bodies): the key is taken as a move away
+# from the clip rig's rest, scaled by how much longer the skin's bone is, and put on the skin's rest. A constant
+# channel (a bone's length, not a motion) so becomes the skin's own bone, and the hips' bob grows with the legs.
+# The skin of the clip's own rig gets the key unchanged, and so does every skin for a clip made in code (no `crest`:
+# keyed for the skin it plays on). An additive key (a change already) is only scaled.
+function pos_onto_skin(anim_st: mut AnimState, c: Clip, ch: int, sk: Skin, node: int, add: bool) -> void {
+  if c.crest == null { return }
+  let rx = c.crest[ch * 3];  let ry = c.crest[ch * 3 + 1];  let rz = c.crest[ch * 3 + 2]
+  let sx = sk.rest_t[node * 3];  let sy = sk.rest_t[node * 3 + 1];  let sz = sk.rest_t[node * 3 + 2]
+  let lc = Math.sqrt(rx * rx + ry * ry + rz * rz)
+  var k = 1.0
+  if lc > 0.00001 { k = Math.sqrt(sx * sx + sy * sy + sz * sz) / lc }
+  if add {
+    for e in 0 .. 3 { anim_st.v_a[e] = anim_st.v_a[e] * k }
+    return
+  }
+  anim_st.v_a[0] = sx + (anim_st.v_a[0] - rx) * k
+  anim_st.v_a[1] = sy + (anim_st.v_a[1] - ry) * k
+  anim_st.v_a[2] = sz + (anim_st.v_a[2] - rz) * k
 }
 
 # the key pair round t and how far between them
