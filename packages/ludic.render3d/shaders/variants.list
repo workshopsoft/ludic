@@ -54,6 +54,7 @@ skin.vert|model.frag|
 skin.vert|model.frag|#define ALPHA_TEST;
 skin.vert|model.frag|#define TRANSLUCENT;
 skin.vert|model.frag|#define FABRIC;
+skin.vert|model.frag|#define FABRIC;#define ALPHA_TEST;
 skin.vert|outline.frag|#define OUTLINE;
 skin.vert|outline.frag|#define OUTLINE;#define ALPHA_TEST;
 skin.vert|shadow.frag|#define SHADOW_PASS;

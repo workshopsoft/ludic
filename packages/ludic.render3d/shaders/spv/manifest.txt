@@ -4012,7 +4012,7 @@ I 6d5ca03e a_pos 0 vec3
 I 6d5ca03e a_nrm 1 vec3
 I 6d5ca03e a_uv 2 vec2
 I 6d5ca03e a_col 7 vec4
-B 6d5ca03e frag 1 2368
+B 6d5ca03e frag 1 2372
 U 6d5ca03e frag u_cascade_vp 0 mat4 5 64
 U 6d5ca03e frag u_cascade_split 320 float 5 16
 U 6d5ca03e frag u_cascade_range 400 float 5 16
@@ -4070,6 +4070,7 @@ U 6d5ca03e frag u_tint 2064 vec3 1 0
 U 6d5ca03e frag u_rough_scale 2076 float 1 0
 U 6d5ca03e frag u_emissive 2080 float 1 0
 U 6d5ca03e frag u_fp 2096 vec4 17 16
+U 6d5ca03e frag u_dither_frame 2368 float 1 0
 T 6d5ca03e u_arm 2
 T 6d5ca03e u_blade_tex 3
 T 6d5ca03e u_brdf 4
@@ -4087,6 +4088,98 @@ T 6d5ca03e u_shadow 15
 T 6d5ca03e u_tershadow 16
 T 6d5ca03e u_tershadow_aux 17
 T 6d5ca03e u_ts_height 18
+P 30b20cc2 skin.vert model.frag #define FABRIC;#define ALPHA_TEST;
+B 30b20cc2 vert 0 10512
+U 30b20cc2 vert u_model 0 mat4 1 0
+U 30b20cc2 vert u_bones 64 mat4 160 64
+U 30b20cc2 vert u_skinned 10304 float 1 0
+U 30b20cc2 vert u_view 10320 mat4 1 0
+U 30b20cc2 vert u_proj 10384 mat4 1 0
+U 30b20cc2 vert u_light_vp 10448 mat4 1 0
+I 30b20cc2 a_weights 6 vec4
+I 30b20cc2 a_joints 5 vec4
+I 30b20cc2 a_weights1 11 vec4
+I 30b20cc2 a_joints1 10 vec4
+I 30b20cc2 a_pos 0 vec3
+I 30b20cc2 a_nrm 1 vec3
+I 30b20cc2 a_uv 2 vec2
+I 30b20cc2 a_col 7 vec4
+B 30b20cc2 frag 1 2372
+U 30b20cc2 frag u_cascade_vp 0 mat4 5 64
+U 30b20cc2 frag u_cascade_split 320 float 5 16
+U 30b20cc2 frag u_cascade_range 400 float 5 16
+U 30b20cc2 frag u_cascade_texel 480 float 5 16
+U 30b20cc2 frag u_sun_dir 560 vec3 1 0
+U 30b20cc2 frag u_sun_color 576 vec3 1 0
+U 30b20cc2 frag u_cam_pos 592 vec3 1 0
+U 30b20cc2 frag u_prefilter_levels 604 float 1 0
+U 30b20cc2 frag u_fog_density 608 float 1 0
+U 30b20cc2 frag u_fog_height_falloff 612 float 1 0
+U 30b20cc2 frag u_fog_base 616 float 1 0
+U 30b20cc2 frag u_clip_y 620 float 1 0
+U 30b20cc2 frag u_spec_scale 624 float 1 0
+U 30b20cc2 frag u_sky_rot 632 vec2 1 0
+U 30b20cc2 frag u_ground_alb 640 vec3 1 0
+U 30b20cc2 frag u_ground_alb_hi 656 vec3 1 0
+U 30b20cc2 frag u_ground_hi_y 668 float 1 0
+U 30b20cc2 frag u_ground_hi_w 672 float 1 0
+U 30b20cc2 frag u_ibl_scale 688 vec3 1 0
+U 30b20cc2 frag u_daylight 700 float 1 0
+U 30b20cc2 frag u_fire_pos 704 vec3 1 0
+U 30b20cc2 frag u_fire_color 720 vec3 1 0
+U 30b20cc2 frag u_hand_pos 736 vec3 1 0
+U 30b20cc2 frag u_hand_color 752 vec3 1 0
+U 30b20cc2 frag u_hand_dir 768 vec3 1 0
+U 30b20cc2 frag u_hand_cone 780 float 1 0
+U 30b20cc2 frag u_hand_reach 784 float 1 0
+U 30b20cc2 frag u_ts_origin 792 vec2 1 0
+U 30b20cc2 frag u_ts_half 800 float 1 0
+U 30b20cc2 frag u_ts_on 804 float 1 0
+U 30b20cc2 frag u_force_cascade 808 int 1 0
+U 30b20cc2 frag u_shadow_tan_max 812 float 1 0
+U 30b20cc2 frag u_cloud_shadow 816 float 1 0
+U 30b20cc2 frag u_time 820 float 1 0
+U 30b20cc2 frag u_lz 832 vec4 32 16
+U 30b20cc2 frag u_lz_n 1344 int 1 0
+U 30b20cc2 frag u_zl 1360 vec4 32 16
+U 30b20cc2 frag u_zl_n 1872 int 1 0
+U 30b20cc2 frag u_zl_color 1888 vec3 1 0
+U 30b20cc2 frag u_zl_reach 1900 float 1 0
+U 30b20cc2 frag u_fog_inscatter 1904 float 1 0
+U 30b20cc2 frag u_fog_desat 1908 float 1 0
+U 30b20cc2 frag u_fog_wall 1912 float 1 0
+U 30b20cc2 frag u_fog_haze 1916 float 1 0
+U 30b20cc2 frag u_fog_cut 1920 vec2 1 0
+U 30b20cc2 frag u_sky_relight 1928 float 1 0
+U 30b20cc2 frag u_model_h 1932 float 1 0
+U 30b20cc2 frag u_fac_base_inv 1936 vec4 1 0
+U 30b20cc2 frag u_fac_mr_inv 1952 vec2 1 0
+U 30b20cc2 frag u_mr_scale 1960 vec2 1 0
+U 30b20cc2 frag u_fac_coat 1968 vec2 1 0
+U 30b20cc2 frag u_fac_emis 1984 vec3 1 0
+U 30b20cc2 frag u_view 2000 mat4 1 0
+U 30b20cc2 frag u_tint 2064 vec3 1 0
+U 30b20cc2 frag u_rough_scale 2076 float 1 0
+U 30b20cc2 frag u_emissive 2080 float 1 0
+U 30b20cc2 frag u_fp 2096 vec4 17 16
+U 30b20cc2 frag u_dither_frame 2368 float 1 0
+T 30b20cc2 u_arm 2
+T 30b20cc2 u_blade_tex 3
+T 30b20cc2 u_brdf 4
+T 30b20cc2 u_diff 5
+T 30b20cc2 u_fdn 6
+T 30b20cc2 u_fdnb 7
+T 30b20cc2 u_fkit 8
+T 30b20cc2 u_fkitb 9
+T 30b20cc2 u_fmask 10
+T 30b20cc2 u_irradiance 11
+T 30b20cc2 u_nrm 12
+T 30b20cc2 u_prefilter 13
+T 30b20cc2 u_scene_depth 14
+T 30b20cc2 u_shadow 15
+T 30b20cc2 u_tershadow 16
+T 30b20cc2 u_tershadow_aux 17
+T 30b20cc2 u_ts_height 18
 P 9068df1c skin.vert outline.frag #define OUTLINE;
 B 9068df1c vert 0 10516
 U 9068df1c vert u_model 0 mat4 1 0
@@ -6201,4 +6294,4 @@ T 874fe6bc u_shadow 6
 T 874fe6bc u_tershadow 7
 T 874fe6bc u_tershadow_aux 8
 T 874fe6bc u_ts_height 9
-E 77
+E 78

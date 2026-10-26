@@ -45,6 +45,7 @@ uniform sampler2D u_fkit;     // material A's tiled maps: R detail variation, G 
 uniform sampler2D u_fdn;      // material A's tiled normals: RG detail, BA wrinkles (x, y in glTF's frame)
 uniform sampler2D u_fkitb;    // material B's tiled maps, as u_fkit
 uniform sampler2D u_fdnb;     // material B's detail normal in RG, the pilling normal in BA
+uniform float u_dither_frame; // the frame's index (0..63): a hair card's dithered opacity moves each frame, for the temporal resolve
 #endif
 #ifdef GBLADE
 in vec3 v_tint;               // grass.vert's colour field (the mesh-shader and scatter blades work it out here)
@@ -85,6 +86,61 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   float invmax = inversesqrt(max(dot(T, T), dot(B, B)) + 1e-12);
   return mat3(T * invmax, B * invmax, N);
 }
+
+#ifdef FABRIC
+// ---- hair cards (mode 3): Epic's HairShading (HairBsdf.ush) with the cards' transmittance data (InitHairTransmittanceData: legacy
+// absorption, a separable R, no backlit), the material M_hair_v4 feeds it (MF_Variation, GetHairColorFromMelanin's absorption) -------
+float hairG(float B, float theta) { return exp(-0.5 * theta * theta / (B * B)) / (sqrt(2.0 * PI) * max(B, 0.01)); }
+float hairF(float cosT) { float f0 = 0.0465; float m = 1.0 - cosT; return f0 + (1.0 - f0) * m * m * m * m * m; }
+// T along the strand, V and L toward the eye and the light: the light it scatters toward the eye (no cosine: the lobes carry it)
+vec3 hairShading(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, float area) {
+  float r = clamp(rough, 1.0 / 255.0, 1.0);
+  float VoL = dot(V, L);
+  float sinL = clamp(dot(T, L), -1.0, 1.0);
+  float sinV = clamp(dot(T, V), -1.0, 1.0);
+  float cosD = cos(0.5 * abs(asin(sinV) - asin(sinL)));
+  vec3 Lp = L - sinL * T;
+  vec3 Vp = V - sinV * T;
+  float cosPhi = dot(Lp, Vp) * inversesqrt(dot(Lp, Lp) * dot(Vp, Vp) + 1e-4);
+  float cosHalfPhi = sqrt(clamp(0.5 + 0.5 * cosPhi, 0.0, 1.0));
+  float np = 1.19 / cosD + 0.36 * cosD;
+  float shift = 0.035;
+  float b0 = area + r * r, b1 = area + r * r * 0.5, b2 = area + r * r * 2.0;
+  vec3 S = vec3(0.0);
+  // R
+  float sa = sin(-shift * 2.0), ca = cos(-shift * 2.0);
+  float shiftR = 2.0 * sa * (ca * cosHalfPhi * sqrt(1.0 - sinV * sinV) + sa * sinV);
+  S += vec3(hairG(b0 * sqrt(2.0) * cosHalfPhi, sinL + sinV - shiftR) * 0.25 * cosHalfPhi * hairF(sqrt(clamp(0.5 + 0.5 * VoL, 0.0, 1.0))) * spec * 2.0);
+  // TT
+  float a = 1.0 / np;
+  float h = cosHalfPhi * (1.0 + a * (0.6 - 0.8 * cosPhi));
+  float f = hairF(cosD * sqrt(clamp(1.0 - h * h, 0.0, 1.0)));
+  vec3 tp = pow(abs(base), vec3(0.5 * sqrt(max(1.0 - (h * a) * (h * a), 0.0)) / cosD));
+  S += hairG(b1, sinL + sinV - shift) * exp(-3.65 * cosPhi - 3.98) * (1.0 - f) * (1.0 - f) * tp;
+  // TRT
+  float f2 = hairF(cosD * 0.5);
+  S += hairG(b2, sinL + sinV - shift * 4.0) * exp(17.0 * cosPhi - 16.78) * (1.0 - f2) * (1.0 - f2) * f2 * pow(abs(base), vec3(0.8 / cosD));
+  // the light scattered through many strands: KajiyaKayDiffuseAttenuation's shape (a wrapped term on the normal facing the eye, a third of
+  // Kajiya-Kay), with the hair's colour as its albedo. M_hair_v4's cards leave Scatter at 0 (Unreal lights them with the three lobes and
+  // the groom's voxel scattering, which cards have none of here); its sqrt(colour) at a scatter of 1 lifted black hair to grey, and the
+  // looks' colours (the dye) are the colours Unreal's renders show, which an albedo of them gives back
+  float kk = 1.0 - abs(dot(T, L));
+  vec3 fakeN = normalize(V - T * dot(V, T) + vec3(0.0, 1e-4, 0.0));
+  float nol = clamp((dot(fakeN, L) + 1.0) / 4.0, 0.0, 1.0);
+  S += abs(base) * (1.0 / PI) * mix(nol, kk, 0.33);
+  return max(S, vec3(0.0));
+}
+// MF_Variation: the signal to a power the strand's seed picks (1 + v at 0, 1 at 0.5, 1 / (1 + v) at 1)
+float hairVar(float v, float sgl, float seed) {
+  float t = seed * 2.0;
+  float lo = pow(max(sgl, 0.0), 1.0 + v), hi = pow(max(sgl, 0.0), 1.0 / (1.0 + v));
+  return mix(mix(lo, sgl, clamp(t, 0.0, 1.0)), hi, clamp(t - 1.0, 0.0, 1.0));
+}
+// HairAbsorptionToColor / HairColorToAbsorption (B 0.3), HairShadingCommon.ush
+const float HAIR_D = 5.969 - 0.215 * 0.3 + 2.532 * 0.09 - 10.73 * 0.027 + 5.574 * 0.0081 + 0.245 * 0.00243;
+vec3 hairAbsorption(vec3 c) { vec3 l = log(max(c, vec3(1e-4))) / HAIR_D; return l * l; }
+vec3 hairColour(vec3 a) { return exp(-sqrt(a) * HAIR_D); }
+#endif
 
 #ifdef FABRIC
 // Unreal's Blend_Overlay, a channel at a time
@@ -279,6 +335,10 @@ void main() {
   if (meshAlpha < 0.002) discard;
 #endif
 #ifdef ALPHA_TEST
+#ifdef FABRIC
+  // (a hair card's coverage is its groom's atlas, tested in its own mode below: the colour texture's alpha is not its cut)
+  if (u_fp[16].w < 2.5) {
+#endif
   // A needle sprig's alpha averages away in the mips, so a plain 0.5 test strips the
   // crown bare past 50 m. Scale the alpha back up by the mip level (Castano's alpha
   // mipmaps, done at sample time) and sharpen the edge with its screen derivative, then
@@ -288,6 +348,9 @@ void main() {
   float cov = (a - 0.4) / max(fwidth(a), 1e-4) + 0.5;
   if (cov < 0.02) discard;
   meshAlpha = clamp(cov, 0.0, 1.0);
+#ifdef FABRIC
+  }
+#endif
 #endif
   vec3 tn = texture(u_nrm, v_uv).rgb * 2.0 - 1.0;
   mat3 tbn = cotangentFrame(N, v_wpos, v_uv);
@@ -297,7 +360,39 @@ void main() {
   if (u_mr_scale.x > 0.0 && u_mr_scale != vec2(1.0)) arm.gb = texture(u_arm, v_uv * u_mr_scale).gb;
   arm.gb *= vec2(1.0) - u_fac_mr_inv;
 #ifdef FABRIC
-  if (u_fp[16].w > 1.5) {
+  vec3 hT = vec3(0.0);
+  float hRough = 0.5, hSpec = 0.5, hAO = 1.0;
+  if (u_fp[16].w > 2.5) {
+    // a hair card (u_fp: 0 the dye (linear), 1 melanin variation fine and rough, the roughness, its variation, 2 Spec0, Spec1, SpecEdge,
+    // SpecFront, 3 scraggle, opacity scale and power, 4 the cards' tile in the atlas: u, v, size). The groom's atlases: u_fmask R
+    // coverage, G depth, B seed; u_fkit RGB the strand's direction in the card's frame, A its coordinate (1 at the root)
+    vec2 auv = (v_uv - u_fp[4].xy) / u_fp[4].z;
+    vec4 at = texture(u_fmask, auv);
+    vec4 tg = texture(u_fkit, auv);
+    float seed = at.b;
+    // the sky a strand sees: a strand deep in its clump (the atlas's depth) sees little of it. Unreal shades a groom's sky through its
+    // voxelised density (the strands' own occlusion); a card has its clump's depth instead
+    hAO = mix(1.0, 0.15, clamp(at.g, 0.0, 1.0));
+    // the opacity mask: DitherTemporalAA (the mask plus a sixth of a per-pixel noise, a new pattern each frame) of pow(coverage x scale,
+    // power), clipped at M_hair_v4's 0.33
+    float op = pow(max(at.r * u_fp[3].y, 0.0), u_fp[3].z);
+    float dth = fract(ign(gl_FragCoord.xy) + u_dither_frame * 0.6180340);
+    if (op + 0.1666 * dth < 0.33) discard;
+    // the colour: the dye's absorption, more or less by the strand (MF_Hair_Color's melanin variation, fine to rough by the roughness)
+    float mv = mix(u_fp[1].x, u_fp[1].y, clamp(u_fp[1].z * 2.0, 0.0, 1.0));
+    float k = hairVar(mv, 0.5, seed) / 0.5;
+    alb = hairColour(hairAbsorption(u_fp[0].rgb) * k);
+    hRough = hairVar(u_fp[1].w, u_fp[1].z, seed);
+    hSpec = mix(u_fp[2].y, u_fp[2].x, seed) * mix(u_fp[2].z, u_fp[2].w, 0.5);
+    // the strand: the atlas's direction in the card's plane on the card's own axes (its u and v), scraggled by the seed
+    mat3 hf = cotangentFrame(N, v_wpos, v_uv);
+    vec2 tdir = tg.xy * 2.0 - 1.0;
+    tdir.x += (seed - 0.5) * u_fp[3].x * 2.0;
+    hT = normalize(hf[0] * tdir.x + hf[1] * tdir.y + N * 1e-3);
+    n = N;
+    arm = vec3(1.0, hRough, 0.0);
+    d.rgb = alb;
+  } else if (u_fp[16].w > 1.5) {
     // Epic's M_jeans_nrm_custom_master: the denim baked untinted (fabric.py: the pair's colour over its fabric average, Unreal's power
     // and multiply, the stitches white by their SmoothCurve mask) at half in u_diff; the tints multiplied over it by region (u_fmask:
     // R stitches, G rivets, B the leather patch): colour 1 the denim, 2 the stitches, B's the leather, C's the metal. The weave tiled
@@ -466,6 +561,19 @@ void main() {
   vec3 col = (u_tr.w > 0.5) ? ((u_emissive > 0.0) ? vec3(0.0) : alb) : shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
 #else
   vec3 col = shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
+#ifdef FABRIC
+  // a hair card lit as Epic's hair: the sun through HairShading, the sky as Unreal's hair environment (pi x the shading toward the light
+  // a strand's normal would face, at area 0.2, times the sky there)
+  if (u_fp[16].w > 2.5) {
+    vec3 V = normalize(u_cam_pos - v_wpos);
+    vec4 lzA;
+    float lz = lightZone(v_wpos, lzA);
+    vec3 sunL = hairShading(alb, hRough, hSpec, hT, V, u_sun_dir, 0.0) * u_sun_color * shadow * cloudShadow(v_wpos) * (1.0 - lz);
+    vec3 Lf = normalize(V - hT * dot(V, hT) + vec3(0.0, 1e-4, 0.0));
+    vec3 sky = PI * hairShading(alb, hRough, hSpec, hT, V, Lf, 0.2) * skyIrradiance(Lf) * mix(1.0, lzA.a, lz);
+    col = sane(sunL + sky * hAO + alb * lzA.rgb * lz);
+  }
+#endif
 #ifndef FOLIAGE
   // a clear coat over it (car paint): a second, smooth reflection on the surface's own normal, the paint under it dimmed by it
   if (u_fac_coat.x > 0.0) col = clearCoat(col, v_wpos, N, u_fac_coat.x, u_fac_coat.y, shadow);
@@ -540,6 +648,12 @@ void main() {
   o_color = vec4(sane(col), cardAlpha);
 #else
   o_color = vec4(sane(col), meshAlpha);
+#endif
+#if defined(FABRIC) && defined(ALPHA_TEST)
+  // A hair card writes its own depth, unchanged: a program that may discard after its depth is known is shaded late. Without it, on an
+  // Apple GPU at one sample a pixel, the surfaces behind a card (the scalp) were dropped as hidden by it before its discard ran: holes to
+  // what lay there before the actors (the ground, black where the sky was still to come)
+  gl_FragDepth = gl_FragCoord.z;
 #endif
 #endif
 }

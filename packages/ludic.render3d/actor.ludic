@@ -140,6 +140,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_lit = ac_prog_new(render3d_st, "skin.vert", "model.frag", "")
   render3d_st.ac_lit_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n")
   render3d_st.ac_fab = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n")
+  render3d_st.ac_fab_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n#define ALPHA_TEST\n")
   render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
   render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
@@ -221,6 +222,8 @@ function ac_bind_scene(render3d_st: mut Render3dState, ap: AcProg) -> void {
   sky_bind_lighting(render3d_st, p)
   shadow_bind(render3d_st, p)
   fog_bind(render3d_st, p)
+  # a hair card's dithered opacity (model.frag FABRIC mode 3): a new pattern each frame for the temporal resolve to average
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dither_frame"), float(render3d_st.ac_frame % 64))
 }
 function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool {
   if a.model == null { return false }
@@ -310,6 +313,11 @@ function ac_fab_tex(render3d_st: mut Render3dState, unit: int, pr: Prim, k: int)
   var id = pr.ftex[k]
   if id == 0 { id = pr.ftex[0] }
   gpu_tex_unit(render3d_st, unit);  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+}
+function ac_fabric_mode(m: Model) -> int {
+  if m == null { return 0 }
+  for i in 0 .. len(m.prims) { if m.prims[i].fab != null { return int(m.prims[i].fab[67]) } }
+  return 0
 }
 function ac_has_fabric(m: Model) -> bool {
   if m == null { return false }
@@ -442,6 +450,9 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     # a garment's fabric is opaque cloth (its part may be marked cut-out with the hair's: the program has no alpha test)
     let fab = ac_has_fabric(a.model)
     if fab { ap = render3d_st.ac_fab } else if a.cutout { ap = render3d_st.ac_lit_cut }
+    # a hair card (fabric mode 3) discards by its coverage: drawn as a cut-out (with only the plain fabric program, the cards' discarded
+    # texels kept the depth of what lay behind from being drawn on this GPU: holes to the ground and black against the sky)
+    if fab and ac_fabric_mode(a.model) == 3 { ap = render3d_st.ac_fab_cut }
     ac_bind_scene(render3d_st, ap)
     # a cut-out's edge (a hair card's, a flame's) resolved by the samples' coverage, as the foliage's is (model.frag ALPHA_TEST)
     let a2c = a.cutout and not fab and render3d_st.sc_a2c
