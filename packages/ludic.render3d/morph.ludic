@@ -182,6 +182,40 @@ export function model_set_texture(render3d_st: mut Render3dState, model: Model, 
 # The model's surface detail from PNGs beside its colour: a normal map (tangent space, glTF's: green up) and an
 # occlusion/roughness/metal map (R, G, B), both linear. "" keeps what the model has. True when both given loaded
 @alloc_ok("a look put on: an event, not a frame")
+# A head of hair as strands (a groom's strand points, the parts converter's strands_mh.py: <part>.bin beside its glb): 96 bytes a point,
+# its four vec4s (position and radius, tangent and u, the hair toward the sky, the skin's normal and seed) then the next point's first
+# two (a segment's other end, in the same record), one instance a segment;
+# the model's mesh the segment's quad (skin.vert STRANDS INST). Its strands then drawn by strands.ludic as a groom's
+@alloc_ok("a look put on: an event, not a frame")
+export function model_set_strand_points(render3d_st: mut Render3dState, model: Model, path: string) -> bool {
+  if model == null or not Fs.exists(path) { return false }
+  let b = Fs.read_bytes(path)
+  if b == null { return false }
+  let n = len(b) / 96
+  if n < 1 {
+    free(b)
+    return false
+  }
+  let buf = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, buf, n * 96, data_of(b), GPU_STATIC)
+  free(b)
+  for pi in 0 .. len(model.prims) {
+    let pr = model.prims[pi]
+    let m = pr.mesh
+    gpu_mesh_bind_instances(render3d_st, m, buf)
+    gpu_mesh_attr_inst(render3d_st, m, 3, 4, GPU_F32, 96, 0)
+    gpu_mesh_attr_inst(render3d_st, m, 4, 4, GPU_F32, 96, 16)
+    gpu_mesh_attr_inst(render3d_st, m, 8, 4, GPU_F32, 96, 32)
+    gpu_mesh_attr_inst(render3d_st, m, 12, 4, GPU_F32, 96, 48)
+    gpu_mesh_attr_inst(render3d_st, m, 13, 4, GPU_F32, 96, 64)
+    gpu_mesh_attr_inst(render3d_st, m, 14, 4, GPU_F32, 96, 80)
+    gpu_mesh_done(render3d_st, m)
+    if pi == 0 { pr.inst_buf = buf }
+    pr.inst_n = n
+  }
+  return true
+}
+
 # A MetaHuman face's head at its own full resolution (Unreal's T_Head_N and T_Head_SRMF, 8K there; the parts converter's head_maps.py):
 # one map, RGB the normal (green up), A the roughness, over the head's own uvs, which the look's atlas packs into its quadrant u, v < 0.5.
 # The face's programs (model.frag EYE, SSS_SPLIT) read it there in place of the atlas's texels; the atlas keeps the micro detail's tile

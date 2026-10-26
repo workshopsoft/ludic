@@ -23,7 +23,6 @@ import "gpu_enums.ludic"
 
 const GPU_VK: int = 2
 
-
 # Vulkan is the renderer (maroon-lake docs/plan/22). gpu_request stays so a
 # caller that asks for a backend by name still builds; whatever it names, Vulkan is what runs.
 function gpu_request(render3d_st: mut Render3dState, name: string) -> void { render3d_st.gpu_wanted = GPU_VK }
@@ -59,7 +58,6 @@ function gpu_state_forget(render3d_st: mut Render3dState) -> void {
   render3d_st.gpu_s_blend = -1;  render3d_st.gpu_s_blend_src = -1;  render3d_st.gpu_s_blend_dst = -1
   render3d_st.gpu_s_cull = -1;  render3d_st.gpu_s_cull_face = -1;  render3d_st.gpu_s_color_write = -1;  render3d_st.gpu_s_a2c = -1
 }
-
 
 function gpu_depth_test(render3d_st: mut Render3dState, on: bool) -> void {
   let v = gpu_b(on)
@@ -208,7 +206,6 @@ const GF_HDR: int = 9
 const GF_MESH_GRASS: int = 10
 const GF_COUNT: int = 11
 
-
 # 20 for "NVIDIA GeForce RTX 2080", 50 for "RTX 5090"; 30 for a workstation "RTX A4000"
 function gpu_rtx_generation(name: string) -> int {
   let at = Text.index_of(name, "RTX ")
@@ -349,7 +346,7 @@ const GPU_U16: int = 3
 const GPU_STATIC: int = 0
 const GPU_DYNAMIC: int = 1
 const GPU_STREAM: int = 2
-const GPU_MAX_ATTRS: int = 12       # 0 .. 7 the model and instance inputs, 8 and 9 a box kit's anchors (kitbox.ludic)
+const GPU_MAX_ATTRS: int = 16       # 0 .. 7 the model and instance inputs, 8 and 9 a box kit's anchors (kitbox.ludic), 3 .. 14 a head of hair's strand records (skin.vert INST)
 const GPU_ATTR_W: int = 7         # per attribute index: buffer, comps, type, stride, offset, normalized, per instance
 const GPU_MAX_VBUFS: int = 8
 
@@ -401,7 +398,7 @@ function gpu_mesh_record(m: Mesh, index: int, comps: int, type: int, stride: int
 }
 # attribute `index` read from the last vertex buffer (stride 0: tightly packed)
 function gpu_mesh_attr(render3d_st: Render3dState, m: Mesh, index: int, comps: int, type: int, stride: int, offset: int, normalized: bool) -> void {
-  
+
   gpu_mesh_record(m, index, comps, type, stride, offset, normalized, false)
 }
 # the index buffer: 4-byte or 2-byte indices
@@ -418,12 +415,12 @@ function gpu_mesh_done(render3d_st: Render3dState, m: Mesh) -> void { }
 # drawn from different instance buffers (the scatter layers' LOD buckets) is re-pointed here
 # before each draw; on Vulkan that is a vertex-buffer binding, not a change of layout.
 function gpu_mesh_bind_instances(render3d_st: Render3dState, m: Mesh, buf: int) -> void {
-  
+
   m.cur_buf = buf
   m.ibuf = buf
 }
 function gpu_mesh_attr_inst(render3d_st: Render3dState, m: Mesh, index: int, comps: int, type: int, stride: int, offset: int) -> void {
-  
+
   gpu_mesh_record(m, index, comps, type, stride, offset, false, true)
 }
 
