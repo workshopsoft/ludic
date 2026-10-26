@@ -316,6 +316,17 @@ vec3 zoneLamps(vec3 wpos, vec3 n, vec3 albedo) {
 // what is left of the sun at p: 1 outside every light zone, 0 deep inside one
 float sunZone(vec3 p) { vec4 a; return 1.0 - lightZone(p, a); }
 
+// the character light rig (charlight.ludic): this draw's weight of it and its three lights (toward each, world; radiance)
+uniform float u_char_lit;
+uniform vec3 u_cl_dir0;
+uniform vec3 u_cl_dir1;
+uniform vec3 u_cl_dir2;
+uniform vec3 u_cl_col0;
+uniform vec3 u_cl_col1;
+uniform vec3 u_cl_col2;
+vec3 clDir(int i) { return i == 0 ? u_cl_dir0 : (i == 1 ? u_cl_dir1 : u_cl_dir2); }
+vec3 clCol(int i) { return i == 0 ? u_cl_col0 : (i == 1 ? u_cl_col1 : u_cl_col2); }
+
 // a dielectric's reflectance at normal incidence: 0.04, Unreal's Specular 0.5 (0.08 x Specular). A material that keys its own
 // specular sets it before shade() (the jeans: spec_basic_intensity times the weave; a MetaHuman's skin: model.frag)
 float g_dielF0 = 0.04;
@@ -359,6 +370,19 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   float so = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
   // check for NaN before min(): on this GPU min(NaN, x) returns x, which would hide the fault as a hot pixel
   vec3 c = direct + (diffuseIBL * ao + specIBL * so) + bounce * ao + zoneAmb * ao + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
+  // the character rig: the same BRDF as the sun's, unshadowed, half dimmed by the occlusion (a soft studio light reaches into folds)
+  if (u_char_lit > 0.0) {
+    vec3 cl = vec3(0.0);
+    for (int i = 0; i < 3; i++) {
+      vec3 Lc = clDir(i);
+      vec3 Hc = normalize(v + Lc);
+      float nl = max(dot(n, Lc), 0.0);
+      vec3 Fc = F_Schlick(max(dot(v, Hc), 0.0), f0);
+      vec3 sc = min(D_GGX(max(dot(n, Hc), 0.0), a) * V_Smith(NoV, nl, a), 12.0) * Fc * u_spec_scale;
+      cl += ((1.0 - Fc) * (1.0 - metal) * albedo / PI + sc) * clCol(i) * nl;
+    }
+    c += cl * u_char_lit * mix(1.0, ao, 0.5);
+  }
   if (any(isnan(direct)) || any(isnan(diffuseIBL)) || any(isnan(specIBL)) || isnan(so)) return vec3(0.0);
   return sane(min(c, vec3(4096.0)));
 }

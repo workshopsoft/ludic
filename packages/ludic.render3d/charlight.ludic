@@ -1,0 +1,48 @@
+# charlight.ludic - a character light rig: up to three directional lights that fall only on the actors that take them (Actor.char_lit,
+# a weight 0..1; a part following a leader takes its leader's), as a film's character lights do (Unreal's lighting channels for a
+# MetaHuman's key, fill and rim). Each light is set in the camera's frame (x right, y up, z toward the viewer), so a rim stays behind
+# the subject from any side; its colour is radiance, like the sun's. No shadows: a studio's soft lights. lighting.glsl shade() adds it
+# (the skin's subsurface split takes it too) and model.frag's hair cards light by it through their hair shading.
+
+# light i (0..2) in the camera's frame: toward the light (normalised here) and its radiance; black turns it off
+export function charlight_set(render3d_st: mut Render3dState, i: int, dx: float, dy: float, dz: float, r: float, g: float, b: float) -> void {
+  if i < 0 or i > 2 { return }
+  cl_init(render3d_st)
+  let l = Math.sqrt(dx * dx + dy * dy + dz * dz)
+  if l < 0.000001 { return }
+  render3d_st.cl_dir[i * 3] = dx / l;  render3d_st.cl_dir[i * 3 + 1] = dy / l;  render3d_st.cl_dir[i * 3 + 2] = dz / l
+  render3d_st.cl_col[i * 3] = r;  render3d_st.cl_col[i * 3 + 1] = g;  render3d_st.cl_col[i * 3 + 2] = b
+}
+
+# every light off (actors that take the rig then take nothing)
+export function charlight_clear(render3d_st: mut Render3dState) -> void {
+  cl_init(render3d_st)
+  for k in 0 .. 9 { render3d_st.cl_col[k] = 0.0 }
+}
+
+@alloc_ok("the rig's two small arrays, made once")
+function cl_init(render3d_st: mut Render3dState) -> void {
+  if render3d_st.cl_dir != null { return }
+  render3d_st.cl_dir = floats(9)
+  render3d_st.cl_col = floats(9)
+  render3d_st.cl_w = floats(3)
+  for k in 0 .. 9 { render3d_st.cl_dir[k] = 0.0;  render3d_st.cl_col[k] = 0.0 }
+}
+
+# the rig onto a program, its directions turned into the world by the frame's camera (the view's rotation transposed)
+function charlight_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  cl_init(render3d_st)
+  let m = render3d_st.cam_view
+  let w = render3d_st.cl_w
+  for i in 0 .. 3 {
+    for c in 0 .. 3 {
+      w[c] = m[c * 4] * render3d_st.cl_dir[i * 3] + m[c * 4 + 1] * render3d_st.cl_dir[i * 3 + 1] + m[c * 4 + 2] * render3d_st.cl_dir[i * 3 + 2]
+    }
+    var nd = "u_cl_dir0"
+    var nc = "u_cl_col0"
+    if i == 1 { nd = "u_cl_dir1";  nc = "u_cl_col1" }
+    if i == 2 { nd = "u_cl_dir2";  nc = "u_cl_col2" }
+    u_f3(render3d_st, gpu_uniform(render3d_st, prog, nd), w[0], w[1], w[2])
+    u_f3(render3d_st, gpu_uniform(render3d_st, prog, nc), render3d_st.cl_col[i * 3], render3d_st.cl_col[i * 3 + 1], render3d_st.cl_col[i * 3 + 2])
+  }
+}

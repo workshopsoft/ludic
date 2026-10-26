@@ -709,7 +709,12 @@ void main() {
     vec3 sunL = hairShading(alb, hRough, hSpec, hT, V, u_sun_dir, 0.0, hTT) * u_sun_color * shadow * cloudShadow(v_wpos) * (1.0 - lz);
     vec3 Lf = normalize(V - hT * dot(V, hT) + vec3(0.0, 1e-4, 0.0));
     vec3 sky = PI * hairShading(alb, hRough, hSpec, hT, V, Lf, 0.2, 1.0) * skyIrradiance(Lf) * mix(1.0, lzA.a, lz);
-    col = sane(sunL + sky * hAO + alb * lzA.rgb * lz);
+    vec3 rig = vec3(0.0);
+    if (u_char_lit > 0.0) {
+      for (int i = 0; i < 3; i++) rig += hairShading(alb, hRough, hSpec, hT, V, clDir(i), 0.0, hTT) * clCol(i);
+    }
+    // (the hair takes a third of the rig: its cards' specular under a full key bleached dark hair to straw; a third keeps the rim)
+    col = sane(sunL + sky * hAO + alb * lzA.rgb * lz + rig * u_char_lit * 0.3);
   }
 #endif
 #ifndef FOLIAGE

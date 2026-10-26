@@ -38,6 +38,7 @@ property Actor {
   # writing no depth, and casts no shadow unless blend_casts.
   blend:   int = 0,
   alpha:   float = 1.0,        # times the material's alpha (its texture's, its base colour's, its vertices')
+  char_lit: float = 0.0,       # float bits: how much of the character light rig falls on it (charlight.ludic); a part takes its leader's
   soft:    float = 0.0,        # metres it fades over in front of what is behind it (0: a hard edge)
   unlit:   bool = false,       # blended only: base colour x emissive (x 1 at 0), no sun, sky or shadow
   blend_casts: bool = false,   # a blended actor that still casts, alpha-tested at 0.5
@@ -84,6 +85,7 @@ property AcProg {
   l_lvp:    int = -1,
   l_tint:   int = -1,
   l_rough:  int = -1,
+  l_clit:   int = -1,
   l_emis:   int = -1,
   l_view:   int = -1,
   l_proj:   int = -1,
@@ -112,6 +114,7 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   a.l_view = gpu_uniform(render3d_st, p, "u_view");  a.l_proj = gpu_uniform(render3d_st, p, "u_proj");  a.l_mh = gpu_uniform(render3d_st, p, "u_model_h")
   a.l_out = gpu_uniform(render3d_st, p, "u_outline");  a.l_ocol = gpu_uniform(render3d_st, p, "u_outline_col")
   a.l_tr = gpu_uniform(render3d_st, p, "u_tr")
+  a.l_clit = gpu_uniform(render3d_st, p, "u_char_lit")
   a.l_fp = gpu_uniform(render3d_st, p, "u_fp[0]");  if a.l_fp < 0 { a.l_fp = gpu_uniform(render3d_st, p, "u_fp") }
   a.l_pmodel = gpu_uniform(render3d_st, p, "u_prev_model");  a.l_vpc = gpu_uniform(render3d_st, p, "u_vp_cur");  a.l_vpp = gpu_uniform(render3d_st, p, "u_vp_prev")
   a.l_pbones = gpu_uniform(render3d_st, p, "u_prev_bones[0]");  if a.l_pbones < 0 { a.l_pbones = gpu_uniform(render3d_st, p, "u_prev_bones") }
@@ -227,6 +230,7 @@ function ac_bind_scene(render3d_st: mut Render3dState, ap: AcProg) -> void {
   sky_bind_lighting(render3d_st, p)
   shadow_bind(render3d_st, p)
   fog_bind(render3d_st, p)
+  charlight_bind(render3d_st, p)
   # a hair card's dithered opacity (model.frag FABRIC mode 3): a new pattern each frame for the temporal resolve to average
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dither_frame"), float(render3d_st.ac_frame % 64))
 }
@@ -238,6 +242,7 @@ function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool 
     a.x = l.x;  a.y = l.y;  a.z = l.z;  a.yaw = l.yaw;  a.scale = l.scale
     m4_copy(a.mat, l.mat)
     a.visible = l.visible;  a.cast_hidden = l.cast_hidden;  a.casts = l.casts
+    a.char_lit = l.char_lit
     a.cull = l.cull;  a.radius = l.radius;  a.outline = l.outline;  a.emissive = l.emissive
     a.blend = l.blend;  a.alpha = l.alpha;  a.soft = l.soft;  a.unlit = l.unlit;  a.blend_casts = l.blend_casts
   }
@@ -274,6 +279,7 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
   if not shadow {
     u_f(render3d_st, ap.l_emis, a.emissive)
     u_f(render3d_st, ap.l_rough, a.rough)
+    u_f(render3d_st, ap.l_clit, a.char_lit)
   }
   # one-sided for the eye only: a shadow needs both sides (a shirt's far side, faced away from the sun, is what shades its back; culled,
   # with the skin under it hidden, sunlight leaked through the torso as rings)
