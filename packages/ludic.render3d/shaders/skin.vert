@@ -18,6 +18,14 @@ uniform mat4 u_light_vp;
 #ifdef OUTLINE
 uniform float u_outline;                    // metres the shell is pushed out
 #endif
+#ifdef STRANDS
+// a groom's strands (strands.ludic): each point twice, NORMAL its tangent (root to tip) times its radius (m), TEXCOORD_0 (u root to
+// tip, side -1 / +1), COLOR_0 the skin's normal at its root (RGB) and the strand's seed (A)
+uniform float u_strand_minr;                // the least radius a strand is drawn at, at a metre's distance (strands.ludic)
+out float v_srad;
+out float v_sdep;
+out vec3 v_snrm;
+#endif
 #ifdef VELOCITY
 // the motion pass (taa.ludic): last frame's placement and pose of the same vertex, through clean view-projections
 uniform mat4 u_prev_model;
@@ -83,6 +91,23 @@ void main() {
   v_col = (a_col == vec4(0.0)) ? vec4(1.0) : a_col;   // as model.vert: an unfed input reads zero
   v_near = 1.0;
   v_lh = 1.0;
+#ifdef STRANDS
+  // Unreal's view-facing ribbon (HairStrandsVertexFactory): the point moved across the strand, at right angles to it and to the camera's
+  // forward axis, by its radius or the least one at its distance, whichever is more
+  vec3 tw = mat3(m) * a_nrm;
+  float r = length(tw);
+  vec3 T = tw / max(r, 1e-12);
+  vec3 camF = -vec3(u_view[0][2], u_view[1][2], u_view[2][2]);
+  vec3 camP = -transpose(mat3(u_view)) * u_view[3].xyz;
+  vec3 right = cross(T, -camF);
+  right = dot(right, right) > 1e-12 ? normalize(right) : normalize(cross(T, vec3(0.0, 1.0, 0.0)) + vec3(1e-6, 0.0, 0.0));
+  w.xyz += right * a_uv.y * max(r, u_strand_minr * length(camP - w.xyz));
+  v_wpos = w.xyz;
+  v_nrm = T;
+  v_srad = r;
+  v_sdep = -(u_view * w).z;
+  v_snrm = normalize(mat3(m) * (a_col.rgb * 2.0 - 1.0));
+#endif
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * w;
 #else

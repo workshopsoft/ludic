@@ -43,6 +43,7 @@ property Actor {
   blend_casts: bool = false,   # a blended actor that still casts, alpha-tested at 0.5
   blend_d: float = 0.0,        # its squared distance from the camera this frame (the sort's key)
   shell:   bool = false,       # a MetaHuman's eye occlusion shell (eyeshell.frag): drawn over the opaque scene from its copy (actor_draw_shells)
+  strands: bool = false,       # a groom's strands (strands.frag): their coverage and light resolved over the opaque scene (strands.ludic)
   own_blend: bool = false,     # a part blended on its own (a face's lashes over an opaque body): its blend, alpha and soft not its leader's
   spec:    float = 1.0,        # blended: its specular's scale (u_spec_scale; Epic's lashes have none)
   @owns(SkinClone) skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
@@ -159,6 +160,8 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_fab_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n#define ALPHA_TEST\n")
   render3d_st.ac_eye = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n#define EYE\n")
   render3d_st.ac_shell = ac_prog_new(render3d_st, "skin.vert", "eyeshell.frag", "")
+  render3d_st.ac_strand_t = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define TRANSMITTANCE\n")
+  render3d_st.ac_strand_l = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n")
   render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
   render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
@@ -479,7 +482,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
     if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
-    if a.shell { continue }                              # (actor_draw_shells, after the opaque scene)
+    if a.shell or a.strands { continue }                 # (actor_draw_shells, actor_draw_strands: after the opaque scene)
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }
     var ap = render3d_st.ac_lit
@@ -950,7 +953,7 @@ function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, fr
   let ppm = float(render3d_st.post_h) * 0.5 / Math.tan(render3d_st.cam_fov * 0.5)
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if a.blend != 0 or a.shell { continue }
+    if a.blend != 0 or a.shell or a.strands { continue }
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }                 # a part that follows a blended leader
     # this frame's palette: a part's (from its leader), its own clone's, its model's - or none

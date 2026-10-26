@@ -221,38 +221,11 @@ vec4 skinMicro(vec3 tn, float a) {
 #ifdef FABRIC
 // ---- hair cards (mode 3): Epic's HairShading (HairBsdf.ush) with the cards' transmittance data (InitHairTransmittanceData: legacy
 // absorption, a separable R, no backlit), the material M_hair_v4 feeds it (MF_Variation, GetHairColorFromMelanin's absorption) -------
-float hairG(float B, float theta) { return exp(-0.5 * theta * theta / (B * B)) / (sqrt(2.0 * PI) * max(B, 0.01)); }
-float hairF(float cosT) { float f0 = 0.0465; float m = 1.0 - cosT; return f0 + (1.0 - f0) * m * m * m * m * m; }
 // T along the strand, V and L toward the eye and the light: the light it scatters toward the eye (no cosine: the lobes carry it)
 // tt: how much of the light passing through the strand (TT, TRT) is left: a card has no hair volume's deep shadow, its clump's depth
 // stands for it (1 at the clump's surface)
 vec3 hairShading(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, float area, float tt) {
-  float r = clamp(rough, 1.0 / 255.0, 1.0);
-  float VoL = dot(V, L);
-  float sinL = clamp(dot(T, L), -1.0, 1.0);
-  float sinV = clamp(dot(T, V), -1.0, 1.0);
-  float cosD = cos(0.5 * abs(asin(sinV) - asin(sinL)));
-  vec3 Lp = L - sinL * T;
-  vec3 Vp = V - sinV * T;
-  float cosPhi = dot(Lp, Vp) * inversesqrt(dot(Lp, Lp) * dot(Vp, Vp) + 1e-4);
-  float cosHalfPhi = sqrt(clamp(0.5 + 0.5 * cosPhi, 0.0, 1.0));
-  float np = 1.19 / cosD + 0.36 * cosD;
-  float shift = 0.035;
-  float b0 = area + r * r, b1 = area + r * r * 0.5, b2 = area + r * r * 2.0;
-  vec3 S = vec3(0.0);
-  // R
-  float sa = sin(-shift * 2.0), ca = cos(-shift * 2.0);
-  float shiftR = 2.0 * sa * (ca * cosHalfPhi * sqrt(1.0 - sinV * sinV) + sa * sinV);
-  S += vec3(hairG(b0 * sqrt(2.0) * cosHalfPhi, sinL + sinV - shiftR) * 0.25 * cosHalfPhi * hairF(sqrt(clamp(0.5 + 0.5 * VoL, 0.0, 1.0))) * spec * 2.0);
-  // TT
-  float a = 1.0 / np;
-  float h = cosHalfPhi * (1.0 + a * (0.6 - 0.8 * cosPhi));
-  float f = hairF(cosD * sqrt(clamp(1.0 - h * h, 0.0, 1.0)));
-  vec3 tp = pow(abs(base), vec3(0.5 * sqrt(max(1.0 - (h * a) * (h * a), 0.0)) / cosD));
-  S += hairG(b1, sinL + sinV - shift) * exp(-3.65 * cosPhi - 3.98) * (1.0 - f) * (1.0 - f) * tp * tt;
-  // TRT
-  float f2 = hairF(cosD * 0.5);
-  S += hairG(b2, sinL + sinV - shift * 4.0) * exp(17.0 * cosPhi - 16.78) * (1.0 - f2) * (1.0 - f2) * f2 * pow(abs(base), vec3(0.8 / cosD)) * tt;
+  vec3 S = hairBsdf(base, rough, spec, T, V, L, area, 1.0, true, true, tt);
   // the light scattered through many strands: KajiyaKayDiffuseAttenuation's shape (a wrapped term on the normal facing the eye, a third of
   // Kajiya-Kay), with the hair's colour as its albedo. M_hair_v4's cards leave Scatter at 0 (Unreal lights them with the three lobes and
   // the groom's voxel scattering, which cards have none of here); its sqrt(colour) at a scatter of 1 lifted black hair to grey, and the
@@ -262,27 +235,6 @@ vec3 hairShading(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, flo
   float nol = clamp((dot(fakeN, L) + 1.0) / 4.0, 0.0, 1.0);
   S += abs(base) * (1.0 / PI) * mix(nol, kk, 0.33);
   return max(S, vec3(0.0));
-}
-// MF_Variation: the signal to a power the strand's seed picks (1 + v at 0, 1 at 0.5, 1 / (1 + v) at 1)
-float hairVar(float v, float sgl, float seed) {
-  float t = seed * 2.0;
-  float lo = pow(max(sgl, 0.0), 1.0 + v), hi = pow(max(sgl, 0.0), 1.0 / (1.0 + v));
-  return mix(mix(lo, sgl, clamp(t, 0.0, 1.0)), hi, clamp(t - 1.0, 0.0, 1.0));
-}
-// HairAbsorptionToColor / HairColorToAbsorption (B 0.3), HairShadingCommon.ush
-const float HAIR_D = 5.969 - 0.215 * 0.3 + 2.532 * 0.09 - 10.73 * 0.027 + 5.574 * 0.0081 + 0.245 * 0.00243;
-vec3 hairAbsorption(vec3 c) { vec3 l = log(max(c, vec3(1e-4))) / HAIR_D; return l * l; }
-vec3 hairColour(vec3 a) { return exp(-sqrt(a) * HAIR_D); }
-// GetHairColorFromMelanin (HairShadingCommon.ush): eumelanin and pheomelanin absorptions, plus the dye's
-vec3 hairMelanin(float m, float r, vec3 dye) {
-  float mel = -log(max(1.0 - clamp(m, 0.0, 1.0), 1e-4));
-  r = clamp(r, 0.0, 1.0);
-  vec3 a = mel * (1.0 - r) * vec3(0.506, 0.841, 1.653) + mel * r * vec3(0.343, 0.733, 1.924);
-  return hairColour(a + hairAbsorption(clamp(dye, vec3(0.0), vec3(1.0))));
-}
-// MF_Hair_Color's melanin: the parameter varied by the strand (fine to rough by the roughness), to the power 2.2
-float hairMel(float m, float fine, float rough, float hr, float seed) {
-  return pow(max(hairVar(mix(fine, rough, clamp(hr * 2.0, 0.0, 1.0)), m, seed), 0.0), 2.2);
 }
 #endif
 

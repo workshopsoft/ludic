@@ -6747,4 +6747,266 @@ T 874fe6bc u_shadow 6
 T 874fe6bc u_tershadow 7
 T 874fe6bc u_tershadow_aux 8
 T 874fe6bc u_ts_height 9
-E 82
+P fcc1042e skin.vert strands.frag #define STRANDS;
+B fcc1042e vert 0 10516
+U fcc1042e vert u_model 0 mat4 1 0
+U fcc1042e vert u_bones 64 mat4 160 64
+U fcc1042e vert u_skinned 10304 float 1 0
+U fcc1042e vert u_view 10320 mat4 1 0
+U fcc1042e vert u_proj 10384 mat4 1 0
+U fcc1042e vert u_light_vp 10448 mat4 1 0
+U fcc1042e vert u_strand_minr 10512 float 1 0
+I fcc1042e a_weights 6 vec4
+I fcc1042e a_joints 5 vec4
+I fcc1042e a_weights1 11 vec4
+I fcc1042e a_joints1 10 vec4
+I fcc1042e a_pos 0 vec3
+I fcc1042e a_nrm 1 vec3
+I fcc1042e a_uv 2 vec2
+I fcc1042e a_col 7 vec4
+B fcc1042e frag 1 2212
+U fcc1042e frag u_cascade_vp 0 mat4 5 64
+U fcc1042e frag u_cascade_split 320 float 5 16
+U fcc1042e frag u_cascade_range 400 float 5 16
+U fcc1042e frag u_cascade_texel 480 float 5 16
+U fcc1042e frag u_sun_dir 560 vec3 1 0
+U fcc1042e frag u_sun_color 576 vec3 1 0
+U fcc1042e frag u_cam_pos 592 vec3 1 0
+U fcc1042e frag u_prefilter_levels 604 float 1 0
+U fcc1042e frag u_fog_density 608 float 1 0
+U fcc1042e frag u_fog_height_falloff 612 float 1 0
+U fcc1042e frag u_fog_base 616 float 1 0
+U fcc1042e frag u_clip_y 620 float 1 0
+U fcc1042e frag u_spec_scale 624 float 1 0
+U fcc1042e frag u_sky_rot 632 vec2 1 0
+U fcc1042e frag u_ground_alb 640 vec3 1 0
+U fcc1042e frag u_ground_alb_hi 656 vec3 1 0
+U fcc1042e frag u_ground_hi_y 668 float 1 0
+U fcc1042e frag u_ground_hi_w 672 float 1 0
+U fcc1042e frag u_ibl_scale 688 vec3 1 0
+U fcc1042e frag u_daylight 700 float 1 0
+U fcc1042e frag u_fire_pos 704 vec3 1 0
+U fcc1042e frag u_fire_color 720 vec3 1 0
+U fcc1042e frag u_hand_pos 736 vec3 1 0
+U fcc1042e frag u_hand_color 752 vec3 1 0
+U fcc1042e frag u_hand_dir 768 vec3 1 0
+U fcc1042e frag u_hand_cone 780 float 1 0
+U fcc1042e frag u_hand_reach 784 float 1 0
+U fcc1042e frag u_ts_origin 792 vec2 1 0
+U fcc1042e frag u_ts_half 800 float 1 0
+U fcc1042e frag u_ts_on 804 float 1 0
+U fcc1042e frag u_force_cascade 808 int 1 0
+U fcc1042e frag u_shadow_tan_max 812 float 1 0
+U fcc1042e frag u_cloud_shadow 816 float 1 0
+U fcc1042e frag u_time 820 float 1 0
+U fcc1042e frag u_lz 832 vec4 32 16
+U fcc1042e frag u_lz_n 1344 int 1 0
+U fcc1042e frag u_zl 1360 vec4 32 16
+U fcc1042e frag u_zl_n 1872 int 1 0
+U fcc1042e frag u_zl_color 1888 vec3 1 0
+U fcc1042e frag u_zl_reach 1900 float 1 0
+U fcc1042e frag u_fog_inscatter 1904 float 1 0
+U fcc1042e frag u_fog_desat 1908 float 1 0
+U fcc1042e frag u_fog_wall 1912 float 1 0
+U fcc1042e frag u_fog_haze 1916 float 1 0
+U fcc1042e frag u_fog_cut 1920 vec2 1 0
+U fcc1042e frag u_sky_relight 1928 float 1 0
+U fcc1042e frag u_strand_minr 1932 float 1 0
+U fcc1042e frag u_fp 1936 vec4 17 16
+U fcc1042e frag u_frame 2208 float 1 0
+T fcc1042e u_brdf 2
+T fcc1042e u_hair_lut 3
+T fcc1042e u_irradiance 4
+T fcc1042e u_prefilter 5
+T fcc1042e u_shadow 6
+T fcc1042e u_tershadow 7
+T fcc1042e u_tershadow_aux 8
+T fcc1042e u_ts_height 9
+P fcf235c8 skin.vert strands.frag #define STRANDS;#define TRANSMITTANCE;
+B fcf235c8 vert 0 10516
+U fcf235c8 vert u_model 0 mat4 1 0
+U fcf235c8 vert u_bones 64 mat4 160 64
+U fcf235c8 vert u_skinned 10304 float 1 0
+U fcf235c8 vert u_view 10320 mat4 1 0
+U fcf235c8 vert u_proj 10384 mat4 1 0
+U fcf235c8 vert u_light_vp 10448 mat4 1 0
+U fcf235c8 vert u_strand_minr 10512 float 1 0
+I fcf235c8 a_weights 6 vec4
+I fcf235c8 a_joints 5 vec4
+I fcf235c8 a_weights1 11 vec4
+I fcf235c8 a_joints1 10 vec4
+I fcf235c8 a_pos 0 vec3
+I fcf235c8 a_nrm 1 vec3
+I fcf235c8 a_uv 2 vec2
+I fcf235c8 a_col 7 vec4
+B fcf235c8 frag 1 2212
+U fcf235c8 frag u_cascade_vp 0 mat4 5 64
+U fcf235c8 frag u_cascade_split 320 float 5 16
+U fcf235c8 frag u_cascade_range 400 float 5 16
+U fcf235c8 frag u_cascade_texel 480 float 5 16
+U fcf235c8 frag u_sun_dir 560 vec3 1 0
+U fcf235c8 frag u_sun_color 576 vec3 1 0
+U fcf235c8 frag u_cam_pos 592 vec3 1 0
+U fcf235c8 frag u_prefilter_levels 604 float 1 0
+U fcf235c8 frag u_fog_density 608 float 1 0
+U fcf235c8 frag u_fog_height_falloff 612 float 1 0
+U fcf235c8 frag u_fog_base 616 float 1 0
+U fcf235c8 frag u_clip_y 620 float 1 0
+U fcf235c8 frag u_spec_scale 624 float 1 0
+U fcf235c8 frag u_sky_rot 632 vec2 1 0
+U fcf235c8 frag u_ground_alb 640 vec3 1 0
+U fcf235c8 frag u_ground_alb_hi 656 vec3 1 0
+U fcf235c8 frag u_ground_hi_y 668 float 1 0
+U fcf235c8 frag u_ground_hi_w 672 float 1 0
+U fcf235c8 frag u_ibl_scale 688 vec3 1 0
+U fcf235c8 frag u_daylight 700 float 1 0
+U fcf235c8 frag u_fire_pos 704 vec3 1 0
+U fcf235c8 frag u_fire_color 720 vec3 1 0
+U fcf235c8 frag u_hand_pos 736 vec3 1 0
+U fcf235c8 frag u_hand_color 752 vec3 1 0
+U fcf235c8 frag u_hand_dir 768 vec3 1 0
+U fcf235c8 frag u_hand_cone 780 float 1 0
+U fcf235c8 frag u_hand_reach 784 float 1 0
+U fcf235c8 frag u_ts_origin 792 vec2 1 0
+U fcf235c8 frag u_ts_half 800 float 1 0
+U fcf235c8 frag u_ts_on 804 float 1 0
+U fcf235c8 frag u_force_cascade 808 int 1 0
+U fcf235c8 frag u_shadow_tan_max 812 float 1 0
+U fcf235c8 frag u_cloud_shadow 816 float 1 0
+U fcf235c8 frag u_time 820 float 1 0
+U fcf235c8 frag u_lz 832 vec4 32 16
+U fcf235c8 frag u_lz_n 1344 int 1 0
+U fcf235c8 frag u_zl 1360 vec4 32 16
+U fcf235c8 frag u_zl_n 1872 int 1 0
+U fcf235c8 frag u_zl_color 1888 vec3 1 0
+U fcf235c8 frag u_zl_reach 1900 float 1 0
+U fcf235c8 frag u_fog_inscatter 1904 float 1 0
+U fcf235c8 frag u_fog_desat 1908 float 1 0
+U fcf235c8 frag u_fog_wall 1912 float 1 0
+U fcf235c8 frag u_fog_haze 1916 float 1 0
+U fcf235c8 frag u_fog_cut 1920 vec2 1 0
+U fcf235c8 frag u_sky_relight 1928 float 1 0
+U fcf235c8 frag u_strand_minr 1932 float 1 0
+U fcf235c8 frag u_fp 1936 vec4 17 16
+U fcf235c8 frag u_frame 2208 float 1 0
+T fcf235c8 u_brdf 2
+T fcf235c8 u_hair_lut 3
+T fcf235c8 u_irradiance 4
+T fcf235c8 u_prefilter 5
+T fcf235c8 u_shadow 6
+T fcf235c8 u_tershadow 7
+T fcf235c8 u_tershadow_aux 8
+T fcf235c8 u_ts_height 9
+P 75aabf3d fullscreen.vert strands_resolve.frag 
+B 75aabf3d frag 0 1932
+U 75aabf3d frag u_cascade_vp 0 mat4 5 64
+U 75aabf3d frag u_cascade_split 320 float 5 16
+U 75aabf3d frag u_cascade_range 400 float 5 16
+U 75aabf3d frag u_cascade_texel 480 float 5 16
+U 75aabf3d frag u_sun_dir 560 vec3 1 0
+U 75aabf3d frag u_sun_color 576 vec3 1 0
+U 75aabf3d frag u_cam_pos 592 vec3 1 0
+U 75aabf3d frag u_prefilter_levels 604 float 1 0
+U 75aabf3d frag u_fog_density 608 float 1 0
+U 75aabf3d frag u_fog_height_falloff 612 float 1 0
+U 75aabf3d frag u_fog_base 616 float 1 0
+U 75aabf3d frag u_clip_y 620 float 1 0
+U 75aabf3d frag u_spec_scale 624 float 1 0
+U 75aabf3d frag u_sky_rot 632 vec2 1 0
+U 75aabf3d frag u_ground_alb 640 vec3 1 0
+U 75aabf3d frag u_ground_alb_hi 656 vec3 1 0
+U 75aabf3d frag u_ground_hi_y 668 float 1 0
+U 75aabf3d frag u_ground_hi_w 672 float 1 0
+U 75aabf3d frag u_ibl_scale 688 vec3 1 0
+U 75aabf3d frag u_daylight 700 float 1 0
+U 75aabf3d frag u_fire_pos 704 vec3 1 0
+U 75aabf3d frag u_fire_color 720 vec3 1 0
+U 75aabf3d frag u_hand_pos 736 vec3 1 0
+U 75aabf3d frag u_hand_color 752 vec3 1 0
+U 75aabf3d frag u_hand_dir 768 vec3 1 0
+U 75aabf3d frag u_hand_cone 780 float 1 0
+U 75aabf3d frag u_hand_reach 784 float 1 0
+U 75aabf3d frag u_ts_origin 792 vec2 1 0
+U 75aabf3d frag u_ts_half 800 float 1 0
+U 75aabf3d frag u_ts_on 804 float 1 0
+U 75aabf3d frag u_force_cascade 808 int 1 0
+U 75aabf3d frag u_shadow_tan_max 812 float 1 0
+U 75aabf3d frag u_cloud_shadow 816 float 1 0
+U 75aabf3d frag u_time 820 float 1 0
+U 75aabf3d frag u_lz 832 vec4 32 16
+U 75aabf3d frag u_lz_n 1344 int 1 0
+U 75aabf3d frag u_zl 1360 vec4 32 16
+U 75aabf3d frag u_zl_n 1872 int 1 0
+U 75aabf3d frag u_zl_color 1888 vec3 1 0
+U 75aabf3d frag u_zl_reach 1900 float 1 0
+U 75aabf3d frag u_fog_inscatter 1904 float 1 0
+U 75aabf3d frag u_fog_desat 1908 float 1 0
+U 75aabf3d frag u_fog_wall 1912 float 1 0
+U 75aabf3d frag u_fog_haze 1916 float 1 0
+U 75aabf3d frag u_fog_cut 1920 vec2 1 0
+U 75aabf3d frag u_sky_relight 1928 float 1 0
+T 75aabf3d u_brdf 2
+T 75aabf3d u_irradiance 3
+T 75aabf3d u_prefilter 4
+T 75aabf3d u_shadow 5
+T 75aabf3d u_st_acc 6
+T 75aabf3d u_st_trans 7
+T 75aabf3d u_tershadow 8
+T 75aabf3d u_tershadow_aux 9
+T 75aabf3d u_ts_height 10
+P 870d1033 fullscreen.vert hair_lut.frag 
+B 870d1033 frag 0 1932
+U 870d1033 frag u_cascade_vp 0 mat4 5 64
+U 870d1033 frag u_cascade_split 320 float 5 16
+U 870d1033 frag u_cascade_range 400 float 5 16
+U 870d1033 frag u_cascade_texel 480 float 5 16
+U 870d1033 frag u_sun_dir 560 vec3 1 0
+U 870d1033 frag u_sun_color 576 vec3 1 0
+U 870d1033 frag u_cam_pos 592 vec3 1 0
+U 870d1033 frag u_prefilter_levels 604 float 1 0
+U 870d1033 frag u_fog_density 608 float 1 0
+U 870d1033 frag u_fog_height_falloff 612 float 1 0
+U 870d1033 frag u_fog_base 616 float 1 0
+U 870d1033 frag u_clip_y 620 float 1 0
+U 870d1033 frag u_spec_scale 624 float 1 0
+U 870d1033 frag u_sky_rot 632 vec2 1 0
+U 870d1033 frag u_ground_alb 640 vec3 1 0
+U 870d1033 frag u_ground_alb_hi 656 vec3 1 0
+U 870d1033 frag u_ground_hi_y 668 float 1 0
+U 870d1033 frag u_ground_hi_w 672 float 1 0
+U 870d1033 frag u_ibl_scale 688 vec3 1 0
+U 870d1033 frag u_daylight 700 float 1 0
+U 870d1033 frag u_fire_pos 704 vec3 1 0
+U 870d1033 frag u_fire_color 720 vec3 1 0
+U 870d1033 frag u_hand_pos 736 vec3 1 0
+U 870d1033 frag u_hand_color 752 vec3 1 0
+U 870d1033 frag u_hand_dir 768 vec3 1 0
+U 870d1033 frag u_hand_cone 780 float 1 0
+U 870d1033 frag u_hand_reach 784 float 1 0
+U 870d1033 frag u_ts_origin 792 vec2 1 0
+U 870d1033 frag u_ts_half 800 float 1 0
+U 870d1033 frag u_ts_on 804 float 1 0
+U 870d1033 frag u_force_cascade 808 int 1 0
+U 870d1033 frag u_shadow_tan_max 812 float 1 0
+U 870d1033 frag u_cloud_shadow 816 float 1 0
+U 870d1033 frag u_time 820 float 1 0
+U 870d1033 frag u_lz 832 vec4 32 16
+U 870d1033 frag u_lz_n 1344 int 1 0
+U 870d1033 frag u_zl 1360 vec4 32 16
+U 870d1033 frag u_zl_n 1872 int 1 0
+U 870d1033 frag u_zl_color 1888 vec3 1 0
+U 870d1033 frag u_zl_reach 1900 float 1 0
+U 870d1033 frag u_fog_inscatter 1904 float 1 0
+U 870d1033 frag u_fog_desat 1908 float 1 0
+U 870d1033 frag u_fog_wall 1912 float 1 0
+U 870d1033 frag u_fog_haze 1916 float 1 0
+U 870d1033 frag u_fog_cut 1920 vec2 1 0
+U 870d1033 frag u_sky_relight 1928 float 1 0
+T 870d1033 u_brdf 2
+T 870d1033 u_irradiance 3
+T 870d1033 u_prefilter 4
+T 870d1033 u_shadow 5
+T 870d1033 u_tershadow 6
+T 870d1033 u_tershadow_aux 7
+T 870d1033 u_ts_height 8
+E 86

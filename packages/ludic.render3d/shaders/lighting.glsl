@@ -470,3 +470,61 @@ bool fogCut(vec3 wpos) {
   if (t <= 0.0) return false;
   return t >= fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
 }
+
+// ---- Epic's hair (HairBsdf.ush HairShading, HairShadingCommon.ush): the R, TT and TRT lobes, shared by the hair cards (model.frag FABRIC
+// mode 3) and the strands (strands.frag, hair_lut.frag). T along the strand, V and L toward the eye and the light; no cosine (the lobes
+// carry it). tt: what is left of the light through the strand (TT, TRT; 1: all). backlit: Unreal's Backlit (R toward the light behind lerped to it, TT times it); legacy: bUseLegacyAbsorption (TT as a
+// power of the colour, else the colour's absorption through the fibre); clampB: bClampBSDFValue (the lobes' width at least 0.01)
+float hairG(float B, float theta, bool clampB) { return exp(-0.5 * theta * theta / (B * B)) / (sqrt(2.0 * PI) * (clampB ? max(B, 0.01) : B)); }
+float hairF(float cosT) { float f0 = 0.0465; float m = 1.0 - cosT; return f0 + (1.0 - f0) * m * m * m * m * m; }
+const float HAIR_D = 5.969 - 0.215 * 0.3 + 2.532 * 0.09 - 10.73 * 0.027 + 5.574 * 0.0081 + 0.245 * 0.00243;
+vec3 hairAbsorption(vec3 c) { vec3 l = log(max(c, vec3(1e-4))) / HAIR_D; return l * l; }
+vec3 hairColour(vec3 a) { return exp(-sqrt(a) * HAIR_D); }
+vec3 hairBsdf(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, float area, float backlit, bool legacy, bool clampB, float tt) {
+  float r = clamp(rough, 1.0 / 255.0, 1.0);
+  float VoL = dot(V, L);
+  float sinL = clamp(dot(T, L), -1.0, 1.0);
+  float sinV = clamp(dot(T, V), -1.0, 1.0);
+  float cosD = cos(0.5 * abs(asin(sinV) - asin(sinL)));
+  vec3 Lp = L - sinL * T;
+  vec3 Vp = V - sinV * T;
+  float cosPhi = dot(Lp, Vp) * inversesqrt(dot(Lp, Lp) * dot(Vp, Vp) + 1e-4);
+  float cosHalfPhi = sqrt(clamp(0.5 + 0.5 * cosPhi, 0.0, 1.0));
+  float np = 1.19 / cosD + 0.36 * cosD;
+  float shift = 0.035;
+  float b0 = area + r * r, b1 = area + r * r * 0.5, b2 = area + r * r * 2.0;
+  vec3 S = vec3(0.0);
+  // R
+  float sa = sin(-shift * 2.0), ca = cos(-shift * 2.0);
+  float shiftR = 2.0 * sa * (ca * cosHalfPhi * sqrt(1.0 - sinV * sinV) + sa * sinV);
+  S += vec3(hairG(b0 * sqrt(2.0) * cosHalfPhi, sinL + sinV - shiftR, clampB) * 0.25 * cosHalfPhi * hairF(sqrt(clamp(0.5 + 0.5 * VoL, 0.0, 1.0)))
+            * spec * 2.0 * mix(1.0, backlit, clamp(-VoL, 0.0, 1.0)));
+  // TT
+  float a = 1.0 / np;
+  float h = cosHalfPhi * (1.0 + a * (0.6 - 0.8 * cosPhi));
+  float f = hairF(cosD * sqrt(clamp(1.0 - h * h, 0.0, 1.0)));
+  vec3 tp = legacy ? pow(abs(base), vec3(0.5 * sqrt(max(1.0 - (h * a) * (h * a), 0.0)) / cosD))
+                   : exp(-hairAbsorption(base) * 2.0 * abs(1.0 - (h * a) * (h * a) / cosD));
+  S += hairG(b1, sinL + sinV - shift, clampB) * exp(-3.65 * cosPhi - 3.98) * (1.0 - f) * (1.0 - f) * tp * backlit * tt;
+  // TRT
+  float f2 = hairF(cosD * 0.5);
+  S += hairG(b2, sinL + sinV - shift * 4.0, clampB) * exp(17.0 * cosPhi - 16.78) * (1.0 - f2) * (1.0 - f2) * f2 * pow(abs(base), vec3(0.8 / cosD)) * tt;
+  return max(S, vec3(0.0));
+}
+// MF_Variation: the signal to a power the strand's seed picks (1 + v at 0, 1 at 0.5, 1 / (1 + v) at 1)
+float hairVar(float v, float sgl, float seed) {
+  float t = seed * 2.0;
+  float lo = pow(max(sgl, 0.0), 1.0 + v), hi = pow(max(sgl, 0.0), 1.0 / (1.0 + v));
+  return mix(mix(lo, sgl, clamp(t, 0.0, 1.0)), hi, clamp(t - 1.0, 0.0, 1.0));
+}
+// GetHairColorFromMelanin (HairShadingCommon.ush): eumelanin and pheomelanin absorptions, plus the dye's
+vec3 hairMelanin(float m, float r, vec3 dye) {
+  float mel = -log(max(1.0 - clamp(m, 0.0, 1.0), 1e-4));
+  r = clamp(r, 0.0, 1.0);
+  vec3 a = mel * (1.0 - r) * vec3(0.506, 0.841, 1.653) + mel * r * vec3(0.343, 0.733, 1.924);
+  return hairColour(a + hairAbsorption(clamp(dye, vec3(0.0), vec3(1.0))));
+}
+// MF_Hair_Color's melanin: the parameter varied by the strand (fine to rough by the roughness), to the power 2.2
+float hairMel(float m, float fine, float rough, float hr, float seed) {
+  return pow(max(hairVar(mix(fine, rough, clamp(hr * 2.0, 0.0, 1.0)), m, seed), 0.0), 2.2);
+}

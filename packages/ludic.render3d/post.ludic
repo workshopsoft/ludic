@@ -36,6 +36,7 @@ function post_free(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.post_bloom) { target_free(render3d_st, render3d_st.post_bloom[i]) }
   taa_free(render3d_st)
   sss_free(render3d_st)
+  strands_free(render3d_st)
   render3d_st.post_hdr = null
 }
 # Multisampled scene: 1 (temporal AA alone, taa.ludic), 2 or 4, remade at once. Vulkan draws it into
