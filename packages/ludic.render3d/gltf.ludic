@@ -120,31 +120,43 @@ function gltf_view_bytes(render3d_st: mut Render3dState, bv: int) -> pointer {
   return buf
 }
 
-# An embedded PNG as a texture, once per (file, bufferView): the cache is keyed by the document's own binary, so two
-# files that both embed an image at bufferView 6 never share one.
+# An embedded PNG as a texture, once per image: the cache is keyed by the image's bytes (their length and a hash of them), so
+# the same picture embedded in many files is one texture. A car's 21 paints in 3 levels of detail each embed the same interior,
+# glass and wheel atlases: keyed by (file, bufferView) they were 65 copies, 3.5 GB of a gym run's 4.6.
 @alloc_ok("loading a model: a load, not a frame")
 function gltf_texture_bv(render3d_st: mut Render3dState, bv: int, srgb: bool) -> int {
   if render3d_st.gltf_tex_paths == null { render3d_st.gltf_tex_paths = new []pointer;  render3d_st.gltf_tex_ids = words(256);  render3d_st.gltf_tex_refs = words(256) }
-  var owner = render3d_st.gltf_dir
-  if render3d_st.gltf_bin_path != null { owner = render3d_st.gltf_bin_path }
-  let key = `{owner}#{bv}`
+  let n = jint(value_at(value_get(render3d_st.gltf_doc, "bufferViews"), bv), "byteLength", 0)
+  if n <= 8 { print(`gltf: image bufferView {bv} is empty`);  return 0 }
+  let buf = gltf_view_bytes(render3d_st, bv)
+  var dil = 0
+  if render3d_st.gltf_cutout { dil = 24 }
+  let key = `png#{n}#{gltf_bytes_hash(buf, n)}#{srgb}#{dil}`
   var i = 0
   while i < render3d_st.gltf_tex_n {
     if render3d_st.gltf_tex_paths[i] == key {
       free(key)
+      free(buf)
       render3d_st.gltf_tex_refs[i] += 1
       return render3d_st.gltf_tex_ids[i]
     }
     i += 1
   }
-  let n = jint(value_at(value_get(render3d_st.gltf_doc, "bufferViews"), bv), "byteLength", 0)
-  if n <= 8 { print(`gltf: image bufferView {bv} of {owner} is empty`);  free(key);  return 0 }
-  let buf = gltf_view_bytes(render3d_st, bv)
-  var dil = 0
-  if render3d_st.gltf_cutout { dil = 24 }
   let id = tex_load_png_mem(render3d_st, buf, n, key, srgb, dil)
   if id != 0 { gltf_tex_add(render3d_st, key, id, 1) } else { free(key) }
   return id
+}
+
+# FNV-1a over a 32-bit word every 64 bytes and the last word (a PNG's compressed stream differs throughout when its picture does)
+function gltf_bytes_hash(buf: pointer, n: int) -> int {
+  var h = -2128831035
+  var k = 0
+  while k + 4 <= n {
+    h = (h ^ Vk.get_i32(buf, k)) * 16777619
+    k += 64
+  }
+  h = (h ^ Vk.get_i32(buf, n - 4)) * 16777619
+  return h
 }
 
 # one material slot's texture: a file beside the model (uri), or an image inside its .glb; 0 when it has neither

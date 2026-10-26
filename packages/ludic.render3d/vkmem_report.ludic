@@ -31,9 +31,10 @@ function vkmem_report(render3d_st: Render3dState) -> void {
   for k in 0 .. VKM_N { img[k] = 0;  buf[k] = 0;  host[k] = 0;  cnt[k] = 0 }
   var used = 0
   var own = 0
+  # (in KB: a byte count passed 2 GB in a 32-bit word and printed negative)
   for a in 1 .. len(render3d_st.gvk_al_len) {
-    let n = render3d_st.gvk_al_len[a]
-    if n <= 0 { continue }
+    let n = (render3d_st.gvk_al_len[a] + 1023) / 1024
+    if render3d_st.gvk_al_len[a] <= 0 { continue }
     let t = render3d_st.gvk_al_tag[a]
     let who = Math.min(t / 4, VKM_N - 1)
     if (t & 1) != 0 { host[who] += n } else if (t & 2) != 0 { img[who] += n } else { buf[who] += n }
@@ -42,7 +43,7 @@ function vkmem_report(render3d_st: Render3dState) -> void {
     if render3d_st.gvk_al_blk[a] < 0 { own += n }
   }
   var blocks = 0
-  for b in 0 .. len(render3d_st.gvk_blk_size) { blocks += render3d_st.gvk_blk_size[b] }
+  for b in 0 .. len(render3d_st.gvk_blk_size) { blocks += (render3d_st.gvk_blk_size[b] + 1023) / 1024 }
   vkmem_say_head(used, blocks + own, blocks + own - used)
   for k in 0 .. VKM_N { if cnt[k] > 0 { vkmem_say_row(vkmem_name(k), img[k], buf[k], host[k], cnt[k]) } }
   vkmem_big(render3d_st)
@@ -89,8 +90,9 @@ function vkmem_name(k: int) -> string {
   return "other"
 }
 function vkmem_mb(n: int) -> int { return n / 1048576 }
-function vkmem_say_head(used: int, held: int, slack: int) -> void { print(`vkmem: {vkmem_mb(used)} MB in use, {vkmem_mb(held)} MB held from the driver, {vkmem_mb(slack)} MB unused room in blocks`) }
-function vkmem_say_row(name: string, img: int, buf: int, host: int, n: int) -> void { print(`vkmem:   {name}: images {vkmem_mb(img)} MB, device buffers {vkmem_mb(buf)} MB, host buffers {vkmem_mb(host)} MB ({n} allocations)`) }
+function vkmem_kb_mb(kb: int) -> int { return kb / 1024 }
+function vkmem_say_head(used: int, held: int, slack: int) -> void { print(`vkmem: {vkmem_kb_mb(used)} MB in use, {vkmem_kb_mb(held)} MB held from the driver, {vkmem_kb_mb(slack)} MB unused room in blocks`) }
+function vkmem_say_row(name: string, img: int, buf: int, host: int, n: int) -> void { print(`vkmem:   {name}: images {vkmem_kb_mb(img)} MB, device buffers {vkmem_kb_mb(buf)} MB, host buffers {vkmem_kb_mb(host)} MB ({n} allocations)`) }
 function vkmem_say_img(name: string, n: int, w: int, h: int, layers: int, levels: int, fmt: int) -> void { print(`vkmem:   image {n / 1024} KB  {w}x{h}x{layers} mips {levels} vkformat {fmt}  {name}`) }
 
 # the renderer's own big arrays on the CPU heap

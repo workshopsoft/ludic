@@ -28,7 +28,8 @@ uniform float u_emissive;     // self-lit (a flame): albedo added back after sha
 #ifdef FABRIC
 // A MetaHuman garment as Epic's M_fabric_simpler builds it (its graph read from the editor, MaterialEditingLibrary): the colours
 // from the garment's masks, two materials' tiled variation, fuzz and the trims' material C. u_fp (actor_fabric, prim.fab):
-//  0..3  colour 1, colour 2, material B's, material C's (linear; B's w: its mix of colours 1 and 2 when it takes them, -1 its own)
+//  0..3  colour 1, colour 2, material B's, material C's (linear; B's w: its mix of colours 1 and 2 when it takes them, -1 its own;
+//        colour 2's w: the pilling normal's strength)
 //  4..7  material A: (detail tiling, u distort, v distort, macro tiling), (detail variation, macro, wear strengths, overlay amount),
 //        (exponent low, high, detail normal strength, sculpted detail 0/1), (detail colour overlay, multiply, roughness scale, metallic)
 //  8..11 material B: the same
@@ -36,13 +37,14 @@ uniform float u_emissive;     // self-lit (a flame): albedo added back after sha
 //  13    fuzz power, pilling strength, pilling tiling, wrinkle strength
 //  14    wrinkle tiling, the garment normal's strength, the stitches' normal strength, material B on
 //  15    material C on, its mask overlay amount, its occlusion multiply, stitches take colour 2 (CustomStitchtx_diffuse_color_2)
-//  16    C metal (-1: the map's), C roughness (-1: the map's), C takes material A's colour, on (0: a plain primitive in this program)
+//  16    C metal (-1: the map's), C roughness (-1: the map's), C takes material A's colour, on (0: a plain primitive in this
+//        program, 1 M_fabric_simpler, 2 the jeans master: its own layout, below)
 uniform vec4 u_fp[17];
 uniform sampler2D u_fmask;    // the garment's Masks: R wear, G colour 2, B material B, A sculpted detail
 uniform sampler2D u_fkit;     // material A's tiled maps: R detail variation, G macro variation, B pilling, A detail colour / its mean / 2
 uniform sampler2D u_fdn;      // material A's tiled normals: RG detail, BA wrinkles (x, y in glTF's frame)
 uniform sampler2D u_fkitb;    // material B's tiled maps, as u_fkit
-uniform sampler2D u_fdnb;     // material B's detail normal in RG
+uniform sampler2D u_fdnb;     // material B's detail normal in RG, the pilling normal in BA
 #endif
 #ifdef GBLADE
 in vec3 v_tint;               // grass.vert's colour field (the mesh-shader and scatter blades work it out here)
@@ -295,7 +297,26 @@ void main() {
   if (u_mr_scale.x > 0.0 && u_mr_scale != vec2(1.0)) arm.gb = texture(u_arm, v_uv * u_mr_scale).gb;
   arm.gb *= vec2(1.0) - u_fac_mr_inv;
 #ifdef FABRIC
-  if (u_fp[16].w > 0.5) {
+  if (u_fp[16].w > 1.5) {
+    // Epic's M_jeans_nrm_custom_master: the denim baked untinted (fabric.py: the pair's colour over its fabric average, Unreal's power
+    // and multiply, the stitches white by their SmoothCurve mask) at half in u_diff; the tints multiplied over it by region (u_fmask:
+    // R stitches, G rivets, B the leather patch): colour 1 the denim, 2 the stitches, B's the leather, C's the metal. The weave tiled
+    // u_fp[4].x times (turned u_fp[4].y turns) and the fuzz u_fp[4].z times over the baked normal, at strengths u_fp[4].w, u_fp[5].x
+    vec4 msk = texture(u_fmask, v_uv);
+    vec3 tint = mix(mix(mix(u_fp[0].rgb, u_fp[1].rgb, msk.r), u_fp[3].rgb, msk.g), u_fp[2].rgb, msk.b);
+    alb = texture(u_diff, v_uv).rgb * 2.0 * tint;
+    float ra = u_fp[4].y * 6.2831853;
+    vec2 wuv = mat2(cos(ra), -sin(ra), sin(ra), cos(ra)) * (v_uv * u_fp[4].x - 0.5) + 0.5;
+    vec3 wn = fabNs(fabN2(texture(u_fdn, wuv).rg), u_fp[4].w);
+    vec3 zn = fabNs(fabN2(texture(u_fdn, v_uv * u_fp[4].z).ba), u_fp[5].x);
+    vec3 bn = texture(u_nrm, v_uv).rgb * 2.0 - 1.0;
+    // (the rivets and the patch keep the baked normal alone, as Unreal's final mix does)
+    float plain = clamp(max(msk.g, msk.b), 0.0, 1.0);
+    vec3 tn = mix(fabRnm(fabRnm(bn, wn), zn), bn, plain);
+    n = normalize(cotangentFrame(N, v_wpos, v_uv) * tn);
+    arm = texture(u_arm, v_uv).rgb;
+    d.rgb = alb;
+  } else if (u_fp[16].w > 0.5) {
     vec4 msk = texture(u_fmask, v_uv);
     vec4 nm = texture(u_nrm, v_uv);
     vec4 ao = texture(u_arm, v_uv);
@@ -320,6 +341,8 @@ void main() {
       metal = mix(metal, u_fp[11].w, msk.b);
       fn = mix(fn, fnB, msk.b);
     }
+    // pilling's normal over the materials' (not on the stitches): u_fdnb's BA at the pilling tiling, its strength u_fp[1].w
+    if (u_fp[1].w != 0.0) fn = fabRnm(fn, mix(fabNs(fabN2(texture(u_fdnb, v_uv * u_fp[13].z).ba), u_fp[1].w), vec3(0.0, 0.0, 1.0), stitch));
     // pilling: the fibre balls lighten (Blend_Lighten), not on the stitches
     if (u_fp[13].y != 0.0) {
       float pa = texture(u_fkit, v_uv * u_fp[13].z).b;
