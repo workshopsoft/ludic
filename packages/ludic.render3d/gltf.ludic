@@ -19,7 +19,7 @@ property Prim {
   fab: floats,          # a garment's fabric (model_set_fabric: model.frag FABRIC's u_fp, 17 vec4), or null
   ftex: words,          # its five textures: mask, material A's kit and normals, material B's kit and normals
   eye: floats,          # a MetaHuman face's eyes (model_set_eyes: model.frag EYE): the cells' u (left, right), top v, size, inset; or null
-  etex: words           # their five maps: sclera, normals, iris, iris normal, the cornea's height
+  etex: words           # their six maps: sclera, normals, iris, iris normal, the cornea's height, the face's eye visibility
 }
 property Model {
   prims:  []Prim,

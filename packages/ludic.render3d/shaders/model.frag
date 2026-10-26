@@ -99,6 +99,9 @@ uniform sampler2D u_eye_n;        // RG the sclera's normal, BA T_Eye_N (the eye
 uniform sampler2D u_eye_iris;     // sRGB: the iris's colour, pupil black; A the pupil mask (iris UV)
 uniform sampler2D u_eye_irisn;    // RGB the iris normal / 4 + 0.5 (iris UV)
 uniform sampler2D u_eye_disp;     // the cornea's height over the iris plane, 16 bits in RG (eye UV)
+uniform sampler2D u_eye_vis;      // the face's own: its eyeballs' visibility past the lids (eye_vis.py), the left eye's cell left, the
+                                  // right's right: V(w) = a + b.w, RGB b (tangent) * 0.5 + 0.5, A (a + 1) / 3. Unreal has it from Lumen's
+                                  // sky occlusion and the Eye model's 0.5 cm contact shadow
 const float EYE_CORNEA = 0.165;            // Cornea Size
 const float EYE_IOR = 1.41;
 const float EYE_DEPTH = 1.0;               // Refraction Depth Scale
@@ -128,7 +131,7 @@ vec3 eyeNrm(vec2 xy) { xy = xy * 2.0 - 1.0; return vec3(xy, sqrt(clamp(1.0 - dot
 float eyeCirc(float l, float size, float soft, float centre) { float x = clamp(1.0 - (l - (size - soft * centre)) / soft, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
 // EyeBxDF for the sun (no area light: Energy 1, the sphere's NoH as it is) and the sky as the default lit model takes it, the diffuse
 // toward the iris normal over the iris. N the cornea's (and sclera's) normal, the base colour the Lambert's
-vec3 eyeShade(vec3 wpos, vec3 N, vec3 irisN, vec3 causticN, float irisMask, vec3 base, float ao, float shadow) {
+vec3 eyeShade(vec3 wpos, vec3 N, vec3 irisN, vec3 causticN, float irisMask, vec3 base, float ao, float shadow, vec3 bent, float vis, float sunV, vec3 skin, vec3 axis) {
   vec3 v = normalize(u_cam_pos - wpos);
   vec3 l = u_sun_dir;
   vec3 h = normalize(v + l);
@@ -149,17 +152,23 @@ vec3 eyeShade(vec3 wpos, vec3 N, vec3 irisN, vec3 causticN, float irisMask, vec3
   float lz = lightZone(wpos, lzAmb);
   float sunK = 1.0 - lz;
   float skyK = mix(1.0, lzAmb.a, lz);
-  vec3 direct = (spec * NoL + base / PI * trans * (1.0 - F)) * u_sun_color * shadow * cloudShadow(wpos) * sunK;
+  // the lids' and the brow's shadow: the visibility toward the sun
+  float sunVis = smoothstep(0.35, 0.65, sunV);
+  vec3 direct = (spec * NoL + base / PI * trans * (1.0 - F)) * u_sun_color * shadow * sunVis * cloudShadow(wpos) * sunK;
   vec3 Fr = F_SchlickRough(NoV, vec3(F0), EYE_ROUGH);
-  vec3 dN = normalize(mix(N, irisN, irisMask));
+  vec3 dN = normalize(mix(mix(N, irisN, irisMask), bent, 0.5));
   vec3 irr = skyIrradiance(dN);
-  vec3 diffuseIBL = (1.0 - Fr) * base * irr * skyK;
+  // what the socket hides of the sky it sends back off the skin round it (Lumen's bounce): the light on that skin - the sky's, and the
+  // sun's on skin facing along the eye's axis - in its colour (the face's mean skin, the atlas's skin at its smallest mip), for the
+  // occluded share of the hemisphere
+  vec3 skinIrr = skyIrradiance(axis) * skyK + u_sun_color * max(dot(axis, l), 0.0) * shadow * cloudShadow(wpos) * sunK;
+  vec3 diffuseIBL = (1.0 - Fr) * base * (irr * skyK * vis + skinIrr * skin * (1.0 - vis));
   vec2 brdf = texture(u_brdf, vec2(NoV, EYE_ROUGH)).rg;
   vec3 specIBL = skyPrefiltered(reflect(-v, N), EYE_ROUGH) * (Fr * brdf.x + brdf.y) * u_spec_scale * skyK;
   vec3 zoneAmb = (1.0 - Fr) * base * lzAmb.rgb * lz;
   if (lz > 0.0 && u_zl_n > 0) zoneAmb += (1.0 - Fr) * zoneLamps(wpos, dN, base) * lz;
   float so = clamp(pow(NoV + ao, exp2(-16.0 * EYE_ROUGH - 1.0)) - 1.0 + ao, 0.0, 1.0);
-  vec3 c = direct + diffuseIBL * ao + specIBL * so + zoneAmb * ao + (fireLight(wpos, dN, base) + handLight(wpos, dN, base)) * ao;
+  vec3 c = direct + diffuseIBL * ao + specIBL * so * vis + zoneAmb * ao + (fireLight(wpos, dN, base) + handLight(wpos, dN, base)) * ao;
   return sane(min(c, vec3(4096.0)));
 }
 #endif
@@ -732,6 +741,13 @@ void main() {
   vec3 eIrisN = normalize(etbn * normalize(eB1 * dot(eB1, eA1) - eA1 * eB1.z));
   // the caustic normal (IRIS_NORMAL): the plane's, bent toward -N by the iris's concavity
   vec3 eCaustic = normalize(mix(eE, -eN, eIrisMask * clamp(eIrisDist, 0.0, 1.0)));
+  vec4 eVt = texture(u_eye_vis, vec2((clamp(e.x, 0.0, 1.0) + (eRight ? 1.0 : 0.0)) * 0.5, clamp(e.y, 0.0, 1.0)));
+  vec3 eVb = eVt.rgb * 2.0 - 1.0;
+  float eVa = eVt.a * 3.0 - 1.0;
+  float eVis = clamp(eVa + eVb.z * 2.0 / 3.0, 0.0, 1.0);                         // the cosine-weighted mean: the sky's share
+  vec3 eBent = normalize(etbn * vec3(eVb.xy * 0.25, eVb.z * 0.5 + eVa * 2.0 / 3.0));   // its bent normal
+  float eSunV = eVa + dot(etbn * eVb, u_sun_dir);                                  // V toward the sun
+  vec3 eSkin = textureLod(u_diff, vec2(0.25, 0.25), 9.0).rgb * u_tint;     // the face's skin quadrant's mean (a MetaHuman atlas: u, v < 0.5)
   if (eyeOn) { alb = eBase;  n = eN; }
 #endif
 #if defined(FOLIAGE) && !defined(BLADE)
@@ -827,7 +843,7 @@ void main() {
   return;
 #endif
 #ifdef EYE
-  vec3 col = eyeOn ? eyeShade(v_wpos, eN, eIrisN, eCaustic, eIrisMask, eBase, arm.r, shadow) : shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
+  vec3 col = eyeOn ? eyeShade(v_wpos, eN, eIrisN, eCaustic, eIrisMask, eBase, arm.r, shadow, eBent, eVis, eSunV, eSkin, eE) : shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
 #else
   vec3 col = shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
 #endif

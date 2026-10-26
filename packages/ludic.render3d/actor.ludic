@@ -133,6 +133,7 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   if a.l_eye >= 0 {
     u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_sclera"), 3);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_n"), 4);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_iris"), 8)
     u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_irisn"), 9);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_disp"), 11)
+    u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_vis"), 10)          # (10: the blended pass's scene depth; free in an opaque one)
   }
   return a
 }
@@ -342,6 +343,7 @@ function ac_bind_eye(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> vo
   gpu_tex_unit(render3d_st, 8);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[2])
   gpu_tex_unit(render3d_st, 9);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[3])
   gpu_tex_unit(render3d_st, 11);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[4])
+  gpu_tex_unit(render3d_st, 10);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[5])
 }
 function ac_has_eyes(m: Model) -> bool {
   if m == null { return false }
