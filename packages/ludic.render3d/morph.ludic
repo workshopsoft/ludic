@@ -242,6 +242,37 @@ export function model_set_fabric(render3d_st: mut Render3dState, model: Model, p
   return true
 }
 
+# A MetaHuman face's eyes (model.frag EYE: Epic's M_eye_eyeball_unified and the Eye shading model) on every primitive of a model whose
+# eyeballs sit in two square cells of its atlas: cells = the left cell's u, the right's, their top v, their size, the inset each keeps
+# (the eye's UV fills the rest); the five maps eye_maps.py bakes, by path: the sclera (sRGB), the normals, the iris (sRGB), the iris
+# normal, the cornea's height. False when one could not be loaded (the model is left as it was)
+@alloc_ok("a face's eyes, set once when it is first worn")
+export function model_set_eyes(render3d_st: mut Render3dState, model: Model, cells: floats, sclera: string, nrm: string, iris: string, irisn: string, disp: string) -> bool {
+  if model == null or len(cells) != 5 { return false }
+  let paths = [sclera, nrm, iris, irisn, disp]
+  let ids = words(5)
+  for k in 0 .. 5 {
+    ids[k] = tex_cached(render3d_st, paths[k], k == 0 or k == 2, 0)
+    if ids[k] == 0 {
+      free(ids)
+      return false
+    }
+  }
+  for pi in 0 .. len(model.prims) {
+    let pr = model.prims[pi]
+    if pr.etex == null { pr.etex = words(5);  for k in 0 .. 5 { pr.etex[k] = 0 } }
+    for k in 0 .. 5 {
+      gltf_tex_ref(render3d_st, ids[k])
+      gltf_tex_unref(render3d_st, pr.etex[k])
+      pr.etex[k] = ids[k]
+    }
+    if pr.eye == null { pr.eye = floats(5) }
+    for k in 0 .. 5 { pr.eye[k] = cells[k] }
+  }
+  free(ids)
+  return true
+}
+
 # a PNG's texture, loaded once per path (the path cache gltf shares)
 @alloc_ok("a texture loaded once per path")
 function tex_cached(render3d_st: mut Render3dState, path: string, srgb: bool, dil: int) -> int {

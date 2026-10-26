@@ -86,6 +86,84 @@ uniform mat4 u_inv_vp;
 uniform vec2 u_screen;
 #endif
 
+#ifdef EYE
+// ---- a MetaHuman's eyes: Epic's M_eye_eyeball_unified (MI_Eye_Left_MHC's values) and the Eye shading model's EyeBxDF (ShadingModels.ush,
+// its IRIS_NORMAL path: the material writes a tangent and an iris normal) on a face whose eyeballs sit in two cells of its atlas
+// (model_set_eyes): u_eye = the left cell's u, the right cell's u, the cells' top v, their size; u_eye2.x the inset each cell keeps.
+// The material's view-independent nodes are baked into five maps (eye_maps.py); what depends on the view is here: the cornea's
+// refraction of the iris (MF_refractedUVs), the pupil's scale (MF_pupilScale), the caustics compensation and the BxDF.
+uniform vec4 u_eye;
+uniform vec4 u_eye2;
+uniform sampler2D u_eye_sclera;   // sRGB: the sclera's colour; A the cornea mask (eye UV)
+uniform sampler2D u_eye_n;        // RG the sclera's normal, BA T_Eye_N (the eyeball's axis), tangent space (eye UV)
+uniform sampler2D u_eye_iris;     // sRGB: the iris's colour, pupil black; A the pupil mask (iris UV)
+uniform sampler2D u_eye_irisn;    // RGB the iris normal / 4 + 0.5 (iris UV)
+uniform sampler2D u_eye_disp;     // the cornea's height over the iris plane, 16 bits in RG (eye UV)
+const float EYE_CORNEA = 0.165;            // Cornea Size
+const float EYE_IOR = 1.41;
+const float EYE_DEPTH = 1.0;               // Refraction Depth Scale
+const float EYE_DILATION = 0.95;           // Pupil Dilation
+const float EYE_CONC_SCALE = 0.15;         // Iris Concavity Scale, Power
+const float EYE_CONC_POW = 0.35;
+const float EYE_MASK_OFFSET = -0.01;       // Iris Mask Offset, Softness
+const float EYE_MASK_SOFT = 0.0628;
+const float EYE_ROUGH = 0.075;             // Cornea Roughness
+const float EYE_CAUSTIC_EXP = 2.25;        // Caustics Compensation Fresnel Exponent, Basecolor Multiply, Depth
+const float EYE_CAUSTIC_MUL = 2.5;
+const float EYE_CAUSTIC_DEPTH = 0.75;
+const float EYE_DISP_MAX = 1.6309;         // T_EyeMidPlaneDisplacement's largest value (eye_maps.py)
+// the height map's 16 bits filtered by hand (a filtered high byte would carry the low byte's wrap)
+float eyeDispTexel(ivec2 i, ivec2 sz) { vec2 t = texelFetch(u_eye_disp, clamp(i, ivec2(0), sz - 1), 0).rg; return (t.r * 65280.0 + t.g * 255.0) / 65535.0; }
+float eyeDisp(vec2 e) {
+  ivec2 sz = textureSize(u_eye_disp, 0);
+  vec2 x = fract(e) * vec2(sz) - 0.5;
+  ivec2 i = ivec2(floor(x));
+  vec2 f = x - floor(x);
+  float a = mix(eyeDispTexel(i, sz), eyeDispTexel(i + ivec2(1, 0), sz), f.x);
+  float b = mix(eyeDispTexel(i + ivec2(0, 1), sz), eyeDispTexel(i + ivec2(1, 1), sz), f.x);
+  return mix(a, b, f.y) * EYE_DISP_MAX;
+}
+vec3 eyeNrm(vec2 xy) { xy = xy * 2.0 - 1.0; return vec3(xy, sqrt(clamp(1.0 - dot(xy, xy), 0.0, 1.0))); }
+// MF_circularMask
+float eyeCirc(float l, float size, float soft, float centre) { float x = clamp(1.0 - (l - (size - soft * centre)) / soft, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
+// EyeBxDF for the sun (no area light: Energy 1, the sphere's NoH as it is) and the sky as the default lit model takes it, the diffuse
+// toward the iris normal over the iris. N the cornea's (and sclera's) normal, the base colour the Lambert's
+vec3 eyeShade(vec3 wpos, vec3 N, vec3 irisN, vec3 causticN, float irisMask, vec3 base, float ao, float shadow) {
+  vec3 v = normalize(u_cam_pos - wpos);
+  vec3 l = u_sun_dir;
+  vec3 h = normalize(v + l);
+  float NoV = clamp(abs(dot(N, v)) + 1e-5, 0.0, 1.0);
+  float NoL = max(dot(N, l), 0.0);
+  float NoH = max(dot(N, h), 0.0);
+  float VoH = max(dot(v, h), 0.0);
+  float a = EYE_ROUGH * EYE_ROUGH;
+  float F0 = 0.04;                                  // Specular 0.5 x 0.08
+  float Fc = pow(1.0 - VoH, 5.0);
+  float F = Fc + (1.0 - Fc) * F0;
+  vec3 spec = vec3(min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F) * u_spec_scale;
+  float irisNoL = clamp(dot(irisN, l), 0.0, 1.0);
+  float pw = mix(12.0, 1.0, irisNoL);
+  float caustic = 0.8 + 0.2 * (pw + 1.0) * pow(clamp(dot(causticN, l), 0.0, 1.0), pw);
+  float trans = mix(NoL, irisNoL * caustic, irisMask);
+  vec4 lzAmb;
+  float lz = lightZone(wpos, lzAmb);
+  float sunK = 1.0 - lz;
+  float skyK = mix(1.0, lzAmb.a, lz);
+  vec3 direct = (spec * NoL + base / PI * trans * (1.0 - F)) * u_sun_color * shadow * cloudShadow(wpos) * sunK;
+  vec3 Fr = F_SchlickRough(NoV, vec3(F0), EYE_ROUGH);
+  vec3 dN = normalize(mix(N, irisN, irisMask));
+  vec3 irr = skyIrradiance(dN);
+  vec3 diffuseIBL = (1.0 - Fr) * base * irr * skyK;
+  vec2 brdf = texture(u_brdf, vec2(NoV, EYE_ROUGH)).rg;
+  vec3 specIBL = skyPrefiltered(reflect(-v, N), EYE_ROUGH) * (Fr * brdf.x + brdf.y) * u_spec_scale * skyK;
+  vec3 zoneAmb = (1.0 - Fr) * base * lzAmb.rgb * lz;
+  if (lz > 0.0 && u_zl_n > 0) zoneAmb += (1.0 - Fr) * zoneLamps(wpos, dN, base) * lz;
+  float so = clamp(pow(NoV + ao, exp2(-16.0 * EYE_ROUGH - 1.0)) - 1.0 + ao, 0.0, 1.0);
+  vec3 c = direct + diffuseIBL * ao + specIBL * so + zoneAmb * ao + (fireLight(wpos, dN, base) + handLight(wpos, dN, base)) * ao;
+  return sane(min(c, vec3(4096.0)));
+}
+#endif
+
 mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   vec3 dp1 = dFdx(p), dp2 = dFdy(p);
   vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
@@ -606,6 +684,56 @@ void main() {
   if (u_model_h > 2.0) arm.r *= mix(0.5, 1.0, v_hull);
 #endif
   alb *= u_tint * (0.85 + 0.3 * fract(v_seed * 7.13));
+#ifdef EYE
+  // which eye's cell this texel is in, and the eye's own UV there (both computed for every pixel: the samplers below take their
+  // derivatives, so none of them may sit in a branch some of a quad skips)
+  float eCell = u_eye.w;
+  bool eIn = v_uv.y >= u_eye.z && v_uv.y < u_eye.z + eCell;
+  bool eRight = v_uv.x >= u_eye.y && v_uv.x < u_eye.y + eCell;
+  bool eyeOn = eIn && ((v_uv.x >= u_eye.x && v_uv.x < u_eye.x + eCell) || eRight);
+  vec2 eO = vec2(eRight ? u_eye.y : u_eye.x, u_eye.z);
+  vec2 e = (v_uv - eO - u_eye2.x * eCell) / (eCell * (1.0 - 2.0 * u_eye2.x));
+  mat3 etf = cotangentFrame(N, v_wpos, v_uv);
+  mat3 etbn = mat3(normalize(etf[0]), normalize(etf[1]), N);
+  vec4 eS = texture(u_eye_sclera, e);
+  vec4 eNm = texture(u_eye_n, e);
+  float eCornea = eS.a;
+  vec3 eN = normalize(etbn * eyeNrm(eNm.rg));       // the material's Normal: the sclera's, flattened to 0.1 over the cornea
+  vec3 eE = normalize(etbn * eyeNrm(eNm.ba));       // its Tangent output: the eyeball's axis (EyeDirectionWorld)
+  // MF_refractedUVs: the view refracted into the cornea, carried down to the iris plane, and the offset read in the eye's UV
+  vec3 eV = normalize(u_cam_pos - v_wpos);
+  float eNi = 1.00029 / EYE_IOR;
+  float eW = eNi * dot(eN, eV);
+  float eK = sqrt(1.0 + (eW - eNi) * (eW + eNi));
+  vec3 eR = -normalize((eW - eK) * eN - eNi * eV);
+  float eVE = dot(eV, eE);
+  float eH = max(eyeDisp(e) - eyeDisp(vec2(EYE_CORNEA + 0.5, 0.5)), 0.0) * EYE_DEPTH / mix(0.325, 1.0, eVE * eVE);
+  vec3 eOff = eR * eH;
+  vec3 eTx = normalize(etbn[0] - dot(etbn[0], eE) * eE);
+  vec3 eTy = cross(eTx, eE);
+  vec2 eRef = mix(e, e + EYE_CORNEA * vec2(-1.0, 1.0) * vec2(dot(eTx, eOff), dot(eTy, eOff)), eCornea);
+  // the iris UV: the cornea's circle to the whole map, MF_pupilScale (Iris Scale 1, Iris Rotation 0, the pupil unshifted)
+  vec2 eQ = (eRef - 0.5) / (2.0 * EYE_CORNEA);
+  float eQl = length(eQ);
+  vec2 eP = 0.5 + eQ / max(eQl, 1e-6) * 0.5 * (1.0 - clamp((1.0 - 2.0 * eQl) * EYE_DILATION, 0.0, 1.0));
+  vec4 eI = texture(u_eye_iris, eP);
+  // the caustics compensation: the iris brightened where the cornea's T_Eye_N (at 1.2x about the centre, strength 0.75) turns from the eye
+  vec3 eCn = mix(vec3(0.0, 0.0, 1.0), eyeNrm(texture(u_eye_n, eP / 1.2 + 0.5 - 0.5 / 1.2).ba), EYE_CAUSTIC_DEPTH);
+  float eFr = pow(1.0 - max(dot(normalize(etbn * eCn), eV), 0.0), EYE_CAUSTIC_EXP) * 0.96 + 0.04;
+  vec3 eIris = mix(eI.rgb, eI.rgb * EYE_CAUSTIC_MUL, clamp(eFr, 0.0, 1.0) * eCornea * (1.0 - eI.a));
+  vec3 eBase = mix(eS.rgb, eIris, eCornea);
+  float eIrisMask = eyeCirc(length(e - 0.5), EYE_CORNEA + EYE_MASK_OFFSET, EYE_MASK_SOFT, 0.5);
+  float eIrisDist = pow(length(eRef - 0.5) / EYE_CORNEA * EYE_CONC_SCALE, EYE_CONC_POW);
+  // the iris normal: the baked one (T_iris_I_N and the pupil's funnel) under T_Eye_N at 1.25, BlendAngleCorrectedNormals
+  vec3 eB = texture(u_eye_irisn, eP).rgb * 4.0 - 2.0;
+  vec3 eA = mix(vec3(0.0, 0.0, 1.0), eyeNrm(eNm.ba), 1.25);
+  vec3 eB1 = vec3(eB.xy, eB.z + 1.0);
+  vec3 eA1 = vec3(-eA.xy, eA.z);
+  vec3 eIrisN = normalize(etbn * normalize(eB1 * dot(eB1, eA1) - eA1 * eB1.z));
+  // the caustic normal (IRIS_NORMAL): the plane's, bent toward -N by the iris's concavity
+  vec3 eCaustic = normalize(mix(eE, -eN, eIrisMask * clamp(eIrisDist, 0.0, 1.0)));
+  if (eyeOn) { alb = eBase;  n = eN; }
+#endif
 #if defined(FOLIAGE) && !defined(BLADE)
   // A fern or a clump stands IN the sward, and its low leaves see the sky through it no more than the
   // blades beside them do. Its own occlusion map knows nothing of the grass around it, so by night -
@@ -698,7 +826,11 @@ void main() {
   o_sss_alb = vec4(applyFog(alb, v_wpos, dist) - applyFog(vec3(0.0), v_wpos, dist), sssOp);
   return;
 #endif
+#ifdef EYE
+  vec3 col = eyeOn ? eyeShade(v_wpos, eN, eIrisN, eCaustic, eIrisMask, eBase, arm.r, shadow) : shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
+#else
   vec3 col = shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
+#endif
 #ifdef FABRIC
   // a hair card lit as Epic's hair: the sun through HairShading, the sky as Unreal's hair environment (pi x the shading toward the light
   // a strand's normal would face, at area 0.2, times the sky there)

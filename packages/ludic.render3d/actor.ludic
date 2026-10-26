@@ -95,6 +95,8 @@ property AcProg {
   l_fmr:    int = -1,
   l_femis:  int = -1,
   l_fp:     int = -1,          # u_fp[0] (FABRIC)
+  l_eye:    int = -1,          # u_eye (EYE)
+  l_eye2:   int = -1,
   l_pmodel: int = -1,          # the motion pass's: last frame's model matrix and palette, both clean view-projections
   l_pbones: int = -1,
   l_vpc:    int = -1,
@@ -113,6 +115,7 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   a.l_out = gpu_uniform(render3d_st, p, "u_outline");  a.l_ocol = gpu_uniform(render3d_st, p, "u_outline_col")
   a.l_tr = gpu_uniform(render3d_st, p, "u_tr")
   a.l_fp = gpu_uniform(render3d_st, p, "u_fp[0]");  if a.l_fp < 0 { a.l_fp = gpu_uniform(render3d_st, p, "u_fp") }
+  a.l_eye = gpu_uniform(render3d_st, p, "u_eye");  a.l_eye2 = gpu_uniform(render3d_st, p, "u_eye2")
   a.l_pmodel = gpu_uniform(render3d_st, p, "u_prev_model");  a.l_vpc = gpu_uniform(render3d_st, p, "u_vp_cur");  a.l_vpp = gpu_uniform(render3d_st, p, "u_vp_prev")
   a.l_pbones = gpu_uniform(render3d_st, p, "u_prev_bones[0]");  if a.l_pbones < 0 { a.l_pbones = gpu_uniform(render3d_st, p, "u_prev_bones") }
   a.l_fbase = gpu_uniform(render3d_st, p, "u_fac_base_inv");  a.l_fmr = gpu_uniform(render3d_st, p, "u_fac_mr_inv");  a.l_femis = gpu_uniform(render3d_st, p, "u_fac_emis")
@@ -123,6 +126,11 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   if a.l_fp >= 0 {
     u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fmask"), 3);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fkit"), 4);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fdn"), 8)
     u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fkitb"), 9);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fdnb"), 11)
+  }
+  # a face's eyes (EYE): the same free units
+  if a.l_eye >= 0 {
+    u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_sclera"), 3);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_n"), 4);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_iris"), 8)
+    u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_irisn"), 9);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_disp"), 11)
   }
   return a
 }
@@ -145,6 +153,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_lit_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n")
   render3d_st.ac_fab = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n")
   render3d_st.ac_fab_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n#define ALPHA_TEST\n")
+  render3d_st.ac_eye = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n#define EYE\n")
   render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
   render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
@@ -290,6 +299,7 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
     gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
     prim_factors(render3d_st, ap.prog, pr)
     if not shadow and ap.l_fp >= 0 { ac_bind_fabric(render3d_st, a, ap, pr) }
+    if not shadow and ap.l_eye >= 0 and pr.eye != null { ac_bind_eye(render3d_st, ap, pr) }
     if not shadow {
       gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
       gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
@@ -318,6 +328,22 @@ function ac_fab_tex(render3d_st: mut Render3dState, unit: int, pr: Prim, k: int)
   var id = pr.ftex[k]
   if id == 0 { id = pr.ftex[0] }
   gpu_tex_unit(render3d_st, unit);  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+}
+# a face's eyes for the EYE program: the cells and the five maps on the units the fabric's take
+function ac_bind_eye(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {
+  let e = pr.eye
+  u_f4(render3d_st, ap.l_eye, e[0], e[1], e[2], e[3])
+  u_f4(render3d_st, ap.l_eye2, e[4], 0.0, 0.0, 0.0)
+  gpu_tex_unit(render3d_st, 3);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[0])
+  gpu_tex_unit(render3d_st, 4);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[1])
+  gpu_tex_unit(render3d_st, 8);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[2])
+  gpu_tex_unit(render3d_st, 9);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[3])
+  gpu_tex_unit(render3d_st, 11);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[4])
+}
+function ac_has_eyes(m: Model) -> bool {
+  if m == null { return false }
+  for i in 0 .. len(m.prims) { if m.prims[i].eye != null { return true } }
+  return false
 }
 function ac_fabric_mode(m: Model) -> int {
   if m == null { return 0 }
@@ -456,6 +482,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     # a hair card (fabric mode 3) discards by its coverage: drawn as a cut-out (with only the plain fabric program, the cards' discarded
     # texels kept the depth of what lay behind from being drawn on this GPU: holes to the ground and black against the sky)
     if fab and ac_fabric_mode(a.model) == 3 { ap = render3d_st.ac_fab_cut }
+    if not fab and ac_has_eyes(a.model) { ap = render3d_st.ac_eye }       # a MetaHuman face (model_set_eyes)
     ac_bind_scene(render3d_st, ap)
     # a cut-out's edge (a hair card's, a flame's) resolved by the samples' coverage, as the foliage's is (model.frag ALPHA_TEST)
     let a2c = a.cutout and not fab and render3d_st.sc_a2c
