@@ -13,10 +13,11 @@ in float v_sdep;
 in vec3 v_snrm;
 out vec4 o_color;
 uniform float u_strand_minr;
-uniform vec4 u_fp[17];        // 0 the colour (the dye), 1 melanin variation fine / rough, roughness, its variation, 2 Spec0, Spec1, SpecEdge,
-                              // SpecFront, 3 Backlit, the coverage scale
+uniform vec4 u_fp[17];        // the hair's parameters in model.frag's hair-mode layout (mhHairColour; 2 Spec0, Spec1, SpecEdge, SpecFront),
+                              // but 3 Backlit
 uniform sampler2D u_hair_lut;  // hair_lut.frag
 uniform float u_frame;
+uniform float u_hs_d0;        // DOM: the map's plane, metres from the sun's eye
 const int SKY_SAMPLES = 16;   // r.HairStrands.SkyLighting.SampleCount
 
 // SampleHairLUT for one channel: the atlas's trilinear sample (angle, roughness bilinear in a tile; absorption across two)
@@ -28,8 +29,9 @@ vec2 hairLut(float sinV, float rough, float c) {
   vec2 b = textureLod(u_hair_lut, (xy + vec2(mod(z1, 4.0), floor(z1 / 4.0)) * 64.0) / 256.0, 0.0).rg;
   return mix(a, b, z - z0);
 }
-// ComputeDualScatteringTerms' LocalScattering, the hair count toward the light 0 (GlobalScattering 1 then)
-vec3 hairLocalScattering(vec3 base, float rough, vec3 T, vec3 V, vec3 L) {
+// ComputeDualScatteringTerms: the LocalScattering, and in gs the GlobalScattering by the hair count toward the light (count - 1: no
+// self-shadow)
+vec3 hairLocalScattering(vec3 base, float rough, vec3 T, vec3 V, vec3 L, float count, out vec3 gs) {
   float sinL = clamp(dot(T, L), -1.0, 1.0);
   float sinV = clamp(dot(T, V), -1.0, 1.0);
   vec3 c = sqrt(clamp(base, 0.0, 1.0));
@@ -43,7 +45,8 @@ vec3 hairLocalScattering(vec3 base, float rough, vec3 T, vec3 V, vec3 L) {
   vec3 afw = af / (af.r + af.g + af.b);
   float betaF = dot(beta, afw);
   float betaF2 = betaF * betaF;
-  float sigmaF2 = betaF2;                                            // x max(1, hair count) at none
+  float n = max(0.0, count - 1.0);
+  float sigmaF2 = betaF2 * max(1.0, n);
   float thetaH = 0.5 * (asin(sinL) + asin(sinV));
   float shiftF = dot(vec3(-0.07, 0.035, 0.14), afw);
   vec3 deltaB = shiftF * (1.0 - 2.0 * ab2 / (om * om)) * shiftF * (2.0 * om * om + 4.0 * af2 * ab2) / (om * om * om);
@@ -54,25 +57,35 @@ vec3 hairLocalScattering(vec3 base, float rough, vec3 T, vec3 V, vec3 L) {
   vec3 var = sigmaF2 + sigmaB * sigmaB;
   vec3 d = thetaH - deltaB;
   vec3 Sb = exp(-0.5 * d * d / var) / PI;
+  vec3 Sf = exp(-0.5 * thetaH * thetaH / vec3(sigmaF2)) / PI;
+  vec3 Tf = pow(max(vec3(lr.x, lg.x, lb.x), vec3(1e-4)), vec3(n));
+  gs = mix(vec3(1.0), Tf * Sf * 0.7, clamp(n, 0.0, 1.0));
   return 2.0 * Ab * Sb * 0.7;
 }
-vec3 strandShade(vec3 base, float rough, float spec, float backlit, vec3 T, vec3 V, vec3 L) {
-  return hairBsdf(base, rough, spec, T, V, L, 0.0, backlit, true, true, 1.0) + hairLocalScattering(base, rough, T, V, L);
+// HairShading with the dual scattering: GlobalScattering x (the lobes + LocalScattering)
+vec3 strandShade(vec3 base, float rough, float spec, float backlit, vec3 T, vec3 V, vec3 L, float count) {
+  vec3 gs;
+  vec3 ls = hairLocalScattering(base, rough, T, V, L, count, gs);
+  return gs * (hairBsdf(base, rough, spec, T, V, L, 0.0, backlit, true, true, 1.0) + ls);
 }
 
 void main() {
   float c = clamp(v_srad / max(v_srad, u_strand_minr * v_sdep), 0.0, 1.0);
 #ifdef TRANSMITTANCE
   o_color = vec4(1.0 - c);
+#elif defined(DOM)
+  // the hair's shadow map (strands.ludic: seen from the sun): its count, Unreal's coverage x DensityScale 2 (DeepShadow), added up, and
+  // that count times the strand's depth from the map's plane (its mean depth, where a receiver begins to be behind it)
+  float n = c * 2.0;
+  o_color = vec4(n, n * (v_sdep - u_hs_d0), 0.0, 0.0);
 #else
   if (c <= 0.0) discard;
   vec3 T = normalize(v_nrm);
   vec3 V = normalize(u_cam_pos - v_wpos);
   vec3 Ns = normalize(v_snrm);
   float seed = v_col.a;
-  // the material (M_hair_v4's strands: MF_Hair_Color's melanin variation by the seed, MF_Variation's roughness and specular)
-  float mv = mix(u_fp[1].x, u_fp[1].y, clamp(u_fp[1].z * 2.0, 0.0, 1.0));
-  vec3 base = hairColour(hairAbsorption(u_fp[0].rgb) * (hairVar(mv, 0.5, seed) / 0.5));
+  // the material: M_hair_v4's colour for this strand (its seed, its place from the root), MF_Variation's roughness and specular
+  vec3 base = mhHairColour(u_fp, seed, v_uv.x);
   float rough = hairVar(u_fp[1].w, u_fp[1].z, seed);
   float spec = mix(u_fp[2].y, u_fp[2].x, seed) * mix(u_fp[2].z, u_fp[2].w, 0.5);
   float backlit = clamp(u_fp[3].x, 0.0, 1.0);
@@ -80,7 +93,7 @@ void main() {
   float lz = lightZone(v_wpos, lzA);
   // the sun: Shadow x HairShading (no cosine: the lobes carry it)
   float shadow = sunShadow(v_wpos, Ns, v_sdep);
-  vec3 col = strandShade(base, rough, spec, backlit, T, V, u_sun_dir) * u_sun_color * shadow * cloudShadow(v_wpos) * (1.0 - lz);
+  vec3 col = strandShade(base, rough, spec, backlit, T, V, u_sun_dir, hairCountAt(v_wpos)) * u_sun_color * shadow * cloudShadow(v_wpos) * (1.0 - lz);
   // the sky: 4 pi / N x the sum over N uniform directions of HairShading x visibility x the sky's radiance (roughness 0.1), the
   // directions turned per pixel and per frame (Unreal's blue noise, the temporal resolve averaging it)
   vec3 sky = vec3(0.0);
@@ -91,7 +104,7 @@ void main() {
     vec3 L = vec3(sz * cos(phi), cz, sz * sin(phi));
     float vis = smoothstep(-0.1, 0.1, dot(L, Ns));
     if (vis <= 0.0) continue;
-    sky += strandShade(base, rough, spec, backlit, T, V, L) * vis * skyPrefiltered(L, 0.1);
+    sky += strandShade(base, rough, spec, backlit, T, V, L, 0.0) * vis * skyPrefiltered(L, 0.1);
   }
   col += sky * (4.0 * PI / float(SKY_SAMPLES)) * mix(1.0, lzA.a, lz);
   col += base * lzA.rgb * lz;

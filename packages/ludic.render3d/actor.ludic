@@ -162,6 +162,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_shell = ac_prog_new(render3d_st, "skin.vert", "eyeshell.frag", "")
   render3d_st.ac_strand_t = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define TRANSMITTANCE\n")
   render3d_st.ac_strand_l = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n")
+  render3d_st.ac_strand_dom = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define DOM\n")
   render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
   render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
@@ -246,6 +247,7 @@ function ac_bind_scene(render3d_st: mut Render3dState, ap: AcProg) -> void {
   fog_bind(render3d_st, p)
   # a hair card's dithered opacity (model.frag FABRIC mode 3): a new pattern each frame for the temporal resolve to average
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dither_frame"), float(render3d_st.ac_frame % 64))
+  strands_bind_shadow(render3d_st, p)
 }
 function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool {
   if a.model == null { return false }

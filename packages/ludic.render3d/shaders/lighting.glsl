@@ -528,3 +528,89 @@ vec3 hairMelanin(float m, float r, vec3 dye) {
 float hairMel(float m, float fine, float rough, float hr, float seed) {
   return pow(max(hairVar(mix(fine, rough, clamp(hr * 2.0, 0.0, 1.0)), m, seed), 0.0), 2.2);
 }
+// M_hair_v4's colour for one strand (a card's texel of it, or a groom's strand): fp the hair's parameters (gpp model.frag's hair mode
+// layout: 0 the dye, 1 melanin variations and roughness, 5..11 the look's melanin, white strands, highlights and ombre, art hair_unreal.py),
+// seed the strand's, coord its place along it (0 at the root, 1 at the tip)
+vec3 mhHairColour(vec4 fp[17], float seed, float coord) {
+  vec3 alb;
+  // the colour: the dye's absorption, more or less by the strand (MF_Hair_Color's melanin variation, fine to rough by the roughness)
+  float mv = mix(fp[1].x, fp[1].y, clamp(fp[1].z * 2.0, 0.0, 1.0));
+  float k = hairVar(mv, 0.5, seed) / 0.5;
+  alb = hairColour(hairAbsorption(fp[0].rgb) * k);
+  if (fp[11].x > 0.5) {
+    // M_hair_v4's colour from the look's melanin (art hair_unreal.py: u_fp 0 the dye, 5 melanin, redness, WhiteAmount, LightAmount,
+    // 6 the white strands' melanin high, low, variation, Desat, 7 Highlights, its melanin, redness, blending, 8 its dye, intensity,
+    // 9 Ombre, its melanin, redness, shift, 10 its dye, contrast, 11 on, the variations fine and rough, the ombre's intensity).
+    // MF_Hair_ColorBlending, then MF_Hair_SaltAndPeper with the strands' coverage (WhiteAmount^2.4: what Unreal shows up close;
+    // its cards' WhiteAmount x 1.08 greys dark hair), then the HairColor node and the Desaturation
+    float hr0 = fp[1].z;
+    float mel = hairMel(fp[5].x, fp[1].x, fp[1].y, hr0, seed);
+    float red = fp[5].y;
+    vec3 dye = fp[0].rgb;
+    // the ombre, along the strand (the atlas's coordinate): CheapContrast of the shifted power
+    float sh = (fp[9].w + 0.065) * 10.0 - 5.0;
+    float tl = clamp(coord, 0.0, 1.0);
+    float oa = sh > 0.0 ? pow(tl, sh + 1.0) : 1.0 - pow(1.0 - tl, abs(sh) + 1.0);
+    oa = clamp(mix(-fp[10].w, 1.0 + fp[10].w, oa), 0.0, 1.0) * fp[11].w;
+    float om = fp[9].x;
+    mel = mix(mel, mix(mel, hairMel(fp[9].y, fp[11].y, fp[11].z, hr0, seed), oa), om);
+    red = mix(red, mix(red, fp[9].z, oa), om);
+    dye = mix(dye, mix(dye, fp[10].rgb, oa), om);
+    // the highlights: Unreal's mask through the strand's root (cards: the mask plus 0.15 .. 0.3 by the seed); a card's strands have
+    // no root position, the seed picks the mask's value
+    float mask = fract(seed * 13.17 + 0.37);
+    mask = mask * mask;
+    float ha = clamp(pow(clamp(mix(mask + 0.15, mask + 0.3, seed * 1.08), 0.0, 1.0), 1.0 + fp[7].w * 5.0) * fp[8].w * 3.0, 0.0, 1.0);
+    ha *= mix(1.0, oa, om) * fp[7].x;
+    mel = mix(mel, hairMel(fp[7].y, fp[11].y, fp[11].z, hr0, seed), ha);
+    red = mix(red, fp[7].z, ha);
+    dye = mix(dye, fp[8].rgb, ha);
+    // salt and pepper: the white strands' melanin over a WhiteAmount^2.4 share of them
+    float wa = pow(max(fp[5].z, 0.0), 2.4);
+    float wc = smoothstep(wa, wa - 0.05, seed);
+    float wv = hairVar(fp[6].z, mix(fp[6].x, fp[6].y, fp[5].x), seed) * 1.25;
+    mel = mix(mel, mix(wv, wv * 0.5, fp[5].w), wc);
+    alb = hairMelanin(mel, red, dye);
+    float lum = dot(alb, vec3(0.3, 0.59, 0.11));
+    alb = mix(alb, vec3(lum), mix(fp[6].w, 0.9, wc));
+  }
+  return alb;
+}
+#if defined(EYE) || defined(SSS_SPLIT) || (defined(STRANDS) && !defined(DOM) && !defined(TRANSMITTANCE))
+// the groom's shadow on the skin and eyes (strands.ludic's hair shadow map, Unreal's DeepShadowMask for an opaque receiver): visibility
+// 1 - saturate(the hair count in front of it), 3 x 3 taps; a receiver nearer the sun than the hair's mean depth (less a millimetre) is
+// not behind it. u_hs_p: x on, y a texel in uv, z the map's plane (metres from the sun's eye)
+uniform sampler2D u_hairsh;
+uniform mat4 u_hs_view;
+uniform mat4 u_hs_proj;
+uniform vec4 u_hs_p;
+float hairShadow(vec3 wpos) {
+  if (u_hs_p.x < 0.5) return 1.0;
+  vec4 lv = u_hs_view * vec4(wpos, 1.0);
+  vec4 cl = u_hs_proj * lv;
+  vec2 uv = cl.xy * 0.5 + 0.5;
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 1.0;
+  float d = -lv.z - u_hs_p.z;
+  float vis = 0.0;
+  for (int j = -1; j <= 1; ++j)
+  for (int i = -1; i <= 1; ++i) {
+    vec2 t = textureLod(u_hairsh, uv + vec2(float(i), float(j)) * u_hs_p.y, 0.0).rg;
+    float md = t.g / max(t.r, 1e-6);
+    vis += (t.r > 0.0 && d > md - 0.001) ? 1.0 - clamp(t.r, 0.0, 1.0) : 1.0;
+  }
+  return vis / 9.0;
+}
+// the hair count between a strand and the sun (Unreal's deep shadow, ComputeHairCount): the map's count, the share of it in front of the
+// strand by where its depth lies in the hair's (its mean depth, the hair's thickness taken as 3 mm either side)
+float hairCountAt(vec3 wpos) {
+  if (u_hs_p.x < 0.5) return 0.0;
+  vec4 lv = u_hs_view * vec4(wpos, 1.0);
+  vec2 uv = (u_hs_proj * lv).xy * 0.5 + 0.5;
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
+  vec2 t = textureLod(u_hairsh, uv, 0.0).rg;
+  if (t.r <= 0.0) return 0.0;
+  float md = t.g / t.r;
+  float d = -lv.z - u_hs_p.z;
+  return t.r * clamp((d - md) / 0.006 + 0.5, 0.0, 1.0);
+}
+#endif

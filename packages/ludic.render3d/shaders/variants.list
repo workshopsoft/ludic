@@ -88,3 +88,4 @@ skin.vert|strands.frag|#define STRANDS;
 skin.vert|strands.frag|#define STRANDS;#define TRANSMITTANCE;
 fullscreen.vert|strands_resolve.frag|
 fullscreen.vert|hair_lut.frag|
+skin.vert|strands.frag|#define STRANDS;#define DOM;
