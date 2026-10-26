@@ -335,6 +335,8 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   taa_motion_pass(render3d_st)              # its own two timers: "TAA motion" and "TAA motion actors"
   # skin's subsurface scattering (sss.ludic), into the opaque scene before anything is copied from it
   sss_pass(render3d_st)                     # "skin light" and "skin scatter"
+  # the eyes' occlusion shells (actor.ludic), over the opaque scene from its copy
+  actor_draw_shells(render3d_st)
   # The opaque copy: what the water refracts, and what the temporal resolve compares the finished frame
   # with to find what the transparent passes laid over it (taa.frag's reactive pixels). Without water
   # it is made only for TAA, and only when something will be laid over (puddles, last frame's blended actors).

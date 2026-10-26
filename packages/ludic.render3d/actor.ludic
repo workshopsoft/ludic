@@ -42,6 +42,7 @@ property Actor {
   unlit:   bool = false,       # blended only: base colour x emissive (x 1 at 0), no sun, sky or shadow
   blend_casts: bool = false,   # a blended actor that still casts, alpha-tested at 0.5
   blend_d: float = 0.0,        # its squared distance from the camera this frame (the sort's key)
+  shell:   bool = false,       # a MetaHuman's eye occlusion shell (eyeshell.frag): drawn over the opaque scene from its copy (actor_draw_shells)
   @owns(SkinClone) skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
   skin_owned: bool = false,  # made by actor_own_skin: actor_release frees it
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
@@ -154,6 +155,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_fab = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n")
   render3d_st.ac_fab_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n#define ALPHA_TEST\n")
   render3d_st.ac_eye = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n#define EYE\n")
+  render3d_st.ac_shell = ac_prog_new(render3d_st, "skin.vert", "eyeshell.frag", "")
   render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
   render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
@@ -473,6 +475,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
     if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
+    if a.shell { continue }                              # (actor_draw_shells, after the opaque scene)
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }
     var ap = render3d_st.ac_lit
@@ -492,6 +495,42 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   }
   actor_draw_outlines(render3d_st)
   gpu_cull(render3d_st, true)
+}
+# The eye occlusion shells (eyeshell.frag), after the opaque scene and its subsurface pass: the frame copied (post_capture_scene), then each
+# shell drawn over it from the copy, depth-tested against the scene and writing none
+function actor_draw_shells(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ac_actors == null or render3d_st.ac_shell == null or render3d_st.post_scene == null { return }
+  var any = false
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.shell and ac_visible(render3d_st, a, false) { any = true }
+  }
+  if not any { return }
+  prof_begin(render3d_st, "eye shells")
+  post_capture_scene(render3d_st)
+  target_bind(render3d_st, render3d_st.post_hdr)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_GEQUAL)
+  gpu_depth_write(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  let ap = render3d_st.ac_shell
+  let p = ap.prog
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, ap.l_view, render3d_st.cam_view)
+  u_mat4(render3d_st, ap.l_proj, render3d_st.cam_proj)
+  r3d_bind_2d(render3d_st, p, "u_scene", 12, render3d_st.post_scene.color)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_screen"), float(render3d_st.post_w), float(render3d_st.post_h))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_tan_half"), 1.0 / render3d_st.cam_proj[0])
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if not a.shell or not ac_visible(render3d_st, a, false) { continue }
+    actor_draw_one(render3d_st, a, ap, false)
+  }
+  gpu_depth_func(render3d_st, GPU_GREATER)
+  gpu_depth_write(render3d_st, true)
+  gpu_cull(render3d_st, true)
+  gpu_fb_bind(render3d_st, 0)
+  prof_end(render3d_st)
 }
 # Skin's light for the subsurface pass (sss.ludic): every visible actor whose model is marked as skin, again, over the scene's depth
 function actor_draw_sss(render3d_st: mut Render3dState) -> void {
@@ -907,7 +946,7 @@ function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, fr
   let ppm = float(render3d_st.post_h) * 0.5 / Math.tan(render3d_st.cam_fov * 0.5)
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if a.blend != 0 { continue }
+    if a.blend != 0 or a.shell { continue }
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }                 # a part that follows a blended leader
     # this frame's palette: a part's (from its leader), its own clone's, its model's - or none

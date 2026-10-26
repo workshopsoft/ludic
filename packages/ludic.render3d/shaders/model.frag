@@ -137,7 +137,7 @@ vec3 eyeShade(vec3 wpos, vec3 N, vec3 irisN, vec3 causticN, float irisMask, vec3
   float NoH = max(dot(N, h), 0.0);
   float VoH = max(dot(v, h), 0.0);
   float a = EYE_ROUGH * EYE_ROUGH;
-  float F0 = 0.04;                                  // Specular 0.5 x 0.08
+  float F0 = 0.02;                                  // Specular x 0.08, the Specular 0.25 the IRIS_NORMAL path sets (BasePassPixelShader)
   float Fc = pow(1.0 - VoH, 5.0);
   float F = Fc + (1.0 - Fc) * F0;
   vec3 spec = vec3(min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F) * u_spec_scale;
