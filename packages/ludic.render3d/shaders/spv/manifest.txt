@@ -6852,6 +6852,7 @@ I fcc1042e a_pos 0 vec3
 I fcc1042e a_nrm 1 vec3
 I fcc1042e a_uv 2 vec2
 I fcc1042e a_col 7 vec4
+I fcc1042e a_sky 9 vec4
 B fcc1042e frag 1 2376
 U fcc1042e frag u_cascade_vp 0 mat4 5 64
 U fcc1042e frag u_cascade_split 320 float 5 16
@@ -6932,6 +6933,7 @@ I fcf235c8 a_pos 0 vec3
 I fcf235c8 a_nrm 1 vec3
 I fcf235c8 a_uv 2 vec2
 I fcf235c8 a_col 7 vec4
+I fcf235c8 a_sky 9 vec4
 B fcf235c8 frag 1 2216
 U fcf235c8 frag u_cascade_vp 0 mat4 5 64
 U fcf235c8 frag u_cascade_split 320 float 5 16
@@ -7123,6 +7125,7 @@ I 339fddc9 a_pos 0 vec3
 I 339fddc9 a_nrm 1 vec3
 I 339fddc9 a_uv 2 vec2
 I 339fddc9 a_col 7 vec4
+I 339fddc9 a_sky 9 vec4
 B 339fddc9 frag 1 2216
 U 339fddc9 frag u_cascade_vp 0 mat4 5 64
 U 339fddc9 frag u_cascade_split 320 float 5 16

@@ -22,6 +22,8 @@ uniform float u_outline;                    // metres the shell is pushed out
 // a groom's strands (strands.ludic): each point twice, NORMAL its tangent (root to tip) times its radius (m), TEXCOORD_0 (u root to
 // tip, side -1 / +1), COLOR_0 the skin's normal at its root (RGB) and the strand's seed (A)
 uniform float u_strand_minr;                // the least radius a strand is drawn at, at a metre's distance (strands.ludic)
+layout(location = 9) in vec4 a_sky;         // _HAIRSKY: the hairs between the point and the sky, count(w) = x + yzw.w (the bind frame)
+out vec4 v_sky;
 out float v_srad;
 out float v_sdep;
 out vec3 v_snrm;
@@ -107,6 +109,7 @@ void main() {
   v_srad = r;
   v_sdep = -(u_view * w).z;
   v_snrm = normalize(mat3(m) * (a_col.rgb * 2.0 - 1.0));
+  v_sky = vec4(a_sky.x, mat3(m) * a_sky.yzw);
 #endif
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * w;

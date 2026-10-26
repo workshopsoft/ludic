@@ -3,7 +3,7 @@
 // Coverage = r / max(r, PixelRadius)). TRANSMITTANCE: 1 - that coverage, multiplied into the transmittance target (ZERO, SRC_COLOR);
 // otherwise the strand lit and weighted by it, added up (ONE, ONE): the sun through HairShading with the dual scattering's local term
 // (ComputeDualScatteringTerms at no hair toward the light), the sky integrated over the sphere as r.HairStrands.SkyLighting.
-// IntegrationType 2 (uniform) does, the skin under the strand standing for the voxels' occlusion
+// IntegrationType 2 (uniform) does: the skin under the strand blocking its half, the groom's own hair counted toward each direction
 in vec3 v_wpos;
 in vec3 v_nrm;
 in vec2 v_uv;
@@ -11,6 +11,7 @@ in vec4 v_col;
 in float v_srad;
 in float v_sdep;
 in vec3 v_snrm;
+in vec4 v_sky;
 out vec4 o_color;
 uniform float u_strand_minr;
 uniform vec4 u_fp[17];        // the hair's parameters in model.frag's hair-mode layout (mhHairColour; 2 Spec0, Spec1, SpecEdge, SpecFront),
@@ -104,7 +105,9 @@ void main() {
     vec3 L = vec3(sz * cos(phi), cz, sz * sin(phi));
     float vis = smoothstep(-0.1, 0.1, dot(L, Ns));
     if (vis <= 0.0) continue;
-    sky += strandShade(base, rough, spec, backlit, T, V, L, 0.0) * vis * skyPrefiltered(L, 0.1);
+    // the hair between it and the sky that way (Unreal's voxel march, baked: strands_mh.py), through the dual scattering
+    float cnt = max(v_sky.x + dot(v_sky.yzw, L), 0.0);
+    sky += strandShade(base, rough, spec, backlit, T, V, L, cnt) * vis * skyPrefiltered(L, 0.1);
   }
   col += sky * (4.0 * PI / float(SKY_SAMPLES)) * mix(1.0, lzA.a, lz);
   col += base * lzA.rgb * lz;
