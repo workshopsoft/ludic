@@ -43,6 +43,10 @@ property Actor {
   unlit:   bool = false,       # blended only: base colour x emissive (x 1 at 0), no sun, sky or shadow
   blend_casts: bool = false,   # a blended actor that still casts, alpha-tested at 0.5
   blend_d: float = 0.0,        # its squared distance from the camera this frame (the sort's key)
+  shell:   bool = false,       # a MetaHuman's eye occlusion shell (eyeshell.frag): drawn over the opaque scene from its copy (actor_draw_shells)
+  strands: bool = false,       # a groom's strands (strands.frag): their coverage and light resolved over the opaque scene (strands.ludic)
+  own_blend: bool = false,     # a part blended on its own (a face's lashes over an opaque body): its blend, alpha and soft not its leader's
+  spec:    float = 1.0,        # blended: its specular's scale (u_spec_scale; Epic's lashes have none)
   @owns(SkinClone) skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
   skin_owned: bool = false,  # made by actor_own_skin: actor_release frees it
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
@@ -97,6 +101,8 @@ property AcProg {
   l_fmr:    int = -1,
   l_femis:  int = -1,
   l_fp:     int = -1,          # u_fp[0] (FABRIC)
+  l_eye:    int = -1,          # u_eye (EYE)
+  l_eye2:   int = -1,
   l_pmodel: int = -1,          # the motion pass's: last frame's model matrix and palette, both clean view-projections
   l_pbones: int = -1,
   l_vpc:    int = -1,
@@ -116,6 +122,7 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   a.l_tr = gpu_uniform(render3d_st, p, "u_tr")
   a.l_clit = gpu_uniform(render3d_st, p, "u_char_lit")
   a.l_fp = gpu_uniform(render3d_st, p, "u_fp[0]");  if a.l_fp < 0 { a.l_fp = gpu_uniform(render3d_st, p, "u_fp") }
+  a.l_eye = gpu_uniform(render3d_st, p, "u_eye");  a.l_eye2 = gpu_uniform(render3d_st, p, "u_eye2")
   a.l_pmodel = gpu_uniform(render3d_st, p, "u_prev_model");  a.l_vpc = gpu_uniform(render3d_st, p, "u_vp_cur");  a.l_vpp = gpu_uniform(render3d_st, p, "u_vp_prev")
   a.l_pbones = gpu_uniform(render3d_st, p, "u_prev_bones[0]");  if a.l_pbones < 0 { a.l_pbones = gpu_uniform(render3d_st, p, "u_prev_bones") }
   a.l_fbase = gpu_uniform(render3d_st, p, "u_fac_base_inv");  a.l_fmr = gpu_uniform(render3d_st, p, "u_fac_mr_inv");  a.l_femis = gpu_uniform(render3d_st, p, "u_fac_emis")
@@ -126,6 +133,12 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   if a.l_fp >= 0 {
     u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fmask"), 3);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fkit"), 4);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fdn"), 8)
     u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fkitb"), 9);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_fdnb"), 11)
+  }
+  # a face's eyes (EYE): the same free units
+  if a.l_eye >= 0 {
+    u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_sclera"), 3);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_n"), 4);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_iris"), 8)
+    u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_irisn"), 9);  u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_disp"), 11)
+    u_i(render3d_st, gpu_uniform(render3d_st, p, "u_eye_vis"), 10)          # (10: the blended pass's scene depth; free in an opaque one)
   }
   return a
 }
@@ -148,6 +161,11 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_lit_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n")
   render3d_st.ac_fab = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n")
   render3d_st.ac_fab_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n#define ALPHA_TEST\n")
+  render3d_st.ac_eye = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n#define EYE\n")
+  render3d_st.ac_shell = ac_prog_new(render3d_st, "skin.vert", "eyeshell.frag", "")
+  render3d_st.ac_strand_t = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define TRANSMITTANCE\n")
+  render3d_st.ac_strand_l = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n")
+  render3d_st.ac_strand_dom = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define DOM\n")
   render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
   render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
@@ -233,6 +251,7 @@ function ac_bind_scene(render3d_st: mut Render3dState, ap: AcProg) -> void {
   charlight_bind(render3d_st, p)
   # a hair card's dithered opacity (model.frag FABRIC mode 3): a new pattern each frame for the temporal resolve to average
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dither_frame"), float(render3d_st.ac_frame % 64))
+  strands_bind_shadow(render3d_st, p)
 }
 function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool {
   if a.model == null { return false }
@@ -244,7 +263,7 @@ function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool 
     a.visible = l.visible;  a.cast_hidden = l.cast_hidden;  a.casts = l.casts
     a.char_lit = l.char_lit
     a.cull = l.cull;  a.radius = l.radius;  a.outline = l.outline;  a.emissive = l.emissive
-    a.blend = l.blend;  a.alpha = l.alpha;  a.soft = l.soft;  a.unlit = l.unlit;  a.blend_casts = l.blend_casts
+    if not a.own_blend { a.blend = l.blend;  a.alpha = l.alpha;  a.soft = l.soft;  a.unlit = l.unlit;  a.blend_casts = l.blend_casts }
   }
   if not a.visible and not (shadow and a.cast_hidden) { return false }
   if shadow and not a.casts { return false }
@@ -296,6 +315,8 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
     gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
     prim_factors(render3d_st, ap.prog, pr)
     if not shadow and ap.l_fp >= 0 { ac_bind_fabric(render3d_st, a, ap, pr) }
+    if not shadow and ap.l_eye >= 0 and pr.eye != null { ac_bind_eye(render3d_st, ap, pr) }
+    if not shadow { ac_bind_headmap(render3d_st, ap, pr) }
     if not shadow {
       gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
       gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
@@ -324,6 +345,34 @@ function ac_fab_tex(render3d_st: mut Render3dState, unit: int, pr: Prim, k: int)
   var id = pr.ftex[k]
   if id == 0 { id = pr.ftex[0] }
   gpu_tex_unit(render3d_st, unit);  gpu_tex_bind(render3d_st, GPU_TEX2D, id)
+}
+# a face's full-resolution head map (model_set_headmap) for the programs that read it (model.frag EYE, SSS_SPLIT), on unit 17, or its
+# switch off (a black texel on the unit)
+function ac_bind_headmap(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {
+  let lp = gpu_uniform(render3d_st, ap.prog, "u_head_on")
+  if lp < 0 { return }
+  var t = pr.hmap
+  var on = 1.0
+  if t == 0 { t = strands_shadow_black(render3d_st);  on = 0.0 }
+  r3d_bind_2d(render3d_st, ap.prog, "u_headmap", 17, t)
+  u_f(render3d_st, lp, on)
+}
+# a face's eyes for the EYE program: the cells and the five maps on the units the fabric's take
+function ac_bind_eye(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {
+  let e = pr.eye
+  u_f4(render3d_st, ap.l_eye, e[0], e[1], e[2], e[3])
+  u_f4(render3d_st, ap.l_eye2, e[4], 0.0, 0.0, 0.0)
+  gpu_tex_unit(render3d_st, 3);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[0])
+  gpu_tex_unit(render3d_st, 4);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[1])
+  gpu_tex_unit(render3d_st, 8);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[2])
+  gpu_tex_unit(render3d_st, 9);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[3])
+  gpu_tex_unit(render3d_st, 11);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[4])
+  gpu_tex_unit(render3d_st, 10);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.etex[5])
+}
+function ac_has_eyes(m: Model) -> bool {
+  if m == null { return false }
+  for i in 0 .. len(m.prims) { if m.prims[i].eye != null { return true } }
+  return false
 }
 function ac_fabric_mode(m: Model) -> int {
   if m == null { return 0 }
@@ -453,6 +502,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
     if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
+    if a.shell or a.strands { continue }                 # (actor_draw_shells, actor_draw_strands: after the opaque scene)
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }
     var ap = render3d_st.ac_lit
@@ -462,6 +512,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     # a hair card (fabric mode 3) discards by its coverage: drawn as a cut-out (with only the plain fabric program, the cards' discarded
     # texels kept the depth of what lay behind from being drawn on this GPU: holes to the ground and black against the sky)
     if fab and ac_fabric_mode(a.model) == 3 { ap = render3d_st.ac_fab_cut }
+    if not fab and ac_has_eyes(a.model) { ap = render3d_st.ac_eye }       # a MetaHuman face (model_set_eyes)
     ac_bind_scene(render3d_st, ap)
     # a cut-out's edge (a hair card's, a flame's) resolved by the samples' coverage, as the foliage's is (model.frag ALPHA_TEST)
     let a2c = a.cutout and not fab and render3d_st.sc_a2c
@@ -471,6 +522,42 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   }
   actor_draw_outlines(render3d_st)
   gpu_cull(render3d_st, true)
+}
+# The eye occlusion shells (eyeshell.frag), after the opaque scene and its subsurface pass: the frame copied (post_capture_scene), then each
+# shell drawn over it from the copy, depth-tested against the scene and writing none
+function actor_draw_shells(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ac_actors == null or render3d_st.ac_shell == null or render3d_st.post_scene == null { return }
+  var any = false
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.shell and ac_visible(render3d_st, a, false) { any = true }
+  }
+  if not any { return }
+  prof_begin(render3d_st, "eye shells")
+  post_capture_scene(render3d_st)
+  target_bind(render3d_st, render3d_st.post_hdr)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_GEQUAL)
+  gpu_depth_write(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  let ap = render3d_st.ac_shell
+  let p = ap.prog
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, ap.l_view, render3d_st.cam_view)
+  u_mat4(render3d_st, ap.l_proj, render3d_st.cam_proj)
+  r3d_bind_2d(render3d_st, p, "u_scene", 12, render3d_st.post_scene.color)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_screen"), float(render3d_st.post_w), float(render3d_st.post_h))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_tan_half"), 1.0 / render3d_st.cam_proj[0])
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if not a.shell or not ac_visible(render3d_st, a, false) { continue }
+    actor_draw_one(render3d_st, a, ap, false)
+  }
+  gpu_depth_func(render3d_st, GPU_GREATER)
+  gpu_depth_write(render3d_st, true)
+  gpu_cull(render3d_st, true)
+  gpu_fb_bind(render3d_st, 0)
+  prof_end(render3d_st)
 }
 # Skin's light for the subsurface pass (sss.ludic): every visible actor whose model is marked as skin, again, over the scene's depth
 function actor_draw_sss(render3d_st: mut Render3dState) -> void {
@@ -654,6 +741,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.visible = true;  a.cast_hidden = false;  a.casts = true;  a.row = -1;  a.one_sided = false
   a.cutout = false;  a.emissive = 0.0;  a.radius = 0.0;  a.cull = 0.0;  a.outline = 0.0
   a.blend = 0;  a.alpha = 1.0;  a.soft = 0.0;  a.unlit = false;  a.blend_casts = false;  a.blend_d = 0.0
+  a.shell = false;  a.strands = false;  a.own_blend = false;  a.spec = 1.0
   a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
   a.prev_seen = -1;  a.prev_n = 0
   return a
@@ -886,7 +974,7 @@ function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, fr
   let ppm = float(render3d_st.post_h) * 0.5 / Math.tan(render3d_st.cam_fov * 0.5)
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if a.blend != 0 { continue }
+    if a.blend != 0 or a.shell or a.strands { continue }
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }                 # a part that follows a blended leader
     # this frame's palette: a part's (from its leader), its own clone's, its model's - or none

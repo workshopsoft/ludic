@@ -56,6 +56,8 @@ skin.vert|model.frag|#define ALPHA_TEST;
 skin.vert|model.frag|#define TRANSLUCENT;
 skin.vert|model.frag|#define FABRIC;
 skin.vert|model.frag|#define FABRIC;#define ALPHA_TEST;
+skin.vert|model.frag|#define ALPHA_TEST;#define EYE;
+skin.vert|eyeshell.frag|
 skin.vert|model.frag|#define SSS_SPLIT;
 skin.vert|outline.frag|#define OUTLINE;
 skin.vert|outline.frag|#define OUTLINE;#define ALPHA_TEST;
@@ -82,3 +84,8 @@ hlod.vert|hlod.frag|
 kit.vert|bake.frag|
 skin.vert|velocity.frag|#define VELOCITY;
 skin.vert|velocity.frag|#define VELOCITY;#define ALPHA_TEST;
+skin.vert|strands.frag|#define STRANDS;
+skin.vert|strands.frag|#define STRANDS;#define TRANSMITTANCE;
+fullscreen.vert|strands_resolve.frag|
+fullscreen.vert|hair_lut.frag|
+skin.vert|strands.frag|#define STRANDS;#define DOM;

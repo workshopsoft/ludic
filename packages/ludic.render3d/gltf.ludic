@@ -17,7 +17,10 @@ property Prim {
                         # texture's uv scale u v (KHR_texture_transform: a car paint's flakes are its noise tiled 20 times)
   morph: Morph,         # its morph targets (morph.ludic), or null
   fab: floats,          # a garment's fabric (model_set_fabric: model.frag FABRIC's u_fp, 17 vec4), or null
-  ftex: words           # its five textures: mask, material A's kit and normals, material B's kit and normals
+  ftex: words,          # its five textures: mask, material A's kit and normals, material B's kit and normals
+  eye: floats,          # a MetaHuman face's eyes (model_set_eyes: model.frag EYE): the cells' u (left, right), top v, size, inset; or null
+  etex: words,          # their six maps: sclera, normals, iris, iris normal, the cornea's height, the face's eye visibility
+  hmap: int = 0         # a MetaHuman face's own full-resolution head map (model_set_headmap: RGB its normal, A its roughness), or 0
 }
 property Model {
   prims:  []Prim,
@@ -254,6 +257,7 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
   gltf_colour(render3d_st, m, attrs)                     # COLOR_0 onto 7, when the mesh has it
   gltf_attrib(render3d_st, m, attrs, "_ANCHOR", 8)       # a box kit's anchors (sx, sz, sh, sd) and offset (kitbox.ludic, kit.vert)
   gltf_attrib(render3d_st, m, attrs, "_OFFSET", 9)
+  gltf_attrib(render3d_st, m, attrs, "_HAIRSKY", 9)       # a groom's strands' hair toward the sky (strands.ludic, skin.vert STRANDS)
   skin_attribs(render3d_st, m, attrs)                    # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
   let idx = gltf_accessor(render3d_st, value_as_int(value_get(p, "indices")))
   var isz = 4

@@ -1,0 +1,237 @@
+# ============================================================================
+# strands.ludic — a groom's strands (a MetaHuman's brows and lashes), as Unreal's hair strands drawn forward.
+#
+# An actor marked strands (actor.strands) is a mesh of ribbons: each strand point twice, its tangent times its radius, its side, the skin's
+# normal at its root and the strand's seed (skin.vert STRANDS). Unreal widens each ribbon toward the camera to the least radius a strand
+# is rasterised at and takes the strand's share of it as its coverage; here that least radius is half a pixel (a ribbon a pixel wide at
+# one sample, where Unreal's eight MSAA samples have a sixteenth of one: the same coverage over the pixel, less of it lost between
+# samples). Three passes after the opaque scene, its subsurface and the eyes' shells, depth-tested against the scene and writing none:
+#   the transmittance: each strand's 1 - coverage multiplied in (HairStrandsVisibility's transmittance pass)
+#   the light: each strand lit (strands.frag: Epic's HairShading with the dual scattering's local term, the sky over the sphere) and
+#     weighted by its coverage, added up
+#   the resolve over the scene (strands_resolve.frag: the pixel's coverage from the transmittance at the threshold 0.98, its colour the
+#     weighted average, premultiplied over)
+# The targets are made when a groom is first in view; the dual scattering LUT (hair_lut.frag) is drawn then, once.
+# ============================================================================
+
+const ST_LUT_SIZE: int = 256
+
+@alloc_ok("made when a groom is first in view, at post's size, and kept until post is remade")
+function strands_ensure(render3d_st: mut Render3dState) -> void {
+  if render3d_st.st_trans != null and render3d_st.st_trans.w == render3d_st.post_w and render3d_st.st_trans.h == render3d_st.post_h { return }
+  strands_free(render3d_st)
+  let w = render3d_st.post_w
+  let h = render3d_st.post_h
+  render3d_st.st_trans = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_NEAREST)
+  render3d_st.st_acc = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_NEAREST)
+  render3d_st.st_fb_t = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, render3d_st.st_fb_t)
+  gpu_fb_color(render3d_st, 0, render3d_st.st_trans.color)
+  gpu_fb_depth(render3d_st, render3d_st.post_hdr.depth)
+  render3d_st.st_fb_a = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, render3d_st.st_fb_a)
+  gpu_fb_color(render3d_st, 0, render3d_st.st_acc.color)
+  gpu_fb_depth(render3d_st, render3d_st.post_hdr.depth)
+  gpu_fb_bind(render3d_st, 0)
+  if render3d_st.st_p_resolve == 0 { render3d_st.st_p_resolve = r3d_program(render3d_st, "fullscreen.vert", "strands_resolve.frag", "") }
+  if render3d_st.st_lut == null {
+    render3d_st.st_p_lut = r3d_program(render3d_st, "fullscreen.vert", "hair_lut.frag", "")
+    render3d_st.st_lut = target_new(render3d_st, ST_LUT_SIZE, ST_LUT_SIZE, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    target_bind(render3d_st, render3d_st.st_lut)
+    gpu_depth_test(render3d_st, false)
+    gpu_blend(render3d_st, false)
+    gpu_cull(render3d_st, false)
+    gpu_use_program(render3d_st, render3d_st.st_p_lut)
+    mesh_draw(render3d_st, render3d_st.post_fs)
+    gpu_cull(render3d_st, true)
+    gpu_fb_bind(render3d_st, 0)
+  }
+}
+function strands_free(render3d_st: mut Render3dState) -> void {
+  if render3d_st.st_trans == null { return }
+  gpu_fb_free(render3d_st, render3d_st.st_fb_t);  render3d_st.st_fb_t = 0
+  gpu_fb_free(render3d_st, render3d_st.st_fb_a);  render3d_st.st_fb_a = 0
+  target_free(render3d_st, render3d_st.st_trans);  render3d_st.st_trans = null
+  target_free(render3d_st, render3d_st.st_acc);  render3d_st.st_acc = null
+}
+
+# one pass's strands: each visible strands actor, its pose and, per primitive, its material (u_fp) and the LUT
+function strands_draw(render3d_st: mut Render3dState, ap: AcProg, minr: float, view: floats, proj: floats) -> void {
+  let p = ap.prog
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, ap.l_view, view)
+  u_mat4(render3d_st, ap.l_proj, proj)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_strand_minr"), minr)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frame"), float(render3d_st.ac_frame % 64))
+  if render3d_st.st_lut != null { r3d_bind_2d(render3d_st, p, "u_hair_lut", 3, render3d_st.st_lut.color) }
+  let t = render3d_st.ac_fab_tmp
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if not a.strands or not ac_visible(render3d_st, a, false) { continue }
+    gpu_use_program(render3d_st, p)
+    u_mat4(render3d_st, ap.l_view, view)
+    u_mat4(render3d_st, ap.l_proj, proj)
+    u_mat4(render3d_st, ap.l_model, a.mat)
+    ac_bind_pose(render3d_st, a, ap)
+    gpu_cull(render3d_st, false)
+    let model = a.model
+    for k in 0 .. len(model.prims) {
+      let pr = model.prims[k]
+      if a.hide != null and a.hide[k] != 0 { continue }
+      if ap.l_fp >= 0 {
+        for f in 0 .. AC_FAB_FLOATS { t[f] = 0.0 }
+        if pr.fab != null { for f in 0 .. AC_FAB_FLOATS { t[f] = pr.fab[f] } } else { t[13] = 1.0 }
+        gvk_u_set(render3d_st, ap.l_fp, data_of(t), 16, AC_FAB_FLOATS / 4)
+      }
+      mesh_draw(render3d_st, pr.mesh)
+      render3d_st.st_draws += 1
+    }
+  }
+}
+
+function actor_draw_strands(render3d_st: mut Render3dState) -> void {
+  render3d_st.st_draws = 0
+  if render3d_st.ac_actors == null or render3d_st.ac_strand_l == null or render3d_st.post_hdr == null { return }
+  var any = false
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.strands and ac_visible(render3d_st, a, false) { any = true }
+  }
+  if not any { return }
+  prof_begin(render3d_st, "strands")
+  strands_ensure(render3d_st)
+  # the least radius at a metre: half a pixel there (tan(fov/2) / (h/2) is a pixel)
+  let minr = 1.0 / (render3d_st.cam_proj[5] * float(render3d_st.post_h))
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_GEQUAL)
+  gpu_depth_write(render3d_st, false)
+  # the transmittance: cleared to 1, each strand's (1 - coverage) multiplied in
+  gpu_fb_bind(render3d_st, render3d_st.st_fb_t)
+  gpu_viewport(render3d_st, 0, 0, render3d_st.st_trans.w, render3d_st.st_trans.h)
+  gpu_clear_color(render3d_st, 1.0, 1.0, 1.0, 1.0)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
+  gpu_blend(render3d_st, true)
+  gpu_blend_func(render3d_st, GPU_ZERO, GPU_SRC_COLOR)
+  strands_draw(render3d_st, render3d_st.ac_strand_t, minr, render3d_st.cam_view, render3d_st.cam_proj)
+  # the light, weighted by coverage, added up
+  gpu_fb_bind(render3d_st, render3d_st.st_fb_a)
+  gpu_viewport(render3d_st, 0, 0, render3d_st.st_acc.w, render3d_st.st_acc.h)
+  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
+  gpu_blend_func(render3d_st, GPU_ONE, GPU_ONE)
+  let lp = render3d_st.ac_strand_l
+  lp.scene_frame = -1
+  ac_bind_scene(render3d_st, lp)
+  strands_draw(render3d_st, lp, minr, render3d_st.cam_view, render3d_st.cam_proj)
+  # the resolve, premultiplied over the scene
+  target_bind(render3d_st, render3d_st.post_hdr)
+  gpu_depth_test(render3d_st, false)
+  gpu_blend_func(render3d_st, GPU_ONE, GPU_ONE_MINUS_SRC_ALPHA)
+  gpu_cull(render3d_st, false)
+  let p = render3d_st.st_p_resolve
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_st_trans", 0, render3d_st.st_trans.color)
+  r3d_bind_2d(render3d_st, p, "u_st_acc", 1, render3d_st.st_acc.color)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  gpu_blend(render3d_st, false)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_GREATER)
+  gpu_depth_write(render3d_st, true)
+  gpu_cull(render3d_st, true)
+  gpu_fb_bind(render3d_st, 0)
+  prof_end(render3d_st)
+}
+
+# ---- the grooms' shadow on the skin (Unreal's deep shadow, one layer): a map from the sun, 0.5 m across around the nearest groom's
+# head (half a millimetre a texel), each strand's coverage at that texel x DensityScale 2 added up with its depth; the face and eyes
+# (model.frag EYE, SSS_SPLIT: lighting.glsl hairShadow) are lit by 1 - saturate(the count) where they lie behind the hair
+const ST_HS_SIZE: int = 1024
+const ST_HS_HALF: float = 0.25              # metres from the centre to the map's edge
+const ST_HS_DIST: float = 1.0               # the sun's eye, metres from the centre
+
+@alloc_ok("made when a groom is first in view and kept")
+function strands_shadow_ensure(render3d_st: mut Render3dState) -> void {
+  if render3d_st.st_hs != null { return }
+  render3d_st.st_hs = target_new(render3d_st, ST_HS_SIZE, ST_HS_SIZE, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+  render3d_st.st_hs_view = m4_new();  render3d_st.st_hs_proj = m4_new()
+  render3d_st.st_hs_tmp = m4_new();  render3d_st.st_hs_tmp2 = m4_new()
+}
+@alloc_ok("one texture, made once")
+function strands_shadow_black(render3d_st: mut Render3dState) -> int {
+  if render3d_st.st_hs_black == 0 { render3d_st.st_hs_black = tex_solid(render3d_st, 0, 0, 0, 0) }
+  return render3d_st.st_hs_black
+}
+# a strands actor's head in the world: its skin's "head" joint (else its first) at this frame's pose
+function strands_head(render3d_st: mut Render3dState, a: Actor, out: floats) -> void {
+  let sk = a.model.skin
+  var j = 0
+  for k in 0 .. sk.n_joints { if sk.names[sk.joints[k]] == "head" { j = k } }
+  let t = render3d_st.st_hs_tmp
+  m4_inverse(t, sk.inv_v[j])
+  var x = t[12];  var y = t[13];  var z = t[14]
+  if a.leader != null and a.fmap != null {
+    ac_follow_palette(a)
+    let b = a.fbones_v[j]
+    let bx = b[0] * x + b[4] * y + b[8] * z + b[12];  let by = b[1] * x + b[5] * y + b[9] * z + b[13];  let bz = b[2] * x + b[6] * y + b[10] * z + b[14]
+    x = bx;  y = by;  z = bz
+  }
+  let m = a.mat
+  out[0] = m[0] * x + m[4] * y + m[8] * z + m[12];  out[1] = m[1] * x + m[5] * y + m[9] * z + m[13];  out[2] = m[2] * x + m[6] * y + m[10] * z + m[14]
+}
+function strands_shadow_pass(render3d_st: mut Render3dState) -> void {
+  render3d_st.st_hs_on = false
+  if render3d_st.ac_actors == null or render3d_st.ac_strand_dom == null or render3d_st.sun_dir == null { return }
+  # the groom nearest the camera
+  var best: Actor = null
+  var bd = 1000000000.0
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if not a.strands or not ac_visible(render3d_st, a, false) or a.model.skin == null { continue }
+    let dx = a.x - render3d_st.cam_pos[0];  let dy = a.y - render3d_st.cam_pos[1];  let dz = a.z - render3d_st.cam_pos[2]
+    let d = dx * dx + dy * dy + dz * dz
+    if d < bd { bd = d;  best = a }
+  }
+  if best == null or bd > 400.0 { return }                  # past 20 m its shadow is under a pixel
+  prof_begin(render3d_st, "strands shadow")
+  strands_shadow_ensure(render3d_st)
+  let c = render3d_st.st_hs_tmp2
+  strands_head(render3d_st, best, c)
+  let sx = render3d_st.sun_dir[0];  let sy = render3d_st.sun_dir[1];  let sz = render3d_st.sun_dir[2]
+  var ux = 0.0;  var uy = 1.0;  var uz = 0.0
+  if Math.abs(sy) > 0.95 { uy = 0.0;  uz = 1.0 }
+  m4_look_at_xyz(render3d_st.st_hs_view, c[0] + sx * ST_HS_DIST, c[1] + sy * ST_HS_DIST, c[2] + sz * ST_HS_DIST, c[0], c[1], c[2], ux, uy, uz)
+  m4_ortho_rz(render3d_st.st_hs_proj, -ST_HS_HALF, ST_HS_HALF, -ST_HS_HALF, ST_HS_HALF, ST_HS_DIST - ST_HS_HALF, ST_HS_DIST + ST_HS_HALF)
+  target_bind(render3d_st, render3d_st.st_hs)
+  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
+  gpu_depth_test(render3d_st, false)
+  gpu_depth_write(render3d_st, false)
+  gpu_blend(render3d_st, true)
+  gpu_blend_func(render3d_st, GPU_ONE, GPU_ONE)
+  let ap = render3d_st.ac_strand_dom
+  gpu_use_program(render3d_st, ap.prog)
+  u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_hs_d0"), ST_HS_DIST)
+  # the least radius: half a texel at the sun's eye's distance
+  strands_draw(render3d_st, ap, ST_HS_HALF / float(ST_HS_SIZE) / ST_HS_DIST, render3d_st.st_hs_view, render3d_st.st_hs_proj)
+  gpu_blend(render3d_st, false)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_write(render3d_st, true)
+  gpu_cull(render3d_st, true)
+  gpu_fb_bind(render3d_st, 0)
+  render3d_st.st_hs_on = true
+  prof_end(render3d_st)
+}
+# the map on a program that looks it up (lighting.glsl hairShadow: the face's and eyes'), or its switch off
+function strands_bind_shadow(render3d_st: mut Render3dState, p: int) -> void {
+  let lp = gpu_uniform(render3d_st, p, "u_hs_p")
+  if lp < 0 { return }
+  if render3d_st.st_hs_on {
+    r3d_bind_2d(render3d_st, p, "u_hairsh", 16, render3d_st.st_hs.color)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_hs_view"), render3d_st.st_hs_view)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_hs_proj"), render3d_st.st_hs_proj)
+    u_f4(render3d_st, lp, 1.0, 1.0 / float(ST_HS_SIZE), ST_HS_DIST, 0.0)
+  } else {
+    r3d_bind_2d(render3d_st, p, "u_hairsh", 16, strands_shadow_black(render3d_st))
+    u_f4(render3d_st, lp, 0.0, 0.0, 0.0, 0.0)
+  }
+}

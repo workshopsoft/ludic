@@ -29,6 +29,10 @@ uniform vec2 u_mr_scale;      // the metal/roughness texture's uv scale (KHR_tex
 uniform vec2 u_fac_coat;      // clear coat: factor, roughness (KHR_materials_clearcoat; 0: none)
 uniform vec3 u_fac_emis;
 uniform sampler2D u_nrm;
+#if defined(EYE) || defined(SSS_SPLIT)
+uniform sampler2D u_headmap;  // a face's full-resolution head map (model_set_headmap): RGB normal, A roughness, over u, v < 0.5 x 2
+uniform float u_head_on;
+#endif
 uniform sampler2D u_arm;
 uniform mat4 u_view;
 uniform vec3 u_tint;
@@ -86,13 +90,101 @@ uniform mat4 u_inv_vp;
 uniform vec2 u_screen;
 #endif
 
+#ifdef EYE
+// ---- a MetaHuman's eyes: Epic's M_eye_eyeball_unified (MI_Eye_Left_MHC's values) and the Eye shading model's EyeBxDF (ShadingModels.ush,
+// its IRIS_NORMAL path: the material writes a tangent and an iris normal) on a face whose eyeballs sit in two cells of its atlas
+// (model_set_eyes): u_eye = the left cell's u, the right cell's u, the cells' top v, their size; u_eye2.x the inset each cell keeps.
+// The material's view-independent nodes are baked into five maps (eye_maps.py); what depends on the view is here: the cornea's
+// refraction of the iris (MF_refractedUVs), the pupil's scale (MF_pupilScale), the caustics compensation and the BxDF.
+uniform vec4 u_eye;
+uniform vec4 u_eye2;
+uniform sampler2D u_eye_sclera;   // sRGB: the sclera's colour; A the cornea mask (eye UV)
+uniform sampler2D u_eye_n;        // RG the sclera's normal, BA T_Eye_N (the eyeball's axis), tangent space (eye UV)
+uniform sampler2D u_eye_iris;     // sRGB: the iris's colour, pupil black; A the pupil mask (iris UV)
+uniform sampler2D u_eye_irisn;    // RGB the iris normal / 4 + 0.5 (iris UV)
+uniform sampler2D u_eye_disp;     // the cornea's height over the iris plane, 16 bits in RG (eye UV)
+uniform sampler2D u_eye_vis;      // the face's own: its eyeballs' visibility past the lids (eye_vis.py), the left eye's cell left, the
+                                  // right's right: V(w) = a + b.w, RGB b (tangent) * 0.5 + 0.5, A (a + 1) / 3. Unreal has it from Lumen's
+                                  // sky occlusion and the Eye model's 0.5 cm contact shadow
+const float EYE_CORNEA = 0.165;            // Cornea Size
+const float EYE_IOR = 1.41;
+const float EYE_DEPTH = 1.0;               // Refraction Depth Scale
+const float EYE_DILATION = 0.95;           // Pupil Dilation
+const float EYE_CONC_SCALE = 0.15;         // Iris Concavity Scale, Power
+const float EYE_CONC_POW = 0.35;
+const float EYE_MASK_OFFSET = -0.01;       // Iris Mask Offset, Softness
+const float EYE_MASK_SOFT = 0.0628;
+const float EYE_ROUGH = 0.075;             // Cornea Roughness
+const float EYE_CAUSTIC_EXP = 2.25;        // Caustics Compensation Fresnel Exponent, Basecolor Multiply, Depth
+const float EYE_CAUSTIC_MUL = 2.5;
+const float EYE_CAUSTIC_DEPTH = 0.75;
+const float EYE_DISP_MAX = 1.6309;         // T_EyeMidPlaneDisplacement's largest value (eye_maps.py)
+// the height map's 16 bits filtered by hand (a filtered high byte would carry the low byte's wrap)
+float eyeDispTexel(ivec2 i, ivec2 sz) { vec2 t = texelFetch(u_eye_disp, clamp(i, ivec2(0), sz - 1), 0).rg; return (t.r * 65280.0 + t.g * 255.0) / 65535.0; }
+float eyeDisp(vec2 e) {
+  ivec2 sz = textureSize(u_eye_disp, 0);
+  vec2 x = fract(e) * vec2(sz) - 0.5;
+  ivec2 i = ivec2(floor(x));
+  vec2 f = x - floor(x);
+  float a = mix(eyeDispTexel(i, sz), eyeDispTexel(i + ivec2(1, 0), sz), f.x);
+  float b = mix(eyeDispTexel(i + ivec2(0, 1), sz), eyeDispTexel(i + ivec2(1, 1), sz), f.x);
+  return mix(a, b, f.y) * EYE_DISP_MAX;
+}
+vec3 eyeNrm(vec2 xy) { xy = xy * 2.0 - 1.0; return vec3(xy, sqrt(clamp(1.0 - dot(xy, xy), 0.0, 1.0))); }
+// MF_circularMask
+float eyeCirc(float l, float size, float soft, float centre) { float x = clamp(1.0 - (l - (size - soft * centre)) / soft, 0.0, 1.0); return x * x * (3.0 - 2.0 * x); }
+// EyeBxDF for the sun (no area light: Energy 1, the sphere's NoH as it is) and the sky as the default lit model takes it, the diffuse
+// toward the iris normal over the iris. N the cornea's (and sclera's) normal, the base colour the Lambert's
+vec3 eyeShade(vec3 wpos, vec3 N, vec3 irisN, vec3 causticN, float irisMask, vec3 base, float ao, float shadow, vec3 bent, float vis, float sunV, vec3 skin, vec3 axis) {
+  vec3 v = normalize(u_cam_pos - wpos);
+  vec3 l = u_sun_dir;
+  vec3 h = normalize(v + l);
+  float NoV = clamp(abs(dot(N, v)) + 1e-5, 0.0, 1.0);
+  float NoL = max(dot(N, l), 0.0);
+  float NoH = max(dot(N, h), 0.0);
+  float VoH = max(dot(v, h), 0.0);
+  float a = EYE_ROUGH * EYE_ROUGH;
+  float F0 = 0.02;                                  // Specular x 0.08, the Specular 0.25 the IRIS_NORMAL path sets (BasePassPixelShader)
+  float Fc = pow(1.0 - VoH, 5.0);
+  float F = Fc + (1.0 - Fc) * F0;
+  vec3 spec = vec3(min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F) * u_spec_scale;
+  float irisNoL = clamp(dot(irisN, l), 0.0, 1.0);
+  float pw = mix(12.0, 1.0, irisNoL);
+  float caustic = 0.8 + 0.2 * (pw + 1.0) * pow(clamp(dot(causticN, l), 0.0, 1.0), pw);
+  float trans = mix(NoL, irisNoL * caustic, irisMask);
+  vec4 lzAmb;
+  float lz = lightZone(wpos, lzAmb);
+  float sunK = 1.0 - lz;
+  float skyK = mix(1.0, lzAmb.a, lz);
+  // the lids' and the brow's shadow: the visibility toward the sun
+  float sunVis = smoothstep(0.35, 0.65, sunV);
+  vec3 direct = (spec * NoL + base / PI * trans * (1.0 - F)) * u_sun_color * shadow * sunVis * cloudShadow(wpos) * sunK;
+  vec3 Fr = F_SchlickRough(NoV, vec3(F0), EYE_ROUGH);
+  vec3 dN = normalize(mix(mix(N, irisN, irisMask), bent, 0.5));
+  vec3 irr = skyIrradiance(dN);
+  // what the socket hides of the sky it sends back off the skin round it (Lumen's bounce): the light on that skin - the sky's, and the
+  // sun's on skin facing along the eye's axis - in its colour (the face's mean skin, the atlas's skin at its smallest mip), for the
+  // occluded share of the hemisphere
+  vec3 skinIrr = skyIrradiance(axis) * skyK + u_sun_color * max(dot(axis, l), 0.0) * shadow * cloudShadow(wpos) * sunK;
+  vec3 diffuseIBL = (1.0 - Fr) * base * (irr * skyK * vis + skinIrr * skin * (1.0 - vis));
+  vec2 brdf = texture(u_brdf, vec2(NoV, EYE_ROUGH)).rg;
+  vec3 specIBL = skyPrefiltered(reflect(-v, N), EYE_ROUGH) * (Fr * brdf.x + brdf.y) * u_spec_scale * skyK;
+  vec3 zoneAmb = (1.0 - Fr) * base * lzAmb.rgb * lz;
+  if (lz > 0.0 && u_zl_n > 0) zoneAmb += (1.0 - Fr) * zoneLamps(wpos, dN, base) * lz;
+  float so = clamp(pow(NoV + ao, exp2(-16.0 * EYE_ROUGH - 1.0)) - 1.0 + ao, 0.0, 1.0);
+  vec3 c = direct + diffuseIBL * ao + specIBL * so * vis + zoneAmb * ao + (fireLight(wpos, dN, base) + handLight(wpos, dN, base)) * ao;
+  return sane(min(c, vec3(4096.0)));
+}
+#endif
+
 mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   vec3 dp1 = dFdx(p), dp2 = dFdy(p);
   vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
   vec3 dp2perp = cross(dp2, N), dp1perp = cross(N, dp1);
   vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
   vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-  float invmax = inversesqrt(max(dot(T, T), dot(B, B)) + 1e-12);
+  // (scale-free: up close a pixel's dp x duv is ~1e-15, so an added epsilon (once 1e-12) shrank the frame and flattened the map)
+  float invmax = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-36));
   return mat3(T * invmax, B * invmax, N);
 }
 
@@ -134,38 +226,11 @@ vec4 skinMicro(vec3 tn, float a) {
 #ifdef FABRIC
 // ---- hair cards (mode 3): Epic's HairShading (HairBsdf.ush) with the cards' transmittance data (InitHairTransmittanceData: legacy
 // absorption, a separable R, no backlit), the material M_hair_v4 feeds it (MF_Variation, GetHairColorFromMelanin's absorption) -------
-float hairG(float B, float theta) { return exp(-0.5 * theta * theta / (B * B)) / (sqrt(2.0 * PI) * max(B, 0.01)); }
-float hairF(float cosT) { float f0 = 0.0465; float m = 1.0 - cosT; return f0 + (1.0 - f0) * m * m * m * m * m; }
 // T along the strand, V and L toward the eye and the light: the light it scatters toward the eye (no cosine: the lobes carry it)
 // tt: how much of the light passing through the strand (TT, TRT) is left: a card has no hair volume's deep shadow, its clump's depth
 // stands for it (1 at the clump's surface)
 vec3 hairShading(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, float area, float tt) {
-  float r = clamp(rough, 1.0 / 255.0, 1.0);
-  float VoL = dot(V, L);
-  float sinL = clamp(dot(T, L), -1.0, 1.0);
-  float sinV = clamp(dot(T, V), -1.0, 1.0);
-  float cosD = cos(0.5 * abs(asin(sinV) - asin(sinL)));
-  vec3 Lp = L - sinL * T;
-  vec3 Vp = V - sinV * T;
-  float cosPhi = dot(Lp, Vp) * inversesqrt(dot(Lp, Lp) * dot(Vp, Vp) + 1e-4);
-  float cosHalfPhi = sqrt(clamp(0.5 + 0.5 * cosPhi, 0.0, 1.0));
-  float np = 1.19 / cosD + 0.36 * cosD;
-  float shift = 0.035;
-  float b0 = area + r * r, b1 = area + r * r * 0.5, b2 = area + r * r * 2.0;
-  vec3 S = vec3(0.0);
-  // R
-  float sa = sin(-shift * 2.0), ca = cos(-shift * 2.0);
-  float shiftR = 2.0 * sa * (ca * cosHalfPhi * sqrt(1.0 - sinV * sinV) + sa * sinV);
-  S += vec3(hairG(b0 * sqrt(2.0) * cosHalfPhi, sinL + sinV - shiftR) * 0.25 * cosHalfPhi * hairF(sqrt(clamp(0.5 + 0.5 * VoL, 0.0, 1.0))) * spec * 2.0);
-  // TT
-  float a = 1.0 / np;
-  float h = cosHalfPhi * (1.0 + a * (0.6 - 0.8 * cosPhi));
-  float f = hairF(cosD * sqrt(clamp(1.0 - h * h, 0.0, 1.0)));
-  vec3 tp = pow(abs(base), vec3(0.5 * sqrt(max(1.0 - (h * a) * (h * a), 0.0)) / cosD));
-  S += hairG(b1, sinL + sinV - shift) * exp(-3.65 * cosPhi - 3.98) * (1.0 - f) * (1.0 - f) * tp * tt;
-  // TRT
-  float f2 = hairF(cosD * 0.5);
-  S += hairG(b2, sinL + sinV - shift * 4.0) * exp(17.0 * cosPhi - 16.78) * (1.0 - f2) * (1.0 - f2) * f2 * pow(abs(base), vec3(0.8 / cosD)) * tt;
+  vec3 S = hairBsdf(base, rough, spec, T, V, L, area, 1.0, true, true, tt);
   // the light scattered through many strands: KajiyaKayDiffuseAttenuation's shape (a wrapped term on the normal facing the eye, a third of
   // Kajiya-Kay), with the hair's colour as its albedo. M_hair_v4's cards leave Scatter at 0 (Unreal lights them with the three lobes and
   // the groom's voxel scattering, which cards have none of here); its sqrt(colour) at a scatter of 1 lifted black hair to grey, and the
@@ -175,27 +240,6 @@ vec3 hairShading(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, flo
   float nol = clamp((dot(fakeN, L) + 1.0) / 4.0, 0.0, 1.0);
   S += abs(base) * (1.0 / PI) * mix(nol, kk, 0.33);
   return max(S, vec3(0.0));
-}
-// MF_Variation: the signal to a power the strand's seed picks (1 + v at 0, 1 at 0.5, 1 / (1 + v) at 1)
-float hairVar(float v, float sgl, float seed) {
-  float t = seed * 2.0;
-  float lo = pow(max(sgl, 0.0), 1.0 + v), hi = pow(max(sgl, 0.0), 1.0 / (1.0 + v));
-  return mix(mix(lo, sgl, clamp(t, 0.0, 1.0)), hi, clamp(t - 1.0, 0.0, 1.0));
-}
-// HairAbsorptionToColor / HairColorToAbsorption (B 0.3), HairShadingCommon.ush
-const float HAIR_D = 5.969 - 0.215 * 0.3 + 2.532 * 0.09 - 10.73 * 0.027 + 5.574 * 0.0081 + 0.245 * 0.00243;
-vec3 hairAbsorption(vec3 c) { vec3 l = log(max(c, vec3(1e-4))) / HAIR_D; return l * l; }
-vec3 hairColour(vec3 a) { return exp(-sqrt(a) * HAIR_D); }
-// GetHairColorFromMelanin (HairShadingCommon.ush): eumelanin and pheomelanin absorptions, plus the dye's
-vec3 hairMelanin(float m, float r, vec3 dye) {
-  float mel = -log(max(1.0 - clamp(m, 0.0, 1.0), 1e-4));
-  r = clamp(r, 0.0, 1.0);
-  vec3 a = mel * (1.0 - r) * vec3(0.506, 0.841, 1.653) + mel * r * vec3(0.343, 0.733, 1.924);
-  return hairColour(a + hairAbsorption(clamp(dye, vec3(0.0), vec3(1.0))));
-}
-// MF_Hair_Color's melanin: the parameter varied by the strand (fine to rough by the roughness), to the power 2.2
-float hairMel(float m, float fine, float rough, float hr, float seed) {
-  return pow(max(hairVar(mix(fine, rough, clamp(hr * 2.0, 0.0, 1.0)), m, seed), 0.0), 2.2);
 }
 #endif
 
@@ -419,10 +463,19 @@ void main() {
 #endif
   vec4 nt = texture(u_nrm, v_uv);
   bool skin = skinMap(nt.a);
+#if defined(EYE) || defined(SSS_SPLIT)
+  // a face's head at its own full resolution (model_set_headmap): its normal and roughness in place of the atlas's quadrant
+  vec4 hm = vec4(0.0);
+  bool head = u_head_on > 0.5 && v_uv.x < 0.5 && v_uv.y < 0.5;
+  if (head) { hm = texture(u_headmap, v_uv * 2.0);  nt.rgb = hm.rgb; }
+#endif
   vec4 sm = skin ? skinMicro(nt.rgb * 2.0 - 1.0, nt.a) : vec4(nt.rgb * 2.0 - 1.0, 0.0);
   mat3 tbn = normalFrame(N, v_wpos, v_uv);
   n = normalize(tbn * sm.xyz);
   arm = texture(u_arm, v_uv).rgb;
+#if defined(EYE) || defined(SSS_SPLIT)
+  if (head) arm.g = hm.a;
+#endif
   if (skin) {
     // the skin's micro cavities rougher (Roughness Micro Cavity Multiply 1.35) and less specular (Micro Skin Cavity Specular Multiply
     // 0.6); its Specular 0.9 x 0.8 (MI_Skin_*: the regions' x Specular Base), Unreal's F0 = 0.08 x Specular
@@ -452,47 +505,7 @@ void main() {
     float op = pow(max(at.r * u_fp[3].y, 0.0), u_fp[3].z);
     float dth = fract(ign(gl_FragCoord.xy) + u_dither_frame * 0.6180340);
     if (op + 0.1666 * dth < 0.33) discard;
-    // the colour: the dye's absorption, more or less by the strand (MF_Hair_Color's melanin variation, fine to rough by the roughness)
-    float mv = mix(u_fp[1].x, u_fp[1].y, clamp(u_fp[1].z * 2.0, 0.0, 1.0));
-    float k = hairVar(mv, 0.5, seed) / 0.5;
-    alb = hairColour(hairAbsorption(u_fp[0].rgb) * k);
-    if (u_fp[11].x > 0.5) {
-      // M_hair_v4's colour from the look's melanin (art hair_unreal.py: u_fp 0 the dye, 5 melanin, redness, WhiteAmount, LightAmount,
-      // 6 the white strands' melanin high, low, variation, Desat, 7 Highlights, its melanin, redness, blending, 8 its dye, intensity,
-      // 9 Ombre, its melanin, redness, shift, 10 its dye, contrast, 11 on, the variations fine and rough, the ombre's intensity).
-      // MF_Hair_ColorBlending, then MF_Hair_SaltAndPeper with the strands' coverage (WhiteAmount^2.4: what Unreal shows up close;
-      // its cards' WhiteAmount x 1.08 greys dark hair), then the HairColor node and the Desaturation
-      float hr0 = u_fp[1].z;
-      float mel = hairMel(u_fp[5].x, u_fp[1].x, u_fp[1].y, hr0, seed);
-      float red = u_fp[5].y;
-      vec3 dye = u_fp[0].rgb;
-      // the ombre, along the strand (the atlas's coordinate): CheapContrast of the shifted power
-      float sh = (u_fp[9].w + 0.065) * 10.0 - 5.0;
-      float tl = clamp(tg.a, 0.0, 1.0);                     // the atlas's coordinate runs root (0) to tip (1)
-      float oa = sh > 0.0 ? pow(tl, sh + 1.0) : 1.0 - pow(1.0 - tl, abs(sh) + 1.0);
-      oa = clamp(mix(-u_fp[10].w, 1.0 + u_fp[10].w, oa), 0.0, 1.0) * u_fp[11].w;
-      float om = u_fp[9].x;
-      mel = mix(mel, mix(mel, hairMel(u_fp[9].y, u_fp[11].y, u_fp[11].z, hr0, seed), oa), om);
-      red = mix(red, mix(red, u_fp[9].z, oa), om);
-      dye = mix(dye, mix(dye, u_fp[10].rgb, oa), om);
-      // the highlights: Unreal's mask through the strand's root (cards: the mask plus 0.15 .. 0.3 by the seed); a card's strands have
-      // no root position, the seed picks the mask's value
-      float mask = fract(seed * 13.17 + 0.37);
-      mask = mask * mask;
-      float ha = clamp(pow(clamp(mix(mask + 0.15, mask + 0.3, seed * 1.08), 0.0, 1.0), 1.0 + u_fp[7].w * 5.0) * u_fp[8].w * 3.0, 0.0, 1.0);
-      ha *= mix(1.0, oa, om) * u_fp[7].x;
-      mel = mix(mel, hairMel(u_fp[7].y, u_fp[11].y, u_fp[11].z, hr0, seed), ha);
-      red = mix(red, u_fp[7].z, ha);
-      dye = mix(dye, u_fp[8].rgb, ha);
-      // salt and pepper: the white strands' melanin over a WhiteAmount^2.4 share of them
-      float wa = pow(max(u_fp[5].z, 0.0), 2.4);
-      float wc = smoothstep(wa, wa - 0.05, seed);
-      float wv = hairVar(u_fp[6].z, mix(u_fp[6].x, u_fp[6].y, u_fp[5].x), seed) * 1.25;
-      mel = mix(mel, mix(wv, wv * 0.5, u_fp[5].w), wc);
-      alb = hairMelanin(mel, red, dye);
-      float lum = dot(alb, vec3(0.3, 0.59, 0.11));
-      alb = mix(alb, vec3(lum), mix(u_fp[6].w, 0.9, wc));
-    }
+    alb = mhHairColour(u_fp, seed, tg.a);
     hRough = hairVar(u_fp[1].w, u_fp[1].z, seed);
     hSpec = mix(u_fp[2].y, u_fp[2].x, seed) * mix(u_fp[2].z, u_fp[2].w, 0.5);
     // the strand: the atlas's direction in the card's plane on the card's own axes (its u and v), scraggled by the seed
@@ -606,6 +619,63 @@ void main() {
   if (u_model_h > 2.0) arm.r *= mix(0.5, 1.0, v_hull);
 #endif
   alb *= u_tint * (0.85 + 0.3 * fract(v_seed * 7.13));
+#ifdef EYE
+  // which eye's cell this texel is in, and the eye's own UV there (both computed for every pixel: the samplers below take their
+  // derivatives, so none of them may sit in a branch some of a quad skips)
+  float eCell = u_eye.w;
+  bool eIn = v_uv.y >= u_eye.z && v_uv.y < u_eye.z + eCell;
+  bool eRight = v_uv.x >= u_eye.y && v_uv.x < u_eye.y + eCell;
+  bool eyeOn = eIn && ((v_uv.x >= u_eye.x && v_uv.x < u_eye.x + eCell) || eRight);
+  vec2 eO = vec2(eRight ? u_eye.y : u_eye.x, u_eye.z);
+  vec2 e = (v_uv - eO - u_eye2.x * eCell) / (eCell * (1.0 - 2.0 * u_eye2.x));
+  mat3 etf = cotangentFrame(N, v_wpos, v_uv);
+  mat3 etbn = mat3(normalize(etf[0]), normalize(etf[1]), N);
+  vec4 eS = texture(u_eye_sclera, e);
+  vec4 eNm = texture(u_eye_n, e);
+  float eCornea = eS.a;
+  vec3 eN = normalize(etbn * eyeNrm(eNm.rg));       // the material's Normal: the sclera's, flattened to 0.1 over the cornea
+  vec3 eE = normalize(etbn * eyeNrm(eNm.ba));       // its Tangent output: the eyeball's axis (EyeDirectionWorld)
+  // MF_refractedUVs: the view refracted into the cornea, carried down to the iris plane, and the offset read in the eye's UV
+  vec3 eV = normalize(u_cam_pos - v_wpos);
+  float eNi = 1.00029 / EYE_IOR;
+  float eW = eNi * dot(eN, eV);
+  float eK = sqrt(1.0 + (eW - eNi) * (eW + eNi));
+  vec3 eR = -normalize((eW - eK) * eN - eNi * eV);
+  float eVE = dot(eV, eE);
+  float eH = max(eyeDisp(e) - eyeDisp(vec2(EYE_CORNEA + 0.5, 0.5)), 0.0) * EYE_DEPTH / mix(0.325, 1.0, eVE * eVE);
+  vec3 eOff = eR * eH;
+  vec3 eTx = normalize(etbn[0] - dot(etbn[0], eE) * eE);
+  vec3 eTy = cross(eTx, eE);
+  vec2 eRef = mix(e, e + EYE_CORNEA * vec2(-1.0, 1.0) * vec2(dot(eTx, eOff), dot(eTy, eOff)), eCornea);
+  // the iris UV: the cornea's circle to the whole map, MF_pupilScale (Iris Scale 1, Iris Rotation 0, the pupil unshifted)
+  vec2 eQ = (eRef - 0.5) / (2.0 * EYE_CORNEA);
+  float eQl = length(eQ);
+  vec2 eP = 0.5 + eQ / max(eQl, 1e-6) * 0.5 * (1.0 - clamp((1.0 - 2.0 * eQl) * EYE_DILATION, 0.0, 1.0));
+  vec4 eI = texture(u_eye_iris, eP);
+  // the caustics compensation: the iris brightened where the cornea's T_Eye_N (at 1.2x about the centre, strength 0.75) turns from the eye
+  vec3 eCn = mix(vec3(0.0, 0.0, 1.0), eyeNrm(texture(u_eye_n, eP / 1.2 + 0.5 - 0.5 / 1.2).ba), EYE_CAUSTIC_DEPTH);
+  float eFr = pow(1.0 - max(dot(normalize(etbn * eCn), eV), 0.0), EYE_CAUSTIC_EXP) * 0.96 + 0.04;
+  vec3 eIris = mix(eI.rgb, eI.rgb * EYE_CAUSTIC_MUL, clamp(eFr, 0.0, 1.0) * eCornea * (1.0 - eI.a));
+  vec3 eBase = mix(eS.rgb, eIris, eCornea);
+  float eIrisMask = eyeCirc(length(e - 0.5), EYE_CORNEA + EYE_MASK_OFFSET, EYE_MASK_SOFT, 0.5);
+  float eIrisDist = pow(length(eRef - 0.5) / EYE_CORNEA * EYE_CONC_SCALE, EYE_CONC_POW);
+  // the iris normal: the baked one (T_iris_I_N and the pupil's funnel) under T_Eye_N at 1.25, BlendAngleCorrectedNormals
+  vec3 eB = texture(u_eye_irisn, eP).rgb * 4.0 - 2.0;
+  vec3 eA = mix(vec3(0.0, 0.0, 1.0), eyeNrm(eNm.ba), 1.25);
+  vec3 eB1 = vec3(eB.xy, eB.z + 1.0);
+  vec3 eA1 = vec3(-eA.xy, eA.z);
+  vec3 eIrisN = normalize(etbn * normalize(eB1 * dot(eB1, eA1) - eA1 * eB1.z));
+  // the caustic normal (IRIS_NORMAL): the plane's, bent toward -N by the iris's concavity
+  vec3 eCaustic = normalize(mix(eE, -eN, eIrisMask * clamp(eIrisDist, 0.0, 1.0)));
+  vec4 eVt = texture(u_eye_vis, vec2((clamp(e.x, 0.0, 1.0) + (eRight ? 1.0 : 0.0)) * 0.5, clamp(e.y, 0.0, 1.0)));
+  vec3 eVb = eVt.rgb * 2.0 - 1.0;
+  float eVa = eVt.a * 3.0 - 1.0;
+  float eVis = clamp(eVa + eVb.z * 2.0 / 3.0, 0.0, 1.0);                         // the cosine-weighted mean: the sky's share
+  vec3 eBent = normalize(etbn * vec3(eVb.xy * 0.25, eVb.z * 0.5 + eVa * 2.0 / 3.0));   // its bent normal
+  float eSunV = eVa + dot(etbn * eVb, u_sun_dir);                                  // V toward the sun
+  vec3 eSkin = textureLod(u_diff, vec2(0.25, 0.25), 9.0).rgb * u_tint;     // the face's skin quadrant's mean (a MetaHuman atlas: u, v < 0.5)
+  if (eyeOn) { alb = eBase;  n = eN; }
+#endif
 #if defined(FOLIAGE) && !defined(BLADE)
   // A fern or a clump stands IN the sward, and its low leaves see the sky through it no more than the
   // blades beside them do. Its own occlusion map knows nothing of the grass around it, so by night -
@@ -660,6 +730,9 @@ void main() {
   float shadow = (u_tr.w > 0.5) ? 1.0 : sunShadow(v_wpos, N, viewDepth);
 #else
   float shadow = sunShadow(v_wpos, N, viewDepth);
+#if defined(EYE) || defined(SSS_SPLIT)
+  shadow *= hairShadow(v_wpos);                // the brows' and lashes' own shadow (strands.ludic)
+#endif
 #endif
 #ifdef FOLIAGE
   // leaves and needles are matte at every angle: no grazing Fresnel on a two-sided card
@@ -698,7 +771,11 @@ void main() {
   o_sss_alb = vec4(applyFog(alb, v_wpos, dist) - applyFog(vec3(0.0), v_wpos, dist), sssOp);
   return;
 #endif
+#ifdef EYE
+  vec3 col = eyeOn ? eyeShade(v_wpos, eN, eIrisN, eCaustic, eIrisMask, eBase, arm.r, shadow, eBent, eVis, eSunV, eSkin, eE) : shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
+#else
   vec3 col = shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
+#endif
 #ifdef FABRIC
   // a hair card lit as Epic's hair: the sun through HairShading, the sky as Unreal's hair environment (pi x the shading toward the light
   // a strand's normal would face, at area 0.2, times the sky there)

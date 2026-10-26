@@ -46,7 +46,8 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   vec3 dp2perp = cross(dp2, N), dp1perp = cross(N, dp1);
   vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
   vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-  float invmax = inversesqrt(max(dot(T, T), dot(B, B)) + 1e-12);
+  // (scale-free: up close a pixel's dp x duv is ~1e-15, so an added epsilon (once 1e-12) shrank the frame and flattened the map)
+  float invmax = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-36));
   return mat3(T * invmax, B * invmax, N);
 }
 
