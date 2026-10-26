@@ -1,0 +1,332 @@
+# dangle.ludic - strands that hang from a moving bone and swing: hair guides, a tail, a strap. Each chain is a row of points whose
+# first two ride the anchor (a root and its first edge, as Unreal's groom solver holds them); the rest are Verlet points that keep
+# their lengths, turn back toward their rest shape in their parent edge's frame (Unreal's angular springs, StableSpringsSystem),
+# feel gravity and are pushed out of spheres carried by bones. The rest shape is the shape AT REST UNDER GRAVITY (a settled bake):
+# gravity acts only as far as the anchor is turned from the pose the rest was made in, so a still, upright figure's strands stay
+# exactly at rest, and a bow or a tilt lets them fall. Fixed steps of 1/60 s; a step allocates nothing.
+#
+#   let d = dangle_new(chains, points, spheres, slots)
+#   dangle_rest(d, c, i, x, y, z)                       # every point, in the anchor's frame (the frame the anchor's matrix maps)
+#   dangle_sphere(d, k, slot, x, y, z, r)               # sphere k on anchor slot `slot` (0 the chains' own), in that slot's frame
+#   each frame: dangle_anchor(d, slot, m) for each slot (world matrices), dangle_step(d, dt), then dangle_frame(d, c, s, out)
+#   per segment: the segment's world matrix, its rest orientation turned as it turned, at its first point
+
+export property Dangle {
+  nc:     int = 0,          # chains
+  np:     int = 0,          # points per chain (the first two ride the anchor)
+  ns:     int = 0,          # spheres
+  nslot:  int = 1,          # anchors (0: the chains')
+  rest:   floats,           # 3 per point: the rest shape in the anchor's frame
+  len:    floats,           # 1 per point: its edge's rest length (from the point before)
+  x:      floats,           # 3 per point: where it is (world)
+  xp:     floats,           # 3 per point: where it was a step ago
+  rw:     floats,           # 3 per point: its edge at rest, turned by the anchor this frame (world, its rest length)
+  sph:    floats,           # 5 per sphere: slot, x, y, z (the slot's frame), radius
+  sw:     floats,           # 4 per sphere: its centre (world) and radius this step
+  slots:  floats,           # 16 per slot: the anchors' world matrices this frame
+  slot_v: [][]float,        # a view of each (made once: a view is an allocation)
+  prev0:  floats,           # 16: the chains' anchor at the last step (a jump of it is a teleport)
+  grest:  floats,           # 3: the gravity the rest was settled under, in the anchor's frame
+  stiff:  float = 0.5,      # of the way a segment turns back to its rest direction per iteration
+  damp:   float = 0.12,     # of the velocity lost per step
+  cone:   float = 0.866,    # a segment never more than this (a cosine: 30 degrees) from its rest direction in its parent's frame
+  grav:   float = 9.81,
+  iters:  int = 2,
+  margin: float = 0.004,    # metres kept off a sphere's surface
+  teleport: float = 0.75,   # metres: an anchor jump beyond this puts the strands at rest there
+  acc:    float = 0.0,      # time not yet stepped
+  live:   bool = false,     # placed once (dangle_reset ran)
+  t:      floats            # scratch
+}
+
+const DANGLE_H: float = 0.016666668
+
+@alloc_ok("a dangle made once per figure that wears one (the player's hair)")
+@creates(Dangle)
+export function dangle_new(chains: int, points: int, spheres: int, slots: int) -> Dangle {
+  let n = chains * points
+  let d = new Dangle
+  d.nc = chains;  d.np = points;  d.ns = spheres;  d.nslot = Math.max(1, slots)
+  d.rest = floats(n * 3);  d.len = floats(n);  d.x = floats(n * 3);  d.xp = floats(n * 3);  d.rw = floats(n * 3)
+  d.sph = floats(Math.max(1, spheres) * 5);  d.sw = floats(Math.max(1, spheres) * 4)
+  d.slots = floats(d.nslot * 16);  d.prev0 = floats(16);  d.grest = floats(3);  d.t = floats(24)
+  for i in 0 .. n * 3 { d.rest[i] = 0.0;  d.x[i] = 0.0;  d.xp[i] = 0.0;  d.rw[i] = 0.0 }
+  for i in 0 .. n { d.len[i] = 0.0 }
+  d.slot_v = m4_views(d.slots, d.nslot)
+  for k in 0 .. d.nslot { m4_identity(d.slot_v[k]) }
+  d.grest[0] = 0.0;  d.grest[1] = -1.0;  d.grest[2] = 0.0
+  return d
+}
+@releases(Dangle)
+export function dangle_free(d: Dangle) -> void {
+  if d == null { return }
+  free(d.rest);  free(d.len);  free(d.x);  free(d.xp);  free(d.rw);  free(d.sph);  free(d.sw);  free(d.slots);  free(d.slot_v);  free(d.prev0);  free(d.grest);  free(d.t)
+}
+
+export function dangle_rest(d: Dangle, c: int, i: int, x: float, y: float, z: float) -> void {
+  let p = (c * d.np + i) * 3
+  d.rest[p] = x;  d.rest[p + 1] = y;  d.rest[p + 2] = z
+  if i > 0 {
+    let dx = x - d.rest[p - 3];  let dy = y - d.rest[p - 2];  let dz = z - d.rest[p - 1]
+    d.len[c * d.np + i] = Math.sqrt(dx * dx + dy * dy + dz * dz)
+  }
+}
+# the gravity the rest shape was settled under, as a direction in the anchor's frame (default: -y, an upright model)
+export function dangle_gravity_rest(d: Dangle, x: float, y: float, z: float) -> void {
+  let l = Math.max(0.000001, Math.sqrt(x * x + y * y + z * z))
+  d.grest[0] = x / l;  d.grest[1] = y / l;  d.grest[2] = z / l
+}
+export function dangle_sphere(d: Dangle, k: int, slot: int, x: float, y: float, z: float, r: float) -> void {
+  if k < 0 or k >= d.ns { return }
+  d.sph[k * 5] = float(slot);  d.sph[k * 5 + 1] = x;  d.sph[k * 5 + 2] = y;  d.sph[k * 5 + 3] = z;  d.sph[k * 5 + 4] = r
+}
+export function dangle_anchor(d: Dangle, slot: int, m: floats) -> void {
+  if slot >= 0 and slot < d.nslot { m4_copy(d.slot_v[slot], m) }
+}
+
+# a point of the anchor's frame in the world
+function dg_xf(m: floats, x: float, y: float, z: float, o: floats, at: int) -> void {
+  o[at] = m[0] * x + m[4] * y + m[8] * z + m[12]
+  o[at + 1] = m[1] * x + m[5] * y + m[9] * z + m[13]
+  o[at + 2] = m[2] * x + m[6] * y + m[10] * z + m[14]
+}
+# a direction of the anchor's frame in the world (t[at..at+2])
+function dg_dir(m: floats, x: float, y: float, z: float, o: floats, at: int) -> void {
+  o[at] = m[0] * x + m[4] * y + m[8] * z
+  o[at + 1] = m[1] * x + m[5] * y + m[9] * z
+  o[at + 2] = m[2] * x + m[6] * y + m[10] * z
+}
+# v (t[v..]) turned by the shortest turn taking unit a (t[a..]) to unit b (t[b..]), into t[o..]: v c + k x v + k (k.v) / (1 + c)
+function dg_turn(t: floats, a: int, b: int, v: int, o: int) -> void {
+  let kx = t[a + 1] * t[b + 2] - t[a + 2] * t[b + 1]
+  let ky = t[a + 2] * t[b] - t[a] * t[b + 2]
+  let kz = t[a] * t[b + 1] - t[a + 1] * t[b]
+  let c = t[a] * t[b] + t[a + 1] * t[b + 1] + t[a + 2] * t[b + 2]
+  let vx = t[v];  let vy = t[v + 1];  let vz = t[v + 2]
+  if c < -0.999 {                                  # turned right round: leave it (never at rest, and the next step mends it)
+    t[o] = vx;  t[o + 1] = vy;  t[o + 2] = vz
+    return
+  }
+  let f = (kx * vx + ky * vy + kz * vz) / (1.0 + c)
+  t[o] = vx * c + (ky * vz - kz * vy) + kx * f
+  t[o + 1] = vy * c + (kz * vx - kx * vz) + ky * f
+  t[o + 2] = vz * c + (kx * vy - ky * vx) + kz * f
+}
+function dg_unit(t: floats, at: int) -> float {
+  let l = Math.sqrt(t[at] * t[at] + t[at + 1] * t[at + 1] + t[at + 2] * t[at + 2])
+  if l > 0.000000001 { t[at] = t[at] / l;  t[at + 1] = t[at + 1] / l;  t[at + 2] = t[at + 2] / l }
+  return l
+}
+
+# every edge's rest turned by the anchor (rw), once a frame
+function dg_rest_world(d: Dangle, a: floats) -> void {
+  for k in 0 .. d.nc * d.np {
+    if k % d.np == 0 { continue }
+    let p = k * 3
+    dg_dir(a, d.rest[p] - d.rest[p - 3], d.rest[p + 1] - d.rest[p - 2], d.rest[p + 2] - d.rest[p - 1], d.rw, p)
+  }
+}
+
+# every point at rest where the anchor is now, not moving
+export function dangle_reset(d: Dangle) -> void {
+  let a = d.slot_v[0]
+  for k in 0 .. d.nc * d.np {
+    dg_xf(a, d.rest[k * 3], d.rest[k * 3 + 1], d.rest[k * 3 + 2], d.x, k * 3)
+    d.xp[k * 3] = d.x[k * 3];  d.xp[k * 3 + 1] = d.x[k * 3 + 1];  d.xp[k * 3 + 2] = d.x[k * 3 + 2]
+  }
+  dg_rest_world(d, a)
+  m4_copy(d.prev0, a)
+  d.acc = 0.0
+  d.live = true
+}
+
+# the frame's time in fixed steps (at most four: a long hitch is not caught up)
+export function dangle_step(d: Dangle, dt: float) -> void {
+  let a = d.slot_v[0]
+  let jx = a[12] - d.prev0[12];  let jy = a[13] - d.prev0[13];  let jz = a[14] - d.prev0[14]
+  if not d.live or jx * jx + jy * jy + jz * jz > d.teleport * d.teleport {
+    dangle_reset(d)
+    return
+  }
+  d.acc = Math.min(d.acc + Math.max(dt, 0.0), DANGLE_H * 4.0)
+  let n = int(d.acc / DANGLE_H)
+  if n == 0 { return }
+  dg_rest_world(d, a)
+  for s in 0 .. n {
+    dg_one(d, a, 1.0 / float(n - s))
+    d.acc -= DANGLE_H
+  }
+  m4_copy(d.prev0, a)
+}
+
+# one step: the riders go f of the way still left to where this frame's anchor carries them (even steps across the frame); the
+# anchor's turn is this frame's
+function dg_one(d: Dangle, a: floats, f: float) -> void {
+  let t = d.t
+  let h2 = DANGLE_H * DANGLE_H
+  # gravity as far as the anchor has turned it away from the rest's: g - A grest |g|
+  dg_dir(a, d.grest[0], d.grest[1], d.grest[2], t, 0)
+  let gex = 0.0 - t[0] * d.grav
+  let gey = -d.grav - t[1] * d.grav
+  let gez = 0.0 - t[2] * d.grav
+  # the spheres in the world
+  for k in 0 .. d.ns {
+    let sl = int(d.sph[k * 5])
+    let m = d.slot_v[sl]
+    dg_xf(m, d.sph[k * 5 + 1], d.sph[k * 5 + 2], d.sph[k * 5 + 3], d.sw, k * 4)
+    d.sw[k * 4 + 3] = d.sph[k * 5 + 4] + d.margin
+  }
+  let keep = 1.0 - d.damp
+  for c in 0 .. d.nc {
+    let b = c * d.np
+    # the riders: where the anchor carries them, blended across the frame's steps
+    for i in 0 .. 2 {
+      let p = (b + i) * 3
+      dg_xf(a, d.rest[p], d.rest[p + 1], d.rest[p + 2], t, 6)
+      d.xp[p] = d.x[p];  d.xp[p + 1] = d.x[p + 1];  d.xp[p + 2] = d.x[p + 2]
+      d.x[p] = d.x[p] + (t[6] - d.x[p]) * f
+      d.x[p + 1] = d.x[p + 1] + (t[7] - d.x[p + 1]) * f
+      d.x[p + 2] = d.x[p + 2] + (t[8] - d.x[p + 2]) * f
+    }
+    # Verlet
+    for i in 2 .. d.np {
+      let p = (b + i) * 3
+      let vx = (d.x[p] - d.xp[p]) * keep
+      let vy = (d.x[p + 1] - d.xp[p + 1]) * keep
+      let vz = (d.x[p + 2] - d.xp[p + 2]) * keep
+      d.xp[p] = d.x[p];  d.xp[p + 1] = d.x[p + 1];  d.xp[p + 2] = d.x[p + 2]
+      d.x[p] += vx + gex * h2
+      d.x[p + 1] += vy + gey * h2
+      d.x[p + 2] += vz + gez * h2
+    }
+    for it in 0 .. d.iters { dg_chain(d, b) }
+  }
+}
+
+# one pass down a chain: each segment turned back toward its rest direction in its parent's frame, its length kept, out of the spheres
+function dg_chain(d: Dangle, b: int) -> void {
+  for i in 2 .. d.np {
+    let p = (b + i) * 3
+    let q = p - 3
+    let r = p - 6
+    # the parent edge: its rest direction (world, carried by the anchor: a) and where it points now (n)
+    let lq = d.len[b + i - 1]
+    let ax = d.rw[q] / lq;  let ay = d.rw[q + 1] / lq;  let az = d.rw[q + 2] / lq
+    var nx = d.x[q] - d.x[r];  var ny = d.x[q + 1] - d.x[r + 1];  var nz = d.x[q + 2] - d.x[r + 2]
+    let nl = Math.sqrt(nx * nx + ny * ny + nz * nz)
+    if nl > 0.000000001 { nx = nx / nl;  ny = ny / nl;  nz = nz / nl }
+    # this edge's rest (v), turned as the parent turned: the target (t = v c + k x v + k (k.v) / (1 + c), k = a x n)
+    let vx = d.rw[p];  let vy = d.rw[p + 1];  let vz = d.rw[p + 2]
+    var tx = vx;  var ty = vy;  var tz = vz
+    let cc = ax * nx + ay * ny + az * nz
+    if cc > -0.999 {
+      let kx = ay * nz - az * ny;  let ky = az * nx - ax * nz;  let kz = ax * ny - ay * nx
+      let f = (kx * vx + ky * vy + kz * vz) / (1.0 + cc)
+      tx = vx * cc + (ky * vz - kz * vy) + kx * f
+      ty = vy * cc + (kz * vx - kx * vz) + ky * f
+      tz = vz * cc + (kx * vy - ky * vx) + kz * f
+    }
+    # drawn toward it; beyond the cone, all the way back to the cone's edge
+    var k = d.stiff
+    let ex = d.x[p] - d.x[q];  let ey = d.x[p + 1] - d.x[q + 1];  let ez = d.x[p + 2] - d.x[q + 2]
+    let lp = d.len[b + i]
+    let el = Math.sqrt(ex * ex + ey * ey + ez * ez)
+    if el > 0.000000001 {
+      let c = (ex * tx + ey * ty + ez * tz) / (el * lp)
+      if c < d.cone { k = Math.max(k, (d.cone - c) / Math.max(1.0 - c, 0.000001)) }
+    }
+    var px = d.x[p] + (d.x[q] + tx - d.x[p]) * k
+    var py = d.x[p + 1] + (d.x[q + 1] + ty - d.x[p + 1]) * k
+    var pz = d.x[p + 2] + (d.x[q + 2] + tz - d.x[p + 2]) * k
+    # its length: the parent moves too unless it rides the anchor
+    var gx = px - d.x[q];  var gy = py - d.x[q + 1];  var gz = pz - d.x[q + 2]
+    let gl = Math.sqrt(gx * gx + gy * gy + gz * gz)
+    if gl > 0.000000001 {
+      gx = gx / gl;  gy = gy / gl;  gz = gz / gl
+      let e = gl - lp
+      if i == 2 {
+        px -= gx * e;  py -= gy * e;  pz -= gz * e
+      } else {
+        let h = e * 0.5
+        px -= gx * h;  py -= gy * h;  pz -= gz * h
+        d.x[q] += gx * h;  d.x[q + 1] += gy * h;  d.x[q + 2] += gz * h
+      }
+    }
+    d.x[p] = px;  d.x[p + 1] = py;  d.x[p + 2] = pz
+  }
+  # out of the spheres, once the chain's lengths are kept (a length fix moves a parent back in)
+  for i in 2 .. d.np {
+    let p = (b + i) * 3
+    for s in 0 .. d.ns {
+      let ox = d.x[p] - d.sw[s * 4];  let oy = d.x[p + 1] - d.sw[s * 4 + 1];  let oz = d.x[p + 2] - d.sw[s * 4 + 2]
+      let rr = d.sw[s * 4 + 3]
+      let dd = ox * ox + oy * oy + oz * oz
+      if dd < rr * rr and dd > 0.000000000001 {
+        let g = rr / Math.sqrt(dd)
+        d.x[p] = d.sw[s * 4] + ox * g;  d.x[p + 1] = d.sw[s * 4 + 1] + oy * g;  d.x[p + 2] = d.sw[s * 4 + 2] + oz * g
+      }
+    }
+  }
+  # the lengths exact again, root to tip, each point drawn to its parent (a strand never stretches)
+  for i in 2 .. d.np {
+    let p = (b + i) * 3
+    let q = p - 3
+    let gx = d.x[p] - d.x[q];  let gy = d.x[p + 1] - d.x[q + 1];  let gz = d.x[p + 2] - d.x[q + 2]
+    let gl = Math.sqrt(gx * gx + gy * gy + gz * gz)
+    if gl > 0.000000001 {
+      let l = d.len[b + i] / gl
+      d.x[p] = d.x[q] + gx * l;  d.x[p + 1] = d.x[q + 1] + gy * l;  d.x[p + 2] = d.x[q + 2] + gz * l
+    }
+  }
+}
+
+# segment s of chain c (from point s to s + 1) as a world matrix: the anchor's turn, then the shortest turn from the segment's
+# rest direction (carried by the anchor) to where it points now; placed at point s. A part's joint made at that point with the
+# anchor frame's orientation (a hair guide's bone) skins with exactly this
+export function dangle_frame(d: Dangle, c: int, s: int, out: floats) -> void { dangle_frame_in(d, c, s, null, out) }
+# the same seen from another frame: `inv` (a world-to-that-frame matrix, rigid: a figure's placement inverted), null the world
+export function dangle_frame_in(d: Dangle, c: int, s: int, inv: floats, out: floats) -> void {
+  let a = d.slot_v[0]
+  let k = c * d.np + s
+  let p = k * 3
+  let l = d.len[k + 1]
+  # the shortest turn from the rest direction (carried by the anchor) to the segment's now: axis k = a x b, cosine c
+  let ax = d.rw[p + 3] / l;  let ay = d.rw[p + 4] / l;  let az = d.rw[p + 5] / l
+  var bx = d.x[p + 3] - d.x[p];  var by = d.x[p + 4] - d.x[p + 1];  var bz = d.x[p + 5] - d.x[p + 2]
+  let bl = Math.sqrt(bx * bx + by * by + bz * bz)
+  if bl > 0.000000001 { bx = bx / bl;  by = by / bl;  bz = bz / bl }
+  let kx = ay * bz - az * by;  let ky = az * bx - ax * bz;  let kz = ax * by - ay * bx
+  let cc = ax * bx + ay * by + az * bz
+  var f = 0.0
+  if cc > -0.999 { f = 1.0 / (1.0 + cc) }
+  # its matrix (Rodrigues: c I + [k]x + k k^T / (1 + c)), times the anchor's turn, then into `inv`'s frame
+  let r0 = cc + kx * kx * f;  let r3 = kx * ky * f - kz;  let r6 = kx * kz * f + ky
+  let r1 = kx * ky * f + kz;  let r4 = cc + ky * ky * f;  let r7 = ky * kz * f - kx
+  let r2 = kx * kz * f - ky;  let r5 = ky * kz * f + kx;  let r8 = cc + kz * kz * f
+  for col in 0 .. 3 {
+    let vx = a[col * 4];  let vy = a[col * 4 + 1];  let vz = a[col * 4 + 2]
+    let wx = r0 * vx + r3 * vy + r6 * vz
+    let wy = r1 * vx + r4 * vy + r7 * vz
+    let wz = r2 * vx + r5 * vy + r8 * vz
+    if inv == null {
+      out[col * 4] = wx;  out[col * 4 + 1] = wy;  out[col * 4 + 2] = wz
+    } else {
+      out[col * 4] = inv[0] * wx + inv[4] * wy + inv[8] * wz
+      out[col * 4 + 1] = inv[1] * wx + inv[5] * wy + inv[9] * wz
+      out[col * 4 + 2] = inv[2] * wx + inv[6] * wy + inv[10] * wz
+    }
+    out[col * 4 + 3] = 0.0
+  }
+  if inv == null {
+    out[12] = d.x[p];  out[13] = d.x[p + 1];  out[14] = d.x[p + 2]
+  } else {
+    dg_xf(inv, d.x[p], d.x[p + 1], d.x[p + 2], out, 12)
+  }
+  out[15] = 1.0
+}
+
+# point i of chain c (world) into out[0..3]
+export function dangle_point(d: Dangle, c: int, i: int, out: floats) -> void {
+  let p = (c * d.np + i) * 3
+  out[0] = d.x[p];  out[1] = d.x[p + 1];  out[2] = d.x[p + 2]
+}

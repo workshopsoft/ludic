@@ -1,5 +1,6 @@
 # follow_test.ludic - a part of a modular character binds its joints to the leader's skeleton by name, and
-# skins from the leader's pose: the shirt's joint order differs from the body's, the names decide
+# skins from the leader's pose: the shirt's joint order differs from the body's, the names decide. A bone of its own rides
+# its nearest bound ancestor; a live joint is where the game puts it
 import "ludic.render3d/r3d.ludic"
 program FollowTest {
   numbers float
@@ -41,7 +42,7 @@ program FollowTest {
     let map = skin_follow_map(shirt, body)
     expect_eq(map[0], 2)
     expect_eq(map[1], 1)
-    expect_eq(map[2], -1)
+    expect_eq(map[2], -2 - 1)                             # the cuff (under the spine here) rides the shirt's spine joint
     expect_eq(skin_follow_bound(map, 3), 2)
   }
 
@@ -58,17 +59,56 @@ program FollowTest {
     expect(shirt.bones_v[1][13] > 2.4)
   }
 
-  test "an unbound joint keeps the part's own rest matrix" {
+  test "a bone of the part's own rides its nearest bound ancestor, as it sits on it at rest" {
     let body = chain(["hips", "spine"], [0, 1])
     let shirt = chain(["spine", "cuff"], [0, 1])
     let map = skin_follow_map(shirt, body)
-    let rest = m4_new()
-    m4_copy(rest, shirt.bones_v[1])
     skin_set_offset(body, 1, 0.0, 5.0, 0.0)
     skin_pose(body)
     skin_follow_pose(shirt, body, map, shirt.bones, shirt.bones_v)
-    expect_eq(map[1], -1)
-    for i in 0 .. 16 { expect_near(shirt.bones_v[1][i], rest[i], 0.0001) }
+    expect_eq(map[1], -2)
+    for i in 0 .. 16 { expect_near(shirt.bones_v[1][i], shirt.bones_v[0][i], 0.0001) }
     expect(shirt.bones_v[0][13] > 5.0)
+  }
+
+  test "an unbound joint with no bound ancestor keeps the part's own rest matrix" {
+    let body = chain(["hips", "spine"], [0, 1])
+    let strap = chain(["strap", "spine"], [0, 1])          # its root is a bone the body lacks
+    let map = skin_follow_map(strap, body)
+    let rest = m4_new()
+    m4_copy(rest, strap.bones_v[0])
+    skin_set_offset(body, 1, 0.0, 5.0, 0.0)
+    skin_pose(body)
+    skin_follow_pose(strap, body, map, strap.bones, strap.bones_v)
+    expect_eq(map[0], -1)
+    for i in 0 .. 16 { expect_near(strap.bones_v[0][i], rest[i], 0.0001) }
+  }
+
+  test "a live joint is placed by the game over what it follows, and follows again when let go" (render3d_st: mut Render3dState) {
+    let body = chain(["hips", "spine"], [0, 1])
+    let shirt = chain(["spine", "cuff"], [0, 1])
+    let bm = new Model
+    bm.skin = body
+    let sm = new Model
+    sm.skin = shirt
+    let lead = new Actor
+    lead.model = bm
+    let part = new Actor
+    part.model = sm
+    expect_eq(actor_follow(part, lead), 1)
+    expect(actor_part_live(part))
+    let j = actor_part_joint(part, "cuff")
+    expect_eq(j, 1)
+    let m = m4_new()
+    m4_translation(m, 3.0, 4.0, 5.0)
+    actor_part_pose(part, j, m)
+    ac_follow_palette(part)
+    expect_near(part.fbones_v[1][12], 3.0, 0.0001)        # the inverse bind is identity here: the palette is the placement
+    expect_near(part.fbones_v[1][13], 4.0, 0.0001)
+    actor_part_release(part, j)
+    ac_follow_palette(part)
+    for i in 0 .. 16 { expect_near(part.fbones_v[1][i], part.fbones_v[0][i], 0.0001) }
+    actor_unfollow(part)
+    expect(part.fdyn == null)
   }
 }

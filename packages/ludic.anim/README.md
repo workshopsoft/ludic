@@ -322,6 +322,28 @@ what a whole graph editor needs (state kinds, conditions, fades, parameters, lay
 this package; the compiler never reads it. `anim_bindings` (table `AnimBindings`) is the wiring table: one row per binding, its `source` a pick from the registered
 `SignalSources` (`source_table`, `source_name`, `source_kind`, `source_about`), its `to` a parameter of the row's graph (`param_table: "AnimSets"`, `set_field: "set"`) or, for a request, one of its states. The rig is the package's own (a set's `skeleton` row in `AnimSkeletons`: `model`, `root`, `prefix`; clips are `<prefix>_<clip>`), but the studio's rig binding cannot yet follow a reference from a graph to its skeleton, so a game that wants its clips played in the graph writes an `anims` entry of its own with `rig_table: "AnimSkeletons"`, `rig_file: "model"` and `clip_pattern: "{prefix}_{clip}"` (right for one skeleton), which replaces this one.
 
+## Strands that swing (`dangle.ludic`)
+
+Chains of points hanging from a moving bone - hair guides, a tail, a strap - the way Unreal's groom solver keeps a guide
+(StableSpringsSystem's angular springs): each chain's first two points ride the anchor, the rest are Verlet points that keep their
+lengths (the last pass is exact), turn back toward their rest shape in their parent edge's frame (`stiff`, never more than `cone`
+from it), lose `damp` of their speed a step and are pushed out of spheres carried by any bone. The rest shape is the shape AT REST
+UNDER GRAVITY (a settled bake), so gravity acts only as far as the anchor is turned from the pose the rest was made in: a still,
+upright figure's strands stay exactly at rest. Fixed 1/60 s steps, at most four a frame; an anchor jump past `teleport` puts them
+at rest; a step allocates nothing.
+
+| | |
+| --- | --- |
+| `dangle_new(chains, points, spheres, slots) -> Dangle`, `dangle_free(d)` | made once per figure |
+| `dangle_rest(d, c, i, x, y, z)`, `dangle_gravity_rest(d, x, y, z)` | every point's rest in the anchor's frame; the gravity it was settled under (default -y) |
+| `dangle_sphere(d, k, slot, x, y, z, r)` | sphere k on anchor slot `slot` (0 the chains' own), in that slot's frame |
+| `dangle_anchor(d, slot, m)`, `dangle_step(d, dt)`, `dangle_reset(d)` | each frame: the anchors' world matrices, then the step |
+| `dangle_frame(d, c, s, out)`, `dangle_frame_in(d, c, s, inv, out)`, `dangle_point(d, c, i, out)` | segment s's matrix (the anchor's turn, then the shortest turn from its rest direction to where it points, at point s), in the world or seen through `inv`; a point |
+
+`dangle_test`: still and upright it stays at rest; moved at 3 m/s it lags, keeps its lengths to 0.5 mm, stays off the sphere, and
+comes back; bowed it falls and returns; a teleport resets; the frame's steps; the segment frames at rest. A head of hair - 31
+guides of 7 points, 6 spheres - steps in about 14 us and writes its 155 bone matrices in about 4 us (Apple M4 Pro).
+
 ## Tests
 
 ```bash

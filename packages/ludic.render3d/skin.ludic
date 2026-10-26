@@ -307,9 +307,12 @@ function skin_clone_drop(sk: Skin) -> void {
 # own inverse bind matrices. `skin_follow_map` binds the joints by name, once; `skin_follow_pose` then fills
 # the part's joint matrices from the leader's current global matrices every frame:
 #     bones[j] = leader.gmat[ map[j] ] * part.inv_bind[j]
-# A joint the leader has no node for keeps the part's own rest matrix, so a stray bone never explodes a mesh.
+# A joint the leader has no node for (the part's own bones: hair guides, a strap) rides the nearest of its ancestors that has one,
+# as it sits on it at rest (Unreal's leader pose keeps such a bone at its reference pose under its parent); with no such ancestor it
+# keeps the part's own rest matrix, so a stray bone never explodes a mesh. The game may place any joint itself (actor_part_pose).
 
-# per joint of `part`: the node of `leader` with that name, or -1. Returns the map (null when either is null)
+# per joint of `part`: the node of `leader` with that name; a joint riding an ancestor joint k is -2 - k; -1 neither. Returns the
+# map (null when either is null)
 @alloc_ok("bound once when a part is attached to a leader, freed by actor_release")
 function skin_follow_map(part: Skin, leader: Skin) -> words {
   if part == null or leader == null { return null }
@@ -318,6 +321,14 @@ function skin_follow_map(part: Skin, leader: Skin) -> words {
     m[j] = -1
     let nm = part.names[part.joints[j]]
     for i in 0 .. leader.n_nodes { if leader.names[i] == nm { m[j] = i;  break } }
+  }
+  for j in 0 .. part.n_joints {
+    if m[j] != -1 { continue }
+    var nd = part.par[part.joints[j]]
+    while nd >= 0 and m[j] == -1 {
+      for k in 0 .. part.n_joints { if part.joints[k] == nd and m[k] >= 0 { m[j] = -2 - k;  break } }
+      nd = part.par[nd]
+    }
   }
   return m
 }
@@ -331,6 +342,8 @@ function skin_follow_bound(map: words, n: int) -> int {
 function skin_follow_pose(part: Skin, leader: Skin, map: words, out: floats, out_v: [][]float) -> void {
   for j in 0 .. part.n_joints {
     if map[j] >= 0 { m4_mul(out_v[j], skin_mat(leader, map[j]), part.inv_v[j]) }
-    else { m4_copy(out_v[j], part.bones_v[j]) }
+    else if map[j] == -1 { m4_copy(out_v[j], part.bones_v[j]) }
   }
+  # a rider takes its ancestor's palette matrix: at the bind pose both are identity, so it moves as that bone does
+  for j in 0 .. part.n_joints { if map[j] <= -2 { m4_copy(out_v[j], out_v[-2 - map[j]]) } }
 }

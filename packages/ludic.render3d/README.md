@@ -461,10 +461,16 @@ actor_unfollow(shirt)                 # back to a plain actor (actor_release doe
 ```
 
 Each frame a follower copies the leader's placement, visibility and cull, and skins with
-`leader.gmat[node by name] * part.inv_bind[j]` (`skin_follow_pose`); a joint with no same-named node stays at rest. Shadows
+`leader.gmat[node by name] * part.inv_bind[j]` (`skin_follow_pose`); a joint with no same-named node (a bone of the part's
+own: a hair guide, a strap) rides its nearest ancestor that has one, as it sits on it at rest, and with no such ancestor stays at rest. Shadows
 and the outline pass use the same palette. Releasing the leader hides its followers. The 160-joint cap (`SKIN_MAX_JOINTS`,
 `u_bones[160]`, eight influences a vertex with JOINTS_1 / WEIGHTS_1) applies per mesh, so a part skinned to few joints is cheaper than the body. Hiding is per primitive, the unit
 the glTF gives: export the body with one material per region. `actor_show_all` undoes it.
+
+A part's own bones can move on their own (hair swinging, a strap): `actor_part_live(part)` makes room once, then each frame
+`actor_part_pose(part, j, m)` places joint `j` (`actor_part_joint(part, name)`) by its global matrix in the leader's model frame,
+over what it follows; `actor_part_release(part, j)` lets it follow again, `actor_part_still` (and `actor_unfollow`, `actor_release`)
+drops the room. ludic.anim's `dangle.ludic` is a solver that makes such matrices.
 
 ## Blended actors: smoke, a shield's bubble, a glow
 
