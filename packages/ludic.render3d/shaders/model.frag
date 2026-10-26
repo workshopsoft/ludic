@@ -149,6 +149,17 @@ float hairVar(float v, float sgl, float seed) {
 const float HAIR_D = 5.969 - 0.215 * 0.3 + 2.532 * 0.09 - 10.73 * 0.027 + 5.574 * 0.0081 + 0.245 * 0.00243;
 vec3 hairAbsorption(vec3 c) { vec3 l = log(max(c, vec3(1e-4))) / HAIR_D; return l * l; }
 vec3 hairColour(vec3 a) { return exp(-sqrt(a) * HAIR_D); }
+// GetHairColorFromMelanin (HairShadingCommon.ush): eumelanin and pheomelanin absorptions, plus the dye's
+vec3 hairMelanin(float m, float r, vec3 dye) {
+  float mel = -log(max(1.0 - clamp(m, 0.0, 1.0), 1e-4));
+  r = clamp(r, 0.0, 1.0);
+  vec3 a = mel * (1.0 - r) * vec3(0.506, 0.841, 1.653) + mel * r * vec3(0.343, 0.733, 1.924);
+  return hairColour(a + hairAbsorption(clamp(dye, vec3(0.0), vec3(1.0))));
+}
+// MF_Hair_Color's melanin: the parameter varied by the strand (fine to rough by the roughness), to the power 2.2
+float hairMel(float m, float fine, float rough, float hr, float seed) {
+  return pow(max(hairVar(mix(fine, rough, clamp(hr * 2.0, 0.0, 1.0)), m, seed), 0.0), 2.2);
+}
 #endif
 
 #ifdef FABRIC
@@ -399,6 +410,43 @@ void main() {
     float mv = mix(u_fp[1].x, u_fp[1].y, clamp(u_fp[1].z * 2.0, 0.0, 1.0));
     float k = hairVar(mv, 0.5, seed) / 0.5;
     alb = hairColour(hairAbsorption(u_fp[0].rgb) * k);
+    if (u_fp[11].x > 0.5) {
+      // M_hair_v4's colour from the look's melanin (art hair_unreal.py: u_fp 0 the dye, 5 melanin, redness, WhiteAmount, LightAmount,
+      // 6 the white strands' melanin high, low, variation, Desat, 7 Highlights, its melanin, redness, blending, 8 its dye, intensity,
+      // 9 Ombre, its melanin, redness, shift, 10 its dye, contrast, 11 on, the variations fine and rough, the ombre's intensity).
+      // MF_Hair_ColorBlending, then MF_Hair_SaltAndPeper with the strands' coverage (WhiteAmount^2.4: what Unreal shows up close;
+      // its cards' WhiteAmount x 1.08 greys dark hair), then the HairColor node and the Desaturation
+      float hr0 = u_fp[1].z;
+      float mel = hairMel(u_fp[5].x, u_fp[1].x, u_fp[1].y, hr0, seed);
+      float red = u_fp[5].y;
+      vec3 dye = u_fp[0].rgb;
+      // the ombre, along the strand (the atlas's coordinate, 1 at the root): CheapContrast of the shifted power
+      float sh = (u_fp[9].w + 0.065) * 10.0 - 5.0;
+      float tl = clamp(1.0 - tg.a, 0.0, 1.0);
+      float oa = sh > 0.0 ? pow(tl, sh + 1.0) : 1.0 - pow(1.0 - tl, abs(sh) + 1.0);
+      oa = clamp(mix(-u_fp[10].w, 1.0 + u_fp[10].w, oa), 0.0, 1.0) * u_fp[11].w;
+      float om = u_fp[9].x;
+      mel = mix(mel, mix(mel, hairMel(u_fp[9].y, u_fp[11].y, u_fp[11].z, hr0, seed), oa), om);
+      red = mix(red, mix(red, u_fp[9].z, oa), om);
+      dye = mix(dye, mix(dye, u_fp[10].rgb, oa), om);
+      // the highlights: Unreal's mask through the strand's root (cards: the mask plus 0.15 .. 0.3 by the seed); a card's strands have
+      // no root position, the seed picks the mask's value
+      float mask = fract(seed * 13.17 + 0.37);
+      mask = mask * mask;
+      float ha = clamp(pow(clamp(mix(mask + 0.15, mask + 0.3, seed * 1.08), 0.0, 1.0), 1.0 + u_fp[7].w * 5.0) * u_fp[8].w * 3.0, 0.0, 1.0);
+      ha *= mix(1.0, oa, om) * u_fp[7].x;
+      mel = mix(mel, hairMel(u_fp[7].y, u_fp[11].y, u_fp[11].z, hr0, seed), ha);
+      red = mix(red, u_fp[7].z, ha);
+      dye = mix(dye, u_fp[8].rgb, ha);
+      // salt and pepper: the white strands' melanin over a WhiteAmount^2.4 share of them
+      float wa = pow(max(u_fp[5].z, 0.0), 2.4);
+      float wc = smoothstep(wa, wa - 0.05, seed);
+      float wv = hairVar(u_fp[6].z, mix(u_fp[6].x, u_fp[6].y, u_fp[5].x), seed) * 1.25;
+      mel = mix(mel, mix(wv, wv * 0.5, u_fp[5].w), wc);
+      alb = hairMelanin(mel, red, dye);
+      float lum = dot(alb, vec3(0.3, 0.59, 0.11));
+      alb = mix(alb, vec3(lum), mix(u_fp[6].w, 0.9, wc));
+    }
     hRough = hairVar(u_fp[1].w, u_fp[1].z, seed);
     hSpec = mix(u_fp[2].y, u_fp[2].x, seed) * mix(u_fp[2].z, u_fp[2].w, 0.5);
     // the strand: the atlas's direction in the card's plane on the card's own axes (its u and v), scraggled by the seed
