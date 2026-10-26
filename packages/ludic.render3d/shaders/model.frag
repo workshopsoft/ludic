@@ -395,7 +395,7 @@ void main() {
   if (u_fp[16].w > 2.5) {
     // a hair card (u_fp: 0 the dye (linear), 1 melanin variation fine and rough, the roughness, its variation, 2 Spec0, Spec1, SpecEdge,
     // SpecFront, 3 scraggle, opacity scale and power, 4 the cards' tile in the atlas: u, v, size). The groom's atlases: u_fmask R
-    // coverage, G depth, B seed; u_fkit RGB the strand's direction in the card's frame, A its coordinate (1 at the root)
+    // coverage, G depth, B seed; u_fkit RGB the strand's direction in the card's frame, A its coordinate (0 at the root, 1 at the tip)
     vec2 auv = (v_uv - u_fp[4].xy) / u_fp[4].z;
     vec4 at = texture(u_fmask, auv);
     vec4 tg = texture(u_fkit, auv);
@@ -423,9 +423,9 @@ void main() {
       float mel = hairMel(u_fp[5].x, u_fp[1].x, u_fp[1].y, hr0, seed);
       float red = u_fp[5].y;
       vec3 dye = u_fp[0].rgb;
-      // the ombre, along the strand (the atlas's coordinate, 1 at the root): CheapContrast of the shifted power
+      // the ombre, along the strand (the atlas's coordinate): CheapContrast of the shifted power
       float sh = (u_fp[9].w + 0.065) * 10.0 - 5.0;
-      float tl = clamp(1.0 - tg.a, 0.0, 1.0);
+      float tl = clamp(tg.a, 0.0, 1.0);                     // the atlas's coordinate runs root (0) to tip (1)
       float oa = sh > 0.0 ? pow(tl, sh + 1.0) : 1.0 - pow(1.0 - tl, abs(sh) + 1.0);
       oa = clamp(mix(-u_fp[10].w, 1.0 + u_fp[10].w, oa), 0.0, 1.0) * u_fp[11].w;
       float om = u_fp[9].x;
