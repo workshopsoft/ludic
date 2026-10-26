@@ -43,6 +43,7 @@ property Actor {
   blend_casts: bool = false,   # a blended actor that still casts, alpha-tested at 0.5
   blend_d: float = 0.0,        # its squared distance from the camera this frame (the sort's key)
   shell:   bool = false,       # a MetaHuman's eye occlusion shell (eyeshell.frag): drawn over the opaque scene from its copy (actor_draw_shells)
+  own_blend: bool = false,     # a part blended on its own (a face's lashes over an opaque body): its blend, alpha and soft not its leader's
   @owns(SkinClone) skin:    Skin,           # this instance's own pose (skin_clone); null: the model's
   skin_owned: bool = false,  # made by actor_own_skin: actor_release frees it
   ptint:   words,          # 4 per primitive: on flag, r, g, b (a part's own colour)
@@ -250,7 +251,7 @@ function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool 
     m4_copy(a.mat, l.mat)
     a.visible = l.visible;  a.cast_hidden = l.cast_hidden;  a.casts = l.casts
     a.cull = l.cull;  a.radius = l.radius;  a.outline = l.outline;  a.emissive = l.emissive
-    a.blend = l.blend;  a.alpha = l.alpha;  a.soft = l.soft;  a.unlit = l.unlit;  a.blend_casts = l.blend_casts
+    if not a.own_blend { a.blend = l.blend;  a.alpha = l.alpha;  a.soft = l.soft;  a.unlit = l.unlit;  a.blend_casts = l.blend_casts }
   }
   if not a.visible and not (shadow and a.cast_hidden) { return false }
   if shadow and not a.casts { return false }
