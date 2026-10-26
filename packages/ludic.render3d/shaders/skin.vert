@@ -27,6 +27,18 @@ out vec4 v_sky;
 out float v_srad;
 out float v_sdep;
 out vec3 v_snrm;
+#ifdef INST
+// a head of hair (model_set_strand_points): one 96-byte record a strand point, read per instance (one segment: its point, A, and the
+// next, B, carried in the same record); the mesh is the segment's quad, TEXCOORD_0 (which end, side). A: (position, radius), (tangent,
+// u root to tip), the hair toward the sky (x + yzw.w), (the skin's normal at the root, seed); B: its first two. A strand's last point
+// (u 1) draws nothing
+layout(location = 3) in vec4 i_a0;
+layout(location = 4) in vec4 i_a1;
+layout(location = 8) in vec4 i_a2;
+layout(location = 12) in vec4 i_a3;
+layout(location = 13) in vec4 i_b0;
+layout(location = 14) in vec4 i_b1;
+#endif
 #endif
 #ifdef VELOCITY
 // the motion pass (taa.ludic): last frame's placement and pose of the same vertex, through clean view-projections
@@ -96,20 +108,41 @@ void main() {
 #ifdef STRANDS
   // Unreal's view-facing ribbon (HairStrandsVertexFactory): the point moved across the strand, at right angles to it and to the camera's
   // forward axis, by its radius or the least one at its distance, whichever is more
+#ifdef INST
+  bool cut = i_a1.w > 0.9999;
+  bool atB = a_uv.x > 0.5 && !cut;
+  vec4 sP = atB ? i_b0 : i_a0;
+  vec4 sT = atB ? i_b1 : i_a1;
+  w = m * vec4(sP.xyz, 1.0);
+  vec3 tw = mat3(m) * (normalize(sT.xyz) * sP.w);
+  float sSide = cut ? 0.0 : a_uv.y;
+  float sU = sT.w;
+  vec3 sN = i_a3.xyz;
+  float sSeed = i_a3.w;
+  vec4 sSky = i_a2;
+#else
   vec3 tw = mat3(m) * a_nrm;
+  float sSide = a_uv.y;
+  float sU = a_uv.x;
+  vec3 sN = a_col.rgb * 2.0 - 1.0;
+  float sSeed = a_col.a;
+  vec4 sSky = a_sky;
+#endif
   float r = length(tw);
   vec3 T = tw / max(r, 1e-12);
   vec3 camF = -vec3(u_view[0][2], u_view[1][2], u_view[2][2]);
   vec3 camP = -transpose(mat3(u_view)) * u_view[3].xyz;
   vec3 right = cross(T, -camF);
   right = dot(right, right) > 1e-12 ? normalize(right) : normalize(cross(T, vec3(0.0, 1.0, 0.0)) + vec3(1e-6, 0.0, 0.0));
-  w.xyz += right * a_uv.y * max(r, u_strand_minr * length(camP - w.xyz));
+  w.xyz += right * sSide * max(r, u_strand_minr * length(camP - w.xyz));
   v_wpos = w.xyz;
   v_nrm = T;
+  v_uv = vec2(sU, sSide);
+  v_col = vec4(v_col.rgb, sSeed);
   v_srad = r;
   v_sdep = -(u_view * w).z;
-  v_snrm = normalize(mat3(m) * (a_col.rgb * 2.0 - 1.0));
-  v_sky = vec4(a_sky.x, mat3(m) * a_sky.yzw);
+  v_snrm = normalize(mat3(m) * sN);
+  v_sky = vec4(sSky.x, mat3(m) * sSky.yzw);
 #endif
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * w;

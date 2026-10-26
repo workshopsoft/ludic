@@ -56,7 +56,8 @@ function strands_free(render3d_st: mut Render3dState) -> void {
 }
 
 # one pass's strands: each visible strands actor, its pose and, per primitive, its material (u_fp) and the LUT
-function strands_draw(render3d_st: mut Render3dState, ap: AcProg, minr: float, view: floats, proj: floats) -> void {
+# a strands program's frame-wide uniforms (its camera, the least radius, the frame, the LUT)
+function strands_prog(render3d_st: mut Render3dState, ap: AcProg, minr: float, view: floats, proj: floats) -> void {
   let p = ap.prog
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, ap.l_view, view)
@@ -64,26 +65,35 @@ function strands_draw(render3d_st: mut Render3dState, ap: AcProg, minr: float, v
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_strand_minr"), minr)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frame"), float(render3d_st.ac_frame % 64))
   if render3d_st.st_lut != null { r3d_bind_2d(render3d_st, p, "u_hair_lut", 3, render3d_st.st_lut.color) }
+}
+# one pass's strands: each visible strands actor, its pose and, per primitive, its material (u_fp) and the LUT. api: the same pass's
+# program for a head of hair (skin.vert INST: model_set_strand_points' records, a segment an instance)
+function strands_draw(render3d_st: mut Render3dState, ap: AcProg, api: AcProg, minr: float, view: floats, proj: floats) -> void {
+  strands_prog(render3d_st, ap, minr, view, proj)
+  if api != null { strands_prog(render3d_st, api, minr, view, proj) }
   let t = render3d_st.ac_fab_tmp
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
     if not a.strands or not ac_visible(render3d_st, a, false) { continue }
-    gpu_use_program(render3d_st, p)
-    u_mat4(render3d_st, ap.l_view, view)
-    u_mat4(render3d_st, ap.l_proj, proj)
-    u_mat4(render3d_st, ap.l_model, a.mat)
-    ac_bind_pose(render3d_st, a, ap)
-    gpu_cull(render3d_st, false)
     let model = a.model
+    var use = ap
+    if api != null and len(model.prims) > 0 and model.prims[0].inst_n > 0 { use = api }
+    let p = use.prog
+    gpu_use_program(render3d_st, p)
+    u_mat4(render3d_st, use.l_view, view)
+    u_mat4(render3d_st, use.l_proj, proj)
+    u_mat4(render3d_st, use.l_model, a.mat)
+    ac_bind_pose(render3d_st, a, use)
+    gpu_cull(render3d_st, false)
     for k in 0 .. len(model.prims) {
       let pr = model.prims[k]
       if a.hide != null and a.hide[k] != 0 { continue }
-      if ap.l_fp >= 0 {
+      if use.l_fp >= 0 {
         for f in 0 .. AC_FAB_FLOATS { t[f] = 0.0 }
         if pr.fab != null { for f in 0 .. AC_FAB_FLOATS { t[f] = pr.fab[f] } } else { t[13] = 1.0 }
-        gvk_u_set(render3d_st, ap.l_fp, data_of(t), 16, AC_FAB_FLOATS / 4)
+        gvk_u_set(render3d_st, use.l_fp, data_of(t), 16, AC_FAB_FLOATS / 4)
       }
-      mesh_draw(render3d_st, pr.mesh)
+      if pr.inst_n > 0 { mesh_draw_instanced(render3d_st, pr.mesh, pr.inst_n) } else { mesh_draw(render3d_st, pr.mesh) }
       render3d_st.st_draws += 1
     }
   }
@@ -112,7 +122,7 @@ function actor_draw_strands(render3d_st: mut Render3dState) -> void {
   gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
   gpu_blend(render3d_st, true)
   gpu_blend_func(render3d_st, GPU_ZERO, GPU_SRC_COLOR)
-  strands_draw(render3d_st, render3d_st.ac_strand_t, minr, render3d_st.cam_view, render3d_st.cam_proj)
+  strands_draw(render3d_st, render3d_st.ac_strand_t, render3d_st.ac_strand_t_i, minr, render3d_st.cam_view, render3d_st.cam_proj)
   # the light, weighted by coverage, added up
   gpu_fb_bind(render3d_st, render3d_st.st_fb_a)
   gpu_viewport(render3d_st, 0, 0, render3d_st.st_acc.w, render3d_st.st_acc.h)
@@ -122,7 +132,10 @@ function actor_draw_strands(render3d_st: mut Render3dState) -> void {
   let lp = render3d_st.ac_strand_l
   lp.scene_frame = -1
   ac_bind_scene(render3d_st, lp)
-  strands_draw(render3d_st, lp, minr, render3d_st.cam_view, render3d_st.cam_proj)
+  let lpi = render3d_st.ac_strand_l_i
+  lpi.scene_frame = -1
+  ac_bind_scene(render3d_st, lpi)
+  strands_draw(render3d_st, lp, lpi, minr, render3d_st.cam_view, render3d_st.cam_proj)
   # the resolve, premultiplied over the scene
   target_bind(render3d_st, render3d_st.post_hdr)
   gpu_depth_test(render3d_st, false)
@@ -211,8 +224,10 @@ function strands_shadow_pass(render3d_st: mut Render3dState) -> void {
   let ap = render3d_st.ac_strand_dom
   gpu_use_program(render3d_st, ap.prog)
   u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_hs_d0"), ST_HS_DIST)
+  gpu_use_program(render3d_st, render3d_st.ac_strand_dom_i.prog)
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.ac_strand_dom_i.prog, "u_hs_d0"), ST_HS_DIST)
   # the least radius: half a texel at the sun's eye's distance
-  strands_draw(render3d_st, ap, ST_HS_HALF / float(ST_HS_SIZE) / ST_HS_DIST, render3d_st.st_hs_view, render3d_st.st_hs_proj)
+  strands_draw(render3d_st, ap, render3d_st.ac_strand_dom_i, ST_HS_HALF / float(ST_HS_SIZE) / ST_HS_DIST, render3d_st.st_hs_view, render3d_st.st_hs_proj)
   gpu_blend(render3d_st, false)
   gpu_depth_test(render3d_st, true)
   gpu_depth_write(render3d_st, true)
