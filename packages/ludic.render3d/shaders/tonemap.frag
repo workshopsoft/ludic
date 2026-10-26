@@ -46,9 +46,8 @@ vec3 fromOklab(vec3 l) {
 bool inGamut(vec3 c) { return all(greaterThanEqual(c, vec3(-1.0e-4))) && all(lessThanEqual(c, vec3(1.0001))); }
 // ACES per channel decides how light a colour is and how rich, but not its hue: a channel that saturates
 // first turns a bright red orange and skin yellow-white, and a dark orange red. So the colour is put back
-// at the scene's own hue (Oklab), as rich as the curve made it - and, until it nears white, at least as
-// rich as the scene was - with the saturation the full contrast curve gave, so opening a shadow does not
-// grey it. Then the chroma comes down, at that lightness and hue, until it is a colour the screen has.
+// at the scene's own hue (Oklab) and, until it nears white, as rich as the scene was; near white as rich as
+// the curve made it. Then the chroma comes down, at that lightness and hue, until it is a colour the screen has.
 vec3 toneHue(vec3 c, float k) {
   vec3 cn = aces(contrastUp(c, k));
   vec3 co = aces(pow(c / 0.18, vec3(k)) * 0.18);
@@ -57,9 +56,12 @@ vec3 toneHue(vec3 c, float k) {
   vec3 l0 = toOklab(c);
   float c0 = length(l0.yz);
   if (c0 < 1.0e-5 || ln.x < 1.0e-4) return cn;
-  float s = max(length(lo.yz) / max(lo.x, 1.0e-4), length(ln.yz) / ln.x);
+  // as rich as the scene was (Unreal's tonemapper keeps it near enough: a MetaHuman's shaded skin stays at its albedo's hue and
+  // saturation there, where the per-channel curve's - kept before - turned it magenta and every dark colour fiercer), until near
+  // white, where the curve's own rolls it off
+  float sc = length(lo.yz) / max(lo.x, 1.0e-4);
   float t = clamp((ln.x - 0.9) / 0.1, 0.0, 1.0);
-  s = max(s, c0 / max(l0.x, 1.0e-4) * (1.0 - t * t * (3.0 - 2.0 * t)));
+  float s = mix(c0 / max(l0.x, 1.0e-4), max(sc, length(ln.yz) / ln.x), t * t * (3.0 - 2.0 * t));
   vec2 hue = l0.yz / c0;
   float cmax = s * ln.x;
   vec3 rgb = fromOklab(vec3(ln.x, hue * cmax));
