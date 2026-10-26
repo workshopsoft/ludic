@@ -102,7 +102,9 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
 float hairG(float B, float theta) { return exp(-0.5 * theta * theta / (B * B)) / (sqrt(2.0 * PI) * max(B, 0.01)); }
 float hairF(float cosT) { float f0 = 0.0465; float m = 1.0 - cosT; return f0 + (1.0 - f0) * m * m * m * m * m; }
 // T along the strand, V and L toward the eye and the light: the light it scatters toward the eye (no cosine: the lobes carry it)
-vec3 hairShading(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, float area) {
+// tt: how much of the light passing through the strand (TT, TRT) is left: a card has no hair volume's deep shadow, its clump's depth
+// stands for it (1 at the clump's surface)
+vec3 hairShading(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, float area, float tt) {
   float r = clamp(rough, 1.0 / 255.0, 1.0);
   float VoL = dot(V, L);
   float sinL = clamp(dot(T, L), -1.0, 1.0);
@@ -125,10 +127,10 @@ vec3 hairShading(vec3 base, float rough, float spec, vec3 T, vec3 V, vec3 L, flo
   float h = cosHalfPhi * (1.0 + a * (0.6 - 0.8 * cosPhi));
   float f = hairF(cosD * sqrt(clamp(1.0 - h * h, 0.0, 1.0)));
   vec3 tp = pow(abs(base), vec3(0.5 * sqrt(max(1.0 - (h * a) * (h * a), 0.0)) / cosD));
-  S += hairG(b1, sinL + sinV - shift) * exp(-3.65 * cosPhi - 3.98) * (1.0 - f) * (1.0 - f) * tp;
+  S += hairG(b1, sinL + sinV - shift) * exp(-3.65 * cosPhi - 3.98) * (1.0 - f) * (1.0 - f) * tp * tt;
   // TRT
   float f2 = hairF(cosD * 0.5);
-  S += hairG(b2, sinL + sinV - shift * 4.0) * exp(17.0 * cosPhi - 16.78) * (1.0 - f2) * (1.0 - f2) * f2 * pow(abs(base), vec3(0.8 / cosD));
+  S += hairG(b2, sinL + sinV - shift * 4.0) * exp(17.0 * cosPhi - 16.78) * (1.0 - f2) * (1.0 - f2) * f2 * pow(abs(base), vec3(0.8 / cosD)) * tt;
   // the light scattered through many strands: KajiyaKayDiffuseAttenuation's shape (a wrapped term on the normal facing the eye, a third of
   // Kajiya-Kay), with the hair's colour as its albedo. M_hair_v4's cards leave Scatter at 0 (Unreal lights them with the three lobes and
   // the groom's voxel scattering, which cards have none of here); its sqrt(colour) at a scatter of 1 lifted black hair to grey, and the
@@ -389,7 +391,7 @@ void main() {
   arm.gb *= vec2(1.0) - u_fac_mr_inv;
 #ifdef FABRIC
   vec3 hT = vec3(0.0);
-  float hRough = 0.5, hSpec = 0.5, hAO = 1.0;
+  float hRough = 0.5, hSpec = 0.5, hAO = 1.0, hTT = 1.0;
   if (u_fp[16].w > 2.5) {
     // a hair card (u_fp: 0 the dye (linear), 1 melanin variation fine and rough, the roughness, its variation, 2 Spec0, Spec1, SpecEdge,
     // SpecFront, 3 scraggle, opacity scale and power, 4 the cards' tile in the atlas: u, v, size). The groom's atlases: u_fmask R
@@ -401,6 +403,7 @@ void main() {
     // the sky a strand sees: a strand deep in its clump (the atlas's depth) sees little of it. Unreal shades a groom's sky through its
     // voxelised density (the strands' own occlusion); a card has its clump's depth instead
     hAO = mix(1.0, 0.15, clamp(at.g, 0.0, 1.0));
+    hTT = mix(1.0, 0.05, clamp(at.g * 2.0, 0.0, 1.0));
     // the opacity mask: DitherTemporalAA (the mask plus a sixth of a per-pixel noise, a new pattern each frame) of pow(coverage x scale,
     // power), clipped at M_hair_v4's 0.33
     float op = pow(max(at.r * u_fp[3].y, 0.0), u_fp[3].z);
@@ -660,9 +663,9 @@ void main() {
     vec3 V = normalize(u_cam_pos - v_wpos);
     vec4 lzA;
     float lz = lightZone(v_wpos, lzA);
-    vec3 sunL = hairShading(alb, hRough, hSpec, hT, V, u_sun_dir, 0.0) * u_sun_color * shadow * cloudShadow(v_wpos) * (1.0 - lz);
+    vec3 sunL = hairShading(alb, hRough, hSpec, hT, V, u_sun_dir, 0.0, hTT) * u_sun_color * shadow * cloudShadow(v_wpos) * (1.0 - lz);
     vec3 Lf = normalize(V - hT * dot(V, hT) + vec3(0.0, 1e-4, 0.0));
-    vec3 sky = PI * hairShading(alb, hRough, hSpec, hT, V, Lf, 0.2) * skyIrradiance(Lf) * mix(1.0, lzA.a, lz);
+    vec3 sky = PI * hairShading(alb, hRough, hSpec, hT, V, Lf, 0.2, 1.0) * skyIrradiance(Lf) * mix(1.0, lzA.a, lz);
     col = sane(sunL + sky * hAO + alb * lzA.rgb * lz);
   }
 #endif
