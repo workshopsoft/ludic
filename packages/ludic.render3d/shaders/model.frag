@@ -110,12 +110,15 @@ mat3 normalFrame(vec3 N, vec3 p, vec2 uv) {
 // micro normal at strength (1 - a) x 2; the pattern a 512 px tile at u 0.5 .. 0.75, v 0.75 .. 1 of the 2048 px atlas, 496 px wrapped
 // 8 px past each edge, x and y in R and G (green up), 1 - cavity in B; its first texel (1024, 1536) magenta and clear, the mark that
 // says the map is one (a garment's maps have alphas of their own). Any other map has none.
-// tn the map's normal at the texel, a its alpha: the normal with the micro one over it (reoriented), and the cavity (0 .. 1) in w
-vec4 skinMicro(vec3 tn, float a) {
-  if (a >= 0.998 || a < 0.5) return vec4(tn, 0.0);
-  if (textureSize(u_nrm, 0) != ivec2(2048)) return vec4(tn, 0.0);
+// skinMap(a): the map is one and the texel (alpha a) skin. skinMicro: tn, the map's normal there, with the micro one over it (reoriented),
+// and the cavity (0 .. 1) in w
+bool skinMarked() {
+  if (textureSize(u_nrm, 0) != ivec2(2048)) return false;
   vec4 mark = texelFetch(u_nrm, ivec2(1024, 1536), 0);
-  if (any(greaterThan(abs(mark - vec4(1.0, 0.0, 1.0, 0.0)), vec4(0.02)))) return vec4(tn, 0.0);
+  return all(lessThan(abs(mark - vec4(1.0, 0.0, 1.0, 0.0)), vec4(0.02)));
+}
+bool skinMap(float a) { return a < 0.998 && a >= 0.5 && skinMarked(); }
+vec4 skinMicro(vec3 tn, float a) {
   float s = (1.0 - a) * 2.0;
   vec2 mu = v_uv * 88.0;                    // 44 over each mesh's uvs, which take half the atlas each way
   const float CORE = 496.0 / 2048.0, PADU = 8.0 / 2048.0;
@@ -415,11 +418,17 @@ void main() {
 #endif
 #endif
   vec4 nt = texture(u_nrm, v_uv);
-  vec4 sm = skinMicro(nt.rgb * 2.0 - 1.0, nt.a);
+  bool skin = skinMap(nt.a);
+  vec4 sm = skin ? skinMicro(nt.rgb * 2.0 - 1.0, nt.a) : vec4(nt.rgb * 2.0 - 1.0, 0.0);
   mat3 tbn = normalFrame(N, v_wpos, v_uv);
   n = normalize(tbn * sm.xyz);
   arm = texture(u_arm, v_uv).rgb;
-  arm.g *= 1.0 + 0.35 * sm.w;               // rougher in the skin's micro cavities (Roughness Micro Cavity Multiply 1.35)
+  if (skin) {
+    // the skin's micro cavities rougher (Roughness Micro Cavity Multiply 1.35) and less specular (Micro Skin Cavity Specular Multiply
+    // 0.6); its Specular 0.9 x 0.8 (MI_Skin_*: the regions' x Specular Base), Unreal's F0 = 0.08 x Specular
+    arm.g *= 1.0 + 0.35 * sm.w;
+    g_dielF0 = 0.08 * 0.72 * mix(1.0, 0.6, sm.w);
+  }
   // the roughness and metal at their own tiling (a car paint's flake noise is its texture 20 times over; the occlusion is not)
   if (u_mr_scale.x > 0.0 && u_mr_scale != vec2(1.0)) arm.gb = texture(u_arm, v_uv * u_mr_scale).gb;
   arm.gb *= vec2(1.0) - u_fac_mr_inv;

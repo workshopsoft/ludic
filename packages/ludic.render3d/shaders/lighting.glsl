@@ -317,7 +317,7 @@ vec3 zoneLamps(vec3 wpos, vec3 n, vec3 albedo) {
 float sunZone(vec3 p) { vec4 a; return 1.0 - lightZone(p, a); }
 
 // a dielectric's reflectance at normal incidence: 0.04, Unreal's Specular 0.5 (0.08 x Specular). A material that keys its own
-// specular sets it before shade() (the jeans: spec_basic_intensity times the weave)
+// specular sets it before shade() (the jeans: spec_basic_intensity times the weave; a MetaHuman's skin: model.frag)
 float g_dielF0 = 0.04;
 
 // direct + image-based lighting for one surface
