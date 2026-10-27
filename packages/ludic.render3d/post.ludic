@@ -157,6 +157,7 @@ function post_measure(render3d_st: mut Render3dState) -> void {
   if render3d_st.post_p_adapt == 0 { render3d_st.post_p_adapt = r3d_program(render3d_st, "fullscreen.vert", "adapt.frag", "") }
   if ue_exposure_on(render3d_st) {
     ue_exposure_pass(render3d_st)
+    ue_local_exposure_pass(render3d_st)     # Unreal's local exposure grid, from the same half-resolution scene (ue_post.ludic)
     gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_hdr.color)
     gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR)
     return

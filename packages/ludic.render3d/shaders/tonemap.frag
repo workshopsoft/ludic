@@ -120,10 +120,64 @@ float ueVignette(vec2 screenPos) {
   float c = 1.0 / (t2 + 1.0);
   return c * c;
 }
+// Local exposure, LOCAL_EXPOSURE_MODE_BILATERAL (ue_post.ludic ue_local_exposure_pass): PostProcessHistogramCommon.ush
+// CalculateBaseLogLuminance (the grid read trilinear, BILATERAL_GRID_DEPTH 32, blended with the blurred log luminance) and
+// CalculateLocalExposure. The grid is a buffer here (cell (x, y, bucket) at (bucket * tiles.y + y) * tiles.x + x), filtered by hand.
+uniform float u_le_on;
+readonly buffer u_le_grid { vec2 le_grid[]; };
+uniform sampler2D u_le_blur;
+uniform vec4 u_le_a;     // HighlightContrastScale, ShadowContrastScale, DetailStrength, BlurredLuminanceBlend
+uniform vec4 u_le_b;     // MiddleGreyExposureCompensation, HighlightThreshold, ShadowThreshold, HighlightThresholdStrength
+uniform vec4 u_le_c;     // ShadowThresholdStrength, BilateralGridUVScale xy, LuminanceMin
+uniform vec4 u_le_d;     // grid tiles x y, HistogramScale, HistogramBias
+vec2 ueLeCell(int x, int y, int z) {
+  int tx = int(u_le_d.x), ty = int(u_le_d.y);
+  x = clamp(x, 0, tx - 1);  y = clamp(y, 0, ty - 1);  z = clamp(z, 0, 31);
+  return le_grid[(z * ty + y) * tx + x];
+}
+vec2 ueLeGrid(vec3 uvw) {
+  vec3 p = uvw * vec3(u_le_d.xy, 32.0) - 0.5;
+  vec3 f = fract(p);
+  ivec3 i = ivec3(floor(p));
+  vec2 a = mix(mix(ueLeCell(i.x, i.y, i.z), ueLeCell(i.x + 1, i.y, i.z), f.x), mix(ueLeCell(i.x, i.y + 1, i.z), ueLeCell(i.x + 1, i.y + 1, i.z), f.x), f.y);
+  vec2 b = mix(mix(ueLeCell(i.x, i.y, i.z + 1), ueLeCell(i.x + 1, i.y, i.z + 1), f.x), mix(ueLeCell(i.x, i.y + 1, i.z + 1), ueLeCell(i.x + 1, i.y + 1, i.z + 1), f.x), f.y);
+  return mix(a, b, f.z);
+}
+float ueLocalExposure(vec3 sceneColor, float globalExposure, float mgec) {
+  float logLum = log2(max(dot(sceneColor, vec3(0.2126390059, 0.7151686788, 0.0721923154)), u_le_c.w));
+  float logMiddleGrey = log2(0.18 * mgec * u_le_b.x);
+  // CalculateBaseLogLuminance
+  vec3 uvw;
+  uvw.xy = v_uv * u_le_c.yz;
+  uvw.z = ((logLum * u_le_d.z + u_le_d.w) * 31.0 + 0.5) / 32.0;
+  vec2 g = ueLeGrid(uvw);
+  float blurred = texture(u_le_blur, v_uv).r;
+  float bilateral = g.y < 0.001 ? blurred : g.x / g.y;
+  float baseLogLum = mix(bilateral, blurred, u_le_a.w) + log2(globalExposure);
+  // CalculateLogLocalExposure, with the scene's log luminance under the exposure
+  float lum = logLum + log2(globalExposure);
+  float detail = lum - baseLogLum;
+  float centered = baseLogLum - logMiddleGrey;
+  float contrast = centered > 0.0 ? u_le_a.x : u_le_a.y;
+  float m, t;
+  if (centered > 0.0) {
+    m = max(0.0, centered - u_le_b.y);
+    t = smoothstep(u_le_b.y, u_le_b.y + 1.0 / (1.0 - u_le_b.w), abs(centered));
+  } else {
+    m = min(0.0, centered + u_le_b.z);
+    t = smoothstep(u_le_b.z, u_le_b.z + 1.0 / (1.0 - u_le_c.x), abs(centered));
+  }
+  float offset = (centered - m) * (1.0 - t);
+  centered -= offset;
+  float logLocal = logMiddleGrey + offset + centered * contrast + detail * u_le_a.z;
+  return exp2(logLocal - lum);
+}
 vec3 ueTonemap(vec3 sceneColor, vec3 bloom, float globalExposure) {
   vec2 screenPos = v_uv * 2.0 - 1.0;
   float vig = ueVignette(screenPos);
-  vec3 lin = sceneColor * u_scene_tint * (globalExposure * vig);
+  float localExposure = 1.0;
+  if (u_le_on > 0.5) localExposure = ueLocalExposure(sceneColor, globalExposure, texture(u_adapt, vec2(0.5)).a);
+  vec3 lin = sceneColor * u_scene_tint * (globalExposure * vig * localExposure);
   lin += bloom * u_bloom_strength * (globalExposure * vig);
   vec3 dev = ueColorLookupTable(max(lin, vec3(0.0)));
   // GrainFromUV on TexCoord + GrainRandomFull, then triangular on [-1, 1]

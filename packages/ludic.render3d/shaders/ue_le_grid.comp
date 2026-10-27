@@ -1,0 +1,65 @@
+// ue_le_grid.comp - Unreal's local exposure bilateral grid (PostProcessHistogram.usf MainCS with BILATERAL_GRID, UE 5.8): a group of
+// 8 x 8 threads a 64 x 64 tile of the half-resolution scene, each thread 2 x 2 texels at a time; each texel's log2 luminance splits
+// bilinearly between the two of 32 buckets around its histogram position, packed as (weight, position x weight) in 16-bit fixed
+// point (PackTwoFloatToUINT32, x 512); the group's 64 histograms are summed and each bucket writes (sum of log luminance, weight)
+// - here into a buffer, cell (x, y, bucket) at (bucket * tiles.y + y) * tiles.x + x.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0) uniform Params {
+  vec4 hist;            // HistogramScale, HistogramBias, LuminanceMin, the mip read
+  ivec4 size;           // the mip's width, height, tiles across, tiles down
+} pr;
+layout(set = 0, binding = 1) buffer Grid { vec2 grid[]; };
+layout(set = 0, binding = 2) uniform sampler2D u_scene;
+const uint HISTOGRAM_SIZE = 32u;
+const vec3 LUMA = vec3(0.2126390059, 0.7151686788, 0.0721923154);
+shared uint sh[32][8][8];
+uint packTwo(float a, float b) { return ((uint(a * 512.0) & 0xFFFFu) << 16) | (uint(b * 512.0) & 0xFFFFu); }
+void main() {
+  uvec2 lt = gl_LocalInvocationID.xy;
+  for (uint i = 0u; i < HISTOGRAM_SIZE; i++) sh[i][lt.x][lt.y] = 0u;
+  barrier();
+  ivec2 leftTop = ivec2(gl_WorkGroupID.xy) * 64;
+  int lod = int(pr.hist.w);
+  for (int y = 0; y < 64; y += 16) {
+    for (int x = 0; x < 64; x += 16) {
+      ivec2 t = leftTop + ivec2(x, y) + ivec2(lt) * 2;
+      // don't include the last column / row if the viewport max is odd
+      if (t.x < pr.size.x - 1 && t.y < pr.size.y - 1) {
+        // the four texels a gather at their shared corner returns
+        vec3 c0 = texelFetch(u_scene, t + ivec2(0, 1), lod).rgb;
+        vec3 c1 = texelFetch(u_scene, t + ivec2(1, 1), lod).rgb;
+        vec3 c2 = texelFetch(u_scene, t + ivec2(1, 0), lod).rgb;
+        vec3 c3 = texelFetch(u_scene, t, lod).rgb;
+        vec4 lum = vec4(max(dot(c0, LUMA), pr.hist.z), max(dot(c1, LUMA), pr.hist.z), max(dot(c2, LUMA), pr.hist.z), max(dot(c3, LUMA), pr.hist.z));
+        for (int k = 0; k < 4; k++) {
+          float h = log2(lum[k]) * pr.hist.x + pr.hist.y;
+          float f = clamp(h, 0.0, 1.0) * float(HISTOGRAM_SIZE - 1u);
+          uint b0 = min(uint(f), HISTOGRAM_SIZE - 1u);
+          uint b1 = min(b0 + 1u, HISTOGRAM_SIZE - 1u);
+          float w1 = fract(f);
+          float w0 = 1.0 - w1;
+          atomicAdd(sh[b0][lt.x][lt.y], packTwo(w0, h * w0));
+          atomicAdd(sh[b1][lt.x][lt.y], packTwo(w1, h * w1));
+        }
+      }
+    }
+  }
+  barrier();
+  uint gi = gl_LocalInvocationIndex;
+  if (gi < HISTOGRAM_SIZE) {
+    float sum = 0.0;
+    float sumLum = 0.0;
+    for (uint y = 0u; y < 8u; y++) {
+      for (uint x = 0u; x < 8u; x++) {
+        uint v = sh[gi][x][y];
+        float sw = float(v >> 16) / 512.0;
+        float sl = float(v & 0xFFFFu) / 512.0;
+        // ComputeLogLuminanceFromHistogramPosition, with the weight
+        sumLum += (sl - sw * pr.hist.y) / pr.hist.x;
+        sum += sw;
+      }
+    }
+    uint cell = (gi * uint(pr.size.w) + gl_WorkGroupID.y) * uint(pr.size.z) + gl_WorkGroupID.x;
+    grid[cell] = vec2(sumLum, sum);
+  }
+}

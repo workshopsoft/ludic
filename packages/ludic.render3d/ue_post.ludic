@@ -82,7 +82,20 @@ property UePost {
   lens_flare_bokeh_size: float = 3.0,              # LensFlareBokehSize (percent of the view)
   lens_flare_threshold: float = 8.0,               # LensFlareThreshold
   lens_flare_tints: floats = null,                 # LensFlareTints[8] (rgba; a scales the flare's size)
-  lens_flare_quality: int = 2                      # r.LensFlareQuality: 0 off, 1 .. 3 the downsample stage read (2 a quarter)
+  lens_flare_quality: int = 2,                     # r.LensFlareQuality: 0 off, 1 .. 3 the downsample stage read (2 a quarter)
+  # Lens|Local Exposure, LocalExposureMethod Bilateral (PostProcessLocalExposure): Unreal's engine defaults, where it is off (both
+  # contrast scales and the detail strength 1: the passes are skipped); new projects' templates use 0.8. R3D_UE_LOCAL_EXPOSURE=<scale>
+  # sets both contrast scales
+  local_exposure_highlight_contrast_scale: float = 1.0,   # LocalExposureHighlightContrastScale
+  local_exposure_shadow_contrast_scale: float = 1.0,      # LocalExposureShadowContrastScale
+  local_exposure_detail_strength: float = 1.0,            # LocalExposureDetailStrength
+  local_exposure_blurred_luminance_blend: float = 0.6,    # LocalExposureBlurredLuminanceBlend
+  local_exposure_blurred_luminance_kernel_size_percent: float = 50.0,  # LocalExposureBlurredLuminanceKernelSizePercent
+  local_exposure_middle_grey_bias: float = 0.0,           # LocalExposureMiddleGreyBias
+  local_exposure_highlight_threshold: float = 0.0,        # LocalExposureHighlightThreshold
+  local_exposure_shadow_threshold: float = 0.0,           # LocalExposureShadowThreshold
+  local_exposure_highlight_threshold_strength: float = 1.0,  # LocalExposureHighlightThresholdStrength
+  local_exposure_shadow_threshold_strength: float = 1.0      # LocalExposureShadowThresholdStrength
 }
 
 # the settings, made with Unreal's defaults the first time they are asked for
@@ -107,6 +120,10 @@ export function r3d_pp(render3d_st: mut Render3dState) -> UePost {
     let lt = [1.0, 0.8, 0.4, 0.6, 1.0, 1.0, 0.6, 0.53, 0.8, 0.8, 1.0, 0.46, 0.5, 1.0, 0.4, 0.39, 0.5, 0.8, 1.0, 0.31, 0.9, 1.0, 0.8, 0.27, 1.0, 0.8, 0.4, 0.22, 0.9, 0.7, 0.7, 0.15]
     for k in 0 .. 32 { pp.lens_flare_tints[k] = lt[k] }
     if r3d_env_has(render3d_st, "R3D_UE_LENS_FLARE") and r3d_env(render3d_st, "R3D_UE_LENS_FLARE") == "1" { pp.lens_flare_intensity = 1.0 }
+    if r3d_env_has(render3d_st, "R3D_UE_LOCAL_EXPOSURE") {
+      let le = ue_parse_float(r3d_env(render3d_st, "R3D_UE_LOCAL_EXPOSURE"))
+      pp.local_exposure_highlight_contrast_scale = le;  pp.local_exposure_shadow_contrast_scale = le
+    }
     let sizes = [0.3, 1.0, 2.0, 10.0, 30.0, 64.0]
     let tints = [0.3465, 0.138, 0.1176, 0.066, 0.066, 0.061]
     for k in 0 .. 6 {
@@ -207,6 +224,7 @@ function ue_tonemap_bind(render3d_st: mut Render3dState, prog: int) -> void {
     r3d_bind_2d(render3d_st, prog, "u_bloom", 1, bl)
     u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_bloom_strength"), 1.0)
   }
+  ue_local_exposure_bind(render3d_st, prog)
 }
 
 # ---- Unreal's eye adaptation (histogram) -----------------------------------------------------------------------------------------
@@ -256,6 +274,8 @@ function ue_exposure_pass(render3d_st: mut Render3dState) -> void {
   min_white = Math.min(min_white, max_white)
   let hist_scale = 1.0 / (log_max - log_min)
   let hist_bias = -log_min * hist_scale
+  # kept for local exposure (its grid and the tonemapper bin the same way)
+  render3d_st.ue_hist_scale = hist_scale;  render3d_st.ue_hist_bias = hist_bias;  render3d_st.ue_lum_min = Math.pow(2.0, log_min)
   let high = Math.clamp(pp.auto_exposure_high_percent, 1.0, 99.0) * 0.01
   let low = Math.min(Math.clamp(pp.auto_exposure_low_percent, 1.0, 99.0) * 0.01, high)
   # the exponential tail's slope matched to the linear part at StartDistance (kFrameTimeEps 1/60)
@@ -470,6 +490,99 @@ function ue_bloom_pass(render3d_st: mut Render3dState) -> int {
   return out
 }
 
+# ---- local exposure (PostProcessLocalExposure.cpp / .usf, LocalExposureMethod Bilateral) -----------------------------------------
+# As Unreal: on only when a contrast scale or the detail strength is not 1 (the engine's defaults leave it off). The bilateral grid
+# (ue_le_grid.comp: 64 x 64 tiles of the half-resolution scene x 32 log-luminance buckets, summed log luminance and weight), the
+# blurred log luminance (SetupLogLuminanceCS, then a Gaussian of LocalExposureBlurredLuminanceKernelSizePercent), and the tonemapper
+# (tonemap.frag ueLocalExposure: CalculateBaseLogLuminance, CalculateLocalExposure) scales the scene colour by it. Not ported: the
+# contrast curves, the Fusion method, local exposure on the bloom (r.Bloom.ApplyLocalExposure).
+function ue_local_exposure_on(pp: UePost) -> bool {
+  return Math.abs(pp.local_exposure_highlight_contrast_scale - 1.0) > 0.0001 or Math.abs(pp.local_exposure_shadow_contrast_scale - 1.0) > 0.0001 or Math.abs(pp.local_exposure_detail_strength - 1.0) > 0.0001
+}
+function ue_local_exposure_pass(render3d_st: mut Render3dState) -> void {
+  let pp = ue_pp_now(render3d_st)
+  render3d_st.ue_le_built = false
+  if not ue_local_exposure_on(pp) { return }
+  let lod = max(min(pp.histogram_lod, 3), 0)
+  let hw = max(render3d_st.post_hdr.w >> lod, 1)
+  let hh = max(render3d_st.post_hdr.h >> lod, 1)
+  let tx = (hw + 63) / 64
+  let ty = (hh + 63) / 64
+  if render3d_st.ue_le_c == 0 { ue_le_alloc(render3d_st) }
+  if render3d_st.ue_le_c == 0 { return }
+  prof_begin(render3d_st, "UE local exposure")
+  # the bilateral grid
+  gpu_buffer_upload(render3d_st, render3d_st.ue_le_grid, tx * ty * 32 * 8, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, render3d_st.ue_le_grid)
+  let pr = render3d_st.ue_le_pr
+  pr[0] = float_bits(render3d_st.ue_hist_scale);  pr[1] = float_bits(render3d_st.ue_hist_bias);  pr[2] = float_bits(render3d_st.ue_lum_min);  pr[3] = float_bits(float(lod))
+  pr[4] = hw;  pr[5] = hh;  pr[6] = tx;  pr[7] = ty
+  render3d_st.ue_le_bufs[0] = render3d_st.ue_le_grid
+  render3d_st.ue_le_texs[0] = render3d_st.post_hdr.color
+  gpu_dispatch_tex(render3d_st, render3d_st.ue_le_c, data_of(pr), 32, render3d_st.ue_le_bufs, render3d_st.ue_le_texs, tx, ty)
+  # the blurred log luminance
+  if render3d_st.ue_le_lum != null and (render3d_st.ue_le_lum.w != hw or render3d_st.ue_le_lum.h != hh) {
+    target_free(render3d_st, render3d_st.ue_le_lum);  target_free(render3d_st, render3d_st.ue_le_hx);  target_free(render3d_st, render3d_st.ue_le_hxh);  target_free(render3d_st, render3d_st.ue_le_blur)
+    render3d_st.ue_le_lum = null
+  }
+  if render3d_st.ue_le_lum == null {
+    render3d_st.ue_le_lum = target_new(render3d_st, hw, hh, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    render3d_st.ue_le_hx = target_new(render3d_st, hw, hh, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    render3d_st.ue_le_hxh = target_new(render3d_st, max((hw + 1) / 2, 1), hh, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    render3d_st.ue_le_blur = target_new(render3d_st, hw, hh, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+  }
+  if render3d_st.ue_blur_p == 0 { render3d_st.ue_blur_p = r3d_program(render3d_st, "fullscreen.vert", "ue_blur.frag", "") }
+  if render3d_st.ue_bl_ofs == null { ue_le_kernel_alloc(render3d_st) }
+  gpu_depth_test(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  let lp = render3d_st.ue_le_lum_p
+  target_bind(render3d_st, render3d_st.ue_le_lum)
+  gpu_use_program(render3d_st, lp)
+  r3d_bind_2d(render3d_st, lp, "u_scene", 0, render3d_st.post_hdr.color)
+  u_f(render3d_st, gpu_uniform(render3d_st, lp, "u_lod"), float(lod))
+  u_f(render3d_st, gpu_uniform(render3d_st, lp, "u_lum_min"), render3d_st.ue_lum_min)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  # AddGaussianBlurPass: GetBlurRadius = width x KernelSizePercent % x 0.5, the fast blur (half width) past r.FastBlurThreshold
+  let radius = float(hw) * pp.local_exposure_blurred_luminance_kernel_size_percent * 0.01 * 0.5
+  var hx = render3d_st.ue_le_hx
+  if radius >= UE_FAST_BLUR_THRESHOLD { hx = render3d_st.ue_le_hxh }
+  var n = ue_gauss_kernel(render3d_st, radius, 0.0, pp.filter_size_scale)
+  ue_blur_draw(render3d_st, hx, render3d_st.ue_le_lum.color, hw, hh, n, true, 1.0, 1.0, 1.0, 0)
+  n = ue_gauss_kernel(render3d_st, radius, 0.0, pp.filter_size_scale)
+  ue_blur_draw(render3d_st, render3d_st.ue_le_blur, hx.color, hw, hh, n, false, 1.0, 1.0, 1.0, 0)
+  render3d_st.ue_le_tx = tx;  render3d_st.ue_le_ty = ty
+  render3d_st.ue_le_uvx = float(hw) / 64.0 / float(tx);  render3d_st.ue_le_uvy = float(hh) / 64.0 / float(ty)
+  render3d_st.ue_le_built = true
+  prof_end(render3d_st)
+}
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_le_alloc(render3d_st: mut Render3dState) -> void {
+  render3d_st.ue_le_c = gpu_compute_tex(render3d_st, "ue_le_grid", 1, 1)
+  render3d_st.ue_le_grid = gpu_buffer_new(render3d_st)
+  render3d_st.ue_le_pr = words(8)
+  render3d_st.ue_le_bufs = words(1)
+  render3d_st.ue_le_texs = words(1)
+  render3d_st.ue_le_lum_p = r3d_program(render3d_st, "fullscreen.vert", "ue_le_lum.frag", "")
+}
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_le_kernel_alloc(render3d_st: mut Render3dState) -> void { render3d_st.ue_bl_ofs = floats(UE_FILTER_SAMPLES_MAX * 4);  render3d_st.ue_bl_wt = floats(UE_FILTER_SAMPLES_MAX * 4) }
+
+# the tonemapper's local exposure (ue_tonemap_bind)
+function ue_local_exposure_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  var on = 0.0
+  if render3d_st.ue_le_built { on = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_le_on"), on)
+  if not render3d_st.ue_le_built { return }
+  let pp = ue_pp_now(render3d_st)
+  gpu_bind_buffer(render3d_st, prog, "u_le_grid", render3d_st.ue_le_grid)
+  r3d_bind_2d(render3d_st, prog, "u_le_blur", 6, render3d_st.ue_le_blur.color)
+  u_f4(render3d_st, gpu_uniform(render3d_st, prog, "u_le_a"), pp.local_exposure_highlight_contrast_scale, pp.local_exposure_shadow_contrast_scale, pp.local_exposure_detail_strength, pp.local_exposure_blurred_luminance_blend)
+  # LocalExposureMiddleGreyExposureCompensation (auto exposure: no division by the compensation)
+  u_f4(render3d_st, gpu_uniform(render3d_st, prog, "u_le_b"), Math.pow(2.0, pp.local_exposure_middle_grey_bias), pp.local_exposure_highlight_threshold, pp.local_exposure_shadow_threshold, pp.local_exposure_highlight_threshold_strength)
+  u_f4(render3d_st, gpu_uniform(render3d_st, prog, "u_le_c"), pp.local_exposure_shadow_threshold_strength, render3d_st.ue_le_uvx, render3d_st.ue_le_uvy, render3d_st.ue_lum_min)
+  u_f4(render3d_st, gpu_uniform(render3d_st, prog, "u_le_d"), float(render3d_st.ue_le_tx), float(render3d_st.ue_le_ty), render3d_st.ue_hist_scale, render3d_st.ue_hist_bias)
+}
+
 # ---- lens flares (PostProcessLensFlares.cpp / .usf) -------------------------------------------------------------------------------
 # LensFlareBlur: a bokeh quad for each pixel of the r.LensFlareQuality downsample stage (a quarter at 2) whose luminance passes the
 # threshold, KernelSize = LensFlareBokehSize % of its width, within a guard band of 2; then LensFlareComposite: eight copies of
@@ -578,7 +691,17 @@ export const UE_PP_LENS_FLARE_INTENSITY: int = 134
 export const UE_PP_LENS_FLARE_TINT: int = 135
 export const UE_PP_LENS_FLARE_BOKEH_SIZE: int = 138
 export const UE_PP_LENS_FLARE_THRESHOLD: int = 139
-export const UE_PP_COUNT: int = 140
+export const UE_PP_LOCAL_EXPOSURE_HIGHLIGHT_CONTRAST_SCALE: int = 140
+export const UE_PP_LOCAL_EXPOSURE_SHADOW_CONTRAST_SCALE: int = 141
+export const UE_PP_LOCAL_EXPOSURE_DETAIL_STRENGTH: int = 142
+export const UE_PP_LOCAL_EXPOSURE_BLURRED_LUMINANCE_BLEND: int = 143
+export const UE_PP_LOCAL_EXPOSURE_BLURRED_LUMINANCE_KERNEL_SIZE_PERCENT: int = 144
+export const UE_PP_LOCAL_EXPOSURE_MIDDLE_GREY_BIAS: int = 145
+export const UE_PP_LOCAL_EXPOSURE_HIGHLIGHT_THRESHOLD: int = 146
+export const UE_PP_LOCAL_EXPOSURE_SHADOW_THRESHOLD: int = 147
+export const UE_PP_LOCAL_EXPOSURE_HIGHLIGHT_THRESHOLD_STRENGTH: int = 148
+export const UE_PP_LOCAL_EXPOSURE_SHADOW_THRESHOLD_STRENGTH: int = 149
+export const UE_PP_COUNT: int = 150
 
 # a grading control's index: ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_SHADOWS, UE_CC_GAIN, 2), 1.1) is the shadows' gain, blue
 export function ue_pp_grade_index(range: int, control: int, channel: int) -> int { return UE_PP_GRADE + (range * 5 + control) * 4 + channel }
@@ -621,6 +744,16 @@ function ue_pp_pack(pp: UePost, v: floats) -> void {
   for k in 0 .. 3 { v[135 + k] = pp.lens_flare_tint[k] }
   v[138] = pp.lens_flare_bokeh_size
   v[139] = pp.lens_flare_threshold
+  v[140] = pp.local_exposure_highlight_contrast_scale
+  v[141] = pp.local_exposure_shadow_contrast_scale
+  v[142] = pp.local_exposure_detail_strength
+  v[143] = pp.local_exposure_blurred_luminance_blend
+  v[144] = pp.local_exposure_blurred_luminance_kernel_size_percent
+  v[145] = pp.local_exposure_middle_grey_bias
+  v[146] = pp.local_exposure_highlight_threshold
+  v[147] = pp.local_exposure_shadow_threshold
+  v[148] = pp.local_exposure_highlight_threshold_strength
+  v[149] = pp.local_exposure_shadow_threshold_strength
 }
 function ue_pp_unpack(v: floats, pp: UePost) -> void {
   pp.temp_is_white_balance = v[0] > 0.5
@@ -660,6 +793,16 @@ function ue_pp_unpack(v: floats, pp: UePost) -> void {
   for k in 0 .. 3 { pp.lens_flare_tint[k] = v[135 + k] }
   pp.lens_flare_bokeh_size = v[138]
   pp.lens_flare_threshold = v[139]
+  pp.local_exposure_highlight_contrast_scale = v[140]
+  pp.local_exposure_shadow_contrast_scale = v[141]
+  pp.local_exposure_detail_strength = v[142]
+  pp.local_exposure_blurred_luminance_blend = v[143]
+  pp.local_exposure_blurred_luminance_kernel_size_percent = v[144]
+  pp.local_exposure_middle_grey_bias = v[145]
+  pp.local_exposure_highlight_threshold = v[146]
+  pp.local_exposure_shadow_threshold = v[147]
+  pp.local_exposure_highlight_threshold_strength = v[148]
+  pp.local_exposure_shadow_threshold_strength = v[149]
 }
 function ue_pp_is_set(i: int) -> bool { return i == 0 }
 
@@ -857,6 +1000,16 @@ export function ue_pp_index_of(name: string) -> int {
   if base == "lens_flare_tint" { return 135 + k }
   if base == "lens_flare_bokeh_size" { return 138 + k }
   if base == "lens_flare_threshold" { return 139 + k }
+  if base == "local_exposure_highlight_contrast_scale" { return 140 + k }
+  if base == "local_exposure_shadow_contrast_scale" { return 141 + k }
+  if base == "local_exposure_detail_strength" { return 142 + k }
+  if base == "local_exposure_blurred_luminance_blend" { return 143 + k }
+  if base == "local_exposure_blurred_luminance_kernel_size_percent" { return 144 + k }
+  if base == "local_exposure_middle_grey_bias" { return 145 + k }
+  if base == "local_exposure_highlight_threshold" { return 146 + k }
+  if base == "local_exposure_shadow_threshold" { return 147 + k }
+  if base == "local_exposure_highlight_threshold_strength" { return 148 + k }
+  if base == "local_exposure_shadow_threshold_strength" { return 149 + k }
   return -1
 }
 
