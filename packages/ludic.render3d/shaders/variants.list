@@ -19,6 +19,10 @@ fullscreen.vert|ssao_blur.frag|
 fullscreen.vert|ssgi.frag|
 fullscreen.vert|sss.frag|
 fullscreen.vert|taa.frag|
+fullscreen.vert|ue_blur.frag|
+fullscreen.vert|ue_downsample.frag|
+fullscreen.vert|ue_eye_adapt.frag|
+fullscreen.vert|ue_histogram.frag|
 fullscreen.vert|taa_mv.frag|
 fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;

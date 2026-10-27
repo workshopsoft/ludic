@@ -155,6 +155,12 @@ function post_measure(render3d_st: mut Render3dState) -> void {
   gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
   gpu_tex_mips(render3d_st, GPU_TEX2D)
   if render3d_st.post_p_adapt == 0 { render3d_st.post_p_adapt = r3d_program(render3d_st, "fullscreen.vert", "adapt.frag", "") }
+  if ue_exposure_on(render3d_st) {
+    ue_exposure_pass(render3d_st)
+    gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_hdr.color)
+    gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR)
+    return
+  }
   let next = 1 - render3d_st.post_adapt_i
   target_bind(render3d_st, render3d_st.post_adapt_t[next])
   gpu_depth_test(render3d_st, false)
@@ -331,6 +337,7 @@ function post_dof_pass(render3d_st: mut Render3dState) -> void {
 }
 
 function post_bloom_pass(render3d_st: mut Render3dState) -> void {
+  if ue_bloom_on(render3d_st) { render3d_st.ue_bloom_tex = ue_bloom_pass(render3d_st);  return }
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
   var src = render3d_st.post_color

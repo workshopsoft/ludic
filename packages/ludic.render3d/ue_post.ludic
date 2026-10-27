@@ -49,7 +49,32 @@ property UePost {
   vignette_intensity: float = 0.4,         # VignetteIntensity (VignetteType CosineFourthLaw)
   # r.LUT.Size and r.BackbufferQuantizationDitheringOverride (0: from the target's bit depth)
   lut_size: int = 32,
-  dither_bits: int = 0
+  dither_bits: int = 0,
+  # Lens|Exposure, AutoExposureMethod Histogram: a UE5 project's defaults (r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange 1,
+  # so brightness and the histogram's range are in EV100; r.DefaultFeature.AutoExposure.Bias 1)
+  auto_exposure_bias: float = 1.0,                 # AutoExposureBias (stops)
+  auto_exposure_low_percent: float = 10.0,         # AutoExposureLowPercent
+  auto_exposure_high_percent: float = 90.0,        # AutoExposureHighPercent
+  auto_exposure_min_brightness: float = -10.0,     # AutoExposureMinBrightness (EV100)
+  auto_exposure_max_brightness: float = 20.0,      # AutoExposureMaxBrightness (EV100)
+  auto_exposure_speed_up: float = 3.0,             # AutoExposureSpeedUp (stops a second)
+  auto_exposure_speed_down: float = 1.0,           # AutoExposureSpeedDown
+  histogram_log_min: float = -10.0,                # HistogramLogMin (EV100)
+  histogram_log_max: float = 20.0,                 # HistogramLogMax (EV100)
+  extended_luminance_range: bool = true,           # r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange
+  lens_attenuation: float = 0.78,                  # r.EyeAdaptation.LensAttenuation
+  exponential_transition_distance: float = 1.5,    # r.EyeAdaptation.ExponentialTransitionDistance (stops)
+  black_histogram_bucket_influence: float = 0.0,   # r.EyeAdaptation.BlackHistogramBucketInfluence
+  histogram_lod: int = 1,                          # the scene mip metered: 1 half resolution (Unreal's), 2 quarter (cheaper)
+  # Lens|Bloom, BloomMethod BM_SOG (Gaussian): sizes in percent of the view, tints rgb; Bloom1 the smallest
+  bloom_intensity: float = 0.675,                  # BloomIntensity
+  bloom_gaussian_intensity: float = 1.0,           # BloomGaussianIntensity
+  bloom_size_scale: float = 4.0,                   # BloomSizeScale
+  bloom_size: floats = null,                       # Bloom1Size .. Bloom6Size: 0.3, 1, 2, 10, 30, 64
+  bloom_tint: floats = null,                       # Bloom1Tint .. Bloom6Tint (rgb): 0.3465, 0.138, 0.1176, 0.066, 0.066, 0.061
+  bloom_quality: int = 5,                          # r.BloomQuality: 1..5 stages used 3, 3, 4, 5, 6; 0 off
+  gaussian_bloom_cross: float = 0.0,               # r.GaussianBloom.Cross
+  filter_size_scale: float = 1.0                   # r.Filter.SizeScale
 }
 
 # the settings, made with Unreal's defaults the first time they are asked for
@@ -64,6 +89,14 @@ export function r3d_pp(render3d_st: mut Render3dState) -> UePost {
         if c == UE_CC_OFFSET { v = 0.0 }
         ue_pp_grade(pp, r, c, v, v, v, v)
       }
+    }
+    pp.bloom_size = floats(6)
+    pp.bloom_tint = floats(18)
+    let sizes = [0.3, 1.0, 2.0, 10.0, 30.0, 64.0]
+    let tints = [0.3465, 0.138, 0.1176, 0.066, 0.066, 0.061]
+    for k in 0 .. 6 {
+      pp.bloom_size[k] = sizes[k]
+      for c in 0 .. 3 { pp.bloom_tint[k * 3 + c] = tints[k] }
     }
     render3d_st.ue_pp = pp
   }
@@ -140,4 +173,269 @@ function ue_tonemap_bind(render3d_st: mut Render3dState, prog: int) -> void {
   var bits = 8                                              # post_ldr is RGBA8 in SDR
   if pp.dither_bits > 0 { bits = pp.dither_bits }
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_dither"), 1.0 / (Math.pow(2.0, float(bits)) - 1.0))
+  # Unreal's bloom carries its intensity in its tints; nothing drawn reads as black
+  if ue_bloom_on(render3d_st) {
+    var bl = render3d_st.ue_bloom_tex
+    if bl == 0 { bl = render3d_st.post_neutral }
+    r3d_bind_2d(render3d_st, prog, "u_bloom", 1, bl)
+    u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_bloom_strength"), 1.0)
+  }
+}
+
+# ---- Unreal's eye adaptation (histogram) -----------------------------------------------------------------------------------------
+# PostProcessEyeAdaptation.cpp GetEyeAdaptationParameters turned into the two passes' uniforms; ue_histogram.frag bins the scene and
+# ue_eye_adapt.frag averages, adapts and writes the exposure scale the tonemapper multiplies by (post_adapt_t, as adapt.frag did).
+# R3D_UE_EXPOSURE=0 (or r3d_ue_exposure(st, false)) puts the old meter back; on by default.
+const UE_HIST_ROWS: int = 4
+
+export function r3d_ue_exposure(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_exposure = 0
+  if on { render3d_st.ue_exposure = 1 }
+}
+function ue_exposure_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_exposure < 0 {
+    render3d_st.ue_exposure = 1
+    if r3d_env_has(render3d_st, "R3D_UE_EXPOSURE") and r3d_env(render3d_st, "R3D_UE_EXPOSURE") == "0" { render3d_st.ue_exposure = 0 }
+  }
+  return render3d_st.ue_exposure == 1
+}
+
+# post_hdr's mips are built (post_measure) before this runs
+function ue_exposure_pass(render3d_st: mut Render3dState) -> void {
+  let pp = r3d_pp(render3d_st)
+  let lod = max(min(pp.histogram_lod, 3), 0)
+  let hw = max(render3d_st.post_hdr.w >> lod, 1)
+  let hh = max(render3d_st.post_hdr.h >> lod, 1)
+  let bands = (hh + UE_HIST_ROWS - 1) / UE_HIST_ROWS
+  if render3d_st.ue_hist != null and render3d_st.ue_hist.h != bands { target_free(render3d_st, render3d_st.ue_hist);  render3d_st.ue_hist = null }
+  if render3d_st.ue_hist == null { render3d_st.ue_hist = target_new(render3d_st, 16, bands, GPU_RGBA32F, GPU_RGBA, GPU_FLOAT, false, GPU_NEAREST) }
+  if render3d_st.ue_hist_p == 0 { render3d_st.ue_hist_p = r3d_program(render3d_st, "fullscreen.vert", "ue_histogram.frag", "") }
+  if render3d_st.ue_adapt_p == 0 { render3d_st.ue_adapt_p = r3d_program(render3d_st, "fullscreen.vert", "ue_eye_adapt.frag", "") }
+  # LuminanceMaxFromLensAttenuation, and the ranges in log2 luminance (EV100ToLog2, EV100ToLuminance)
+  var lum_max = 1.0
+  if pp.extended_luminance_range { lum_max = 0.78 / Math.max(pp.lens_attenuation, 0.01) }
+  let log2_lum_max = Math.log(lum_max) / Math.log(2.0)
+  var log_max = pp.histogram_log_max
+  var log_min = pp.histogram_log_min
+  var min_white = pp.auto_exposure_min_brightness
+  var max_white = pp.auto_exposure_max_brightness
+  if pp.extended_luminance_range {
+    log_max = pp.histogram_log_max + log2_lum_max
+    log_min = pp.histogram_log_min + log2_lum_max
+    min_white = lum_max * Math.pow(2.0, pp.auto_exposure_min_brightness)
+    max_white = lum_max * Math.pow(2.0, pp.auto_exposure_max_brightness)
+  }
+  log_min = Math.min(log_min, log_max - 1.0)
+  min_white = Math.min(min_white, max_white)
+  let hist_scale = 1.0 / (log_max - log_min)
+  let hist_bias = -log_min * hist_scale
+  let high = Math.clamp(pp.auto_exposure_high_percent, 1.0, 99.0) * 0.01
+  let low = Math.min(Math.clamp(pp.auto_exposure_low_percent, 1.0, 99.0) * 0.01, high)
+  # the exponential tail's slope matched to the linear part at StartDistance (kFrameTimeEps 1/60)
+  let eps = 1.0 / 60.0
+  let start_up = pp.exponential_transition_distance / Math.max(pp.auto_exposure_speed_up, 0.001)
+  let start_down = pp.exponential_transition_distance / Math.max(pp.auto_exposure_speed_down, 0.001)
+  let m_up = eps / ((1.0 - Math.pow(2.0, -eps * pp.auto_exposure_speed_up)) * start_up)
+  let m_down = eps / ((1.0 - Math.pow(2.0, -eps * pp.auto_exposure_speed_down)) * start_down)
+  prof_begin(render3d_st, "UE histogram")
+  var p = render3d_st.ue_hist_p
+  target_bind(render3d_st, render3d_st.ue_hist)
+  gpu_depth_test(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_scene", 0, render3d_st.post_hdr.color)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lod"), float(lod))
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_size"), float(hw), float(hh))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rows"), float(UE_HIST_ROWS))
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_scale_bias"), hist_scale, hist_bias)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lum_min"), Math.pow(2.0, log_min))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_black"), pp.black_histogram_bucket_influence)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  prof_end(render3d_st)
+  prof_begin(render3d_st, "UE eye adaptation")
+  let next = 1 - render3d_st.post_adapt_i
+  p = render3d_st.ue_adapt_p
+  target_bind(render3d_st, render3d_st.post_adapt_t[next])
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_hist", 0, render3d_st.ue_hist.color)
+  r3d_bind_2d(render3d_st, p, "u_prev", 1, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_bands"), float(bands))
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_percent"), low, high)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_scale_bias"), hist_scale, hist_bias)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_avg_lum"), min_white * 0.18, max_white * 0.18)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_compensation"), Math.pow(2.0, pp.auto_exposure_bias))
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_speed"), pp.auto_exposure_speed_up, pp.auto_exposure_speed_down)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_exp_m"), m_up, m_down)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_start_distance"), pp.exponential_transition_distance)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dt"), render3d_st.r3d_dt)
+  var force = 0.0
+  if render3d_st.post_adapt_reset { force = 1.0;  render3d_st.post_adapt_reset = false }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_force"), force)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  render3d_st.post_adapt_i = next
+  prof_end(render3d_st)
+}
+
+# ---- Unreal's Gaussian bloom (BM_SOG) ----------------------------------------------------------------------------------------------
+# PostProcessBloomSetup.cpp AddGaussianBloomPasses over the scene downsample chain (FTextureDownsampleChain: half resolution, then each
+# stage half the last, ue_downsample.frag), each stage AddGaussianBlurPass (PostProcessWeightedSampleSum.cpp): an X pass (half width
+# when the radius reaches r.FastBlurThreshold 7) and a Y pass weighted by the stage's tint x (1/6) x BloomIntensity x
+# BloomGaussianIntensity, plus the previous (larger) stage's result. The last stage's output, at half resolution, is the bloom the
+# tonemapper adds. BloomThreshold -1 (Unreal's default) needs no setup pass; a threshold is not ported yet.
+# R3D_UE_BLOOM=0 (or r3d_ue_bloom(st, false)) puts the old pyramid back; on by default, with Unreal's tonemapper only.
+const UE_BLOOM_STAGES: int = 6
+const UE_FILTER_SAMPLES_MAX: int = 32           # MAX_FILTER_COMPILE_TIME_SAMPLES (SM5, r.Filter.LoopMode 0)
+const UE_FAST_BLUR_THRESHOLD: float = 7.0       # r.FastBlurThreshold
+
+export function r3d_ue_bloom(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_bloom = 0
+  if on { render3d_st.ue_bloom = 1 }
+}
+function ue_bloom_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_bloom < 0 {
+    render3d_st.ue_bloom = 1
+    if r3d_env_has(render3d_st, "R3D_UE_BLOOM") and r3d_env(render3d_st, "R3D_UE_BLOOM") == "0" { render3d_st.ue_bloom = 0 }
+  }
+  return render3d_st.ue_bloom == 1 and ue_tonemap_on(render3d_st) and not gpu_hdr_active(render3d_st)
+}
+
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function ue_bloom_targets(render3d_st: mut Render3dState, w: int, h: int) -> void {
+  if render3d_st.ue_bl_down != null and render3d_st.ue_bl_w == w and render3d_st.ue_bl_h == h { return }
+  if render3d_st.ue_bl_down != null {
+    for k in 0 .. UE_BLOOM_STAGES {
+      target_free(render3d_st, render3d_st.ue_bl_down[k]);  target_free(render3d_st, render3d_st.ue_bl_hx[k])
+      target_free(render3d_st, render3d_st.ue_bl_hxh[k]);  target_free(render3d_st, render3d_st.ue_bl_out[k])
+    }
+  }
+  render3d_st.ue_bl_down = new []Target;  render3d_st.ue_bl_hx = new []Target
+  render3d_st.ue_bl_hxh = new []Target;  render3d_st.ue_bl_out = new []Target
+  var sw = w;  var sh = h
+  for k in 0 .. UE_BLOOM_STAGES {
+    sw = max((sw + 1) / 2, 1);  sh = max((sh + 1) / 2, 1)
+    push(render3d_st.ue_bl_down, target_new(render3d_st, sw, sh, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR))
+    push(render3d_st.ue_bl_hx, target_new(render3d_st, sw, sh, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR))
+    push(render3d_st.ue_bl_hxh, target_new(render3d_st, max((sw + 1) / 2, 1), sh, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR))
+    push(render3d_st.ue_bl_out, target_new(render3d_st, sw, sh, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR))
+  }
+  if render3d_st.ue_bl_ofs == null { render3d_st.ue_bl_ofs = floats(UE_FILTER_SAMPLES_MAX * 4);  render3d_st.ue_bl_wt = floats(UE_FILTER_SAMPLES_MAX * 4) }
+  render3d_st.ue_bl_w = w;  render3d_st.ue_bl_h = h
+}
+
+# NormalDistributionUnscaled
+function ue_gauss(x: float, sigma: float, cross: float) -> float {
+  let dx = Math.abs(x)
+  let one_minus = Math.max(0.0, 1.0 - dx)
+  if cross > 1.0 { return Math.pow(one_minus, cross) }
+  let g = Math.exp(-16.7 * (dx / sigma) * (dx / sigma))
+  return g + (one_minus - g) * cross
+}
+
+# Compute1DGaussianFilterKernel into ue_bl_ofs (x: the offset in texels) and ue_bl_wt (x: the weight); returns the tap count
+function ue_gauss_kernel(render3d_st: mut Render3dState, radius: float, cross: float, size_scale: float) -> int {
+  let maxr = float(UE_FILTER_SAMPLES_MAX - 1)
+  let clamped = Math.clamp(radius, 0.00001, maxr)
+  let ir = min(int(Math.ceil(Math.clamp(radius * Math.clamp(size_scale, 0.1, 10.0), 0.00001, maxr))), UE_FILTER_SAMPLES_MAX - 1)
+  var n = 0
+  var sum = 0.0
+  var i = -ir
+  while i <= ir {
+    let w0 = ue_gauss(float(i), clamped, cross)
+    var w1 = 0.0
+    if i != ir { w1 = ue_gauss(float(i + 1), clamped, cross) }
+    let t = w0 + w1
+    render3d_st.ue_bl_ofs[n * 4] = float(i) + w1 / t
+    render3d_st.ue_bl_wt[n * 4] = t
+    sum += t
+    n += 1
+    i += 2
+  }
+  for k in 0 .. n { render3d_st.ue_bl_wt[k * 4] = render3d_st.ue_bl_wt[k * 4] / sum }
+  return n
+}
+
+# one blur pass: taps from ue_gauss_kernel along (dx, dy) in uv, weighted by rgb (the X pass white, the Y pass the tint)
+function ue_blur_draw(render3d_st: mut Render3dState, dst: Target, src: int, src_w: int, src_h: int, n: int, horizontal: bool, r: float, g: float, b: float, add: int) -> void {
+  let p = render3d_st.ue_blur_p
+  # unpack the kernel: offsets to uv along the axis, weights to rgba (the tint's alpha is 1 in Unreal's FLinearColor)
+  var k = n - 1
+  while k >= 0 {
+    let o = render3d_st.ue_bl_ofs[k * 4]
+    let w = render3d_st.ue_bl_wt[k * 4]
+    if horizontal { render3d_st.ue_bl_ofs[k * 4] = o / float(src_w);  render3d_st.ue_bl_ofs[k * 4 + 1] = 0.0 }
+    else { render3d_st.ue_bl_ofs[k * 4] = 0.0;  render3d_st.ue_bl_ofs[k * 4 + 1] = o / float(src_h) }
+    render3d_st.ue_bl_wt[k * 4] = w * r;  render3d_st.ue_bl_wt[k * 4 + 1] = w * g;  render3d_st.ue_bl_wt[k * 4 + 2] = w * b;  render3d_st.ue_bl_wt[k * 4 + 3] = w
+    k -= 1
+  }
+  target_bind(render3d_st, dst)
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_src", 0, src)
+  var add_on = 0.0
+  if add != 0 { add_on = 1.0;  r3d_bind_2d(render3d_st, p, "u_add", 1, add) } else { r3d_bind_2d(render3d_st, p, "u_add", 1, src) }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_add_on"), add_on)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_out_inv"), 1.0 / float(dst.w), 1.0 / float(dst.h))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_count"), float(n))
+  u_f4v(render3d_st, gpu_uniform(render3d_st, p, "u_ofs"), UE_FILTER_SAMPLES_MAX, render3d_st.ue_bl_ofs)
+  u_f4v(render3d_st, gpu_uniform(render3d_st, p, "u_w"), UE_FILTER_SAMPLES_MAX, render3d_st.ue_bl_wt)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+}
+
+# BloomQualityToSceneDownsampleStage: r.BloomQuality 1..5 -> 3, 3, 4, 5, 6 stages
+function ue_bloom_stage_count(q: int) -> int {
+  if q <= 0 { return 0 }
+  if q <= 2 { return 3 }
+  return q + 1
+}
+
+# the bloom texture the tonemapper reads (0 when off or nothing was drawn)
+function ue_bloom_pass(render3d_st: mut Render3dState) -> int {
+  let pp = r3d_pp(render3d_st)
+  let q = max(min(pp.bloom_quality, 5), 0)
+  if q == 0 { return 0 }
+  ue_bloom_targets(render3d_st, render3d_st.post_color_w, render3d_st.post_color_h)
+  if render3d_st.ue_down_p == 0 { render3d_st.ue_down_p = r3d_program(render3d_st, "fullscreen.vert", "ue_downsample.frag", "") }
+  if render3d_st.ue_blur_p == 0 { render3d_st.ue_blur_p = r3d_program(render3d_st, "fullscreen.vert", "ue_blur.frag", "") }
+  prof_begin(render3d_st, "UE bloom")
+  gpu_depth_test(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  # the scene downsample chain
+  var src = render3d_st.post_color
+  var sw = render3d_st.post_color_w;  var sh = render3d_st.post_color_h
+  let dp = render3d_st.ue_down_p
+  gpu_use_program(render3d_st, dp)
+  for k in 0 .. UE_BLOOM_STAGES {
+    let t = render3d_st.ue_bl_down[k]
+    target_bind(render3d_st, t)
+    r3d_bind_2d(render3d_st, dp, "u_src", 0, src)
+    u_f2(render3d_st, gpu_uniform(render3d_st, dp, "u_src_inv"), 1.0 / float(sw), 1.0 / float(sh))
+    u_f2(render3d_st, gpu_uniform(render3d_st, dp, "u_out_inv"), 1.0 / float(t.w), 1.0 / float(t.h))
+    mesh_draw(render3d_st, render3d_st.post_fs)
+    src = t.color;  sw = t.w;  sh = t.h
+  }
+  # BloomQualityToSceneDownsampleStage, and the stages from the largest kernel (Bloom6 on the smallest texture) down
+  let count = ue_bloom_stage_count(q)
+  let tint_scale = (1.0 / float(UE_BLOOM_STAGES)) * pp.bloom_intensity * pp.bloom_gaussian_intensity
+  let cross_x = Math.max(pp.gaussian_bloom_cross, 0.0)
+  let cross_y = Math.abs(pp.gaussian_bloom_cross)
+  var out = 0
+  for si in 0 .. count {
+    let bi = UE_BLOOM_STAGES - 1 - si              # Bloom6 .. Bloom1
+    let src_i = UE_BLOOM_STAGES - 1 - si          # SourceIndex: the smallest texture first
+    let size = pp.bloom_size[bi]
+    if size > 0.00001 {
+      let f = render3d_st.ue_bl_down[src_i]
+      # GetBlurRadius: the filter's width x KernelSizePercent% x 0.5
+      let radius = float(f.w) * size * pp.bloom_size_scale * 0.01 * 0.5
+      var hx = render3d_st.ue_bl_hx[src_i]
+      if radius >= UE_FAST_BLUR_THRESHOLD { hx = render3d_st.ue_bl_hxh[src_i] }
+      var n = ue_gauss_kernel(render3d_st, radius, cross_x, pp.filter_size_scale)
+      ue_blur_draw(render3d_st, hx, f.color, f.w, f.h, n, true, 1.0, 1.0, 1.0, 0)
+      n = ue_gauss_kernel(render3d_st, radius, cross_y, pp.filter_size_scale)
+      let dst = render3d_st.ue_bl_out[src_i]
+      ue_blur_draw(render3d_st, dst, hx.color, f.w, f.h, n, false, pp.bloom_tint[bi * 3] * tint_scale, pp.bloom_tint[bi * 3 + 1] * tint_scale, pp.bloom_tint[bi * 3 + 2] * tint_scale, out)
+      out = dst.color
+    }
+  }
+  prof_end(render3d_st)
+  return out
 }
