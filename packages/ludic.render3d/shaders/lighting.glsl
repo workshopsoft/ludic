@@ -375,6 +375,59 @@ vec3 clCol(int i) { return i == 0 ? u_cl_col0 : (i == 1 ? u_cl_col1 : u_cl_col2)
 // specular sets it before shade() (the jeans: spec_basic_intensity times the weave; a MetaHuman's skin: model.frag)
 float g_dielF0 = 0.04;
 
+// A material's bent normal (Unreal's BentNormal custom output; a MetaHuman head's T_MH_BentNormal_AO, model.frag), set before shade():
+// its world direction and the surface's base colour (the occlusion's multi-bounce is the base colour's, not the split's white)
+bool g_bentOn = false;
+vec3 g_bentW = vec3(0.0, 1.0, 0.0);
+vec3 g_bentBase = vec3(0.0);
+
+// SphericalGaussian.ush: G(v) = a exp(L (dot(u, v) - 1))
+struct UeSG { vec3 axis; float sharp; float amp; };
+float ueSgEval(UeSG g, vec3 d) { return g.amp * exp(g.sharp * (dot(g.axis, d) - 1.0)); }
+float ueSgIntegral(UeSG g) { return 2.0 * PI * g.amp / g.sharp * (1.0 - exp(-2.0 * g.sharp)); }
+UeSG ueSgMul(UeSG a, UeSG b) {
+  float lm = a.sharp + b.sharp;
+  vec3 um = a.sharp * a.axis + b.sharp * b.axis;
+  float ul = length(um);
+  return UeSG(um / ul, ul, a.amp * b.amp * exp(ul - lm));
+}
+// BasePassCommon.ush DotSpecularSG: the GGX lobe against a light's spherical Gaussian (the half-space ASG, H assumed in the YZ plane)
+float ueDotSpecularSG(float rough, vec3 N, vec3 V, UeSG L) {
+  float a = max(0.02, rough);
+  a *= a;
+  float a2 = a * a;
+  vec3 H = normalize(V + L.axis);
+  float NoV = clamp(abs(dot(N, V)) + 1e-5, 0.0, 1.0);
+  float ndfSharp = 2.0 / a2;
+  float ndfAmp = 1.0 / (PI * a2);
+  float sx = L.sharp * 2.0 * NoV * NoV;
+  float sy = L.sharp * 2.0;
+  float nu = ndfSharp * 0.5;
+  UeSG c = UeSG(N, 2.0 * (nu * sy) / (nu + sy), ndfAmp * L.amp * PI * inversesqrt((nu + sx) * (nu + sy)));
+  return ueSgEval(c, H);
+}
+// BasePassCommon.ush ApplyBentNormal: the visible cone (BentNormalAO_ToSphericalGaussian) times the cosine lobe
+// (ClampedCosine_ToSphericalGaussian) gives the diffuse's occlusion and its direction, and against the hemisphere's
+// (Hemisphere_ToSphericalGaussian) the specular's. rough is the material's (GBuffer.Roughness), ao its Material AO
+void ueApplyBentNormal(vec3 V, vec3 N, vec3 bent0, float rough, float ao, out float diffOcc, out float specOcc, out vec3 bentN) {
+  float hs = 0.81;
+  UeSG hemi = UeSG(N, hs, hs / (1.0 - exp(-2.0 * hs)));
+  UeSG nrm = UeSG(N, 2.133, 1.17);
+  float o = max(ao, 1e-4);                                   // (a fully occluded texel's cone has no width: kept finite)
+  UeSG vis = UeSG(bent0, (0.75 + 1.25 * sqrt(1.0 - o)) / o, hs / (1.0 - exp(-2.0 * hs)));
+  UeSG dif = ueSgMul(nrm, vis);
+  bentN = dif.axis;
+  diffOcc = clamp(ueSgIntegral(dif) * 0.42276995, 0.0, 1.0);
+  specOcc = clamp(ueDotSpecularSG(rough, N, V, vis) / ueDotSpecularSG(rough, N, V, hemi), 0.0, 1.0);
+}
+// DeferredShadingCommon.ush AOMultiBounce (Jimenez et al. 2016): the light an occluded surface still gets from its own colour
+vec3 ueAOMultiBounce(vec3 base, float ao) {
+  vec3 a = 2.0404 * base - 0.3324;
+  vec3 b = -4.7951 * base + 0.6417;
+  vec3 c = 2.7552 * base + 0.6903;
+  return max(vec3(ao), ((ao * a + b) * ao + c) * ao);
+}
+
 // direct + image-based lighting for one surface
 // ---- Unreal's local lights (ue_lights.ludic): point and spot lights in Unreal's units, attenuation and cone (UE 5.8
 // DeferredLightingCommon.ush GetLocalLightAttenuation, DynamicLightingCommon.ush SpotAttenuation, CapsuleLightIntegrate.ush
@@ -639,6 +692,7 @@ vec3 ueLocalLights(vec3 wpos, vec3 n, vec3 v, vec3 albedo, float a, float metal,
 
 vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, float shadow, float viewDepth) {
   vec3 v = normalize(u_cam_pos - wpos);
+  float roughG = rough;                       // the material's own, as Unreal's ApplyBentNormal takes it (GBuffer.Roughness)
   vec3 l = u_sun_dir;
   vec3 h = normalize(v + l);
   float NoV = max(dot(n, v), 1e-2);
@@ -660,7 +714,19 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   // IBL
   vec3 Fr = F_SchlickRough(NoV, f0, rough);
   vec3 kdi = (1.0 - Fr) * (1.0 - metal);
-  vec3 irr = skyIrradiance(n);
+  // a bent normal (g_bentOn): the sky's diffuse along the visible cone's axis and occluded, the reflections occluded, as
+  // BasePassPixelShader.usf: the indirect diffuse x AOMultiBounce(BaseColor, DiffOcclusion), the image-based reflection x
+  // AOMultiBounce(SpecularColor, SpecOcclusion) (ApplyBentNormal's)
+  vec3 dOcc = vec3(ao);
+  vec3 soB = vec3(1.0);
+  vec3 irrN = n;
+  if (g_bentOn) {
+    float dO, sO;
+    ueApplyBentNormal(v, n, g_bentW, roughG, ao, dO, sO, irrN);
+    dOcc = ueAOMultiBounce(g_bentBase, dO);
+    soB = ueAOMultiBounce(f0, sO);
+  }
+  vec3 irr = skyIrradiance(irrN);
   vec3 diffuseIBL = kdi * albedo * irr * skyK;
   vec3 r = reflect(-v, n);
   vec3 pre = skyPrefiltered(r, rough);
@@ -673,8 +739,9 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   if (lz > 0.0 && u_zl_n > 0) zoneAmb += kdi * zoneLamps(wpos, n, albedo) * lz;
   // specular occlusion from ao
   float so = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
+  vec3 soC = g_bentOn ? soB : vec3(so);
   // check for NaN before min(): on this GPU min(NaN, x) returns x, which would hide the fault as a hot pixel
-  vec3 c = direct + (diffuseIBL * ao + specIBL * so) + bounce * ao + zoneAmb * ao + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
+  vec3 c = direct + (diffuseIBL * dOcc + specIBL * soC) + bounce * dOcc + zoneAmb * dOcc + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
   if (u_ll_n > 0) c += ueLocalLights(wpos, n, v, albedo, a, metal, f0, NoV);
   // the character rig: the same BRDF as the sun's, unshadowed, half dimmed by the occlusion (a soft studio light reaches into folds)
   if (u_char_lit > 0.0) {
@@ -689,7 +756,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
     }
     c += cl * u_char_lit * mix(1.0, ao, 0.5);
   }
-  if (any(isnan(direct)) || any(isnan(diffuseIBL)) || any(isnan(specIBL)) || isnan(so)) return vec3(0.0);
+  if (any(isnan(direct)) || any(isnan(diffuseIBL)) || any(isnan(specIBL)) || isnan(so) || any(isnan(dOcc)) || any(isnan(soC))) return vec3(0.0);
   return sane(min(c, vec3(4096.0)));
 }
 

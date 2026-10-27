@@ -230,6 +230,11 @@ vec4 skinMicro(vec3 tn, float a) {
 // mask channel x its strength (T_Skin_Microtiling_M, Micro MaskA..D Strength). mc: the mask and the cavity (T_skinMicro3_CAV's red)
 // for the roughness (x Micro Skin Roughess) and the specular (x Micro Skin Cavity Specular Multiply, by the cavity)
 uniform vec4 u_micro_p;          // Micro Skin Tiling (0: none), Micro Skin Normal Strength, Micro Skin Roughess, Cavity Specular Multiply
+// A MetaHuman head's bent normal and material occlusion (model_set_bent), as Unreal's MF_skin_bentNormalsAO: T_MH_BentNormal_AO over
+// the head's uvs (the atlas's quarter), RGB its tangent-space bent normal (ConstantBiasScale -0.5, x 2; green flipped to glTF's), A
+// ^ Material AO Power the skin's AmbientOcclusion; shade() occludes the sky's diffuse and reflections by them (ApplyBentNormal)
+uniform vec4 u_bent_p;           // on (0: none), Material AO Power
+uniform sampler2D u_bent;
 uniform vec4 u_micro_m;          // Micro MaskA..D Strength
 uniform vec4 u_micro_r;          // the camera's 1 / TanHalfFieldOfView.x, Ruler Min, Ruler Max
 uniform sampler2D u_micro;       // the tile: RG the micro normal (green up), B the cavity
@@ -502,6 +507,15 @@ void main() {
 #if defined(EYE) || defined(SSS_SPLIT)
   if (head) arm.g = hm.a;
 #endif
+  // its bent normal on the head's skin (the atlas's quarter u, v < 0.5 is the head alone: the head map's test, not skinMap - a face's
+  // atlas normal has no skin alpha): GetWorldBentNormalZero's tangent-to-world, the occlusion in place of the material's
+  // (MF_skin_bentNormalsAO's SetMaterialAttributes AmbientOcclusion)
+  if (u_bent_p.x > 0.0 && v_uv.x < 0.5 && v_uv.y < 0.5) {
+    vec4 bt = texture(u_bent, v_uv * 2.0);
+    g_bentW = normalize(tbn * ((bt.rgb - 0.5) * 2.0));
+    arm.r = pow(bt.a, u_bent_p.y);
+    g_bentOn = true;
+  }
   if (skin) {
     // the skin's micro cavities rougher (Roughness Micro Cavity Multiply 1.35) and less specular (Micro Skin Cavity Specular Multiply
     // 0.6); its Specular 0.9 x 0.8 (MI_Skin_*: the regions' x Specular Base), Unreal's F0 = 0.08 x Specular
@@ -798,6 +812,7 @@ void main() {
 #else
   float metalF = arm.b;                     // (a material with none reads the default's 0)
 #endif
+  g_bentBase = alb;
 #ifdef TRANSLUCENT
   // unlit: the base colour x emissive (added below; the base colour itself when emissive is 0) and the
   // material's emission, and no light at all

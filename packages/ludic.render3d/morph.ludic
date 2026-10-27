@@ -266,6 +266,25 @@ export function model_set_micro(render3d_st: mut Render3dState, model: Model, ti
   }
   return true
 }
+# A MetaHuman head's bent normal and material occlusion, as Unreal's MF_skin_bentNormalsAO gives them (its graph exported from the
+# editor): T_MH_BentNormal_AO over the head's uvs, RGB its tangent-space bent normal (x 2 - 1; DirectX green flipped to glTF's),
+# A its occlusion (^ Material AO Power) in place of the material's. model.frag reads it on the head's skin (the atlas's quarter) and
+# lighting.glsl shade() occludes the sky's diffuse and reflections by it as BasePassCommon.ush ApplyBentNormal does. Every head LOD's
+# instance (MI_Face_Skin_Baked_LOD1, 3, 5to7) has Use Bent Normal and Use Material AO on, the power 1; a body has both off
+export function model_set_bent(render3d_st: mut Render3dState, model: Model, tex: string, power: float) -> bool {
+  if model == null { return false }
+  if r3d_env_has(render3d_st, "R3D_UE_BENT_NORMAL") and r3d_env(render3d_st, "R3D_UE_BENT_NORMAL") == "0" { return false }   # (off: the material's AO alone)
+  let t = tex_cached(render3d_st, tex, false, 0)
+  if t == 0 { return false }
+  for pi in 0 .. len(model.prims) {
+    let pr = model.prims[pi]
+    if pr.btex != 0 { gltf_tex_unref(render3d_st, pr.btex) }
+    gltf_tex_ref(render3d_st, t)
+    pr.btex = t
+    pr.bent_pow = power
+  }
+  return true
+}
 export function model_set_maps(render3d_st: mut Render3dState, model: Model, nrm: string, arm: string) -> bool {
   if model == null { return false }
   var ok = true

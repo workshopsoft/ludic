@@ -23,6 +23,8 @@ property Prim {
   hmap: int = 0,        # a MetaHuman face's own full-resolution head map (model_set_headmap: RGB its normal, A its roughness), or 0
   micro: floats,        # a MetaHuman skin's micro detail (model_set_micro: model.frag's MF_skin_microSkinDetails), or null
   mtex: words,          # its two maps: the tile (RG the micro normal, B the cavity) and the mask (over the mesh's own uvs)
+  btex: int = 0,        # a MetaHuman head's bent normal and occlusion (model_set_bent: T_MH_BentNormal_AO over the head's uvs), or 0
+  bent_pow: float = 1.0, # its Material AO Power
   inst_buf: int = 0,    # a head of hair's strand points (model_set_strand_points): its mesh is a segment's quad, drawn per point
   inst_n: int = 0,      # the segments drawn (one a point; a strand's last draws nothing)
   st_cx: float = 0.0,   # the points' positions are relative to this (Unreal's PositionOffset, the groom's bounds' centre)
