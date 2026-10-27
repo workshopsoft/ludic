@@ -797,3 +797,56 @@ function ue_ppv_env(render3d_st: mut Render3dState) -> void {
     }
   }
 }
+
+# ---- The hour's grade --------------------------------------------------------------------------------------------------------------
+# Unreal has no grade of its own by the hour: a project drives post-process settings from its time of day, usually through an unbound
+# volume. daylight.ludic's per-hour grade (white balance, lift, gain, contrast, saturation, tuned for the old tonemapper) goes into the
+# lowest-priority unbound volume, so the game's base settings stay its own and area volumes win over it. The translation:
+#   white balance multiplier -> SceneColorTint (the same multiply on the scene colour)
+#   saturation -> ColorSaturation (global; Unreal applies it before the tone curve, ours after)
+#   contrast -> ColorContrast on the midtones and highlights (ours steepened only above mid grey; Unreal's shadows range, luma under
+#               ColorCorrectionShadowsMax 0.09, is what that leaves alone)
+#   lift (a display-space floor) -> ColorOffsetShadows, its display value made linear (^2.2): the loosest of the five
+#   gain -> ColorGain (global)
+# R3D_UE_HOUR_GRADE=0 (or r3d_ue_hour_grade(st, false)) leaves the hour out of Unreal's grade.
+const UE_TOD_PRIORITY: float = -1000000.0
+
+export function r3d_ue_hour_grade(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_tod_on = 0
+  if on { render3d_st.ue_tod_on = 1 }
+}
+function ue_tod_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_tod_on < 0 {
+    render3d_st.ue_tod_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_HOUR_GRADE") and r3d_env(render3d_st, "R3D_UE_HOUR_GRADE") == "0" { render3d_st.ue_tod_on = 0 }
+  }
+  return render3d_st.ue_tod_on == 1 and ue_tonemap_on(render3d_st)
+}
+
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_tod_volume(render3d_st: mut Render3dState) -> UePpVolume {
+  if render3d_st.ue_tod_vol == null { render3d_st.ue_tod_vol = ue_ppv_add(render3d_st, UE_TOD_PRIORITY, 0.0, 1.0, true) }
+  return render3d_st.ue_tod_vol
+}
+
+# after daylight_set has computed the hour's post_* grade
+function ue_tod_grade(render3d_st: mut Render3dState) -> void {
+  if not ue_tod_on(render3d_st) {
+    if render3d_st.ue_tod_vol != null { render3d_st.ue_tod_vol.enabled = false }
+    return
+  }
+  let v = ue_tod_volume(render3d_st)
+  v.enabled = true
+  ue_ppv_set(v, UE_PP_SCENE_COLOR_TINT_R, render3d_st.post_wb_r)
+  ue_ppv_set(v, UE_PP_SCENE_COLOR_TINT_G, render3d_st.post_wb_g)
+  ue_ppv_set(v, UE_PP_SCENE_COLOR_TINT_B, render3d_st.post_wb_b)
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_GLOBAL, UE_CC_SATURATION, 3), render3d_st.post_saturation)
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_MIDTONES, UE_CC_CONTRAST, 3), render3d_st.post_contrast)
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_HIGHLIGHTS, UE_CC_CONTRAST, 3), render3d_st.post_contrast)
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_SHADOWS, UE_CC_OFFSET, 0), Math.pow(Math.max(render3d_st.post_lift_r, 0.0), 2.2))
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_SHADOWS, UE_CC_OFFSET, 1), Math.pow(Math.max(render3d_st.post_lift_g, 0.0), 2.2))
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_SHADOWS, UE_CC_OFFSET, 2), Math.pow(Math.max(render3d_st.post_lift_b, 0.0), 2.2))
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_GLOBAL, UE_CC_GAIN, 0), render3d_st.post_gain_r)
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_GLOBAL, UE_CC_GAIN, 1), render3d_st.post_gain_g)
+  ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_GLOBAL, UE_CC_GAIN, 2), render3d_st.post_gain_b)
+}

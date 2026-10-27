@@ -259,6 +259,8 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
     render3d_st.r3d_sky_relight = 0.0
     render3d_st.post_vol_density = 0.0;  render3d_st.post_vol_mist = 0.0
   }
+  # the hour's grade into Unreal's settings (ue_post.ludic ue_tod_grade): its lowest-priority unbound volume
+  ue_tod_grade(render3d_st)
   # exposure: auto-exposure must not turn the night into day
   # the ceiling has to move with the moon or auto-exposure eats the difference between a
   # full-moon night and a new-moon one

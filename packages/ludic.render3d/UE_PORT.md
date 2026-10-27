@@ -15,6 +15,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Exponential height fog + aerial perspective | ue_fog.ludic, ue_fog.frag, ue_fog_apply.frag, ue_atmosphere.frag `UA_AP`/`UA_DISTANT` | `R3D_UE_FOG=0`, `r3d_ue_fog` |
 | Real-time sky light (capture, GGX cube, SH diffuse) | ue_skylight.ludic, ue_skylight.frag, lighting.glsl `u_ue_sl` | `R3D_UE_SKYLIGHT=0`, `r3d_ue_skylight` |
 | Atmosphere sun light (sun colour = outer illuminance x ground transmittance) | ue_skylight.ludic `ue_sunlight_on`, daylight.ludic `daylight_set` | `R3D_UE_SUNLIGHT=0`, `r3d_ue_sunlight` |
+| The hour's grade in Unreal's settings (lowest-priority unbound volume) | ue_post.ludic `ue_tod_grade`, daylight.ludic | `R3D_UE_HOUR_GRADE=0`, `r3d_ue_hour_grade` |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
 
@@ -29,8 +30,13 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **Brightness comes from Unreal's exposure, not our tuned key.** The old "open ground" day clamp and the night ceiling
   (`post_exposure_max`) are not used in Unreal mode; exposure follows the frame (10-90% log average, bias +1, 3 / 1 stops a
   second). Night readability will need `auto_exposure_min_brightness` / `max_brightness` or night volumes.
-- **Time-of-day grading is ignored in Unreal mode.** daylight.ludic's per-hour white balance, lift/gain, contrast and saturation
-  feed the old tonemapper only. To do: move them into `UePost` (base settings driven by the hour) or volumes.
+- **The hour's grade is a translation, not Unreal's.** Unreal has no grade by the hour; daylight's (tuned by eye for the old
+  tonemapper) now feeds the lowest-priority unbound volume: white balance -> SceneColorTint (exact), saturation -> ColorSaturation
+  (before the curve, not after), contrast -> ColorContrast on midtones + highlights, lift -> ColorOffsetShadows (display value ^2.2,
+  the loosest), gain -> ColorGain. Retune its numbers in Unreal's controls rather than trusting the old ones.
+- **Dusk is warmed twice.** Daylight's grade warms the low sun (lowsun terms in white balance, lift, saturation) because its old sun
+  was near neutral; Unreal's atmosphere sun is already warm at 19:00, so the two stack into a strong gold. Reduce the lowsun terms
+  (daylight.ludic) or turn R3D_UE_HOUR_GRADE off and grade in Unreal's settings.
 - **WhiteTemp means "the light's temperature" by default.** TemperatureType is White Balance, so a lower WhiteTemp makes the
   image cooler (it corrects the light), not warmer. Use `temp_is_white_balance = false` for Unreal's "Color Temperature" mode.
 - **Bloom is mild by default.** About 9% of a blurred image (tints sum to ~0.8 x 0.675 / 6); our old bloom had a threshold
