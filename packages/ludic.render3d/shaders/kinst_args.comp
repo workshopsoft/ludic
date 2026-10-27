@@ -5,14 +5,14 @@
 // (bin kit * 2 + 1). The CPU fills indexCount, firstIndex and vertexOffset once; this writes instanceCount and firstInstance.
 layout(local_size_x = 1) in;
 layout(set = 0, binding = 0) uniform Params {
-  uvec4 info;           // x bins (2 a kit), y kits, z output capacity (instances)
+  uvec4 info;           // x bins (2 a kit), y kits, z the end of this list's region (instances), w its start
 } pr;
 layout(set = 0, binding = 1) buffer Counts { uint counts[]; };
 layout(set = 0, binding = 2) buffer Offsets { uint offs[]; };
 layout(set = 0, binding = 3) readonly buffer Kits { vec4 kits[]; };
 layout(set = 0, binding = 4) buffer Cmds { uint cmds[]; };
 void main() {
-  uint running = 0u;
+  uint running = pr.info.w;                     // the main list from 0, the local lights' casters (kinst_cull_lights.comp) after it
   for (uint b = 0u; b < pr.info.x; b++) {
     uint c = min(counts[b], pr.info.z - running);
     counts[b] = c;

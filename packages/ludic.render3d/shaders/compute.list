@@ -8,3 +8,4 @@ kinst_reset|kinst_reset.comp
 kinst_cull|kinst_cull.comp
 kinst_args|kinst_args.comp
 ue_lightgrid|ue_lightgrid.comp
+kinst_cull_lights|kinst_cull_lights.comp

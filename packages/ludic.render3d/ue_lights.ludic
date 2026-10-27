@@ -104,6 +104,7 @@ export function ue_light_candela(l: UeLocalLight) -> float {
 const UE_LL_FLOATS: int = 20
 function ue_lights_frame(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_ll_n = 0
+  render3d_st.ue_ll_nsph = 0
   if not ue_lights_on(render3d_st) or render3d_st.cam_pos == null { return }
   ue_lights_env(render3d_st)
   if render3d_st.ue_lls == null { return }
@@ -139,6 +140,7 @@ function ue_lights_frame(render3d_st: mut Render3dState) -> void {
   }
   let cone = render3d_st.ue_ll_tmp
   let data = render3d_st.ue_ll_data
+  render3d_st.ue_ll_nsph = 0
   for k in 0 .. m {
     let l = render3d_st.ue_lls[int(pick[k])]
     let c = ue_light_candela(l)
@@ -167,8 +169,21 @@ function ue_lights_frame(render3d_st: mut Render3dState) -> void {
     data[o + 14] = l.diffuse_scale
     data[o + 15] = l.volumetric_scattering_intensity
     data[o + 16] = -1.0;  data[o + 17] = 0.0;  data[o + 18] = 0.0;  data[o + 19] = 0.0
+    # the spheres of the lights that cast: kgpu's local light caster cull (kgpu_frame_lights) gathers from them
+    if l.cast_shadows and render3d_st.ue_ll_cull {
+      let q = render3d_st.ue_ll_nsph * 4
+      render3d_st.ue_ll_sph[q] = l.x;  render3d_st.ue_ll_sph[q + 1] = l.y;  render3d_st.ue_ll_sph[q + 2] = l.z;  render3d_st.ue_ll_sph[q + 3] = l.attenuation_radius
+      render3d_st.ue_ll_nsph += 1
+    }
   }
   render3d_st.ue_ll_n = m
+  if r3d_env_has(render3d_st, "R3D_UE_LS_DEBUG") { ue_lights_debug(render3d_st, n) }
+}
+@alloc_ok("debug output, only under R3D_UE_LS_DEBUG")
+function ue_lights_debug(render3d_st: mut Render3dState, n: int) -> void {
+  render3d_st.ue_ll_dbg += 1
+  if render3d_st.ue_ll_dbg % 120 != 1 { return }
+  print(`ue lights: {render3d_st.ue_ll_n} of {n} sent, {render3d_st.ue_ll_nsph} cast; camera {render3d_st.cam_pos[0]} {render3d_st.cam_pos[1]} {render3d_st.cam_pos[2]} looking {render3d_st.cam_fwd[0]} {render3d_st.cam_fwd[1]} {render3d_st.cam_fwd[2]}`)
 }
 
 # after the shadow pass: the forward light buffer, with each light's shadow map named
@@ -185,6 +200,9 @@ function ue_lights_alloc(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_ll_max = cap
   render3d_st.ue_ll_data = floats(cap * UE_LL_FLOATS)
   render3d_st.ue_ll_tan = floats(cap)
+  render3d_st.ue_ll_sph = floats(cap * 4)
+  # R3D_UE_LS_CULL=0: local light shadows draw the camera's casters (no gather from the lights' bounds), for an A/B
+  render3d_st.ue_ll_cull = not (r3d_env_has(render3d_st, "R3D_UE_LS_CULL") and r3d_env(render3d_st, "R3D_UE_LS_CULL") == "0")
   render3d_st.ue_ll_pick = floats(cap)
   render3d_st.ue_ll_pd = floats(cap)
   render3d_st.ue_ll_tmp = floats(2)

@@ -104,8 +104,11 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
   max_atlas_pages (R3D_UE_LS_PAGES, 4 of each kind, 16 MB each at 2048). A point light near the camera takes 1024 faces, six of
   them a page and a half, so 4 point atlases hold only two or three close lamps; lights that don't fit go unshadowed that frame.
   Lower r.Shadow.MaxResolution or raise the page budget for streets full of shadowed lamps. R3D_UE_LS_DEBUG=1 logs the packing.
-- **Casters for local lights skip the sun's cascade rules** (band, proxies) and test against the light's sphere. The buildings
-  cast only what the camera's GPU cull kept, so a building off screen casts no spot shadow.
+- **Casters for local lights are gathered from the lights' bounds, as Unreal gathers a whole-scene shadow's casters**: they skip
+  the sun's cascade rules (band, proxies), actors test against the light's sphere, and the GPU-culled kits (buildings) run a second
+  cull, kinst_cull_lights.comp, keeping every instance whose sphere reaches a shadow-casting light (the light's attenuation
+  sphere holds a point's cube and a spot's cone). Those casters fill the last quarter of the instance output in a frame where a
+  light casts. R3D_UE_LS_CULL=0 draws the camera's list instead, for an A/B; R3D_UE_LS_DEBUG=1 logs both lists' sizes.
 - **Light grid as Unreal's with linked lists off.** Each cell holds at most 32 lights (r.Forward.MaxCulledLightsPerCell); Unreal's
   default linked-list culling has no per-cell cap. No HZB cell cull. 200 lamps in the gym: 42 ms a frame with the grid, 53 ms
   without (R3D_UE_LIGHT_GRID=0), the same image. A shaded point finds its cell from its world position through the main camera's

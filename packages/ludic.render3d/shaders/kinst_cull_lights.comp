@@ -1,0 +1,78 @@
+// kinst_cull_lights.comp - the casters of the frame's shadowed local lights (ue_lightshadows.ludic): kinst_cull.comp with the
+// camera's frustum replaced by Unreal's gather of a whole-scene local light shadow's casters - an instance whose sphere reaches
+// any shadow-casting light's sphere (the light's bounds: for a point light its cube's faces, for a spot the cone's sphere, both
+// held by the light's attenuation sphere). The distance cull and the level are the camera's, as the view's LOD is Unreal's for
+// casters. Its survivors go after the main list in the same output (kinst_args.comp's start), with their own counters and
+// draw records.
+//
+// kinst_cull.comp - frustum and distance culling of every instance of the resident cells, and LOD binning, in
+// parallel: one invocation an instance (kinst.ludic is the CPU reference, test for test). Two passes over the same
+// list, told apart by pr.info.z:
+//   pass 0 (count)   each survivor adds one to its bin's counter;
+//   pass 1 (scatter) after kinst_args.comp turned the counts into offsets, each survivor takes the next place in its
+//                    bin (an atomic cursor) and is written there in render space.
+// Bins are kit * 2 + level: level 0 the full mesh inside the kit's near distance, level 1 the impostor card out to
+// its far distance. The order within a bin is not fixed from frame to frame (atomics), which opaque instances do not show.
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) uniform Params {
+  vec4 planes[6];       // unused here (the layout is kinst_cull.comp's)
+  vec4 cam;             // xyz the camera (render space), w the distance scale
+  uvec4 info;           // x instances, y bins, z pass, w output capacity (instances)
+  uvec4 info2;          // x the lights
+} pr;
+
+layout(set = 0, binding = 1) readonly buffer Src { vec4 src[]; };         // 5 vec4 an instance: pos+scale, sin cos seed flags, tint+variation, (kit, cell), box (w d h radius)
+layout(set = 0, binding = 2) readonly buffer Kits { vec4 kits[]; };       // 2 vec4 a kit: (near, far, radius, has card), (prims, 0, 0, 0)
+layout(set = 0, binding = 3) readonly buffer Cells { vec4 cells[]; };     // a vec4 a cell slot: render-space offset xyz, hidden (w > 0.5)
+layout(set = 0, binding = 4) buffer Counts { uint counts[]; };            // a bin's survivors (clamped to what fits by kinst_args.comp)
+layout(set = 0, binding = 5) readonly buffer Offsets { uint offs[]; };    // a bin's first place in Dst
+layout(set = 0, binding = 6) buffer Cursors { uint cursors[]; };
+layout(set = 0, binding = 7) buffer Dst { vec4 dst[]; };
+layout(set = 0, binding = 8) readonly buffer Lights { vec4 lights[]; };   // the shadow-casting lights: centre, attenuation radius                  // 4 vec4 an instance: pos+scale, sin cos seed flags, tint+variation, box
+
+void main() {
+  uint i = gl_GlobalInvocationID.x;
+  if (i >= pr.info.x) { return; }
+  vec4 a = src[i * 5u];
+  vec4 meta = src[i * 5u + 3u];
+  vec4 box = src[i * 5u + 4u];
+  if (meta.x < 0.0) { return; }                 // a record of a cell that has gone (kgpu_remove_cell marks them)
+  uint kit = uint(meta.x + 0.5);
+  vec4 cell = cells[uint(meta.y + 0.5)];
+  if (cell.w > 0.5) { return; }
+  vec4 kn = kits[kit * 2u];
+  float sc = pr.cam.w;
+  vec3 p = a.xyz + cell.xyz;
+  vec3 d = p - pr.cam.xyz;
+  float far = kn.y * sc;
+  float d2 = dot(d, d);
+  if (d2 > far * far) { return; }
+  float r = (box.w > 0.0) ? box.w : kn.z * a.w;      // a box kit's instance: the sphere that holds its own drawn bounds
+  bool near_light = false;
+  for (uint k = 0u; k < pr.info2.x; k++) {
+    vec4 l = lights[k];
+    vec3 dl = p - l.xyz;
+    float rr = l.w + r;
+    if (dot(dl, dl) <= rr * rr) { near_light = true; break; }
+  }
+  if (!near_light) { return; }
+  uint level = 0u;
+  float near = kn.x * sc;
+  if (d2 > near * near) {
+    if (kn.w < 0.5) { return; }
+    level = 1u;
+  }
+  uint bin = kit * 2u + level;
+  if (pr.info.z == 0u) {
+    atomicAdd(counts[bin], 1u);
+    return;
+  }
+  uint at = atomicAdd(cursors[bin], 1u);
+  if (at >= counts[bin]) { return; }          // the bin was clamped to what fits
+  uint o = (offs[bin] + at) * 4u;
+  dst[o] = vec4(p, a.w);
+  dst[o + 1u] = src[i * 5u + 1u];
+  dst[o + 2u] = src[i * 5u + 2u];
+  dst[o + 3u] = box;
+}

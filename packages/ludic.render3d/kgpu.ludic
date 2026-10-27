@@ -56,6 +56,7 @@ export property KGpu {
   c_reset: int = 0,
   c_cull: int = 0,
   c_args: int = 0,
+  c_cull_l: int = 0,        # kinst_cull_lights.comp: the shadowed local lights' casters (ue_lightshadows.ludic)
   p_mesh: int = 0,
   p_int: int = 0,
   p_fac: int = 0,           # kit.frag FACADE (and INTERIOR_MAP): a box kit's fitted window grid
@@ -70,6 +71,15 @@ export property KGpu {
   b_cursors: int = 0,
   b_dst: int = 0,
   b_cmds: int = 0,
+  b_l_counts: int = 0,      # the local lights' casters: their own counters and draw records, their instances after the main
+  b_l_offs: int = 0,        # list in b_dst (from dst_cap - l_cap)
+  b_l_cursors: int = 0,
+  b_l_cmds: int = 0,
+  b_lights: int = 0,        # the shadow-casting lights' spheres
+  l_cap: int = 0,
+  l_ready: bool = false,    # this frame's local light casters are in b_l_cmds
+  prm_l: words,
+  dbg_n: int = 0,
   b_ident: int = 0,
   b_ident_box: int = 0,     # an identity instance with a box kit's reference w, d, h, for its impostor bake
   kt_u: floats,             # a box kit's tuples as the card shader takes them (kitbox_uniforms)
@@ -149,6 +159,7 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
     g.c_reset = gpu_compute(render3d_st, "kinst_reset", 2)
     g.c_cull = gpu_compute(render3d_st, "kinst_cull", 7)
     g.c_args = gpu_compute(render3d_st, "kinst_args", 4)
+    g.c_cull_l = gpu_compute(render3d_st, "kinst_cull_lights", 8)
   }
   g.p_mesh = r3d_program(render3d_st, "kit.vert", "kit.frag", "")
   g.p_int = r3d_program(render3d_st, "kit.vert", "kit.frag", "#define INTERIOR_MAP\n")
@@ -195,6 +206,22 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   g.b_cmds = gpu_buffer_new(render3d_st)
   gpu_buffer_upload(render3d_st, g.b_cmds, n_kits * KG_REC * 20, data_of(rec), GPU_DYNAMIC)
   gpu_buffer_gpu_owned(render3d_st, g.b_cmds)
+  # the local lights' casters: a quarter of the output, used only in a frame where a light casts
+  g.l_cap = max(dst_cap / 4, 1)
+  g.prm_l = words(36)
+  g.b_l_counts = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_l_counts, n_kits * 2 * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_l_counts)
+  g.b_l_offs = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_l_offs, n_kits * 2 * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_l_offs)
+  g.b_l_cursors = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_l_cursors, n_kits * 2 * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_l_cursors)
+  g.b_l_cmds = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, g.b_l_cmds, n_kits * KG_REC * 20, data_of(rec), GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, g.b_l_cmds)
+  g.b_lights = gpu_buffer_new(render3d_st)
   g.b_ident = gpu_buffer_new(render3d_st)
   kgpu_ident(render3d_st, g)
   g.card_mesh = mesh_card(render3d_st)
@@ -262,16 +289,25 @@ export function kgpu_kit(render3d_st: mut Render3dState, g: KGpu, id: int, model
     rec[p * 5] = 0;  rec[p * 5 + 1] = 0;  rec[p * 5 + 2] = 0;  rec[p * 5 + 3] = 0;  rec[p * 5 + 4] = 0
     if p < k.prims { rec[p * 5] = model.prims[p].mesh.count }
   }
-  # the records are written through the buffer's mapping, at this kit's place
-  let map = gpu_buffer_map(render3d_st, g.b_cmds)
-  if map != null { mem_copy(mem_off(map, id * KG_REC * 20), data_of(rec), KG_PRIMS * 20) }
+  # the records are written through the buffers' mappings, at this kit's place
+  kgpu_rec_write(render3d_st, g, id * KG_REC * 20, data_of(rec), KG_PRIMS * 20)
   if g.card_mesh != null and k.card {
     let c = words(5)
     c[0] = g.card_mesh.count;  c[1] = 0;  c[2] = 0;  c[3] = 0;  c[4] = 0
-    if map != null { mem_copy(mem_off(map, (id * KG_REC + KG_PRIMS) * 20), data_of(c), 20) }
+    kgpu_rec_write(render3d_st, g, (id * KG_REC + KG_PRIMS) * 20, data_of(c), 20)
   }
   for p in 0 .. k.prims { kgpu_attach(render3d_st, model.prims[p].mesh, g.b_dst) }
   g.tab_dirty = true
+}
+
+# draw records into both lists' buffers (the main and the local lights' casters), through their mappings
+function kgpu_rec_write(render3d_st: mut Render3dState, g: KGpu, at: int, data: pointer, n: int) -> void {
+  let map = gpu_buffer_map(render3d_st, g.b_cmds)
+  if map != null { mem_copy(mem_off(map, at), data, n) }
+  if g.b_l_cmds != 0 {
+    let lm = gpu_buffer_map(render3d_st, g.b_l_cmds)
+    if lm != null { mem_copy(mem_off(lm, at), data, n) }
+  }
 }
 
 # kit `id` is a box kit (kitbox.ludic): its instances carry their own w, d, h, and its card is sized from them by `box`
@@ -365,8 +401,7 @@ export function kgpu_bake_kit(render3d_st: mut Render3dState, g: KGpu, id: int, 
   # the card record, now that there is a card
   let c = words(5)
   c[0] = g.card_mesh.count;  c[1] = 0;  c[2] = 0;  c[3] = 0;  c[4] = 0
-  let map = gpu_buffer_map(render3d_st, g.b_cmds)
-  if map != null { mem_copy(mem_off(map, (id * KG_REC + KG_PRIMS) * 20), data_of(c), 20) }
+  kgpu_rec_write(render3d_st, g, (id * KG_REC + KG_PRIMS) * 20, data_of(c), 20)
   g.tab_dirty = true
   # the model's meshes were attached to the bake's instance: back to the arena's output
   for p in 0 .. k.prims { kgpu_attach(render3d_st, k.model.prims[p].mesh, g.b_dst) }
@@ -513,24 +548,79 @@ export function kgpu_frame(render3d_st: mut Render3dState, g: KGpu, o: ForgOrigi
   if not g.ready or g.cpu_only { return }
   kar_tick(g.arena)
   kgpu_upload_tables(render3d_st, g, o)
+  g.l_ready = false
   if g.arena.high == 0 { return }
   let bins = g.n_kits * 2
+  # a local light casts this frame: the main list leaves the last l_cap places to its casters
+  let lights = g.c_cull_l != 0 and render3d_st.ue_ll_nsph > 0
+  var main_cap = g.dst_cap
+  if lights { main_cap = g.dst_cap - g.l_cap }
   # 1. counters to zero
   g.pr[0] = bins;  g.pr[1] = 0;  g.pr[2] = 0;  g.pr[3] = 0
   g.bufs[0] = g.b_counts;  g.bufs[1] = g.b_cursors
   gpu_dispatch(render3d_st, g.c_reset, data_of(g.pr), 16, g.bufs, (bins + 63) / 64)
   # 2. count the survivors of each bin
   kgpu_cull_params(render3d_st, g, 0)
+  g.prm[31] = main_cap
   kgpu_bind_cull(g)
   gpu_dispatch(render3d_st, g.c_cull, data_of(g.prm), 128, g.bufs, (g.arena.high + 63) / 64)
   # 3. counts to places, and the draw records
-  g.pa[0] = bins;  g.pa[1] = g.n_kits;  g.pa[2] = g.dst_cap;  g.pa[3] = 0
+  g.pa[0] = bins;  g.pa[1] = g.n_kits;  g.pa[2] = main_cap;  g.pa[3] = 0
   g.bufs[0] = g.b_counts;  g.bufs[1] = g.b_offs;  g.bufs[2] = g.b_kits;  g.bufs[3] = g.b_cmds
   gpu_dispatch(render3d_st, g.c_args, data_of(g.pa), 16, g.bufs, 1)
   # 4. write the survivors where they belong
   kgpu_cull_params(render3d_st, g, 1)
+  g.prm[31] = main_cap
   kgpu_bind_cull(g)
   gpu_dispatch(render3d_st, g.c_cull, data_of(g.prm), 128, g.bufs, (g.arena.high + 63) / 64)
+  if lights { kgpu_frame_lights(render3d_st, g, main_cap) }
+  if r3d_env_has(render3d_st, "R3D_UE_LS_DEBUG") { kgpu_lights_debug(render3d_st, g) }
+}
+
+# R3D_UE_LS_DEBUG=1: every 120 frames, the main list's and the local light casters' instance counts, read back (waits for the GPU)
+@alloc_ok("debug output, only under R3D_UE_LS_DEBUG")
+function kgpu_lights_debug(render3d_st: mut Render3dState, g: KGpu) -> void {
+  g.dbg_n += 1
+  if g.dbg_n % 120 != 1 { return }
+  gpu_finish(render3d_st)
+  var main_n = 0
+  var light_n = 0
+  let m = gpu_buffer_map(render3d_st, g.b_counts)
+  let l = gpu_buffer_map(render3d_st, g.b_l_counts)
+  if m == null or l == null { return }
+  let t = words(g.n_kits * 2)
+  mem_copy(data_of(t), m, g.n_kits * 8)
+  for i in 0 .. g.n_kits { main_n += t[i * 2] }
+  mem_copy(data_of(t), l, g.n_kits * 8)
+  for i in 0 .. g.n_kits { light_n += t[i * 2] }
+  free(t)
+  print(`kgpu casters: {main_n} instances in the camera's list, {light_n} gathered for {render3d_st.ue_ll_nsph} shadowed lights`)
+}
+
+# the shadowed local lights' casters (Unreal gathers a whole-scene local light shadow's casters from the light's bounds, not the
+# view): the same four steps over kinst_cull_lights.comp, into their own counters and records, after the main list in b_dst
+function kgpu_frame_lights(render3d_st: mut Render3dState, g: KGpu, start: int) -> void {
+  let bins = g.n_kits * 2
+  let n = render3d_st.ue_ll_nsph
+  gpu_buffer_upload(render3d_st, g.b_lights, n * 16, data_of(render3d_st.ue_ll_sph), GPU_DYNAMIC)
+  g.pr[0] = bins;  g.pr[1] = 0;  g.pr[2] = 0;  g.pr[3] = 0
+  g.bufs[0] = g.b_l_counts;  g.bufs[1] = g.b_l_cursors
+  gpu_dispatch(render3d_st, g.c_reset, data_of(g.pr), 16, g.bufs, (bins + 63) / 64)
+  for pass in 0 .. 2 {
+    kgpu_cull_params(render3d_st, g, pass)
+    for i in 0 .. 32 { g.prm_l[i] = g.prm[i] }
+    g.prm_l[31] = g.dst_cap
+    g.prm_l[32] = n;  g.prm_l[33] = 0;  g.prm_l[34] = 0;  g.prm_l[35] = 0
+    g.bufs[0] = g.b_src;  g.bufs[1] = g.b_kits;  g.bufs[2] = g.b_cells;  g.bufs[3] = g.b_l_counts
+    g.bufs[4] = g.b_l_offs;  g.bufs[5] = g.b_l_cursors;  g.bufs[6] = g.b_dst;  g.bufs[7] = g.b_lights
+    gpu_dispatch(render3d_st, g.c_cull_l, data_of(g.prm_l), 144, g.bufs, (g.arena.high + 63) / 64)
+    if pass == 0 {
+      g.pa[0] = bins;  g.pa[1] = g.n_kits;  g.pa[2] = g.dst_cap;  g.pa[3] = start
+      g.bufs[0] = g.b_l_counts;  g.bufs[1] = g.b_l_offs;  g.bufs[2] = g.b_kits;  g.bufs[3] = g.b_l_cmds
+      gpu_dispatch(render3d_st, g.c_args, data_of(g.pa), 16, g.bufs, 1)
+    }
+  }
+  g.l_ready = true
 }
 
 # the cull's Params (kinst_cull.comp): six planes, the camera and scale, then instances, bins, pass, capacity
@@ -631,6 +721,9 @@ function kgpu_card_box(render3d_st: mut Render3dState, g: KGpu, p: int, k: KGpuK
 export function kgpu_draw_casters(render3d_st: mut Render3dState, g: KGpu, light_vp: floats) -> void {
   if not g.ready or g.cpu_only or g.arena.high == 0 { return }
   let p = g.p_shadow
+  # a local light's map draws the casters gathered from the lights' bounds (kgpu_frame_lights), the sun's the camera's list
+  var cmds = g.b_cmds
+  if render3d_st.sh_local and g.l_ready { cmds = g.b_l_cmds }
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
   gpu_cull(render3d_st, false)
@@ -638,7 +731,7 @@ export function kgpu_draw_casters(render3d_st: mut Render3dState, g: KGpu, light
     let k = g.kits[id]
     if k.model == null or not k.casts { continue }
     for i in 0 .. k.prims {
-      gpu_draw_mesh_indirect(render3d_st, k.model.prims[i].mesh, g.b_cmds, (id * KG_REC + i) * 20, 1, 0, 0)
+      gpu_draw_mesh_indirect(render3d_st, k.model.prims[i].mesh, cmds, (id * KG_REC + i) * 20, 1, 0, 0)
     }
   }
 }
