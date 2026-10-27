@@ -137,3 +137,19 @@ old tonemapper), exposure compensation curve, meter mask.
   content isn't loaded, so the ghosts are squares; Unreal's default content gives soft polygons. DefaultBokeh is an engine
   .uasset (not in the source repo): export it from the PC's UE 5.8 install and pass it to `r3d_ue_lens_flare_bokeh`.
 
+## What is left, and what it needs
+
+- **Rect lights** (shop windows, signs): Unreal integrates them with linearly transformed cosines (RectLight.ush, its LTC tables
+  in the renderer's system textures). Portable to this forward renderer; a sizeable port. Until then the shops keep their pools.
+- **IES profiles**: need photometric files (.ies) per lamp model; the game has none yet. The light side is small once there are some.
+- **Light functions**: Unreal evaluates a light function material per light; this engine has no material graph to evaluate.
+- **SSR**: Unreal's screen space reflections run in the deferred renderer only (its forward renderer lists them as unsupported):
+  they need a G-buffer with normals and roughness per pixel. This renderer is forward; SSR means a G-buffer (or every material
+  shader writing normal and roughness to a second target) first.
+- **Virtual shadow maps, Lumen, MegaLights**: built on Nanite-era infrastructure (virtual pages, a G-buffer, surface caches,
+  hardware or software ray tracing). Each is a renderer project of its own, not a port of one pass.
+- **Cached whole-scene shadows** (r.Shadow.CacheWholeSceneShadows): what lets Unreal shadow many lamps; not ported, so the game's
+  street lamps cast no shadows.
+- **Night exposure**: Unreal's auto exposure lifts a dark street towards middle grey; the game's lamps run at a quarter of real
+  output so they read. Tune the night's AutoExposureMin/MaxBrightness (a volume or the hour's grade), then raise the lamps.
+
