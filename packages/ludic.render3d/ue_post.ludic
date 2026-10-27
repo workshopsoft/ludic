@@ -601,6 +601,7 @@ function ue_lens_flare_pass(render3d_st: mut Render3dState, pp: UePost, out: Tar
   if render3d_st.ue_lf_blur == null { render3d_st.ue_lf_blur = target_new(render3d_st, src.w, src.h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR) }
   if render3d_st.ue_lf_p == 0 { render3d_st.ue_lf_p = r3d_program(render3d_st, "ue_flare.vert", "ue_flare.frag", "") }
   if render3d_st.ue_lf_quad == null { ue_lf_make_quad(render3d_st) }
+  if render3d_st.ue_lf_bokeh == 0 and not render3d_st.ue_lf_bokeh_tried { ue_lf_load_bokeh(render3d_st) }
   prof_begin(render3d_st, "UE lens flares")
   let p = render3d_st.ue_lf_p
   gpu_depth_test(render3d_st, false)
@@ -642,6 +643,16 @@ function ue_lens_flare_pass(render3d_st: mut Render3dState, pp: UePost, out: Tar
 
 # the lens flares' bokeh shape (LensFlareBokehShape / GEngine->DefaultBokehTexture): a texture the game loads; 0 is the white fallback
 export function r3d_ue_lens_flare_bokeh(render3d_st: mut Render3dState, tex: int) -> void { render3d_st.ue_lf_bokeh = tex }
+# R3D_UE_LENS_FLARE_BOKEH=<png>: the bokeh from a file, sRGB as Unreal's DefaultBokeh is (TEXTUREGROUP_Bokeh, 64 x 64). Unreal's own
+# is engine content under its EULA, so it is not in this repository: export it from an Unreal install (UE_PORT.md).
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_lf_load_bokeh(render3d_st: mut Render3dState) -> void {
+  render3d_st.ue_lf_bokeh_tried = true
+  if not r3d_env_has(render3d_st, "R3D_UE_LENS_FLARE_BOKEH") { return }
+  let path = r3d_env(render3d_st, "R3D_UE_LENS_FLARE_BOKEH")
+  let t = tex_load(render3d_st, path, true)
+  if t > 0 { render3d_st.ue_lf_bokeh = t } else { print(`r3d: lens flares: no bokeh at {path}: the white fallback`) }
+}
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function ue_lf_make_quad(render3d_st: mut Render3dState) -> void { render3d_st.ue_lf_quad = mesh_card(render3d_st) }

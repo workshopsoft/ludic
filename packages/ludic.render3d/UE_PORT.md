@@ -134,8 +134,10 @@ Unreal's DefaultBokeh texture (content), dirt mask, bloom threshold
 old tonemapper), exposure compensation curve, meter mask.
 
 - **Lens flares draw square ghosts until a bokeh texture is set.** Unreal falls back to a white texture when its DefaultBokeh
-  content isn't loaded, so the ghosts are squares; Unreal's default content gives soft polygons. DefaultBokeh is an engine
-  .uasset (not in the source repo): export it from the PC's UE 5.8 install and pass it to `r3d_ue_lens_flare_bokeh`.
+  content isn't loaded, so the ghosts are squares; with it they are soft hexagons. DefaultBokeh (/Engine/EngineMaterials, 64 x 64,
+  sRGB, TEXTUREGROUP_Bokeh) is Unreal engine content under its EULA, so it is not in this repository: export it from a UE 5.8
+  install (UnrealEditor-Cmd -run=pythonscript, an AssetExportTask with TextureExporterTGA), then pass it as
+  `R3D_UE_LENS_FLARE_BOKEH=<png>` or load it and call `r3d_ue_lens_flare_bokeh`.
 
 ## What is left, and what it needs
 
