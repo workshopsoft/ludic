@@ -1,0 +1,143 @@
+# ============================================================================
+# ue_post.ludic — Unreal's post-process settings and its colour grading + filmic tonemapper.
+#
+# UePost is UE 5.8's FPostProcessSettings (Engine/Classes/Engine/Scene.h) for the parts ported so far, with the defaults of its
+# constructor (Engine/Private/Scene.cpp FPostProcessSettings::FPostProcessSettings) and Unreal's names. Each frame the grading is
+# baked into a LUT (combine_luts.frag: PostProcessCombineLUTs.usf, a r.LUT.Size^3 volume drawn unwrapped) and the tonemap pass reads it
+# (tonemap.frag ueTonemap: PostProcessTonemap.usf MainPS). A game edits the settings in place: `let pp = r3d_pp(st);  pp.film_slope = 0.9`.
+#
+# Flags: R3D_UE_TONEMAP=0 (or r3d_ue_tonemap(st, false)) puts the old tonemapper back; on by default. HDR10 output keeps the old path
+# until Unreal's HDR output transform is ported.
+# ============================================================================
+
+# grading ranges and controls: u_grade[range * 5 + control] in combine_luts.frag
+export const UE_GRADE_GLOBAL: int = 0
+export const UE_GRADE_SHADOWS: int = 1
+export const UE_GRADE_MIDTONES: int = 2
+export const UE_GRADE_HIGHLIGHTS: int = 3
+export const UE_CC_SATURATION: int = 0
+export const UE_CC_CONTRAST: int = 1
+export const UE_CC_GAMMA: int = 2
+export const UE_CC_GAIN: int = 3
+export const UE_CC_OFFSET: int = 4
+
+property UePost {
+  # Color Grading|Temperature
+  temp_is_white_balance: bool = true,      # TemperatureType: TEMP_WhiteBalance (true) or TEMP_ColorTemperature
+  white_temp: float = 6500.0,              # WhiteTemp
+  white_tint: float = 0.0,                 # WhiteTint
+  # Color Grading|Global, Shadows, Midtones, Highlights: ColorSaturation/Contrast/Gamma/Gain/Offset (FVector4: rgb, and w the
+  # luminance multiplier), 4 ranges x 5 controls x 4 floats, set with ue_pp_grade
+  grade: floats = null,
+  color_correction_shadows_max: float = 0.09,      # ColorCorrectionShadowsMax
+  color_correction_highlights_min: float = 0.5,    # ColorCorrectionHighlightsMin
+  color_correction_highlights_max: float = 1.0,    # ColorCorrectionHighlightsMax
+  # Color Grading|Misc
+  blue_correction: float = 0.6,            # BlueCorrection
+  expand_gamut: float = 1.0,               # ExpandGamut
+  tone_curve_amount: float = 1.0,          # ToneCurveAmount
+  scene_color_tint_r: float = 1.0,         # SceneColorTint
+  scene_color_tint_g: float = 1.0,
+  scene_color_tint_b: float = 1.0,
+  # Film (TonemappingMethod Filmic)
+  film_slope: float = 0.88,                # FilmSlope
+  film_toe: float = 0.55,                  # FilmToe
+  film_shoulder: float = 0.26,             # FilmShoulder
+  film_black_clip: float = 0.0,            # FilmBlackClip
+  film_white_clip: float = 0.04,           # FilmWhiteClip
+  # Lens|Image Effects
+  vignette_intensity: float = 0.4,         # VignetteIntensity (VignetteType CosineFourthLaw)
+  # r.LUT.Size and r.BackbufferQuantizationDitheringOverride (0: from the target's bit depth)
+  lut_size: int = 32,
+  dither_bits: int = 0
+}
+
+# the settings, made with Unreal's defaults the first time they are asked for
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+export function r3d_pp(render3d_st: mut Render3dState) -> UePost {
+  if render3d_st.ue_pp == null {
+    let pp = new UePost
+    pp.grade = floats(4 * 5 * 4)
+    for r in 0 .. 4 {
+      for c in 0 .. 5 {
+        var v = 1.0
+        if c == UE_CC_OFFSET { v = 0.0 }
+        ue_pp_grade(pp, r, c, v, v, v, v)
+      }
+    }
+    render3d_st.ue_pp = pp
+  }
+  return render3d_st.ue_pp
+}
+
+# one grading control of one range: Unreal's FVector4 (r, g, b, and w applied to all three)
+export function ue_pp_grade(pp: UePost, range: int, control: int, r: float, g: float, b: float, w: float) -> void {
+  if pp == null or range < 0 or range > 3 or control < 0 or control > 4 { return }
+  let i = (range * 5 + control) * 4
+  pp.grade[i] = r;  pp.grade[i + 1] = g;  pp.grade[i + 2] = b;  pp.grade[i + 3] = w
+}
+
+# Unreal's tonemapper on or off (R3D_UE_TONEMAP=0 turns it off at start)
+export function r3d_ue_tonemap(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_tonemap = 0
+  if on { render3d_st.ue_tonemap = 1 }
+}
+function ue_tonemap_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_tonemap < 0 {
+    render3d_st.ue_tonemap = 1
+    if r3d_env_has(render3d_st, "R3D_UE_TONEMAP") and r3d_env(render3d_st, "R3D_UE_TONEMAP") == "0" { render3d_st.ue_tonemap = 0 }
+  }
+  return render3d_st.ue_tonemap == 1
+}
+
+# GetTonemappingMax: Filmic to an sRGB device leaves headroom to 1.05
+const UE_LUT_MAX: float = 1.05
+
+# CombineLUTs: the grading baked into the unwrapped LUT. Remade when its size changes; drawn every frame (32 x 32 x 32 texels).
+function ue_lut_pass(render3d_st: mut Render3dState) -> void {
+  let pp = r3d_pp(render3d_st)
+  let n = max(min(pp.lut_size, 64), 16)
+  if render3d_st.ue_lut != null and render3d_st.ue_lut.h != n { target_free(render3d_st, render3d_st.ue_lut);  render3d_st.ue_lut = null }
+  if render3d_st.ue_lut == null { render3d_st.ue_lut = target_new(render3d_st, n * n, n, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR) }
+  if render3d_st.ue_lut_p == 0 { render3d_st.ue_lut_p = r3d_program(render3d_st, "fullscreen.vert", "combine_luts.frag", "") }
+  prof_begin(render3d_st, "combine LUTs")
+  let p = render3d_st.ue_lut_p
+  target_bind(render3d_st, render3d_st.ue_lut)
+  gpu_depth_test(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  gpu_use_program(render3d_st, p)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_size"), float(n))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_white_temp"), pp.white_temp)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_white_tint"), pp.white_tint)
+  var wb = 0.0
+  if pp.temp_is_white_balance { wb = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_temp_is_wb"), wb)
+  u_f4v(render3d_st, gpu_uniform(render3d_st, p, "u_grade"), 20, pp.grade)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_cc_range"), pp.color_correction_shadows_max, pp.color_correction_highlights_min, pp.color_correction_highlights_max)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_misc"), pp.blue_correction, pp.expand_gamut, pp.tone_curve_amount)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_film"), pp.film_slope, pp.film_toe, pp.film_shoulder, pp.film_black_clip)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_film_white_clip"), pp.film_white_clip)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lut_inv_max"), 1.0 / UE_LUT_MAX)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  prof_end(render3d_st)
+}
+
+# The tonemap program's Unreal uniforms (u_ue 0 when off). Call with the tonemap program in use; binds the LUT at unit 5.
+function ue_tonemap_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  var on = 0.0
+  if ue_tonemap_on(render3d_st) and not gpu_hdr_active(render3d_st) and render3d_st.ue_lut != null { on = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ue"), on)
+  if on < 0.5 { return }
+  let pp = r3d_pp(render3d_st)
+  r3d_bind_2d(render3d_st, prog, "u_lut", 5, render3d_st.ue_lut.color)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_lut_size"), float(render3d_st.ue_lut.h))
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_lut_max"), UE_LUT_MAX)
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_scene_tint"), pp.scene_color_tint_r, pp.scene_color_tint_g, pp.scene_color_tint_b)
+  let w = max(render3d_st.post_ldr.w, 1)
+  u_f4(render3d_st, gpu_uniform(render3d_st, prog, "u_vignette_ue"), pp.vignette_intensity, float(render3d_st.post_ldr.h) / float(w), 0.0, 0.0)
+  let fi = render3d_st.post_frame % 8                       # OutputFrameIndexMod8
+  u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_grain_rand"), gsl_halton(fi % 1024, 2), gsl_halton(fi % 1024, 3))
+  var bits = 8                                              # post_ldr is RGBA8 in SDR
+  if pp.dither_bits > 0 { bits = pp.dither_bits }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_dither"), 1.0 / (Math.pow(2.0, float(bits)) - 1.0))
+}

@@ -205,6 +205,79 @@ T c57b4f14 u_src 7
 T c57b4f14 u_tershadow 8
 T c57b4f14 u_tershadow_aux 9
 T c57b4f14 u_ts_height 10
+P 99f4d2a9 fullscreen.vert combine_luts.frag 
+B 99f4d2a9 frag 1 2440
+U 99f4d2a9 frag u_cascade_vp 0 mat4 5 64
+U 99f4d2a9 frag u_cascade_split 320 float 5 16
+U 99f4d2a9 frag u_cascade_range 400 float 5 16
+U 99f4d2a9 frag u_cascade_texel 480 float 5 16
+U 99f4d2a9 frag u_sun_dir 560 vec3 1 0
+U 99f4d2a9 frag u_sun_color 576 vec3 1 0
+U 99f4d2a9 frag u_cam_pos 592 vec3 1 0
+U 99f4d2a9 frag u_prefilter_levels 604 float 1 0
+U 99f4d2a9 frag u_fog_density 608 float 1 0
+U 99f4d2a9 frag u_fog_height_falloff 612 float 1 0
+U 99f4d2a9 frag u_fog_base 616 float 1 0
+U 99f4d2a9 frag u_clip_y 620 float 1 0
+U 99f4d2a9 frag u_spec_scale 624 float 1 0
+U 99f4d2a9 frag u_sky_rot 632 vec2 1 0
+U 99f4d2a9 frag u_ground_alb 640 vec3 1 0
+U 99f4d2a9 frag u_ground_alb_hi 656 vec3 1 0
+U 99f4d2a9 frag u_ground_hi_y 668 float 1 0
+U 99f4d2a9 frag u_ground_hi_w 672 float 1 0
+U 99f4d2a9 frag u_ibl_scale 688 vec3 1 0
+U 99f4d2a9 frag u_daylight 700 float 1 0
+U 99f4d2a9 frag u_fire_pos 704 vec3 1 0
+U 99f4d2a9 frag u_fire_color 720 vec3 1 0
+U 99f4d2a9 frag u_hand_pos 736 vec3 1 0
+U 99f4d2a9 frag u_hand_color 752 vec3 1 0
+U 99f4d2a9 frag u_hand_dir 768 vec3 1 0
+U 99f4d2a9 frag u_hand_cone 780 float 1 0
+U 99f4d2a9 frag u_hand_reach 784 float 1 0
+U 99f4d2a9 frag u_ts_origin 792 vec2 1 0
+U 99f4d2a9 frag u_ts_half 800 float 1 0
+U 99f4d2a9 frag u_ts_on 804 float 1 0
+U 99f4d2a9 frag u_force_cascade 808 int 1 0
+U 99f4d2a9 frag u_shadow_tan_max 812 float 1 0
+U 99f4d2a9 frag u_cloud_shadow 816 float 1 0
+U 99f4d2a9 frag u_time 820 float 1 0
+U 99f4d2a9 frag u_lz 832 vec4 32 16
+U 99f4d2a9 frag u_lz_n 1344 int 1 0
+U 99f4d2a9 frag u_zl 1360 vec4 32 16
+U 99f4d2a9 frag u_zl_n 1872 int 1 0
+U 99f4d2a9 frag u_zl_color 1888 vec3 1 0
+U 99f4d2a9 frag u_zl_reach 1900 float 1 0
+U 99f4d2a9 frag u_char_lit 1904 float 1 0
+U 99f4d2a9 frag u_cl_dir0 1920 vec3 1 0
+U 99f4d2a9 frag u_cl_dir1 1936 vec3 1 0
+U 99f4d2a9 frag u_cl_dir2 1952 vec3 1 0
+U 99f4d2a9 frag u_cl_col0 1968 vec3 1 0
+U 99f4d2a9 frag u_cl_col1 1984 vec3 1 0
+U 99f4d2a9 frag u_cl_col2 2000 vec3 1 0
+U 99f4d2a9 frag u_fog_inscatter 2012 float 1 0
+U 99f4d2a9 frag u_fog_desat 2016 float 1 0
+U 99f4d2a9 frag u_fog_wall 2020 float 1 0
+U 99f4d2a9 frag u_fog_haze 2024 float 1 0
+U 99f4d2a9 frag u_fog_cut 2032 vec2 1 0
+U 99f4d2a9 frag u_sky_relight 2040 float 1 0
+U 99f4d2a9 frag u_size 2044 float 1 0
+U 99f4d2a9 frag u_white_temp 2048 float 1 0
+U 99f4d2a9 frag u_white_tint 2052 float 1 0
+U 99f4d2a9 frag u_temp_is_wb 2056 float 1 0
+U 99f4d2a9 frag u_grade 2064 vec4 20 16
+U 99f4d2a9 frag u_cc_range 2384 vec3 1 0
+U 99f4d2a9 frag u_misc 2400 vec3 1 0
+U 99f4d2a9 frag u_film 2416 vec4 1 0
+U 99f4d2a9 frag u_film_white_clip 2432 float 1 0
+U 99f4d2a9 frag u_lut_inv_max 2436 float 1 0
+T 99f4d2a9 u_brdf 2
+T 99f4d2a9 u_hairsh 3
+T 99f4d2a9 u_irradiance 4
+T 99f4d2a9 u_prefilter 5
+T 99f4d2a9 u_shadow 6
+T 99f4d2a9 u_tershadow 7
+T 99f4d2a9 u_tershadow_aux 8
+T 99f4d2a9 u_ts_height 9
 P 5161e6ba fullscreen.vert dof.frag 
 B 5161e6ba frag 1 2132
 U 5161e6ba frag u_cascade_vp 0 mat4 5 64
@@ -1377,7 +1450,7 @@ T 3a1797ab u_tershadow 8
 T 3a1797ab u_tershadow_aux 9
 T 3a1797ab u_ts_height 10
 P 725523d9 fullscreen.vert tonemap.frag 
-B 725523d9 frag 1 2132
+B 725523d9 frag 1 2188
 U 725523d9 frag u_cascade_vp 0 mat4 5 64
 U 725523d9 frag u_cascade_split 320 float 5 16
 U 725523d9 frag u_cascade_range 400 float 5 16
@@ -1444,6 +1517,13 @@ U 725523d9 frag u_bloom_strength 2116 float 1 0
 U 725523d9 frag u_vignette 2120 float 1 0
 U 725523d9 frag u_saturation 2124 float 1 0
 U 725523d9 frag u_contrast 2128 float 1 0
+U 725523d9 frag u_ue 2132 float 1 0
+U 725523d9 frag u_lut_size 2136 float 1 0
+U 725523d9 frag u_lut_max 2140 float 1 0
+U 725523d9 frag u_scene_tint 2144 vec3 1 0
+U 725523d9 frag u_vignette_ue 2160 vec4 1 0
+U 725523d9 frag u_grain_rand 2176 vec2 1 0
+U 725523d9 frag u_dither 2184 float 1 0
 T 725523d9 u_adapt 2
 T 725523d9 u_ao 3
 T 725523d9 u_bloom 4
@@ -1452,13 +1532,14 @@ T 725523d9 u_hair_t 6
 T 725523d9 u_hairsh 7
 T 725523d9 u_hdr 8
 T 725523d9 u_irradiance 9
-T 725523d9 u_prefilter 10
-T 725523d9 u_shadow 11
-T 725523d9 u_tershadow 12
-T 725523d9 u_tershadow_aux 13
-T 725523d9 u_ts_height 14
+T 725523d9 u_lut 10
+T 725523d9 u_prefilter 11
+T 725523d9 u_shadow 12
+T 725523d9 u_tershadow 13
+T 725523d9 u_tershadow_aux 14
+T 725523d9 u_ts_height 15
 P a4683767 fullscreen.vert tonemap.frag #define HDR10;
-B a4683767 frag 1 2144
+B a4683767 frag 1 2200
 U a4683767 frag u_cascade_vp 0 mat4 5 64
 U a4683767 frag u_cascade_split 320 float 5 16
 U a4683767 frag u_cascade_range 400 float 5 16
@@ -1525,9 +1606,16 @@ U a4683767 frag u_bloom_strength 2116 float 1 0
 U a4683767 frag u_vignette 2120 float 1 0
 U a4683767 frag u_saturation 2124 float 1 0
 U a4683767 frag u_contrast 2128 float 1 0
-U a4683767 frag u_hdr_paper 2132 float 1 0
-U a4683767 frag u_hdr_peak 2136 float 1 0
-U a4683767 frag u_hdr_black 2140 float 1 0
+U a4683767 frag u_ue 2132 float 1 0
+U a4683767 frag u_lut_size 2136 float 1 0
+U a4683767 frag u_lut_max 2140 float 1 0
+U a4683767 frag u_scene_tint 2144 vec3 1 0
+U a4683767 frag u_vignette_ue 2160 vec4 1 0
+U a4683767 frag u_grain_rand 2176 vec2 1 0
+U a4683767 frag u_dither 2184 float 1 0
+U a4683767 frag u_hdr_paper 2188 float 1 0
+U a4683767 frag u_hdr_peak 2192 float 1 0
+U a4683767 frag u_hdr_black 2196 float 1 0
 T a4683767 u_adapt 2
 T a4683767 u_ao 3
 T a4683767 u_bloom 4
@@ -1536,11 +1624,12 @@ T a4683767 u_hair_t 6
 T a4683767 u_hairsh 7
 T a4683767 u_hdr 8
 T a4683767 u_irradiance 9
-T a4683767 u_prefilter 10
-T a4683767 u_shadow 11
-T a4683767 u_tershadow 12
-T a4683767 u_tershadow_aux 13
-T a4683767 u_ts_height 14
+T a4683767 u_lut 10
+T a4683767 u_prefilter 11
+T a4683767 u_shadow 12
+T a4683767 u_tershadow 13
+T a4683767 u_tershadow_aux 14
+T a4683767 u_ts_height 15
 P 74258189 fullscreen.vert volumetric.frag 
 B 74258189 frag 1 2140
 U 74258189 frag u_cascade_vp 0 mat4 5 64
@@ -8227,4 +8316,4 @@ T 7b87e0f2 u_shadow 8
 T 7b87e0f2 u_tershadow 9
 T 7b87e0f2 u_tershadow_aux 10
 T 7b87e0f2 u_ts_height 11
-E 90
+E 91

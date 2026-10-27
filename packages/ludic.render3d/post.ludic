@@ -377,6 +377,7 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
     render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
   }
   if render3d_st.post_auto { post_measure(render3d_st) }
+  if ue_tonemap_on(render3d_st) and not gpu_hdr_active(render3d_st) { ue_lut_pass(render3d_st) }
   target_bind(render3d_st, render3d_st.post_ldr)
   gpu_depth_test(render3d_st, false)
   gpu_use_program(render3d_st, prog)
@@ -409,6 +410,7 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_wb"), render3d_st.post_wb_r, render3d_st.post_wb_g, render3d_st.post_wb_b)
   u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_lift"), render3d_st.post_lift_r, render3d_st.post_lift_g, render3d_st.post_lift_b)
   u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_gain"), render3d_st.post_gain_r, render3d_st.post_gain_g, render3d_st.post_gain_b)
+  ue_tonemap_bind(render3d_st, prog)
   # the HDR10 variant's display calibration (the SDR program has none of these, and -1 sets nothing)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hdr_peak"), r3d_hdr_peak_nits(render3d_st))
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hdr_paper"), r3d_hdr_paper_nits(render3d_st))

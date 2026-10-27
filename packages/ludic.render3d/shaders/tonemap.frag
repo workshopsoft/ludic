@@ -79,6 +79,62 @@ vec3 toneHue(vec3 c, float k) {
   }
   return clamp(rgb, 0.0, 1.0);
 }
+// ---- Unreal's tonemapper (u_ue): UE 5.8 PostProcessTonemap.usf MainPS, its SDR path ----------------------------------------
+// FinalLinearColor = SceneColor * SceneColorTint * (GlobalExposure * VignetteMask) + Bloom * (GlobalExposure * VignetteMask), then the
+// colour grading LUT (combine_luts.frag) read by ColorLookupTable, then the triangular backbuffer quantization dither. No pre-exposure
+// here (OneOverPreExposure is 1). Film grain and local exposure are not ported yet (their Unreal defaults are off).
+uniform float u_ue;
+uniform sampler2D u_lut;          // the unwrapped volume LUT, u_lut_size^2 x u_lut_size
+uniform float u_lut_size;         // r.LUT.Size
+uniform float u_lut_max;          // GetTonemappingMax: 1.05 for Filmic to sRGB
+uniform vec3 u_scene_tint;        // SceneColorTint
+uniform vec4 u_vignette_ue;       // VignetteIntensity, aspect (height / width), 0, 0
+uniform vec2 u_grain_rand;        // GrainRandomFull: Halton (2, 3) of the frame
+uniform float u_dither;           // BackbufferQuantizationDithering: 1 / 255 for an 8-bit target
+vec3 ueLogToLin(vec3 l) { return exp2((l - 444.0 / 1023.0) * 14.0) * 0.18; }
+vec3 ueLinToLog(vec3 c) { return log2(c) / 14.0 - log2(0.18) / 14.0 + 444.0 / 1023.0; }
+// PostProcessCommon.ush UnwrappedTexture3DSample
+vec3 ueUnwrapped3D(vec3 uvw, float size) {
+  float inv = 1.0 / size;
+  float intW = floor(uvw.z * size - 0.5);
+  float fracW = uvw.z * size - 0.5 - intW;
+  float u = (uvw.x + intW) * inv;
+  vec3 a = texture(u_lut, vec2(u, uvw.y)).rgb;
+  vec3 b = texture(u_lut, vec2(u + inv, uvw.y)).rgb;
+  return mix(a, b, fracW);
+}
+vec3 ueColorLookupTable(vec3 lin) {
+  vec3 enc = ueLinToLog(lin + ueLogToLin(vec3(0.0)));
+  float n = u_lut_size;
+  vec3 uvw = enc * ((n - 1.0) / n) + 0.5 / n;
+  return ueUnwrapped3D(uvw, n) * u_lut_max;
+}
+// PostProcessCommon.ush VignetteSpace + ComputeVignetteMask, VIGNETTE_TYPE_COSINE_FOURTH_LAW, centre (0.5, 0.5)
+float ueVignette(vec2 screenPos) {
+  float intensity = u_vignette_ue.x;
+  if (intensity <= 0.0) return 1.0;
+  float ar = u_vignette_ue.y;
+  vec2 p = screenPos * vec2(1.0, ar) * (sqrt(2.0) / sqrt(1.0 + ar * ar));
+  p *= intensity;
+  float t2 = dot(p, p);
+  float c = 1.0 / (t2 + 1.0);
+  return c * c;
+}
+vec3 ueTonemap(vec3 sceneColor, vec3 bloom, float globalExposure) {
+  vec2 screenPos = v_uv * 2.0 - 1.0;
+  float vig = ueVignette(screenPos);
+  vec3 lin = sceneColor * u_scene_tint * (globalExposure * vig);
+  lin += bloom * u_bloom_strength * (globalExposure * vig);
+  vec3 dev = ueColorLookupTable(max(lin, vec3(0.0)));
+  // GrainFromUV on TexCoord + GrainRandomFull, then triangular on [-1, 1]
+  vec2 guv = v_uv + u_grain_rand;
+  float g = fract(sin(guv.x + guv.y * 543.31) * 493013.0);
+  float np = g * 2.0 - 1.0;
+  float sgn = clamp(np * 1.0e30, -1.0, 1.0);
+  float tri = sgn - sgn * sqrt(clamp(1.0 - abs(np), 0.0, 1.0));
+  return dev + tri * u_dither;
+}
+
 #ifdef HDR10
 // HDR10 output: nits in BT.2020 primaries, encoded with the SMPTE ST 2084 (PQ) curve. The three
 // numbers are the player's calibration of their display (r3d_hdr_calibrate).
@@ -108,6 +164,9 @@ void main() {
   hdr += gi.rgb * (hdr / max(l, 1e-3)) * u_gi_strength;
   vec3 bloom = texture(u_bloom, v_uv).rgb;
   float exposure = mix(u_exposure, texture(u_adapt, vec2(0.5)).r, u_auto);
+#ifndef HDR10
+  if (u_ue > 0.5) { o_color = vec4(ueTonemap(hdr, bloom, exposure), 1.0); return; }
+#endif
   vec3 c = (hdr + bloom * u_bloom_strength) * exposure * u_wb;
   c = max(c, vec3(0.0));
   vec3 pre = contrastUp(c, u_contrast);   // what ACES is about to roll off, kept for HDR highlights

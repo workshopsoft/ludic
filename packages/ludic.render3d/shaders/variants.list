@@ -5,6 +5,7 @@
 fullscreen.vert|adapt.frag|
 fullscreen.vert|bloom_down.frag|
 fullscreen.vert|bloom_up.frag|
+fullscreen.vert|combine_luts.frag|
 fullscreen.vert|dof.frag|
 fullscreen.vert|heightgen.frag|
 fullscreen.vert|heightgen.frag|#define DEM;
