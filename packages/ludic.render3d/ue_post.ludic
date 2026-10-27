@@ -123,12 +123,24 @@ function ue_tonemap_on(render3d_st: mut Render3dState) -> bool {
   return render3d_st.ue_tonemap == 1
 }
 
+# the settings this frame's passes use: resolved at the camera once a frame (ue_pp_frame), the base until then
+function ue_pp_now(render3d_st: mut Render3dState) -> UePost {
+  if render3d_st.ue_pp_final == null { return r3d_pp(render3d_st) }
+  return render3d_st.ue_pp_final
+}
+function ue_pp_frame(render3d_st: mut Render3dState) -> void {
+  ue_ppv_env(render3d_st)
+  let c = render3d_st.cam_pos
+  if c == null { return }
+  ue_pp_resolve(render3d_st, c[0], c[1], c[2])
+}
+
 # GetTonemappingMax: Filmic to an sRGB device leaves headroom to 1.05
 const UE_LUT_MAX: float = 1.05
 
 # CombineLUTs: the grading baked into the unwrapped LUT. Remade when its size changes; drawn every frame (32 x 32 x 32 texels).
 function ue_lut_pass(render3d_st: mut Render3dState) -> void {
-  let pp = r3d_pp(render3d_st)
+  let pp = ue_pp_now(render3d_st)
   let n = max(min(pp.lut_size, 64), 16)
   if render3d_st.ue_lut != null and render3d_st.ue_lut.h != n { target_free(render3d_st, render3d_st.ue_lut);  render3d_st.ue_lut = null }
   if render3d_st.ue_lut == null { render3d_st.ue_lut = target_new(render3d_st, n * n, n, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR) }
@@ -161,7 +173,7 @@ function ue_tonemap_bind(render3d_st: mut Render3dState, prog: int) -> void {
   if ue_tonemap_on(render3d_st) and not gpu_hdr_active(render3d_st) and render3d_st.ue_lut != null { on = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ue"), on)
   if on < 0.5 { return }
-  let pp = r3d_pp(render3d_st)
+  let pp = ue_pp_now(render3d_st)
   r3d_bind_2d(render3d_st, prog, "u_lut", 5, render3d_st.ue_lut.color)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_lut_size"), float(render3d_st.ue_lut.h))
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_lut_max"), UE_LUT_MAX)
@@ -202,7 +214,7 @@ function ue_exposure_on(render3d_st: mut Render3dState) -> bool {
 
 # post_hdr's mips are built (post_measure) before this runs
 function ue_exposure_pass(render3d_st: mut Render3dState) -> void {
-  let pp = r3d_pp(render3d_st)
+  let pp = ue_pp_now(render3d_st)
   let lod = max(min(pp.histogram_lod, 3), 0)
   let hw = max(render3d_st.post_hdr.w >> lod, 1)
   let hh = max(render3d_st.post_hdr.h >> lod, 1)
@@ -389,7 +401,7 @@ function ue_bloom_stage_count(q: int) -> int {
 
 # the bloom texture the tonemapper reads (0 when off or nothing was drawn)
 function ue_bloom_pass(render3d_st: mut Render3dState) -> int {
-  let pp = r3d_pp(render3d_st)
+  let pp = ue_pp_now(render3d_st)
   let q = max(min(pp.bloom_quality, 5), 0)
   if q == 0 { return 0 }
   ue_bloom_targets(render3d_st, render3d_st.post_color_w, render3d_st.post_color_h)
@@ -438,4 +450,350 @@ function ue_bloom_pass(render3d_st: mut Render3dState) -> int {
   }
   prof_end(render3d_st)
   return out
+}
+
+# ---- Post Process Volumes ---------------------------------------------------------------------------------------------------------
+# UE 5.8 World.cpp DoPostProcessVolume + SceneView.cpp OverridePostProcessSettings: the frame's settings start from the base (r3d_pp,
+# the unbound defaults a game edits) and every enabled volume, in Unreal's order (PostProcessVolumeLess: priority ascending, unbound
+# first, larger first, then the order they were added), blends each setting it overrides toward its own value by its weight -
+# BlendWeight, scaled down linearly over BlendRadius outside its shape (EncompassesPoint's distance; 0 inside), nothing beyond. LERP_PP
+# for numbers, SET_PP for TemperatureType. Unreal's console variables (LUT size, bloom quality, ...) stay global, as in Unreal.
+# A volume holds its settings packed by index (UE_PP_*) with an override flag each (bOverride_*): ue_ppv_set(v, UE_PP_FILM_SLOPE, 0.8).
+# Distances are metres in render space; ue_ppv_rebase moves them with the floating origin. R3D_UE_VOLUMES=0 ignores every volume.
+export const UE_PP_TEMP_IS_WHITE_BALANCE: int = 0
+export const UE_PP_WHITE_TEMP: int = 1
+export const UE_PP_WHITE_TINT: int = 2
+export const UE_PP_GRADE: int = 3
+export const UE_PP_COLOR_CORRECTION_SHADOWS_MAX: int = 83
+export const UE_PP_COLOR_CORRECTION_HIGHLIGHTS_MIN: int = 84
+export const UE_PP_COLOR_CORRECTION_HIGHLIGHTS_MAX: int = 85
+export const UE_PP_BLUE_CORRECTION: int = 86
+export const UE_PP_EXPAND_GAMUT: int = 87
+export const UE_PP_TONE_CURVE_AMOUNT: int = 88
+export const UE_PP_SCENE_COLOR_TINT_R: int = 89
+export const UE_PP_SCENE_COLOR_TINT_G: int = 90
+export const UE_PP_SCENE_COLOR_TINT_B: int = 91
+export const UE_PP_FILM_SLOPE: int = 92
+export const UE_PP_FILM_TOE: int = 93
+export const UE_PP_FILM_SHOULDER: int = 94
+export const UE_PP_FILM_BLACK_CLIP: int = 95
+export const UE_PP_FILM_WHITE_CLIP: int = 96
+export const UE_PP_VIGNETTE_INTENSITY: int = 97
+export const UE_PP_AUTO_EXPOSURE_BIAS: int = 98
+export const UE_PP_AUTO_EXPOSURE_LOW_PERCENT: int = 99
+export const UE_PP_AUTO_EXPOSURE_HIGH_PERCENT: int = 100
+export const UE_PP_AUTO_EXPOSURE_MIN_BRIGHTNESS: int = 101
+export const UE_PP_AUTO_EXPOSURE_MAX_BRIGHTNESS: int = 102
+export const UE_PP_AUTO_EXPOSURE_SPEED_UP: int = 103
+export const UE_PP_AUTO_EXPOSURE_SPEED_DOWN: int = 104
+export const UE_PP_HISTOGRAM_LOG_MIN: int = 105
+export const UE_PP_HISTOGRAM_LOG_MAX: int = 106
+export const UE_PP_BLOOM_INTENSITY: int = 107
+export const UE_PP_BLOOM_GAUSSIAN_INTENSITY: int = 108
+export const UE_PP_BLOOM_SIZE_SCALE: int = 109
+export const UE_PP_BLOOM_SIZE: int = 110
+export const UE_PP_BLOOM_TINT: int = 116
+export const UE_PP_COUNT: int = 134
+
+# a grading control's index: ue_ppv_set(v, ue_pp_grade_index(UE_GRADE_SHADOWS, UE_CC_GAIN, 2), 1.1) is the shadows' gain, blue
+export function ue_pp_grade_index(range: int, control: int, channel: int) -> int { return UE_PP_GRADE + (range * 5 + control) * 4 + channel }
+
+function ue_pp_pack(pp: UePost, v: floats) -> void {
+  v[0] = 0.0;  if pp.temp_is_white_balance { v[0] = 1.0 }
+  v[1] = pp.white_temp
+  v[2] = pp.white_tint
+  for k in 0 .. 80 { v[3 + k] = pp.grade[k] }
+  v[83] = pp.color_correction_shadows_max
+  v[84] = pp.color_correction_highlights_min
+  v[85] = pp.color_correction_highlights_max
+  v[86] = pp.blue_correction
+  v[87] = pp.expand_gamut
+  v[88] = pp.tone_curve_amount
+  v[89] = pp.scene_color_tint_r
+  v[90] = pp.scene_color_tint_g
+  v[91] = pp.scene_color_tint_b
+  v[92] = pp.film_slope
+  v[93] = pp.film_toe
+  v[94] = pp.film_shoulder
+  v[95] = pp.film_black_clip
+  v[96] = pp.film_white_clip
+  v[97] = pp.vignette_intensity
+  v[98] = pp.auto_exposure_bias
+  v[99] = pp.auto_exposure_low_percent
+  v[100] = pp.auto_exposure_high_percent
+  v[101] = pp.auto_exposure_min_brightness
+  v[102] = pp.auto_exposure_max_brightness
+  v[103] = pp.auto_exposure_speed_up
+  v[104] = pp.auto_exposure_speed_down
+  v[105] = pp.histogram_log_min
+  v[106] = pp.histogram_log_max
+  v[107] = pp.bloom_intensity
+  v[108] = pp.bloom_gaussian_intensity
+  v[109] = pp.bloom_size_scale
+  for k in 0 .. 6 { v[110 + k] = pp.bloom_size[k] }
+  for k in 0 .. 18 { v[116 + k] = pp.bloom_tint[k] }
+}
+function ue_pp_unpack(v: floats, pp: UePost) -> void {
+  pp.temp_is_white_balance = v[0] > 0.5
+  pp.white_temp = v[1]
+  pp.white_tint = v[2]
+  for k in 0 .. 80 { pp.grade[k] = v[3 + k] }
+  pp.color_correction_shadows_max = v[83]
+  pp.color_correction_highlights_min = v[84]
+  pp.color_correction_highlights_max = v[85]
+  pp.blue_correction = v[86]
+  pp.expand_gamut = v[87]
+  pp.tone_curve_amount = v[88]
+  pp.scene_color_tint_r = v[89]
+  pp.scene_color_tint_g = v[90]
+  pp.scene_color_tint_b = v[91]
+  pp.film_slope = v[92]
+  pp.film_toe = v[93]
+  pp.film_shoulder = v[94]
+  pp.film_black_clip = v[95]
+  pp.film_white_clip = v[96]
+  pp.vignette_intensity = v[97]
+  pp.auto_exposure_bias = v[98]
+  pp.auto_exposure_low_percent = v[99]
+  pp.auto_exposure_high_percent = v[100]
+  pp.auto_exposure_min_brightness = v[101]
+  pp.auto_exposure_max_brightness = v[102]
+  pp.auto_exposure_speed_up = v[103]
+  pp.auto_exposure_speed_down = v[104]
+  pp.histogram_log_min = v[105]
+  pp.histogram_log_max = v[106]
+  pp.bloom_intensity = v[107]
+  pp.bloom_gaussian_intensity = v[108]
+  pp.bloom_size_scale = v[109]
+  for k in 0 .. 6 { pp.bloom_size[k] = v[110 + k] }
+  for k in 0 .. 18 { pp.bloom_tint[k] = v[116 + k] }
+}
+function ue_pp_is_set(i: int) -> bool { return i == 0 }
+
+export const UE_PPV_BOX: int = 0
+export const UE_PPV_SPHERE: int = 1
+property UePpVolume {
+  enabled: bool = true,            # bEnabled
+  unbound: bool = false,           # bUnbound: the whole world, no shape
+  priority: float = 0.0,           # Priority
+  blend_radius: float = 1.0,       # BlendRadius (m)
+  blend_weight: float = 1.0,       # BlendWeight
+  shape: int = 0,                  # UE_PPV_BOX (centre, half extents, yaw about y) or UE_PPV_SPHERE (centre, radius in hx)
+  cx: float = 0.0, cy: float = 0.0, cz: float = 0.0,
+  hx: float = 1.0, hy: float = 1.0, hz: float = 1.0,
+  yaw: float = 0.0,
+  order: int = 0,                  # the order it was added: Unreal's VolumeGuid tie-break
+  values: floats = null,           # the settings, packed (UE_PP_*)
+  over: floats = null              # 1 where the volume overrides that setting
+}
+
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+export function ue_ppv_add(render3d_st: mut Render3dState, priority: float, blend_radius: float, blend_weight: float, unbound: bool) -> UePpVolume {
+  if render3d_st.ue_vols == null { render3d_st.ue_vols = new []UePpVolume }
+  let v = new UePpVolume
+  v.priority = priority;  v.blend_radius = Math.max(blend_radius, 0.0);  v.blend_weight = blend_weight;  v.unbound = unbound
+  v.values = floats(UE_PP_COUNT)
+  v.over = floats(UE_PP_COUNT)
+  ue_pp_pack(r3d_pp(render3d_st), v.values)
+  render3d_st.ue_vol_seq += 1
+  v.order = render3d_st.ue_vol_seq
+  push(render3d_st.ue_vols, v)
+  return v
+}
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+export function ue_ppv_remove(render3d_st: mut Render3dState, v: UePpVolume) -> void {
+  if render3d_st.ue_vols == null { return }
+  let kept = new []UePpVolume
+  for i in 0 .. len(render3d_st.ue_vols) { if render3d_st.ue_vols[i] != v { push(kept, render3d_st.ue_vols[i]) } }
+  render3d_st.ue_vols = kept
+}
+export function ue_ppv_box(v: UePpVolume, cx: float, cy: float, cz: float, hx: float, hy: float, hz: float, yaw: float) -> void {
+  v.shape = UE_PPV_BOX;  v.cx = cx;  v.cy = cy;  v.cz = cz;  v.hx = Math.abs(hx);  v.hy = Math.abs(hy);  v.hz = Math.abs(hz);  v.yaw = yaw
+}
+export function ue_ppv_sphere(v: UePpVolume, cx: float, cy: float, cz: float, r: float) -> void {
+  v.shape = UE_PPV_SPHERE;  v.cx = cx;  v.cy = cy;  v.cz = cz;  v.hx = Math.abs(r)
+}
+# override one setting (bOverride_ on, and its value)
+export function ue_ppv_set(v: UePpVolume, i: int, value: float) -> void {
+  if v == null or i < 0 or i >= UE_PP_COUNT { return }
+  v.values[i] = value;  v.over[i] = 1.0
+}
+export function ue_ppv_clear(v: UePpVolume, i: int) -> void { if v != null and i >= 0 and i < UE_PP_COUNT { v.over[i] = 0.0 } }
+export function ue_ppv_rebase(render3d_st: mut Render3dState, dx: float, dy: float, dz: float) -> void {
+  if render3d_st.ue_vols == null { return }
+  for i in 0 .. len(render3d_st.ue_vols) { let v = render3d_st.ue_vols[i];  v.cx += dx;  v.cy += dy;  v.cz += dz }
+}
+export function r3d_ue_volumes(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_vol_on = 0
+  if on { render3d_st.ue_vol_on = 1 }
+}
+function ue_volumes_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_vol_on < 0 {
+    render3d_st.ue_vol_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_VOLUMES") and r3d_env(render3d_st, "R3D_UE_VOLUMES") == "0" { render3d_st.ue_vol_on = 0 }
+  }
+  return render3d_st.ue_vol_on == 1
+}
+
+# EncompassesPoint's distance from the point to the shape: 0 inside
+export function ue_ppv_distance(v: UePpVolume, x: float, y: float, z: float) -> float {
+  let px = x - v.cx;  let py = y - v.cy;  let pz = z - v.cz
+  if v.shape == UE_PPV_SPHERE { return Math.max(Math.sqrt(px * px + py * py + pz * pz) - v.hx, 0.0) }
+  let c = Math.cos(v.yaw);  let s = Math.sin(v.yaw)
+  let lx = c * px - s * pz
+  let lz = s * px + c * pz
+  let ox = Math.max(Math.abs(lx) - v.hx, 0.0)
+  let oy = Math.max(Math.abs(py) - v.hy, 0.0)
+  let oz = Math.max(Math.abs(lz) - v.hz, 0.0)
+  return Math.sqrt(ox * ox + oy * oy + oz * oz)
+}
+
+# DoPostProcessVolume's LocalWeight
+export function ue_ppv_weight(v: UePpVolume, x: float, y: float, z: float) -> float {
+  if not v.enabled { return 0.0 }
+  var w = Math.clamp(v.blend_weight, 0.0, 1.0)
+  if v.unbound { return w }
+  let d = ue_ppv_distance(v, x, y, z)
+  if d > v.blend_radius { return 0.0 }
+  if v.blend_radius >= 1.0 { w = w * (1.0 - d / v.blend_radius) }
+  else if d > 0.0 { return 0.0 }
+  return w
+}
+
+# the shape's size for PostProcessVolumeLess (unbound: the largest)
+function ue_ppv_size(v: UePpVolume) -> float {
+  if v.unbound { return 1000000000000000000000000000000.0 }
+  if v.shape == UE_PPV_SPHERE { return 4.18879 * v.hx * v.hx * v.hx }
+  return 8.0 * v.hx * v.hy * v.hz
+}
+# PostProcessVolumeLess(a, b)
+function ue_ppv_less(a: UePpVolume, b: UePpVolume) -> bool {
+  if a.priority != b.priority { return a.priority < b.priority }
+  if a.unbound != b.unbound { return a.unbound }
+  let sa = ue_ppv_size(a);  let sb = ue_ppv_size(b)
+  if sa != sb { return sa > sb }
+  return a.order < b.order
+}
+
+# the frame's settings: the base, then every volume blended in at the view position, into ue_pp_final (what the passes read)
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+export function ue_pp_resolve(render3d_st: mut Render3dState, x: float, y: float, z: float) -> UePost {
+  let base = r3d_pp(render3d_st)
+  if render3d_st.ue_pp_final == null {
+    let f = new UePost
+    f.grade = floats(80);  f.bloom_size = floats(6);  f.bloom_tint = floats(18)
+    render3d_st.ue_pp_final = f
+    render3d_st.ue_pp_work = floats(UE_PP_COUNT)
+  }
+  let fin = render3d_st.ue_pp_final
+  # the globals (console variables) come from the base as they are
+  fin.lut_size = base.lut_size;  fin.dither_bits = base.dither_bits;  fin.extended_luminance_range = base.extended_luminance_range
+  fin.lens_attenuation = base.lens_attenuation;  fin.exponential_transition_distance = base.exponential_transition_distance
+  fin.black_histogram_bucket_influence = base.black_histogram_bucket_influence;  fin.histogram_lod = base.histogram_lod
+  fin.bloom_quality = base.bloom_quality;  fin.gaussian_bloom_cross = base.gaussian_bloom_cross;  fin.filter_size_scale = base.filter_size_scale
+  let d = render3d_st.ue_pp_work
+  ue_pp_pack(base, d)
+  if ue_volumes_on(render3d_st) and render3d_st.ue_vols != null {
+    let n = len(render3d_st.ue_vols)
+    # insertion sort into Unreal's order (few volumes, and they change rarely)
+    for i in 1 .. n {
+      let v = render3d_st.ue_vols[i]
+      var j = i - 1
+      while j >= 0 and ue_ppv_less(v, render3d_st.ue_vols[j]) { render3d_st.ue_vols[j + 1] = render3d_st.ue_vols[j];  j -= 1 }
+      render3d_st.ue_vols[j + 1] = v
+    }
+    for vi in 0 .. n {
+      let v = render3d_st.ue_vols[vi]
+      let w = Math.min(ue_ppv_weight(v, x, y, z), 1.0)
+      if w > 0.0 {
+        for k in 0 .. UE_PP_COUNT {
+          if v.over[k] > 0.5 {
+            if ue_pp_is_set(k) { d[k] = v.values[k] } else { d[k] = d[k] + (v.values[k] - d[k]) * w }
+          }
+        }
+      }
+    }
+  }
+  ue_pp_unpack(d, fin)
+  return fin
+}
+# a setting's index by its name (the UePost field: white_temp, film_slope, ...; an array's element as name:k, grade:3 the global
+# saturation's w); -1 for none
+export function ue_pp_index_of(name: string) -> int {
+  var base = name
+  var k = 0
+  let c = Text.index_of(name, ":")
+  if c >= 0 { base = Text.slice(name, 0, c);  k = Text.to_int(Text.slice(name, c + 1, Text.length(name))) }
+  if base == "temp_is_white_balance" { return 0 + k }
+  if base == "white_temp" { return 1 + k }
+  if base == "white_tint" { return 2 + k }
+  if base == "grade" { return 3 + k }
+  if base == "color_correction_shadows_max" { return 83 + k }
+  if base == "color_correction_highlights_min" { return 84 + k }
+  if base == "color_correction_highlights_max" { return 85 + k }
+  if base == "blue_correction" { return 86 + k }
+  if base == "expand_gamut" { return 87 + k }
+  if base == "tone_curve_amount" { return 88 + k }
+  if base == "scene_color_tint_r" { return 89 + k }
+  if base == "scene_color_tint_g" { return 90 + k }
+  if base == "scene_color_tint_b" { return 91 + k }
+  if base == "film_slope" { return 92 + k }
+  if base == "film_toe" { return 93 + k }
+  if base == "film_shoulder" { return 94 + k }
+  if base == "film_black_clip" { return 95 + k }
+  if base == "film_white_clip" { return 96 + k }
+  if base == "vignette_intensity" { return 97 + k }
+  if base == "auto_exposure_bias" { return 98 + k }
+  if base == "auto_exposure_low_percent" { return 99 + k }
+  if base == "auto_exposure_high_percent" { return 100 + k }
+  if base == "auto_exposure_min_brightness" { return 101 + k }
+  if base == "auto_exposure_max_brightness" { return 102 + k }
+  if base == "auto_exposure_speed_up" { return 103 + k }
+  if base == "auto_exposure_speed_down" { return 104 + k }
+  if base == "histogram_log_min" { return 105 + k }
+  if base == "histogram_log_max" { return 106 + k }
+  if base == "bloom_intensity" { return 107 + k }
+  if base == "bloom_gaussian_intensity" { return 108 + k }
+  if base == "bloom_size_scale" { return 109 + k }
+  if base == "bloom_size" { return 110 + k }
+  if base == "bloom_tint" { return 116 + k }
+  return -1
+}
+
+# "12.5", "-0.25", "4000": a decimal number (no exponent)
+function ue_parse_float(t: string) -> float {
+  var sgn = 1.0
+  var s = t
+  if Text.starts_with(s, "-") { sgn = -1.0;  s = Text.slice(s, 1, Text.length(s)) }
+  let d = Text.index_of(s, ".")
+  if d < 0 { return sgn * float(Text.to_int(s)) }
+  let ip = float(Text.to_int(Text.slice(s, 0, d)))
+  let fs = Text.slice(s, d + 1, Text.length(s))
+  var scale = 1.0
+  for i in 0 .. Text.length(fs) { scale = scale * 10.0 }
+  var fp = 0.0
+  if Text.length(fs) > 0 { fp = float(Text.to_int(fs)) / scale }
+  return sgn * (ip + fp)
+}
+
+# R3D_PPV: one box volume for shots and tuning, read once - "cx,cy,cz,hx,hy,hz,blend_radius,priority;name=value;name=value"
+# (render space, metres), e.g. R3D_PPV="51,1.5,22.4,3,3,3,10,0;white_temp=4000;grade:3=0.3"
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_ppv_env(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ue_vol_env { return }
+  render3d_st.ue_vol_env = true
+  if not r3d_env_has(render3d_st, "R3D_PPV") { return }
+  let parts = Text.split(r3d_env(render3d_st, "R3D_PPV"), ";")
+  if len(parts) == 0 { return }
+  let g = Text.split(parts[0], ",")
+  if len(g) < 8 { print("r3d: R3D_PPV wants cx,cy,cz,hx,hy,hz,blend_radius,priority");  return }
+  let v = ue_ppv_add(render3d_st, ue_parse_float(g[7]), ue_parse_float(g[6]), 1.0, false)
+  ue_ppv_box(v, ue_parse_float(g[0]), ue_parse_float(g[1]), ue_parse_float(g[2]), ue_parse_float(g[3]), ue_parse_float(g[4]), ue_parse_float(g[5]), 0.0)
+  for i in 1 .. len(parts) {
+    let kv = Text.split(parts[i], "=")
+    if len(kv) == 2 {
+      let idx = ue_pp_index_of(kv[0])
+      if idx < 0 { print(`r3d: R3D_PPV: no setting {kv[0]}`) } else { ue_ppv_set(v, idx, ue_parse_float(kv[1])) }
+    }
+  }
 }

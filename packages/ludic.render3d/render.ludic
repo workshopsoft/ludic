@@ -386,6 +386,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   if not render3d_st.post_no_gi and not render3d_st.r3d_env_no_gi { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }
   if render3d_st.r3d_debug_max { tex_max(render3d_st, render3d_st.post_hdr.color, render3d_st.post_hdr.w, render3d_st.post_hdr.h, "hdr") }
   prof_begin(render3d_st, "bloom")
+  ue_pp_frame(render3d_st)                  # Unreal's settings at the camera, the post-process volumes blended in (ue_post.ludic)
   post_bloom_pass(render3d_st)
   prof_end(render3d_st)
   prof_begin(render3d_st, "tonemap+exposure")
