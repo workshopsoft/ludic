@@ -18,7 +18,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | The hour's grade in Unreal's settings (lowest-priority unbound volume) | ue_post.ludic `ue_tod_grade`, daylight.ludic | `R3D_UE_HOUR_GRADE=0`, `r3d_ue_hour_grade` |
 | Local lights: point + spot (units, attenuation, cone), on surfaces and in the volumetric fog | ue_lights.ludic, lighting.glsl `ueLocalLights`, ue_volfog.frag | `R3D_UE_LIGHTS=0`, `r3d_ue_lights`; `R3D_LL` test lights |
 | Forward light grid (64 px cells x 32 log slices, GPU cull per cell: box vs sphere + spot cone refinement; every visible light, nearest first, up to 1024) | ue_lightgrid.ludic, shaders/ue_lightgrid.comp, lighting.glsl `ueLightGridRange` | `R3D_UE_LIGHT_GRID=0`, `r3d_ue_light_grid`; settings `r3d_ue_light_grid_settings` (r.Forward.LightGridPixelSize, LightGridSizeZ, MaxCulledLightsPerCell); `R3D_UE_LL_MAX` lights a frame |
-| Spot and point light shadow maps (legacy whole-scene; spots: projection, per-light resolution and fade, bias, Manual5x5PCF; points: one-pass cube faces, cube surface sizes, receiver bias, CubemapHardwarePCF 29 samples; one compare each in the fog) | ue_lightshadows.ludic, lighting.glsl `ueSpotShadow` / `uePointShadow` and their `...Volume` | `R3D_UE_LIGHT_SHADOWS=0`, `r3d_ue_light_shadows`; `R3D_UE_LS_MAX` / `R3D_UE_LP_MAX` (spots / points a frame, at most 4 each), `R3D_UE_LS_RES` (r.Shadow.MaxResolution); settings `r3d_ue_light_shadow_settings` (Unreal's cvar names); per light ShadowBias / ShadowSlopeBias / ShadowSharpen / ShadowResolutionScale; `R3D_UE_LS_DEBUG=1` dumps the first map |
+| Spot and point light shadow maps (legacy whole-scene; spots: projection, per-light resolution and fade, bias, Manual5x5PCF; points: one-pass cube faces, cube surface sizes, receiver bias, CubemapHardwarePCF 29 samples; one compare each in the fog) | ue_lightshadows.ludic, lighting.glsl `ueSpotShadow` / `uePointShadow` and their `...Volume` | `R3D_UE_LIGHT_SHADOWS=0`, `r3d_ue_light_shadows`; `R3D_UE_LS_PAGES` (atlas pages of each kind), `R3D_UE_LS_RES` (r.Shadow.MaxResolution); settings `r3d_ue_light_shadow_settings` (Unreal's cvar names); per light ShadowBias / ShadowSlopeBias / ShadowSharpen / ShadowResolutionScale; `R3D_UE_LS_DEBUG=1` dumps the first map |
 | Volumetric fog (froxel grid: media, sun + sky light scattering, temporal, integration) | ue_volfog.ludic, ue_volfog.frag, ue_fog.frag | `R3D_UE_VOLFOG=0`, `r3d_ue_volfog`; `R3D_UE_FOG_DENSITY`, `R3D_UE_VOLFOG_G` for tuning; `R3D_UE_VOLFOG_DEBUG=1` shadow view |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
@@ -99,9 +99,11 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
   programs (hardware depth from the same FShadowProjectionMatrix) and the receiver applies the same constant and slope bias, the
   slope from the receiver's normal (Unreal does this for point lights). The fog compares against the bias-free depth. If thin
   casters lose contact shadows or surfaces acne, tune ShadowBias / ShadowSlopeBias per light, as in Unreal.
-- **At most 4 shadowed spots and 4 shadowed points a frame** (the nearest that pass the fade). Unreal packs any number into an
-  atlas; a spot layer here is 16 MB at 2048 and a point light's cube 24 MB at 1024, made when a light of that kind first casts. A
-  night street with many shadowed lamps needs the atlas packing or VSM.
+- **Shadow maps are packed into atlases, as Unreal packs them** (FTextureLayout, a new atlas when one is full): spot tiles in
+  one array, point lights' cube faces in another (Unreal gives each cube a target of its own). No light count limit; the limit is
+  max_atlas_pages (R3D_UE_LS_PAGES, 4 of each kind, 16 MB each at 2048). A point light near the camera takes 1024 faces, six of
+  them a page and a half, so 4 point atlases hold only two or three close lamps; lights that don't fit go unshadowed that frame.
+  Lower r.Shadow.MaxResolution or raise the page budget for streets full of shadowed lamps. R3D_UE_LS_DEBUG=1 logs the packing.
 - **Casters for local lights skip the sun's cascade rules** (band, proxies) and test against the light's sphere. The buildings
   cast only what the camera's GPU cull kept, so a building off screen casts no spot shadow.
 - **Light grid as Unreal's with linked lists off.** Each cell holds at most 32 lights (r.Forward.MaxCulledLightsPerCell); Unreal's

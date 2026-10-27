@@ -24,12 +24,10 @@ program UeLightShadowsTest {
   }
 
   test "the projection: reversed linear range, the cone at the tile's edge" (render3d_st: mut Render3dState) {
-    render3d_st.ue_ls_m = floats(16 * 4)
-    render3d_st.ue_ls_m_v = m4_views(render3d_st.ue_ls_m, 4)
     # a spot at (1, 5, 2) facing down, 30 degree outer cone, 10 m reach, no border
     let t = Math.tan(30.0 * PI / 180.0)
-    ue_ls_matrix(render3d_st, 1, 1.0, 5.0, 2.0, 0.0, -1.0, 0.0, 1.0 / t, 1.0, 0.001, 10.0)
-    let m = render3d_st.ue_ls_m_v[1]
+    let m = m4_new()
+    ue_ls_matrix(m, 1.0, 5.0, 2.0, 0.0, -1.0, 0.0, 1.0 / t, 1.0, 0.001, 10.0)
     let q = floats(3)
     # 3 m below the light: w = 3, depth = rz_depth
     var w = m4_xform_point(q, m, 1.0, 2.0, 2.0)
@@ -76,5 +74,20 @@ program UeLightShadowsTest {
       expect_near(q[1] / w, 0.0, 0.00001)
       expect_near(q[2] / w, rz_depth(0.01, 10.0, 4.0), 0.000001)
     }
+  }
+
+  test "the atlas packs as FTextureLayout: first without growing the used area, a full atlas refuses" (render3d_st: mut Render3dState) {
+    render3d_st.ue_tl = words(1024 * 7)
+    ue_tl_reset(render3d_st, 2048)
+    expect(ue_tl_add(render3d_st, 1024, 1024) == 0)
+    # the next 1024 tile: no free node inside the used 1024 x 1024, so the second pass grows it, to the right first
+    expect(ue_tl_add(render3d_st, 1024, 1024) == 1024)
+    let third = ue_tl_add(render3d_st, 1024, 1024)
+    expect(third == 1024 * 65536)
+    expect(ue_tl_add(render3d_st, 1024, 1024) == 1024 + 1024 * 65536)
+    expect(ue_tl_add(render3d_st, 256, 256) == -1)                      # full
+    ue_tl_reset(render3d_st, 2048)
+    expect(ue_tl_add(render3d_st, 264, 264) == 0)
+    expect(ue_tl_add(render3d_st, 136, 136) != -1)
   }
 }

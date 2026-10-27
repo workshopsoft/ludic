@@ -443,17 +443,18 @@ float ueLocalLightAttenuation(int i, vec3 wpos, float distBiasSqr, out vec3 L) {
   }
   return mask;
 }
-// Spot light shadow maps (ue_lightshadows.ludic): u_ue_ls_m FShadowProjectionMatrix (with the inner and border scales);
-// u_ue_ls_a MinSubjectZ, MaxSubjectZ, DepthBias, SlopeDepthBias; u_ue_ls_b layer, tile / layer size, 1 / TransitionSize, fade
-// alpha; u_ue_ls_c ReceiverBias, ShadowSharpen x 7 + 1, MaxSlopeDepthBias, tile texels; llShadow names a light's map (-1 none).
-#define LS_MAX 4
+// Spot light shadow maps (ue_lightshadows.ludic), 8 vec4 a map in u_ue_ls: FShadowProjectionMatrix (with the inner and border
+// scales); a MinSubjectZ, MaxSubjectZ, DepthBias, SlopeDepthBias; b atlas page, -, 1 / TransitionSize, fade alpha; c ReceiverBias,
+// ShadowSharpen x 7 + 1, MaxSlopeDepthBias, tile texels; t the tile's corner in the atlas (texels). llShadow names a light's map.
 uniform int u_ue_ls_n;
 uniform sampler2DArray u_ue_lsh;
-uniform mat4 u_ue_ls_m[LS_MAX];
-uniform vec4 u_ue_ls_a[LS_MAX];
-uniform vec4 u_ue_ls_b[LS_MAX];
-uniform vec4 u_ue_ls_c[LS_MAX];
-uniform float u_ue_ls_size;
+uniform float u_ue_ls_size;          // an atlas's size in texels
+readonly buffer u_ue_ls { vec4 ue_ls[]; };
+mat4 lsM(int s) { int b = s * 8; return mat4(ue_ls[b], ue_ls[b + 1], ue_ls[b + 2], ue_ls[b + 3]); }
+vec4 lsA(int s) { return ue_ls[s * 8 + 4]; }
+vec4 lsB(int s) { return ue_ls[s * 8 + 5]; }
+vec4 lsC(int s) { return ue_ls[s * 8 + 6]; }
+vec4 lsT(int s) { return ue_ls[s * 8 + 7]; }
 // the map holds FShadowProjectionMatrix's hardware depth; Unreal's caster writes the linear (z - MinZ) / (MaxZ - MinZ): turned back
 vec4 ueLsLinear(vec4 d, vec4 a) {
   vec4 z = a.x * a.y / (d * (a.y - a.x) + a.x);
@@ -475,37 +476,37 @@ vec4 ueLsGather(int s, vec2 pos, ivec2 off, float sceneDepth, float ts) {
   vec4 d;
   // textureGatherOffset needs a constant offset
   if (off.y == -2) {
-    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(-2, -2));
-    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(0, -2));
-    else d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(2, -2));
+    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(-2, -2));
+    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(0, -2));
+    else d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(2, -2));
   } else if (off.y == 0) {
-    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(-2, 0));
-    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(0, 0));
-    else d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(2, 0));
+    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(-2, 0));
+    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(0, 0));
+    else d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(2, 0));
   } else {
-    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(-2, 2));
-    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(0, 2));
-    else d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(2, 2));
+    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(-2, 2));
+    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(0, 2));
+    else d = textureGatherOffset(u_ue_lsh, vec3(pos, lsB(s).x), ivec2(2, 2));
   }
-  return clamp((ueLsLinear(d, u_ue_ls_a[s]) - sceneDepth) * ts + 1.0, 0.0, 1.0);
+  return clamp((ueLsLinear(d, lsA(s)) - sceneDepth) * ts + 1.0, 0.0, 1.0);
 }
 // ShadowProjectionPixelShader at r.ShadowQuality 5: Manual5x5PCF, ShadowSharpen, ApplyPCFOverBlurCorrection, the fade
 float ueSpotShadow(int s, vec3 wpos, vec3 n, vec3 L, vec3 fwd) {
-  vec4 sp = u_ue_ls_m[s] * vec4(wpos, 1.0);
+  vec4 sp = lsM(s) * vec4(wpos, 1.0);
   if (sp.w <= 0.0) return 1.0;
   vec2 uv = sp.xy / sp.w * 0.5 + 0.5;
-  vec4 a = u_ue_ls_a[s];
+  vec4 a = lsA(s);
   // ShadowZ = 1 - ShadowPosition.z, the linear depth; min with 0.99999 so the cleared far plane reads lit
   float shadowZ = min((sp.w - a.x) / (a.y - a.x), 0.99999);
   // the caster's bias (ComputeDepthBiasDirectionalSpot: the slope against the light's axis), taken at the receiver
   float nl = abs(dot(fwd, n));
-  float slope = nl > 0.0 ? clamp(sqrt(clamp(1.0 - nl * nl, 0.0, 1.0)) / nl, 0.0, u_ue_ls_c[s].z) : u_ue_ls_c[s].z;
+  float slope = nl > 0.0 ? clamp(sqrt(clamp(1.0 - nl * nl, 0.0, 1.0)) / nl, 0.0, lsC(s).z) : lsC(s).z;
   float sceneDepth = shadowZ - (a.z + a.w * slope);
-  float ts = u_ue_ls_b[s].z * mix(u_ue_ls_c[s].x, 1.0, clamp(dot(n, L), 0.0, 1.0));
+  float ts = lsB(s).z * mix(lsC(s).x, 1.0, clamp(dot(n, L), 0.0, 1.0));
   // Manual5x5PCF over the light's tile of the layer
-  vec2 texelPos = uv * u_ue_ls_c[s].w - 0.5;
+  vec2 texelPos = uv * lsC(s).w - 0.5;
   vec2 f = fract(texelPos);
-  vec2 pos = (floor(texelPos) + 1.0) / u_ue_ls_size;
+  vec2 pos = (lsT(s).xy + floor(texelPos) + 1.0) / u_ue_ls_size;
   vec2 row0 = ueHorizontalPCF5x2(f, ueLsGather(s, pos, ivec2(-2, -2), sceneDepth, ts), ueLsGather(s, pos, ivec2(0, -2), sceneDepth, ts), ueLsGather(s, pos, ivec2(2, -2), sceneDepth, ts));
   float res = row0.x * (1.0 - f.y) + row0.y;
   vec2 row1 = ueHorizontalPCF5x2(f, ueLsGather(s, pos, ivec2(-2, 0), sceneDepth, ts), ueLsGather(s, pos, ivec2(0, 0), sceneDepth, ts), ueLsGather(s, pos, ivec2(2, 0), sceneDepth, ts));
@@ -513,32 +514,33 @@ float ueSpotShadow(int s, vec3 wpos, vec3 n, vec3 L, vec3 fwd) {
   vec2 row2 = ueHorizontalPCF5x2(f, ueLsGather(s, pos, ivec2(-2, 2), sceneDepth, ts), ueLsGather(s, pos, ivec2(0, 2), sceneDepth, ts), ueLsGather(s, pos, ivec2(2, 2), sceneDepth, ts));
   res += row2.x + row2.y * f.y;
   float sh = 0.04 * res;
-  sh = clamp((sh - 0.5) * u_ue_ls_c[s].y + 0.5, 0.0, 1.0);
+  sh = clamp((sh - 0.5) * lsC(s).y + 0.5, 0.0, 1.0);
   sh = sh * sh;
-  return mix(1.0, sh, u_ue_ls_b[s].w);
+  return mix(1.0, sh, lsB(s).w);
 }
 // ComputeVolumeShadowing's spot path: one sample, SceneDepth < ShadowDepth - DepthBias, unshadowed outside the map
 float ueSpotShadowVolume(int s, vec3 wpos) {
-  vec4 sp = u_ue_ls_m[s] * vec4(wpos, 1.0);
+  vec4 sp = lsM(s) * vec4(wpos, 1.0);
   if (sp.w <= 0.0) return 1.0;
   vec2 uv = sp.xy / sp.w * 0.5 + 0.5;
   if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 1.0;
-  vec4 a = u_ue_ls_a[s];
+  vec4 a = lsA(s);
   float sceneDepth = (sp.w - a.x) / (a.y - a.x);
-  float d = textureLod(u_ue_lsh, vec3(uv * u_ue_ls_b[s].y, u_ue_ls_b[s].x), 0.0).r;
+  float d = textureLod(u_ue_lsh, vec3((lsT(s).xy + uv * lsC(s).w) / u_ue_ls_size, lsB(s).x), 0.0).r;
   float shadowDepth = ueLsLinear(vec4(d), a).x;
   // the bias-free depth here: Unreal's stored depth already holds the caster's DepthBias + slope term, of which this takes DepthBias back
   return sceneDepth < shadowDepth ? 1.0 : 0.0;
 }
-// Point light cubes (ue_lightshadows.ludic): six layers a light from u_ue_lp_a.x, face f looking along +x, -x, +y, -y, +z, -z;
-// u_ue_lp_m the faces' FReversedZPerspectiveMatrix x view; u_ue_lp_a first layer, face size / layer size, DepthBias,
-// SlopeDepthBias; u_ue_lp_b 1 / face size, fade alpha, ShadowSharpen x 7 + 1, the fog's DepthBias. llShadow -2 - p names one.
-#define LP_MAX 4
+// Point light cubes (ue_lightshadows.ludic), 32 vec4 a light in u_ue_lp: six face matrices (FReversedZPerspectiveMatrix x view,
+// face f looking along +x, -x, +y, -y, +z, -z); a -, face size, DepthBias, SlopeDepthBias; b 1 / face size, fade alpha,
+// ShadowSharpen x 7 + 1, the fog's DepthBias; then each face's tile: corner (texels), atlas page, size. llShadow -2 - p names one.
 uniform int u_ue_lp_n;
 uniform sampler2DArrayShadow u_ue_lph;
-uniform mat4 u_ue_lp_m[LP_MAX * 6];
-uniform vec4 u_ue_lp_a[LP_MAX];
-uniform vec4 u_ue_lp_b[LP_MAX];
+readonly buffer u_ue_lp { vec4 ue_lp[]; };
+mat4 lpM(int p, int f) { int b = p * 32 + f * 4; return mat4(ue_lp[b], ue_lp[b + 1], ue_lp[b + 2], ue_lp[b + 3]); }
+vec4 lpA(int p) { return ue_lp[p * 32 + 24]; }
+vec4 lpB(int p) { return ue_lp[p * 32 + 25]; }
+vec4 lpT(int p, int f) { return ue_lp[p * 32 + 26 + f]; }
 // ShadowProjectionCommon.ush DiscSamples29: 29 points in a disc of radius 2.5
 const vec2 ueDisc29[29] = vec2[29](
   vec2(0.000000, 2.500000), vec2(1.016842, 2.283864), vec2(1.857862, 1.672826), vec2(2.377641, 0.772542), vec2(2.486305, -0.261321),
@@ -557,12 +559,13 @@ int ueCubeFace(vec3 d) {
 // a cube texture's compare at a direction from the light (SampleCmpLevelZero, bilinear): 1 lit
 float ueCubeCmp(int p, vec3 lightPos, vec3 dir, float ref) {
   int f = ueCubeFace(dir);
-  vec4 c = u_ue_lp_m[p * 6 + f] * vec4(lightPos + dir, 1.0);
+  vec4 c = lpM(p, f) * vec4(lightPos + dir, 1.0);
   vec2 uv = c.xy / c.w * 0.5 + 0.5;
-  // a cube face is its own texture in Unreal: keep the bilinear taps inside this face's part of the layer
-  float h = 0.5 * u_ue_lp_b[p].x;
-  uv = clamp(uv, vec2(h), vec2(1.0 - h)) * u_ue_lp_a[p].y;
-  return texture(u_ue_lph, vec4(uv, u_ue_lp_a[p].x + float(f), ref));
+  // a cube face is its own texture in Unreal: keep the bilinear taps inside this face's tile of the atlas
+  float h = 0.5 * lpB(p).x;
+  vec4 t = lpT(p, f);
+  uv = (t.xy + clamp(uv, vec2(h), vec2(1.0 - h)) * t.w) / u_ue_ls_size;
+  return texture(u_ue_lph, vec4(uv, t.z, ref));
 }
 // ShadowProjectionPixelShader's point branch at r.ShadowQuality 5: the normal receiver bias, CubemapHardwarePCF (29 samples),
 // ShadowSharpen, ApplyPCFOverBlurCorrection, the fade
@@ -572,19 +575,19 @@ float uePointShadow(int p, int i, vec3 wpos, vec3 n) {
   float dist = length(toLight);
   if (dist * llPos(i).w >= 1.0) return 1.0;
   vec3 nl = toLight / dist;
-  float slopeBias = (1.0 - clamp(dot(n, nl), 0.0, 1.0)) * u_ue_lp_a[p].w;
+  float slopeBias = (1.0 - clamp(dot(n, nl), 0.0, 1.0)) * lpA(p).w;
   // SideVector = normalize(cross(NormalizedLightVector, up)) with Unreal's up, which is our y
   vec3 side = cross(nl, vec3(0.0, 1.0, 0.0));
   float sl = length(side);
   side = sl > 1.0e-5 ? side / sl : vec3(1.0, 0.0, 0.0);
   vec3 upv = cross(side, nl);
-  side *= u_ue_lp_b[p].x;
-  upv *= u_ue_lp_b[p].x;
+  side *= lpB(p).x;
+  upv *= lpB(p).x;
   int f = ueCubeFace(-toLight);
-  vec4 sp = u_ue_lp_m[p * 6 + f] * vec4(wpos, 1.0);
+  vec4 sp = lpM(p, f) * vec4(wpos, 1.0);
   float compareDistance = sp.z / sp.w;
   // ShadowDepthBias = -(DepthBias + SlopeBias) / ShadowPosition.w, w in Unreal's centimetres
-  float bias = (u_ue_lp_a[p].z + slopeBias) / (sp.w * 100.0);
+  float bias = (lpA(p).z + slopeBias) / (sp.w * 100.0);
   float sh = 0.0;
   for (int k = 0; k < 29; k++) {
     vec3 dir = nl + side * ueDisc29[k].x + upv * ueDisc29[k].y;
@@ -592,9 +595,9 @@ float uePointShadow(int p, int i, vec3 wpos, vec3 n) {
     sh += ueCubeCmp(p, lightPos, -dir, compareDistance + bias * length(ueDisc29[k]));
   }
   sh /= 29.0;
-  sh = clamp((sh - 0.5) * u_ue_lp_b[p].z + 0.5, 0.0, 1.0);
+  sh = clamp((sh - 0.5) * lpB(p).z + 0.5, 0.0, 1.0);
   sh = sh * sh;
-  return mix(1.0, sh, u_ue_lp_b[p].y);
+  return mix(1.0, sh, lpB(p).y);
 }
 // ComputeVolumeShadowing's cube path (SHADOW_QUALITY 2): one compare, DepthBias 0.03 x 512 / resolution, no slope
 float uePointShadowVolume(int p, int i, vec3 wpos) {
@@ -602,8 +605,8 @@ float uePointShadowVolume(int p, int i, vec3 wpos) {
   vec3 toLight = lightPos - wpos;
   if (length(toLight) * llPos(i).w >= 1.0) return 1.0;
   int f = ueCubeFace(-toLight);
-  vec4 sp = u_ue_lp_m[p * 6 + f] * vec4(wpos, 1.0);
-  return ueCubeCmp(p, lightPos, -toLight, sp.z / sp.w + u_ue_lp_b[p].w / (sp.w * 100.0));
+  vec4 sp = lpM(p, f) * vec4(wpos, 1.0);
+  return ueCubeCmp(p, lightPos, -toLight, sp.z / sp.w + lpB(p).w / (sp.w * 100.0));
 }
 vec3 ueLocalLights(vec3 wpos, vec3 n, vec3 v, vec3 albedo, float a, float metal, vec3 f0, float NoV) {
   vec3 c = vec3(0.0);
