@@ -16,6 +16,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Real-time sky light (capture, GGX cube, SH diffuse) | ue_skylight.ludic, ue_skylight.frag, lighting.glsl `u_ue_sl` | `R3D_UE_SKYLIGHT=0`, `r3d_ue_skylight` |
 | Atmosphere sun light (sun colour = outer illuminance x ground transmittance) | ue_skylight.ludic `ue_sunlight_on`, daylight.ludic `daylight_set` | `R3D_UE_SUNLIGHT=0`, `r3d_ue_sunlight` |
 | The hour's grade in Unreal's settings (lowest-priority unbound volume) | ue_post.ludic `ue_tod_grade`, daylight.ludic | `R3D_UE_HOUR_GRADE=0`, `r3d_ue_hour_grade` |
+| Local lights: point + spot (units, attenuation, cone), on surfaces and in the volumetric fog | ue_lights.ludic, lighting.glsl `ueLocalLights`, ue_volfog.frag | `R3D_UE_LIGHTS=0`, `r3d_ue_lights`; `R3D_LL` test lights |
 | Volumetric fog (froxel grid: media, sun + sky light scattering, temporal, integration) | ue_volfog.ludic, ue_volfog.frag, ue_fog.frag | `R3D_UE_VOLFOG=0`, `r3d_ue_volfog`; `R3D_UE_FOG_DENSITY`, `R3D_UE_VOLFOG_G` for tuning; `R3D_UE_VOLFOG_DEBUG=1` shadow view |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
@@ -84,6 +85,16 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
   Lamp and headlight beams need general local lights, which are not ported.
 - **Not ported in the volumetric fog:** local lights, light functions, the conservative depth test and its history fix-up,
   super-sampling on a history miss, local fog volumes, Lumen GI.
+
+- **Local lights are unshadowed.** CastShadows is kept on UeLocalLight but no shadow map is drawn yet: light passes through
+  walls (the test spot's pool runs under the box). Shadow maps for spot and point lights are the next piece.
+- **No light grid yet.** Unreal culls lights into a clustered grid; here the 32 lights nearest the camera (within MaxDrawDistance)
+  go to every draw. A city at night with hundreds of lamps needs the grid (or MegaLights).
+- **Light units are Unreal's, on our scene's scale.** Candela / d^2 in metres; Unreal's defaults (point 5000 Unitless = 8 cd,
+  radius 10 m) sit on the same scale as Unreal's own default sun, which ours roughly matches (the sky's sun is our base sun). At
+  night exposure adapts to the dark frame, so a bright lamp blows out nearby surfaces (the 1500 cd test spot did): pick lamp
+  intensities with that in mind, or night exposure limits.
+- **The game places no Unreal lights yet.** Street lamps, shop lights and car headlights need ue_light_add calls in the game.
 
 ## Not ported yet (in this area)
 

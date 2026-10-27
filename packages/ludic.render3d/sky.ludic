@@ -161,4 +161,5 @@ function sky_bind_lighting(render3d_st: mut Render3dState, prog: int) -> void {
   lightzone_bind(render3d_st, prog)
   zonelamp_bind(render3d_st, prog)
   ue_skylight_bind(render3d_st, prog)
+  ue_lights_bind(render3d_st, prog)
 }

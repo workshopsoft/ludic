@@ -4,7 +4,7 @@
 // VolumetricFogDistance, sliced as CalculateGridZParams (slice = log2(depth * B + O) * S). The GPU layer has no 3D render targets,
 // so the grid is a 2D array with a layer a slice, drawn one slice at a time; VF_SCATTER does setup and scattering in one pass,
 // VF_INTEGRATE writes slice z by integrating slices 0..z. Metres; Unreal's z up is our y.
-// Not ported: local lights (none of ours are general lights yet), light functions, the conservative depth test and its history
+// Not ported: local lights' shadows (ue_lights.ludic lights are unshadowed so far), light functions, the conservative depth test and its history
 // fix-up (FixupHistoryUV), super-sampling on a history miss (HistoryMissSuperSampleCount), local fog volumes, Lumen GI.
 in vec2 v_uv;
 out vec4 o_color;
@@ -119,6 +119,21 @@ void main() {
   if (vf_debug > 0.5) { o_color = vec4(vec3(shadow), 1.0);  return; }
   L += vf_sun_color * shadow * vfPhase(vf_g, dot(vf_sun_dir, -camVec));
   if (vf_sky_on > 0.5) L += vf_sky_color * vfSkySHSimple(camVec * -vf_g);
+  // the local lights (ue_lights.ludic): DistanceBiasSqr = max(CellRadius x InverseSquaredLightDistanceBiasScale (1), 1 cm)^2
+  if (u_ll_n > 0) {
+    float unusedR;
+    float cellRadius = length(pos - vfCellPos(coord + vec3(1.0), off, unusedR));
+    float bias = max(cellRadius, 0.01);
+    bias *= bias;
+    for (int i = 0; i < LL_MAX; i++) {
+      if (i >= u_ll_n) break;
+      float vsi = u_ll_misc[i].w;
+      if (vsi <= 0.0) continue;
+      vec3 Ll;
+      float att = ueLocalLightAttenuation(i, pos, bias, Ll);
+      if (att > 0.0) L += u_ll_col[i].rgb * (vfPhase(vf_g, dot(Ll, -camVec)) * att * vsi);
+    }
+  }
   vec4 cur = vec4(L * scattering + vf_emissive, extinction);
   // temporal reprojection of the cell's centre into last frame's grid
   float histAlpha = 0.0;

@@ -1,0 +1,199 @@
+# ============================================================================
+# ue_lights.ludic — Unreal's point and spot lights: units, attenuation and cone as UE 5.8 has them, lighting surfaces and the fog.
+#
+# UeLocalLight is ULocalLightComponent / UPointLightComponent / USpotLightComponent with their defaults (Intensity 5000 Unitless,
+# AttenuationRadius 1000 cm = 10 m, bUseInverseSquaredFalloff, LightFalloffExponent 8, InnerConeAngle 0, OuterConeAngle 44,
+# VolumetricScatteringIntensity 1, SpecularScale 1, DiffuseScale 1). Brightness as ComputeLightBrightness gives it to the shader,
+# in metres: Candelas as they are, Unitless x 16 / 100^2 (the legacy scale), Lumens / 4 PI (a point) or / (2 PI (1 - cos half
+# outer cone)) (a spot), EV as 2^EV. Cone angles clamped as GetClampedConeAngles; SpotAngles (CosOuterCone, InvCosConeDifference).
+# Positions are render space (metres); ue_light_rebase moves them with the floating origin.
+#
+# The shader side is lighting.glsl ueLocalLights (surfaces, the sun's BRDF) and ue_volfog.frag (the fog). Not ported yet: the light
+# grid (Unreal culls lights into a clustered grid; here the LL_MAX lights nearest the camera within their reach are sent to every
+# draw), shadows (CastShadows is kept but no shadow map is drawn), source radius / length, rect lights, IES, light functions.
+# R3D_UE_LIGHTS=0 (or r3d_ue_lights(st, false)) turns them all off. R3D_LL adds test lights (see ue_lights_env).
+# ============================================================================
+
+export const UE_LIGHT_UNITLESS: int = 0
+export const UE_LIGHT_CANDELAS: int = 1
+export const UE_LIGHT_LUMENS: int = 2
+export const UE_LIGHT_EV: int = 3
+const UE_LL_MAX: int = 32
+
+property UeLocalLight {
+  enabled: bool = true,
+  spot: bool = false,                          # a USpotLightComponent (else a point light)
+  x: float = 0.0, y: float = 0.0, z: float = 0.0,
+  dir_x: float = 0.0, dir_y: float = -1.0, dir_z: float = 0.0,   # a spot's direction (the light's forward)
+  color_r: float = 1.0, color_g: float = 1.0, color_b: float = 1.0,   # LightColor (linear)
+  intensity: float = 5000.0,                   # Intensity
+  intensity_units: int = 0,                    # IntensityUnits (UE_LIGHT_*)
+  attenuation_radius: float = 10.0,            # AttenuationRadius (m)
+  use_inverse_squared_falloff: bool = true,    # bUseInverseSquaredFalloff
+  light_falloff_exponent: float = 8.0,         # LightFalloffExponent
+  inner_cone_angle: float = 0.0,               # InnerConeAngle (degrees)
+  outer_cone_angle: float = 44.0,              # OuterConeAngle (degrees)
+  volumetric_scattering_intensity: float = 1.0,  # VolumetricScatteringIntensity
+  specular_scale: float = 1.0,                 # SpecularScale
+  diffuse_scale: float = 1.0,                  # DiffuseScale
+  max_draw_distance: float = 0.0,              # MaxDrawDistance (m, 0 none)
+  cast_shadows: bool = true                    # CastShadows (not drawn yet)
+}
+
+export function r3d_ue_lights(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_ll_on = 0
+  if on { render3d_st.ue_ll_on = 1 }
+}
+function ue_lights_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_ll_on < 0 {
+    render3d_st.ue_ll_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_LIGHTS") and r3d_env(render3d_st, "R3D_UE_LIGHTS") == "0" { render3d_st.ue_ll_on = 0 }
+  }
+  return render3d_st.ue_ll_on == 1
+}
+
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+export function ue_light_add(render3d_st: mut Render3dState, spot: bool, x: float, y: float, z: float) -> UeLocalLight {
+  if render3d_st.ue_lls == null { render3d_st.ue_lls = new []UeLocalLight }
+  let l = new UeLocalLight
+  l.spot = spot;  l.x = x;  l.y = y;  l.z = z
+  push(render3d_st.ue_lls, l)
+  return l
+}
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+export function ue_light_remove(render3d_st: mut Render3dState, l: UeLocalLight) -> void {
+  if render3d_st.ue_lls == null { return }
+  let kept = new []UeLocalLight
+  for i in 0 .. len(render3d_st.ue_lls) { if render3d_st.ue_lls[i] != l { push(kept, render3d_st.ue_lls[i]) } }
+  render3d_st.ue_lls = kept
+}
+export function ue_light_rebase(render3d_st: mut Render3dState, dx: float, dy: float, dz: float) -> void {
+  if render3d_st.ue_lls == null { return }
+  for i in 0 .. len(render3d_st.ue_lls) { let l = render3d_st.ue_lls[i];  l.x += dx;  l.y += dy;  l.z += dz }
+}
+
+# GetClampedConeAngles: (inner, outer) in radians
+function ue_light_cone(l: UeLocalLight, o: floats) -> void {
+  let inner = Math.clamp(l.inner_cone_angle, 0.0, 88.9) * PI / 180.0
+  let outer = Math.clamp(l.outer_cone_angle * PI / 180.0, inner + 0.001, 88.9 * PI / 180.0 + 0.001)
+  o[0] = inner;  o[1] = outer
+}
+# ComputeLightBrightness in the shader's units (candela over metres squared)
+export function ue_light_candela(l: UeLocalLight) -> float {
+  if not l.use_inverse_squared_falloff { return l.intensity }
+  if l.intensity_units == UE_LIGHT_CANDELAS { return l.intensity }
+  if l.intensity_units == UE_LIGHT_LUMENS {
+    if l.spot {
+      let outer = Math.clamp(l.outer_cone_angle * PI / 180.0, Math.clamp(l.inner_cone_angle, 0.0, 88.9) * PI / 180.0 + 0.001, 88.9 * PI / 180.0 + 0.001)
+      return l.intensity / (2.0 * PI * (1.0 - Math.cos(outer)))
+    }
+    return l.intensity / (4.0 * PI)
+  }
+  if l.intensity_units == UE_LIGHT_EV { return Math.pow(2.0, l.intensity) }
+  return l.intensity * 16.0 / 10000.0
+}
+
+# Each frame: the lights nearest the camera that reach it within their attenuation radius (and MaxDrawDistance), packed
+function ue_lights_frame(render3d_st: mut Render3dState) -> void {
+  render3d_st.ue_ll_n = 0
+  if not ue_lights_on(render3d_st) or render3d_st.cam_pos == null { return }
+  ue_lights_env(render3d_st)
+  if render3d_st.ue_lls == null { return }
+  if render3d_st.ue_ll_pos == null { ue_lights_alloc(render3d_st) }
+  let cx = render3d_st.cam_pos[0];  let cy = render3d_st.cam_pos[1];  let cz = render3d_st.cam_pos[2]
+  # a simple selection of the nearest UE_LL_MAX (insertion into the distance-sorted list)
+  let n = len(render3d_st.ue_lls)
+  let pick = render3d_st.ue_ll_pick
+  let pd = render3d_st.ue_ll_pd
+  var m = 0
+  for i in 0 .. n {
+    let l = render3d_st.ue_lls[i]
+    if l.enabled {
+      let dx = l.x - cx;  let dy = l.y - cy;  let dz = l.z - cz
+      let d = Math.sqrt(dx * dx + dy * dy + dz * dz)
+      # the light's sphere of influence must reach well into view range; MaxDrawDistance fades it out entirely past it
+      var ok = true
+      if l.max_draw_distance > 0.0 and d > l.max_draw_distance { ok = false }
+      if ok {
+        var j = m
+        if m >= UE_LL_MAX { j = UE_LL_MAX - 1;  if d >= pd[j] { ok = false } }
+        if ok {
+          while j > 0 and pd[j - 1] > d { if j < UE_LL_MAX { pd[j] = pd[j - 1];  pick[j] = pick[j - 1] };  j -= 1 }
+          pd[j] = d;  pick[j] = float(i)
+          if m < UE_LL_MAX { m += 1 }
+        }
+      }
+    }
+  }
+  let cone = render3d_st.ue_ll_tmp
+  for k in 0 .. m {
+    let l = render3d_st.ue_lls[int(pick[k])]
+    let c = ue_light_candela(l)
+    let o = k * 4
+    render3d_st.ue_ll_pos[o] = l.x;  render3d_st.ue_ll_pos[o + 1] = l.y;  render3d_st.ue_ll_pos[o + 2] = l.z
+    render3d_st.ue_ll_pos[o + 3] = 1.0 / Math.max(l.attenuation_radius, 0.01)
+    render3d_st.ue_ll_col[o] = l.color_r * c;  render3d_st.ue_ll_col[o + 1] = l.color_g * c;  render3d_st.ue_ll_col[o + 2] = l.color_b * c
+    render3d_st.ue_ll_col[o + 3] = 0.0
+    if not l.use_inverse_squared_falloff { render3d_st.ue_ll_col[o + 3] = Math.max(l.light_falloff_exponent, 0.0001) }
+    var dlen = Math.sqrt(l.dir_x * l.dir_x + l.dir_y * l.dir_y + l.dir_z * l.dir_z)
+    if dlen < 0.000001 { dlen = 1.0 }
+    # the shader compares the vector to the light with -direction: store -direction
+    render3d_st.ue_ll_dir[o] = -l.dir_x / dlen;  render3d_st.ue_ll_dir[o + 1] = -l.dir_y / dlen;  render3d_st.ue_ll_dir[o + 2] = -l.dir_z / dlen
+    render3d_st.ue_ll_dir[o + 3] = -2.0
+    render3d_st.ue_ll_misc[o] = 0.0
+    if l.spot {
+      ue_light_cone(l, cone)
+      let co = Math.cos(cone[1])
+      render3d_st.ue_ll_dir[o + 3] = co
+      render3d_st.ue_ll_misc[o] = 1.0 / (Math.cos(cone[0]) - co)
+    }
+    render3d_st.ue_ll_misc[o + 1] = l.specular_scale
+    render3d_st.ue_ll_misc[o + 2] = l.diffuse_scale
+    render3d_st.ue_ll_misc[o + 3] = l.volumetric_scattering_intensity
+  }
+  render3d_st.ue_ll_n = m
+}
+
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_lights_alloc(render3d_st: mut Render3dState) -> void {
+  render3d_st.ue_ll_pos = floats(UE_LL_MAX * 4)
+  render3d_st.ue_ll_col = floats(UE_LL_MAX * 4)
+  render3d_st.ue_ll_dir = floats(UE_LL_MAX * 4)
+  render3d_st.ue_ll_misc = floats(UE_LL_MAX * 4)
+  render3d_st.ue_ll_pick = floats(UE_LL_MAX)
+  render3d_st.ue_ll_pd = floats(UE_LL_MAX)
+  render3d_st.ue_ll_tmp = floats(2)
+}
+
+# a lit program's lights (sky_bind_lighting)
+function ue_lights_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_n"), render3d_st.ue_ll_n)
+  if render3d_st.ue_ll_n == 0 { return }
+  u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_pos"), UE_LL_MAX, render3d_st.ue_ll_pos)
+  u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_col"), UE_LL_MAX, render3d_st.ue_ll_col)
+  u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_dir"), UE_LL_MAX, render3d_st.ue_ll_dir)
+  u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_misc"), UE_LL_MAX, render3d_st.ue_ll_misc)
+}
+
+# R3D_LL: test lights, read once - "kind,x,y,z,r,g,b,candela,radius[,dx,dy,dz,inner,outer];..." with kind p (point) or s (spot),
+# render space metres, e.g. R3D_LL="p,52,3,22,1,0.8,0.6,400,12;s,48,4,30,1,1,1,2000,25,0,-1,0,10,30"
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_lights_env(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ue_ll_env { return }
+  render3d_st.ue_ll_env = true
+  if not r3d_env_has(render3d_st, "R3D_LL") { return }
+  let parts = Text.split(r3d_env(render3d_st, "R3D_LL"), ";")
+  for i in 0 .. len(parts) {
+    let g = Text.split(parts[i], ",")
+    if len(g) >= 9 {
+      let l = ue_light_add(render3d_st, g[0] == "s", ue_parse_float(g[1]), ue_parse_float(g[2]), ue_parse_float(g[3]))
+      l.color_r = ue_parse_float(g[4]);  l.color_g = ue_parse_float(g[5]);  l.color_b = ue_parse_float(g[6])
+      l.intensity = ue_parse_float(g[7]);  l.intensity_units = UE_LIGHT_CANDELAS
+      l.attenuation_radius = ue_parse_float(g[8])
+      if len(g) >= 14 {
+        l.dir_x = ue_parse_float(g[9]);  l.dir_y = ue_parse_float(g[10]);  l.dir_z = ue_parse_float(g[11])
+        l.inner_cone_angle = ue_parse_float(g[12]);  l.outer_cone_angle = ue_parse_float(g[13])
+      }
+    }
+  }
+}

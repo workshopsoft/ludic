@@ -376,6 +376,57 @@ vec3 clCol(int i) { return i == 0 ? u_cl_col0 : (i == 1 ? u_cl_col1 : u_cl_col2)
 float g_dielF0 = 0.04;
 
 // direct + image-based lighting for one surface
+// ---- Unreal's local lights (ue_lights.ludic): point and spot lights in Unreal's units, attenuation and cone (UE 5.8
+// DeferredLightingCommon.ush GetLocalLightAttenuation, DynamicLightingCommon.ush SpotAttenuation, CapsuleLightIntegrate.ush
+// IntegrateLight with no source radius: 1 / (d^2 + DistBiasSqr), DistBiasSqr 1 cm^2), lit by the sun's BRDF, unshadowed for now.
+// u_ll_pos: xyz position, w InvRadius (1 / AttenuationRadius); u_ll_col: rgb the light's colour x its intensity in candela,
+// w FalloffExponent (0: inverse squared); u_ll_dir: xyz the spot's direction, w CosOuterCone (-2: a point light);
+// u_ll_misc: x InvCosConeDifference, y SpecularScale, z DiffuseScale, w VolumetricScatteringIntensity.
+#define LL_MAX 32
+uniform int u_ll_n;
+uniform vec4 u_ll_pos[LL_MAX];
+uniform vec4 u_ll_col[LL_MAX];
+uniform vec4 u_ll_dir[LL_MAX];
+uniform vec4 u_ll_misc[LL_MAX];
+// GetLocalLightAttenuation x IntegrateLight's falloff, and the unit vector to the light
+float ueLocalLightAttenuation(int i, vec3 wpos, float distBiasSqr, out vec3 L) {
+  vec3 toLight = u_ll_pos[i].xyz - wpos;
+  float d2 = dot(toLight, toLight);
+  L = toLight * inversesqrt(max(d2, 1.0e-12));
+  float invR = u_ll_pos[i].w;
+  float mask;
+  float falloffExp = u_ll_col[i].w;
+  if (falloffExp <= 0.0) {
+    float t = clamp(1.0 - (d2 * invR * invR) * (d2 * invR * invR), 0.0, 1.0);
+    mask = t * t;
+    mask *= 1.0 / (d2 + distBiasSqr);
+  } else {
+    vec3 wl = toLight * invR;
+    mask = pow(1.0 - clamp(dot(wl, wl), 0.0, 1.0), falloffExp);   // RadialAttenuation; no 1/d^2 (Falloff 1 when not inverse squared)
+  }
+  if (u_ll_dir[i].w > -1.5) {
+    float sm = clamp((dot(L, u_ll_dir[i].xyz) - u_ll_dir[i].w) * u_ll_misc[i].x, 0.0, 1.0);
+    mask *= sm * sm;
+  }
+  return mask;
+}
+vec3 ueLocalLights(vec3 wpos, vec3 n, vec3 v, vec3 albedo, float a, float metal, vec3 f0, float NoV) {
+  vec3 c = vec3(0.0);
+  for (int i = 0; i < LL_MAX; i++) {
+    if (i >= u_ll_n) break;
+    vec3 L;
+    float att = ueLocalLightAttenuation(i, wpos, 0.0001, L);
+    float NoL = max(dot(n, L), 0.0);
+    if (att <= 0.0 || NoL <= 0.0) continue;
+    vec3 H = normalize(v + L);
+    vec3 F = F_Schlick(max(dot(v, H), 0.0), f0);
+    vec3 spec = min(D_GGX(max(dot(n, H), 0.0), a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale * u_ll_misc[i].y;
+    vec3 diff = (1.0 - F) * (1.0 - metal) * albedo / PI * u_ll_misc[i].z;
+    c += (diff + spec) * u_ll_col[i].rgb * NoL * att;
+  }
+  return c;
+}
+
 vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, float shadow, float viewDepth) {
   vec3 v = normalize(u_cam_pos - wpos);
   vec3 l = u_sun_dir;
@@ -414,6 +465,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   float so = clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
   // check for NaN before min(): on this GPU min(NaN, x) returns x, which would hide the fault as a hot pixel
   vec3 c = direct + (diffuseIBL * ao + specIBL * so) + bounce * ao + zoneAmb * ao + (fireLight(wpos, n, albedo) + handLight(wpos, n, albedo)) * ao;
+  if (u_ll_n > 0) c += ueLocalLights(wpos, n, v, albedo, a, metal, f0, NoV);
   // the character rig: the same BRDF as the sun's, unshadowed, half dimmed by the occlusion (a soft studio light reaches into folds)
   if (u_char_lit > 0.0) {
     vec3 cl = vec3(0.0);
