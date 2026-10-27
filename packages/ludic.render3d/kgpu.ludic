@@ -43,7 +43,8 @@ property KGpuKit {
   casts: bool = true,
   fac: floats,              # a box kit's FACADE uniforms (kgpu_kit_facade: 20 floats, kit.frag's u_fac_a .. u_fac_e), null for none
   box: KitBox,              # a box kit's anchor tuples (kitbox.ludic), null for an ordinary kit
-  box_ref: floats           # the instance its card was baked at: drawn width, depth, top (oimp_bake's w, d, h)
+  box_ref: floats,          # the instance its card was baked at: drawn width, depth, top (oimp_bake's w, d, h)
+  alt: floats               # its card's alternative (oimp.frag u_imp_alt): the colour a share of the instances wear (brick for render), r g b share
 }
 
 export property KGpu {
@@ -397,6 +398,7 @@ export function kgpu_bake_kit(render3d_st: mut Render3dState, g: KGpu, id: int, 
     k.atlas = oimp_bake(render3d_st, g.p_bake, g.b_ident, k.model, w, d, h, n, frame_px)
   }
   render3d_st.gvk_tag = was
+  k.alt = kgpu_card_alt(k.model)
   k.card = true
   # the card record, now that there is a card
   let c = words(5)
@@ -693,6 +695,7 @@ function kgpu_draw_cards(render3d_st: mut Render3dState, g: KGpu) -> void {
     let a = k.atlas
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), a.radius)
     kgpu_card_box(render3d_st, g, p, k)
+    kgpu_card_alt_bind(render3d_st, p, k)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_centre_y"), a.centre_y)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frames"), float(a.n))
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frame_px"), float(a.px))
@@ -700,6 +703,29 @@ function kgpu_draw_cards(render3d_st: mut Render3dState, g: KGpu) -> void {
     r3d_bind_2d(render3d_st, p, "u_atlas_normal", 1, a.normal)
     gpu_draw_mesh_indirect(render3d_st, g.card_mesh, g.b_cmds, (id * KG_REC + KG_PRIMS) * 20, 1, 0, 0)
   }
+}
+
+# the alternative a kit's surfaced material has (surface.ludic surf_apply: kit.frag lays it over the instances whose seed falls under
+# its share), as its card draws it: the alternative's mean colour graded as surfaceAtP grades a scan's own colour, and the share
+@alloc_ok("a kit's card being baked: its alternative's colour, once")
+function kgpu_card_alt(m: Model) -> floats {
+  let a = floats(4)
+  a[0] = 0.0;  a[1] = 0.0;  a[2] = 0.0;  a[3] = 0.0
+  if m == null { return a }
+  for i in 0 .. len(m.prims) {
+    let pr = m.prims[i]
+    if pr == null or pr.surf == null or pr.surf2 == null or pr.surf2[17] <= 0.0 { continue }
+    let s = pr.surf2
+    let l = 0.2126 * s[8] + 0.7152 * s[9] + 0.0722 * s[10]
+    for c in 0 .. 3 { a[c] = Math.max((l + (s[8 + c] - l) * s[13]) * s[12], 0.0) }
+    a[3] = s[17]
+    return a
+  }
+  return a
+}
+function kgpu_card_alt_bind(render3d_st: mut Render3dState, p: int, k: KGpuKit) -> void {
+  if k.alt == null { u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_imp_alt"), 0.0, 0.0, 0.0, 0.0);  return }
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_imp_alt"), k.alt[0], k.alt[1], k.alt[2], k.alt[3])
 }
 
 # a card's box uniforms: the kit's anchor tuples and the instance its frames were baked at (u_box_ref.w 0: an ordinary kit)
@@ -823,6 +849,7 @@ export function kgpu_draw_lists(render3d_st: mut Render3dState, g: KGpu, k: KCul
     let a = kit.atlas
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_radius"), a.radius)
     kgpu_card_box(render3d_st, g, p, kit)
+    kgpu_card_alt_bind(render3d_st, p, kit)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_centre_y"), a.centre_y)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frames"), float(a.n))
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_frame_px"), float(a.px))

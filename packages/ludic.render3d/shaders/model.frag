@@ -641,6 +641,21 @@ void main() {
     d.rgb = alb;
   }
 #endif
+#if !defined(FABRIC) && !defined(EYE) && !defined(SSS_SPLIT) && !defined(TRANSLUCENT)
+  // a surface (surface.ludic): the scanned material its name asks for, tiled in metres, in place of the mesh's own maps
+  if (u_surf.x > 0.0) {
+    vec3 base = (vec3(1.0) - u_fac_base_inv.rgb) * v_col.rgb;
+    vec3 sa, sn, sr;
+    // two surfaces: the ground's (its second's share 0), or a world-laid mesh's alternative in patches (a kit's alternative,
+    // by instance, is kit.frag's: a model in a kit's material keeps the first alone)
+    bool ground = u_s2.x > 0.0 && u_s2_e.y == 0.0;
+    if (ground || (u_s2.x > 0.0 && u_surf.y < 0.5)) surfaceGround(u_diff, u_nrm, u_arm, v_wpos, N, base, v_uv, sa, sn, sr);
+    else surfaceAtP(u_diff, u_nrm, u_arm, surfMain(), surfPlace(surfMain(), v_wpos, v_uv, v_wpos), N, N, v_wpos, base, sa, sn, sr);
+    d.rgb = (u_surf_b.x > 0.5 || ground) ? sa : sa * v_col.rgb;
+    n = sn;
+    arm = vec3(sr.r, sr.g * (1.0 - u_fac_mr_inv.x), sr.b * (1.0 - u_fac_mr_inv.y));
+  }
+#endif
   n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
   alb = d.rgb;
   // a crown's interior is occluded by its own cards

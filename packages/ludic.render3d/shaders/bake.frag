@@ -10,6 +10,11 @@ uniform vec4 u_fac_base_inv;   // a glTF material's base colour factor, as 1 - f
 uniform sampler2D u_arm;
 void main() {
   vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv);
+  // a surface's maps are laid by place, not by these uvs (surface.ludic): a card takes its mean colour (or the material's, toned)
+  if (u_surf.x > 0.0) {
+    float l = dot(u_surf_c.rgb, vec3(0.2126, 0.7152, 0.0722));
+    d.rgb = (u_surf_b.x > 0.5) ? (vec3(1.0) - u_fac_base_inv.rgb) : mix(vec3(l), u_surf_c.rgb, u_surf_d.y) * u_surf_d.x;
+  }
   if (d.a < 0.5) discard;          // cut-out cards (needles, blades, leaves) bake with their shape
   vec3 N = normalize(v_nrm);
   if (!gl_FrontFacing) N = -N;
@@ -26,5 +31,8 @@ void main() {
   } else d.rgb = vec3(0.08, 0.17, 0.03);
 #endif
   o_albedo = vec4(d.rgb, 1.0);
-  o_normal = vec4(N * 0.5 + 0.5, texture(u_arm, v_uv).r);
+  // the occlusion in the lower half; a material that has an alternative (a render wall some buildings wear as brick) marks its
+  // texels with the top (oimp.frag u_imp_alt): its occlusion means nothing (its maps are laid by place, not these uvs)
+  bool alt = u_surf.x > 0.0 && u_s2.x > 0.0;
+  o_normal = vec4(N * 0.5 + 0.5, alt ? 1.0 : texture(u_arm, v_uv).r * 0.49);
 }

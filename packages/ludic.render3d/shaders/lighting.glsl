@@ -944,3 +944,158 @@ float hairCountAt(vec3 wpos) {
   return t.r * clamp((d - md) / 0.006 + 0.5, 0.0, 1.0);
 }
 #endif
+
+// ---- surfaces: a scanned material tiled in metres over a mesh whose material names it (surface.ludic) ------------------------------
+// The mesh's own uvs, the world (planar along the normal's axis, blended at corners), or a kit's own frame (box instances: the
+// metres of the stretched box, so a wall's bricks keep their size at any width) give the place in tiles; two taps a projection at
+// offsets that change across a few tiles (Quilez's texture repetition, technique 3) hide the tile; a slow variation over tens of
+// metres breaks a large flat area. Off (u_surf.x 0) nothing here runs and the material draws as before. A second surface (u_s2:
+// the ground's paving under its grass) is blended in by the vertex colour: where the land-use tone is green, the first.
+uniform vec4 u_surf;     // metres a tile (0: off), mapping (0 world, 1 the mesh's uvs, 2 a kit's frame), the origin's offset x, z in tiles
+uniform vec4 u_surf_b;   // tone (1: the material's colour times the texture's detail over its mean; 0: the texture's own colour),
+                         // anti-tiling share 0..1, macro variation share, normal strength (negative flips the map's green)
+uniform vec4 u_surf_c;   // the texture's mean albedo r g b (tone divides by it), metres a unit of the mesh's uvs
+uniform vec4 u_surf_d;   // albedo gain, saturation (1 the scan's own), roughness scale
+uniform vec4 u_surf_e;   // the height map's depth in tiles (the diffuse map's alpha; 0 none), a kit's alternative's share (on u_s2_e)
+uniform vec4 u_s2;       // the second surface, as u_surf .. u_surf_e (u_s2.x 0: none)
+uniform vec4 u_s2_b;
+uniform vec4 u_s2_c;
+uniform vec4 u_s2_d;
+uniform vec4 u_s2_e;
+uniform sampler2D u_s2_diff;
+uniform sampler2D u_s2_nrm;
+uniform sampler2D u_s2_arm;
+struct SurfP { vec4 a; vec4 b; vec4 c; vec4 d; vec4 e; };
+// period 1024 / scale cells: every pattern repeats in a whole number of 1024-tile spans, so the origin's offset (mod 1024 tiles)
+// moves nothing on a rebase
+float surfHash(vec2 c, float per) { c = mod(c, per); return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }
+float surfNoise(vec2 x, float per) {
+  vec2 i = floor(x), f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(surfHash(i, per), surfHash(i + vec2(1.0, 0.0), per), f.x),
+             mix(surfHash(i + vec2(0.0, 1.0), per), surfHash(i + vec2(1.0, 1.0), per), f.x), f.y);
+}
+mat3 surfFrame(vec3 N, vec3 dp1, vec3 dp2, vec2 duv1, vec2 duv2) {
+  vec3 dp2perp = cross(dp2, N), dp1perp = cross(N, dp1);
+  vec3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+  vec3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+  float invmax = inversesqrt(max(max(dot(T, T), dot(B, B)), 1e-36));
+  return mat3(T * invmax, B * invmax, N);
+}
+// parallax occlusion: the place the eye's ray (vt: toward the eye in the projection's tangent frame, z out of the surface) first
+// meets the height map (the diffuse map's alpha, white high), `depth` tiles deep; marched in steps, refined between the last two
+vec2 surfParallax(sampler2D d, vec2 uv, vec2 dx, vec2 dy, vec3 vt, float depth) {
+  if (depth <= 0.0) return uv;
+  const int N = 16;
+  float layer = 1.0 / float(N);
+  vec2 step = -vt.xy / max(vt.z, 0.2) * depth * layer;
+  vec2 p = uv;
+  float cur = 0.0;
+  float h = 1.0 - textureGrad(d, p, dx, dy).a;
+  for (int i = 0; i < N; ++i) {
+    if (cur >= h) break;
+    p += step;
+    cur += layer;
+    h = 1.0 - textureGrad(d, p, dx, dy).a;
+  }
+  vec2 prev = p - step;
+  float after = h - cur;
+  float before = (1.0 - textureGrad(d, prev, dx, dy).a) - (cur - layer);
+  float w = after / min(after - before, -1e-5);
+  return mix(p, prev, clamp(w, 0.0, 1.0));
+}
+// one projection: uv in tiles, its screen derivatives; the albedo, the tangent-space normal and AO/roughness/metal
+void surfTap(sampler2D d, sampler2D nm, sampler2D am, float anti, vec2 uv, vec2 dx, vec2 dy, vec3 vt, float depth,
+             out vec3 alb, out vec3 tn, out vec3 arm) {
+  float k = surfNoise(uv * 0.25, 256.0) * 8.0 * anti;
+  float i = floor(k), f = fract(k);
+  vec2 oa = sin(vec2(3.0, 7.0) * i), ob = sin(vec2(3.0, 7.0) * (i + 1.0));
+  // the parallax found once, on the first tap's place, and moved with both
+  uv += surfParallax(d, uv + oa, dx, dy, vt, depth) - (uv + oa);
+  vec3 a1 = textureGrad(d, uv + oa, dx, dy).rgb;
+  vec3 a2 = textureGrad(d, uv + ob, dx, dy).rgb;
+  float w = (anti <= 0.0) ? 0.0 : smoothstep(0.2, 0.8, f - 0.1 * dot(a1 - a2, vec3(1.0)));
+  alb = mix(a1, a2, w);
+  tn = mix(textureGrad(nm, uv + oa, dx, dy).rgb, textureGrad(nm, uv + ob, dx, dy).rgb, w) * 2.0 - 1.0;
+  arm = mix(textureGrad(am, uv + oa, dx, dy).rgb, textureGrad(am, uv + ob, dx, dy).rgb, w);
+}
+// the place in tiles of world point wp / the mesh's uv / the kit's frame point lp (+ a seed's offset), for the surface P
+vec3 surfPlace(SurfP P, vec3 wp, vec2 uv, vec3 lp) {
+  if (P.a.y == 1.0) return vec3(uv * P.c.w / P.a.x, 0.0);
+  if (P.a.y == 2.0) return lp / P.a.x;
+  return vec3(wp.x / P.a.x + P.a.z, wp.y / P.a.x, wp.z / P.a.x + P.a.w);
+}
+// surface P at q (tiles, in the mapping's frame) with that frame's normal nq; N, wp the world normal and position (their
+// derivatives give the tangent frames); base the material's colour (tone). Out: albedo, world normal, ao/roughness/metal.
+void surfaceAtP(sampler2D d, sampler2D nm, sampler2D am, SurfP P, vec3 q, vec3 nq, vec3 N, vec3 wp, vec3 base,
+                out vec3 alb, out vec3 n, out vec3 arm) {
+  vec3 dqx = dFdx(q), dqy = dFdy(q);
+  vec3 dpx = dFdx(wp), dpy = dFdy(wp);
+  vec3 V = normalize(u_cam_pos - wp);
+  // the depth fades out by 25 m (a pixel there spans more than the relief)
+  float depth = P.e.x * (1.0 - smoothstep(12.0, 25.0, length(u_cam_pos - wp)));
+  vec3 w = (P.a.y == 1.0) ? vec3(0.0, 0.0, 1.0) : pow(abs(nq), vec3(8.0));
+  w /= max(w.x + w.y + w.z, 1e-5);
+  alb = vec3(0.0);  arm = vec3(0.0);
+  vec3 nsum = vec3(0.0);
+  float gs = P.b.w < 0.0 ? -1.0 : 1.0;
+  float str = abs(P.b.w);
+  for (int a = 0; a < 3; ++a) {
+    float wa = (a == 0) ? w.x : ((a == 1) ? w.y : w.z);
+    if (wa < 0.01) continue;
+    // x looks along x: (z, y); y up: (x, z); z: (x, y); the mesh's uvs ride in q.xy with w on z
+    vec2 uv  = (a == 0) ? q.zy : ((a == 1) ? q.xz : q.xy);
+    vec2 ux  = (a == 0) ? dqx.zy : ((a == 1) ? dqx.xz : dqx.xy);
+    vec2 uy  = (a == 0) ? dqy.zy : ((a == 1) ? dqy.xz : dqy.xy);
+    vec3 ta, tt, tr;
+    mat3 tbn = surfFrame(N, dpx, dpy, ux, uy);
+    vec3 vt = vec3(dot(V, normalize(tbn[0])), dot(V, normalize(tbn[1])), dot(V, N));
+    surfTap(d, nm, am, P.b.y, uv, ux, uy, vt, depth, ta, tt, tr);
+    tt.y *= gs;
+    tt.xy *= str;
+    nsum += wa * normalize(tbn * tt);
+    alb += wa * ta;
+    arm += wa * tr;
+  }
+  n = normalize(nsum + N * 1e-4);
+  // the slow variation: a patch every 8 tiles or so, brighter or darker by the share
+  vec2 mq = (abs(nq.y) > 0.5) ? q.xz : vec2(q.x + q.z, q.y);
+  float m = surfNoise(mq * 0.125, 128.0) * 0.65 + surfNoise(mq * 0.031, 32.0) * 0.35;
+  alb *= 1.0 + P.b.z * (m - 0.5) * 2.0;
+  if (P.b.x > 0.5) alb = base * alb / max(P.c.rgb, vec3(0.02));
+  // graded (a scan's own colour, or the material's toned): its saturation round its luminance, then its brightness (a photographed
+  // asphalt is paler than a road's, a land use's green brighter than a lawn's)
+  float l = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+  alb = max(mix(vec3(l), alb, P.d.y), vec3(0.0)) * P.d.x;
+  arm.g = clamp(arm.g * P.d.z, 0.02, 1.0);
+}
+SurfP surfMain() { return SurfP(u_surf, u_surf_b, u_surf_c, u_surf_d, u_surf_e); }
+SurfP surfSecond() { return SurfP(u_s2, u_s2_b, u_s2_c, u_s2_d, u_s2_e); }
+// two surfaces blended: the ground's (u_s2_e.y 0) the first where the vertex colour (the land-use tone) is green, the second (paving)
+// elsewhere, the edge broken by a noise a metre or so across; a mesh's alternative (u_s2_e.y its share, .z its patch's metres: a
+// worn asphalt, a marking's paint worn through) the second over that share of the surface, in patches with a ragged edge
+void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec3 col, vec2 uv, out vec3 alb, out vec3 n, out vec3 arm) {
+  SurfP A = surfMain(), B = surfSecond();
+  vec3 a1, n1, r1, a2, n2, r2;
+  surfaceAtP(d, nm, am, A, surfPlace(A, wp, uv, wp), N, N, wp, col, a1, n1, r1);
+  // the ground's paving takes the land use's tone, but no brighter than the sidewalk's concrete (a pale map colour would blow out in
+  // the sun); a mesh's alternative takes the colour as it is
+  float cl = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  vec3 col2 = B.e.y > 0.0 ? col : col * min(1.0, 0.18 / max(cl, 1e-3));
+  surfaceAtP(u_s2_diff, u_s2_nrm, u_s2_arm, B, surfPlace(B, wp, uv, wp), N, N, wp, col2, a2, n2, r2);
+  float w;
+  if (B.e.y > 0.0) {
+    // world metres from the first's own origin offset (whole 1024-tile spans: a rebase moves no patch)
+    vec2 q = (wp.xz + vec2(A.a.z, A.a.w) * A.a.x) / max(B.e.z, 0.1);
+    float m = surfNoise(q, 1024.0) * 0.7 + surfNoise(q * 3.4, 1024.0) * 0.2 + surfNoise(q * 25.0, 1024.0) * 0.1;
+    w = smoothstep(B.e.y - 0.015, B.e.y + 0.015, m);   // the first's weight: the second where m is under the share
+  } else {
+    float green = col.g - max(col.r, col.b);
+    float e = surfNoise(wp.xz * 0.8 + vec2(A.a.z, A.a.w) * A.a.x * 0.8, 1024.0) - 0.5;
+    // a narrow step: the vertex colour runs between land uses over a whole triangle, so a wide one smears a lawn's edge metres wide
+    w = smoothstep(0.036, 0.044, green + e * 0.012);
+  }
+  alb = mix(a2, a1, w);
+  n = normalize(mix(n2, n1, w));
+  arm = mix(r2, r1, w);
+}

@@ -28,11 +28,11 @@ out float v_seed;
 // kit): where the storey lines of kit.frag count from
 out float v_h;
 out float v_top;
-#ifdef INTERIOR_MAP
-// the model's own frame, where the facade's window grid lives: nothing in it moves when the origin does, and a
-// turned or scaled instance carries its windows with it
+// the model's own frame, where the facade's window grid and a surface's tiles live: nothing in it moves when the origin does,
+// and a turned or scaled instance carries its windows with it
 out vec3 v_lpos;
 out vec3 v_lnrm;
+#ifdef INTERIOR_MAP
 out vec3 v_lcam;
 #endif
 #ifdef FACADE
@@ -60,9 +60,9 @@ void main() {
   v_seed = i_rot.z;
   v_h = p.y;
   v_top = boxed ? i_box.z : -1.0;
-#ifdef INTERIOR_MAP
   v_lpos = lp;
   v_lnrm = a_nrm;
+#ifdef INTERIOR_MAP
   vec3 d = (u_cam_pos - i_pos.xyz) / sc;
   v_lcam = vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
 #endif

@@ -173,6 +173,7 @@ export function bw_setup_kits(render3d_st: mut Render3dState, bw: BigWorld, impo
     let k = bw.kits[id]
     let m = gltf_load(render3d_st, `{bw.assets}/{bw_dir_of(k.model)}`, bw_file_of(k.model), k.node)
     if m == null { continue }
+    surf_apply(render3d_st.surf_lib, m)
     let radius = 0.5 * Math.sqrt(k.w * k.w + k.d * k.d + k.h * k.h)
     if bw.gpu != null {
       kgpu_kit(render3d_st, bw.gpu, id, m, k.near, k.far, radius, k.casts_shadow)

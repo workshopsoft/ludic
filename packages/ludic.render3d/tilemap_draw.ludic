@@ -46,6 +46,8 @@ export property TileDraw {
   # the land-use mask and its tones (tilemap_mask.ludic)
   mask_pattern: string = ""          # the mask tiles ({tx} {tz}); "" none
   tones: floats = null               # 8 x r g b, linear
+  surf_green: string = ""            # the surfaces laid over the ground (tmd_surfaces; surface.ludic surf_apply_ground): where the
+  surf_paved: string = ""            # tone is green, and elsewhere; "" for the plain tones
   tone_on: words = null              # 1 where a class has a tone
   mk_tile: words = null              # per mesh slot: the tile its coarse grid is of, -1 none read
   mk_has: words = null               # per mesh slot: 1 when that tile has a mask
@@ -158,6 +160,7 @@ function tmd_fill(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, colo
   let pr = p.model.prims[0]
   pr.verts = ms.nv
   pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
+  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved) }
   p.model.tris = ms.ni / 3
   p.held = true
   p.coloured = coloured
@@ -170,6 +173,7 @@ function tmd_model_of(render3d_st: Render3dState, td: TileDraw, m: Mesh, nv: int
   pr.mesh = m
   pr.verts = nv
   pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
+  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved) }
   pr.fac = floats(9)
   for k in 0 .. 9 { pr.fac[k] = td.fac[k] }
   let model = new Model
@@ -282,4 +286,12 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
     let want = tmap_lod_for(tm, bd, p.lod)
     if not tmd_build(render3d_st, td, p, s, want) { p.lod = want }      # unreadable: no mesh, and not asked for again every frame
   }
+}
+
+# the ground's surfaces from the renderer's library (r3d_surfaces_use): `green` over the green tones (grass), `paved` over the rest
+# (pads, walks, yards), both keeping the tones' colours when their rows say tone. Patches drawn already are made again.
+export function tmd_surfaces(td: TileDraw, green: string, paved: string) -> void {
+  td.surf_green = green
+  td.surf_paved = paved
+  tmk_redraw(td)
 }

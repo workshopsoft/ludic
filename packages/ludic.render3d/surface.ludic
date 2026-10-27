@@ -1,0 +1,187 @@
+# ============================================================================
+# surface.ludic — scanned materials tiled in metres over meshes that name them.
+#
+# A game keeps a table of surfaces (Surface rows): a folder of scanned maps (diff.png sRGB, nor.png OpenGL normals, arm.png
+# AO/roughness/metal, the CC0 sets of Poly Haven and their like), the metres one tile spans, how its tiles are laid, and the
+# glTF material names it is laid over. surf_apply hands a loaded model's primitives of those names the surface's textures and
+# numbers; model.frag and kit.frag then sample them by place (lighting.glsl, "surfaces") instead of by the mesh's own uvs:
+#   map 0  the world, planar along the normal's axis and blended at corners (ground, asphalt: no seam between meshes or chunks)
+#   map 1  the mesh's own uvs, uv_m metres a unit (a pavement's slabs along its kerb, as the road bake lays its uvs)
+#   map 2  a kit's own frame (kit.frag: a box instance's stretched metres), so a wall's bricks keep their size at any width
+# Anti-tiling (two taps at offsets that change over a few tiles) and a slow variation over tens of metres keep a large area from
+# repeating. `tone` keeps the material's own colour (a building's tint, a marking's paint) and takes only the scan's detail: the
+# texture over its mean albedo (mean_r/g/b, measured when the maps were made).
+#
+# A primitive with no surface draws as before: u_surf.x 0 turns every line of it off.
+# ============================================================================
+
+export property Surface {
+  key: string = ""
+  dir: string = ""                          # the folder of diff.png, nor.png, arm.png (from the game's root)
+  source: string = ""                       # where the maps came from (a Poly Haven id, its licence): the ledger, not read here
+  @Range(0.05, 100) tile: float = 2.0       # metres one tile of the maps spans
+  @Range(0, 2) map: int = 0                 # 0 the world, 1 the mesh's uvs, 2 a kit's own frame
+  @Range(0.01, 100) uv_m: float = 1.0       # map 1: metres a unit of the mesh's uvs
+  @Range(0, 1) tone: int = 0                # 1: the material's colour times the scan's detail (over its mean); 0: the scan's own colour
+  @Range(0, 1) anti: float = 1.0            # anti-tiling share
+  @Range(0, 1) macro: float = 0.15          # the slow variation's share (brighter or darker)
+  @Range(-4, 4) nrm: float = 1.0            # normal strength; negative flips the map's green
+  @Range(0, 4) gain: float = 1.0            # the scan's own colour: brightness
+  @Range(0, 2) sat: float = 1.0             # the scan's own colour: saturation (0 grey, 1 as photographed)
+  @Range(0, 4) rough: float = 1.0           # roughness scale
+  @Range(0, 0.2) depth: float = 0.0         # metres the height map (the diffuse map's alpha) spans: parallax up close; 0 none
+  @Range(64, 8192) res: int = 1024          # the maps' size (the fetch's: tools that make them read it, not the renderer)
+  @Range(0, 1) mean_r: float = 0.5          # the diffuse map's mean albedo, linear
+  @Range(0, 1) mean_g: float = 0.5
+  @Range(0, 1) mean_b: float = 0.5
+  materials: []string = null                # the glTF material names it is laid over
+  alt: string = ""                          # another surface's key: a kit (kit.frag) wears it on alt_share of the instances (by seed),
+                                            # a world-laid mesh (model.frag: a road) in patches over alt_share of its area
+  @Range(0, 1) alt_share: float = 0.0
+  @Range(0.1, 100) alt_size: float = 11.0  # a mesh's (model.frag): metres a patch of the alternative spans
+}
+
+property SurfLoaded {
+  row: Surface,
+  diff: int = 0,
+  nrm: int = 0,
+  arm: int = 0
+}
+
+export property SurfaceLib {
+  items: []SurfLoaded
+}
+
+# the textures of every row, once (a row whose maps are missing is left out, and says so)
+@alloc_ok("a game being opened: the library, once")
+export function surf_lib_new(render3d_st: mut Render3dState, rows: []Surface, root: string) -> SurfaceLib {
+  let lib = new SurfaceLib
+  lib.items = new []SurfLoaded
+  for i in 0 .. len(rows) {
+    let r = rows[i]
+    let dir = `{root}/{r.dir}`
+    let it = new SurfLoaded
+    it.row = r
+    it.diff = tex_load(render3d_st, `{dir}/diff.png`, true)
+    it.nrm = tex_load(render3d_st, `{dir}/nor.png`, false)
+    it.arm = tex_load(render3d_st, `{dir}/arm.png`, false)
+    if it.diff == 0 or it.nrm == 0 or it.arm == 0 { print(`r3d: surface {r.key}: maps missing in {dir}`);  continue }
+    push(lib.items, it)
+  }
+  return lib
+}
+
+# the surface laid over material `name`, or null
+export function surf_for(lib: SurfaceLib, name: string) -> SurfLoaded {
+  if lib == null { return null }
+  for i in 0 .. len(lib.items) {
+    let ms = lib.items[i].row.materials
+    if ms == null { continue }
+    for k in 0 .. len(ms) { if ms[k] == name { return lib.items[i] } }
+  }
+  return null
+}
+
+# the surface of that key, or null
+export function surf_key(lib: SurfaceLib, key: string) -> SurfLoaded {
+  if lib == null or key == "" { return null }
+  for i in 0 .. len(lib.items) { if lib.items[i].row.key == key { return lib.items[i] } }
+  return null
+}
+
+# lay the library's surfaces over the model's primitives whose material names one; the primitives drawn by the old maps keep
+# theirs. The count laid.
+@alloc_ok("a model being loaded: its surfaces' numbers, once a primitive")
+export function surf_apply(lib: SurfaceLib, m: Model) -> int {
+  if lib == null or m == null { return 0 }
+  var n = 0
+  for i in 0 .. len(m.prims) {
+    let pr = m.prims[i]
+    if pr == null { continue }
+    let it = surf_for(lib, pr.name)
+    if it == null { continue }
+    pr.diff = it.diff
+    pr.nrm = it.nrm
+    pr.arm = it.arm
+    if pr.surf == null { pr.surf = floats(20) }
+    surf_numbers(it.row, pr.surf)
+    let alt = surf_key(lib, it.row.alt)
+    if alt != null {
+      pr.diff2 = alt.diff;  pr.nrm2 = alt.nrm;  pr.arm2 = alt.arm
+      if pr.surf2 == null { pr.surf2 = floats(20) }
+      surf_numbers(alt.row, pr.surf2)
+      pr.surf2[17] = it.row.alt_share
+      pr.surf2[18] = it.row.alt_size
+    }
+    n += 1
+  }
+  return n
+}
+
+# the library laid over every kit the world loads from now on (bigworld_gpu bw_setup_kits); null for none. A game's other meshes
+# (its roads, its props) take it with surf_apply where they load.
+export function r3d_surfaces_use(render3d_st: mut Render3dState, lib: SurfaceLib) -> void { render3d_st.surf_lib = lib }
+export function r3d_surfaces(render3d_st: Render3dState) -> SurfaceLib { return render3d_st.surf_lib }
+
+# a row's numbers as the shaders take them (u_surf .. u_surf_e; the origin's offset is filled at the draw)
+function surf_numbers(r: Surface, s: floats) -> void {
+  s[0] = r.tile;  s[1] = float(r.map);  s[2] = 0.0;  s[3] = 0.0
+  s[4] = float(r.tone);  s[5] = r.anti;  s[6] = r.macro;  s[7] = r.nrm
+  s[8] = r.mean_r;  s[9] = r.mean_g;  s[10] = r.mean_b;  s[11] = r.uv_m
+  s[12] = r.gain;  s[13] = r.sat;  s[14] = r.rough;  s[15] = 0.0
+  s[16] = r.depth / r.tile;  s[17] = 0.0;  s[18] = 0.0;  s[19] = 0.0     # the depth in tiles; [17], [18] the alternative's share, patch size (surf_apply)
+}
+
+# a ground primitive's two surfaces (tilemap_draw: every patch): `green` where its vertex colour (the land use's tone) is green,
+# `paved` elsewhere; either key missing from the library, and the primitive keeps its plain material
+@alloc_ok("a patch slot being made: its surfaces' numbers, once")
+export function surf_apply_ground(lib: SurfaceLib, pr: Prim, green: string, paved: string) -> bool {
+  if lib == null or pr == null { return false }
+  let a = surf_key(lib, green)
+  let b = surf_key(lib, paved)
+  if a == null or b == null { return false }
+  pr.diff = a.diff;  pr.nrm = a.nrm;  pr.arm = a.arm
+  pr.diff2 = b.diff;  pr.nrm2 = b.nrm;  pr.arm2 = b.arm
+  if pr.surf == null { pr.surf = floats(20) }
+  if pr.surf2 == null { pr.surf2 = floats(20) }
+  surf_numbers(a.row, pr.surf)
+  surf_numbers(b.row, pr.surf2)
+  return true
+}
+
+# the floating origin's world x, z (the game's, once a frame or on a rebase): world-laid tiles keep their place in the world
+export function r3d_surface_origin(render3d_st: mut Render3dState, ox: float, oz: float) -> void {
+  render3d_st.surf_ox = ox
+  render3d_st.surf_oz = oz
+}
+
+# a whole number of tiles' worth of the origin, mod 1024 tiles (lighting.glsl's patterns repeat within that)
+function surf_origin_tiles(o: float, tile: float) -> float {
+  let t = o / tile
+  return t - 1024.0 * Math.floor(t / 1024.0)
+}
+
+# the primitive's surface numbers and its second's maps (prim_factors, every draw: a program keeps a uniform from the last
+# primitive that set it)
+export function surf_bind(render3d_st: mut Render3dState, p: int, pr: Prim) -> void {
+  surf_bind_one(render3d_st, p, pr.surf, "u_surf", "u_surf_b", "u_surf_c", "u_surf_d", "u_surf_e")
+  surf_bind_one(render3d_st, p, pr.surf2, "u_s2", "u_s2_b", "u_s2_c", "u_s2_d", "u_s2_e")
+  if pr.surf != null and pr.surf2 != null {
+    r3d_bind_2d(render3d_st, p, "u_s2_diff", 28, pr.diff2)
+    r3d_bind_2d(render3d_st, p, "u_s2_nrm", 29, pr.nrm2)
+    r3d_bind_2d(render3d_st, p, "u_s2_arm", 30, pr.arm2)
+  }
+}
+function surf_bind_one(render3d_st: mut Render3dState, p: int, s: floats, ua: string, ub: string, uc: string, ud: string, ue: string) -> void {
+  if s == null {
+    u_f4(render3d_st, gpu_uniform(render3d_st, p, ua), 0.0, 0.0, 0.0, 0.0)
+    return
+  }
+  let ox = surf_origin_tiles(render3d_st.surf_ox, s[0])
+  let oz = surf_origin_tiles(render3d_st.surf_oz, s[0])
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, ua), s[0], s[1], ox, oz)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, ub), s[4], s[5], s[6], s[7])
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, uc), s[8], s[9], s[10], s[11])
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, ud), s[12], s[13], s[14], s[15])
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, ue), s[16], s[17], s[18], s[19])
+}

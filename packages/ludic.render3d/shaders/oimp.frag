@@ -15,6 +15,7 @@ uniform mat4 u_view;
 uniform float u_radius;
 uniform float u_frames;
 uniform float u_frame_px;
+uniform vec4 u_imp_alt;          // the alternative's colour and share (kgpu_card_alt): 0 share for none
 
 vec3 octDecode(vec2 uv) {
   vec2 a = uv * 2.0 - 1.0;
@@ -69,12 +70,17 @@ void main() {
   vec3 col0 = a.rgb / max(rawA, 1e-3);
   // the bake's normal, in the model's frame, turned back out by the instance's yaw
   vec3 nl = clamp(nn.rgb / max(rawA, 1e-3), 0.0, 1.0) * 2.0 - 1.0;
-  float ao = clamp(nn.a / max(rawA, 1e-3), 0.0, 1.0);
+  // the bake's occlusion in the lower half; the top marks a material with an alternative (bake.frag)
+  float aw = clamp(nn.a / max(rawA, 1e-3), 0.0, 1.0);
+  float altT = smoothstep(0.42, 0.58, aw);
+  float ao = mix(clamp(aw / 0.49, 0.0, 1.0), 1.0, altT);
   float s = v_rot.x, c = v_rot.y;
   vec3 n = normalize(vec3(c * nl.x + s * nl.z, nl.y, -s * nl.x + c * nl.z));
   float dist = length(v_wpos - u_cam_pos);
   float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;
   vec3 alb = col0 * v_tint.rgb * (0.92 + 0.16 * fract(v_rot.z * 7.13));
+  // an instance that wears the alternative near (kit.frag: the same seed, the same share) wears its colour on those texels here
+  if (u_imp_alt.w > 0.0 && fract(v_rot.z * 91.7 + 0.31) < u_imp_alt.w) alb = mix(alb, u_imp_alt.rgb, altT);
   float shadow = sunShadowCheap(v_wpos, vec3(0.0, 1.0, 0.0), viewDepth);
   vec3 col = shade(v_wpos, n, alb, 0.85, 0.0, ao, shadow, viewDepth);
   col = applyFog(col, v_wpos, dist);

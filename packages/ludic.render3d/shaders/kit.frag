@@ -40,6 +40,26 @@ float storeyLine(float h, float top, float ny) {
   return edge * seen * step(0.5 * s, h);
 }
 
+// how dirty a box instance's upright wall is here, 0 clean .. 1 its grime's colour: rain splash and rising damp from the foot (a ragged
+// band up to a metre and a half), run-off hanging in streaks from the eave (up to 5 m, the streaks a hand to a stride wide), every building its
+// own amount (by seed: some freshly painted, some sooty). h metres over the base, top the eave (negative: no box), p the wall's own
+// frame (the streaks run along its length), ny the normal's up
+float weathering(float h, float top, float ny, vec3 p, float seed) {
+  if (top < 2.0 || abs(ny) > 0.5) return 0.0;   // a wall body: a course, a sill or a frame (a box a storey or less) keeps clean
+  float amount = 0.45 + 0.55 * fract(seed * 5.31 + 0.17);
+  float along = p.x + p.z;
+  // the pad: whole storeys down from the eave (a plinth under the building puts its base lower; storeyLine counts the same way)
+  float s = u_storey.x;
+  float pad = s > 0.0 ? top - floor(top / s + 0.1) * s : 0.0;
+  float foot = 0.8 + 0.8 * surfNoise(vec2(along * 0.7, 0.0), 1024.0);
+  float splash = (1.0 - smoothstep(0.0, foot, h - pad)) * 0.9;
+  float down = top - h;
+  float streak = surfNoise(vec2(along * 2.3, h * 0.08), 1024.0) * 0.6 + surfNoise(vec2(along * 9.0, h * 0.25), 1024.0) * 0.4;
+  float reach = 1.0 + 4.0 * streak;
+  float runoff = (1.0 - smoothstep(0.0, reach, down)) * smoothstep(0.3, 0.6, streak) * 0.75;
+  return clamp((splash + runoff) * amount, 0.0, 0.8);
+}
+
 mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   vec3 dp1 = dFdx(p), dp2 = dFdy(p);
   vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
@@ -51,9 +71,9 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   return mat3(T * invmax, B * invmax, N);
 }
 
-#ifdef INTERIOR_MAP
-in vec3 v_lpos;
+in vec3 v_lpos;                  // the model's own frame (a box instance's stretched metres): where a surface's tiles are laid
 in vec3 v_lnrm;
+#ifdef INTERIOR_MAP
 in vec3 v_lcam;
 uniform sampler2D u_rooms;       // the atlas: room tiles, six faces each in a 3 x 2 block (interior_atlas.ludic)
 uniform vec4 u_im_cell;          // window cell width, height (m), frame share, room depth (m)
@@ -338,6 +358,26 @@ void main() {
   float shadow = sunShadow(v_wpos, N, viewDepth);
   float roughF = clamp(arm.g * u_rough_scale, 0.35, 1.0);
   float ao = arm.r;
+  // a surface (surface.ludic): the scanned material its name asks for, tiled in metres over the kit's own frame (a building's seed moves
+  // its tiles, so no two walls start their bricks at the same place), in place of the mesh's own maps
+  if (u_surf.x > 0.0) {
+    vec3 off = vec3(fract(v_seed * 13.7) * 37.0, fract(v_seed * 3.1) * 11.0, fract(v_seed * 7.31) * 23.0);
+    // a share of the instances (u_s2_e.y, by seed) wear the row's alternative (brick for render)
+    bool alt = u_s2.x > 0.0 && fract(v_seed * 91.7 + 0.31) < u_s2_e.y;
+    SurfP P = alt ? surfSecond() : surfMain();
+    vec3 q = surfPlace(P, v_wpos, v_uv, v_lpos + off);
+    vec3 nq = (P.a.y == 2.0) ? normalize(v_lnrm) : N;
+    vec3 base = (vec3(1.0) - u_fac_base_inv.rgb) * v_col.rgb * v_tint.rgb * (0.92 + 0.16 * fract(v_seed * 7.13));
+    vec3 sa, sn, sr;
+    if (alt) surfaceAtP(u_s2_diff, u_s2_nrm, u_s2_arm, P, q, nq, N, v_wpos, base, sa, sn, sr);
+    else surfaceAtP(u_diff, u_nrm, u_arm, P, q, nq, N, v_wpos, base, sa, sn, sr);
+    // the storey's line is a soft band on a textured wall (a string course's shade), not a painted stripe
+    alb = sa * (1.0 - 0.18 * storeyLine(v_h, v_top, N.y));
+    alb = mix(alb, alb * vec3(0.30, 0.28, 0.26), weathering(v_h, v_top, N.y, v_lpos + off, v_seed));
+    n = normalize(mix(sn, N, smoothstep(30.0, 120.0, dist)));
+    roughF = clamp(sr.g * (1.0 - u_fac_mr_inv.x) * u_rough_scale, 0.35, 1.0);
+    ao = sr.r;
+  }
 #ifdef FACADE
   // the derivatives first, where every invocation of the quad is still running
   float pxm = length(fwidth(v_lpos));
