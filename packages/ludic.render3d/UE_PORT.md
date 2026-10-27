@@ -34,9 +34,10 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
   tonemapper) now feeds the lowest-priority unbound volume: white balance -> SceneColorTint (exact), saturation -> ColorSaturation
   (before the curve, not after), contrast -> ColorContrast on midtones + highlights, lift -> ColorOffsetShadows (display value ^2.2,
   the loosest), gain -> ColorGain. Retune its numbers in Unreal's controls rather than trusting the old ones.
-- **Dusk is warmed twice.** Daylight's grade warms the low sun (lowsun terms in white balance, lift, saturation) because its old sun
-  was near neutral; Unreal's atmosphere sun is already warm at 19:00, so the two stack into a strong gold. Reduce the lowsun terms
-  (daylight.ludic) or turn R3D_UE_HOUR_GRADE off and grade in Unreal's settings.
+- **Dusk was warmed twice; the grade's share is now off.** With Unreal's sun light on, daylight's low-sun white balance and lift
+  terms are zero (the atmosphere colours the low sun); its low-sun saturation boost stays. Dusk is still golden, from Unreal's sun
+  itself plus that saturation: at 19:00 the frame's blue rose 7-12 levels after the change. Further: lower `post_saturation`'s
+  lowsun term, or the atmosphere's settings, or a dusk grade in Unreal's controls.
 - **WhiteTemp means "the light's temperature" by default.** TemperatureType is White Balance, so a lower WhiteTemp makes the
   image cooler (it corrects the light), not warmer. Use `temp_is_white_balance = false` for Unreal's "Color Temperature" mode.
 - **Bloom is mild by default.** About 9% of a blurred image (tints sum to ~0.8 x 0.675 / 6); our old bloom had a threshold

@@ -208,13 +208,17 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   # half-cooled. It only begins under the horizon.
   let night = 1.0 - smoothf(Math.deg_to_rad(-14.0), Math.deg_to_rad(-4.0), el)
   let hi = fog_high
-  render3d_st.post_wb_r = 1.02 + (0.10 * lowsun - (0.03 * hi + 0.06 * night))
-  render3d_st.post_wb_g = 1.0 + 0.012 * lowsun
-  render3d_st.post_wb_b = 0.97 + (0.055 * hi + 0.13 * night - 0.09 * lowsun)
+  # With Unreal's atmosphere sun light the low sun is already warm (its colour is the air's transmittance), so the grade does not
+  # warm it again: the low-sun white balance and lift terms are for a near-neutral sun and drop out (saturation's stays).
+  var warm = lowsun
+  if ue_sunlight_on(render3d_st) { warm = 0.0 }
+  render3d_st.post_wb_r = 1.02 + (0.10 * warm - (0.03 * hi + 0.06 * night))
+  render3d_st.post_wb_g = 1.0 + 0.012 * warm
+  render3d_st.post_wb_b = 0.97 + (0.055 * hi + 0.13 * night - 0.09 * warm)
   # the shadows' floor: warm and open into a low sun, blue at noon, cold and crushed at night
-  render3d_st.post_lift_r = 0.004 + 0.013 * lowsun - 0.002 * (hi + night)
-  render3d_st.post_lift_g = 0.004 + 0.008 * lowsun - 0.001 * night
-  render3d_st.post_lift_b = 0.012 + (0.004 * lowsun + 0.013 * hi)
+  render3d_st.post_lift_r = 0.004 + 0.013 * warm - 0.002 * (hi + night)
+  render3d_st.post_lift_g = 0.004 + 0.008 * warm - 0.001 * night
+  render3d_st.post_lift_b = 0.012 + (0.004 * warm + 0.013 * hi)
   # Gain is left alone on purpose. It looks like a highlight control and is not: the grade is
   # `c * gain + lift * (1 - c)`, so warming the gain warms the WHOLE frame, and warming it at
   # noon undid the cool white balance above and turned one o'clock yellower than seven in the
