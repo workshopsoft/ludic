@@ -39,6 +39,8 @@ export property Surface {
                                             # a world-laid mesh (model.frag: a road) in patches over alt_share of its area
   @Range(0, 1) alt_share: float = 0.0
   @Range(0.1, 100) alt_size: float = 11.0  # a mesh's (model.frag): metres a patch of the alternative spans
+  @Range(0, 2) gutter: float = 0.0          # a road's: metres of gutter pan along the kerb (the road bake writes the distance to it in the uvs)
+  @Range(0, 0.2) nose: float = 0.0          # a kerb's: metres its top's edge toward the road is rounded over
 }
 
 property SurfLoaded {
@@ -129,7 +131,7 @@ function surf_numbers(r: Surface, s: floats) -> void {
   s[4] = float(r.tone);  s[5] = r.anti;  s[6] = r.macro;  s[7] = r.nrm
   s[8] = r.mean_r;  s[9] = r.mean_g;  s[10] = r.mean_b;  s[11] = r.uv_m
   s[12] = r.gain;  s[13] = r.sat;  s[14] = r.rough;  s[15] = 0.0
-  s[16] = r.depth / r.tile;  s[17] = 0.0;  s[18] = 0.0;  s[19] = 0.0     # the depth in tiles; [17], [18] the alternative's share, patch size (surf_apply)
+  s[16] = r.depth / r.tile;  s[17] = 0.0;  s[18] = r.gutter;  s[19] = r.nose   # the depth in tiles; on the second, [17], [18] the alternative's share, patch size (surf_apply)
 }
 
 # a ground primitive's two surfaces (tilemap_draw: every patch): `green` where its vertex colour (the land use's tone) is green,

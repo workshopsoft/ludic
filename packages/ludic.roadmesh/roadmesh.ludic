@@ -15,7 +15,7 @@ export property MeshOpt {
   planted: Val = null         # opt.medians.planted (undefined: null)
   areas: Val = null
   markings: bool = false
-  lanePaint: LPOptions = null # null: none (its chunk already set to the bake's)
+  lanePaint: LPOptions = null  # null: none (its chunk already set to the bake's)
   chunk: double = 0.0         # 0: none
   structures: Val = null      # StructureOptions (null: none)
   matSkirt: string = "skirt"
@@ -35,7 +35,6 @@ export property RoadMesh {
   sw: Sw = null
   pw: PaintWorld = null
 }
-
 
 # ---- what a build's closures read -----------------------------------------------------------------------------------------------
 property Mk {
@@ -752,7 +751,9 @@ function node_mesh(k: Mk, n: NetNode, only: Dict) -> void {
         push(caps, dead_cap(n.x, n.z, e.nx, e.nz, e.ux, e.uz, r, l, null))
       }
     }
-    b_poly(b, sec0.mat.road, caps[0], flat_of(c, caps[0], 0.0))
+    # the full bake tiles it finely, as a junction: a polygon of its rim alone would carry its distance to the kerb (kerb_distances) only
+    # on the rim, and the whole cap would read as gutter
+    if k.full { b_fine(b, sec0.mat.road, caps[0], fn node_yf, c, 2.0) } else { b_poly(b, sec0.mat.road, caps[0], flat_of(c, caps[0], 0.0)) }
     if sec0.curbH > 0.001 and sec0.curbW > 0.001 {
       b_strip(b, sec0.mat.curb, caps[0], flat_lvl(c, caps[0]), caps[1], flat_lvl(c, caps[1]), true)
       if k.full { kerb_face(k, c, sec0.mat.curb, caps[0]) }
@@ -1094,5 +1095,264 @@ export function build_road_mesh(sw: Sw, o: MeshOpt, only: Dict) -> RoadMesh {
     mesh.lp = paint_lanes(b, k.pw, surface_of(b), o.lanePaint, o.matMarking, sw.lift, only, o.planted, o.areas, fn node_y_of, sw)
   }
   for i in 0 .. len(b.layers) { b.layers[i].slot = b_slot_of(b, b.layers[i].material) }
+  if k.full { kerb_distances(b.layers) }
   return mesh
+}
+
+# ---- the distance to the kerb (roadMesh.ts kerbDistances) ---------------------------------------------------------------------------
+# Every road, parking and kerb-top triangle's distances in metres to the kerb's foot, in its uvs: u to the triangle's nearest kerb line,
+# v to a second, another line (a carriageway between two kerbs); the game draws the gutter pan and the kerb's nose from the lesser. The
+# foot is the bottom edge of every upright face in the curb slot. The TypeScript's order throughout: the layers', the triangles', the
+# cells' rings, each cell's segments as they were added, the stable sort of a triangle's three nearest.
+const KERB_FACE_MIN: double = 0.005
+const KERB_REACH: double = 48.0
+const KERB_CELL: double = 4.0
+
+property KerbIx {
+  segs: []double = null
+  gx0: long = 0                # the cells' grid: x from gx0, gw across, z from gz0; cell c's segments start[c] .. start[c + 1] in at
+  gz0: long = 0
+  gw: long = 0
+  gh: long = 0
+  start: []int = null
+  at: []int = null
+  rk: []long = null            # each segment's two ends rounded to the millimetre (Math.round(v * 1000): x0, z0, x1, z1)
+  lines: [][]int = null        # each segment's kerb line, made once asked
+}
+
+function kerb_iabs(a: int) -> int { if a < 0 { return -a };  return a }
+
+function kerb_seg_dist(ix: KerbIx, s: int, x: double, z: double) -> double {
+  let g = ix.segs
+  let ax = g[s]
+  let az = g[s + 1]
+  let dx = g[s + 2] - ax
+  let dz = g[s + 3] - az
+  let L = dx * dx + dz * dz
+  var t: double = 0.0
+  if L > 0.000000000001 { t = clamp01(((x - ax) * dx + (z - az) * dz) / L) }
+  return hypot2(x - ax - t * dx, z - az - t * dz)
+}
+
+# the cell (cx, cz)'s index in the grid, -1 outside it (no segment there)
+function kerb_cell(ix: KerbIx, cx: long, cz: long) -> int {
+  if cx < ix.gx0 or cz < ix.gz0 or cx >= ix.gx0 + ix.gw or cz >= ix.gz0 + ix.gh { return -1 }
+  return int((cz - ix.gz0) * ix.gw + (cx - ix.gx0))
+}
+
+# the nearest foot's segment (-1: none within reach) and its distance, into out[0], out[1]
+function kerb_near(ix: KerbIx, x: double, z: double, out: []double) -> void {
+  let cx = long(Math.floor(x / KERB_CELL))
+  let cz = long(Math.floor(z / KERB_CELL))
+  var best = KERB_REACH
+  var at = -1
+  var r = 0
+  while double(r) * KERB_CELL <= KERB_REACH {
+    if double(r - 1) * KERB_CELL > best { break }
+    for i in -r .. r + 1 {
+      for kk in -r .. r + 1 {
+        if kerb_iabs(i) != r and kerb_iabs(kk) != r { continue }
+        let c = kerb_cell(ix, cx + long(i), cz + long(kk))
+        if c < 0 { continue }
+        for q in ix.start [c] .. ix.start [c + 1] {
+          let sg = ix.at[q]
+          let d = kerb_seg_dist(ix, sg, x, z)
+          if d < best {
+            best = d
+            at = sg
+          }
+        }
+      }
+    }
+    r += 1
+  }
+  out[0] = double(at)
+  out[1] = best
+}
+
+# a kerb line round segment s: it and every segment with an end on one of its ends (to the millimetre, as Math.round(v * 1000) keys
+# the TypeScript's map): a set, read only by its least distance and whether it holds a segment. Ends that round alike lie within a
+# millimetre, so in the cells next to each other.
+function kerb_line(ix: KerbIx, s: int) -> []int {
+  let have = ix.lines[s / 4]
+  if have != null { return have }
+  let out = new []int
+  push(out, s)
+  for e in 0 .. 2 {
+    let kx = ix.rk[s + e * 2]
+    let kz = ix.rk[s + e * 2 + 1]
+    let cx = long(Math.floor(ix.segs[s + e * 2] / KERB_CELL))
+    let cz = long(Math.floor(ix.segs[s + e * 2 + 1] / KERB_CELL))
+    for i in -1 .. 2 {
+      for kk in -1 .. 2 {
+        let c = kerb_cell(ix, cx + long(i), cz + long(kk))
+        if c < 0 { continue }
+        for q in ix.start [c] .. ix.start [c + 1] {
+          let o = ix.at[q]
+          if not ((ix.rk[o] == kx and ix.rk[o + 1] == kz) or (ix.rk[o + 2] == kx and ix.rk[o + 3] == kz)) { continue }
+          var seen = false
+          for w in 0 .. len(out) { if out[w] == o { seen = true } }
+          if not seen { push(out, o) }
+        }
+      }
+    }
+  }
+  ix.lines[s / 4] = out
+  return out
+}
+
+function kerb_line_dist(ix: KerbIx, line: []int, x: double, z: double) -> double {
+  var m = INF
+  for q in 0 .. len(line) { m = jmin(m, kerb_seg_dist(ix, line[q], x, z)) }
+  return m
+}
+
+export function kerb_distances(layers: []Layer) -> void {
+  let ix = new KerbIx
+  ix.segs = new []double
+  for li in 0 .. len(layers) {
+    let l = layers[li]
+    if l.slot != "curb" { continue }
+    let P = l.positions
+    var t = 0
+    while t + 2 < len(l.indices) {
+      let v0 = l.indices[t]
+      let v1 = l.indices[t + 1]
+      let v2 = l.indices[t + 2]
+      t += 3
+      if dabs(l.normals[v0 * 3 + 1]) > 0.5 { continue }
+      let y0 = P[v0 * 3 + 1]
+      let y1 = P[v1 * 3 + 1]
+      let y2 = P[v2 * 3 + 1]
+      let lo = jmin(jmin(y0, y1), y2)
+      if jmax(jmax(y0, y1), y2) - lo < KERB_FACE_MIN { continue }
+      let foot = new []int
+      if y0 - lo < 0.001 { push(foot, v0) }
+      if y1 - lo < 0.001 { push(foot, v1) }
+      if y2 - lo < 0.001 { push(foot, v2) }
+      if len(foot) != 2 { continue }
+      push(ix.segs, P[foot[0] * 3])
+      push(ix.segs, P[foot[0] * 3 + 2])
+      push(ix.segs, P[foot[1] * 3])
+      push(ix.segs, P[foot[1] * 3 + 2])
+    }
+  }
+  if len(ix.segs) == 0 { return }
+  # the cells each segment's box covers, counted, then filled in the segments' order (a cell's list as the TypeScript's map has it)
+  let ns = len(ix.segs) / 4
+  let box = new []long
+  var s = 0
+  while s < len(ix.segs) {
+    let g = ix.segs
+    push(box, long(Math.floor(jmin(g[s], g[s + 2]) / KERB_CELL)))
+    push(box, long(Math.floor(jmax(g[s], g[s + 2]) / KERB_CELL)))
+    push(box, long(Math.floor(jmin(g[s + 1], g[s + 3]) / KERB_CELL)))
+    push(box, long(Math.floor(jmax(g[s + 1], g[s + 3]) / KERB_CELL)))
+    s += 4
+  }
+  var x0 = box[0]
+  var x1 = box[1]
+  var z0 = box[2]
+  var z1 = box[3]
+  for q in 0 .. ns {
+    if box[q * 4] < x0 { x0 = box[q * 4] }
+    if box[q * 4 + 1] > x1 { x1 = box[q * 4 + 1] }
+    if box[q * 4 + 2] < z0 { z0 = box[q * 4 + 2] }
+    if box[q * 4 + 3] > z1 { z1 = box[q * 4 + 3] }
+  }
+  ix.gx0 = x0
+  ix.gz0 = z0
+  ix.gw = x1 - x0 + long(1)
+  ix.gh = z1 - z0 + long(1)
+  let nc = int(ix.gw * ix.gh)
+  ix.start = new []int
+  for c in 0 .. nc + 1 { push(ix.start, 0) }
+  for q in 0 .. ns {
+    var cx = box[q * 4]
+    while cx <= box[q * 4 + 1] {
+      var cz = box[q * 4 + 2]
+      while cz <= box[q * 4 + 3] {
+        let c = kerb_cell(ix, cx, cz)
+        ix.start [c + 1] = ix.start [c + 1] + 1
+        cz += long(1)
+      }
+      cx += long(1)
+    }
+  }
+  for c in 0 .. nc { ix.start [c + 1] = ix.start [c + 1] + ix.start [c] }
+  let fill = new []int
+  for c in 0 .. nc { push(fill, ix.start [c]) }
+  ix.at = new []int
+  for q in 0 .. ix.start [nc] { push(ix.at, 0) }
+  for q in 0 .. ns {
+    var cx = box[q * 4]
+    while cx <= box[q * 4 + 1] {
+      var cz = box[q * 4 + 2]
+      while cz <= box[q * 4 + 3] {
+        let c = kerb_cell(ix, cx, cz)
+        ix.at[fill[c]] = q * 4
+        fill[c] = fill[c] + 1
+        cz += long(1)
+      }
+      cx += long(1)
+    }
+  }
+  ix.rk = new []long
+  for q in 0 .. len(ix.segs) { push(ix.rk, long(jround(ix.segs[q] * 1000.0))) }
+  ix.lines = new [][]int
+  for q in 0 .. ns { push(ix.lines, null) }
+  let nr = doubles(2)
+  let fs = new []int
+  for q in 0 .. 3 { push(fs, 0) }
+  let fd = doubles(3)
+  for li in 0 .. len(layers) {
+    let l = layers[li]
+    let kerb = l.slot == "curb"
+    if not kerb and l.slot != "road" and l.slot != "park" { continue }
+    let P = l.positions
+    var t = 0
+    while t + 2 < len(l.indices) {
+      let tv = t
+      t += 3
+      if kerb and l.normals[l.indices[tv] * 3 + 1] <= 0.5 { continue }
+      # the triangle's vertices' nearest feet, stably sorted by distance (the TypeScript's Array sort)
+      var n = 0
+      for q in 0 .. 3 {
+        let vk = l.indices[tv + q]
+        kerb_near(ix, P[vk * 3], P[vk * 3 + 2], nr)
+        if nr[0] < 0.0 { continue }
+        var at = n
+        while at > 0 and fd[at - 1] - nr[1] > 0.0 {
+          fs[at] = fs[at - 1]
+          fd[at] = fd[at - 1]
+          at -= 1
+        }
+        fs[at] = int(nr[0])
+        fd[at] = nr[1]
+        n += 1
+      }
+      var first: []int = null
+      var second: []int = null
+      if n > 0 {
+        first = kerb_line(ix, fs[0])
+        for q in 0 .. n {
+          if second != null { break }
+          var inFirst = false
+          for w in 0 .. len(first) { if first[w] == fs[q] { inFirst = true } }
+          if not inFirst { second = kerb_line(ix, fs[q]) }
+        }
+      }
+      for q in 0 .. 3 {
+        let vk = l.indices[tv + q]
+        let x = P[vk * 3]
+        let z = P[vk * 3 + 2]
+        var u = KERB_REACH
+        var w2 = KERB_REACH
+        if first != null { u = kerb_line_dist(ix, first, x, z) }
+        if second != null { w2 = kerb_line_dist(ix, second, x, z) }
+        l.uvs[vk * 2] = u
+        l.uvs[vk * 2 + 1] = w2
+      }
+    }
+  }
 }

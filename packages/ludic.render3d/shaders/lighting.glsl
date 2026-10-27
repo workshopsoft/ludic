@@ -956,7 +956,8 @@ uniform vec4 u_surf_b;   // tone (1: the material's colour times the texture's d
                          // anti-tiling share 0..1, macro variation share, normal strength (negative flips the map's green)
 uniform vec4 u_surf_c;   // the texture's mean albedo r g b (tone divides by it), metres a unit of the mesh's uvs
 uniform vec4 u_surf_d;   // albedo gain, saturation (1 the scan's own), roughness scale
-uniform vec4 u_surf_e;   // the height map's depth in tiles (the diffuse map's alpha; 0 none), a kit's alternative's share (on u_s2_e)
+uniform vec4 u_surf_e;   // the height map's depth in tiles (the diffuse map's alpha; 0 none), a kit's alternative's share (on u_s2_e),
+                         // a road's gutter pan and a kerb's nose in metres (surfKerb; 0 none)
 uniform vec4 u_s2;       // the second surface, as u_surf .. u_surf_e (u_s2.x 0: none)
 uniform vec4 u_s2_b;
 uniform vec4 u_s2_c;
@@ -1098,4 +1099,55 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
   alb = mix(a2, a1, w);
   n = normalize(mix(n2, n1, w));
   arm = mix(r2, r1, w);
+}
+
+// a road's gutter and a kerb's rounded nose (u_surf_e.z, .w metres; the road bake's kerbDistances): a road's and a kerb top's uvs are their
+// distances to the kerb's foot along two lines (the lesser is the distance), a kerb face's v runs up it. Along the kerb the road is a gutter
+// pan g wide (the asphalt's detail on a smoother, paler concrete, a dark joint at its edge, grime packed against the kerb) with a dirty
+// fringe beyond it; the kerb's top and face turn round a nose r across (a quarter round: the normal leans toward the road on the top and
+// up on the face as either nears the arris), worn a little paler there. Every derivative is taken before a branch.
+void surfKerb(vec2 uv, vec3 wp, vec3 N, inout vec3 alb, inout vec3 n, inout vec3 arm) {
+  float g = u_surf_e.z, r = u_surf_e.w;
+  float d = min(uv.x, uv.y);
+  vec2 dd = vec2(dFdx(d), dFdy(d));
+  vec3 px = dFdx(wp), py = dFdy(wp);
+  float fh = length(vec2(px.y, py.y)) / max(length(vec2(dFdx(uv.y), dFdy(uv.y))), 1e-6);   // a face's height (m) from its v
+  float aa = max(length(dd), 1e-4);
+  float along = surfNoise(wp.xz * 1.7, 1024.0) * 0.6 + surfNoise(wp.xz * 7.0, 1024.0) * 0.4;
+  if (g > 0.0) {
+    float pan = 1.0 - smoothstep(g - aa, g + aa, d);
+    float l = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+    vec3 concrete = mix(vec3(l), alb, 0.25) * 1.9;
+    alb = mix(alb, concrete, pan);
+    arm.g = mix(arm.g, arm.g * 0.92, pan);
+    n = normalize(mix(n, N, 0.5 * pan));
+    float joint = 1.0 - smoothstep(0.0, 0.012 + aa, abs(d - g));
+    alb *= 1.0 - 0.45 * joint;
+    float grime = (1.0 - smoothstep(0.0, 0.05 + 0.05 * along, d)) * 0.45;
+    float fringe = smoothstep(g, g + 0.05, d) * (1.0 - smoothstep(g + 0.1, g + 0.45 + 0.25 * along, d)) * 0.18 * along;
+    alb *= 1.0 - grime - fringe;
+  }
+  if (r > 0.0) {
+    if (N.y > 0.5) {
+      // the way to the road on the top: down the distance's gradient (solved from the screen derivatives of place and distance)
+      mat2 m = mat2(px.x, py.x, px.z, py.z);
+      float det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+      vec2 grad = abs(det) > 1e-10 ? inverse(m) * dd : vec2(0.0);
+      if (d < r && length(grad) > 1e-6) {
+        float a = asin(clamp(1.0 - d / r, 0.0, 1.0)) * 0.9;
+        vec2 to = -normalize(grad);
+        n = normalize(n * cos(a) + vec3(to.x, 0.0, to.y) * sin(a));
+        alb *= 1.0 + 0.08 * (1.0 - d / r);
+      }
+    } else if (abs(N.y) < 0.5) {
+      float top = (1.0 - uv.y) * fh;
+      float foot = uv.y * fh;
+      if (top < r) {
+        float a = asin(clamp(1.0 - top / r, 0.0, 1.0)) * 0.9;
+        n = normalize(n * cos(a) + vec3(0.0, 1.0, 0.0) * sin(a));
+        alb *= 1.0 + 0.08 * (1.0 - top / r);
+      }
+      alb *= 1.0 - 0.2 * (1.0 - smoothstep(0.0, 0.05 + 0.03 * along, foot));
+    }
+  }
 }

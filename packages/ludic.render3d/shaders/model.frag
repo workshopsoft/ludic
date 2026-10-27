@@ -654,6 +654,7 @@ void main() {
     d.rgb = (u_surf_b.x > 0.5 || ground) ? sa : sa * v_col.rgb;
     n = sn;
     arm = vec3(sr.r, sr.g * (1.0 - u_fac_mr_inv.x), sr.b * (1.0 - u_fac_mr_inv.y));
+    if (u_surf_e.z > 0.0 || u_surf_e.w > 0.0) surfKerb(v_uv, v_wpos, N, d.rgb, n, arm);
   }
 #endif
   n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
