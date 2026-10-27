@@ -6,7 +6,7 @@
 # (shaders/ue_lightgrid.comp, LightGridInjectionCS), and the lit shaders reading only their cell's lights
 # (lighting.glsl ueLightGridRange, as LightGridCommon.ush GetCulledLightsGridHeader).
 #
-# As Unreal with r.Forward.LightLinkedListCulling 0 (a fixed list of r.Forward.MaxCulledLightsPerCell a cell),
+# As Unreal with r.Forward.LightLinkedListCulling 1 (no cap a cell: one list of cells x r.Forward.MaxCulledLightsPerCell entries),
 # r.Forward.LightGridHZBCull 0 and r.LightCulling.WorkloadDistributionMode 0. A shaded point finds its cell from its
 # world position through the main camera's unjittered view-projection (the pixel Unreal's own pass uses); a point
 # outside the main view (a reflection, the fog grid's edge) reads every light, as r.LightCulling.Quality 0 does.
@@ -40,12 +40,14 @@ function ue_lg_on(render3d_st: mut Render3dState) -> bool {
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function ue_lg_alloc(render3d_st: mut Render3dState) -> void {
-  render3d_st.ue_lg_prog = gpu_compute(render3d_st, "ue_lightgrid", 4)
+  render3d_st.ue_lg_prog = gpu_compute(render3d_st, "ue_lightgrid", 5)
+  render3d_st.ue_lg_balloc = gpu_buffer_new(render3d_st)
+  render3d_st.ue_lg_zero = words(4)
   render3d_st.ue_lg_bpos = gpu_buffer_new(render3d_st)
   render3d_st.ue_lg_bdir = gpu_buffer_new(render3d_st)
   render3d_st.ue_lg_bnum = gpu_buffer_new(render3d_st)
   render3d_st.ue_lg_bdata = gpu_buffer_new(render3d_st)
-  render3d_st.ue_lg_bufs = words(4)
+  render3d_st.ue_lg_bufs = words(5)
   render3d_st.ue_lg_pr = words(36)
   render3d_st.ue_lg_vp = m4_new()
   render3d_st.ue_lg_proj = m4_new()
@@ -115,12 +117,15 @@ function ue_lightgrid_frame(render3d_st: mut Render3dState) -> void {
   for i in 0 .. 16 { pr[i] = float_bits(ip[i]) }
   pr[16] = float_bits(render3d_st.ue_lg_zp[0]);  pr[17] = float_bits(render3d_st.ue_lg_zp[1]);  pr[18] = float_bits(render3d_st.ue_lg_zp[2]);  pr[19] = float_bits(near)
   pr[20] = gx;  pr[21] = gy;  pr[22] = gz;  pr[23] = shift
-  pr[24] = n;  pr[25] = per;  pr[26] = cells;  pr[27] = 0
+  pr[24] = n;  pr[25] = per;  pr[26] = cells;  pr[27] = cells * per
+  # the allocator to zero
+  for i in 0 .. 4 { render3d_st.ue_lg_zero[i] = 0 }
+  gpu_buffer_upload(render3d_st, render3d_st.ue_lg_balloc, 16, data_of(render3d_st.ue_lg_zero), GPU_DYNAMIC)
   pr[28] = float_bits(float(render3d_st.post_w));  pr[29] = float_bits(float(render3d_st.post_h))
   pr[30] = float_bits(1.0 / float(render3d_st.post_w));  pr[31] = float_bits(1.0 / float(render3d_st.post_h))
   pr[32] = float_bits(render3d_st.ue_lg_proj[10]);  pr[33] = float_bits(render3d_st.ue_lg_proj[14]);  pr[34] = 0;  pr[35] = 0
   let b = render3d_st.ue_lg_bufs
-  b[0] = render3d_st.ue_lg_bpos;  b[1] = render3d_st.ue_lg_bdir;  b[2] = render3d_st.ue_lg_bnum;  b[3] = render3d_st.ue_lg_bdata
+  b[0] = render3d_st.ue_lg_bpos;  b[1] = render3d_st.ue_lg_bdir;  b[2] = render3d_st.ue_lg_bnum;  b[3] = render3d_st.ue_lg_bdata;  b[4] = render3d_st.ue_lg_balloc
   gpu_dispatch(render3d_st, render3d_st.ue_lg_prog, data_of(pr), 144, b, (cells + 63) / 64)
   m4_copy(render3d_st.ue_lg_vp, render3d_st.cam_vp_clean)
   render3d_st.ue_lg_gx = gx;  render3d_st.ue_lg_gy = gy;  render3d_st.ue_lg_gz = gz;  render3d_st.ue_lg_shift = shift;  render3d_st.ue_lg_per = per

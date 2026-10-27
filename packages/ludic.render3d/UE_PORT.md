@@ -111,10 +111,12 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
   cull, kinst_cull_lights.comp, keeping every instance whose sphere reaches a shadow-casting light (the light's attenuation
   sphere holds a point's cube and a spot's cone). Those casters fill the last quarter of the instance output in a frame where a
   light casts. R3D_UE_LS_CULL=0 draws the camera's list instead, for an A/B; R3D_UE_LS_DEBUG=1 logs both lists' sizes.
-- **Light grid as Unreal's with linked lists off.** Each cell holds at most 32 lights (r.Forward.MaxCulledLightsPerCell); Unreal's
-  default linked-list culling has no per-cell cap. No HZB cell cull. 200 lamps in the gym: 42 ms a frame with the grid, 53 ms
-  without (R3D_UE_LIGHT_GRID=0), the same image. A shaded point finds its cell from its world position through the main camera's
-  unjittered view-projection, so reflections and the fog grid use it too; a point outside the main view reads every light.
+- **Light grid as Unreal's default (linked-list culling: no cap a cell).** The cells share one list of cells x 32 entries
+  (r.Forward.MaxCulledLightsPerCell); a cell counts its lights, takes its run with an atomic allocator and writes them - the same
+  lists as Unreal's linked list compacted. (A first cut capped each cell at 32 and dropped lights in tile-shaped blocks in town.)
+  No HZB cell cull. 200 lamps in the gym: 42 ms a frame with the grid, 53 ms without (R3D_UE_LIGHT_GRID=0), the same image. A
+  shaded point finds its cell from its world position through the main camera's unjittered view-projection, so reflections and the
+  fog grid use it too; a point outside the main view reads every light.
 - **GPP: graphics programs read storage buffers.** `readonly buffer <name> { ... };` in GLSL is bound by name with
   `gpu_bind_buffer`, like a sampler (manifest S rows; an unbound one reads a zeroed stand-in). This needs the rebuilt `ludic-dev`
   (tools/ludic-cli/shaders.ludic): an older one drops the S rows and lit programs fail. Rebuild it as the toolchain does:

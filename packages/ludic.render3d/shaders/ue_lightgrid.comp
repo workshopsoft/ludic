@@ -1,7 +1,9 @@
 // ue_lightgrid.comp - Unreal's LightGridInjectionCS (LightGridInjection.usf, UE 5.8): one thread a cell
 // (r.LightCulling.WorkloadDistributionMode 0), each cell's view-space box against every visible local light's
-// sphere (ComputeSquaredDistanceFromBoxToPoint), refined for spot lights (IsAabbOutsideInfiniteAcuteConeApprox),
-// written as a fixed list of at most MaxCulledLightsPerCell (r.Forward.LightLinkedListCulling 0). No HZB cull
+// sphere (ComputeSquaredDistanceFromBoxToPoint), refined for spot lights (IsAabbOutsideInfiniteAcuteConeApprox). As
+// r.Forward.LightLinkedListCulling 1 (Unreal's default) there is no cap a cell, only a global one (cells x MaxCulledLightsPerCell
+// entries): Unreal links each hit with an atomic allocator and compacts the lists; here a cell counts its lights, takes its place in
+// the one list with an atomic allocator, and writes them in order - the same lists. No HZB cull
 // (r.Forward.LightGridHZBCull 0). View space here is Unreal's: x right, y as the projection's, z the positive
 // depth in front of the camera; the light buffers are filled in that space (ue_lightgrid.ludic).
 layout(local_size_x = 64) in;
@@ -9,14 +11,15 @@ layout(set = 0, binding = 0) uniform Params {
   mat4 clip_to_view;        // the inverse of the camera's projection (reversed depth)
   vec4 zparams;             // LightGridZParams (B, O, S), w the near plane
   uvec4 grid;               // CulledGridSize xyz, w LightGridPixelSizeShift
-  uvec4 counts;             // NumLocalLights, MaxCulledLightsPerCell, NumGridCells
+  uvec4 counts;             // NumLocalLights, MaxCulledLightsPerCell, NumGridCells, the entries the list holds
   vec4 view;                // ViewSize xy, 1 / ViewSize zw
   vec4 proj;                // the projection's depth terms: device z = (proj.x * -z + proj.y) / z for view depth z (m[10], m[14])
 } pr;
 layout(set = 0, binding = 1) buffer LightPos { vec4 v[]; } light_pos;     // view-space position, radius
 layout(set = 0, binding = 2) buffer LightDir { vec4 v[]; } light_dir;     // view-space direction, tan(outer cone) (0: point)
 layout(set = 0, binding = 3) buffer NumCulled { uint v[]; } num_culled;   // per cell: count, first index
-layout(set = 0, binding = 4) buffer CulledData { uint v[]; } culled_data; // per cell: MaxCulledLightsPerCell light indices
+layout(set = 0, binding = 4) buffer CulledData { uint v[]; } culled_data; // every cell's lights, each cell's run at its first index
+layout(set = 0, binding = 5) buffer Allocator { uint v[]; } alloc;         // the next free entry (zeroed each frame)
 
 // Common.ush ComputeDepthFromZSlice
 float depthFromZSlice(float slice) { return (exp2(slice / pr.zparams.z) - pr.zparams.y) / pr.zparams.x; }
@@ -43,6 +46,15 @@ bool aabbOutsideCone(vec3 vertex, vec3 axis, float tanAngle, vec3 c, vec3 e) {
   return aabbInFrontOfPlane(d, e, vec4(n, 0.0));
 }
 
+// OverlapsLight: the box against the light's sphere, refined for an acute spot (REFINE_SPOTLIGHT_BOUNDS; tan 0 for the rest)
+bool overlaps(uint i, vec3 center, vec3 extent) {
+  vec4 p = light_pos.v[i];
+  if (boxDistSq(center, extent, p.xyz) >= p.w * p.w) return false;
+  vec4 dir = light_dir.v[i];
+  if (dir.w > 0.0 && aabbOutsideCone(p.xyz, -dir.xyz, dir.w, center, extent)) return false;
+  return true;
+}
+
 void main() {
   uint cell = gl_GlobalInvocationID.x;
   if (cell >= pr.counts.z) return;
@@ -62,14 +74,13 @@ void main() {
   vec3 center = 0.5 * (bmin + bmax);
   vec3 extent = bmax - center;
   uint n = 0u;
-  uint start = cell * pr.counts.y;
-  for (uint i = 0u; i < pr.counts.x; i++) {
-    vec4 pr_ = light_pos.v[i];
-    if (boxDistSq(center, extent, pr_.xyz) >= pr_.w * pr_.w) continue;
-    vec4 dir = light_dir.v[i];
-    // REFINE_SPOTLIGHT_BOUNDS: acute cones only (tan 0 for points and wide cones)
-    if (dir.w > 0.0 && aabbOutsideCone(pr_.xyz, -dir.xyz, dir.w, center, extent)) continue;
-    if (n < pr.counts.y) { culled_data.v[start + n] = i; n++; }
+  for (uint i = 0u; i < pr.counts.x; i++) { if (overlaps(i, center, extent)) n++; }
+  // the global budget: cells x MaxCulledLightsPerCell entries (pr.counts.w)
+  uint start = atomicAdd(alloc.v[0], n);
+  if (start + n > pr.counts.w) n = start < pr.counts.w ? pr.counts.w - start : 0u;
+  uint k = 0u;
+  for (uint i = 0u; i < pr.counts.x && k < n; i++) {
+    if (overlaps(i, center, extent)) { culled_data.v[start + k] = i; k++; }
   }
   num_culled.v[cell * 2u] = n;
   num_culled.v[cell * 2u + 1u] = start;
