@@ -41,7 +41,10 @@ float boxDistSq(vec3 c, vec3 e, vec3 p) { vec3 d = max(abs(p - c) - e, 0.0); ret
 bool aabbInFrontOfPlane(vec3 c, vec3 e, vec4 plane) { return dot(vec4(c, 1.0), plane) > dot(e, abs(plane.xyz)); }
 bool aabbOutsideCone(vec3 vertex, vec3 axis, float tanAngle, vec3 c, vec3 e) {
   vec3 d = c - vertex;
-  vec3 m = -normalize(cross(cross(d, axis), axis));
+  // on the axis the plane is undefined: Unreal's NaN compares false (inside); Metal's fast math does not promise that, so say it
+  vec3 side = cross(d, axis);
+  if (dot(side, side) < 1.0e-10) return false;
+  vec3 m = -normalize(cross(side, axis));
   vec3 n = -tanAngle * axis + m;
   return aabbInFrontOfPlane(d, e, vec4(n, 0.0));
 }
@@ -78,9 +81,9 @@ void main() {
   // the global budget: cells x MaxCulledLightsPerCell entries (pr.counts.w)
   uint start = atomicAdd(alloc.v[0], n);
   if (start + n > pr.counts.w) n = start < pr.counts.w ? pr.counts.w - start : 0u;
-  uint k = 0u;
-  for (uint i = 0u; i < pr.counts.x && k < n; i++) {
-    if (overlaps(i, center, extent)) { culled_data.v[start + k] = i; k++; }
+  uint written = 0u;
+  for (uint i = 0u; i < pr.counts.x && written < n; i++) {
+    if (overlaps(i, center, extent)) { culled_data.v[start + written] = i; written++; }
   }
   num_culled.v[cell * 2u] = n;
   num_culled.v[cell * 2u + 1u] = start;
