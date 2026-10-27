@@ -45,7 +45,7 @@ class LudicToolchainCheck : ProjectActivity {
                 NotificationType.WARNING
             )
             .addAction(NotificationAction.createSimple("Install instructions") {
-                BrowserUtil.browse("https://workshopsoft.pages.workshopsoft.io/ludic/")
+                BrowserUtil.browse("https://workshopsoft.github.io/ludic/")
             })
             .addAction(NotificationAction.createSimple("Set paths…") {
                 ShowSettingsUtil.getInstance().showSettingsDialog(project, LudicConfigurable::class.java)

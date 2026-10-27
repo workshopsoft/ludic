@@ -1,0 +1,65 @@
+# github.ludic — publish a release on GitHub: create the release for a tag (or
+# reuse it), then attach every file from an assets directory. The one piece of
+# the release flow that talks to the forge does so through the `gh` CLI, driven
+# from Ludic like every other external tool the runner uses.
+#
+# The repository comes from $LUDIC_GITHUB_REPO (default: this project's repo);
+# the token from $GH_TOKEN, which `gh` reads from the environment, so it never
+# appears on a command line. In CI, GH_TOKEN is the workflow's own GITHUB_TOKEN.
+#
+# Idempotent-ish: an existing release for the tag is reused, and an asset whose
+# name is already attached is skipped, not fatal.
+
+const GITHUB_REPO_DEFAULT: string = "workshopsoft/ludic"
+
+function github_repo() -> pointer { return getenv_or("LUDIC_GITHUB_REPO", GITHUB_REPO_DEFAULT) }
+
+# create-or-reuse the release for `tag`, with `body_file` as its notes; true on success
+function github_release(tag: pointer, body_file: pointer) -> bool {
+  if shq(`gh release view {tag} -R {github_repo()} --json tagName > /dev/null 2>&1`) {
+    print(`release {tag} already exists; uploading assets`)
+    return true
+  }
+  var notes = `--notes ''`
+  if shq(`test -f {body_file}`) { notes = `--notes-file {body_file}` }
+  var prerelease = ""
+  if Text.starts_with(tag, "v0.") { prerelease = "--prerelease" }
+  if not shq(`gh release create {tag} -R {github_repo()} --verify-tag --title {tag} {notes} {prerelease}`) {
+    err(`github: creating release {tag} failed\n`)
+    return false
+  }
+  print(`created release {tag}`)
+  return true
+}
+
+# attach every regular file in `dir` that the release does not already carry
+function github_upload_assets(tag: pointer, dir: pointer) -> bool {
+  if not shq(`test -d {dir}`) { return true }
+  let listed = Text.split(capture(`gh release view {tag} -R {github_repo()} --json assets --jq '.assets[].name'`), "\n")
+  let existing = new []pointer
+  var j = 0
+  while j < len(listed) { push(existing, Text.trim(listed[j]));  j += 1 }
+  let names = Text.split(capture(`ls -1 {dir}`), "\n")
+  var ok_all = true
+  var i = 0
+  while i < len(names) {
+    let name = Text.trim(names[i])
+    i += 1
+    if name == "" { continue }
+    if set_has(existing, name) { print(`  skip (exists): {name}`);  continue }
+    let path = `{dir}/{name}`
+    if not shq(`test -f {path}`) { continue }
+    if shq(`gh release upload {tag} -R {github_repo()} {path}`) { print(`  uploaded: {name}`) }
+    else { err(`  upload failed: {name}\n`);  ok_all = false }
+  }
+  return ok_all
+}
+
+# the whole flow; 0 on success
+function github_publish(tag: pointer, body_file: pointer, assets_dir: pointer) -> int {
+  if getenv_or("GH_TOKEN", "") == "" { err("github: GH_TOKEN is not set\n");  return 1 }
+  if not github_release(tag, body_file) { return 1 }
+  if not github_upload_assets(tag, assets_dir) { return 1 }
+  print(`done: https://github.com/{github_repo()}/releases/tag/{tag}`)
+  return 0
+}

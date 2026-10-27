@@ -207,7 +207,7 @@ function template_gitignore() -> pointer {
 function template_readme(name: pointer) -> pointer {
   var b = "# " + name + "\n"
   b = b + "\n"
-  b = b + "A game written in Ludic (https://workshopsoft.pages.workshopsoft.io/ludic/).\n"
+  b = b + "A game written in Ludic (https://workshopsoft.github.io/ludic/).\n"
   b = b + "\n"
   b = b + "    ludic run      # build and play\n"
   b = b + "    ludic test     # run the tests\n"
@@ -726,7 +726,7 @@ function cmd_version() -> int {
 
 # ---- ludic upgrade ----------------------------------------------------------
 
-function install_url() -> pointer { return getenv_or("LUDIC_INSTALL_URL", "https://workshopsoft.pages.workshopsoft.io/ludic/install.sh") }
+function install_url() -> pointer { return getenv_or("LUDIC_INSTALL_URL", "https://workshopsoft.github.io/ludic/install.sh") }
 
 # ludic upgrade [version] — re-run the installer, which replaces the install in
 # place. One code path for installing and updating means an upgrade can never

@@ -132,7 +132,7 @@ object LudicToolchain {
     fun cli(): String? = findExecutable(null, "", listOf("ludic", "ludic.exe"), COMPILER_SUBDIRS)
 
     const val INSTALL_HINT =
-        "Install the toolchain (curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh) " +
+        "Install the toolchain (curl -fsSL https://workshopsoft.github.io/ludic/install.sh | sh) " +
             "or set the paths in Settings | Languages & Frameworks | Ludic."
 }
 
@@ -176,7 +176,7 @@ class LudicConnectionProvider(private val project: Project) : ProcessStreamConne
             }
             append("  on PATH, and in ~/.ludic/bin.\n")
         }
-        append("\nInstall the toolchain (curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh), ")
+        append("\nInstall the toolchain (curl -fsSL https://workshopsoft.github.io/ludic/install.sh | sh), ")
         append("build it with `bin/ludic-dev tools` from a checkout, ")
         append("or set the path in Settings | Languages & Frameworks | Ludic. ")
         append("Syntax highlighting works without it; completion and diagnostics do not.")

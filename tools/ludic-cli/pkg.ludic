@@ -4,7 +4,7 @@
 # It realises the v1 direction decided in the RFC:
 #
 #   * URL-as-identity, no registry — the import path IS the git location
-#     (git.workshopsoft.io/user/pkg). A `git tag` is publishing.
+#     (github.com/user/pkg). A `git tag` is publishing.
 #   * Minimum Version Selection (MVS, Go-style) — a require is a *minimum*; the
 #     resolver picks, per module, the greatest of the required minimums, then
 #     the reachable closure at those versions. Deterministic, no SAT solver.

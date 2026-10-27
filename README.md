@@ -8,9 +8,9 @@ The compiler is written in Ludic. It compiles its own source to a byte-exact
 fixpoint and rebuilds from a checked-in IR seed with clang alone; CI asserts
 that on every push.
 
-- **Documentation:** <https://workshopsoft.pages.workshopsoft.io/ludic/>
-- **API reference:** <https://workshopsoft.pages.workshopsoft.io/ludic/api.html>
-- **Issues:** <https://git.workshopsoft.io/workshopsoft/ludic/issues>
+- **Documentation:** <https://workshopsoft.github.io/ludic/>
+- **API reference:** <https://workshopsoft.github.io/ludic/api.html>
+- **Issues:** <https://github.com/workshopsoft/ludic/issues>
 
 ```ludic
 program Hello {
@@ -39,7 +39,7 @@ Install the toolchain — the compiler, the `ludic` CLI, the engine runtime, the
 formatter and the language server — with one command:
 
 ```bash
-curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh
+curl -fsSL https://workshopsoft.github.io/ludic/install.sh | sh
 ```
 
 It installs into `~/.ludic` and puts `~/.ludic/bin` on your `PATH` in every
@@ -111,7 +111,7 @@ bin/ludic-dev test      # the regression suite
   property and program `var` in one call.
 
 [LANGUAGE.md](LANGUAGE.md) is the full reference; the
-[API reference](https://workshopsoft.pages.workshopsoft.io/ludic/api.html)
+[API reference](https://workshopsoft.github.io/ludic/api.html)
 documents every symbol on its own page.
 
 ## Shipping
@@ -142,9 +142,9 @@ Dependencies are identified by URL, resolved with minimal version selection, and
 cached in a content-addressed store:
 
 ```bash
-ludic add git.workshopsoft.io/user/pkg   # resolve, fetch, link into ludic_modules/
+ludic add github.com/user/pkg            # resolve, fetch, link into ludic_modules/
 ludic get                                # install from package.ludic, write the lock
-ludic remove git.workshopsoft.io/user/pkg   # the inverse of add
+ludic remove github.com/user/pkg         # the inverse of add
 ludic verify                             # check locked packages against the store
 ```
 
@@ -185,9 +185,8 @@ and published by CI from the tag; see [CHANGELOG.md](CHANGELOG.md).
 ## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers the development loop, the commit and
-code conventions, how the bootstrap fixpoint works, and what a self-hosted CI
-runner needs. Issue and pull-request templates are under
-[`.forgejo/`](.forgejo/).
+code conventions, and how the bootstrap fixpoint works. Issue and pull-request
+templates are under [`.github/`](.github/).
 
 ## License
 

@@ -1,4 +1,0 @@
-# Default owner for everything in the repo. Forgejo requests review from these
-# owners on matching pull requests. See:
-# https://forgejo.org/docs/latest/user/code-owners/
-*       @orkun

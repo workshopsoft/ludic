@@ -1,7 +1,7 @@
 # Tiled golden fixtures
 
 The curated, version-pinned corpus for the Ludic Tiled reader (design record:
-[Design: Tiled maps](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design%2FTiled),
+[Design: Tiled maps](https://github.com/workshopsoft/ludic/wiki/Design%2FTiled),
 issues #67–#74). No single Tiled file covers the format surface, so this is a
 subset of the official [`mapeditor/tiled`](https://github.com/mapeditor/tiled)
 `examples/` tree plus a few hand-authored files for the gaps the official

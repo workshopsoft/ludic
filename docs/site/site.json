@@ -1,7 +1,7 @@
 {
   "brand": "Ludic",
   "tagline": "A compiled language for 2D games, with the entity system in the syntax.",
-  "repo_url": "https://git.workshopsoft.io/workshopsoft/ludic",
+  "repo_url": "https://github.com/workshopsoft/ludic",
   "meta": {
     "title": "Ludic — a compiled game language",
     "description": "Ludic compiles ahead of time to a native binary. The entity-component system is part of the syntax, the runtime is deterministic fixed-point, and the compiler is written in Ludic — no C is generated, compiled or linked in a build.",
@@ -178,7 +178,7 @@
         "comment": "install the toolchain (macOS, Linux)"
       },
       {
-        "cmd": "curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh"
+        "cmd": "curl -fsSL https://workshopsoft.github.io/ludic/install.sh | sh"
       },
       {
         "out": "→ installed ludic 0.4.0 → ~/.ludic"

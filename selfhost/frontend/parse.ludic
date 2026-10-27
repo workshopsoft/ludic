@@ -1260,8 +1260,8 @@ function parse_test() -> Node {
 # behaviour). When that fails and the spec is not absolute, it is looked up
 # under the package module root — $LUDIC_MODULES, default "ludic_modules" — so a
 # fetched source package resolves by its import path, e.g.
-#   import "git.workshopsoft.io/user/pkg/foo.ludic"
-# materialised by `ludic get` at ludic_modules/git.workshopsoft.io/user/pkg/foo.ludic.
+#   import "github.com/user/pkg/foo.ludic"
+# materialised by `ludic get` at ludic_modules/github.com/user/pkg/foo.ludic.
 # The fallback only fires when the local path does not exist, so every existing
 # import resolves exactly as before (the emitted IR is byte-identical).
 # true when `rel` is an engine-runtime splice path ("runtime/..."), as opposed to

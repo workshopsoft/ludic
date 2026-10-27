@@ -45,7 +45,7 @@ function app_name(m: Manifest) -> pointer {
 # Dock, saved window state, the sandbox container, TCC permissions - and two
 # apps sharing one identifier is a class of bug that looks like haunting. When
 # the manifest does not set it, the package path makes a defensible one:
-# `git.workshopsoft.io/workshopsoft/maroon-lake` -> `io.workshopsoft.maroon-lake`.
+# `github.com/workshopsoft/maroon-lake` -> `com.github.maroon-lake`.
 function app_id(m: Manifest) -> pointer {
   let id = manifest_app(m, "id")
   if id != "" { return id }
@@ -59,7 +59,7 @@ function app_id_host(module: pointer) -> pointer {
   let slash = s_index(module, "/", 0)
   if slash <= 0 { return "" }
   let host = sslice(module, 0, slash)
-  # reverse the dotted segments: git.workshopsoft.io -> io.workshopsoft.git
+  # reverse the dotted segments: git.example.io -> io.example.git
   var parts = new []pointer
   var start = 0
   var i = 0

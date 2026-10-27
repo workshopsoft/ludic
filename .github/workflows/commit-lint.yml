@@ -10,29 +10,33 @@ on:
   pull_request:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   conventional-commits:
-    runs-on: docker
+    runs-on: ubuntu-24.04
     container: node:20-bookworm
     steps:
       - name: Check out with history
-        env:
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
-        run: |
-          set -eu
-          git config --global --add safe.directory '*'
-          # Full clone so both endpoints of the range are present.
-          git clone "$REPO_URL" .
-          git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # full history so both endpoints of the range are present
+          fetch-depth: 0
+          persist-credentials: false
+          # a pull request's own head, not the merge commit GitHub builds for it
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Lint the new commits
         env:
           BEFORE: ${{ github.event.before }}
           BASE: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -eu
+          git config --global --add safe.directory '*'
           # Pick the range of *new* commits to lint:
-          #  - pull_request: base branch .. this commit
+          #  - pull_request: base branch .. the pull request's head
           #  - push:         the pushed range (event.before .. this commit)
           #  - new branch / unknown: just the tip commit
           # `event.before` is only usable if it still resolves: a force-push
@@ -40,13 +44,12 @@ jobs:
           # job fail with "Invalid revision range" on an otherwise clean push.
           # Fall back to the tip commit in that case.
           if [ -n "${BASE:-}" ]; then
-            git fetch --quiet origin "${BASE}" 2>/dev/null || true
-            RANGE="origin/${BASE}..${GITHUB_SHA}"
+            RANGE="origin/${BASE}..${HEAD_SHA}"
           elif [ -n "${BEFORE:-}" ] && ! printf '%s' "$BEFORE" | grep -qE '^0+$' \
                && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            RANGE="${BEFORE}..${GITHUB_SHA}"
+            RANGE="${BEFORE}..${HEAD_SHA}"
           else
-            RANGE="${GITHUB_SHA}~1..${GITHUB_SHA}"
+            RANGE="${HEAD_SHA}~1..${HEAD_SHA}"
           fi
           echo "linting range: $RANGE"
           sh tools/git-hooks/lint-range.sh "$RANGE"

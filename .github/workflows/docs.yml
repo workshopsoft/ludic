@@ -1,0 +1,98 @@
+name: docs
+
+# Rebuild the documentation site and deploy it to GitHub Pages on every push to
+# main that touches the docs sources. The site is generated from the per-symbol
+# source of truth in docs/language/** — nothing is hand-edited, and no branch
+# holds the build: it goes up as a Pages artifact.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'tools/docgen/**'
+      - 'tools/ludic-cli/**'
+      # the site publishes the installer, so a change to it has to redeploy the
+      # site — otherwise a fixed install.sh sits in main while the old one is
+      # still what `curl … | sh` fetches
+      - 'install.sh'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit, branch or tag to build the site from (default: the run commit)'
+        required: false
+        default: ''
+
+# Two deploys racing could land out of order and leave the site holding the
+# older build with both runs green. Serialise them; a deploy already running is
+# allowed to finish, and a newer run waiting behind it replaces any older one
+# still queued.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    # The generator is Ludic, so this builds the toolchain from its IR seed
+    # (clang assembles the seed into bin/ludicc, which compiles bin/ludic-dev)
+    # exactly like the ci workflow, then runs `ludic-dev docs-gen`.
+    container: node:20-bookworm
+    steps:
+      - name: Install clang-16
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends clang-16 git ca-certificates
+          clang-16 --version | head -1
+
+      - name: Check out the source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Generate the documentation site
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git log --oneline -1
+          # The toolchain is macOS-first; on this Linux runner it links against a
+          # tiny C-free IR shim supplying the Darwin stdout/stderr globals over
+          # glibc's, injected through LUDIC_CC. docs-gen is a pure CLI (no
+          # windowing), so the C-free bootstrap is all it needs.
+          export LUDIC_CC="clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll -lm"
+          export LUDIC_HOME="$(pwd)"
+          mkdir -p bin
+          clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
+          bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+          bin/ludic-dev docs-gen --out "$RUNNER_TEMP/public"
+          bin/ludic-dev docs-check "$RUNNER_TEMP/public"
+          echo "--- generated files ---"
+          ls -la "$RUNNER_TEMP/public"
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

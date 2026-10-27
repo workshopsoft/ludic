@@ -28,7 +28,7 @@ program LudicDev {
   import "test.ludic"
   import "json.ludic"
   import "lsp_test.ludic"
-  import "forgejo.ludic"
+  import "github.ludic"
   import "checks.ludic"
   import "syntax_gen.ludic"
   import "docgen.ludic"
@@ -80,7 +80,7 @@ program LudicDev {
     print("")
     print("release:")
     print("  release [major|minor|patch] [--dry-run] [--publish]")
-    print("                                cut a release: CHANGELOG + VERSION bump + tag (+ Forgejo release)")
+    print("                                cut a release: CHANGELOG + VERSION bump + tag (+ GitHub release)")
     print("  publish [vX.Y.Z]              publish an already-tagged release; what CI runs on a tag push")
     print("  changelog-section <ver>       print that release's CHANGELOG.md section")
     print("  changelog-render <ver> <date> <dir>")

@@ -10,7 +10,7 @@ A context comes from <code>Gl.open(width, height, title)</code>: windowed, an <c
 
 The glue: <code>Gl.program(vs, fs)</code> / <code>Gl.program5(vs, tcs, tes, gs, fs)</code> compile and link (logs on failure), <code>Gl.uniform(prog, name)</code>, <code>Gl.vao()</code>, <code>Gl.buffer()</code>, <code>Gl.texture()</code>, <code>Gl.framebuffer()</code> allocate, and float data is filled from Q16.16 with <code>Gl.floats(n)</code> / <code>Gl.put(buf, i, v)</code> / <code>Gl.bytes_of(n)</code> or from IEEE bits with <code>Gl.put_bits</code>; <code>Gl.f32(v)</code> and <code>Gl.fixed(bits)</code> convert single values. The bare <code>f_add</code>/<code>f_mul</code>/… helpers do IEEE single-precision arithmetic on those bit patterns for programs that want real floats on the CPU.
 
-Using <code>Gl.*</code> links <code>gl.ll</code>, the thunks and <code>OpenGL.framework</code>; a program that does not is byte-identical to before. The <code>ludic.render3d</code> package is a physically based 3D renderer written on this surface (see <code>examples/rendering/smooth.ludic</code> here, and <a href="https://git.workshopsoft.io/workshopsoft/maroon-lake">Maroon Lake</a> for a game built on it).
+Using <code>Gl.*</code> links <code>gl.ll</code>, the thunks and <code>OpenGL.framework</code>; a program that does not is byte-identical to before. The <code>ludic.render3d</code> package is a physically based 3D renderer written on this surface (see <code>examples/rendering/smooth.ludic</code> here, and <a href="https://github.com/workshopsoft/maroon-lake">Maroon Lake</a> for a game built on it).
 
 ```ludic
 program Triangle {

@@ -8,12 +8,12 @@
 > reimplemented as a lex+parse gate (the doc-check hook). The `--target`/
 > cross-compile and `--shared` paths are still features of the old C driver not
 > yet re-implemented on the self-hosted toolchain. See the
-> [Bootstrap deep-dive](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Bootstrap) §5.7 on the wiki.
+> [Bootstrap deep-dive](https://github.com/workshopsoft/ludic/wiki/Bootstrap) §5.7 on the wiki.
 >
 > Most people never invoke `ludicc` directly: the `ludic` CLI drives it.
 >
 > ```bash
-> curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh   # the toolchain, into ~/.ludic
+> curl -fsSL https://workshopsoft.github.io/ludic/install.sh | sh   # the toolchain, into ~/.ludic
 > ludic new mygame && cd mygame
 > ludic run                                      # compile + run
 > ludic build --headless                         # compile, deterministic render

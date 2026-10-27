@@ -11,7 +11,7 @@
 ; executable: Darwin has it, glibc does not, and without it every Linux link of the
 ; seed failed - which is why CI stopped publishing releases after v0.7.0. It is pure LLVM IR — no C compiler
 ; and no .c source — so it keeps the toolchain's C-free guarantee intact. It is
-; injected on Linux only, via LUDIC_CC (see .forgejo/workflows/ci.yml); macOS
+; injected on Linux only, via LUDIC_CC (see .github/workflows/ci.yml); macOS
 ; never links it (libc already provides __stdoutp/__stderrp).
 ;
 ; Kept deliberately triple-free: clang stamps the host target when it assembles

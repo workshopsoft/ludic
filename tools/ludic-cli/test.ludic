@@ -186,7 +186,7 @@ function runtime_home_case() -> void {
 
 # The install layout: bin/ beside runtime/ and packages/, reached through $PATH
 # from an unrelated directory, with nothing in the environment. This is what
-# `curl https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh` lays down and the only shape most
+# `curl https://workshopsoft.github.io/ludic/install.sh | sh` lays down and the only shape most
 # users will ever run, so it is asserted rather than assumed: a staged copy of
 # the toolchain compiles and runs a project created by `ludic new`.
 function install_layout_case() -> void {
@@ -461,7 +461,7 @@ function bundle_case() -> void {
   }
   # the identifier is derived from the package path when the manifest omits it
   let id = capture_line(`plutil -extract CFBundleIdentifier raw "{app}/Contents/Info.plist" 2>/dev/null`)
-  if id != "io.workshopsoft.probe-app" { bad2(lbl, `bundle id came out [{id}]`);  return }
+  if id != "io.example.probe-app" { bad2(lbl, `bundle id came out [{id}]`);  return }
   # `app env` is what Launch Services starts it with (a Finder or `open` start)
   let env = capture_line(`plutil -extract LSEnvironment.MallocLargeCache raw "{app}/Contents/Info.plist" 2>/dev/null`)
   if env != "0" { bad2(lbl, `LSEnvironment.MallocLargeCache came out [{env}]`);  return }
@@ -477,7 +477,7 @@ function bundle_case() -> void {
 function there(path: pointer) -> bool { return shq(`test -e "{path}"`) }
 
 function bundle_manifest_src() -> pointer {
-  var s = "package \"git.workshopsoft.io/workshopsoft/probe-app\"" + nl()
+  var s = "package \"git.example.io/workshopsoft/probe-app\"" + nl()
   s = s + "version \"2.1.0\"" + nl()
   s = s + "kind source" + nl()
   s = s + "app name \"Probe App\"" + nl()

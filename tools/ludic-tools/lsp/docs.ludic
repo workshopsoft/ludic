@@ -11,7 +11,7 @@
 # one-line summary and a link in hover, and go-to-definition opens the page.
 # Loaded once, on first use; a toolchain without docs simply has no entries.
 
-var DOCS_URL: pointer = "https://workshopsoft.pages.workshopsoft.io/ludic/"
+var DOCS_URL: pointer = "https://workshopsoft.github.io/ludic/"
 
 var g_docs_loaded: bool = false
 var g_dx_token: []pointer

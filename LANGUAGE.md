@@ -2029,7 +2029,7 @@ scopes, [`examples/lang/detach.ludic`](examples/lang/detach.ludic) for the struc
 attach/detach pair, and [`examples/lang/reason.ludic`](examples/lang/reason.ludic) for
 reason-carrying teardown. The rest of the lifecycle roadmap (value-change hooks,
 query-membership edges, keyed effects) is in
-[the Lifecycle design](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Lifecycle).
+[the Lifecycle design](https://github.com/workshopsoft/ludic/wiki/Design/Lifecycle).
 
 **`@Handles` — the handlers a program drives.** Written in front of the
 `program`, `@Handles(Move)` names the handlers it uses. It parses and reads as
@@ -2041,7 +2041,7 @@ whole timeline), plus [`examples/lang/toggle.ludic`](examples/lang/toggle.ludic)
 (enable/disable). Scenes and their `on enter` / `on exit` lifecycle blocks are
 implemented — see "Scenes & layers" below. (An annotation spelling,
 `@OnEnter(Scene)` / `@OnExit(Scene)`, is a designed but not-yet-built convenience
-— see [the Scenes design](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Scenes); today the hooks are written as `on
+— see [the Scenes design](https://github.com/workshopsoft/ludic/wiki/Design/Scenes); today the hooks are written as `on
 enter { … }` inside the `scene`.)
 
 ## Events & modding (`event`, `emit`, `@On`)
@@ -2101,7 +2101,7 @@ if emit BeforeHurt(amount: dmg) == 0 { hp = hp - dmg }   # apply only if not vet
 ```
 
 The full modding roadmap — the world-table reflection ABI, scoped/leak-proof
-listeners, and the sandbox — is in [the Events design](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Events).
+listeners, and the sandbox — is in [the Events design](https://github.com/workshopsoft/ludic/wiki/Design/Events).
 
 ## Records (`property`), arrays and slices
 
@@ -2697,7 +2697,7 @@ are future work.
 Records (`property` used with `new`) and array types, `break`/`continue`, and
 argv/stderr — once listed here as near-term — are now implemented and
 self-hosting; their lowerings are in
-[the Bootstrap deep-dive](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Bootstrap) §4.
+[the Bootstrap deep-dive](https://github.com/workshopsoft/ludic/wiki/Bootstrap) §4.
 
 ## Scenes & layers
 
@@ -2707,7 +2707,7 @@ self-hosting; their lowerings are in
 > implicit active-scene register, states numbered by declaration order, and
 > `become` as two direct calls plus a store. Richer scene features (the overlay
 > stack, scene-owned entities, scene-local state, transition parameters) are
-> designed in [the Scenes design](https://git.workshopsoft.io/workshopsoft/ludic/wiki/Design/Scenes) and not built yet.
+> designed in [the Scenes design](https://github.com/workshopsoft/ludic/wiki/Design/Scenes) and not built yet.
 
 A program is usually several mutually-exclusive states — a title screen, the
 overworld, a battle — and the usual way to write that is a mode register

@@ -19,7 +19,7 @@ Everything the bundler needs lives in `package.ludic`, so the command takes no
 arguments:
 
 ```ludic skip
-package "git.workshopsoft.io/workshopsoft/maroon-lake"
+package "github.com/workshopsoft/maroon-lake"
 version "0.1.0"
 
 app  name       "Maroon Lake"
@@ -52,10 +52,11 @@ pack "assets"
 | `lang` | the languages' directory and the source language (`lang "assets/lang" en`): the compiler checks every text key against `<dir>/<source>.po` (LANGUAGE.md, Text keys) | none: no key is checked |
 
 Only `app name` is worth setting deliberately. The identifier is derived from the
-package path when you omit it - `git.workshopsoft.io/workshopsoft/maroon-lake`
-becomes `io.workshopsoft.maroon-lake` - but it is worth pinning, because Launch
+package path when you omit it - `github.com/workshopsoft/maroon-lake`
+becomes `com.github.maroon-lake` - but it is worth pinning, because Launch
 Services keys the Dock, saved window state and permissions off it, and two apps
-sharing one identifier is a class of bug that looks like haunting.
+sharing one identifier is a class of bug that looks like haunting. Maroon Lake
+pins `io.workshopsoft.maroon-lake`.
 
 ## The asset pack
 

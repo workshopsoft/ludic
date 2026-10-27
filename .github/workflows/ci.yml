@@ -1,27 +1,27 @@
 name: ci
 
 # Build the language toolchain from its IR seed and run the regression suites on
-# every push to main and every pull request. Until this landed the only workflow
-# was docs.yml, so nothing gated a change on `ludic-dev test` / `ludic-dev test-tools` or on the
-# compiler even building from the seed. See also bootstrap.yml, which proves the
-# C-free self-rebuild reproduces the seed byte-for-byte.
+# every push to main and every pull request, so nothing lands without
+# `ludic-dev test` / `ludic-dev test-tools` passing and the compiler building
+# from the seed. See also bootstrap.yml, which proves the C-free self-rebuild
+# reproduces the seed byte-for-byte.
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
-    # Same runner label the docs workflow uses — the self-hosted Forgejo runner
-    # advertises `docker`, not the GitHub-ism `ubuntu-latest`.
-    runs-on: docker
-    # Reuse the runner's own base image (Debian bookworm with git + node already
-    # present) and add just the one thing the toolchain needs: a modern clang
-    # (LLVM 16 — the IR uses opaque pointers, so clang 15+ is required). The docs
-    # generator and its guards are now Ludic, so the job carries no Python. A
-    # prebuilt image with clang baked in is the obvious future speed-up (see
-    # issue #33's packaging work).
+    runs-on: ubuntu-24.04
+    # Debian bookworm with git + node already present, plus the one thing the
+    # toolchain needs: a modern clang (LLVM 16 — the IR uses opaque pointers, so
+    # clang 15+ is required). The docs generator and its guards are Ludic, so the
+    # job carries no Python. A prebuilt image with clang baked in is the obvious
+    # future speed-up (see issue #33's packaging work).
     container: node:20-bookworm
     steps:
       - name: Install clang-16
@@ -33,14 +33,14 @@ jobs:
           clang-16 --version | head -1
 
       - name: Check out the triggering commit
-        env:
-          # the repository that triggered the run, so a fork or a mirror tests itself
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Point the build at the Linux stdio shim
         run: |
           set -eu
           git config --global --add safe.directory '*'
-          git clone "$REPO_URL" .
-          git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
           git log --oneline -1
           # The toolchain is macOS-first; on this Linux runner it links against a
           # tiny C-free IR shim that supplies the Darwin standard-stream globals
