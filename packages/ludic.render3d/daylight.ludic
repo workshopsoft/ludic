@@ -113,9 +113,11 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   if ue_sunlight_on(render3d_st) {
     let ut = ue_sun_tmp(render3d_st)
     ue_sky_ground_transmittance(render3d_st, Math.sin(el), ut)
-    sr = render3d_st.day_sun_base[0] * ut[0] * sunk
-    sg = render3d_st.day_sun_base[1] * ut[1] * sunk
-    sb = render3d_st.day_sun_base[2] * ut[2] * sunk
+    let ui = ue_sun_tmp2(render3d_st)
+    ue_sky_illum(render3d_st, ui)                    # white above the air (ue_sky.ludic ue_sun_outer), as the sky's own scattering takes it
+    sr = ui[0] * ut[0] * sunk
+    sg = ui[1] * ut[1] * sunk
+    sb = ui[2] * ut[2] * sunk
     lel = el
   }
   # the visible disc is the real sun's, wherever the light is clamped to or the moon has taken over

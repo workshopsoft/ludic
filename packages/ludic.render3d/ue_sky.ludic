@@ -90,8 +90,16 @@ function ue_sky_sun(render3d_st: mut Render3dState, o: floats) -> void {
 function ue_sky_illum(render3d_st: mut Render3dState, o: floats) -> void {
   let s = r3d_sky_atmosphere(render3d_st)
   if s.light_illuminance_r >= 0.0 { v3_set(o, s.light_illuminance_r, s.light_illuminance_g, s.light_illuminance_b);  return }
-  if render3d_st.day_sun_base != null { v3_set(o, render3d_st.day_sun_base[0], render3d_st.day_sun_base[1], render3d_st.day_sun_base[2]);  return }
-  v3_set(o, render3d_st.sun_color[0], render3d_st.sun_color[1], render3d_st.sun_color[2])
+  if render3d_st.day_sun_base != null { ue_sun_outer(render3d_st.day_sun_base, o);  return }
+  ue_sun_outer(render3d_st.sun_color, o)
+}
+# The sun above the air, from a sun seen at the ground (the photograph's: day_sun_base): white at its luminance. A directional light
+# in Unreal is white (LightColor 255, no temperature) and only the atmosphere's transmittance colours it; the photograph's sun is
+# already through our air, and taking its tint as the outer light coloured it twice (at 50 degrees r/g 1.19, b/g 0.74 against
+# Unreal's 1.13, 0.81: GetAtmosphereTransmitanceOnGroundAtPlanetTop 0.904, 0.802, 0.652)
+function ue_sun_outer(ground: floats, o: floats) -> void {
+  let l = 0.2126 * ground[0] + 0.7152 * ground[1] + 0.0722 * ground[2]
+  v3_set(o, l, l, l)
 }
 
 # FAtmosphereSetup::InternalInit, as the atmosphere uniforms of ue_atmosphere.frag

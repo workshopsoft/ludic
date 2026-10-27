@@ -53,8 +53,10 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **The sky's brightness follows our sun.** The atmosphere's outer-space sun illuminance defaults to the scene's own sun
   (`day_sun_base`) so the sky and lit ground share one scale; Unreal's default would be 10 lux with physical units everywhere.
   Set `UeSky.light_illuminance_*` to override. Our stars and moon still draw on top at night (Unreal leaves those to the sky material).
-- **The sun's colour now comes from the atmosphere.** Its light is the scene's base sun (`day_sun_base`, standing in for the
-  outer-space illuminance) times the transmittance through Unreal's atmosphere at the sun's true elevation; daylight's warmth
+- **The sun's colour now comes from the atmosphere.** Its light is white at the scene's base sun's luminance (`day_sun_base`, standing
+  in for the outer-space illuminance: Unreal's directional light is white and only the atmosphere colours it) times the transmittance
+  through Unreal's atmosphere at the sun's true elevation (the base's own tint was taken until 2026-10-27: the photograph's sun is
+  already through the air, so it was warmed twice: r/g 1.19, b/g 0.74 at 50 degrees against Unreal's 1.13, 0.81); daylight's warmth
   ramp, its fade between -8 and 12 degrees and the 3-degree floor on the light's direction are not used. So the low sun is warmer
   and the noon sun is a little dimmer and cooler-white than daylight's (the base used to be the sun at the photograph's own
   elevation). Exposure takes up the brightness. Adjust: `UeSky.light_illuminance_*` (the outer-space sun), the Rayleigh / Mie /
