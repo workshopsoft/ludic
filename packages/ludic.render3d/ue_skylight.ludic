@@ -178,3 +178,25 @@ function ue_skylight_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_sl_mips"), float(render3d_st.ue_sl_mips))
   u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_sl_color"), sl.light_color_r * sl.intensity, sl.light_color_g * sl.intensity, sl.light_color_b * sl.intensity)
 }
+
+# ---- Unreal's atmosphere sun light ----------------------------------------------------------------------------------------------
+# With bAtmosphereSunLight (Unreal's default for the sky's sun) the sun's light on surfaces is its outer-space illuminance times
+# FAtmosphereSetup::GetTransmittanceAtGroundLevel toward it (ue_fog.ludic ue_sky_ground_transmittance), at its true direction;
+# daylight.ludic applies it in daylight_set. The outer-space illuminance is the scene's own sun (day_sun_base), as the sky uses.
+# R3D_UE_SUNLIGHT=0 (or r3d_ue_sunlight(st, false)) puts daylight's hand-tuned colour back; on by default with the Unreal sky.
+export function r3d_ue_sunlight(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_sun_on = 0
+  if on { render3d_st.ue_sun_on = 1 }
+}
+function ue_sunlight_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_sun_on < 0 {
+    render3d_st.ue_sun_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_SUNLIGHT") and r3d_env(render3d_st, "R3D_UE_SUNLIGHT") == "0" { render3d_st.ue_sun_on = 0 }
+  }
+  return render3d_st.ue_sun_on == 1 and ue_sky_on(render3d_st)
+}
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_sun_tmp(render3d_st: mut Render3dState) -> floats {
+  if render3d_st.ue_sun_t == null { render3d_st.ue_sun_t = floats(3) }
+  return render3d_st.ue_sun_t
+}

@@ -14,6 +14,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Sky Atmosphere (visible sky, sun disc) | ue_sky.ludic, ue_atmosphere.frag, sky.frag `uaSkyLuminance` | `R3D_UE_SKY=0`, `r3d_ue_sky` |
 | Exponential height fog + aerial perspective | ue_fog.ludic, ue_fog.frag, ue_fog_apply.frag, ue_atmosphere.frag `UA_AP`/`UA_DISTANT` | `R3D_UE_FOG=0`, `r3d_ue_fog` |
 | Real-time sky light (capture, GGX cube, SH diffuse) | ue_skylight.ludic, ue_skylight.frag, lighting.glsl `u_ue_sl` | `R3D_UE_SKYLIGHT=0`, `r3d_ue_skylight` |
+| Atmosphere sun light (sun colour = outer illuminance x ground transmittance) | ue_skylight.ludic `ue_sunlight_on`, daylight.ludic `daylight_set` | `R3D_UE_SUNLIGHT=0`, `r3d_ue_sunlight` |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
 
@@ -38,7 +39,12 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **The sky's brightness follows our sun.** The atmosphere's outer-space sun illuminance defaults to the scene's own sun
   (`day_sun_base`) so the sky and lit ground share one scale; Unreal's default would be 10 lux with physical units everywhere.
   Set `UeSky.light_illuminance_*` to override. Our stars and moon still draw on top at night (Unreal leaves those to the sky material).
-- **The sun's colour is still daylight.ludic's**, not the atmosphere's transmittance (Unreal's bAtmosphereSunLight).
+- **The sun's colour now comes from the atmosphere.** Its light is the scene's base sun (`day_sun_base`, standing in for the
+  outer-space illuminance) times the transmittance through Unreal's atmosphere at the sun's true elevation; daylight's warmth
+  ramp, its fade between -8 and 12 degrees and the 3-degree floor on the light's direction are not used. So the low sun is warmer
+  and the noon sun is a little dimmer and cooler-white than daylight's (the base used to be the sun at the photograph's own
+  elevation). Exposure takes up the brightness. Adjust: `UeSky.light_illuminance_*` (the outer-space sun), the Rayleigh / Mie /
+  ozone settings. The weather's dimming (overcast, lightning) is the game's and still applies; the moon at night is still daylight's.
 - **Shadowed sides are darker and bluer than before.** The sky light is the captured sky only: blue from above, black below the
   horizon (bLowerHemisphereIsBlack), no hand-made ground term. In Unreal the light bounced off the ground comes from GI (Lumen), not
   the sky light. Adjust: `UeSkyLight.lower_hemisphere_is_black = false` with a `lower_hemisphere_color`, `intensity`, or GI later.
