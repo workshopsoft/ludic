@@ -19,7 +19,11 @@ uniform vec4 u_fp[17];        // the hair's parameters in model.frag's hair-mode
 uniform sampler2D u_scene_depth; // the opaque scene's depth (the visibility pass: its own depth buffer holds the strands')
 uniform sampler2D u_hair_lut;  // hair_lut.frag
 uniform float u_frame;
-uniform float u_hs_d0;        // DOM: the map's plane, metres from the sun's eye
+uniform float u_st_terms;     // R3D_STRAND_TERMS (strands.ludic): 1 the sun alone, 2 the sky alone, 0 both
+#ifdef DOM
+uniform sampler2D u_hs_front;  // the deep shadow's front depth (strands.ludic)
+uniform vec4 u_hs_layers;      // its layers' depths (ComputeDeepShadowLayerDepths)
+#endif
 const int SKY_SAMPLES = 16;   // r.HairStrands.SkyLighting.SampleCount
 
 // SampleHairLUT for one channel: the atlas's trilinear sample (angle, roughness bilinear in a tile; absorption across two)
@@ -76,10 +80,11 @@ void main() {
 #ifdef TRANSMITTANCE
   o_color = vec4(1.0 - c);
 #elif defined(DOM)
-  // the hair's shadow map (strands.ludic: seen from the sun): its count, Unreal's coverage x DensityScale 2 (DeepShadow), added up, and
-  // that count times the strand's depth from the map's plane (its mean depth, where a receiver begins to be behind it)
-  float n = c * 2.0;
-  o_color = vec4(n, n * (v_sdep - u_hs_d0), 0.0, 0.0);
+  // the deep shadow's layers (strands.ludic, HairStrandsDeepShadowPS.usf MainDom): the strand's coverage into each layer its distance
+  // behind the front depth lies within (reversed depth: the front is the greater; ComputeDOMWeights), added up
+  float front = texelFetch(u_hs_front, ivec2(gl_FragCoord.xy), 0).r;
+  float dist = max(0.0, front - gl_FragCoord.z);
+  o_color = vec4(lessThan(vec4(dist), u_hs_layers)) * c;
 #else
   // the visibility pass: behind the opaque scene (reversed depth) is no sample of the hair's
   if (gl_FragCoord.z < texelFetch(u_scene_depth, ivec2(gl_FragCoord.xy), 0).r) discard;
@@ -111,6 +116,8 @@ void main() {
     float cnt = max(v_sky.x + dot(v_sky.yzw, L), 0.0);
     sky += strandShade(base, rough, spec, backlit, T, V, L, cnt) * vis * skyPrefiltered(L, 0.1);
   }
+  if (u_st_terms > 1.5) col = vec3(0.0);
+  if (u_st_terms > 0.5 && u_st_terms < 1.5) sky = vec3(0.0);
   col += sky * (4.0 * PI / float(SKY_SAMPLES)) * mix(1.0, lzA.a, lz);
   col += base * lzA.rgb * lz;
   col = applyFog(sane(col), v_wpos, length(u_cam_pos - v_wpos));

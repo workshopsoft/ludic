@@ -210,6 +210,15 @@ export function model_set_strand_points(render3d_st: mut Render3dState, model: M
   }
   let cx = float_from_bits(mem_get_f32_bits(data_of(b), 2));  let cy = float_from_bits(mem_get_f32_bits(data_of(b), 3))
   let cz = float_from_bits(mem_get_f32_bits(data_of(b), 4));  let rmax = float_from_bits(mem_get_f32_bits(data_of(b), 5))
+  # the points' box (positions: three halves from the centre, after one point of padding)
+  var lo0 = 1000000.0;  var lo1 = 1000000.0;  var lo2 = 1000000.0;  var hi0 = -1000000.0;  var hi1 = -1000000.0;  var hi2 = -1000000.0
+  for i in 0 .. n {
+    let o = 32 + (i + 1) * ST_REC
+    let px = lt_unhalf(mem_get_u16(data_of(b), o));  let py = lt_unhalf(mem_get_u16(data_of(b), o + 2));  let pz = lt_unhalf(mem_get_u16(data_of(b), o + 4))
+    lo0 = Math.min(lo0, px);  lo1 = Math.min(lo1, py);  lo2 = Math.min(lo2, pz)
+    hi0 = Math.max(hi0, px);  hi1 = Math.max(hi1, py);  hi2 = Math.max(hi2, pz)
+  }
+  let ex = (hi0 - lo0) * 0.5;  let ey = (hi1 - lo1) * 0.5;  let ez = (hi2 - lo2) * 0.5
   let buf = gpu_buffer_new(render3d_st)
   gpu_buffer_upload(render3d_st, buf, (n + 3) * ST_REC, mem_off(data_of(b), 32), GPU_STATIC)
   free(b)
@@ -228,6 +237,8 @@ export function model_set_strand_points(render3d_st: mut Render3dState, model: M
     if pi == 0 { pr.inst_buf = buf }
     pr.inst_n = n
     pr.st_cx = cx;  pr.st_cy = cy;  pr.st_cz = cz;  pr.st_rmax = rmax
+    pr.st_bx = (hi0 + lo0) * 0.5;  pr.st_by = (hi1 + lo1) * 0.5;  pr.st_bz = (hi2 + lo2) * 0.5
+    pr.st_br = Math.sqrt(ex * ex + ey * ey + ez * ez)
   }
   return true
 }

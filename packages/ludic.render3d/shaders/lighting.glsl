@@ -974,41 +974,68 @@ vec3 mhHairColour(vec4 fp[17], float seed, float coord) {
   return alb;
 }
 #if defined(EYE) || defined(SSS_SPLIT) || (defined(STRANDS) && !defined(DOM) && !defined(TRANSMITTANCE))
-// the groom's shadow on the skin and eyes (strands.ludic's hair shadow map, Unreal's DeepShadowMask for an opaque receiver): visibility
-// 1 - saturate(the hair count in front of it), 3 x 3 taps; a receiver nearer the sun than the hair's mean depth (less a millimetre) is
-// not behind it. u_hs_p: x on, y a texel in uv, z the map's plane (metres from the sun's eye)
+// the groom's deep shadow from the sun (strands.ludic: Unreal's front depth and four layers of hair coverage). u_hs_p: x on, y the map's
+// size in texels, z the depth bias (the first layer's depth x DepthBiasScale 0.05), w DensityScale 2
 uniform sampler2D u_hairsh;
+uniform sampler2D u_hs_front;
 uniform mat4 u_hs_view;
 uniform mat4 u_hs_proj;
 uniform vec4 u_hs_p;
+uniform vec4 u_hs_layers;
+// ToLightPosition: texel coordinates and the reversed depth; w 0 outside the map
+vec4 hsLight(vec3 wpos) {
+  vec4 c = u_hs_proj * (u_hs_view * vec4(wpos, 1.0));
+  vec2 uv = c.xy / c.w * 0.5 + 0.5;
+  bool in01 = all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+  return vec4(uv * u_hs_p.y, c.z / c.w, in01 ? 1.0 : 0.0);
+}
+// HairStrandsDeepShadowCommon.ush ComputeHairCount: the count in front of a point that far behind the front, between the layers
+float hsCount(vec4 dom, float d) {
+  vec4 L = u_hs_layers;
+  if (d < L.x) return mix(0.0, dom.x, clamp(d / L.x, 0.0, 1.0));
+  if (d < L.y) return mix(dom.x, dom.y, clamp((d - L.x) / (L.y - L.x), 0.0, 1.0));
+  if (d < L.z) return mix(dom.y, dom.z, clamp((d - L.y) / (L.z - L.y), 0.0, 1.0));
+  if (d < L.w) return mix(dom.z, dom.w, clamp((d - L.z) / (L.w - L.z), 0.0, 1.0));
+  return dom.w;
+}
+float hsTexel(ivec2 t, float z) {
+  int n = int(u_hs_p.y) - 1;
+  t = clamp(t, ivec2(0), ivec2(n));
+  float front = texelFetch(u_hs_front, t, 0).r;
+  return hsCount(texelFetch(u_hairsh, t, 0), max(0.0, front - z - u_hs_p.z));        // GetDomDistanceToFrontDepthWithBias
+}
+// SampleDOM_PCF2x2: the four texels' counts, bilinear
+float hsPCF2x2(vec3 p) {
+  vec2 bl = floor(p.xy - 0.5);
+  ivec2 c0 = ivec2(bl);
+  vec2 f = fract(p.xy - (bl + 0.5));
+  float a = mix(hsTexel(c0, p.z), hsTexel(c0 + ivec2(1, 0), p.z), f.x);
+  float b = mix(hsTexel(c0 + ivec2(0, 1), p.z), hsTexel(c0 + ivec2(1, 1), p.z), f.x);
+  return mix(a, b, f.y);
+}
+// the groom's shadow on the skin and eyes: HairStrandsDeepShadowMask.usf InternalGaussianTransmissionFilter (ShadowMaskKernelType 4):
+// 1 - the mean of saturate(the count) over eight Poisson taps three texels out
 float hairShadow(vec3 wpos) {
   if (u_hs_p.x < 0.5) return 1.0;
-  vec4 lv = u_hs_view * vec4(wpos, 1.0);
-  vec4 cl = u_hs_proj * lv;
-  vec2 uv = cl.xy * 0.5 + 0.5;
-  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 1.0;
-  float d = -lv.z - u_hs_p.z;
-  float vis = 0.0;
-  for (int j = -1; j <= 1; ++j)
-  for (int i = -1; i <= 1; ++i) {
-    vec2 t = textureLod(u_hairsh, uv + vec2(float(i), float(j)) * u_hs_p.y, 0.0).rg;
-    float md = t.g / max(t.r, 1e-6);
-    vis += (t.r > 0.0 && d > md - 0.001) ? 1.0 - clamp(t.r, 0.0, 1.0) : 1.0;
-  }
-  return vis / 9.0;
+  vec4 p = hsLight(wpos);
+  if (p.w < 0.5) return 1.0;
+  const vec2 PD[8] = vec2[8](vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725), vec2(-0.094184101, -0.92938870),
+    vec2(0.34495938, 0.29387760), vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464), vec2(-0.38277543, 0.27676845),
+    vec2(0.97484398, 0.75648379));
+  float acc = 0.0;
+  for (int i = 0; i < 8; ++i) acc += clamp(hsPCF2x2(vec3(p.xy + PD[i] * 3.0, p.z)), 0.0, 1.0);
+  return 1.0 - acc / 8.0;
 }
-// the hair count between a strand and the sun (Unreal's deep shadow, ComputeHairCount): the map's count, the share of it in front of the
-// strand by where its depth lies in the hair's (its mean depth, the hair's thickness taken as 3 mm either side)
+// the hair count between a strand and the sun: HairStrandsDeepTransmittanceMask.usf, SampleDOM_PCF (r.HairStrands.DeepShadow.KernelType 2:
+// a 3 x 3 ring of 2 x 2 taps two texels apart) x DensityScale
 float hairCountAt(vec3 wpos) {
   if (u_hs_p.x < 0.5) return 0.0;
-  vec4 lv = u_hs_view * vec4(wpos, 1.0);
-  vec2 uv = (u_hs_proj * lv).xy * 0.5 + 0.5;
-  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 0.0;
-  vec2 t = textureLod(u_hairsh, uv, 0.0).rg;
-  if (t.r <= 0.0) return 0.0;
-  float md = t.g / t.r;
-  float d = -lv.z - u_hs_p.z;
-  return t.r * clamp((d - md) / 0.006 + 0.5, 0.0, 1.0);
+  vec4 p = hsLight(wpos);
+  if (p.w < 0.5) return 0.0;
+  float n = 0.0;
+  for (int j = -1; j <= 1; ++j)
+  for (int i = -1; i <= 1; ++i) n += hsPCF2x2(vec3(p.xy + vec2(float(i), float(j)) * 2.0, p.z));
+  return n / 9.0 * u_hs_p.w;
 }
 #endif
 

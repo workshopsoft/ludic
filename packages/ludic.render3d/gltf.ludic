@@ -30,6 +30,10 @@ property Prim {
   st_cx: float = 0.0,   # the points' positions are relative to this (Unreal's PositionOffset, the groom's bounds' centre)
   st_cy: float = 0.0,
   st_cz: float = 0.0,
+  st_bx: float = 0.0,   # the points' bounds: their box's centre (relative to st_c*) and its half diagonal (Unreal's FBoxSphereBounds
+  st_by: float = 0.0,   # sphere, which its deep shadow is fitted to: HairStrandsUtils.cpp ComputeTranslatedWorldToLightClip)
+  st_bz: float = 0.0,
+  st_br: float = 0.0,
   st_rmax: float = 0.0,  # and their radii fractions of this (Unreal's HairStrandsVF.Radius)
   surf: floats,         # a surface laid over it (surface.ludic: surf_apply): model.frag's and kit.frag's u_surf .. u_surf_e, 20 floats; null for none
   surf2: floats,        # a second, blended in by the vertex colour (the ground's paving under its grass: surf_apply_ground), or null
