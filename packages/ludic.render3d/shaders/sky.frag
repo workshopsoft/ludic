@@ -115,6 +115,77 @@ vec3 sunColour(vec3 dir) {
   return col * smoothstep(-0.004, 0.012, dir.y);
 }
 
+// ---- Unreal's Sky Atmosphere (ua_on): UE 5.8 SkyAtmosphere.usf RenderSkyAtmosphereRayMarchingPS, its FASTSKY path ---------------
+// The sky view LUT (ue_atmosphere.frag UA_SKYVIEW) read through SkyViewLutParamsToUv in its local frame (FAtmosphereSetup::
+// ComputeViewData: up from the planet, forward the camera's), plus the sun's disc (GetLightDiskLuminance) through the transmittance
+// LUT, times SkyLuminanceFactor. Our directions map to Unreal's planet frame as (x, z, y); kilometres.
+uniform float ua_on;
+uniform sampler2D ua_skyview;
+uniform sampler2D ua_trans;
+uniform vec4 ua_skyview_size;          // SkyViewLutSizeAndInvSize
+uniform vec2 ua_radii_s;               // BottomRadiusKm, TopRadiusKm
+uniform float ua_view_height;          // the camera's distance from the planet centre (km)
+uniform vec3 ua_ref0;                  // SkyViewLutReferential rows
+uniform vec3 ua_ref1;
+uniform vec3 ua_ref2;
+uniform vec3 ua_sun_ue;                // the sun, toward it, in Unreal's frame
+uniform vec4 ua_disc;                  // AtmosphereLightDiscLuminance (rgb), AtmosphereLightDiscCosHalfApexAngle
+uniform vec3 ua_sky_factor;            // SkyLuminanceFactor
+vec3 uaToUe(vec3 d) { return vec3(d.x, d.z, d.y); }
+vec2 uaTransUv(float viewHeight, float viewZenithCosAngle) {
+  float bottom = ua_radii_s.x, top = ua_radii_s.y;
+  float h = sqrt(max(0.0, top * top - bottom * bottom));
+  float rho = sqrt(max(0.0, viewHeight * viewHeight - bottom * bottom));
+  float discr = viewHeight * viewHeight * (viewZenithCosAngle * viewZenithCosAngle - 1.0) + top * top;
+  float d = max(0.0, -viewHeight * viewZenithCosAngle + sqrt(discr));
+  float dmin = top - viewHeight;
+  float dmax = rho + h;
+  return vec2((d - dmin) / (dmax - dmin), rho / h);
+}
+float uaNearest(vec3 ro, vec3 rd, float r) {
+  float b = 2.0 * dot(rd, ro);
+  float c = dot(ro, ro) - r * r;
+  float disc = b * b - 4.0 * c;
+  if (disc < 0.0) return -1.0;
+  float s = sqrt(disc);
+  float t0 = (-b - s) * 0.5, t1 = (-b + s) * 0.5;
+  if (t0 < 0.0 && t1 < 0.0) return -1.0;
+  if (t0 < 0.0) return max(0.0, t1);
+  if (t1 < 0.0) return max(0.0, t0);
+  return max(0.0, min(t0, t1));
+}
+vec3 uaSkyLuminance(vec3 dirOurs) {
+  vec3 worldDir = uaToUe(dirOurs);
+  float vh = ua_view_height;
+  vec3 camPos = vec3(0.0, 0.0, vh);                  // planet centre at the origin, the camera above it on z
+  vec3 L = vec3(0.0);
+  // GetLightDiskLuminance: only where the planet does not hide the sun
+  if (uaNearest(camPos, worldDir, ua_radii_s.x) < 0.0) {
+    float vdl = dot(worldDir, ua_sun_ue);
+    if (vdl > ua_disc.w) {
+      vec3 t = textureLod(ua_trans, uaTransUv(vh, worldDir.z), 0.0).rgb;
+      float soft = clamp(2.0 * (vdl - ua_disc.w) / (1.0 - ua_disc.w), 0.0, 1.0);
+      L += min(t * t * ua_disc.rgb * soft, vec3(64000.0));
+    }
+  }
+  vec3 dl = vec3(dot(ua_ref0, worldDir), dot(ua_ref1, worldDir), dot(ua_ref2, worldDir));
+  float vzc = dl.z;
+  bool ground = uaNearest(vec3(0.0, 0.0, vh), dl, ua_radii_s.x) >= 0.0;
+  // SkyViewLutParamsToUv
+  float vHorizon = sqrt(max(vh * vh - ua_radii_s.x * ua_radii_s.x, 0.0));
+  float cosBeta = vHorizon / vh;
+  float beta = acos(cosBeta);
+  float zha = 3.14159265358979 - beta;
+  float vza = acos(clamp(vzc, -1.0, 1.0));
+  vec2 uv;
+  if (!ground) { float c = vza / zha;  c = 1.0 - c;  c = sqrt(max(c, 0.0));  c = 1.0 - c;  uv.y = c * 0.5; }
+  else { float c = (vza - zha) / beta;  c = sqrt(max(c, 0.0));  uv.y = c * 0.5 + 0.5; }
+  uv.x = (atan(-dl.y, -dl.x) + 3.14159265358979) / (2.0 * 3.14159265358979);
+  uv = (uv + 0.5 * ua_skyview_size.zw) * (ua_skyview_size.xy / (ua_skyview_size.xy + 1.0));   // FromUnitToSubUvs
+  L += textureLod(ua_skyview, uv, 0.0).rgb * ua_sky_factor;
+  return L;
+}
+
 void main() {
   vec4 a = u_inv_vp * vec4(v_uv * 2.0 - 1.0, DEPTH_FAR_POINT, 1.0);
   vec3 dir = normalize(a.xyz / a.w - u_cam_pos);
@@ -131,6 +202,7 @@ void main() {
   // the photograph's sky dims with the day (daylight.ludic); the night adds its own
   col *= u_ibl_scale;
   if (u_disc_on > 0.5) col += sunColour(dir);
+  if (ua_on > 0.5) col = uaSkyLuminance(dir);
   float night = 1.0 - smoothstep(0.0, 0.45, u_daylight);
   if (night > 0.0) {
     vec3 nightCol = mix(vec3(0.012, 0.016, 0.034), vec3(0.003, 0.004, 0.010), clamp(dir.y, 0.0, 1.0));
@@ -139,8 +211,8 @@ void main() {
     col += nightCol * night;
     col += moonColour(dir, night);
   }
-  // below the horizon the HDRI ground is replaced by the fog colour
-  float below = smoothstep(0.0, -0.08, dir.y);
+  // below the horizon the HDRI ground is replaced by the fog colour (Unreal's sky draws its own planet ground there)
+  float below = ua_on > 0.5 ? 0.0 : smoothstep(0.0, -0.08, dir.y);
   vec3 fogCol = skyPrefiltered(vec3(dir.x, 0.02, dir.z), 0.6);
   col = mix(col, fogCol, below);
   // under a fog wall the horizon band is the fog's own colour, higher the thicker the fog, so what
