@@ -12,6 +12,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Gaussian bloom (BM_SOG) | ue_post.ludic, ue_downsample.frag, ue_blur.frag | `R3D_UE_BLOOM=0`, `r3d_ue_bloom` |
 | Post Process Volumes | ue_post.ludic `ue_ppv_*`, `R3D_PPV` | `R3D_UE_VOLUMES=0`, `r3d_ue_volumes` |
 | Sky Atmosphere (visible sky, sun disc) | ue_sky.ludic, ue_atmosphere.frag, sky.frag `uaSkyLuminance` | `R3D_UE_SKY=0`, `r3d_ue_sky` |
+| Exponential height fog + aerial perspective | ue_fog.ludic, ue_fog.frag, ue_fog_apply.frag, ue_atmosphere.frag `UA_AP`/`UA_DISTANT` | `R3D_UE_FOG=0`, `r3d_ue_fog` |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
 
@@ -36,9 +37,15 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **The sky's brightness follows our sun.** The atmosphere's outer-space sun illuminance defaults to the scene's own sun
   (`day_sun_base`) so the sky and lit ground share one scale; Unreal's default would be 10 lux with physical units everywhere.
   Set `UeSky.light_illuminance_*` to override. Our stars and moon still draw on top at night (Unreal leaves those to the sky material).
-- **Sky and ground disagree until the rest of the sky port lands.** Surfaces are still lit by the photo HDRI's sky light and
-  fogged by the old height fog; Unreal's aerial perspective, height fog, sun transmittance (the sun's colour from the atmosphere)
-  and the real-time sky light capture are next.
+- **Surfaces are still lit by the photo HDRI's sky light**, not by the new sky, until Unreal's real-time sky light capture lands;
+  the sun's colour is still daylight.ludic's, not the atmosphere's transmittance (Unreal's bAtmosphereSunLight).
+- **A darker band where the land meets the sky.** Unreal fogs sky pixels too (bFogOnlyOnRenderedOpaque false); far away the
+  fog's colour wins, and with the sky atmosphere lighting the fog that colour is the distant sky light (the whole sky's average,
+  darker than the pale horizon) plus a sun lobe (exponent 4, from 100 m). Adjust: `fog_inscattering_luminance`,
+  `sky_atmosphere_ambient_contribution`, `fog_density`, `fog_max_opacity`, or `fog_cutoff_distance`.
+- **Unreal's default fog is thin.** FogDensity 0.02 with falloff 0.2 (0.002 / m at the fog height); the old fog was tuned
+  thicker for the valley look. Adjust: `fog_density`, `fog_height_falloff`, `height_offset`.
+- **Water and blended actors take the fog of what is behind them** for now (Unreal fogs translucency per pixel in its own pass).
 - **Below the horizon Unreal draws the planet's ground.** Our old sky filled it with fog colour; terrain hides it on the island.
 - **No area looks yet.** The game places no volumes; port, downtown, forest, industrial, beach and interiors each want one.
 

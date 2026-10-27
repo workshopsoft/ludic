@@ -1,0 +1,230 @@
+# ============================================================================
+# ue_fog.ludic — Unreal's exponential height fog and the sky atmosphere's aerial perspective over the opaque scene (UE 5.8).
+#
+# UeFog is UExponentialHeightFogComponent (Engine/Private/Components/ExponentialHeightFogComponent.cpp) with its defaults; distances
+# are metres here (Unreal's centimetres / 100), and density and falloff are in Unreal's edited units (x 1000 per cm, scaled back by
+# FExponentialHeightFogSceneInfo: / 1000 per cm = / 10 per m). The view's fog parameters follow FogRendering.cpp
+# (SetupFogUniformParameters, the collapsed density at the observer height clamped to Height + 65536 cm). The fog height is the map's
+# fog base (r3d_fog_base) plus UeFog.height_offset.
+#
+# The aerial perspective volume (32x32x16 over 96 km, 2 samples a slice, AerialPerspectiveStartDepth 0.1 km) and the distant sky
+# light (64 directions at 6 km) are drawn with the sky's LUTs (ue_sky.ludic); the sun's illuminance on the ground after transmittance
+# is FAtmosphereSetup::GetTransmittanceAtGroundLevel's 15-sample march from 0.5 km up. ue_fog.frag composes it all as Unreal's
+# HeightFogPixelShader does into its own target, and ue_fog_apply.frag lays it over the scene after the water and blended actors.
+# While it runs the old analytic fog (lighting.glsl applyFog) gets density 0; the fog wall is kept. Translucent surfaces (water,
+# blended actors) are fogged by what is behind them for now: Unreal fogs them per pixel in their own pass (not ported yet).
+# R3D_UE_FOG=0 (or r3d_ue_fog(st, false)) puts the old fog back; on by default with the Unreal sky.
+# ============================================================================
+
+property UeFog {
+  fog_density: float = 0.02,                          # FogDensity
+  fog_height_falloff: float = 0.2,                    # FogHeightFalloff
+  height_offset: float = 0.0,                         # metres over the map's fog base (Unreal: the component's height)
+  second_fog_density: float = 0.0,                    # SecondFogData.FogDensity
+  second_fog_height_falloff: float = 0.2,             # SecondFogData.FogHeightFalloff
+  second_fog_height_offset: float = 0.0,              # SecondFogData.FogHeightOffset (m)
+  fog_inscattering_luminance_r: float = 0.0,          # FogInscatteringLuminance
+  fog_inscattering_luminance_g: float = 0.0,
+  fog_inscattering_luminance_b: float = 0.0,
+  sky_atmosphere_ambient_contribution: float = 1.0,   # SkyAtmosphereAmbientContributionColorScale (white)
+  directional_inscattering_exponent: float = 4.0,     # DirectionalInscatteringExponent
+  directional_inscattering_start_distance: float = 100.0,   # DirectionalInscatteringStartDistance (10000 cm)
+  directional_inscattering_luminance_r: float = 0.0,  # DirectionalInscatteringLuminance
+  directional_inscattering_luminance_g: float = 0.0,
+  directional_inscattering_luminance_b: float = 0.0,
+  fog_max_opacity: float = 1.0,                       # FogMaxOpacity
+  start_distance: float = 0.0,                        # StartDistance (m)
+  end_distance: float = 0.0,                          # EndDistance (m, 0 none)
+  fog_cutoff_distance: float = 0.0,                   # FogCutoffDistance (m, 0 none)
+  sky_distance: float = 10000000.0                    # the distance a sky pixel is fogged at (Unreal: its far depth)
+}
+
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+export function r3d_height_fog(render3d_st: mut Render3dState) -> UeFog {
+  if render3d_st.ue_fog_s == null { render3d_st.ue_fog_s = new UeFog }
+  return render3d_st.ue_fog_s
+}
+export function r3d_ue_fog(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_fog_on = 0
+  if on { render3d_st.ue_fog_on = 1 }
+}
+function ue_fog_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_fog_on < 0 {
+    render3d_st.ue_fog_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_FOG") and r3d_env(render3d_st, "R3D_UE_FOG") == "0" { render3d_st.ue_fog_on = 0 }
+  }
+  return render3d_st.ue_fog_on == 1 and ue_sky_on(render3d_st)
+}
+
+# FAtmosphereSetup::GetTransmittanceAtGroundLevel: the sun's transmittance through the atmosphere from 0.5 km above the ground,
+# 15 samples, the elevation held at TransmittanceMinLightElevationAngle (-90). Into o (rgb).
+function ue_sky_ground_transmittance(render3d_st: mut Render3dState, sun_y: float, o: floats) -> void {
+  let s = r3d_sky_atmosphere(render3d_st)
+  let bottom = s.bottom_radius
+  let top = s.bottom_radius + Math.max(0.1, s.atmosphere_height)
+  let el = Math.max(Math.deg_to_rad(-90.0), Math.asin(Math.clamp(sun_y, -1.0, 1.0)))
+  # the ray from (0, 0, bottom + 0.5) along (cos el, 0, sin el) to the top sphere (raySphereIntersectNearest)
+  let ox = 0.0;  let oz = bottom + 0.5
+  let dx = Math.cos(el);  let dz = Math.sin(el)
+  let b = 2.0 * (dx * ox + dz * oz)
+  let c = ox * ox + oz * oz - top * top
+  let disc = b * b - 4.0 * c
+  var tmax = -1.0
+  if disc >= 0.0 {
+    let sq = Math.sqrt(disc)
+    let t0 = (-b - sq) * 0.5;  let t1 = (-b + sq) * 0.5
+    if t0 >= 0.0 or t1 >= 0.0 {
+      if t0 < 0.0 { tmax = Math.max(0.0, t1) } else if t1 < 0.0 { tmax = Math.max(0.0, t0) } else { tmax = Math.max(0.0, Math.min(t0, t1)) }
+    }
+  }
+  let rs = s.rayleigh_scattering_scale
+  let ms = s.mie_scattering_scale;  let ma = s.mie_absorption_scale
+  let os = s.other_absorption_scale
+  var width = 0.0;  var lin0 = 0.0;  var lin1 = 0.0;  var c0 = 0.0;  var c1 = 0.0
+  if s.tent_width > 0.0 and s.tent_tip_value > 0.0 {
+    let slope = s.tent_tip_value / s.tent_width
+    width = s.tent_tip_altitude;  lin0 = slope;  lin1 = -slope
+    c0 = s.tent_tip_value - s.tent_tip_altitude * lin0;  c1 = s.tent_tip_value - s.tent_tip_altitude * lin1
+  }
+  var odr = 0.0;  var odg = 0.0;  var odb = 0.0
+  if tmax > 0.0 {
+    let count = 15.0
+    let step = 1.0 / count
+    let len = step * tmax
+    var st = 0.0
+    while st < 1.0 {
+      let px = ox + dx * tmax * st
+      let pz = oz + dz * tmax * st
+      let h = Math.sqrt(px * px + pz * pz) - bottom
+      let dmie = Math.max(0.0, Math.exp(-h / s.mie_exponential_distribution))
+      let dray = Math.max(0.0, Math.exp(-h / s.rayleigh_exponential_distribution))
+      var dozo = c1 + lin1 * h
+      if h < width { dozo = c0 + lin0 * h }
+      dozo = Math.clamp(dozo, 0.0, 1.0)
+      odr += len * (dmie * (ms + ma) + dray * s.rayleigh_r * rs + dozo * s.other_absorption_r * os)
+      odg += len * (dmie * (ms + ma) + dray * s.rayleigh_g * rs + dozo * s.other_absorption_g * os)
+      odb += len * (dmie * (ms + ma) + dray * s.rayleigh_b * rs + dozo * s.other_absorption_b * os)
+      st += step
+    }
+  }
+  v3_set(o, Math.exp(-odr), Math.exp(-odg), Math.exp(-odb))
+}
+
+# the AP volume and the distant sky light, after the sky view LUT (ue_sky_luts), with the same atmosphere uniforms
+function ue_fog_luts(render3d_st: mut Render3dState) -> void {
+  if not ue_fog_on(render3d_st) { return }
+  let s = r3d_sky_atmosphere(render3d_st)
+  if render3d_st.ue_ap == null {
+    render3d_st.ue_ap = ue_fog_target(render3d_st, 32 * 16, 32)
+    render3d_st.ue_distant = ue_fog_target(render3d_st, 1, 1)
+    render3d_st.ue_ap_p = r3d_program(render3d_st, "fullscreen.vert", "ue_atmosphere.frag", "#define UA_AP\n")
+    render3d_st.ue_distant_p = r3d_program(render3d_st, "fullscreen.vert", "ue_atmosphere.frag", "#define UA_DISTANT\n")
+  }
+  prof_begin(render3d_st, "UE aerial perspective")
+  let f = render3d_st.ue_sky_frame
+  let sun = render3d_st.ue_sky_tmp
+  ue_sky_sun(render3d_st, sun)
+  let sx = sun[0];  let sy = sun[2];  let sz = sun[1]       # Unreal's frame, planet-relative (not the sky view LUT's local frame)
+  ue_sky_illum(render3d_st, sun)
+  let k = s.sky_and_aerial_perspective_luminance_factor
+  var p = render3d_st.ue_ap_p
+  gpu_use_program(render3d_st, p)
+  ue_sky_setup(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "ua_transmittance", 0, render3d_st.ue_sky_trans.color)
+  r3d_bind_2d(render3d_st, p, "ua_multiscat", 1, render3d_st.ue_sky_ms.color)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "ua_light_dir"), sx, sy, sz, f[9])
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_light_illum"), sun[0] * k, sun[1] * k, sun[2] * k)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "ua_ap_scale"), s.aerial_pespective_view_distance_scale)
+  # CameraAerialPerspectiveVolumeDepthResolution, the slice length (Depth / resolution), the start depth, SampleCountMaxPerSlice x scale
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "ua_ap"), s.ap_depth_resolution, s.ap_depth_km / s.ap_depth_resolution, s.aerial_perspective_start_depth, s.ap_sample_count_per_slice * s.trace_sample_count_scale)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "ua_inv_vp"), render3d_st.cam_inv_vp)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_cam"), render3d_st.cam_pos[0], render3d_st.cam_pos[1], render3d_st.cam_pos[2])
+  ue_sky_lut_draw(render3d_st, render3d_st.ue_ap, p)
+  p = render3d_st.ue_distant_p
+  gpu_use_program(render3d_st, p)
+  ue_sky_setup(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "ua_transmittance", 0, render3d_st.ue_sky_trans.color)
+  r3d_bind_2d(render3d_st, p, "ua_multiscat", 1, render3d_st.ue_sky_ms.color)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "ua_light_dir"), sx, sy, sz, f[9])
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_light_illum"), sun[0] * k, sun[1] * k, sun[2] * k)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "ua_ap_scale"), 1.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "ua_sky_lum_factor"), s.sky_luminance_factor)
+  ue_sky_lut_draw(render3d_st, render3d_st.ue_distant, p)
+  prof_end(render3d_st)
+}
+
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_fog_target(render3d_st: mut Render3dState, w: int, h: int) -> Target {
+  return target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+}
+
+# After the opaque scene, the water and the blended actors: the fog into its own target, then over the scene
+function ue_fog_pass(render3d_st: mut Render3dState) -> void {
+  if not ue_fog_on(render3d_st) or render3d_st.ue_ap == null { return }
+  let w = render3d_st.post_w;  let h = render3d_st.post_h
+  if render3d_st.ue_fog_t != null and (render3d_st.ue_fog_t.w != w or render3d_st.ue_fog_t.h != h) { target_free(render3d_st, render3d_st.ue_fog_t);  render3d_st.ue_fog_t = null }
+  if render3d_st.ue_fog_t == null { render3d_st.ue_fog_t = ue_fog_target(render3d_st, w, h) }
+  if render3d_st.ue_fog_p == 0 {
+    render3d_st.ue_fog_p = r3d_program(render3d_st, "fullscreen.vert", "ue_fog.frag", "")
+    render3d_st.ue_fog_ap = r3d_program(render3d_st, "fullscreen.vert", "ue_fog_apply.frag", "")
+  }
+  let fg = r3d_height_fog(render3d_st)
+  let s = r3d_sky_atmosphere(render3d_st)
+  prof_begin(render3d_st, "UE height fog")
+  gpu_depth_test(render3d_st, false)
+  gpu_depth_write(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  let p = render3d_st.ue_fog_p
+  target_bind(render3d_st, render3d_st.ue_fog_t)
+  gpu_use_program(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "u_depth", 0, render3d_st.post_hdr.depth)
+  r3d_bind_2d(render3d_st, p, "uf_distant", 1, render3d_st.ue_distant.color)
+  r3d_bind_2d(render3d_st, p, "uf_ap", 2, render3d_st.ue_ap.color)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_inv_vp"), render3d_st.cam_inv_vp)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  # FExponentialHeightFogSceneInfo (/ 1000 per cm = / 10 per m) and the collapsed parameters at the clamped observer height
+  let height = render3d_st.r3d_fog_base + fg.height_offset
+  let dens0 = fg.fog_density / 10.0
+  let fall0 = fg.fog_height_falloff / 10.0
+  let dens1 = fg.second_fog_density / 10.0
+  let fall1 = fg.second_fog_height_falloff / 10.0
+  let height1 = height + fg.second_fog_height_offset
+  var max_obs = 1000000000000.0
+  if dens0 > 0.0 { max_obs = Math.min(max_obs, height + 655.36) }
+  if dens1 > 0.0 { max_obs = Math.min(max_obs, height1 + 655.36) }
+  let obs = Math.min(render3d_st.cam_pos[1], max_obs)
+  let col0 = dens0 * Math.pow(2.0, Math.clamp(-fall0 * (obs - height), -125.0, 126.0))
+  let col1 = dens1 * Math.pow(2.0, Math.clamp(-fall1 * (obs - height1), -125.0, 126.0))
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "uf_fog0"), col0, fall0, max_obs, fg.start_distance)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "uf_fog2"), col1, fall1, dens1, height1)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "uf_fog3"), dens0, height, 0.0, fg.fog_cutoff_distance)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "uf_color"), fg.fog_inscattering_luminance_r, fg.fog_inscattering_luminance_g, fg.fog_inscattering_luminance_b, 1.0 - fg.fog_max_opacity)
+  let amb = fg.sky_atmosphere_ambient_contribution * s.height_fog_contribution
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "uf_ambient_scale"), amb, amb, amb)
+  # the sun: its direction, and DirectionalInscatteringColor + contribution x the outer-space illuminance x the ground transmittance
+  let sun = render3d_st.ue_sky_tmp
+  ue_sky_sun(render3d_st, sun)
+  let lx = sun[0];  let ly = sun[1];  let lz = sun[2]
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "uf_light_dir"), lx, ly, lz, Math.max(0.0, fg.directional_inscattering_start_distance))
+  let t = render3d_st.ue_fog_tmp
+  ue_sky_ground_transmittance(render3d_st, ly, t)
+  ue_sky_illum(render3d_st, sun)
+  let hc = s.height_fog_contribution
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "uf_dir_color"), fg.directional_inscattering_luminance_r + hc * sun[0] * t[0], fg.directional_inscattering_luminance_g + hc * sun[1] * t[1], fg.directional_inscattering_luminance_b + hc * sun[2] * t[2], Math.clamp(fg.directional_inscattering_exponent, 0.000001, 1000.0))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "uf_end"), fg.end_distance)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "uf_ap_on"), 1.0)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "uf_ap_params"), s.ap_depth_resolution, s.aerial_perspective_start_depth, s.ap_depth_km / s.ap_depth_resolution, 32.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "uf_sky_dist"), fg.sky_distance)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  # over the scene: scene x a + rgb
+  target_bind(render3d_st, render3d_st.post_hdr)
+  gpu_depth_test(render3d_st, false)
+  gpu_blend(render3d_st, true)
+  gpu_blend_func(render3d_st, GPU_ONE, GPU_SRC_ALPHA)
+  gpu_use_program(render3d_st, render3d_st.ue_fog_ap)
+  r3d_bind_2d(render3d_st, render3d_st.ue_fog_ap, "u_src", 0, render3d_st.ue_fog_t.color)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  gpu_blend(render3d_st, false)
+  gpu_depth_write(render3d_st, true)
+  prof_end(render3d_st)
+}

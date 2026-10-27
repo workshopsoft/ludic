@@ -19,12 +19,16 @@ fullscreen.vert|ssao_blur.frag|
 fullscreen.vert|ssgi.frag|
 fullscreen.vert|sss.frag|
 fullscreen.vert|taa.frag|
+fullscreen.vert|ue_atmosphere.frag|#define UA_AP;
+fullscreen.vert|ue_atmosphere.frag|#define UA_DISTANT;
 fullscreen.vert|ue_atmosphere.frag|#define UA_MULTISCAT;
 fullscreen.vert|ue_atmosphere.frag|#define UA_SKYVIEW;
 fullscreen.vert|ue_atmosphere.frag|#define UA_TRANSMITTANCE;
 fullscreen.vert|ue_blur.frag|
 fullscreen.vert|ue_downsample.frag|
 fullscreen.vert|ue_eye_adapt.frag|
+fullscreen.vert|ue_fog.frag|
+fullscreen.vert|ue_fog_apply.frag|
 fullscreen.vert|ue_histogram.frag|
 fullscreen.vert|taa_mv.frag|
 fullscreen.vert|ternormal.frag|
