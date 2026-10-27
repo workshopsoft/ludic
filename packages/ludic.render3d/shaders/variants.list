@@ -25,6 +25,7 @@ fullscreen.vert|ue_atmosphere.frag|#define UA_MULTISCAT;
 fullscreen.vert|ue_atmosphere.frag|#define UA_SKYVIEW;
 fullscreen.vert|ue_atmosphere.frag|#define UA_TRANSMITTANCE;
 fullscreen.vert|ue_blur.frag|
+ue_flare.vert|ue_flare.frag|
 fullscreen.vert|ue_downsample.frag|
 fullscreen.vert|ue_eye_adapt.frag|
 fullscreen.vert|ue_fog.frag|

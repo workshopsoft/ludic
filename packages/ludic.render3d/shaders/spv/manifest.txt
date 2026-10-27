@@ -2152,6 +2152,105 @@ S 0145af19 u_ue_lp 15
 T 0145af19 u_ue_lph 16
 S 0145af19 u_ue_ls 17
 T 0145af19 u_ue_lsh 18
+P 1837ffc4 ue_flare.vert ue_flare.frag 
+B 1837ffc4 vert 0 40
+U 1837ffc4 vert u_mode 0 float 1 0
+U 1837ffc4 vert u_src_size 8 vec2 1 0
+U 1837ffc4 vert u_kernel 16 vec3 1 0
+U 1837ffc4 vert u_scale 28 float 1 0
+U 1837ffc4 vert u_exposure 32 float 1 0
+U 1837ffc4 vert u_auto 36 float 1 0
+I 1837ffc4 a_uv 1 vec2
+I 1837ffc4 a_xy 0 vec2
+B 1837ffc4 frag 1 2232
+U 1837ffc4 frag u_cascade_vp 0 mat4 5 64
+U 1837ffc4 frag u_cascade_split 320 float 5 16
+U 1837ffc4 frag u_cascade_range 400 float 5 16
+U 1837ffc4 frag u_cascade_texel 480 float 5 16
+U 1837ffc4 frag u_sun_dir 560 vec3 1 0
+U 1837ffc4 frag u_sun_color 576 vec3 1 0
+U 1837ffc4 frag u_cam_pos 592 vec3 1 0
+U 1837ffc4 frag u_prefilter_levels 604 float 1 0
+U 1837ffc4 frag u_fog_density 608 float 1 0
+U 1837ffc4 frag u_fog_height_falloff 612 float 1 0
+U 1837ffc4 frag u_fog_base 616 float 1 0
+U 1837ffc4 frag u_clip_y 620 float 1 0
+U 1837ffc4 frag u_spec_scale 624 float 1 0
+U 1837ffc4 frag u_sky_rot 632 vec2 1 0
+U 1837ffc4 frag u_ground_alb 640 vec3 1 0
+U 1837ffc4 frag u_ground_alb_hi 656 vec3 1 0
+U 1837ffc4 frag u_ground_hi_y 668 float 1 0
+U 1837ffc4 frag u_ground_hi_w 672 float 1 0
+U 1837ffc4 frag u_ibl_scale 688 vec3 1 0
+U 1837ffc4 frag u_daylight 700 float 1 0
+U 1837ffc4 frag u_fire_pos 704 vec3 1 0
+U 1837ffc4 frag u_fire_color 720 vec3 1 0
+U 1837ffc4 frag u_hand_pos 736 vec3 1 0
+U 1837ffc4 frag u_hand_color 752 vec3 1 0
+U 1837ffc4 frag u_hand_dir 768 vec3 1 0
+U 1837ffc4 frag u_hand_cone 780 float 1 0
+U 1837ffc4 frag u_hand_reach 784 float 1 0
+U 1837ffc4 frag u_ue_sl 788 float 1 0
+U 1837ffc4 frag u_ue_sl_size 792 float 1 0
+U 1837ffc4 frag u_ue_sl_mips 796 float 1 0
+U 1837ffc4 frag u_ue_sl_color 800 vec3 1 0
+U 1837ffc4 frag u_ts_origin 816 vec2 1 0
+U 1837ffc4 frag u_ts_half 824 float 1 0
+U 1837ffc4 frag u_ts_on 828 float 1 0
+U 1837ffc4 frag u_force_cascade 832 int 1 0
+U 1837ffc4 frag u_shadow_tan_max 836 float 1 0
+U 1837ffc4 frag u_cloud_shadow 840 float 1 0
+U 1837ffc4 frag u_time 844 float 1 0
+U 1837ffc4 frag u_lz 848 vec4 32 16
+U 1837ffc4 frag u_lz_n 1360 int 1 0
+U 1837ffc4 frag u_zl 1376 vec4 32 16
+U 1837ffc4 frag u_zl_n 1888 int 1 0
+U 1837ffc4 frag u_zl_color 1904 vec3 1 0
+U 1837ffc4 frag u_zl_reach 1916 float 1 0
+U 1837ffc4 frag u_char_lit 1920 float 1 0
+U 1837ffc4 frag u_cl_dir0 1936 vec3 1 0
+U 1837ffc4 frag u_cl_dir1 1952 vec3 1 0
+U 1837ffc4 frag u_cl_dir2 1968 vec3 1 0
+U 1837ffc4 frag u_cl_col0 1984 vec3 1 0
+U 1837ffc4 frag u_cl_col1 2000 vec3 1 0
+U 1837ffc4 frag u_cl_col2 2016 vec3 1 0
+U 1837ffc4 frag u_ll_n 2028 int 1 0
+U 1837ffc4 frag u_lg_on 2032 float 1 0
+U 1837ffc4 frag u_lg_vp 2048 mat4 1 0
+U 1837ffc4 frag u_lg_zp 2112 vec4 1 0
+U 1837ffc4 frag u_lg_grid 2128 vec4 1 0
+U 1837ffc4 frag u_lg_view 2144 vec2 1 0
+U 1837ffc4 frag u_ue_ls_n 2152 int 1 0
+U 1837ffc4 frag u_ue_ls_size 2156 float 1 0
+U 1837ffc4 frag u_ue_lp_n 2160 int 1 0
+U 1837ffc4 frag u_fog_inscatter 2164 float 1 0
+U 1837ffc4 frag u_fog_desat 2168 float 1 0
+U 1837ffc4 frag u_fog_wall 2172 float 1 0
+U 1837ffc4 frag u_fog_haze 2176 float 1 0
+U 1837ffc4 frag u_fog_cut 2184 vec2 1 0
+U 1837ffc4 frag u_sky_relight 2192 float 1 0
+U 1837ffc4 frag u_mode 2196 float 1 0
+U 1837ffc4 frag u_flare_color 2208 vec3 1 0
+U 1837ffc4 frag u_out_size 2224 vec2 1 0
+T 1837ffc4 u_adapt 2
+T 1837ffc4 u_blur 3
+T 1837ffc4 u_bokeh 4
+T 1837ffc4 u_brdf 5
+T 1837ffc4 u_hairsh 6
+T 1837ffc4 u_irradiance 7
+T 1837ffc4 u_prefilter 8
+T 1837ffc4 u_shadow 9
+T 1837ffc4 u_src 10
+T 1837ffc4 u_tershadow 11
+T 1837ffc4 u_tershadow_aux 12
+T 1837ffc4 u_ts_height 13
+S 1837ffc4 u_ue_lg_data 14
+S 1837ffc4 u_ue_lg_num 15
+S 1837ffc4 u_ue_lights 16
+S 1837ffc4 u_ue_lp 17
+T 1837ffc4 u_ue_lph 18
+S 1837ffc4 u_ue_ls 19
+T 1837ffc4 u_ue_lsh 20
 P 10f784d6 fullscreen.vert ue_downsample.frag 
 B 10f784d6 frag 1 2216
 U 10f784d6 frag u_cascade_vp 0 mat4 5 64
@@ -11812,4 +11911,4 @@ S 7b87e0f2 u_ue_lp 15
 T 7b87e0f2 u_ue_lph 16
 S 7b87e0f2 u_ue_ls 17
 T 7b87e0f2 u_ue_lsh 18
-E 108
+E 109

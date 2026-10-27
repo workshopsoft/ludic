@@ -16,6 +16,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Real-time sky light (capture, GGX cube, SH diffuse) | ue_skylight.ludic, ue_skylight.frag, lighting.glsl `u_ue_sl` | `R3D_UE_SKYLIGHT=0`, `r3d_ue_skylight` |
 | Atmosphere sun light (sun colour = outer illuminance x ground transmittance) | ue_skylight.ludic `ue_sunlight_on`, daylight.ludic `daylight_set` | `R3D_UE_SUNLIGHT=0`, `r3d_ue_sunlight` |
 | The hour's grade in Unreal's settings (lowest-priority unbound volume) | ue_post.ludic `ue_tod_grade`, daylight.ludic | `R3D_UE_HOUR_GRADE=0`, `r3d_ue_hour_grade` |
+| Lens flares (image based: bokeh blur of the quarter-res scene, eight tinted mirrored copies over the bloom) | ue_post.ludic `ue_lens_flare_pass`, shaders/ue_flare.vert/.frag | off as Unreal ships (r.DefaultFeature.LensFlare 0); `R3D_UE_LENS_FLARE=1`; LensFlareIntensity / Tint / BokehSize / Threshold blend in volumes; `r3d_ue_lens_flare_bokeh` |
 | Local lights: point + spot (units, attenuation, cone), on surfaces and in the volumetric fog | ue_lights.ludic, lighting.glsl `ueLocalLights`, ue_volfog.frag | `R3D_UE_LIGHTS=0`, `r3d_ue_lights`; `R3D_LL` test lights |
 | Forward light grid (64 px cells x 32 log slices, GPU cull per cell: box vs sphere + spot cone refinement; every visible light, nearest first, up to 1024) | ue_lightgrid.ludic, shaders/ue_lightgrid.comp, lighting.glsl `ueLightGridRange` | `R3D_UE_LIGHT_GRID=0`, `r3d_ue_light_grid`; settings `r3d_ue_light_grid_settings` (r.Forward.LightGridPixelSize, LightGridSizeZ, MaxCulledLightsPerCell); `R3D_UE_LL_MAX` lights a frame |
 | Spot and point light shadow maps (legacy whole-scene; spots: projection, per-light resolution and fade, bias, Manual5x5PCF; points: one-pass cube faces, cube surface sizes, receiver bias, CubemapHardwarePCF 29 samples; one compare each in the fog) | ue_lightshadows.ludic, lighting.glsl `ueSpotShadow` / `uePointShadow` and their `...Volume` | `R3D_UE_LIGHT_SHADOWS=0`, `r3d_ue_light_shadows`; `R3D_UE_LS_PAGES` (atlas pages of each kind), `R3D_UE_LS_RES` (r.Shadow.MaxResolution); settings `r3d_ue_light_shadow_settings` (Unreal's cvar names); per light ShadowBias / ShadowSlopeBias / ShadowSharpen / ShadowResolutionScale; `R3D_UE_LS_DEBUG=1` dumps the first map |
@@ -125,6 +126,11 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 
 ## Not ported yet (in this area)
 
-Lens flares (need Unreal's DefaultBokeh texture from editor content and per-pixel instanced quads), dirt mask, bloom threshold
+Unreal's DefaultBokeh texture (content), dirt mask, bloom threshold
 (BloomSetup), convolution bloom, local exposure, film grain texture, chromatic aberration, HDR output transform (HDR10 keeps the
 old tonemapper), exposure compensation curve, meter mask.
+
+- **Lens flares draw square ghosts until a bokeh texture is set.** Unreal falls back to a white texture when its DefaultBokeh
+  content isn't loaded, so the ghosts are squares; Unreal's default content gives soft polygons. DefaultBokeh is an engine
+  .uasset (not in the source repo): export it from the PC's UE 5.8 install and pass it to `r3d_ue_lens_flare_bokeh`.
+
