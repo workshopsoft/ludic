@@ -74,16 +74,59 @@ uniform vec3 u_hand_color;
 uniform vec3 u_hand_dir;
 uniform float u_hand_cone;        // cos of the half-angle; <= -1: a point light
 uniform float u_hand_reach;       // metres to where it dies out entirely
-vec3 skyIrradianceRaw(vec3 n) { return texture(u_irradiance, equirectUV(n)).rgb * u_ibl_scale; }
+// ---- Unreal's real-time sky light (u_ue_sl, ue_skylight.ludic): u_irradiance holds the packed SH (7x1, OutIrradianceEnvMapSH)
+// and u_prefilter the GGX-filtered cube as an atlas (6 faces x u_ue_sl_mips layers, mip m in the top-left (size >> m)^2), Unreal's
+// frame (x, z, y). UE 5.8 ReflectionEnvironmentShared.ush GetSkySHDiffuse and GetSkyLightReflection, times SkyLightColor; no ground
+// term and no u_ibl_scale (the captured sky darkens by itself), below the horizon what Unreal's capture has there (black).
+uniform float u_ue_sl;
+uniform float u_ue_sl_size;            // the cube's mip 0 size (CubemapResolution)
+uniform float u_ue_sl_mips;            // its mip count
+uniform vec3 u_ue_sl_color;            // SkyLightColor: LightColor x Intensity
+vec3 ueSkySH(vec3 nOurs) {
+  vec4 nv = vec4(nOurs.x, nOurs.z, nOurs.y, 1.0);
+  vec3 i0 = vec3(dot(texelFetch(u_irradiance, ivec2(0, 0), 0), nv), dot(texelFetch(u_irradiance, ivec2(1, 0), 0), nv), dot(texelFetch(u_irradiance, ivec2(2, 0), 0), nv));
+  vec4 vB = nv.xyzz * nv.yzzx;
+  vec3 i1 = vec3(dot(texelFetch(u_irradiance, ivec2(3, 0), 0), vB), dot(texelFetch(u_irradiance, ivec2(4, 0), 0), vB), dot(texelFetch(u_irradiance, ivec2(5, 0), 0), vB));
+  float vC = nv.x * nv.x - nv.y * nv.y;
+  vec3 i2 = texelFetch(u_irradiance, ivec2(6, 0), 0).xyz * vC;
+  return max(vec3(0.0), i0 + i1 + i2) * u_ue_sl_color;
+}
+vec3 ueCubeAtlasMip(vec3 dUe, float m) {
+  vec3 a = abs(dUe);
+  vec2 sc;
+  float face;
+  if (a.x >= a.y && a.x >= a.z) { if (dUe.x > 0.0) { sc = vec2(-dUe.z, -dUe.y) / a.x;  face = 0.0; } else { sc = vec2(dUe.z, -dUe.y) / a.x;  face = 1.0; } }
+  else if (a.y >= a.z) { if (dUe.y > 0.0) { sc = vec2(dUe.x, dUe.z) / a.y;  face = 2.0; } else { sc = vec2(dUe.x, -dUe.z) / a.y;  face = 3.0; } }
+  else { if (dUe.z > 0.0) { sc = vec2(dUe.x, -dUe.y) / a.z;  face = 4.0; } else { sc = vec2(-dUe.x, -dUe.y) / a.z;  face = 5.0; } }
+  float res = max(u_ue_sl_size / exp2(m), 1.0);
+  vec2 uv = clamp((sc * 0.5 + 0.5) * res, vec2(0.5), vec2(res - 0.5)) / u_ue_sl_size;
+  return texture(u_prefilter, vec3(uv, m * 6.0 + face)).rgb;
+}
+vec3 ueSkyReflection(vec3 rOurs, float rough) {
+  vec3 d = vec3(rOurs.x, rOurs.z, rOurs.y);
+  // ComputeReflectionCaptureMipFromRoughness(Roughness, SkyLightParameters.x = mips - 1)
+  float maxMip = u_ue_sl_mips - 1.0;
+  float levelFrom1x1 = 1.0 - 1.2 * log2(max(rough, 0.001));
+  float m = clamp(maxMip - 1.0 - levelFrom1x1, 0.0, maxMip);
+  float m0 = floor(m);
+  float m1 = min(m0 + 1.0, maxMip);
+  return mix(ueCubeAtlasMip(d, m0), ueCubeAtlasMip(d, m1), m - m0) * u_ue_sl_color;
+}
+vec3 skyIrradianceRaw(vec3 n) {
+  if (u_ue_sl > 0.5) return ueSkySH(n);
+  return texture(u_irradiance, equirectUV(n)).rgb * u_ibl_scale;
+}
 // The ground's light is the scene's own ground (u_ground_alb, the low ground: what bounce reads too).
 // A surface tilted down still sees (1 + n.y) / 2 of the sky, so the window never gives it less: cut to
 // nothing by n.y = -0.25, every jaw, neck and hanging arm was lit by the ground alone and came out olive.
 vec3 skyIrradiance(vec3 n) {
+  if (u_ue_sl > 0.5) return ueSkySH(n);
   vec3 up = skyIrradianceRaw(vec3(n.x, max(n.y, 0.0), n.z));
   vec3 ground = skyIrradianceRaw(normalize(vec3(n.x, 0.15, n.z) + vec3(1e-4, 0.0, 0.0))) * groundTone(u_ground_alb);
   return mix(ground, up, max(smoothstep(-0.25, 0.2, n.y), clamp(0.5 + 0.5 * n.y, 0.0, 1.0)));
 }
 vec3 skyPrefilteredRaw(vec3 r, float rough) {
+  if (u_ue_sl > 0.5) return ueSkyReflection(r, rough);
   float lv = rough * (u_prefilter_levels - 1.0);
   float l0 = floor(lv);
   float l1 = min(l0 + 1.0, u_prefilter_levels - 1.0);
@@ -116,6 +159,7 @@ vec3 handLight(vec3 wpos, vec3 n, vec3 albedo) {
   return albedo / PI * u_hand_color * max(dot(n, l), 0.0) * att;
 }
 vec3 skyPrefiltered(vec3 r, float rough) {
+  if (u_ue_sl > 0.5) return ueSkyReflection(r, rough);
   vec3 up = skyPrefilteredRaw(vec3(r.x, max(r.y, 0.0), r.z), rough);
   vec3 ground = skyPrefilteredRaw(normalize(vec3(r.x, 0.15, r.z) + vec3(1e-4, 0.0, 0.0)), max(rough, 0.6)) * groundTone(u_ground_alb);
   return mix(ground, up, smoothstep(-0.2, 0.15, r.y));

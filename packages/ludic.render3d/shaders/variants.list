@@ -30,6 +30,10 @@ fullscreen.vert|ue_eye_adapt.frag|
 fullscreen.vert|ue_fog.frag|
 fullscreen.vert|ue_fog_apply.frag|
 fullscreen.vert|ue_histogram.frag|
+fullscreen.vert|ue_skylight.frag|#define SL_CAPTURE;
+fullscreen.vert|ue_skylight.frag|#define SL_DOWNSAMPLE;
+fullscreen.vert|ue_skylight.frag|#define SL_FILTER;
+fullscreen.vert|ue_skylight.frag|#define SL_SH;
 fullscreen.vert|taa_mv.frag|
 fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;

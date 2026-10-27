@@ -13,6 +13,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Post Process Volumes | ue_post.ludic `ue_ppv_*`, `R3D_PPV` | `R3D_UE_VOLUMES=0`, `r3d_ue_volumes` |
 | Sky Atmosphere (visible sky, sun disc) | ue_sky.ludic, ue_atmosphere.frag, sky.frag `uaSkyLuminance` | `R3D_UE_SKY=0`, `r3d_ue_sky` |
 | Exponential height fog + aerial perspective | ue_fog.ludic, ue_fog.frag, ue_fog_apply.frag, ue_atmosphere.frag `UA_AP`/`UA_DISTANT` | `R3D_UE_FOG=0`, `r3d_ue_fog` |
+| Real-time sky light (capture, GGX cube, SH diffuse) | ue_skylight.ludic, ue_skylight.frag, lighting.glsl `u_ue_sl` | `R3D_UE_SKYLIGHT=0`, `r3d_ue_skylight` |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
 
@@ -37,8 +38,16 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **The sky's brightness follows our sun.** The atmosphere's outer-space sun illuminance defaults to the scene's own sun
   (`day_sun_base`) so the sky and lit ground share one scale; Unreal's default would be 10 lux with physical units everywhere.
   Set `UeSky.light_illuminance_*` to override. Our stars and moon still draw on top at night (Unreal leaves those to the sky material).
-- **Surfaces are still lit by the photo HDRI's sky light**, not by the new sky, until Unreal's real-time sky light capture lands;
-  the sun's colour is still daylight.ludic's, not the atmosphere's transmittance (Unreal's bAtmosphereSunLight).
+- **The sun's colour is still daylight.ludic's**, not the atmosphere's transmittance (Unreal's bAtmosphereSunLight).
+- **Shadowed sides are darker and bluer than before.** The sky light is the captured sky only: blue from above, black below the
+  horizon (bLowerHemisphereIsBlack), no hand-made ground term. In Unreal the light bounced off the ground comes from GI (Lumen), not
+  the sky light. Adjust: `UeSkyLight.lower_hemisphere_is_black = false` with a `lower_hemisphere_color`, `intensity`, or GI later.
+  Our own ground-bounce fill (lighting.glsl `bounce`) is still on and is not Unreal's.
+- **Windows and glossy surfaces look darker.** They reflect the captured cube, and anything below the horizon reflects black;
+  Unreal fills that from screen-space reflections or Lumen (not ported yet).
+- **The sky light needs Unreal's fog on** (it reads the fog's distant sky light for the capture's fog); with R3D_UE_FOG=0 it stays off.
+- **The capture runs every frame** (UeSkyLight.capture_interval 1, about 1 ms); Unreal time-slices it over frames. Raise the interval
+  to save time.
 - **A darker band where the land meets the sky.** Unreal fogs sky pixels too (bFogOnlyOnRenderedOpaque false); far away the
   fog's colour wins, and with the sky atmosphere lighting the fog that colour is the distant sky light (the whole sky's average,
   darker than the pale horizon) plus a sun lobe (exponent 4, from 100 m). Adjust: `fog_inscattering_luminance`,

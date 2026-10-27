@@ -1,0 +1,180 @@
+# ============================================================================
+# ue_skylight.ludic — Unreal's real-time sky light: the sky captured, convolved and lighting every surface (UE 5.8).
+#
+# UeSkyLight is USkyLightComponent with bRealTimeCapture (Engine/Private/Components/SkyLightComponent.cpp defaults: CubemapResolution
+# 128, bLowerHemisphereIsBlack, Intensity 1). Each capture (ReflectionEnvironmentRealTimeCapture.cpp): the six faces of the sky
+# atmosphere and the distant height fog at the camera, black below the horizon (ue_skylight.frag SL_CAPTURE), the mips
+# (SL_DOWNSAMPLE), the GGX convolution of every mip (SL_FILTER), and the diffuse irradiance as third-order SH (SL_SH, from mip
+# log2(128) - 4 = 3). The cube is a 2D array atlas (6 faces x mips, mip m in the top-left of its layers) because the GPU layer has no
+# cube textures; lighting.glsl reads it with Unreal's GetSkyLightReflection and the SH with GetSkySHDiffuse (u_ue_sl).
+#
+# Unreal time-slices the capture over frames (r.SkyLight.RealTimeReflectionCapture.TimeSlice); here UeSkyLight.capture_interval
+# frames apart, the whole capture at once (1: every frame). Needs the Unreal sky (and its fog for the distant fog).
+# R3D_UE_SKYLIGHT=0 (or r3d_ue_skylight(st, false)) puts the photograph's convolved maps back; on by default with the Unreal sky.
+# ============================================================================
+
+property UeSkyLight {
+  intensity: float = 1.0,                     # Intensity
+  light_color_r: float = 1.0,                 # LightColor
+  light_color_g: float = 1.0,
+  light_color_b: float = 1.0,
+  cubemap_resolution: int = 128,              # CubemapResolution
+  lower_hemisphere_is_black: bool = true,     # bLowerHemisphereIsBlack
+  lower_hemisphere_color_r: float = 0.0,      # LowerHemisphereColor
+  lower_hemisphere_color_g: float = 0.0,
+  lower_hemisphere_color_b: float = 0.0,
+  capture_interval: int = 1                   # frames between captures (Unreal: time-sliced over a few frames)
+}
+
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+export function r3d_sky_light(render3d_st: mut Render3dState) -> UeSkyLight {
+  if render3d_st.ue_sl_s == null { render3d_st.ue_sl_s = new UeSkyLight }
+  return render3d_st.ue_sl_s
+}
+export function r3d_ue_skylight(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_sl_on = 0
+  if on { render3d_st.ue_sl_on = 1 }
+}
+function ue_skylight_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_sl_on < 0 {
+    render3d_st.ue_sl_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_SKYLIGHT") and r3d_env(render3d_st, "R3D_UE_SKYLIGHT") == "0" { render3d_st.ue_sl_on = 0 }
+  }
+  return render3d_st.ue_sl_on == 1 and ue_sky_on(render3d_st)
+}
+
+function ue_sl_mip_count(size: int) -> int {
+  var m = 1
+  var s = size
+  while s > 1 { s = s / 2;  m += 1 }
+  return m
+}
+
+# a 2D array of size x size x layers, linear, clamped, and one framebuffer a layer
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_sl_atlas(render3d_st: mut Render3dState, size: int, layers: int, fbs: words) -> int {
+  let t = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, t)
+  gpu_tex_image3d(render3d_st, GPU_RGBA16F, size, size, layers, GPU_RGBA, GPU_HALF_FLOAT, null)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR)
+  for l in 0 .. layers {
+    let fb = gpu_fb_new(render3d_st)
+    gpu_fb_bind(render3d_st, fb)
+    gpu_fb_color_layer(render3d_st, 0, t, l)
+    fbs[l] = fb
+  }
+  gpu_fb_bind(render3d_st, 0)
+  return t
+}
+
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_sl_init(render3d_st: mut Render3dState) -> void {
+  let sl = r3d_sky_light(render3d_st)
+  let size = max(sl.cubemap_resolution, 16)
+  if render3d_st.ue_sl_size == size { return }
+  # (made once at its size; a changed CubemapResolution makes a new set and leaves the old one to the device's teardown)
+  let mips = ue_sl_mip_count(size)
+  render3d_st.ue_sl_size = size
+  render3d_st.ue_sl_mips = mips
+  render3d_st.ue_sl_cap_fb = words(mips * 6)
+  render3d_st.ue_sl_cap2_fb = words(mips * 6)
+  render3d_st.ue_sl_flt_fb = words(mips * 6)
+  render3d_st.ue_sl_cap = ue_sl_atlas(render3d_st, size, mips * 6, render3d_st.ue_sl_cap_fb)
+  render3d_st.ue_sl_cap2 = ue_sl_atlas(render3d_st, size, mips * 6, render3d_st.ue_sl_cap2_fb)
+  render3d_st.ue_sl_flt = ue_sl_atlas(render3d_st, size, mips * 6, render3d_st.ue_sl_flt_fb)
+  render3d_st.ue_sl_sh = target_new(render3d_st, 7, 1, GPU_RGBA32F, GPU_RGBA, GPU_FLOAT, false, GPU_NEAREST)
+  if render3d_st.ue_sl_pc == 0 {
+    render3d_st.ue_sl_pc = r3d_program(render3d_st, "fullscreen.vert", "ue_skylight.frag", "#define SL_CAPTURE\n")
+    render3d_st.ue_sl_pd = r3d_program(render3d_st, "fullscreen.vert", "ue_skylight.frag", "#define SL_DOWNSAMPLE\n")
+    render3d_st.ue_sl_pf = r3d_program(render3d_st, "fullscreen.vert", "ue_skylight.frag", "#define SL_FILTER\n")
+    render3d_st.ue_sl_ps = r3d_program(render3d_st, "fullscreen.vert", "ue_skylight.frag", "#define SL_SH\n")
+  }
+}
+
+function ue_sl_common(render3d_st: mut Render3dState, p: int, mip: int) -> void {
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "sl_mip"), float(mip))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "sl_mips"), float(render3d_st.ue_sl_mips))
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "sl_size"), float(render3d_st.ue_sl_size))
+}
+function ue_sl_face_draw(render3d_st: mut Render3dState, p: int, fbs: words, mip: int, face: int) -> void {
+  gpu_fb_bind(render3d_st, fbs[mip * 6 + face])
+  let res = max(render3d_st.ue_sl_size >> mip, 1)
+  gpu_viewport(render3d_st, 0, 0, res, res)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "sl_face"), float(face))
+  mesh_draw(render3d_st, render3d_st.post_fs)
+}
+
+# After the sky LUTs and the fog's (ue_sky_luts), before the scene: capture, mips, convolution and SH
+function ue_skylight_pass(render3d_st: mut Render3dState) -> void {
+  if not ue_skylight_on(render3d_st) or render3d_st.ue_sky_view == null or render3d_st.ue_distant == null { return }
+  let sl = r3d_sky_light(render3d_st)
+  render3d_st.ue_sl_frame += 1
+  if render3d_st.ue_sl_ready and render3d_st.ue_sl_frame % max(sl.capture_interval, 1) != 0 { return }
+  ue_sl_init(render3d_st)
+  prof_begin(render3d_st, "UE sky light capture")
+  gpu_depth_test(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  let mips = render3d_st.ue_sl_mips
+  # the faces: the sky (sky.frag's uniforms) with the distant fog (ue_fog.frag's) and the lower hemisphere
+  var p = render3d_st.ue_sl_pc
+  gpu_use_program(render3d_st, p)
+  ue_sl_common(render3d_st, p, 0)
+  ue_sky_bind(render3d_st, p)
+  r3d_bind_2d(render3d_st, p, "uf_distant", 2, render3d_st.ue_distant.color)
+  ue_fog_params(render3d_st, p)
+  var on = 0.0
+  if sl.lower_hemisphere_is_black { on = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "sl_lower_on"), on)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "sl_lower_color"), sl.lower_hemisphere_color_r, sl.lower_hemisphere_color_g, sl.lower_hemisphere_color_b)
+  for f in 0 .. 6 { ue_sl_face_draw(render3d_st, p, render3d_st.ue_sl_cap_fb, 0, f) }
+  # the mips, each from the one above: odd mips into the second array, even into the first, the other one bound to read
+  p = render3d_st.ue_sl_pd
+  gpu_use_program(render3d_st, p)
+  for m in 1 .. mips {
+    var src = render3d_st.ue_sl_cap
+    var dst = render3d_st.ue_sl_cap2_fb
+    if m % 2 == 0 { src = render3d_st.ue_sl_cap2;  dst = render3d_st.ue_sl_cap_fb }
+    r3d_bind_tex(render3d_st, p, "sl_src", 0, GPU_TEX2D_ARRAY, src)
+    r3d_bind_tex(render3d_st, p, "sl_src2", 1, GPU_TEX2D_ARRAY, src)
+    ue_sl_common(render3d_st, p, m)
+    for f in 0 .. 6 { ue_sl_face_draw(render3d_st, p, dst, m, f) }
+  }
+  # the specular convolution of every mip from the captured mips
+  p = render3d_st.ue_sl_pf
+  gpu_use_program(render3d_st, p)
+  r3d_bind_tex(render3d_st, p, "sl_src", 0, GPU_TEX2D_ARRAY, render3d_st.ue_sl_cap)
+  r3d_bind_tex(render3d_st, p, "sl_src2", 1, GPU_TEX2D_ARRAY, render3d_st.ue_sl_cap2)
+  for m in 0 .. mips {
+    ue_sl_common(render3d_st, p, m)
+    for f in 0 .. 6 { ue_sl_face_draw(render3d_st, p, render3d_st.ue_sl_flt_fb, m, f) }
+  }
+  # the diffuse irradiance SH from the captured mip log2(size) - 4 (16x16)
+  p = render3d_st.ue_sl_ps
+  gpu_use_program(render3d_st, p)
+  r3d_bind_tex(render3d_st, p, "sl_src", 0, GPU_TEX2D_ARRAY, render3d_st.ue_sl_cap)
+  r3d_bind_tex(render3d_st, p, "sl_src2", 1, GPU_TEX2D_ARRAY, render3d_st.ue_sl_cap2)
+  ue_sl_common(render3d_st, p, max(mips - 1 - 4, 0))
+  target_bind(render3d_st, render3d_st.ue_sl_sh)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  gpu_fb_bind(render3d_st, 0)
+  render3d_st.ue_sl_ready = true
+  prof_end(render3d_st)
+}
+
+# a lit program's sky light (sky_bind_lighting): the SH on u_irradiance's unit, the filtered cube on u_prefilter's; u_ue_sl 0 leaves
+# the photograph's maps
+function ue_skylight_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  var on = 0.0
+  if ue_skylight_on(render3d_st) and render3d_st.ue_sl_ready { on = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_sl"), on)
+  if on < 0.5 { return }
+  let sl = r3d_sky_light(render3d_st)
+  r3d_bind_2d(render3d_st, prog, "u_irradiance", 12, render3d_st.ue_sl_sh.color)
+  r3d_bind_tex(render3d_st, prog, "u_prefilter", 13, GPU_TEX2D_ARRAY, render3d_st.ue_sl_flt)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_sl_size"), float(render3d_st.ue_sl_size))
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_sl_mips"), float(render3d_st.ue_sl_mips))
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_sl_color"), sl.light_color_r * sl.intensity, sl.light_color_g * sl.intensity, sl.light_color_b * sl.intensity)
+}
