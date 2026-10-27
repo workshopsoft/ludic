@@ -319,7 +319,7 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
     prim_factors(render3d_st, ap.prog, pr)
     if not shadow and ap.l_fp >= 0 { ac_bind_fabric(render3d_st, a, ap, pr) }
     if not shadow and ap.l_eye >= 0 and pr.eye != null { ac_bind_eye(render3d_st, ap, pr) }
-    if not shadow { ac_bind_headmap(render3d_st, ap, pr) }
+    if not shadow { ac_bind_headmap(render3d_st, ap, pr);  ac_bind_micro(render3d_st, ap, pr) }
     if not shadow {
       gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
       gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
@@ -359,6 +359,22 @@ function ac_bind_headmap(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -
   if t == 0 { t = strands_shadow_black(render3d_st);  on = 0.0 }
   r3d_bind_2d(render3d_st, ap.prog, "u_headmap", 17, t)
   u_f(render3d_st, lp, on)
+}
+# a skin's micro detail (model_set_micro) on units 18 and 19, its parameters and the camera's horizontal cot(fov / 2) (MF_ruler's
+# 1 / TanHalfFieldOfView.x); a primitive without it has the tiling 0 (off)
+function ac_bind_micro(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {
+  let lp = gpu_uniform(render3d_st, ap.prog, "u_micro_p")
+  if lp < 0 { return }
+  if pr.micro == null {
+    u_f4(render3d_st, lp, 0.0, 0.0, 0.0, 0.0)
+    return
+  }
+  let q = pr.micro
+  r3d_bind_2d(render3d_st, ap.prog, "u_micro", 18, pr.mtex[0])
+  r3d_bind_2d(render3d_st, ap.prog, "u_micro_mask", 19, pr.mtex[1])
+  u_f4(render3d_st, lp, q[0], q[1], q[2], q[3])
+  u_f4(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_micro_m"), q[4], q[5], q[6], q[7])
+  u_f4(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_micro_r"), render3d_st.cam_proj[0], q[8], q[9], 0.0)
 }
 # a face's eyes for the EYE program: the cells and the five maps on the units the fabric's take
 function ac_bind_eye(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {

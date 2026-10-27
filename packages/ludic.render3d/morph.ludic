@@ -246,6 +246,26 @@ export function model_set_headmap(render3d_st: mut Render3dState, model: Model, 
   }
   return true
 }
+# A MetaHuman skin's micro detail, as Unreal's MF_skin_microSkinDetails draws it (model.frag): a tiled micro normal and its cavity over
+# the mesh's own uvs, faded with the skin's size on screen (MF_ruler) and masked by the mask's channels. tile: RG the micro normal
+# (T_SkinMicro3_N, green up), B its cavity (T_skinMicro3_CAV); mask: T_Skin_Microtiling_M over the mesh's uvs (RGBA: masks A..D).
+# p: Micro Skin Tiling, Micro Skin Normal Strength, Micro Skin Roughess, Micro Skin Cavity Specular Multiply, Micro MaskA..D Strength,
+# Ruler Min, Ruler Max (the material instance's values; MI_Body_Baked's for a body)
+export function model_set_micro(render3d_st: mut Render3dState, model: Model, tile: string, mask: string, p: floats) -> bool {
+  if model == null or len(p) < 10 { return false }
+  let t = tex_cached(render3d_st, tile, false, 0)
+  let m = tex_cached(render3d_st, mask, false, 0)
+  if t == 0 or m == 0 { return false }
+  for pi in 0 .. len(model.prims) {
+    let pr = model.prims[pi]
+    if pr.micro == null { pr.micro = floats(10) }
+    for k in 0 .. 10 { pr.micro[k] = p[k] }
+    if pr.mtex == null { pr.mtex = words(2) } else { gltf_tex_unref(render3d_st, pr.mtex[0]);  gltf_tex_unref(render3d_st, pr.mtex[1]) }
+    gltf_tex_ref(render3d_st, t);  gltf_tex_ref(render3d_st, m)
+    pr.mtex[0] = t;  pr.mtex[1] = m
+  }
+  return true
+}
 export function model_set_maps(render3d_st: mut Render3dState, model: Model, nrm: string, arm: string) -> bool {
   if model == null { return false }
   var ok = true

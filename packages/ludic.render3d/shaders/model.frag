@@ -223,6 +223,30 @@ vec4 skinMicro(vec3 tn, float a) {
   return vec4(b * dot(b, mn) / b.z - mn, 1.0 - m.b);
 }
 
+// A MetaHuman skin's micro detail as Unreal's MF_skin_microSkinDetails draws it (its graph read from the editor; model_set_micro, the
+// material instance's values): the micro normal tiled over the mesh's own uvs at its strength (MF_normalStrength: lerp from flat),
+// added to the skin's (MF_blendNormals: the xy summed, the z multiplied) as far as the mask says. The mask: MF_ruler (the camera's
+// 1 / TanHalfFieldOfView over the depth along its view, in Unreal's centimetres) remapped Ruler Min..Max to 0..1, times 1 - each
+// mask channel x its strength (T_Skin_Microtiling_M, Micro MaskA..D Strength). mc: the mask and the cavity (T_skinMicro3_CAV's red)
+// for the roughness (x Micro Skin Roughess) and the specular (x Micro Skin Cavity Specular Multiply, by the cavity)
+uniform vec4 u_micro_p;          // Micro Skin Tiling (0: none), Micro Skin Normal Strength, Micro Skin Roughess, Cavity Specular Multiply
+uniform vec4 u_micro_m;          // Micro MaskA..D Strength
+uniform vec4 u_micro_r;          // the camera's 1 / TanHalfFieldOfView.x, Ruler Min, Ruler Max
+uniform sampler2D u_micro;       // the tile: RG the micro normal (green up), B the cavity
+uniform sampler2D u_micro_mask;  // T_Skin_Microtiling_M over the mesh's uvs
+vec3 microSkin(vec3 tn, out vec2 mc) {
+  vec4 t = texture(u_micro, v_uv * u_micro_p.x);
+  vec2 xy = t.rg * 2.0 - 1.0;
+  vec3 b = mix(vec3(0.0, 0.0, 1.0), vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0))), u_micro_p.y);
+  vec3 bl = vec3(tn.xy + b.xy, tn.z * b.z);
+  float depth = max(-(u_view * vec4(v_wpos, 1.0)).z * 100.0, 1e-3);
+  float m = clamp((u_micro_r.x / depth - u_micro_r.y) / (u_micro_r.z - u_micro_r.y), 0.0, 1.0);
+  vec4 mk = texture(u_micro_mask, v_uv) * u_micro_m;
+  m *= (1.0 - mk.r) * (1.0 - mk.g) * (1.0 - mk.b) * (1.0 - mk.a);
+  mc = vec2(m, t.b);
+  return mix(tn, bl, m);
+}
+
 #ifdef FABRIC
 // ---- hair cards (mode 3): Epic's HairShading (HairBsdf.ush) with the cards' transmittance data (InitHairTransmittanceData: legacy
 // absorption, a separable R, no backlit), the material M_hair_v4 feeds it (MF_Variation, GetHairColorFromMelanin's absorption) -------
@@ -470,6 +494,8 @@ void main() {
   if (head) { hm = texture(u_headmap, v_uv * 2.0);  nt.rgb = hm.rgb; }
 #endif
   vec4 sm = skin ? skinMicro(nt.rgb * 2.0 - 1.0, nt.a) : vec4(nt.rgb * 2.0 - 1.0, 0.0);
+  vec2 mc = vec2(0.0);
+  if (u_micro_p.x > 0.0) sm.xyz = microSkin(sm.xyz, mc);
   mat3 tbn = normalFrame(N, v_wpos, v_uv);
   n = normalize(tbn * sm.xyz);
   arm = texture(u_arm, v_uv).rgb;
@@ -482,6 +508,8 @@ void main() {
     arm.g *= 1.0 + 0.35 * sm.w;
     g_dielF0 = 0.08 * 0.72 * mix(1.0, 0.6, sm.w);
   }
+  arm.g *= mix(1.0, u_micro_p.z, mc.x);
+  g_dielF0 *= mix(1.0, mix(1.0, u_micro_p.w, mc.y), mc.x);
   // the roughness and metal at their own tiling (a car paint's flake noise is its texture 20 times over; the occlusion is not)
   if (u_mr_scale.x > 0.0 && u_mr_scale != vec2(1.0)) arm.gb = texture(u_arm, v_uv * u_mr_scale).gb;
   arm.gb *= vec2(1.0) - u_fac_mr_inv;
