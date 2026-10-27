@@ -1,0 +1,35 @@
+# persist_autosaves.ludic - a game autosaves through ludic.persist offline: each put replaces the record in
+# the cache and the put still queued, and the cache file is written whole. The record it replaces, the
+# queued body, the copy's texts and keys and the cache writer's own pieces are let go, so a thousand
+# autosaves keep nothing (they rose under the alloc fence until a long load failed it: exit 86). Prints
+# `coins 999 queued 1 autosaves grew 0` (the heap is read on the Mac; 0 elsewhere).
+import "ludic.persist"
+import "ludic.base"
+program PersistAutosaves {
+  function pack(i: int) -> Val {
+    let v = Value.object()
+    sv_put_int(v, "coins", i)
+    Value.put(v, "name", Value.str_owned(`player {i}`))
+    let l = Value.list()
+    for k in 0 .. 8 { Value.add(l, Value.str_owned(`car {k}`)) }
+    Value.put(v, "cars", l)
+    return v
+  }
+  function autosave(pc: mut PersistClientState, i: int) -> void {
+    let v = pack(i)
+    persist_put(pc, "profile", v)
+    Json.free_all(v)                                 # the put took a copy
+    persist_cache_save(pc)
+  }
+  entry (pc: mut PersistClientState) {
+    let path = Os.temp_dir() + "/persist_autosaves_" + string(Os.pid()) + ".json"
+    persist_cache_path(pc, path)
+    for i in 0 .. 20 { autosave(pc, i) }
+    let before = Os.heap_bytes()
+    for i in 0 .. 1000 { autosave(pc, i) }
+    let grew = Os.heap_bytes() - before
+    Fs.remove(path)
+    Fs.remove(path + ".bak")
+    print(`coins {sv_int(persist_get(pc, "profile"), "coins", -1)} queued {persist_pending(pc)} autosaves grew {grew}`)
+  }
+}

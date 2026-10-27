@@ -580,6 +580,9 @@ function jp_owned_str(s: string) -> Val {
   v.num = JP_OWNED
   return v
 }
+# a text made for a tree that is let go whole (a copy, a body built and encoded): the tree owns it, as the
+# parser's own, and Json.free_all frees it with the tree
+function value_str_owned(s: pointer) -> Val { return jp_owned_str(s) }
 function value_free_all(v: Val) -> void {
   if v == null { return }
   if v.tag == 4 and v.txt != null and v.num == JP_OWNED { free(v.txt) }

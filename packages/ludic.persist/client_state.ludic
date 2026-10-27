@@ -122,6 +122,19 @@ function pc__rec_make(persist_client_st: mut PersistClientState, ns: string) -> 
   return n
 }
 
+# a record's data replaced: the old tree is the cache's and is let go, unless a conflict keeps it as this
+# side's (rec.mine). What persist_get handed out is read at once, never kept past the next change
+function pc__set_data(rec: PcRec, d: Val) -> void {
+  if rec.data != null and rec.data != rec.mine { Json.free_all(rec.data) }
+  rec.data = d
+}
+
+# this side's copy in a conflict let go
+function pc__drop_mine(rec: PcRec) -> void {
+  if rec.mine != null and rec.mine != rec.data { Json.free_all(rec.mine) }
+  rec.mine = null
+}
+
 # the cached data of a namespace (null until it is loaded, here or from the cache file)
 export function persist_get(persist_client_st: PersistClientState, ns: string) -> Val {
   let r = pc__rec(persist_client_st, ns)

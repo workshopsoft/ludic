@@ -1392,6 +1392,7 @@ function cmd_dev_test() -> int {
   feat_case("lang/string_temps", "", "1 2 3 4 5 6 7 grew 0", "string_temps.ludic (a concatenation's pieces, a template's holes and a compared side are freed once used; a kept one is not)")
   feat_case("lang/value_list_regrow", "", "bad 0 xs 2", "value_list_regrow.ludic (a model list filled in place that shrinks and grows back keeps its cut-off items as spares: nothing kept, the fence lets it through)")
   feat_case("lang/json_free_edited", "", "names Sam|Ada grew 32", "json_free_edited.ludic (Json.free_all after a migration put literals in and a loader set a string: only the parser's strings are freed, a kept copy reads on, a thousand loads keep nothing)")
+  feat_case("lang/persist_autosaves", "", "coins 999 queued 1 autosaves grew 0", "persist_autosaves.ludic (ludic.persist offline autosaves: the replaced record, the queued body, the copy's texts and keys and the cache writer's pieces are let go, a thousand autosaves keep nothing)")
   feat_case("lang/json_saves", "", "1 2 3 saves grew 0", "json_saves.ludic (Json.write_file saves through a kept buffer: the text Json.encode gives, 1000 saves keep nothing)")
   feat_case("lang/json_unicode", "", "json unicode 8 of 8", "json_unicode.ludic (Json.parse decodes \\uXXXX to UTF-8, a surrogate pair joined, a lone one or bad hex as U+FFFD, and \\t \\r \\b \\f)")
   feat_case("lang/alloc_fence", "", "frames 300 kept 0 bad 0", "alloc_fence.ludic (25.1: a frame that makes only what it frees or reuses keeps nothing, and the fence passes it)")

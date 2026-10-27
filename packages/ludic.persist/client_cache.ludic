@@ -15,13 +15,12 @@ export function persist_cache_save(persist_client_st: mut PersistClientState) ->
   let root = Value.object()
   Value.put(root, "format", Value.str("persist.cache"))
   Value.put(root, "version", Value.int(1))
-  Value.put(root, "player", Value.str(`{persist_client_st.pc__player}`))
+  Value.put(root, "player", Value.str_owned(`{persist_client_st.pc__player}`))
   Value.put(root, "next", Value.int(persist_client_st.pc__next))
   Value.put(root, "nonce", Value.int(persist_client_st.pc__nonce))
   Value.put(root, "keys", Value.int(persist_client_st.pc__keys))
   let recs = Value.object()
   Value.put(root, "recs", recs)
-  let wrappers = new []Val
   for i in 0 .. len(persist_client_st.pc__recs) {
     let rec = persist_client_st.pc__recs[i]
     if not rec.loaded { continue }
@@ -31,7 +30,6 @@ export function persist_cache_save(persist_client_st: mut PersistClientState) ->
     Value.put(o, "dirty", Value.bool(ps__b(rec.dirty)))
     Value.put(o, "d", rec.data)
     Value.put(recs, rec.ns, o)
-    push(wrappers, o)
   }
   let reqs = Value.list()
   for i in 0 .. len(persist_client_st.pc__reqs) {
@@ -45,8 +43,11 @@ export function persist_cache_save(persist_client_st: mut PersistClientState) ->
     Value.add(reqs, o)
   }
   Value.put(root, "reqs", reqs)
-  let ok = save_write_tree(persist_client_st.pc__path, persist_client_st.pc__path + ".bak", root)
-  for i in 0 .. len(wrappers) { Value.put(wrappers[i], "d", Value.null()) }
+  let bak = persist_client_st.pc__path + ".bak"
+  let ok = save_write_tree(persist_client_st.pc__path, bak, root)
+  ps__give_back(bak)
+  # the records' data is the cache's: taken out of the tree before it is let go
+  for i in 0 .. Value.count(recs) { Value.put(Value.at(recs, i), "d", Value.null()) }
   Json.free_all(root)
   persist_client_st.pc__saved_at = persist_client_st.pc__time
   if ok { persist_client_st.pc__dirty_cache = false }
@@ -75,7 +76,7 @@ export function persist_cache_load(persist_client_st: mut PersistClientState) ->
       let o = Value.at(recs, i)
       if Value.kind(o) != 6 { continue }
       let rec = pc__rec_make(persist_client_st, ns)
-      rec.data = ps__clone(Value.get(o, "d"), 0)
+      pc__set_data(rec, ps__clone(Value.get(o, "d"), 0))
       rec.rev = pj_int(o, "rev", 0)
       var ver = pj_int(o, "v", 1)
       let to = ps__migrate(ns, rec.data, ver)

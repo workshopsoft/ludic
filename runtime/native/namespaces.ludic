@@ -474,6 +474,7 @@ namespace Value {
   alias float(x) = value_float
   alias bool(b) = value_bool
   alias str(s) = value_str
+  alias str_owned(s) = value_str_owned
   alias list() = value_list
   alias object() = value_object
   alias add(list, item) = value_add

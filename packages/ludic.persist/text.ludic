@@ -136,7 +136,7 @@ function ps__clone(v: Val, depth: int) -> Val {
   if k == 1 { return Value.int(Value.as_int(v)) }
   if k == 3 { return Value.bool(Value.as_int(v)) }
   if k == 2 or k == 7 { return Value.float(Value.as_float(v)) }
-  if k == 4 { return Value.str(`{Value.as_str(v)}`) }
+  if k == 4 { return Value.str_owned(`{Value.as_str(v)}`) }   # freed with the copy
   if k == 5 {
     let l = Value.list()
     for i in 0 .. Value.count(v) {
@@ -149,7 +149,7 @@ function ps__clone(v: Val, depth: int) -> Val {
     let o = Value.object()
     for i in 0 .. Value.count(v) {
       if i >= PS_KEYS { break }
-      Value.put(o, `{Value.key_at(v, i)}`, ps__clone(Value.at(v, i), depth + 1))
+      Value.put(o, intern(Value.key_at(v, i)), ps__clone(Value.at(v, i), depth + 1))   # a key interned, as the parser's
     }
     return o
   }

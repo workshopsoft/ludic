@@ -92,7 +92,7 @@ export function persist_fetch(persist_client_st: mut PersistClientState, ns: str
   }
   let o = Value.object()
   Value.put(o, "op", Value.str("get"))
-  Value.put(o, "ns", Value.str(`{ns}`))
+  Value.put(o, "ns", Value.str_owned(`{ns}`))
   let body = Json.encode(o)
   Json.free_all(o)
   pc__enqueue(persist_client_st, "get", ns, "", body, 0)
@@ -103,14 +103,14 @@ export function persist_fetch(persist_client_st: mut PersistClientState, ns: str
 @alloc_ok("a put is made per change")
 export function persist_put(persist_client_st: mut PersistClientState, ns: string, data: Val) -> void {
   let rec = pc__rec_make(persist_client_st, ns)
-  rec.data = ps__clone(data, 0)
+  pc__set_data(rec, ps__clone(data, 0))
   rec.loaded = true
   rec.dirty = true
   rec.conflict = false
   rec.gen += 1
   let o = Value.object()
   Value.put(o, "op", Value.str("put"))
-  Value.put(o, "ns", Value.str(`{ns}`))
+  Value.put(o, "ns", Value.str_owned(`{ns}`))
   Value.put(o, "v", Value.int(rec.ver))
   Value.put(o, "d", rec.data)
   let body = Json.encode(o)
@@ -120,6 +120,7 @@ export function persist_put(persist_client_st: mut PersistClientState, ns: strin
   for i in 0 .. len(persist_client_st.pc__reqs) {
     let q = persist_client_st.pc__reqs[i]
     if q.op == "put" and q.ns == ns and not q.sent {
+      ps__give_back(q.body)                          # the put it replaces is let go
       q.body = body
       q.gen = rec.gen
       replaced = true
@@ -157,8 +158,8 @@ export function persist_txn_begin_as(persist_client_st: mut PersistClientState, 
 function pc__tx_op(persist_client_st: mut PersistClientState, kind: string, ns: string, f: string) -> Val {
   let o = Value.object()
   Value.put(o, "op", Value.str(kind))
-  Value.put(o, "ns", Value.str(`{ns}`))
-  Value.put(o, "f", Value.str(`{f}`))
+  Value.put(o, "ns", Value.str_owned(`{ns}`))
+  Value.put(o, "f", Value.str_owned(`{f}`))
   if persist_client_st.pc__tx_ops != null { Value.add(persist_client_st.pc__tx_ops, o) }
   return o
 }
@@ -184,26 +185,26 @@ export function persist_txn_set_int(persist_client_st: mut PersistClientState, n
 
 export function persist_txn_set_str(persist_client_st: mut PersistClientState, ns: string, f: string, v: string) -> void {
   let o = pc__tx_op(persist_client_st, "set", ns, f)
-  Value.put(o, "v", Value.str(`{v}`))
+  Value.put(o, "v", Value.str_owned(`{v}`))
 }
 
 # set only if the field holds `expect` now (a compare-and-set)
 export function persist_txn_swap_str(persist_client_st: mut PersistClientState, ns: string, f: string, expect: string, v: string) -> void {
   let o = pc__tx_op(persist_client_st, "set", ns, f)
-  Value.put(o, "v", Value.str(`{v}`))
-  Value.put(o, "expect", Value.str(`{expect}`))
+  Value.put(o, "v", Value.str_owned(`{v}`))
+  Value.put(o, "expect", Value.str_owned(`{expect}`))
 }
 
 export function persist_txn_push_str(persist_client_st: mut PersistClientState, ns: string, f: string, v: string, unique: bool, most: int) -> void {
   let o = pc__tx_op(persist_client_st, "push", ns, f)
-  Value.put(o, "v", Value.str(`{v}`))
+  Value.put(o, "v", Value.str_owned(`{v}`))
   Value.put(o, "unique", Value.bool(ps__b(unique)))
   if most > 0 { Value.put(o, "max", Value.int(most)) }
 }
 
 export function persist_txn_remove_str(persist_client_st: mut PersistClientState, ns: string, f: string, v: string) -> void {
   let o = pc__tx_op(persist_client_st, "remove", ns, f)
-  Value.put(o, "v", Value.str(`{v}`))
+  Value.put(o, "v", Value.str_owned(`{v}`))
 }
 
 export function persist_txn_cancel(persist_client_st: mut PersistClientState) -> void {
@@ -227,11 +228,11 @@ export function persist_txn_commit(persist_client_st: mut PersistClientState) ->
     # for another player: nothing of theirs is cached here
     let o = Value.object()
     Value.put(o, "op", Value.str("txn"))
-    Value.put(o, "key", Value.str(`{key}`))
-    Value.put(o, "as", Value.str(`{acting}`))
+    Value.put(o, "key", Value.str_owned(`{key}`))
+    Value.put(o, "as", Value.str_owned(`{acting}`))
     Value.put(o, "ops", ops)
     let body = Json.encode(o)
-    let first = pj_str(Value.at(ops, 0), "ns", "")
+    let first = intern(pj_str(Value.at(ops, 0), "ns", ""))   # held past the tree, which owns its texts
     Json.free_all(o)
     pc__enqueue(persist_client_st, "txn", first, key, body, 0)
     return true
@@ -245,7 +246,7 @@ export function persist_txn_commit(persist_client_st: mut PersistClientState) ->
     var w = -1
     for k in 0 .. len(names) { if names[k] == ns { w = k } }
     if w < 0 {
-      push(names, ns)
+      push(names, intern(ns))                      # held past the ops tree, which owns its texts
       let cur = pc__rec(persist_client_st, ns)
       if cur != null and cur.loaded {
         push(work, ps__clone(cur.data, 0))
@@ -260,19 +261,21 @@ export function persist_txn_commit(persist_client_st: mut PersistClientState) ->
     if why != "" {
       let f = pc__fact(persist_client_st, PCF_TXN_FAILED, ns, key, why)
       f.n = i
+      for k in 0 .. len(work) { Json.free_all(work[k]) }   # nothing changed: the copies and the ops go
+      ps__free(ops)
       return false
     }
   }
   for k in 0 .. len(names) {
     let rec = pc__rec_make(persist_client_st, names[k])
-    rec.data = work[k]
+    pc__set_data(rec, work[k])
     rec.loaded = true
     rec.dirty = true
     rec.gen += 1
   }
   let o = Value.object()
   Value.put(o, "op", Value.str("txn"))
-  Value.put(o, "key", Value.str(`{key}`))
+  Value.put(o, "key", Value.str_owned(`{key}`))
   Value.put(o, "ops", ops)
   let body = Json.encode(o)
   Json.free_all(o)
@@ -283,6 +286,7 @@ export function persist_txn_commit(persist_client_st: mut PersistClientState) ->
 # --- what the service answers ---
 
 function pc__done(persist_client_st: mut PersistClientState) -> void {
+  ps__give_back(persist_client_st.pc__reqs[0].body)   # answered: its body is let go
   List.remove_at(persist_client_st.pc__reqs, 0)
   persist_client_st.pc__dirty_cache = true
   if len(persist_client_st.pc__reqs) == 0 { pc__fact(persist_client_st, PCF_SYNCED, "", "", "") }
@@ -294,12 +298,12 @@ function pc__take_body(persist_client_st: mut PersistClientState, ns: string, r:
   let rec = pc__rec_make(persist_client_st, ns)
   rec.rev = pj_int(r, "rev", 0)
   if pj_bool(r, "found", false) {
-    rec.data = ps__clone(Value.get(r, "d"), 0)
+    pc__set_data(rec, ps__clone(Value.get(r, "d"), 0))
     rec.ver = pj_int(r, "v", rec.ver)
     let to = ps__migrate(ns, rec.data, rec.ver)
     if to >= 0 { rec.ver = to }
   } else {
-    rec.data = Value.object()
+    pc__set_data(rec, Value.object())
   }
   rec.loaded = true
   rec.stale = false
@@ -362,8 +366,9 @@ function pc__answer(persist_client_st: mut PersistClientState, r: Val) -> void {
         pc__fact(persist_client_st, PCF_SAVED, req.ns, "", "").rev = rec.rev
       } else {
         let mine = rec.data
+        if rec.mine != mine { pc__drop_mine(rec) }     # an older conflict's copy goes
+        rec.mine = mine                                 # kept: the service's record takes its place
         pc__take_body(persist_client_st, req.ns, r)
-        rec.mine = mine
         rec.conflict = true
         pc__fact(persist_client_st, PCF_CONFLICT, req.ns, "", PE_CONFLICT).rev = rec.rev
       }
@@ -462,7 +467,7 @@ export function persist_take_server(persist_client_st: mut PersistClientState, n
   let rec = pc__rec(persist_client_st, ns)
   if rec == null { return }
   rec.conflict = false
-  rec.mine = null
+  pc__drop_mine(rec)
 }
 
 # ... or this side's goes on top of it, as a put against the revision the service is at now
@@ -473,4 +478,5 @@ export function persist_keep_mine(persist_client_st: mut PersistClientState, ns:
   rec.mine = null
   rec.conflict = false
   persist_put(persist_client_st, ns, mine)
+  Json.free_all(mine)                               # the put took a copy
 }
