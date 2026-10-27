@@ -46,6 +46,8 @@ export function r3d_ue_lights(render3d_st: mut Render3dState, on: bool) -> void 
   render3d_st.ue_ll_on = 0
   if on { render3d_st.ue_ll_on = 1 }
 }
+# are Unreal's local lights on (R3D_UE_LIGHTS, r3d_ue_lights)? A game places its lamps as lights when they are
+export function r3d_ue_lights_active(render3d_st: mut Render3dState) -> bool { return ue_lights_on(render3d_st) }
 function ue_lights_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.ue_ll_on < 0 {
     render3d_st.ue_ll_on = 1
