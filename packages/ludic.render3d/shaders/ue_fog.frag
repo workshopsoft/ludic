@@ -21,6 +21,13 @@ uniform float uf_ap_on;            // the sky atmosphere's aerial perspective
 uniform sampler2D uf_ap;           // the AP volume, unwrapped (32 x 16 slices) x 32
 uniform vec4 uf_ap_params;         // DepthResolution, StartDepthKm, DepthSliceLengthKm, width of a slice in texels
 uniform float uf_sky_dist;         // the distance a sky pixel is fogged at (reverse-Z depth 0: Unreal's far depth)
+uniform float uf_vol_on;           // the volumetric fog (ue_volfog.frag) is applied (FogStruct.ApplyVolumetricFog)
+uniform sampler2DArray uf_vol;     // its integrated grid, a layer a slice
+uniform vec3 uf_vol_grid;          // ViewGridSize
+uniform vec3 uf_vol_zp;            // GridZParams
+uniform vec2 uf_vol_uv;            // the view's uv to the grid's (VolumetricFogSVPosToVolumeUV over the view)
+uniform float uf_vol_dist;         // VolumetricFogMaxDistance (m)
+uniform vec3 uf_fwd;               // the view's forward
 const float UF_PI = 3.14159265358979;
 
 float ufLineIntegralShared(float falloff, float rayDirZ, float rayOriginTerms) {
@@ -30,7 +37,7 @@ float ufLineIntegralShared(float falloff, float rayDirZ, float rayOriginTerms) {
   return rayOriginTerms * (abs(f) > 0.01 ? li : lt);         // FLT_EPSILON2 (HeightFogCommon.ush): 0.01
 }
 
-vec4 ufHeightFog(vec3 camToReceiver, vec3 camPos) {
+vec4 ufHeightFog(vec3 camToReceiver, vec3 camPos, float excludeIn) {
   float minOpacity = uf_color.w;
   float maxObs = uf_fog0.z;
   vec3 obs = vec3(camPos.x, min(camPos.y, maxObs), camPos.z);
@@ -46,7 +53,7 @@ vec4 ufHeightFog(vec3 camToReceiver, vec3 camPos) {
   float rayLength = len;
   float rayDirY = camToReceiver.y;
   // PERMUTATION_SUPPORT_FOG_START_DISTANCE
-  float exclude = uf_fog0.w;
+  float exclude = max(excludeIn, uf_fog0.w);
   if (exclude > 0.0) {
     float t = exclude * lenInv;
     float camToExclY = t * camToReceiver.y;
@@ -116,10 +123,27 @@ void main() {
     vec4 h4 = u_inv_vp * vec4(v_uv * 2.0 - 1.0, depthClip(d), 1.0);
     rel = h4.xyz / h4.w - u_cam_pos;
   }
-  vec4 fog = ufHeightFog(rel, u_cam_pos);
+  // CalculateHeightFog: with the volumetric fog on, the analytic fog starts where its range (along the view's z) ends
+  float exclude = 0.0;
+  if (uf_vol_on > 0.5) {
+    float cosAngle = dot(normalize(rel), uf_fwd);
+    exclude = uf_vol_dist * (cosAngle > 1.0e-7 ? 1.0 / cosAngle : 0.0);
+  }
+  vec4 fog = ufHeightFog(rel, u_cam_pos, exclude);
   if (!sky && uf_ap_on > 0.5) {
     vec4 ap = ufAerialPerspective(v_uv, length(rel) * 0.001);
     fog = vec4(fog.rgb + ap.rgb * fog.a, fog.a * ap.a);
+  }
+  // CombineVolumetricFog: the integrated grid at the pixel's view depth, over the analytic fog
+  if (uf_vol_on > 0.5) {
+    float sceneDepth = max(dot(rel, uf_fwd), 0.0001);
+    float zs = log2(sceneDepth * uf_vol_zp.x + uf_vol_zp.y) * uf_vol_zp.z / uf_vol_grid.z;
+    vec2 guv = v_uv * uf_vol_uv;
+    float zz = clamp(zs * uf_vol_grid.z - 0.5, 0.0, uf_vol_grid.z - 1.0);
+    float z0 = floor(zz);
+    float z1 = min(z0 + 1.0, uf_vol_grid.z - 1.0);
+    vec4 vol = mix(texture(uf_vol, vec3(guv, z0)), texture(uf_vol, vec3(guv, z1)), zz - z0);
+    fog = vec4(vol.rgb + fog.rgb * vol.a, vol.a * fog.a);
   }
   o_color = vec4(sane(fog.rgb), clamp(fog.a, 0.0, 1.0));
 }

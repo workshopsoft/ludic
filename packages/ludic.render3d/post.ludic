@@ -272,6 +272,7 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
 # light is a bright thing in the air and should bloom like one, and compositing it after the
 # bloom pyramid would give hard-edged rays with no glow at all.
 function post_volumetric_pass(render3d_st: mut Render3dState) -> void {
+  if ue_volfog_on(render3d_st) { return }   # Unreal's volumetric fog (ue_volfog.ludic) carries the shafts
   if render3d_st.post_vol_steps <= 0.0 { return }
   if r3d_env_has(render3d_st, "R3D_NOVOL") { return }
   gpu_depth_test(render3d_st, false)

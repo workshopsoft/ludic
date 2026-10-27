@@ -41,7 +41,11 @@ property UeFog {
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 export function r3d_height_fog(render3d_st: mut Render3dState) -> UeFog {
-  if render3d_st.ue_fog_s == null { render3d_st.ue_fog_s = new UeFog }
+  if render3d_st.ue_fog_s == null {
+    render3d_st.ue_fog_s = new UeFog
+    # R3D_UE_FOG_DENSITY=<FogDensity>: the fog's density for shots and tuning (Unreal's units, 0.02 its default)
+    if r3d_env_has(render3d_st, "R3D_UE_FOG_DENSITY") { render3d_st.ue_fog_s.fog_density = ue_parse_float(r3d_env(render3d_st, "R3D_UE_FOG_DENSITY")) }
+  }
   return render3d_st.ue_fog_s
 }
 export function r3d_ue_fog(render3d_st: mut Render3dState, on: bool) -> void {
@@ -183,6 +187,7 @@ function ue_fog_pass(render3d_st: mut Render3dState) -> void {
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
   ue_fog_params(render3d_st, p)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "uf_ap_on"), 1.0)
+  ue_volfog_bind(render3d_st, p)
   u_f4(render3d_st, gpu_uniform(render3d_st, p, "uf_ap_params"), s.ap_depth_resolution, s.aerial_perspective_start_depth, s.ap_depth_km / s.ap_depth_resolution, 32.0)
   mesh_draw(render3d_st, render3d_st.post_fs)
   # over the scene: scene x a + rgb

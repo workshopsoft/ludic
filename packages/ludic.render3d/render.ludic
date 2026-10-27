@@ -382,6 +382,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   prof_end(render3d_st)
   # Before the temporal resolve (or DLSS), bloom and the tonemap: a shaft of light is a bright thing in the
   # air and should bloom like one, and its half-resolution march is smoothed by the resolve with the rest.
+  ue_volfog_pass(render3d_st)               # Unreal's volumetric fog grid (ue_volfog.ludic), read by the fog pass
   ue_fog_pass(render3d_st)                  # Unreal's height fog + aerial perspective over the scene (ue_fog.ludic)
   prof_begin(render3d_st, "volumetric");  post_volumetric_pass(render3d_st);  prof_end(render3d_st)
   render3d_st.post_color = render3d_st.post_hdr.color;  render3d_st.post_color_w = render3d_st.post_w;  render3d_st.post_color_h = render3d_st.post_h

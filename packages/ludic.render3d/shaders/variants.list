@@ -34,6 +34,8 @@ fullscreen.vert|ue_skylight.frag|#define SL_CAPTURE;
 fullscreen.vert|ue_skylight.frag|#define SL_DOWNSAMPLE;
 fullscreen.vert|ue_skylight.frag|#define SL_FILTER;
 fullscreen.vert|ue_skylight.frag|#define SL_SH;
+fullscreen.vert|ue_volfog.frag|#define VF_INTEGRATE;
+fullscreen.vert|ue_volfog.frag|#define VF_SCATTER;
 fullscreen.vert|taa_mv.frag|
 fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;

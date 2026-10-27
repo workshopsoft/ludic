@@ -16,6 +16,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Real-time sky light (capture, GGX cube, SH diffuse) | ue_skylight.ludic, ue_skylight.frag, lighting.glsl `u_ue_sl` | `R3D_UE_SKYLIGHT=0`, `r3d_ue_skylight` |
 | Atmosphere sun light (sun colour = outer illuminance x ground transmittance) | ue_skylight.ludic `ue_sunlight_on`, daylight.ludic `daylight_set` | `R3D_UE_SUNLIGHT=0`, `r3d_ue_sunlight` |
 | The hour's grade in Unreal's settings (lowest-priority unbound volume) | ue_post.ludic `ue_tod_grade`, daylight.ludic | `R3D_UE_HOUR_GRADE=0`, `r3d_ue_hour_grade` |
+| Volumetric fog (froxel grid: media, sun + sky light scattering, temporal, integration) | ue_volfog.ludic, ue_volfog.frag, ue_fog.frag | `R3D_UE_VOLFOG=0`, `r3d_ue_volfog`; `R3D_UE_FOG_DENSITY` for tuning |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
 
@@ -70,6 +71,15 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **Water and blended actors take the fog of what is behind them** for now (Unreal fogs translucency per pixel in its own pass).
 - **Below the horizon Unreal draws the planet's ground.** Our old sky filled it with fog colour; terrain hides it on the island.
 - **No area looks yet.** The game places no volumes; port, downtown, forest, industrial, beach and interiors each want one.
+
+- **Volumetric fog is on although Unreal's component default is off** (bEnableVolumetricFog false); the game asked for shafts.
+  At Unreal's default density (0.02) it is a light haze; shafts want denser fog (R3D_UE_FOG_DENSITY to try). It replaces our old
+  shaft pass (volumetric.frag). It costs about 5 ms a frame headless in the gym (80 frames 1.57 s -> 2.01 s; not profiled per pass).
+- **Shafts are not verified yet.** The fog is lit and scatters forward toward the sun as Unreal's does, but in the test shots
+  (density 0.4, 19:00, against the sun) shadowed wedges behind buildings are not clearly visible; the sun's shadow in the grid
+  (cascades, height-field, clouds) needs its own check. Lamp and headlight beams need general local lights, which are not ported.
+- **Not ported in the volumetric fog:** local lights, light functions, the conservative depth test and its history fix-up,
+  super-sampling on a history miss, local fog volumes, Lumen GI.
 
 ## Not ported yet (in this area)
 
