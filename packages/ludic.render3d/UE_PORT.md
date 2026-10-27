@@ -17,6 +17,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Atmosphere sun light (sun colour = outer illuminance x ground transmittance) | ue_skylight.ludic `ue_sunlight_on`, daylight.ludic `daylight_set` | `R3D_UE_SUNLIGHT=0`, `r3d_ue_sunlight` |
 | The hour's grade in Unreal's settings (lowest-priority unbound volume) | ue_post.ludic `ue_tod_grade`, daylight.ludic | `R3D_UE_HOUR_GRADE=0`, `r3d_ue_hour_grade` |
 | Local lights: point + spot (units, attenuation, cone), on surfaces and in the volumetric fog | ue_lights.ludic, lighting.glsl `ueLocalLights`, ue_volfog.frag | `R3D_UE_LIGHTS=0`, `r3d_ue_lights`; `R3D_LL` test lights |
+| Forward light grid (64 px cells x 32 log slices, GPU cull per cell: box vs sphere + spot cone refinement; every visible light, nearest first, up to 1024) | ue_lightgrid.ludic, shaders/ue_lightgrid.comp, lighting.glsl `ueLightGridRange` | `R3D_UE_LIGHT_GRID=0`, `r3d_ue_light_grid`; settings `r3d_ue_light_grid_settings` (r.Forward.LightGridPixelSize, LightGridSizeZ, MaxCulledLightsPerCell); `R3D_UE_LL_MAX` lights a frame |
 | Spot and point light shadow maps (legacy whole-scene; spots: projection, per-light resolution and fade, bias, Manual5x5PCF; points: one-pass cube faces, cube surface sizes, receiver bias, CubemapHardwarePCF 29 samples; one compare each in the fog) | ue_lightshadows.ludic, lighting.glsl `ueSpotShadow` / `uePointShadow` and their `...Volume` | `R3D_UE_LIGHT_SHADOWS=0`, `r3d_ue_light_shadows`; `R3D_UE_LS_MAX` / `R3D_UE_LP_MAX` (spots / points a frame, at most 4 each), `R3D_UE_LS_RES` (r.Shadow.MaxResolution); settings `r3d_ue_light_shadow_settings` (Unreal's cvar names); per light ShadowBias / ShadowSlopeBias / ShadowSharpen / ShadowResolutionScale; `R3D_UE_LS_DEBUG=1` dumps the first map |
 | Volumetric fog (froxel grid: media, sun + sky light scattering, temporal, integration) | ue_volfog.ludic, ue_volfog.frag, ue_fog.frag | `R3D_UE_VOLFOG=0`, `r3d_ue_volfog`; `R3D_UE_FOG_DENSITY`, `R3D_UE_VOLFOG_G` for tuning; `R3D_UE_VOLFOG_DEBUG=1` shadow view |
 
@@ -103,8 +104,14 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
   night street with many shadowed lamps needs the atlas packing or VSM.
 - **Casters for local lights skip the sun's cascade rules** (band, proxies) and test against the light's sphere. The buildings
   cast only what the camera's GPU cull kept, so a building off screen casts no spot shadow.
-- **No light grid yet.** Unreal culls lights into a clustered grid; here the 32 lights nearest the camera (within MaxDrawDistance)
-  go to every draw. A city at night with hundreds of lamps needs the grid (or MegaLights).
+- **Light grid as Unreal's with linked lists off.** Each cell holds at most 32 lights (r.Forward.MaxCulledLightsPerCell); Unreal's
+  default linked-list culling has no per-cell cap. No HZB cell cull. 200 lamps in the gym: 42 ms a frame with the grid, 53 ms
+  without (R3D_UE_LIGHT_GRID=0), the same image. A shaded point finds its cell from its world position through the main camera's
+  unjittered view-projection, so reflections and the fog grid use it too; a point outside the main view reads every light.
+- **GPP: graphics programs read storage buffers.** `readonly buffer <name> { ... };` in GLSL is bound by name with
+  `gpu_bind_buffer`, like a sampler (manifest S rows; an unbound one reads a zeroed stand-in). This needs the rebuilt `ludic-dev`
+  (tools/ludic-cli/shaders.ludic): an older one drops the S rows and lit programs fail. Rebuild it as the toolchain does:
+  `bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic --emit-llvm -o build/ludic-dev.ll && clang -O2 build/ludic-dev.ll -o bin/ludic-dev`.
 - **Light units are Unreal's, on our scene's scale.** Candela / d^2 in metres; Unreal's defaults (point 5000 Unitless = 8 cd,
   radius 10 m) sit on the same scale as Unreal's own default sun, which ours roughly matches (the sky's sun is our base sun). At
   night exposure adapts to the dark frame, so a bright lamp blows out nearby surfaces (the 1500 cd test spot did): pick lamp

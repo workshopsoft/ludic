@@ -93,6 +93,44 @@ function shd_bind_samplers(src: pointer, collect: bool) -> pointer {
   return sb_str(b)
 }
 
+# Storage buffers a graphics stage reads: every `readonly buffer <name> {` becomes
+# `layout(std430, set = 0, binding = N) readonly buffer <name> {`, numbered in the same table as the samplers
+# (the manifest's S rows, where samplers are T rows). With `collect`, only record names.
+var shd_bufs: []pointer = null
+function shd_is_buf(n: pointer) -> bool {
+  var i = 0
+  while i < len(shd_bufs) { if shd_bufs[i] == n { return true };  i += 1 }
+  return false
+}
+function shd_bind_buffers(src: pointer, collect: bool) -> pointer {
+  let b = sb_new()
+  let n = slen(src)
+  var i = 0
+  while i < n {
+    let at = s_index(src, "readonly buffer", i)
+    if at < 0 { sb_puts(b, str_sub(src, i, n));  break }
+    sb_puts(b, str_sub(src, i, at))
+    var ok = at == 0 or not shd_is_ident(src[at - 1])
+    var p = at + 15
+    while ok and p < n and str_space(src[p]) { p += 1 }
+    let ns = p
+    while ok and p < n and shd_is_ident(src[p]) { p += 1 }
+    let name = str_sub(src, ns, p)
+    if ok { ok = slen(name) > 0 }
+    if not ok { sb_puts(b, "readonly buffer");  i = at + 15;  continue }
+    if collect {
+      shd_note_name(name)
+      if not shd_is_buf(name) { push(shd_bufs, name) }
+    }
+    var bind = 0
+    var k = 0
+    while k < len(shd_names) { if shd_names[k] == name { bind = k + 2 };  k += 1 }
+    sb_puts(b, `layout(std430, set = 0, binding = {string(bind)}) readonly buffer {name}`)
+    i = p
+  }
+  return sb_str(b)
+}
+
 # Varyings: GLSL links a vertex output to a fragment input by NAME; SPIR-V links by location,
 # and glslang's --auto-map-locations numbers each stage in its own declaration order. A fragment
 # shader that declares fewer inputs, or declares them in another order - the foliage prepass's
@@ -271,10 +309,13 @@ function cmd_shaders() -> int {
     let fsrc = "#version 460\n" + defines + shd_wind + shd_noise + shd_lighting + shd_file(parts[1])
     # one binding table for both stages, and one location table for the varyings between them
     shd_names = new []pointer
+    shd_bufs = new []pointer
     shd_vary = new []pointer
     shd_bind_varyings(vsrc, "out", true)
     shd_bind_samplers(vsrc, true)
     shd_bind_samplers(fsrc, true)
+    shd_bind_buffers(vsrc, true)
+    shd_bind_buffers(fsrc, true)
     # name order, so the table does not depend on which stage met a sampler first
     var x = 0
     while x < len(shd_names) {
@@ -293,7 +334,7 @@ function cmd_shaders() -> int {
       var src = vsrc
       if stage == "frag" { src = fsrc }
       let glsl = `{tmp}/{id}.{stage}.glsl`
-      var staged = shd_bind_samplers(src, false)
+      var staged = shd_bind_buffers(shd_bind_samplers(src, false), false)
       if stage == "vert" { staged = shd_bind_varyings(staged, "out", false) } else { staged = shd_bind_varyings(staged, "in", false) }
       if not write_file(glsl, staged) { err(`shaders: cannot write {glsl}\n`);  return 1 }
       let spv = `{outdir}/{id}.{stage}.spv`
@@ -313,7 +354,7 @@ function cmd_shaders() -> int {
     if not shd_varyings_covered(id, parts, defs, tmp) { return 1 }
     var t = 0
     while t < len(shd_names) {
-      sb_puts(mf, `T {id} {shd_names[t]} {string(t + 2)}\n`)
+      if shd_is_buf(shd_names[t]) { sb_puts(mf, `S {id} {shd_names[t]} {string(t + 2)}\n`) } else { sb_puts(mf, `T {id} {shd_names[t]} {string(t + 2)}\n`) }
       t += 1
     }
     made += 1

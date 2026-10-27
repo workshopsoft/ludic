@@ -30,18 +30,33 @@ program UeLightsTest {
     expect_near(o[0], 88.9 * PI / 180.0, 0.00001)
   }
 
-  test "the nearest lights are sent, nearest first, and MaxDrawDistance drops a light" (render3d_st: mut Render3dState) {
+  test "visible lights are sent nearest first; behind the camera or past MaxDrawDistance they are not" (render3d_st: mut Render3dState) {
     render3d_st.cam_pos = v3_new(0.0, 0.0, 0.0)
-    for i in 0 .. 40 { ue_light_add(render3d_st, false, float(40 - i), 0.0, 0.0) }   # 40 m down to 1 m
+    render3d_st.cam_fwd = v3_new(1.0, 0.0, 0.0)
+    for i in 0 .. 40 { ue_light_add(render3d_st, false, float(40 - i), 0.0, 0.0) }   # 40 m down to 1 m ahead
+    let behind = ue_light_add(render3d_st, false, -30.0, 0.0, 0.0)                  # 30 m behind, 10 m reach
     ue_lights_frame(render3d_st)
-    expect_eq(render3d_st.ue_ll_n, 32)
-    expect_near(render3d_st.ue_ll_pos[0], 1.0, 0.00001)
-    expect_near(render3d_st.ue_ll_pos[31 * 4], 32.0, 0.00001)
+    expect_eq(render3d_st.ue_ll_n, 40)
+    expect_near(render3d_st.ue_ll_data[0], 1.0, 0.00001)
+    expect_near(render3d_st.ue_ll_data[39 * 20], 40.0, 0.00001)
+    expect_near(render3d_st.ue_ll_data[16], -1.0, 0.00001)                # no shadow map named yet
+    behind.attenuation_radius = 40.0                                       # now it reaches past the camera
+    ue_lights_frame(render3d_st)
+    expect_eq(render3d_st.ue_ll_n, 41)
     render3d_st.ue_lls[39].max_draw_distance = 0.5                       # the 1 m light: past its MaxDrawDistance
     ue_lights_frame(render3d_st)
-    expect_near(render3d_st.ue_ll_pos[0], 2.0, 0.00001)
+    expect_near(render3d_st.ue_ll_data[0], 2.0, 0.00001)
     r3d_ue_lights(render3d_st, false)
     ue_lights_frame(render3d_st)
     expect_eq(render3d_st.ue_ll_n, 0)
+  }
+
+  test "light grid slices: 0 just past the near offset, the last at the far plane" {
+    let zp = floats(3)
+    ue_lg_zparams(zp, 0.1, 500.0, 4.05, 31)
+    # ComputeZSliceFromDepth: log2(z B + O) S
+    expect_near(Math.log(0.195 * zp[0] + zp[1]) / Math.log(2.0) * zp[2], 0.0, 0.0001)
+    expect_near(Math.log(500.0 * zp[0] + zp[1]) / Math.log(2.0) * zp[2], 31.0, 0.001)
+    expect_near(zp[2], 4.05, 0.00001)
   }
 }

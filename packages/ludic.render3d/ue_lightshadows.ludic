@@ -97,7 +97,6 @@ function ue_ls_alloc(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_ls_a = floats(UE_LS_MAX * 4)
   render3d_st.ue_ls_b = floats(UE_LS_MAX * 4)
   render3d_st.ue_ls_c = floats(UE_LS_MAX * 4)
-  render3d_st.ue_ll_shidx = floats(32)
   render3d_st.ue_ls_m_v = m4_views(render3d_st.ue_ls_m, UE_LS_MAX)
   render3d_st.ue_lp_m = floats(UE_LP_MAX * 6 * 16)
   render3d_st.ue_lp_m_v = m4_views(render3d_st.ue_lp_m, UE_LP_MAX * 6)
@@ -178,7 +177,6 @@ function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
   if render3d_st.ue_ll_n == 0 or not ue_ls_on(render3d_st) or not render3d_st.sh_enabled { return }
   if render3d_st.ue_ls_fbo == 0 { ue_ls_alloc(render3d_st) }
   let s = render3d_st.ue_ls
-  for k in 0 .. 32 { render3d_st.ue_ll_shidx[k] = -1.0 }
   # ScreenScale: max(ViewRect.X / 2 x ProjectionScale.X, ViewRect.Y / 2 x ProjectionScale.Y), the same for a square-pixel view
   if render3d_st.post_h <= 0 { return }
   let screen_scale = float(render3d_st.post_h) * 0.5 / Math.tan(render3d_st.cam_fov * 0.5)
@@ -231,7 +229,7 @@ function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
     render3d_st.ue_ls_a[o] = min_z;  render3d_st.ue_ls_a[o + 1] = max_z;  render3d_st.ue_ls_a[o + 2] = depth_bias;  render3d_st.ue_ls_a[o + 3] = slope_bias
     render3d_st.ue_ls_b[o] = float(si);  render3d_st.ue_ls_b[o + 1] = float(tile) / float(render3d_st.ue_ls_size);  render3d_st.ue_ls_b[o + 2] = 1.0 / transition;  render3d_st.ue_ls_b[o + 3] = fade
     render3d_st.ue_ls_c[o] = s.spot_light_receiver_bias;  render3d_st.ue_ls_c[o + 1] = l.shadow_sharpen * 7.0 + 1.0;  render3d_st.ue_ls_c[o + 2] = s.max_slope_depth_bias;  render3d_st.ue_ls_c[o + 3] = float(tile)
-    render3d_st.ue_ll_shidx[k] = float(si)
+    render3d_st.ue_ll_data[k * UE_LL_FLOATS + 16] = float(si)
     # the casters, with their own programs: no cascade's band or proxy rules, a sphere test against the light's reach
     if not bound {
       bound = true
@@ -290,7 +288,7 @@ function ue_lp_pass(render3d_st: mut Render3dState, screen_scale: float) -> bool
     render3d_st.ue_lp_a[o] = float(pi * 6);  render3d_st.ue_lp_a[o + 1] = float(res) / float(render3d_st.ue_lp_size);  render3d_st.ue_lp_a[o + 2] = depth_bias;  render3d_st.ue_lp_a[o + 3] = slope_bias
     # ComputeVolumeShadowing's cube compare: DepthBias 0.03 x 512 / resolution, no slope
     render3d_st.ue_lp_b[o] = 1.0 / float(res);  render3d_st.ue_lp_b[o + 1] = fade;  render3d_st.ue_lp_b[o + 2] = l.shadow_sharpen * 7.0 + 1.0;  render3d_st.ue_lp_b[o + 3] = 0.03 * 512.0 / float(res)
-    render3d_st.ue_ll_shidx[k] = -2.0 - float(pi)
+    render3d_st.ue_ll_data[k * UE_LL_FLOATS + 16] = -2.0 - float(pi)
     if not bound {
       bound = true
       gpu_fb_bind(render3d_st, render3d_st.ue_ls_fbo)
@@ -367,7 +365,6 @@ function ue_lightshadows_bind(render3d_st: mut Render3dState, prog: int) -> void
   u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_ls_n"), render3d_st.ue_ls_n)
   u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_lp_n"), render3d_st.ue_lp_n)
   if render3d_st.ue_ls_n == 0 and render3d_st.ue_lp_n == 0 { return }
-  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_ll_shidx[0]", "u_ll_shidx"), 32, render3d_st.ue_ll_shidx)
   if render3d_st.ue_lp_n > 0 {
     r3d_bind_tex(render3d_st, prog, "u_ue_lph", 18, GPU_TEX2D_ARRAY, render3d_st.ue_lp_tex)
     u_mat4n(render3d_st, sh_loc(render3d_st, prog, "u_ue_lp_m[0]", "u_ue_lp_m"), UE_LP_MAX * 6, render3d_st.ue_lp_m)

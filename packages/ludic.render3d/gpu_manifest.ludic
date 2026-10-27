@@ -30,11 +30,12 @@ property GpuVariant {
   u_stride: []int,
   t_name: []string,
   t_bind: []int,
+  s_name: []string,        # storage buffers a stage reads (S rows), bound by name with gpu_bind_buffer
+  s_bind: []int,
   i_name: []string,
   i_loc:  []int,
   i_type: []string
 }
-
 
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gpu_variant_new(id: string, vs: string, fs: string, defs: string) -> GpuVariant {
@@ -43,6 +44,7 @@ function gpu_variant_new(id: string, vs: string, fs: string, defs: string) -> Gp
   v.u_name = new []string;  v.u_stage = new []int;  v.u_off = new []int;  v.u_type = new []string
   v.u_count = new []int;  v.u_stride = new []int
   v.t_name = new []string;  v.t_bind = new []int
+  v.s_name = new []string;  v.s_bind = new []int
   v.i_name = new []string;  v.i_loc = new []int;  v.i_type = new []string
   return v
 }
@@ -100,7 +102,7 @@ function gpu_manifest_defs(f: []string) -> string {
   }
   return defs
 }
-# one B / U / T / I line into the variant it follows
+# one B / U / T / S / I line into the variant it follows
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function gpu_manifest_row(cur: GpuVariant, kind: int, f: []string) -> void {
   if kind == 'B' and len(f) >= 5 {
@@ -112,6 +114,8 @@ function gpu_manifest_row(cur: GpuVariant, kind: int, f: []string) -> void {
     push(cur.u_type, f[5]);  push(cur.u_count, Text.to_int(f[6]));  push(cur.u_stride, Text.to_int(f[7]))
   } else if kind == 'T' and len(f) >= 4 {
     push(cur.t_name, f[2]);  push(cur.t_bind, Text.to_int(f[3]))
+  } else if kind == 'S' and len(f) >= 4 {
+    push(cur.s_name, f[2]);  push(cur.s_bind, Text.to_int(f[3]))
   } else if kind == 'I' and len(f) >= 5 {
     push(cur.i_name, f[2]);  push(cur.i_loc, Text.to_int(f[3]));  push(cur.i_type, f[4])
   }

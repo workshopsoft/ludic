@@ -379,23 +379,55 @@ float g_dielF0 = 0.04;
 // ---- Unreal's local lights (ue_lights.ludic): point and spot lights in Unreal's units, attenuation and cone (UE 5.8
 // DeferredLightingCommon.ush GetLocalLightAttenuation, DynamicLightingCommon.ush SpotAttenuation, CapsuleLightIntegrate.ush
 // IntegrateLight with no source radius: 1 / (d^2 + DistBiasSqr), DistBiasSqr 1 cm^2), lit by the sun's BRDF; spot lights shadowed by ueSpotShadow.
-// u_ll_pos: xyz position, w InvRadius (1 / AttenuationRadius); u_ll_col: rgb the light's colour x its intensity in candela,
-// w FalloffExponent (0: inverse squared); u_ll_dir: xyz the spot's direction, w CosOuterCone (-2: a point light);
-// u_ll_misc: x InvCosConeDifference, y SpecularScale, z DiffuseScale, w VolumetricScatteringIntensity.
-#define LL_MAX 32
+// The forward light buffer (ue_lights.ludic ue_lights_frame), 5 vec4 a light: xyz position, w InvRadius (1 / AttenuationRadius);
+// rgb the light's colour x its intensity in candela, w FalloffExponent (0: inverse squared); xyz the spot's -direction, w
+// CosOuterCone (-2: a point light); x InvCosConeDifference, y SpecularScale, z DiffuseScale, w VolumetricScatteringIntensity;
+// x its shadow map (ue_lightshadows.ludic: >= 0 a spot's layer, -2 - p a point light's cube, -1 none).
 uniform int u_ll_n;
-uniform vec4 u_ll_pos[LL_MAX];
-uniform vec4 u_ll_col[LL_MAX];
-uniform vec4 u_ll_dir[LL_MAX];
-uniform vec4 u_ll_misc[LL_MAX];
+readonly buffer u_ue_lights { vec4 ue_ll[]; };
+vec4 llPos(int i) { return ue_ll[i * 5]; }
+vec4 llCol(int i) { return ue_ll[i * 5 + 1]; }
+vec4 llDir(int i) { return ue_ll[i * 5 + 2]; }
+vec4 llMisc(int i) { return ue_ll[i * 5 + 3]; }
+float llShadow(int i) { return ue_ll[i * 5 + 4].x; }
+// The light grid (ue_lightgrid.ludic): per cell a count and a first index into the lights' indices (LightGridCommon.ush).
+readonly buffer u_ue_lg_num { uint ue_lg_num[]; };
+readonly buffer u_ue_lg_data { uint ue_lg_data[]; };
+uniform float u_lg_on;
+uniform mat4 u_lg_vp;      // the main view's unjittered view-projection the grid was built with
+uniform vec4 u_lg_zp;      // LightGridZParams (B, O, S), w the number of slices
+uniform vec4 u_lg_grid;    // cells across, cells down, pixels a cell, MaxCulledLightsPerCell
+uniform vec2 u_lg_view;    // the main view's size in pixels
+// the lights a point reads: its cell's (ComputeLightGridCellCoordinate from the pixel and the scene depth), or every light when there
+// is no grid or the point lies outside the main view; returns the count, `start` the first entry, `direct` when they are light indices
+int ueLightGridRange(vec3 wpos, out int start, out bool direct) {
+  start = 0;
+  direct = true;
+  if (u_lg_on < 0.5) return u_ll_n;
+  vec4 c = u_lg_vp * vec4(wpos, 1.0);
+  if (c.w <= 0.0) return u_ll_n;
+  vec2 ndc = c.xy / c.w;
+  if (any(lessThan(ndc, vec2(-1.0))) || any(greaterThan(ndc, vec2(1.0)))) return u_ll_n;
+  vec2 pix = (ndc * 0.5 + 0.5) * u_lg_view;
+  uvec2 cxy = min(uvec2(pix / u_lg_grid.z), uvec2(u_lg_grid.xy) - 1u);
+  // the scene depth: the view-space distance along the camera's axis, which a perspective projection's w is
+  uint slice = uint(max(0.0, log2(c.w * u_lg_zp.x + u_lg_zp.y) * u_lg_zp.z));
+  slice = min(slice, uint(u_lg_zp.w) - 1u);
+  uint cell = (slice * uint(u_lg_grid.y) + cxy.y) * uint(u_lg_grid.x) + cxy.x;
+  direct = false;
+  start = int(ue_lg_num[cell * 2u + 1u]);
+  return int(min(ue_lg_num[cell * 2u], uint(u_ll_n)));
+}
+int ueLightGridLight(int start, int k, bool direct) { return direct ? k : int(ue_lg_data[start + k]); }
 // GetLocalLightAttenuation x IntegrateLight's falloff, and the unit vector to the light
 float ueLocalLightAttenuation(int i, vec3 wpos, float distBiasSqr, out vec3 L) {
-  vec3 toLight = u_ll_pos[i].xyz - wpos;
+  vec4 lp = llPos(i);
+  vec3 toLight = lp.xyz - wpos;
   float d2 = dot(toLight, toLight);
   L = toLight * inversesqrt(max(d2, 1.0e-12));
-  float invR = u_ll_pos[i].w;
+  float invR = lp.w;
   float mask;
-  float falloffExp = u_ll_col[i].w;
+  float falloffExp = llCol(i).w;
   if (falloffExp <= 0.0) {
     float t = clamp(1.0 - (d2 * invR * invR) * (d2 * invR * invR), 0.0, 1.0);
     mask = t * t;
@@ -404,15 +436,16 @@ float ueLocalLightAttenuation(int i, vec3 wpos, float distBiasSqr, out vec3 L) {
     vec3 wl = toLight * invR;
     mask = pow(1.0 - clamp(dot(wl, wl), 0.0, 1.0), falloffExp);   // RadialAttenuation; no 1/d^2 (Falloff 1 when not inverse squared)
   }
-  if (u_ll_dir[i].w > -1.5) {
-    float sm = clamp((dot(L, u_ll_dir[i].xyz) - u_ll_dir[i].w) * u_ll_misc[i].x, 0.0, 1.0);
+  vec4 ld = llDir(i);
+  if (ld.w > -1.5) {
+    float sm = clamp((dot(L, ld.xyz) - ld.w) * llMisc(i).x, 0.0, 1.0);
     mask *= sm * sm;
   }
   return mask;
 }
 // Spot light shadow maps (ue_lightshadows.ludic): u_ue_ls_m FShadowProjectionMatrix (with the inner and border scales);
 // u_ue_ls_a MinSubjectZ, MaxSubjectZ, DepthBias, SlopeDepthBias; u_ue_ls_b layer, tile / layer size, 1 / TransitionSize, fade
-// alpha; u_ue_ls_c ReceiverBias, ShadowSharpen x 7 + 1, MaxSlopeDepthBias, tile texels; u_ll_shidx a frame light's map (-1 none).
+// alpha; u_ue_ls_c ReceiverBias, ShadowSharpen x 7 + 1, MaxSlopeDepthBias, tile texels; llShadow names a light's map (-1 none).
 #define LS_MAX 4
 uniform int u_ue_ls_n;
 uniform sampler2DArray u_ue_lsh;
@@ -420,7 +453,6 @@ uniform mat4 u_ue_ls_m[LS_MAX];
 uniform vec4 u_ue_ls_a[LS_MAX];
 uniform vec4 u_ue_ls_b[LS_MAX];
 uniform vec4 u_ue_ls_c[LS_MAX];
-uniform float u_ll_shidx[LL_MAX];
 uniform float u_ue_ls_size;
 // the map holds FShadowProjectionMatrix's hardware depth; Unreal's caster writes the linear (z - MinZ) / (MaxZ - MinZ): turned back
 vec4 ueLsLinear(vec4 d, vec4 a) {
@@ -500,7 +532,7 @@ float ueSpotShadowVolume(int s, vec3 wpos) {
 }
 // Point light cubes (ue_lightshadows.ludic): six layers a light from u_ue_lp_a.x, face f looking along +x, -x, +y, -y, +z, -z;
 // u_ue_lp_m the faces' FReversedZPerspectiveMatrix x view; u_ue_lp_a first layer, face size / layer size, DepthBias,
-// SlopeDepthBias; u_ue_lp_b 1 / face size, fade alpha, ShadowSharpen x 7 + 1, the fog's DepthBias. u_ll_shidx -2 - p names one.
+// SlopeDepthBias; u_ue_lp_b 1 / face size, fade alpha, ShadowSharpen x 7 + 1, the fog's DepthBias. llShadow -2 - p names one.
 #define LP_MAX 4
 uniform int u_ue_lp_n;
 uniform sampler2DArrayShadow u_ue_lph;
@@ -535,10 +567,10 @@ float ueCubeCmp(int p, vec3 lightPos, vec3 dir, float ref) {
 // ShadowProjectionPixelShader's point branch at r.ShadowQuality 5: the normal receiver bias, CubemapHardwarePCF (29 samples),
 // ShadowSharpen, ApplyPCFOverBlurCorrection, the fade
 float uePointShadow(int p, int i, vec3 wpos, vec3 n) {
-  vec3 lightPos = u_ll_pos[i].xyz;
+  vec3 lightPos = llPos(i).xyz;
   vec3 toLight = lightPos - wpos;
   float dist = length(toLight);
-  if (dist * u_ll_pos[i].w >= 1.0) return 1.0;
+  if (dist * llPos(i).w >= 1.0) return 1.0;
   vec3 nl = toLight / dist;
   float slopeBias = (1.0 - clamp(dot(n, nl), 0.0, 1.0)) * u_ue_lp_a[p].w;
   // SideVector = normalize(cross(NormalizedLightVector, up)) with Unreal's up, which is our y
@@ -566,33 +598,38 @@ float uePointShadow(int p, int i, vec3 wpos, vec3 n) {
 }
 // ComputeVolumeShadowing's cube path (SHADOW_QUALITY 2): one compare, DepthBias 0.03 x 512 / resolution, no slope
 float uePointShadowVolume(int p, int i, vec3 wpos) {
-  vec3 lightPos = u_ll_pos[i].xyz;
+  vec3 lightPos = llPos(i).xyz;
   vec3 toLight = lightPos - wpos;
-  if (length(toLight) * u_ll_pos[i].w >= 1.0) return 1.0;
+  if (length(toLight) * llPos(i).w >= 1.0) return 1.0;
   int f = ueCubeFace(-toLight);
   vec4 sp = u_ue_lp_m[p * 6 + f] * vec4(wpos, 1.0);
   return ueCubeCmp(p, lightPos, -toLight, sp.z / sp.w + u_ue_lp_b[p].w / (sp.w * 100.0));
 }
 vec3 ueLocalLights(vec3 wpos, vec3 n, vec3 v, vec3 albedo, float a, float metal, vec3 f0, float NoV) {
   vec3 c = vec3(0.0);
-  for (int i = 0; i < LL_MAX; i++) {
-    if (i >= u_ll_n) break;
+  int start;
+  bool direct;
+  int count = ueLightGridRange(wpos, start, direct);
+  for (int k = 0; k < count; k++) {
+    int i = ueLightGridLight(start, k, direct);
     vec3 L;
     float att = ueLocalLightAttenuation(i, wpos, 0.0001, L);
     float NoL = max(dot(n, L), 0.0);
     if (att <= 0.0 || NoL <= 0.0) continue;
-    if (u_ue_ls_n > 0 && u_ll_shidx[i] >= 0.0) {
-      att *= ueSpotShadow(int(u_ll_shidx[i]), wpos, n, L, -u_ll_dir[i].xyz);
+    float si = llShadow(i);
+    if (u_ue_ls_n > 0 && si >= 0.0) {
+      att *= ueSpotShadow(int(si), wpos, n, L, -llDir(i).xyz);
       if (att <= 0.0) continue;
-    } else if (u_ue_lp_n > 0 && u_ll_shidx[i] < -1.5) {
-      att *= uePointShadow(int(-u_ll_shidx[i] - 2.0 + 0.5), i, wpos, n);
+    } else if (u_ue_lp_n > 0 && si < -1.5) {
+      att *= uePointShadow(int(-si - 2.0 + 0.5), i, wpos, n);
       if (att <= 0.0) continue;
     }
     vec3 H = normalize(v + L);
     vec3 F = F_Schlick(max(dot(v, H), 0.0), f0);
-    vec3 spec = min(D_GGX(max(dot(n, H), 0.0), a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale * u_ll_misc[i].y;
-    vec3 diff = (1.0 - F) * (1.0 - metal) * albedo / PI * u_ll_misc[i].z;
-    c += (diff + spec) * u_ll_col[i].rgb * NoL * att;
+    vec4 misc = llMisc(i);
+    vec3 spec = min(D_GGX(max(dot(n, H), 0.0), a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale * misc.y;
+    vec3 diff = (1.0 - F) * (1.0 - metal) * albedo / PI * misc.z;
+    c += (diff + spec) * llCol(i).rgb * NoL * att;
   }
   return c;
 }

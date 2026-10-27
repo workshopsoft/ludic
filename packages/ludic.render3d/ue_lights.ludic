@@ -8,9 +8,8 @@
 # outer cone)) (a spot), EV as 2^EV. Cone angles clamped as GetClampedConeAngles; SpotAngles (CosOuterCone, InvCosConeDifference).
 # Positions are render space (metres); ue_light_rebase moves them with the floating origin.
 #
-# The shader side is lighting.glsl ueLocalLights (surfaces, the sun's BRDF) and ue_volfog.frag (the fog). Not ported yet: the light
-# grid (Unreal culls lights into a clustered grid; here the LL_MAX lights nearest the camera within their reach are sent to every
-# draw; shadows are ue_lightshadows.ludic), source radius / length, rect lights, IES, light functions.
+# The shader side is lighting.glsl ueLocalLights (surfaces, the sun's BRDF) and ue_volfog.frag (the fog); the light grid is
+# ue_lightgrid.ludic, the shadows ue_lightshadows.ludic. Not ported yet: source radius / length, rect lights, IES, light functions.
 # R3D_UE_LIGHTS=0 (or r3d_ue_lights(st, false)) turns them all off. R3D_LL adds test lights (see ue_lights_env).
 # ============================================================================
 
@@ -18,7 +17,6 @@ export const UE_LIGHT_UNITLESS: int = 0
 export const UE_LIGHT_CANDELAS: int = 1
 export const UE_LIGHT_LUMENS: int = 2
 export const UE_LIGHT_EV: int = 3
-const UE_LL_MAX: int = 32
 
 property UeLocalLight {
   enabled: bool = true,
@@ -97,86 +95,110 @@ export function ue_light_candela(l: UeLocalLight) -> float {
   return l.intensity * 16.0 / 10000.0
 }
 
-# Each frame: the lights nearest the camera that reach it within their attenuation radius (and MaxDrawDistance), packed
+# Each frame: every enabled light whose sphere of influence reaches into the view (Unreal's VisibleLightInfos bInViewFrustum,
+# with MaxDrawDistance), nearest first, at most ue_ll_max (R3D_UE_LL_MAX, 1024), packed into the forward light buffer
+# (ForwardLightBuffer): 5 vec4 a light - position and InvRadius; colour x candela and FalloffExponent (0 inverse squared);
+# -direction and CosOuterCone (-2 a point); InvCosConeDifference, SpecularScale, DiffuseScale, VolumetricScatteringIntensity;
+# the light's shadow map (ue_lightshadows.ludic: a spot's layer, -2 - its cube for a point, -1 none). The grid
+# (ue_lightgrid.ludic) culls them into cells; ue_lights_upload sends the buffer once the shadow pass has named the maps.
+const UE_LL_FLOATS: int = 20
 function ue_lights_frame(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_ll_n = 0
   if not ue_lights_on(render3d_st) or render3d_st.cam_pos == null { return }
   ue_lights_env(render3d_st)
   if render3d_st.ue_lls == null { return }
-  if render3d_st.ue_ll_pos == null { ue_lights_alloc(render3d_st) }
+  if render3d_st.ue_ll_data == null { ue_lights_alloc(render3d_st) }
+  let cap = render3d_st.ue_ll_max
   let cx = render3d_st.cam_pos[0];  let cy = render3d_st.cam_pos[1];  let cz = render3d_st.cam_pos[2]
-  # a simple selection of the nearest UE_LL_MAX (insertion into the distance-sorted list)
+  let f = render3d_st.cam_fwd
   let n = len(render3d_st.ue_lls)
   let pick = render3d_st.ue_ll_pick
   let pd = render3d_st.ue_ll_pd
   var m = 0
   for i in 0 .. n {
     let l = render3d_st.ue_lls[i]
-    if l.enabled {
+    if l.enabled and l.attenuation_radius > 0.0 {
       let dx = l.x - cx;  let dy = l.y - cy;  let dz = l.z - cz
       let d = Math.sqrt(dx * dx + dy * dy + dz * dz)
-      # the light's sphere of influence must reach well into view range; MaxDrawDistance fades it out entirely past it
+      let r = l.attenuation_radius
       var ok = true
       if l.max_draw_distance > 0.0 and d > l.max_draw_distance { ok = false }
+      # in front of the camera and inside its side planes
+      if ok and dx * f[0] + dy * f[1] + dz * f[2] < -r { ok = false }
+      if ok and not cam_sphere_in_view(render3d_st, l.x, l.y, l.z, r) { ok = false }
       if ok {
         var j = m
-        if m >= UE_LL_MAX { j = UE_LL_MAX - 1;  if d >= pd[j] { ok = false } }
+        if m >= cap { j = cap - 1;  if d >= pd[j] { ok = false } }
         if ok {
-          while j > 0 and pd[j - 1] > d { if j < UE_LL_MAX { pd[j] = pd[j - 1];  pick[j] = pick[j - 1] };  j -= 1 }
+          while j > 0 and pd[j - 1] > d { if j < cap { pd[j] = pd[j - 1];  pick[j] = pick[j - 1] };  j -= 1 }
           pd[j] = d;  pick[j] = float(i)
-          if m < UE_LL_MAX { m += 1 }
+          if m < cap { m += 1 }
         }
       }
     }
   }
   let cone = render3d_st.ue_ll_tmp
+  let data = render3d_st.ue_ll_data
   for k in 0 .. m {
     let l = render3d_st.ue_lls[int(pick[k])]
     let c = ue_light_candela(l)
-    let o = k * 4
-    render3d_st.ue_ll_pos[o] = l.x;  render3d_st.ue_ll_pos[o + 1] = l.y;  render3d_st.ue_ll_pos[o + 2] = l.z
-    render3d_st.ue_ll_pos[o + 3] = 1.0 / Math.max(l.attenuation_radius, 0.01)
-    render3d_st.ue_ll_col[o] = l.color_r * c;  render3d_st.ue_ll_col[o + 1] = l.color_g * c;  render3d_st.ue_ll_col[o + 2] = l.color_b * c
-    render3d_st.ue_ll_col[o + 3] = 0.0
-    if not l.use_inverse_squared_falloff { render3d_st.ue_ll_col[o + 3] = Math.max(l.light_falloff_exponent, 0.0001) }
+    let o = k * UE_LL_FLOATS
+    data[o] = l.x;  data[o + 1] = l.y;  data[o + 2] = l.z
+    data[o + 3] = 1.0 / Math.max(l.attenuation_radius, 0.01)
+    data[o + 4] = l.color_r * c;  data[o + 5] = l.color_g * c;  data[o + 6] = l.color_b * c
+    data[o + 7] = 0.0
+    if not l.use_inverse_squared_falloff { data[o + 7] = Math.max(l.light_falloff_exponent, 0.0001) }
     var dlen = Math.sqrt(l.dir_x * l.dir_x + l.dir_y * l.dir_y + l.dir_z * l.dir_z)
     if dlen < 0.000001 { dlen = 1.0 }
-    # the shader compares the vector to the light with -direction: store -direction
-    render3d_st.ue_ll_dir[o] = -l.dir_x / dlen;  render3d_st.ue_ll_dir[o + 1] = -l.dir_y / dlen;  render3d_st.ue_ll_dir[o + 2] = -l.dir_z / dlen
-    render3d_st.ue_ll_dir[o + 3] = -2.0
-    render3d_st.ue_ll_misc[o] = 0.0
+    # the shader compares the vector to the light with -direction: store -direction (Unreal's LightParameters.Direction)
+    data[o + 8] = -l.dir_x / dlen;  data[o + 9] = -l.dir_y / dlen;  data[o + 10] = -l.dir_z / dlen
+    data[o + 11] = -2.0
+    data[o + 12] = 0.0
+    render3d_st.ue_ll_tan[k] = 0.0
     if l.spot {
       ue_light_cone(l, cone)
       let co = Math.cos(cone[1])
-      render3d_st.ue_ll_dir[o + 3] = co
-      render3d_st.ue_ll_misc[o] = 1.0 / (Math.cos(cone[0]) - co)
+      data[o + 11] = co
+      data[o + 12] = 1.0 / (Math.cos(cone[0]) - co)
+      # GetTanRadAngleOrZero: the grid refines acute cones only
+      if cone[1] < PI / 2.001 { render3d_st.ue_ll_tan[k] = Math.tan(cone[1]) }
     }
-    render3d_st.ue_ll_misc[o + 1] = l.specular_scale
-    render3d_st.ue_ll_misc[o + 2] = l.diffuse_scale
-    render3d_st.ue_ll_misc[o + 3] = l.volumetric_scattering_intensity
+    data[o + 13] = l.specular_scale
+    data[o + 14] = l.diffuse_scale
+    data[o + 15] = l.volumetric_scattering_intensity
+    data[o + 16] = -1.0;  data[o + 17] = 0.0;  data[o + 18] = 0.0;  data[o + 19] = 0.0
   }
   render3d_st.ue_ll_n = m
 }
 
+# after the shadow pass: the forward light buffer, with each light's shadow map named
+function ue_lights_upload(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ue_ll_n == 0 { return }
+  gpu_buffer_upload(render3d_st, render3d_st.ue_ll_buf, render3d_st.ue_ll_n * UE_LL_FLOATS * 4, data_of(render3d_st.ue_ll_data), GPU_DYNAMIC)
+}
+
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function ue_lights_alloc(render3d_st: mut Render3dState) -> void {
-  render3d_st.ue_ll_pos = floats(UE_LL_MAX * 4)
-  render3d_st.ue_ll_col = floats(UE_LL_MAX * 4)
-  render3d_st.ue_ll_dir = floats(UE_LL_MAX * 4)
-  render3d_st.ue_ll_misc = floats(UE_LL_MAX * 4)
-  render3d_st.ue_ll_pick = floats(UE_LL_MAX)
-  render3d_st.ue_ll_pd = floats(UE_LL_MAX)
+  var cap = 1024
+  if r3d_env_has(render3d_st, "R3D_UE_LL_MAX") { cap = Text.to_int(r3d_env(render3d_st, "R3D_UE_LL_MAX")) }
+  if cap < 1 { cap = 1 }
+  render3d_st.ue_ll_max = cap
+  render3d_st.ue_ll_data = floats(cap * UE_LL_FLOATS)
+  render3d_st.ue_ll_tan = floats(cap)
+  render3d_st.ue_ll_pick = floats(cap)
+  render3d_st.ue_ll_pd = floats(cap)
   render3d_st.ue_ll_tmp = floats(2)
+  render3d_st.ue_lg_vpos = floats(cap * 4)
+  render3d_st.ue_lg_vdir = floats(cap * 4)
+  render3d_st.ue_ll_buf = gpu_buffer_new(render3d_st)
 }
 
 # a lit program's lights (sky_bind_lighting)
 function ue_lights_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_n"), render3d_st.ue_ll_n)
   if render3d_st.ue_ll_n == 0 { return }
-  u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_pos"), UE_LL_MAX, render3d_st.ue_ll_pos)
-  u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_col"), UE_LL_MAX, render3d_st.ue_ll_col)
-  u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_dir"), UE_LL_MAX, render3d_st.ue_ll_dir)
-  u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_misc"), UE_LL_MAX, render3d_st.ue_ll_misc)
+  gpu_bind_buffer(render3d_st, prog, "u_ue_lights", render3d_st.ue_ll_buf)
+  ue_lightgrid_bind(render3d_st, prog)
   ue_lightshadows_bind(render3d_st, prog)
 }
 

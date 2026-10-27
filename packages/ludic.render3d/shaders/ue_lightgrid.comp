@@ -1,0 +1,76 @@
+// ue_lightgrid.comp - Unreal's LightGridInjectionCS (LightGridInjection.usf, UE 5.8): one thread a cell
+// (r.LightCulling.WorkloadDistributionMode 0), each cell's view-space box against every visible local light's
+// sphere (ComputeSquaredDistanceFromBoxToPoint), refined for spot lights (IsAabbOutsideInfiniteAcuteConeApprox),
+// written as a fixed list of at most MaxCulledLightsPerCell (r.Forward.LightLinkedListCulling 0). No HZB cull
+// (r.Forward.LightGridHZBCull 0). View space here is Unreal's: x right, y as the projection's, z the positive
+// depth in front of the camera; the light buffers are filled in that space (ue_lightgrid.ludic).
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform Params {
+  mat4 clip_to_view;        // the inverse of the camera's projection (reversed depth)
+  vec4 zparams;             // LightGridZParams (B, O, S), w the near plane
+  uvec4 grid;               // CulledGridSize xyz, w LightGridPixelSizeShift
+  uvec4 counts;             // NumLocalLights, MaxCulledLightsPerCell, NumGridCells
+  vec4 view;                // ViewSize xy, 1 / ViewSize zw
+  vec4 proj;                // the projection's depth terms: device z = (proj.x * -z + proj.y) / z for view depth z (m[10], m[14])
+} pr;
+layout(set = 0, binding = 1) buffer LightPos { vec4 v[]; } light_pos;     // view-space position, radius
+layout(set = 0, binding = 2) buffer LightDir { vec4 v[]; } light_dir;     // view-space direction, tan(outer cone) (0: point)
+layout(set = 0, binding = 3) buffer NumCulled { uint v[]; } num_culled;   // per cell: count, first index
+layout(set = 0, binding = 4) buffer CulledData { uint v[]; } culled_data; // per cell: MaxCulledLightsPerCell light indices
+
+// Common.ush ComputeDepthFromZSlice
+float depthFromZSlice(float slice) { return (exp2(slice / pr.zparams.z) - pr.zparams.y) / pr.zparams.x; }
+// ComputeCellNearViewDepthFromZSlice: the last slice reaches 20 km, the first starts at the near plane
+float cellNearDepth(uint slice) {
+  float d = depthFromZSlice(float(slice));
+  if (slice == pr.grid.z) d = 20000.0;
+  if (slice == 0u) d = pr.zparams.w;
+  return d;
+}
+// ConvertToDeviceZ for this projection
+float toDeviceZ(float depth) { return (pr.proj.x * -depth + pr.proj.y) / depth; }
+vec2 viewCorner(vec2 ndc, float deviceZ) {
+  vec4 v = pr.clip_to_view * vec4(ndc, deviceZ, 1.0);
+  return v.xy / v.w;
+}
+// Common.ush ComputeSquaredDistanceFromBoxToPoint
+float boxDistSq(vec3 c, vec3 e, vec3 p) { vec3 d = max(abs(p - c) - e, 0.0); return dot(d, d); }
+bool aabbInFrontOfPlane(vec3 c, vec3 e, vec4 plane) { return dot(vec4(c, 1.0), plane) > dot(e, abs(plane.xyz)); }
+bool aabbOutsideCone(vec3 vertex, vec3 axis, float tanAngle, vec3 c, vec3 e) {
+  vec3 d = c - vertex;
+  vec3 m = -normalize(cross(cross(d, axis), axis));
+  vec3 n = -tanAngle * axis + m;
+  return aabbInFrontOfPlane(d, e, vec4(n, 0.0));
+}
+
+void main() {
+  uint cell = gl_GlobalInvocationID.x;
+  if (cell >= pr.counts.z) return;
+  uvec3 g = uvec3(cell % pr.grid.x, (cell / pr.grid.x) % pr.grid.y, cell / (pr.grid.x * pr.grid.y));
+  float minZ = cellNearDepth(g.z);
+  float maxZ = cellNearDepth(g.z + 1u);
+  // ComputeCellBounds: the tile's corners at both depths, in view space. A Vulkan target's row 0 is NDC y = -1.
+  vec2 tile = float(1u << pr.grid.w) * pr.view.zw * 2.0;
+  vec2 t0 = vec2(g.xy) * tile - 1.0;
+  vec2 t1 = vec2(g.xy + 1u) * tile - 1.0;
+  float dz0 = toDeviceZ(minZ);
+  float dz1 = toDeviceZ(maxZ);
+  vec2 a = viewCorner(t0, dz0), b = viewCorner(t1, dz0), c = viewCorner(vec2(t0.x, t1.y), dz0), d = viewCorner(vec2(t1.x, t0.y), dz0);
+  vec2 e = viewCorner(t0, dz1), f = viewCorner(t1, dz1), h = viewCorner(vec2(t0.x, t1.y), dz1), k = viewCorner(vec2(t1.x, t0.y), dz1);
+  vec3 bmin = vec3(min(min(min(a, b), min(c, d)), min(min(e, f), min(h, k))), minZ);
+  vec3 bmax = vec3(max(max(max(a, b), max(c, d)), max(max(e, f), max(h, k))), maxZ);
+  vec3 center = 0.5 * (bmin + bmax);
+  vec3 extent = bmax - center;
+  uint n = 0u;
+  uint start = cell * pr.counts.y;
+  for (uint i = 0u; i < pr.counts.x; i++) {
+    vec4 pr_ = light_pos.v[i];
+    if (boxDistSq(center, extent, pr_.xyz) >= pr_.w * pr_.w) continue;
+    vec4 dir = light_dir.v[i];
+    // REFINE_SPOTLIGHT_BOUNDS: acute cones only (tan 0 for points and wide cones)
+    if (dir.w > 0.0 && aabbOutsideCone(pr_.xyz, -dir.xyz, dir.w, center, extent)) continue;
+    if (n < pr.counts.y) { culled_data.v[start + n] = i; n++; }
+  }
+  num_culled.v[cell * 2u] = n;
+  num_culled.v[cell * 2u + 1u] = start;
+}

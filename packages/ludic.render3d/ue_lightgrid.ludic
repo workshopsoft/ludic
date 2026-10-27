@@ -1,0 +1,150 @@
+# ============================================================================
+# ue_lightgrid.ludic — Unreal's forward light grid (LightGridInjection.cpp / .usf, UE 5.8): the view cut into cells of
+# r.Forward.LightGridPixelSize (64) pixels by r.Forward.LightGridSizeZ (32) depth slices (GetLightGridZParams:
+# CalculateGridZParams with DepthDistributionScale 4.05 over the near plane .. the furthest light's far side, at least
+# 10 m, the last slice reaching 20 km), every visible local light culled into each cell it touches on the GPU
+# (shaders/ue_lightgrid.comp, LightGridInjectionCS), and the lit shaders reading only their cell's lights
+# (lighting.glsl ueLightGridRange, as LightGridCommon.ush GetCulledLightsGridHeader).
+#
+# As Unreal with r.Forward.LightLinkedListCulling 0 (a fixed list of r.Forward.MaxCulledLightsPerCell a cell),
+# r.Forward.LightGridHZBCull 0 and r.LightCulling.WorkloadDistributionMode 0. A shaded point finds its cell from its
+# world position through the main camera's unjittered view-projection (the pixel Unreal's own pass uses); a point
+# outside the main view (a reflection, the fog grid's edge) reads every light, as r.LightCulling.Quality 0 does.
+# R3D_UE_LIGHT_GRID=0 (or r3d_ue_light_grid(st, false)) turns the grid off: every light for every pixel.
+# ============================================================================
+
+property UeLightGrid {
+  light_grid_pixel_size: int = 64,             # r.Forward.LightGridPixelSize
+  light_grid_size_z: int = 32,                 # r.Forward.LightGridSizeZ
+  max_culled_lights_per_cell: int = 32,        # r.Forward.MaxCulledLightsPerCell
+  depth_distribution_scale: float = 4.05       # GetLightGridZParams' DepthDistributionScale
+}
+
+export function r3d_ue_light_grid(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ue_lg_on = 0
+  if on { render3d_st.ue_lg_on = 1 }
+}
+export function r3d_ue_light_grid_settings(render3d_st: mut Render3dState) -> UeLightGrid {
+  ue_lg_on(render3d_st)
+  return render3d_st.ue_lg
+}
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_lg_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_lg_on < 0 {
+    render3d_st.ue_lg_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_LIGHT_GRID") and r3d_env(render3d_st, "R3D_UE_LIGHT_GRID") == "0" { render3d_st.ue_lg_on = 0 }
+    render3d_st.ue_lg = new UeLightGrid
+  }
+  return render3d_st.ue_lg_on == 1
+}
+
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_lg_alloc(render3d_st: mut Render3dState) -> void {
+  render3d_st.ue_lg_prog = gpu_compute(render3d_st, "ue_lightgrid", 4)
+  render3d_st.ue_lg_bpos = gpu_buffer_new(render3d_st)
+  render3d_st.ue_lg_bdir = gpu_buffer_new(render3d_st)
+  render3d_st.ue_lg_bnum = gpu_buffer_new(render3d_st)
+  render3d_st.ue_lg_bdata = gpu_buffer_new(render3d_st)
+  render3d_st.ue_lg_bufs = words(4)
+  render3d_st.ue_lg_pr = words(36)
+  render3d_st.ue_lg_vp = m4_new()
+  render3d_st.ue_lg_proj = m4_new()
+  render3d_st.ue_lg_iproj = m4_new()
+  render3d_st.ue_lg_zp = floats(4)
+}
+
+# Each frame, before any pass (a dispatch inside one would split it): the cells' lists for this frame's lights
+function ue_lightgrid_frame(render3d_st: mut Render3dState) -> void {
+  render3d_st.ue_lg_built = false
+  if render3d_st.ue_ll_n == 0 or not ue_lg_on(render3d_st) or render3d_st.post_w <= 0 or render3d_st.post_h <= 0 { return }
+  if render3d_st.ue_lg_prog == 0 { ue_lg_alloc(render3d_st) }
+  if render3d_st.ue_lg_prog == 0 { return }
+  let s = render3d_st.ue_lg
+  let n = render3d_st.ue_ll_n
+  let px = Math.max(s.light_grid_pixel_size, 8)
+  var shift = 0
+  while (1 << (shift + 1)) <= px { shift += 1 }
+  let gx = (render3d_st.post_w + (1 << shift) - 1) >> shift
+  let gy = (render3d_st.post_h + (1 << shift) - 1) >> shift
+  let gz = Math.max(s.light_grid_size_z, 2)
+  let cells = gx * gy * gz
+  let per = Math.max(s.max_culled_lights_per_cell, 1)
+  # the lights in Unreal's view space (x right, y up, z the depth in front), and the furthest light's far side
+  let v = render3d_st.cam_view
+  let vpos = render3d_st.ue_lg_vpos
+  let vdir = render3d_st.ue_lg_vdir
+  var furthest = 10.0
+  for k in 0 .. n {
+    let o = k * 20
+    let x = render3d_st.ue_ll_data[o];  let y = render3d_st.ue_ll_data[o + 1];  let z = render3d_st.ue_ll_data[o + 2]
+    let r = 1.0 / Math.max(render3d_st.ue_ll_data[o + 3], 0.000001)
+    let q = k * 4
+    vpos[q] = v[0] * x + v[4] * y + v[8] * z + v[12]
+    vpos[q + 1] = v[1] * x + v[5] * y + v[9] * z + v[13]
+    vpos[q + 2] = -(v[2] * x + v[6] * y + v[10] * z + v[14])
+    vpos[q + 3] = r
+    if vpos[q + 2] + r > furthest { furthest = vpos[q + 2] + r }
+    # LightParameters.Direction (the stored -forward), into view space; tan(outer cone) for an acute spot, else 0
+    let dx = render3d_st.ue_ll_data[o + 8];  let dy = render3d_st.ue_ll_data[o + 9];  let dz = render3d_st.ue_ll_data[o + 10]
+    vdir[q] = v[0] * dx + v[4] * dy + v[8] * dz
+    vdir[q + 1] = v[1] * dx + v[5] * dy + v[9] * dz
+    vdir[q + 2] = -(v[2] * dx + v[6] * dy + v[10] * dz)
+    vdir[q + 3] = render3d_st.ue_ll_tan[k]
+  }
+  # GetLightGridZParams(near, far + 10 cm): the slices for size z - 1, the last one reserved to reach out further
+  let near = render3d_st.cam_near
+  ue_lg_zparams(render3d_st.ue_lg_zp, near, furthest + 0.1, s.depth_distribution_scale, gz - 1)
+  gpu_buffer_upload(render3d_st, render3d_st.ue_lg_bpos, n * 16, data_of(vpos), GPU_DYNAMIC)
+  gpu_buffer_upload(render3d_st, render3d_st.ue_lg_bdir, n * 16, data_of(vdir), GPU_DYNAMIC)
+  if cells * 2 > render3d_st.ue_lg_cap_num {
+    render3d_st.ue_lg_cap_num = cells * 2
+    gpu_buffer_upload(render3d_st, render3d_st.ue_lg_bnum, cells * 2 * 4, null, GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, render3d_st.ue_lg_bnum)
+  }
+  if cells * per > render3d_st.ue_lg_cap_data {
+    render3d_st.ue_lg_cap_data = cells * per
+    gpu_buffer_upload(render3d_st, render3d_st.ue_lg_bdata, cells * per * 4, null, GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, render3d_st.ue_lg_bdata)
+  }
+  # the parameter block (ue_lightgrid.comp Params, std140)
+  let pr = render3d_st.ue_lg_pr
+  # the projection without the jitter (cam_proj_clean), as the grid's cells must not move with it
+  cam_proj_clean(render3d_st, render3d_st.ue_lg_proj)
+  let ip = render3d_st.ue_lg_iproj
+  m4_inverse(ip, render3d_st.ue_lg_proj)
+  for i in 0 .. 16 { pr[i] = float_bits(ip[i]) }
+  pr[16] = float_bits(render3d_st.ue_lg_zp[0]);  pr[17] = float_bits(render3d_st.ue_lg_zp[1]);  pr[18] = float_bits(render3d_st.ue_lg_zp[2]);  pr[19] = float_bits(near)
+  pr[20] = gx;  pr[21] = gy;  pr[22] = gz;  pr[23] = shift
+  pr[24] = n;  pr[25] = per;  pr[26] = cells;  pr[27] = 0
+  pr[28] = float_bits(float(render3d_st.post_w));  pr[29] = float_bits(float(render3d_st.post_h))
+  pr[30] = float_bits(1.0 / float(render3d_st.post_w));  pr[31] = float_bits(1.0 / float(render3d_st.post_h))
+  pr[32] = float_bits(render3d_st.ue_lg_proj[10]);  pr[33] = float_bits(render3d_st.ue_lg_proj[14]);  pr[34] = 0;  pr[35] = 0
+  let b = render3d_st.ue_lg_bufs
+  b[0] = render3d_st.ue_lg_bpos;  b[1] = render3d_st.ue_lg_bdir;  b[2] = render3d_st.ue_lg_bnum;  b[3] = render3d_st.ue_lg_bdata
+  gpu_dispatch(render3d_st, render3d_st.ue_lg_prog, data_of(pr), 144, b, (cells + 63) / 64)
+  m4_copy(render3d_st.ue_lg_vp, render3d_st.cam_vp_clean)
+  render3d_st.ue_lg_gx = gx;  render3d_st.ue_lg_gy = gy;  render3d_st.ue_lg_gz = gz;  render3d_st.ue_lg_shift = shift;  render3d_st.ue_lg_per = per
+  render3d_st.ue_lg_built = true
+}
+
+# CalculateGridZParams: slice = log2(z B + O) S, with the slices starting NearOffset (9.5 cm) past the near plane
+function ue_lg_zparams(o: floats, near: float, far: float, s: float, gz: int) -> void {
+  let n = near + 0.095
+  let f = Math.max(far, n + 0.01)
+  let oo = (f - n * Math.pow(2.0, float(gz) / s)) / (f - n)
+  o[0] = (1.0 - oo) / n;  o[1] = oo;  o[2] = s
+}
+
+# a lit program's grid (ue_lights_bind)
+function ue_lightgrid_bind(render3d_st: mut Render3dState, prog: int) -> void {
+  var on = 0.0
+  if render3d_st.ue_lg_built { on = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_lg_on"), on)
+  if not render3d_st.ue_lg_built { return }
+  gpu_bind_buffer(render3d_st, prog, "u_ue_lg_num", render3d_st.ue_lg_bnum)
+  gpu_bind_buffer(render3d_st, prog, "u_ue_lg_data", render3d_st.ue_lg_bdata)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, prog, "u_lg_vp"), render3d_st.ue_lg_vp)
+  u_f4(render3d_st, gpu_uniform(render3d_st, prog, "u_lg_zp"), render3d_st.ue_lg_zp[0], render3d_st.ue_lg_zp[1], render3d_st.ue_lg_zp[2], float(render3d_st.ue_lg_gz))
+  u_f4(render3d_st, gpu_uniform(render3d_st, prog, "u_lg_grid"), float(render3d_st.ue_lg_gx), float(render3d_st.ue_lg_gy), float(1 << render3d_st.ue_lg_shift), float(render3d_st.ue_lg_per))
+  u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_lg_view"), float(render3d_st.post_w), float(render3d_st.post_h))
+}

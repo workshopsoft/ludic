@@ -293,11 +293,13 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   prof_cpu_mark(render3d_st, "streaming")
   gg_cull_frame(render3d_st)                # before any pass: a dispatch inside one would split it
   r3d_scene_prepare(render3d_st)            # the game's own (the big world's instance cull, r3d_on_prepare)
-  ue_lights_frame(render3d_st)              # Unreal's local lights nearest the camera, packed for the shaders (ue_lights.ludic)
+  ue_lights_frame(render3d_st)              # Unreal's visible local lights, packed for the shaders (ue_lights.ludic)
+  ue_lightgrid_frame(render3d_st)           # ... culled into the light grid's cells (ue_lightgrid.ludic)
   ue_sky_luts(render3d_st)                  # Unreal's Sky Atmosphere LUTs (ue_sky.ludic), before any scene target is bound
   ue_skylight_pass(render3d_st)             # Unreal's real-time sky light capture and convolution (ue_skylight.ludic)
   if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "shadow");  shadow_pass(render3d_st);  prof_end(render3d_st) }
   if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "spot shadows");  ue_lightshadows_pass(render3d_st);  prof_end(render3d_st) }   # Unreal's spot light shadow maps (ue_lightshadows.ludic)
+  ue_lights_upload(render3d_st)             # the forward light buffer, with each light's shadow map named
   strands_shadow_pass(render3d_st)          # the grooms' own shadow map (strands.ludic), before the skin it falls on is drawn
   prof_cpu_mark(render3d_st, "shadow pass")
   if (render3d_st.water_on or render3d_st.wp_n > 0) and not render3d_st.r3d_no_refl and not render3d_st.r3d_env_no_refl and water_reflect_visible(render3d_st) { prof_begin(render3d_st, "water reflection");  water_reflection_pass(render3d_st);  prof_end(render3d_st) }
