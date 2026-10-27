@@ -132,6 +132,7 @@ void main() {
       vec3 Ll;
       float att = ueLocalLightAttenuation(i, pos, bias, Ll);
       if (att > 0.0 && u_ue_ls_n > 0 && u_ll_shidx[i] >= 0.0) att *= ueSpotShadowVolume(int(u_ll_shidx[i]), pos);
+      else if (att > 0.0 && u_ue_lp_n > 0 && u_ll_shidx[i] < -1.5) att *= uePointShadowVolume(int(-u_ll_shidx[i] - 2.0 + 0.5), i, pos);
       if (att > 0.0) L += u_ll_col[i].rgb * (vfPhase(vf_g, dot(Ll, -camVec)) * att * vsi);
     }
   }

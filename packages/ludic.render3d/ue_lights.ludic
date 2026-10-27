@@ -10,7 +10,7 @@
 #
 # The shader side is lighting.glsl ueLocalLights (surfaces, the sun's BRDF) and ue_volfog.frag (the fog). Not ported yet: the light
 # grid (Unreal culls lights into a clustered grid; here the LL_MAX lights nearest the camera within their reach are sent to every
-# draw), point light shadows (spot lights cast: ue_lightshadows.ludic), source radius / length, rect lights, IES, light functions.
+# draw; shadows are ue_lightshadows.ludic), source radius / length, rect lights, IES, light functions.
 # R3D_UE_LIGHTS=0 (or r3d_ue_lights(st, false)) turns them all off. R3D_LL adds test lights (see ue_lights_env).
 # ============================================================================
 
@@ -37,7 +37,7 @@ property UeLocalLight {
   specular_scale: float = 1.0,                 # SpecularScale
   diffuse_scale: float = 1.0,                  # DiffuseScale
   max_draw_distance: float = 0.0,              # MaxDrawDistance (m, 0 none)
-  cast_shadows: bool = true,                   # CastShadows (spot lights: ue_lightshadows.ludic)
+  cast_shadows: bool = true,                   # CastShadows (ue_lightshadows.ludic)
   shadow_bias: float = 0.5,                    # ShadowBias
   shadow_slope_bias: float = 0.5,              # ShadowSlopeBias
   shadow_sharpen: float = 0.0,                 # ShadowSharpen

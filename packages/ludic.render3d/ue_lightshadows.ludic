@@ -21,12 +21,22 @@
 # from the receiver's normal (the way Unreal itself biases point light shadows, ShadowProjectionPixelShader). The fog has no normal,
 # so it compares against the bias-free depth.
 #
-# R3D_UE_LIGHT_SHADOWS=0 (or r3d_ue_light_shadows(st, false)) turns them off; R3D_UE_LS_MAX the most lights shadowed at once,
-# R3D_UE_LS_RES r.Shadow.MaxResolution. Point light (cube) shadows are not ported yet.
+# Point lights, as FPointLightSceneProxy's initializer and SetupWholeSceneProjection's one-pass branch: six faces, each
+# FReversedZPerspectiveMatrix (90 degrees, 1 cm .. AttenuationRadius) from the light along an axis, no border; the face size the
+# cube surfaces offer at or below the desired resolution (GetCubeShadowDepthZIndex: r.Shadow.MaxResolution / 2, / 4, / 8, / 16,
+# r.Shadow.MinResolution); bias r.Shadow.PointLightDepthBias x 512 / resolution x 2 x ShadowBias, slope
+# r.Shadow.PointLightSlopeScaleDepthBias x ShadowSlopeBias, applied at projection time as Unreal does. Surfaces filter with
+# CubemapHardwarePCF at r.ShadowQuality 5 (29 disc samples, each a bilinear compare), the fog at SHADOW_QUALITY 2 (one compare,
+# bias 0.03 x 512 / resolution). There are no cube textures here: a cube is six layers of a 2D array and the shader picks the
+# face by the major axis, as the hardware does.
+#
+# R3D_UE_LIGHT_SHADOWS=0 (or r3d_ue_light_shadows(st, false)) turns them off; R3D_UE_LS_MAX / R3D_UE_LP_MAX the most spot / point
+# lights shadowed at once, R3D_UE_LS_RES r.Shadow.MaxResolution.
 # ============================================================================
 
 const UE_LS_MAX: int = 4                       # the shaders' array size (lighting.glsl LS_MAX)
 const UE_LS_BORDER: int = 4                    # SHADOW_BORDER
+const UE_LP_MAX: int = 4                       # point lights (lighting.glsl LP_MAX)
 
 property UeLightShadows {
   max_resolution: int = 2048,                  # r.Shadow.MaxResolution (Epic scalability)
@@ -39,7 +49,11 @@ property UeLightShadows {
   spot_light_transition_scale: float = 60.0,   # r.Shadow.SpotLightTransitionScale
   spot_light_receiver_bias: float = 0.5,       # r.Shadow.SpotLightReceiverBias
   max_slope_depth_bias: float = 1.0,           # r.Shadow.ShadowMaxSlopeScaleDepthBias
-  max_shadowed: int = 4                        # atlas layers: the most spot lights shadowed in a frame (Unreal packs an atlas instead)
+  texels_per_pixel_pointlight: float = 1.27324,  # r.Shadow.TexelsPerPixelPointlight
+  point_light_depth_bias: float = 0.02,        # r.Shadow.PointLightDepthBias
+  point_light_slope_scale_depth_bias: float = 3.0,  # r.Shadow.PointLightSlopeScaleDepthBias
+  max_shadowed: int = 4,                       # atlas layers: the most spot lights shadowed in a frame (Unreal packs an atlas instead)
+  max_shadowed_point: int = 4                  # the most point lights shadowed in a frame (six layers each)
 }
 
 export function r3d_ue_light_shadows(render3d_st: mut Render3dState, on: bool) -> void {
@@ -54,13 +68,16 @@ function ue_ls_on(render3d_st: mut Render3dState) -> bool {
     let s = new UeLightShadows
     if r3d_env_has(render3d_st, "R3D_UE_LS_MAX") { s.max_shadowed = Text.to_int(r3d_env(render3d_st, "R3D_UE_LS_MAX")) }
     if r3d_env_has(render3d_st, "R3D_UE_LS_RES") { s.max_resolution = Text.to_int(r3d_env(render3d_st, "R3D_UE_LS_RES")) }
+    if r3d_env_has(render3d_st, "R3D_UE_LP_MAX") { s.max_shadowed_point = Text.to_int(r3d_env(render3d_st, "R3D_UE_LP_MAX")) }
     if s.max_shadowed > UE_LS_MAX { s.max_shadowed = UE_LS_MAX }
     if s.max_shadowed < 0 { s.max_shadowed = 0 }
+    if s.max_shadowed_point > UE_LP_MAX { s.max_shadowed_point = UE_LP_MAX }
+    if s.max_shadowed_point < 0 { s.max_shadowed_point = 0 }
     if s.max_resolution > 4096 { s.max_resolution = 4096 }
     if s.max_resolution < 64 { s.max_resolution = 64 }
     render3d_st.ue_ls = s
   }
-  return render3d_st.ue_ls_on == 1 and render3d_st.ue_ls.max_shadowed > 0
+  return render3d_st.ue_ls_on == 1 and (render3d_st.ue_ls.max_shadowed > 0 or render3d_st.ue_ls.max_shadowed_point > 0)
 }
 export function r3d_ue_light_shadow_settings(render3d_st: mut Render3dState) -> UeLightShadows {
   ue_ls_on(render3d_st)
@@ -69,6 +86,29 @@ export function r3d_ue_light_shadow_settings(render3d_st: mut Render3dState) -> 
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function ue_ls_alloc(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SHADOW
+  render3d_st.ue_ls_fbo = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, render3d_st.ue_ls_fbo)
+  gpu_fb_no_color(render3d_st)
+  gpu_fb_bind(render3d_st, 0)
+  render3d_st.gvk_tag = was
+  render3d_st.ue_ls_m = floats(UE_LS_MAX * 16)
+  render3d_st.ue_ls_a = floats(UE_LS_MAX * 4)
+  render3d_st.ue_ls_b = floats(UE_LS_MAX * 4)
+  render3d_st.ue_ls_c = floats(UE_LS_MAX * 4)
+  render3d_st.ue_ll_shidx = floats(32)
+  render3d_st.ue_ls_m_v = m4_views(render3d_st.ue_ls_m, UE_LS_MAX)
+  render3d_st.ue_lp_m = floats(UE_LP_MAX * 6 * 16)
+  render3d_st.ue_lp_m_v = m4_views(render3d_st.ue_lp_m, UE_LP_MAX * 6)
+  render3d_st.ue_lp_a = floats(UE_LP_MAX * 4)
+  render3d_st.ue_lp_b = floats(UE_LP_MAX * 4)
+  render3d_st.ue_lp_tmp = m4_new()
+  render3d_st.ue_lp_view = m4_new()
+}
+# the spot lights' depth array, made when a spot first casts
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_ls_alloc_spot(render3d_st: mut Render3dState) -> void {
   let s = render3d_st.ue_ls
   let was = render3d_st.gvk_tag
   render3d_st.gvk_tag = VKM_SHADOW
@@ -83,17 +123,27 @@ function ue_ls_alloc(render3d_st: mut Render3dState) -> void {
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
   gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_MODE, GPU_NONE)
-  render3d_st.ue_ls_fbo = gpu_fb_new(render3d_st)
-  gpu_fb_bind(render3d_st, render3d_st.ue_ls_fbo)
-  gpu_fb_no_color(render3d_st)
-  gpu_fb_bind(render3d_st, 0)
   render3d_st.gvk_tag = was
-  render3d_st.ue_ls_m = floats(UE_LS_MAX * 16)
-  render3d_st.ue_ls_a = floats(UE_LS_MAX * 4)
-  render3d_st.ue_ls_b = floats(UE_LS_MAX * 4)
-  render3d_st.ue_ls_c = floats(UE_LS_MAX * 4)
-  render3d_st.ue_ll_shidx = floats(32)
-  render3d_st.ue_ls_m_v = m4_views(render3d_st.ue_ls_m, UE_LS_MAX)
+}
+# the point lights' cubes, six layers each at the largest cube surface (r.Shadow.MaxResolution / 2), sampled with a compare as
+# Unreal's cube sampler is: lit where the receiver is at least as near as what the face holds (reversed depth)
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_ls_alloc_point(render3d_st: mut Render3dState) -> void {
+  let s = render3d_st.ue_ls
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SHADOW
+  render3d_st.ue_lp_size = Math.max(s.max_resolution / 2, 1)
+  render3d_st.ue_lp_layers = s.max_shadowed_point * 6
+  render3d_st.ue_lp_tex = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.ue_lp_tex)
+  gpu_tex_image3d(render3d_st, GPU_DEPTH_COMPONENT32F, render3d_st.ue_lp_size, render3d_st.ue_lp_size, render3d_st.ue_lp_layers, GPU_DEPTH_COMPONENT, GPU_FLOAT, null)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_MODE, GPU_COMPARE_REF_TO_TEXTURE)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_COMPARE_FUNC, GPU_GEQUAL)
+  render3d_st.gvk_tag = was
 }
 
 # CalculateShadowFadeAlpha
@@ -124,8 +174,9 @@ function ue_ls_ceil_log2(v: int) -> int {
 # Each frame, after the sun's cascades: a depth map for each of the frame's shadowed spot lights, nearest first
 function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_ls_n = 0
+  render3d_st.ue_lp_n = 0
   if render3d_st.ue_ll_n == 0 or not ue_ls_on(render3d_st) or not render3d_st.sh_enabled { return }
-  if render3d_st.ue_ls_tex == 0 { ue_ls_alloc(render3d_st) }
+  if render3d_st.ue_ls_fbo == 0 { ue_ls_alloc(render3d_st) }
   let s = render3d_st.ue_ls
   for k in 0 .. 32 { render3d_st.ue_ll_shidx[k] = -1.0 }
   # ScreenScale: max(ViewRect.X / 2 x ProjectionScale.X, ViewRect.Y / 2 x ProjectionScale.Y), the same for a square-pixel view
@@ -136,7 +187,7 @@ function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
   let was_cascade = render3d_st.sh_cascade
   var bound = false
   for k in 0 .. render3d_st.ue_ll_n {
-    if render3d_st.ue_ls_n >= render3d_st.ue_ls_layers { break }
+    if render3d_st.ue_ls_n >= s.max_shadowed { break }
     let l = render3d_st.ue_lls[int(render3d_st.ue_ll_pick[k])]
     if not l.spot or not l.cast_shadows { continue }
     ue_light_cone(l, cone)
@@ -164,6 +215,7 @@ function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
       if res < 1 { res = 1 }
     }
     let tile = res + UE_LS_BORDER * 2
+    if render3d_st.ue_ls_tex == 0 { ue_ls_alloc_spot(render3d_st) }
     # the subject range (SetupWholeSceneProjection with the cone's bounding sphere): 0.1 cm .. AttenuationRadius
     let min_z = 0.001
     let max_z = Math.max(radius, min_z * 2.0)
@@ -201,11 +253,91 @@ function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
     r3d_scene_casters(render3d_st, vp)
     render3d_st.ue_ls_n += 1
   }
+  if ue_lp_pass(render3d_st, screen_scale) { bound = true }
   render3d_st.sh_local = false
   render3d_st.sh_cascade = was_cascade
   if bound { gpu_fb_bind(render3d_st, 0) }
   ue_ls_dump(render3d_st)
   prof_cpu_mark(render3d_st, "spot shadows")
+}
+
+# The point lights: a cube each (six faces, FReversedZPerspectiveMatrix), nearest first. True when it bound the shadow target.
+function ue_lp_pass(render3d_st: mut Render3dState, screen_scale: float) -> bool {
+  let s = render3d_st.ue_ls
+  var bound = false
+  # one-pass point shadows have no border: the most is r.Shadow.MaxResolution itself
+  let max_res = s.max_resolution
+  for k in 0 .. render3d_st.ue_ll_n {
+    if render3d_st.ue_lp_n >= s.max_shadowed_point { break }
+    let l = render3d_st.ue_lls[int(render3d_st.ue_ll_pick[k])]
+    if l.spot or not l.cast_shadows { continue }
+    let radius = l.attenuation_radius
+    # FLocalLightSceneProxy::GetEffectiveScreenRadius: the light's radius at its distance (at least 1 cm)
+    let dx = l.x - render3d_st.cam_pos[0];  let dy = l.y - render3d_st.cam_pos[1];  let dz = l.z - render3d_st.cam_pos[2]
+    let screen_radius = screen_scale * radius / Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 0.01)
+    let clamped = ue_ls_clamp_res(screen_radius * s.texels_per_pixel_pointlight, l.shadow_resolution_scale, float(max_res))
+    let fade = ue_ls_fade_alpha(clamped, s.fade_resolution, s.min_resolution, s.fade_exponent)
+    if fade <= 1.0 / 256.0 { continue }
+    var floor_res = s.min_resolution
+    if max_res < floor_res { floor_res = max_res }
+    let res = ue_lp_cube_size(Math.max(clamped, float(floor_res)), max_res, s.min_resolution)
+    if render3d_st.ue_lp_tex == 0 { ue_ls_alloc_point(render3d_st) }
+    let pi = render3d_st.ue_lp_n
+    # UpdateShaderDepthBias, the whole-scene point branch (no 0.1 cap there)
+    let depth_bias = Math.max(s.point_light_depth_bias * 512.0 / float(res) * 2.0 * l.shadow_bias, 0.0)
+    let slope_bias = Math.max(depth_bias * s.point_light_slope_scale_depth_bias * l.shadow_slope_bias, 0.0)
+    let o = pi * 4
+    render3d_st.ue_lp_a[o] = float(pi * 6);  render3d_st.ue_lp_a[o + 1] = float(res) / float(render3d_st.ue_lp_size);  render3d_st.ue_lp_a[o + 2] = depth_bias;  render3d_st.ue_lp_a[o + 3] = slope_bias
+    # ComputeVolumeShadowing's cube compare: DepthBias 0.03 x 512 / resolution, no slope
+    render3d_st.ue_lp_b[o] = 1.0 / float(res);  render3d_st.ue_lp_b[o + 1] = fade;  render3d_st.ue_lp_b[o + 2] = l.shadow_sharpen * 7.0 + 1.0;  render3d_st.ue_lp_b[o + 3] = 0.03 * 512.0 / float(res)
+    render3d_st.ue_ll_shidx[k] = -2.0 - float(pi)
+    if not bound {
+      bound = true
+      gpu_fb_bind(render3d_st, render3d_st.ue_ls_fbo)
+      gpu_depth_test(render3d_st, true)
+      gpu_depth_func(render3d_st, GPU_GREATER)
+      gpu_depth_bias(render3d_st, 0.0, 0.0)
+      gpu_cull(render3d_st, false)
+    }
+    render3d_st.sh_local = true
+    render3d_st.sh_local_x = l.x;  render3d_st.sh_local_y = l.y;  render3d_st.sh_local_z = l.z;  render3d_st.sh_local_r = radius
+    render3d_st.sh_cascade = 0
+    m4_perspective_rz(render3d_st.ue_lp_tmp, PI * 0.5, 1.0, 0.01, Math.max(radius, 0.02))
+    for f in 0 .. 6 {
+      let vp = render3d_st.ue_lp_m_v[pi * 6 + f]
+      ue_lp_face(render3d_st, vp, f, l.x, l.y, l.z)
+      gpu_fb_depth_layer(render3d_st, render3d_st.ue_lp_tex, pi * 6 + f)
+      gpu_viewport(render3d_st, 0, 0, render3d_st.ue_lp_size, render3d_st.ue_lp_size)
+      gpu_clear(render3d_st, GPU_DEPTH_BUFFER_BIT)
+      gpu_viewport(render3d_st, 0, 0, res, res)
+      if not render3d_st.sh_skip_terrain { terrain_draw_shadow(vp) }
+      r3d_scene_casters(render3d_st, vp)
+    }
+    render3d_st.ue_lp_n += 1
+  }
+  return bound
+}
+# GetCubeShadowDepthZIndex / GetCubeShadowDepthZResolution: the largest cube surface at or below the desired resolution
+function ue_lp_cube_size(desired: float, max_res: int, min_res: int) -> int {
+  var size = Math.max(max_res / 2, 1)
+  for i in 0 .. 4 {
+    if desired >= float(size) { return size }
+    size = Math.max(size / 2, 1)
+  }
+  return min_res
+}
+# face f looks along +x, -x, +y, -y, +z, -z from the light (lighting.glsl ueCubeFace picks the same)
+function ue_lp_face(render3d_st: mut Render3dState, vp: floats, f: int, px: float, py: float, pz: float) -> void {
+  var ax = 0.0;  var ay = 0.0;  var az = 0.0
+  var ux = 0.0;  var uy = 1.0;  var uz = 0.0
+  if f == 0 { ax = 1.0 }
+  if f == 1 { ax = -1.0 }
+  if f == 2 { ay = 1.0;  uy = 0.0;  uz = 1.0 }
+  if f == 3 { ay = -1.0;  uy = 0.0;  uz = 1.0 }
+  if f == 4 { az = 1.0 }
+  if f == 5 { az = -1.0 }
+  m4_look_at_xyz(render3d_st.ue_lp_view, px, py, pz, px + ax, py + ay, pz + az, ux, uy, uz)
+  m4_mul(vp, render3d_st.ue_lp_tmp, render3d_st.ue_lp_view)
 }
 
 # FShadowProjectionMatrix x the inner scale (1 / tan(OuterCone)) x the border scale, around the light: render space metres
@@ -233,13 +365,21 @@ function ue_ls_matrix(render3d_st: mut Render3dState, si: int, px: float, py: fl
 # a lit program's spot shadows (ue_lights_bind)
 function ue_lightshadows_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_ls_n"), render3d_st.ue_ls_n)
+  u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_lp_n"), render3d_st.ue_lp_n)
+  if render3d_st.ue_ls_n == 0 and render3d_st.ue_lp_n == 0 { return }
+  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_ll_shidx[0]", "u_ll_shidx"), 32, render3d_st.ue_ll_shidx)
+  if render3d_st.ue_lp_n > 0 {
+    r3d_bind_tex(render3d_st, prog, "u_ue_lph", 18, GPU_TEX2D_ARRAY, render3d_st.ue_lp_tex)
+    u_mat4n(render3d_st, sh_loc(render3d_st, prog, "u_ue_lp_m[0]", "u_ue_lp_m"), UE_LP_MAX * 6, render3d_st.ue_lp_m)
+    u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_lp_a"), UE_LP_MAX, render3d_st.ue_lp_a)
+    u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_lp_b"), UE_LP_MAX, render3d_st.ue_lp_b)
+  }
   if render3d_st.ue_ls_n == 0 { return }
   r3d_bind_tex(render3d_st, prog, "u_ue_lsh", 17, GPU_TEX2D_ARRAY, render3d_st.ue_ls_tex)
   u_mat4n(render3d_st, sh_loc(render3d_st, prog, "u_ue_ls_m[0]", "u_ue_ls_m"), UE_LS_MAX, render3d_st.ue_ls_m)
   u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_ls_a"), UE_LS_MAX, render3d_st.ue_ls_a)
   u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_ls_b"), UE_LS_MAX, render3d_st.ue_ls_b)
   u_f4v(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_ls_c"), UE_LS_MAX, render3d_st.ue_ls_c)
-  u_fv(render3d_st, sh_loc(render3d_st, prog, "u_ll_shidx[0]", "u_ll_shidx"), 32, render3d_st.ue_ll_shidx)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_ue_ls_size"), float(render3d_st.ue_ls_size))
 }
 
