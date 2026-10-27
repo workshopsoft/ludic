@@ -64,6 +64,7 @@ export property KGpu {
   p_shadow: int = 0,
   p_card: int = 0,
   p_bake: int = 0,
+  p_bake_fac: int = 0,      # kit.frag FACADE BAKE: a box kit's card baked with its window grid
   b_src: int = 0,
   b_kits: int = 0,
   b_cells: int = 0,
@@ -168,7 +169,8 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   g.p_shadow = r3d_program(render3d_st, "kit.vert", "shadow.frag", "#define SHADOW_PASS\n")
   g.p_card = r3d_program(render3d_st, "oimp.vert", "oimp.frag", "")
   g.p_bake = r3d_program(render3d_st, "kit.vert", "bake.frag", "")
-  if (not cpu_only and (g.c_reset == 0 or g.c_cull == 0 or g.c_args == 0)) or g.p_mesh == 0 or g.p_int == 0 or g.p_fac == 0 or g.p_shadow == 0 or g.p_card == 0 or g.p_bake == 0 { return g }
+  g.p_bake_fac = r3d_program(render3d_st, "kit.vert", "kit.frag", "#define INTERIOR_MAP\n#define FACADE\n#define BAKE\n")
+  if (not cpu_only and (g.c_reset == 0 or g.c_cull == 0 or g.c_args == 0)) or g.p_mesh == 0 or g.p_int == 0 or g.p_fac == 0 or g.p_shadow == 0 or g.p_card == 0 or g.p_bake == 0 or g.p_bake_fac == 0 { return g }
   if cpu_only {
     g.b_ident = gpu_buffer_new(render3d_st)
     kgpu_ident(render3d_st, g)
@@ -392,7 +394,20 @@ export function kgpu_bake_kit(render3d_st: mut Render3dState, g: KGpu, id: int, 
     k.box_ref[0] = 2.0 * Math.max(Math.abs(b[0]), Math.abs(b[1]))
     k.box_ref[1] = 2.0 * Math.max(Math.abs(b[4]), Math.abs(b[5]))
     k.box_ref[2] = b[3]
-    k.atlas = oimp_bake(render3d_st, g.p_bake, g.b_ident_box, k.model, k.box_ref[0], k.box_ref[1], k.box_ref[2], n, frame_px)
+    # a kit with a window grid is baked through its facade (kit.frag BAKE), so its card shows the grid, not a blank wall
+    var bp = g.p_bake
+    if k.fac != null {
+      bp = g.p_bake_fac
+      gpu_use_program(render3d_st, bp)
+      let f = k.fac
+      u_f4(render3d_st, gpu_uniform(render3d_st, bp, "u_fac_a"), f[0], f[1], f[2], f[3])
+      u_f4(render3d_st, gpu_uniform(render3d_st, bp, "u_fac_b"), f[4], f[5], f[6], f[7])
+      u_f4(render3d_st, gpu_uniform(render3d_st, bp, "u_fac_c"), f[8], f[9], f[10], 0.0)
+      u_f4(render3d_st, gpu_uniform(render3d_st, bp, "u_fac_d"), f[12], f[13], f[14], f[15])
+      u_f4(render3d_st, gpu_uniform(render3d_st, bp, "u_fac_e"), f[16], f[17], f[18], 0.0)
+      u_f2(render3d_st, gpu_uniform(render3d_st, bp, "u_storey"), k.storey_h, k.storey_line)
+    }
+    k.atlas = oimp_bake(render3d_st, bp, g.b_ident_box, k.model, k.box_ref[0], k.box_ref[1], k.box_ref[2], n, frame_px)
     free(one);  free(b)
   } else {
     k.atlas = oimp_bake(render3d_st, g.p_bake, g.b_ident, k.model, w, d, h, n, frame_px)
@@ -714,7 +729,7 @@ function kgpu_card_alt(m: Model) -> floats {
   if m == null { return a }
   for i in 0 .. len(m.prims) {
     let pr = m.prims[i]
-    if pr == null or pr.surf == null or pr.surf2 == null or pr.surf2[17] <= 0.0 { continue }
+    if pr == null or pr.surf == null or pr.surf2 == null or pr.surf2[17] <= 0.0 or pr.surf2[19] > 0.5 { continue }   # (a flat roof's gravel is not the card's)
     let s = pr.surf2
     let l = 0.2126 * s[8] + 0.7152 * s[9] + 0.0722 * s[10]
     for c in 0 .. 3 { a[c] = Math.max((l + (s[8 + c] - l) * s[13]) * s[12], 0.0) }

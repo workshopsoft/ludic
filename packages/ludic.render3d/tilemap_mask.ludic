@@ -59,6 +59,8 @@ export function tmk_init(td: TileDraw) -> void {
   let ms = td.ms
   td.mk_tile = words(ms.mslots);  td.mk_has = words(ms.mslots)
   for s in 0 .. ms.mslots { td.mk_tile[s] = -1;  td.mk_has[s] = 0 }
+  td.lu_tex = words(ms.mslots)
+  for s in 0 .. ms.mslots { td.lu_tex[s] = 0 }
   td.mk_cf = tmk_cf(tm.res)
   # the pool of full masks: the tiles within reach of the levels finer than a coarse cell (and a margin)
   var fine = 0
@@ -195,7 +197,76 @@ function tmk_read(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: in
     }
   }
   free(count)
+  tmk_lawn(render3d_st, td, slot, px, step)
   return true
+}
+
+# Tile `slot`'s lawn as a texture the ground's shader reads (lighting.glsl surfaceGround): 1 where the mask's class has a green tone,
+# 0 elsewhere; the green narrower than 3 texels taken out (a morphological opening: the slivers a rasterised plan leaves between a
+# block's paving and its sidewalk, the single texels in a yard, never a lawn) and the staircase of its edge softened (a 1-2-1
+# blur), so the shader's half-way line runs smooth. Made when the slot reads its tile, the slot's texture before given back.
+@alloc_ok("a tile being read: its lawn's texels and texture, once")
+function tmk_lawn(render3d_st: mut Render3dState, td: TileDraw, slot: int, px: []byte, step: int) -> void {
+  if render3d_st.gvk_dev == null { return }       # no device (a test of the reads): the vertex colour decides, as before
+  let n = td.tm.res
+  if td.lu_tex[slot] != 0 { gpu_tex_free(render3d_st, td.lu_tex[slot]);  td.lu_tex[slot] = 0 }
+  if td.lu_a == null { td.lu_a = buffer(n * n);  td.lu_b = buffer(n * n) }
+  let a = td.lu_a
+  let b = td.lu_b
+  let green = words(256)
+  for c in 0 .. 256 { green[c] = 0 }
+  for c in 0 .. TMK_TONES {
+    let r = td.tones[c * 3]
+    let g = td.tones[c * 3 + 1]
+    let bl = td.tones[c * 3 + 2]
+    if td.tone_on[c] != 0 and g - Math.max(r, bl) > 0.04 { green[c] = 1 }
+  }
+  var any = false
+  for i in 0 .. n * n {
+    a[i] = green[int(px[i * step])]
+    if a[i] != 0 { any = true }
+  }
+  free(green)
+  if not any {
+    for i in 0 .. n * n { b[i] = 0 }
+  } else {
+    # the opening: erode (all of the 3 x 3 green, the edge read as clamped), then grow back (any of the 3 x 3 kept)
+    for j in 0 .. n {
+      for i in 0 .. n {
+        var keep = 1
+        for dj in -1 .. 2 { for di in -1 .. 2 { if a[min(max(j + dj, 0), n - 1) * n + min(max(i + di, 0), n - 1)] == 0 { keep = 0 } } }
+        b[j * n + i] = keep
+      }
+    }
+    for j in 0 .. n {
+      for i in 0 .. n {
+        var on = 0
+        for dj in -1 .. 2 { for di in -1 .. 2 { if b[min(max(j + dj, 0), n - 1) * n + min(max(i + di, 0), n - 1)] != 0 { on = 1 } } }
+        a[j * n + i] = on * 255
+      }
+    }
+    # the 1-2-1 blur, across then down (a's texels into b, then back)
+    for j in 0 .. n {
+      for i in 0 .. n {
+        let l = a[j * n + max(i - 1, 0)]
+        let r = a[j * n + min(i + 1, n - 1)]
+        b[j * n + i] = (l + 2 * a[j * n + i] + r + 2) / 4
+      }
+    }
+    for j in 0 .. n {
+      for i in 0 .. n {
+        let u = b[max(j - 1, 0) * n + i]
+        let d = b[min(j + 1, n - 1) * n + i]
+        a[j * n + i] = (u + 2 * b[j * n + i] + d + 2) / 4
+      }
+    }
+    for i in 0 .. n * n { b[i] = a[i] }
+  }
+  render3d_st.tex_w = n;  render3d_st.tex_h = n;  render3d_st.tex_channels = 1;  render3d_st.tex_depth = 8
+  let id = tex_upload(render3d_st, data_of(b), false, true)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_CLAMP_TO_EDGE)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_CLAMP_TO_EDGE)
+  td.lu_tex[slot] = id
 }
 
 # a place in the pool of full masks for tile t: the one holding it (and true), else the free or least recently used one

@@ -1060,6 +1060,8 @@ uniform vec4 u_s2_e;
 uniform sampler2D u_s2_diff;
 uniform sampler2D u_s2_nrm;
 uniform sampler2D u_s2_arm;
+uniform sampler2D u_lu;  // the ground's lawn coverage of the patch's tile (tilemap_mask.ludic tmk_lawn): 1 lawn, 0 paving, its edge softened
+uniform vec4 u_lu_on;    // x 1: read it (0: the vertex colour decides), y z the tile's place in the uvs' tile grid
 struct SurfP { vec4 a; vec4 b; vec4 c; vec4 d; vec4 e; };
 // period 1024 / scale cells: every pattern repeats in a whole number of 1024-tile spans, so the origin's offset (mod 1024 tiles)
 // moves nothing on a rebase
@@ -1177,6 +1179,8 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
   // the sun); a mesh's alternative takes the colour as it is
   float cl = dot(col, vec3(0.2126, 0.7152, 0.0722));
   vec3 col2 = B.e.y > 0.0 ? col : col * min(1.0, 0.18 / max(cl, 1e-3));
+  // where the lawn texture says paving, a green the vertex colour drew in from a lawn a cell away (or a sliver taken out) is not paving's
+  if (B.e.y == 0.0 && u_lu_on.x > 0.5) col2 = mix(col2, vec3(dot(col2, vec3(0.2126, 0.7152, 0.0722))), clamp((col.g - max(col.r, col.b)) * 25.0, 0.0, 1.0));
   surfaceAtP(u_s2_diff, u_s2_nrm, u_s2_arm, B, surfPlace(B, wp, uv, wp), N, N, wp, col2, a2, n2, r2);
   float w;
   if (B.e.y > 0.0) {
@@ -1184,6 +1188,20 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     vec2 q = (wp.xz + vec2(A.a.z, A.a.w) * A.a.x) / max(B.e.z, 0.1);
     float m = surfNoise(q, 1024.0) * 0.7 + surfNoise(q * 3.4, 1024.0) * 0.2 + surfNoise(q * 25.0, 1024.0) * 0.1;
     w = smoothstep(B.e.y - 0.015, B.e.y + 0.015, m);   // the first's weight: the second where m is under the share
+  } else if (u_lu_on.x > 0.5) {
+    // the lawn's own texture (a texel a metre): its half-way line is the edge, nudged a hand's width either way by a noise, sharp
+    // as a pixel; a soil line a few centimetres wide on the lawn's side of it, where the grass thins at its edge
+    float c = texture(u_lu, uv - u_lu_on.yz).r;
+    float e = surfNoise(wp.xz * 3.0 + vec2(A.a.z, A.a.w) * A.a.x, 1024.0) - 0.5;
+    float v = c + e * 0.06;
+    float aa = max(fwidth(v), 1e-4);
+    w = smoothstep(0.5 - aa, 0.5 + aa, v);
+    float soil = w * (1.0 - smoothstep(0.5, 0.56 + aa, v));
+    vec3 mixed = mix(a2, a1, w);
+    alb = mix(mixed, mixed * vec3(0.55, 0.5, 0.42), soil * 0.7);
+    n = normalize(mix(n2, n1, w));
+    arm = mix(r2, r1, w);
+    return;
   } else {
     float green = col.g - max(col.r, col.b);
     float e = surfNoise(wp.xz * 0.8 + vec2(A.a.z, A.a.w) * A.a.x * 0.8, 1024.0) - 0.5;
@@ -1198,7 +1216,7 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
 // a road's gutter and a kerb's rounded nose (u_surf_e.z, .w metres; the road bake's kerbDistances): a road's and a kerb top's uvs are their
 // distances to the kerb's foot along two lines (the lesser is the distance), a kerb face's v runs up it. Along the kerb the road is a gutter
 // pan g wide (the asphalt's detail on a smoother, paler concrete, a dark joint at its edge, grime packed against the kerb) with a dirty
-// fringe beyond it; the kerb's top and face turn round a nose r across (a quarter round: the normal leans toward the road on the top and
+// fringe beyond it, gully grates in it, and in the lanes repair patches and manhole covers; the kerb's top and face turn round a nose r across (a quarter round: the normal leans toward the road on the top and
 // up on the face as either nears the arris), worn a little paler there. Every derivative is taken before a branch.
 void surfKerb(vec2 uv, vec3 wp, vec3 N, inout vec3 alb, inout vec3 n, inout vec3 arm) {
   float g = u_surf_e.z, r = u_surf_e.w;
@@ -1208,7 +1226,37 @@ void surfKerb(vec2 uv, vec3 wp, vec3 N, inout vec3 alb, inout vec3 n, inout vec3
   float fh = length(vec2(px.y, py.y)) / max(length(vec2(dFdx(uv.y), dFdy(uv.y))), 1e-6);   // a face's height (m) from its v
   float aa = max(length(dd), 1e-4);
   float along = surfNoise(wp.xz * 1.7, 1024.0) * 0.6 + surfNoise(wp.xz * 7.0, 1024.0) * 0.4;
+  // the road's own frame: the way to the kerb (the distance's gradient, solved from the screen derivatives of place and distance) and
+  // along it; world metres from the surface's origin offset (whole tiles: a rebase moves nothing)
+  mat2 sm = mat2(px.x, py.x, px.z, py.z);
+  float sdet = sm[0][0] * sm[1][1] - sm[0][1] * sm[1][0];
+  vec2 grad = abs(sdet) > 1e-10 ? inverse(sm) * dd : vec2(0.0);
+  vec2 q = wp.xz + u_surf.zw * u_surf.x;
   if (g > 0.0) {
+    vec2 gn = length(grad) > 1e-6 ? normalize(grad) : vec2(1.0, 0.0);
+    vec2 tg = vec2(-gn.y, gn.x);
+    float s = dot(q, tg) + 97.0 * surfHash(floor(vec2(atan(tg.y, tg.x) * 4.0, 0.5)), 1024.0);
+    // repair patches: rectangles of fresher, darker asphalt with a sealed seam, set square to the kerb in the lanes (a cell of 16 m
+    // along and 3.5 m across, a fifth of them patched)
+    float pa = s / 16.0;
+    float pd = (d - g - 0.15) / 3.5;
+    vec2 pc = vec2(floor(pa), floor(pd));
+    float ph = surfHash(pc + 17.0, 1024.0);
+    if (pd >= 0.0 && ph < 0.2) {
+      vec2 lo = vec2(0.1 + 0.4 * surfHash(pc + 3.0, 1024.0), 0.05 + 0.3 * surfHash(pc + 5.0, 1024.0));
+      vec2 hi = lo + vec2(0.15 + 0.3 * surfHash(pc + 7.0, 1024.0), 0.35 + 0.3 * surfHash(pc + 11.0, 1024.0));
+      vec2 f = vec2(fract(pa), fract(pd));
+      vec2 m2 = vec2(16.0, 3.5);
+      vec2 e = min(f - lo, hi - f) * m2;                  // metres inside the patch's edges (negative outside)
+      // a lane's repair stops at the middle of the road (the two kerbs' distances add to its width), so the two sides' never cross
+      float inside = min(min(e.x, e.y), 0.5 * (uv.x + uv.y) - 0.15 - d);
+      float pw = max(fwidth(inside), 1e-4);
+      float in1 = smoothstep(-pw, pw, inside);
+      float seam = 1.0 - smoothstep(0.02, 0.05 + pw, abs(inside));
+      alb = mix(alb, mix(vec3(dot(alb, vec3(0.333))), alb, 0.5) * 0.72, in1);
+      arm.g = mix(arm.g, arm.g * 0.9, in1);
+      alb *= 1.0 - 0.5 * seam;
+    }
     float pan = 1.0 - smoothstep(g - aa, g + aa, d);
     float l = dot(alb, vec3(0.2126, 0.7152, 0.0722));
     vec3 concrete = mix(vec3(l), alb, 0.25) * 1.9;
@@ -1220,13 +1268,49 @@ void surfKerb(vec2 uv, vec3 wp, vec3 N, inout vec3 alb, inout vec3 n, inout vec3
     float grime = (1.0 - smoothstep(0.0, 0.05 + 0.05 * along, d)) * 0.45;
     float fringe = smoothstep(g, g + 0.05, d) * (1.0 - smoothstep(g + 0.1, g + 0.45 + 0.25 * along, d)) * 0.18 * along;
     alb *= 1.0 - grime - fringe;
+    // gully grates in the gutter, one each 28 m along the kerb: an iron frame round bars across the flow, black between them
+    float ga = mod(s, 28.0);
+    if (ga < 0.6 && d > 0.02 && d < g) {
+      float fr = min(min(ga, 0.6 - ga), min(d - 0.02, g - d));
+      float bar = step(0.5, fract(ga * 22.0));
+      vec3 iron = vec3(0.075, 0.068, 0.06) * (0.8 + 0.4 * along);
+      bool frame = fr < 0.035;
+      alb = frame ? iron * 1.2 : mix(vec3(0.006), iron, bar);
+      arm = vec3(frame ? 1.0 : mix(0.2, 1.0, bar), 0.55, 0.5);
+      if (!frame) n = normalize(N + vec3(tg.x, 0.0, tg.y) * (bar - 0.5) * 0.15);
+    }
+    // manholes: round cast-iron covers, one candidate a 14 m cell of the world (four in five kept), drawn where the whole cover lies 1.6 m or more from a kerb
+    // (the distance at its middle carried straight from this pixel: exact on a strip, where the distance is linear)
+    vec2 cell = floor(q / 14.0);
+    vec2 mc = (cell + 0.15 + 0.7 * vec2(surfHash(cell + 31.0, 1024.0), surfHash(cell + 47.0, 1024.0))) * 14.0;
+    vec2 dv = q - mc;
+    float rr = length(dv);
+    float dmid = d + dot(grad, mc - q);
+    if (rr < 0.37 && dmid > 1.6 && dmid < 9.0 && surfHash(cell + 59.0, 1024.0) < 0.8) {
+      float rw = max(fwidth(rr), 1e-4);
+      float ang = surfHash(cell + 71.0, 1024.0) * 6.2832;
+      vec2 rp = mat2(cos(ang), sin(ang), -sin(ang), cos(ang)) * dv;
+      // the cover's raised grid of studs, its frame, the gap between them, the tar ring the frame is set in
+      vec2 cg = abs(fract(rp * 14.0) - 0.5);
+      float stud = step(max(cg.x, cg.y), 0.28);
+      // cast iron worn by traffic: its studs polished paler, the cover rust-browner than the asphalt round it
+      vec3 iron = vec3(0.13, 0.105, 0.085) * (0.8 + 0.4 * along);
+      float cover = 1.0 - smoothstep(0.295 - rw, 0.295 + rw, rr);
+      float gap = smoothstep(0.29, 0.297, rr) * (1.0 - smoothstep(0.303, 0.31, rr));
+      float frame = smoothstep(0.305 - rw, 0.305 + rw, rr) * (1.0 - smoothstep(0.335 - rw, 0.335 + rw, rr));
+      float tar = smoothstep(0.335 - rw, 0.335 + rw, rr) * (1.0 - smoothstep(0.365 - rw, 0.37, rr));
+      vec3 c = mix(iron, vec3(0.2, 0.19, 0.18), stud * cover);
+      vec3 base = alb;
+      alb = mix(base, c, cover + frame);
+      alb = mix(alb, vec3(0.008), gap);
+      alb = mix(alb, base * 0.55, tar);
+      float metal = (cover + frame) * 0.6;
+      arm = vec3(mix(arm.r, 1.0, cover + frame), mix(arm.g, 0.5 - 0.15 * stud * cover, cover + frame), mix(arm.b, metal, cover + frame));
+      n = normalize(mix(n, N, clamp(cover + frame, 0.0, 1.0)));   // cast iron: flat, not the asphalt's grain
+    }
   }
   if (r > 0.0) {
     if (N.y > 0.5) {
-      // the way to the road on the top: down the distance's gradient (solved from the screen derivatives of place and distance)
-      mat2 m = mat2(px.x, py.x, px.z, py.z);
-      float det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
-      vec2 grad = abs(det) > 1e-10 ? inverse(m) * dd : vec2(0.0);
       if (d < r && length(grad) > 1e-6) {
         float a = asin(clamp(1.0 - d / r, 0.0, 1.0)) * 0.9;
         vec2 to = -normalize(grad);

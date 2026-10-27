@@ -50,6 +50,9 @@ export property TileDraw {
   surf_paved: string = ""            # tone is green, and elsewhere; "" for the plain tones
   tone_on: words = null              # 1 where a class has a tone
   mk_tile: words = null              # per mesh slot: the tile its coarse grid is of, -1 none read
+  lu_tex: words = null               # per mesh slot: its tile's lawn coverage (tmk_lawn), 0 none
+  lu_a: []byte = null                # tmk_lawn's working texels, res x res each
+  lu_b: []byte = null
   mk_has: words = null               # per mesh slot: 1 when that tile has a mask
   mk_coarse: []byte = null           # per mesh slot: the majority class of each mk_cf x mk_cf block
   mk_cf: int = 8
@@ -200,6 +203,11 @@ function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slo
   if not tmm_patch(ms, tm, slot, tx, tz, p.px, p.pz, lod, lift) { return false }
   let coloured = tmk_colours(render3d_st, td, slot, tx, tz, p.px, p.pz, lod)
   tmd_fill(render3d_st, td, p, coloured)
+  # the lawn's edge from the mask itself (tmk_lawn), not the vertex colour a whole cell wide
+  let pr = p.model.prims[0]
+  pr.lu = 0
+  if coloured and td.mk_tile[slot] == p.tile { pr.lu = td.lu_tex[slot] }
+  pr.lu_tx = float(tx);  pr.lu_tz = float(tz)
   if p.actor == null {
     p.actor = actor_new(render3d_st, p.model)
     p.actor.casts = false

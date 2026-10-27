@@ -33,6 +33,6 @@ void main() {
   o_albedo = vec4(d.rgb, 1.0);
   // the occlusion in the lower half; a material that has an alternative (a render wall some buildings wear as brick) marks its
   // texels with the top (oimp.frag u_imp_alt): its occlusion means nothing (its maps are laid by place, not these uvs)
-  bool alt = u_surf.x > 0.0 && u_s2.x > 0.0;
+  bool alt = u_surf.x > 0.0 && u_s2.x > 0.0 && u_s2_e.w < 0.5;   // a flat roof's gravel (u_s2_e.w) is not the card's alternative
   o_normal = vec4(N * 0.5 + 0.5, alt ? 1.0 : texture(u_arm, v_uv).r * 0.49);
 }

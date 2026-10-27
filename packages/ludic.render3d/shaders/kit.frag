@@ -10,7 +10,14 @@ in vec4 v_col;
 in float v_seed;
 in float v_h;
 in float v_top;
+#ifdef BAKE
+// the far card's bake (oimp_bake, with FACADE: a box kit's window grid in its frames): albedo, and the model-frame normal with the
+// occlusion (bake.frag's two targets, the same meaning)
+layout(location = 0) out vec4 o_albedo;
+layout(location = 1) out vec4 o_normal;
+#else
 out vec4 o_color;
+#endif
 uniform sampler2D u_diff;
 uniform vec4 u_fac_base_inv;
 uniform vec2 u_fac_mr_inv;
@@ -257,6 +264,12 @@ Fac facadeAt(vec3 ray) {
   float a = lu - gx0, b = yy - g0;
   // the sill: a lighter ledge under the opening
   if (!shop && b < 0.0 && b > -0.07 && a > -0.07 && a < gw + 0.07) { f.kind = 4; return f; }
+  // under a sill: rain off it in streaks down the wall, a hand to a stride apart, fading over a metre and a half; each building its own
+  if (!shop && b <= -0.07 && b > -1.5 && a > -0.03 && a < gw + 0.03) {
+    float st = surfNoise(vec2((a + float(ci) * 1.7) * 6.0, b * 0.6 + fract(v_seed * 3.7) * 37.0), 1024.0);
+    float fade = pow(1.0 - clamp((-b - 0.07) / 1.43, 0.0, 1.0), 1.6);
+    f.shade *= 1.0 - smoothstep(0.35, 0.8, st) * fade * (0.12 + 0.2 * fract(v_seed * 11.3 + 0.4));
+  }
   if (a < 0.0 || a > gw || b < 0.0 || b > gh) return f;
   // into the opening: the glass sits `reveal` behind the wall, so the ray meets its plane further on; short of it, the reveal
   float r = u_fac_b.w;
@@ -328,7 +341,9 @@ vec3 facadeRoom(Fac f, vec3 ray, float lod, float rays) {
 #endif
 
 void main() {
+#ifndef BAKE
   if (v_wpos.y < u_clip_y) discard;
+#endif
 #ifdef FACADE
   // nothing of a box instance is drawn past a party wall its flags name: a cornice's side or a corner block there would stand in the
   // neighbour's wall (z-fighting with its face) or hang on a taller neighbour's facade
@@ -338,7 +353,7 @@ void main() {
     if (((bl & 1) != 0 && v_lpos.x > hw.x) || ((bl & 2) != 0 && v_lpos.x < -hw.x) || ((bl & 4) != 0 && v_lpos.z > hw.y) || ((bl & 8) != 0 && v_lpos.z < -hw.y)) discard;
   }
 #endif
-#ifndef SHADOW_PASS
+#if !defined(SHADOW_PASS) && !defined(BAKE)
   if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
 #endif
   vec3 N = normalize(v_nrm);
@@ -362,8 +377,13 @@ void main() {
   // its tiles, so no two walls start their bricks at the same place), in place of the mesh's own maps
   if (u_surf.x > 0.0) {
     vec3 off = vec3(fract(v_seed * 13.7) * 37.0, fract(v_seed * 3.1) * 11.0, fract(v_seed * 7.31) * 23.0);
-    // a share of the instances (u_s2_e.y, by seed) wear the row's alternative (brick for render)
-    bool alt = u_s2.x > 0.0 && fract(v_seed * 91.7 + 0.31) < u_s2_e.y;
+    // a share of the instances (u_s2_e.y, by seed) wear the row's alternative (brick for render, gravel on a flat roof)
+    // a flat roof's alternative (u_s2_e.w) its own share of the buildings, on its near-level faces alone
+    bool levelOnly = u_s2_e.w > 0.5;
+    bool alt = u_s2.x > 0.0 && fract(v_seed * (levelOnly ? 53.3 : 91.7) + (levelOnly ? 0.77 : 0.31)) < u_s2_e.y && (!levelOnly || N.y > 0.9);
+#ifdef BAKE
+    alt = alt && levelOnly;   // a card is baked at one instance (seed 0): the wall's own surface, each card wearing the alternative's colour by its seed (oimp.frag)
+#endif
     SurfP P = alt ? surfSecond() : surfMain();
     vec3 q = surfPlace(P, v_wpos, v_uv, v_lpos + off);
     vec3 nq = (P.a.y == 2.0) ? normalize(v_lnrm) : N;
@@ -387,7 +407,14 @@ void main() {
   vec3 glow = vec3(0.0);
   // a bay smaller than a few pixels: the grid fades to the wall darkened by what its glass would take (no shimmer far off)
   float gone = smoothstep(0.12 * fa.bay, 0.35 * fa.bay, pxm);
+#ifdef BAKE
+  gone = 0.0;   // the card keeps the grid: its frames are drawn far smaller than the wall, and their mips do the fading
+#endif
   if (fa.kind == 1) {
+#ifdef BAKE
+    // far off, glass reads as the dull sky it reflects, a little darker than the wall: the card is lit as a rough surface
+    alb = vec3(0.085, 0.095, 0.11);
+#else
     vec3 v = normalize(u_cam_pos - v_wpos);
     float fres = 0.04 + 0.96 * pow(1.0 - max(dot(N, v), 0.0), 5.0);
     // the rooms fade to flat glass over the last half of their distance (no line where they stop)
@@ -397,6 +424,7 @@ void main() {
     n = N;
     ao = 1.0;
     glow = room * (1.0 - fres) * (1.0 - 0.6 * gone);
+#endif
   } else if (fa.kind == 2) {
     alb = mix(u_fac_e.rgb, alb * 0.7, gone);
   } else if (fa.kind == 3) {
@@ -425,6 +453,13 @@ void main() {
     glow = room.rgb * (1.0 - fres);
   }
 #endif
+#ifdef BAKE
+  // a material with an alternative (render some buildings wear as brick: oimp.frag u_imp_alt) marks its wall's texels, not its windows'
+  bool altTex = u_surf.x > 0.0 && u_s2.x > 0.0 && u_s2_e.w < 0.5 && fa.kind == 0;
+  o_albedo = vec4(alb, 1.0);
+  o_normal = vec4(N * 0.5 + 0.5, altTex ? 1.0 : ao * 0.49);
+  return;
+#else
   vec3 col = shade(v_wpos, n, alb, roughF, 0.0, ao, shadow, viewDepth);
 #if defined(INTERIOR_MAP) || defined(FACADE)
   col += glow;
@@ -432,4 +467,5 @@ void main() {
   col += u_fac_emis;
   col = applyFog(col, v_wpos, dist);
   o_color = vec4(sane(col), 1.0);
+#endif
 }
