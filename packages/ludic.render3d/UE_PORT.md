@@ -46,7 +46,7 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **Windows and glossy surfaces look darker.** They reflect the captured cube, and anything below the horizon reflects black;
   Unreal fills that from screen-space reflections or Lumen (not ported yet).
 - **The sky light needs Unreal's fog on** (it reads the fog's distant sky light for the capture's fog); with R3D_UE_FOG=0 it stays off.
-- **The capture runs every frame** (UeSkyLight.capture_interval 1, about 1 ms); Unreal time-slices it over frames. Raise the interval
+- **The capture runs every frame** (UeSkyLight.capture_interval 1; its cost is not measured yet, the whole gym frame stayed about 20 ms headless); Unreal time-slices it over frames. Raise the interval
   to save time.
 - **A darker band where the land meets the sky.** Unreal fogs sky pixels too (bFogOnlyOnRenderedOpaque false); far away the
   fog's colour wins, and with the sky atmosphere lighting the fog that colour is the distant sky light (the whole sky's average,
