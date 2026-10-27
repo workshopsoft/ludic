@@ -37,7 +37,47 @@ void main() {
   // then averages the frames - and this pass runs after the temporal resolve (it is applied in
   // the tonemap), so nothing does: it would be noise that changes every frame.
   float noise = ign(gl_FragCoord.xy);
-  float ao = 0.0;
+  // ---- the occlusion: Unreal's screen-space AO as forward shading has it (PostProcessAmbientOcclusion.usf, USE_NORMALS 0): six
+  // directions on the disc (OcclusionSamplesOffsets, SAMPLESET_ARRAY_SIZE 6), each a symmetric pair of depth samples at three steps
+  // (SAMPLE_STEPS 3, WedgeNoNormal), the horizon angle between the pair; a pair with a side far behind the pixel is no occlusion (its
+  // "fix concave case": a silhouette is not shadowed by what lies past it) and one with a side nearer than AmbientOcclusionDistance
+  // (0.8 m) in front counts for less (its "avoid halos around objects"); the radius in the world (RadiusInWS), turned per pixel
+  float ao;
+  {
+    const vec2 OFS[6] = vec2[6](vec2(0.000, 0.200), vec2(0.325, 0.101), vec2(0.272, -0.396), vec2(-0.385, -0.488), vec2(-0.711, 0.274), vec2(0.060, 0.900));
+    const int STEPS = 3;
+    const float INV_DIST = 1.0 / 0.8;           // AmbientOcclusionDistance 80 cm
+    const float FLAT_BIAS = 0.05;               // FlatSurfaceBias 5 cm
+    const float AO_RADIUS = 2.0;                // AmbientOcclusionRadius 200 cm
+    float z = -P.z;
+    float ang = noise * 6.2831853;
+    vec2 rv = vec2(cos(ang), sin(ang)) * AO_RADIUS;
+    // the radius on the screen at the pixel's depth (FovFixXY: the projection's scale over the depth), in uv
+    vec2 fov = vec2(u_proj[0][0], u_proj[1][1]) * 0.5 / z;
+    vec4 base = vec4(rv, -rv.y, rv.x) * vec4(fov, fov);
+    vec2 acc = vec2(0.0001);
+    for (int i = 0; i < 6; i++) {
+      vec2 lr = OFS[i].x * base.xy + OFS[i].y * base.zw;
+      vec2 la = vec2(0.0);
+      for (int st = 0; st < STEPS; st++) {
+        vec2 o = lr * (float(st + 1) / float(STEPS));
+        vec3 SL = viewPos(v_uv + o), SR = viewPos(v_uv - o);
+        vec3 dL = SL - P, dR = SR - P;
+        float nAng = clamp((1.0 - dot(dL, dR) * inversesqrt(max(dot(dL, dL) * dot(dR, dR), 1e-12))) * 0.5, 0.0, 1.0);
+        // left / right: the samples' depth in front of the pixel (Unreal's view z grows away from the eye)
+        float left = z - (-SL.z), right = z - (-SR.z);
+        if (left + right < FLAT_BIAS) nAng = 1.0;
+        float w = clamp(-SL.z * INV_DIST + 1.0 - z * INV_DIST, 0.0, 1.0) * clamp(-SR.z * INV_DIST + 1.0 - z * INV_DIST, 0.0, 1.0);
+        vec2 step = vec2((1.0 - nAng) / (w + 0.001), w);
+        la = mix(la, vec2(max(la.x, step.x), 1.0), step.y);
+      }
+      float open = 1.0 - la.x;
+      acc += vec2(open * open * la.y, la.y);
+    }
+    // AmbientOcclusionPower 2, then the intensity
+    ao = 1.0 - (1.0 - pow(clamp(acc.x / acc.y, 0.0, 1.0), 2.0)) * u_intensity;
+  }
+  // ---- the bounce: the lit colour of what rises over the pixel's hemisphere
   vec3 gi = vec3(0.0);
   float giW = 0.0;
   const int S = 8;
@@ -56,7 +96,6 @@ void main() {
     vec3 sp = viewPos(suv);
     float rangeCheck = smoothstep(0.0, 1.0, radius / max(abs(P.z - sp.z), 1e-3));
     bool occluded = sp.z >= s.z + 0.02 * radius + ANGLE_BIAS * r * radius * (0.2 + 0.8 * r);
-    ao += (occluded ? 1.0 : 0.0) * rangeCheck;
     // the occluder's lit colour bounces back toward P (weighted by how squarely it faces P)
     if (occluded) {
       vec3 toS = sp - P;
@@ -67,7 +106,6 @@ void main() {
       giW += 1.0;
     }
   }
-  ao = 1.0 - u_intensity * ao / float(S);
   // ---- CONTACT -----------------------------------------------------------------------
   // The occlusion above is tuned as AMBIENT occlusion: a wide radius that answers "how open
   // is the sky here". It is the right question and it leaves every object in the frame

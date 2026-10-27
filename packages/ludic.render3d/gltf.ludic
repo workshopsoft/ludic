@@ -21,8 +21,12 @@ property Prim {
   eye: floats,          # a MetaHuman face's eyes (model_set_eyes: model.frag EYE): the cells' u (left, right), top v, size, inset; or null
   etex: words,          # their six maps: sclera, normals, iris, iris normal, the cornea's height, the face's eye visibility
   hmap: int = 0,        # a MetaHuman face's own full-resolution head map (model_set_headmap: RGB its normal, A its roughness), or 0
-  inst_buf: int = 0,    # a head of hair's strand point records (model_set_strand_points): its mesh is a segment's quad, drawn per record
-  inst_n: int = 0       # the segments drawn (records - 1)
+  inst_buf: int = 0,    # a head of hair's strand points (model_set_strand_points): its mesh is a segment's quad, drawn per point
+  inst_n: int = 0,      # the segments drawn (one a point; a strand's last draws nothing)
+  st_cx: float = 0.0,   # the points' positions are relative to this (Unreal's PositionOffset, the groom's bounds' centre)
+  st_cy: float = 0.0,
+  st_cz: float = 0.0,
+  st_rmax: float = 0.0  # and their radii fractions of this (Unreal's HairStrandsVF.Radius)
 }
 property Model {
   prims:  []Prim,
