@@ -17,6 +17,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Atmosphere sun light (sun colour = outer illuminance x ground transmittance) | ue_skylight.ludic `ue_sunlight_on`, daylight.ludic `daylight_set` | `R3D_UE_SUNLIGHT=0`, `r3d_ue_sunlight` |
 | The hour's grade in Unreal's settings (lowest-priority unbound volume) | ue_post.ludic `ue_tod_grade`, daylight.ludic | `R3D_UE_HOUR_GRADE=0`, `r3d_ue_hour_grade` |
 | Local lights: point + spot (units, attenuation, cone), on surfaces and in the volumetric fog | ue_lights.ludic, lighting.glsl `ueLocalLights`, ue_volfog.frag | `R3D_UE_LIGHTS=0`, `r3d_ue_lights`; `R3D_LL` test lights |
+| Spot light shadow maps (legacy whole-scene: projection, per-light resolution and fade, bias, Manual5x5PCF; one compare in the fog) | ue_lightshadows.ludic, lighting.glsl `ueSpotShadow` / `ueSpotShadowVolume` | `R3D_UE_LIGHT_SHADOWS=0`, `r3d_ue_light_shadows`; `R3D_UE_LS_MAX` (lights a frame, at most 4), `R3D_UE_LS_RES` (r.Shadow.MaxResolution); settings `r3d_ue_light_shadow_settings` (Unreal's cvar names); per light ShadowBias / ShadowSlopeBias / ShadowSharpen / ShadowResolutionScale; `R3D_UE_LS_DEBUG=1` dumps the first map |
 | Volumetric fog (froxel grid: media, sun + sky light scattering, temporal, integration) | ue_volfog.ludic, ue_volfog.frag, ue_fog.frag | `R3D_UE_VOLFOG=0`, `r3d_ue_volfog`; `R3D_UE_FOG_DENSITY`, `R3D_UE_VOLFOG_G` for tuning; `R3D_UE_VOLFOG_DEBUG=1` shadow view |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
@@ -86,8 +87,17 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **Not ported in the volumetric fog:** local lights, light functions, the conservative depth test and its history fix-up,
   super-sampling on a history miss, local fog volumes, Lumen GI.
 
-- **Local lights are unshadowed.** CastShadows is kept on UeLocalLight but no shadow map is drawn yet: light passes through
-  walls (the test spot's pool runs under the box). Shadow maps for spot and point lights are the next piece.
+- **Spot lights cast; point lights don't yet.** A shadowed spot draws the casters into a layer of a depth array at Unreal's
+  per-light resolution (on-screen size x 2.55, power of two, at most 2048); point lights still shine through walls until the cube
+  maps are ported.
+- **Spot shadow bias is taken at the receiver.** Unreal's caster shader writes linear depth + bias; here the casters keep their own
+  programs (hardware depth from the same FShadowProjectionMatrix) and the receiver applies the same constant and slope bias, the
+  slope from the receiver's normal (Unreal does this for point lights). The fog compares against the bias-free depth. If thin
+  casters lose contact shadows or surfaces acne, tune ShadowBias / ShadowSlopeBias per light, as in Unreal.
+- **At most 4 shadowed spots a frame** (the nearest that pass the fade). Unreal packs any number into an atlas; each layer here is
+  16 MB at 2048. A night street with many shadowed lamps needs the atlas packing or VSM.
+- **Casters for local lights skip the sun's cascade rules** (band, proxies) and test against the light's sphere. The buildings
+  cast only what the camera's GPU cull kept, so a building off screen casts no spot shadow.
 - **No light grid yet.** Unreal culls lights into a clustered grid; here the 32 lights nearest the camera (within MaxDrawDistance)
   go to every draw. A city at night with hundreds of lamps needs the grid (or MegaLights).
 - **Light units are Unreal's, on our scene's scale.** Candela / d^2 in metres; Unreal's defaults (point 5000 Unitless = 8 cd,

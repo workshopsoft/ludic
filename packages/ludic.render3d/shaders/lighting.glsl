@@ -378,7 +378,7 @@ float g_dielF0 = 0.04;
 // direct + image-based lighting for one surface
 // ---- Unreal's local lights (ue_lights.ludic): point and spot lights in Unreal's units, attenuation and cone (UE 5.8
 // DeferredLightingCommon.ush GetLocalLightAttenuation, DynamicLightingCommon.ush SpotAttenuation, CapsuleLightIntegrate.ush
-// IntegrateLight with no source radius: 1 / (d^2 + DistBiasSqr), DistBiasSqr 1 cm^2), lit by the sun's BRDF, unshadowed for now.
+// IntegrateLight with no source radius: 1 / (d^2 + DistBiasSqr), DistBiasSqr 1 cm^2), lit by the sun's BRDF; spot lights shadowed by ueSpotShadow.
 // u_ll_pos: xyz position, w InvRadius (1 / AttenuationRadius); u_ll_col: rgb the light's colour x its intensity in candela,
 // w FalloffExponent (0: inverse squared); u_ll_dir: xyz the spot's direction, w CosOuterCone (-2: a point light);
 // u_ll_misc: x InvCosConeDifference, y SpecularScale, z DiffuseScale, w VolumetricScatteringIntensity.
@@ -410,6 +410,94 @@ float ueLocalLightAttenuation(int i, vec3 wpos, float distBiasSqr, out vec3 L) {
   }
   return mask;
 }
+// Spot light shadow maps (ue_lightshadows.ludic): u_ue_ls_m FShadowProjectionMatrix (with the inner and border scales);
+// u_ue_ls_a MinSubjectZ, MaxSubjectZ, DepthBias, SlopeDepthBias; u_ue_ls_b layer, tile / layer size, 1 / TransitionSize, fade
+// alpha; u_ue_ls_c ReceiverBias, ShadowSharpen x 7 + 1, MaxSlopeDepthBias, tile texels; u_ll_shidx a frame light's map (-1 none).
+#define LS_MAX 4
+uniform int u_ue_ls_n;
+uniform sampler2DArray u_ue_lsh;
+uniform mat4 u_ue_ls_m[LS_MAX];
+uniform vec4 u_ue_ls_a[LS_MAX];
+uniform vec4 u_ue_ls_b[LS_MAX];
+uniform vec4 u_ue_ls_c[LS_MAX];
+uniform float u_ll_shidx[LL_MAX];
+uniform float u_ue_ls_size;
+// the map holds FShadowProjectionMatrix's hardware depth; Unreal's caster writes the linear (z - MinZ) / (MaxZ - MinZ): turned back
+vec4 ueLsLinear(vec4 d, vec4 a) {
+  vec4 z = a.x * a.y / (d * (a.y - a.x) + a.x);
+  return (z - a.x) / (a.y - a.x);
+}
+// ShadowFilteringCommon.ush HorizontalPCF5x2
+vec2 ueHorizontalPCF5x2(vec2 f, vec4 v00, vec4 v20, vec4 v40) {
+  float r0 = v00.w * (1.0 - f.x);
+  float r1 = v00.x * (1.0 - f.x);
+  r0 += v00.z;  r1 += v00.y;
+  r0 += v20.w;  r1 += v20.x;
+  r0 += v20.z;  r1 += v20.y;
+  r0 += v40.w;  r1 += v40.x;
+  r0 += v40.z * f.x;  r1 += v40.y * f.x;
+  return vec2(r0, r1);
+}
+// CalculateShadowVisibilityTransmittanceFactor: saturate((ShadowmapDepth - SceneDepth) x TransitionScale + 1)
+vec4 ueLsGather(int s, vec2 pos, ivec2 off, float sceneDepth, float ts) {
+  vec4 d;
+  // textureGatherOffset needs a constant offset
+  if (off.y == -2) {
+    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(-2, -2));
+    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(0, -2));
+    else d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(2, -2));
+  } else if (off.y == 0) {
+    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(-2, 0));
+    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(0, 0));
+    else d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(2, 0));
+  } else {
+    if (off.x == -2) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(-2, 2));
+    else if (off.x == 0) d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(0, 2));
+    else d = textureGatherOffset(u_ue_lsh, vec3(pos, u_ue_ls_b[s].x), ivec2(2, 2));
+  }
+  return clamp((ueLsLinear(d, u_ue_ls_a[s]) - sceneDepth) * ts + 1.0, 0.0, 1.0);
+}
+// ShadowProjectionPixelShader at r.ShadowQuality 5: Manual5x5PCF, ShadowSharpen, ApplyPCFOverBlurCorrection, the fade
+float ueSpotShadow(int s, vec3 wpos, vec3 n, vec3 L, vec3 fwd) {
+  vec4 sp = u_ue_ls_m[s] * vec4(wpos, 1.0);
+  if (sp.w <= 0.0) return 1.0;
+  vec2 uv = sp.xy / sp.w * 0.5 + 0.5;
+  vec4 a = u_ue_ls_a[s];
+  // ShadowZ = 1 - ShadowPosition.z, the linear depth; min with 0.99999 so the cleared far plane reads lit
+  float shadowZ = min((sp.w - a.x) / (a.y - a.x), 0.99999);
+  // the caster's bias (ComputeDepthBiasDirectionalSpot: the slope against the light's axis), taken at the receiver
+  float nl = abs(dot(fwd, n));
+  float slope = nl > 0.0 ? clamp(sqrt(clamp(1.0 - nl * nl, 0.0, 1.0)) / nl, 0.0, u_ue_ls_c[s].z) : u_ue_ls_c[s].z;
+  float sceneDepth = shadowZ - (a.z + a.w * slope);
+  float ts = u_ue_ls_b[s].z * mix(u_ue_ls_c[s].x, 1.0, clamp(dot(n, L), 0.0, 1.0));
+  // Manual5x5PCF over the light's tile of the layer
+  vec2 texelPos = uv * u_ue_ls_c[s].w - 0.5;
+  vec2 f = fract(texelPos);
+  vec2 pos = (floor(texelPos) + 1.0) / u_ue_ls_size;
+  vec2 row0 = ueHorizontalPCF5x2(f, ueLsGather(s, pos, ivec2(-2, -2), sceneDepth, ts), ueLsGather(s, pos, ivec2(0, -2), sceneDepth, ts), ueLsGather(s, pos, ivec2(2, -2), sceneDepth, ts));
+  float res = row0.x * (1.0 - f.y) + row0.y;
+  vec2 row1 = ueHorizontalPCF5x2(f, ueLsGather(s, pos, ivec2(-2, 0), sceneDepth, ts), ueLsGather(s, pos, ivec2(0, 0), sceneDepth, ts), ueLsGather(s, pos, ivec2(2, 0), sceneDepth, ts));
+  res += row1.x + row1.y;
+  vec2 row2 = ueHorizontalPCF5x2(f, ueLsGather(s, pos, ivec2(-2, 2), sceneDepth, ts), ueLsGather(s, pos, ivec2(0, 2), sceneDepth, ts), ueLsGather(s, pos, ivec2(2, 2), sceneDepth, ts));
+  res += row2.x + row2.y * f.y;
+  float sh = 0.04 * res;
+  sh = clamp((sh - 0.5) * u_ue_ls_c[s].y + 0.5, 0.0, 1.0);
+  sh = sh * sh;
+  return mix(1.0, sh, u_ue_ls_b[s].w);
+}
+// ComputeVolumeShadowing's spot path: one sample, SceneDepth < ShadowDepth - DepthBias, unshadowed outside the map
+float ueSpotShadowVolume(int s, vec3 wpos) {
+  vec4 sp = u_ue_ls_m[s] * vec4(wpos, 1.0);
+  if (sp.w <= 0.0) return 1.0;
+  vec2 uv = sp.xy / sp.w * 0.5 + 0.5;
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return 1.0;
+  vec4 a = u_ue_ls_a[s];
+  float sceneDepth = (sp.w - a.x) / (a.y - a.x);
+  float d = textureLod(u_ue_lsh, vec3(uv * u_ue_ls_b[s].y, u_ue_ls_b[s].x), 0.0).r;
+  float shadowDepth = ueLsLinear(vec4(d), a).x;
+  // the bias-free depth here: Unreal's stored depth already holds the caster's DepthBias + slope term, of which this takes DepthBias back
+  return sceneDepth < shadowDepth ? 1.0 : 0.0;
+}
 vec3 ueLocalLights(vec3 wpos, vec3 n, vec3 v, vec3 albedo, float a, float metal, vec3 f0, float NoV) {
   vec3 c = vec3(0.0);
   for (int i = 0; i < LL_MAX; i++) {
@@ -418,6 +506,10 @@ vec3 ueLocalLights(vec3 wpos, vec3 n, vec3 v, vec3 albedo, float a, float metal,
     float att = ueLocalLightAttenuation(i, wpos, 0.0001, L);
     float NoL = max(dot(n, L), 0.0);
     if (att <= 0.0 || NoL <= 0.0) continue;
+    if (u_ue_ls_n > 0 && u_ll_shidx[i] >= 0.0) {
+      att *= ueSpotShadow(int(u_ll_shidx[i]), wpos, n, L, -u_ll_dir[i].xyz);
+      if (att <= 0.0) continue;
+    }
     vec3 H = normalize(v + L);
     vec3 F = F_Schlick(max(dot(v, H), 0.0), f0);
     vec3 spec = min(D_GGX(max(dot(n, H), 0.0), a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale * u_ll_misc[i].y;

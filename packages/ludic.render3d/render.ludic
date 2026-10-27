@@ -297,6 +297,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   ue_sky_luts(render3d_st)                  # Unreal's Sky Atmosphere LUTs (ue_sky.ludic), before any scene target is bound
   ue_skylight_pass(render3d_st)             # Unreal's real-time sky light capture and convolution (ue_skylight.ludic)
   if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "shadow");  shadow_pass(render3d_st);  prof_end(render3d_st) }
+  if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "spot shadows");  ue_lightshadows_pass(render3d_st);  prof_end(render3d_st) }   # Unreal's spot light shadow maps (ue_lightshadows.ludic)
   strands_shadow_pass(render3d_st)          # the grooms' own shadow map (strands.ludic), before the skin it falls on is drawn
   prof_cpu_mark(render3d_st, "shadow pass")
   if (render3d_st.water_on or render3d_st.wp_n > 0) and not render3d_st.r3d_no_refl and not render3d_st.r3d_env_no_refl and water_reflect_visible(render3d_st) { prof_begin(render3d_st, "water reflection");  water_reflection_pass(render3d_st);  prof_end(render3d_st) }

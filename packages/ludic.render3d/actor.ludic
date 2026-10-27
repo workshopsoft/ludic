@@ -655,6 +655,12 @@ function actor_draw_outline_one(render3d_st: mut Render3dState, a: Actor, ap: Ac
 # depth, only the draw. (Each actor used to draw into every cascade out to 300 m - in town that was
 # about 1500 skinned shadow draws a frame against 69 in the lit pass.)
 function ac_in_light(render3d_st: mut Render3dState, vp: floats, x: float, y: float, z: float, r: float) -> bool {
+  # a local light's perspective map (ue_lightshadows.ludic): inside its reach
+  if render3d_st.sh_local {
+    let dx = x - render3d_st.sh_local_x;  let dy = y - render3d_st.sh_local_y;  let dz = z - render3d_st.sh_local_z
+    let rr = render3d_st.sh_local_r + r
+    return dx * dx + dy * dy + dz * dz < rr * rr
+  }
   m4_xform_point(render3d_st.ac_lp0, vp, x, y, z)
   m4_xform_point(render3d_st.ac_lpx, vp, x + r, y, z)
   m4_xform_point(render3d_st.ac_lpy, vp, x, y + r, z)

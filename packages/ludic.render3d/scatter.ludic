@@ -740,9 +740,9 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
   # prefix offsets (in instances) per bucket
   let start = render3d_st.sc_lod_start
   var acc = 0
-  for k in 0 .. n + 2 { start[k] = acc;  acc += counts[k] }
+  for k in 0 .. n + 2 { start [k] = acc;  acc += counts[k] }
   let fill = render3d_st.sc_lod_fill
-  for k in 0 .. n + 2 { fill[k] = start[k] }
+  for k in 0 .. n + 2 { fill[k] = start [k] }
   let tmp = l.scratch
   for i in 0 .. total {
     let lv = l.lvl[i]
@@ -755,14 +755,14 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
   for k in 0 .. n {
     l.n_lod[k] = counts[k]
     if counts[k] > 0 {
-      gpu_buffer_upload(render3d_st, l.lod_buf[k], counts[k] * INST_FLOATS * 4, mem_off(tmp, start[k] * INST_FLOATS * 4), GPU_DYNAMIC)
+      gpu_buffer_upload(render3d_st, l.lod_buf[k], counts[k] * INST_FLOATS * 4, mem_off(tmp, start [k] * INST_FLOATS * 4), GPU_DYNAMIC)
     }
   }
   l.n_near = counts[0]
   l.n_far = counts[n]
   if render3d_st.sc_dbg_lod and total > 1000 { sc_debug_lods(render3d_st, l, counts, n, total, src) }
   if l.n_far > 0 {
-    gpu_buffer_upload(render3d_st, l.imp_buf, l.n_far * INST_FLOATS * 4, mem_off(tmp, start[n] * INST_FLOATS * 4), GPU_DYNAMIC)
+    gpu_buffer_upload(render3d_st, l.imp_buf, l.n_far * INST_FLOATS * 4, mem_off(tmp, start [n] * INST_FLOATS * 4), GPU_DYNAMIC)
   }
   # casters: the whole (gathered) set from the shadow buffer, unless the impostor casts
   if l.gcell == 0.0 {
@@ -882,7 +882,7 @@ function layer_level_casts_here(render3d_st: mut Render3dState, l: Layer, k: int
 # (layer_level_casts_here), and so does every actor (actor_draw_casters).
 function cast_band_reaches(render3d_st: mut Render3dState, dmin: float, dmax: float, height: float) -> bool {
   if render3d_st.sc_cast_all < 0 { render3d_st.sc_cast_all = 0;  if r3d_env_has(render3d_st, "R3D_CAST_ALL") { render3d_st.sc_cast_all = 1 } }
-  if render3d_st.sc_cast_all == 1 or render3d_st.sh_split == null { return true }
+  if render3d_st.sc_cast_all == 1 or render3d_st.sh_split == null or render3d_st.sh_local { return true }
   if render3d_st.sc_cast_gen != render3d_st.sc_view_gen {
     render3d_st.sc_cast_gen = render3d_st.sc_view_gen
     render3d_st.sc_cast_dy = Math.abs(render3d_st.cam_pos[1] - terrain_height(render3d_st, render3d_st.cam_pos[0], render3d_st.cam_pos[2])) + 5.0
@@ -1056,7 +1056,6 @@ function layer_draw_shadow(render3d_st: mut Render3dState, l: Layer, light_vp: f
   mesh_draw_instanced(render3d_st, render3d_st.sc_card, n)
 }
 
-
 # ---- the foliage depth prepass -----------------------------------------------------------
 # Exactly the instances and positions layer_draw_model will light (the same LOD buckets,
 # the same vertex shader, the same ground and wind), into depth only.
@@ -1163,7 +1162,6 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
   }
   prof_cpu_mark(render3d_st, "shadow scatter")
 }
-
 
 # ---------------------------------------------------------------------------
 # The distant-grass carpet: the clump cards rendered straight down into one tiling

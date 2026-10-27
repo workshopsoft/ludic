@@ -1,0 +1,47 @@
+# ue_lightshadows_test.ludic - Unreal's spot light shadow maps (ue_lightshadows.ludic) without a device: CalculateShadowFadeAlpha,
+# ClampShadowRolution, the power-of-two rounding less the border, and FShadowProjectionMatrix's reversed depth and cone.
+import "ludic.render3d/r3d.ludic"
+program UeLightShadowsTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "fade between the min and fade resolutions" {
+    expect_near(ue_ls_fade_alpha(100.0, 64, 32, 0.25), 1.0, 0.00001)
+    expect_near(ue_ls_fade_alpha(32.0, 64, 32, 0.25), 0.0, 0.00001)
+    expect_near(ue_ls_fade_alpha(64.0, 64, 32, 0.25), 1.0, 0.00001)    # the top of the range: (1 - first) / (1 - first)
+    let first = Math.pow(1.0 / 32.0, 0.25)
+    expect_near(ue_ls_fade_alpha(48.0, 64, 32, 0.25), (Math.pow(0.5, 0.25) - first) / (1.0 - first), 0.00001)
+  }
+
+  test "resolution scale before or after the clamp" {
+    expect_near(ue_ls_clamp_res(3000.0, 1.0, 2040.0), 2040.0, 0.0001)
+    expect_near(ue_ls_clamp_res(3000.0, 0.5, 2040.0), 1020.0, 0.0001)   # lowering: after the clamp
+    expect_near(ue_ls_clamp_res(1500.0, 2.0, 2040.0), 2040.0, 0.0001)   # raising: before it
+    expect(ue_ls_ceil_log2(301) == 9)
+    expect(ue_ls_ceil_log2(256) == 8)
+    expect(ue_ls_ceil_log2(1) == 0)
+  }
+
+  test "the projection: reversed linear range, the cone at the tile's edge" (render3d_st: mut Render3dState) {
+    render3d_st.ue_ls_m = floats(16 * 4)
+    render3d_st.ue_ls_m_v = m4_views(render3d_st.ue_ls_m, 4)
+    # a spot at (1, 5, 2) facing down, 30 degree outer cone, 10 m reach, no border
+    let t = Math.tan(30.0 * PI / 180.0)
+    ue_ls_matrix(render3d_st, 1, 1.0, 5.0, 2.0, 0.0, -1.0, 0.0, 1.0 / t, 1.0, 0.001, 10.0)
+    let m = render3d_st.ue_ls_m_v[1]
+    let q = floats(3)
+    # 3 m below the light: w = 3, depth = rz_depth
+    var w = m4_xform_point(q, m, 1.0, 2.0, 2.0)
+    expect_near(w, 3.0, 0.00001)
+    expect_near(q[2] / w, rz_depth(0.001, 10.0, 3.0), 0.000001)
+    expect_near(q[0] / w, 0.0, 0.00001)
+    # on the cone's edge 3 m down: |x| = 1 in NDC
+    w = m4_xform_point(q, m, 1.0 + 3.0 * t, 2.0, 2.0)
+    expect_near(Math.abs(q[0] / w) + Math.abs(q[1] / w), 1.0, 0.0001)
+    # the near and far planes
+    w = m4_xform_point(q, m, 1.0, 5.0 - 0.001, 2.0)
+    expect_near(q[2] / w, 1.0, 0.0001)
+    w = m4_xform_point(q, m, 1.0, -5.0, 2.0)
+    expect_near(q[2] / w, 0.0, 0.0001)
+  }
+}
