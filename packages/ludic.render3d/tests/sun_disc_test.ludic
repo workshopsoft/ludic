@@ -1,5 +1,7 @@
 # sun_disc_test.ludic - the sun the sky draws (sky.frag's analytic disc) is the real one: its direction follows the
-# site and the date whatever the light is clamped to, it is the colour the light is, and it is down when the sun is
+# site and the date whatever the light is clamped to, it is the colour the light is, and it is down when the sun is.
+# The light's colour is Unreal's atmosphere sun light by default (ue_skylight.ludic ue_sunlight_on); the photograph's
+# sun warmed by the air (solar_transmit) is what R3D_UE_SUNLIGHT=0 puts back, held by the tests on july_photo.
 import "ludic.render3d/r3d.ludic"
 program SunDiscTest {
   numbers float
@@ -15,6 +17,12 @@ program SunDiscTest {
     daylight_site(st, 39.0986, -106.9406, -6.0)
     daylight_date(st, 196.0)
     st.day_on = true
+    return st
+  }
+  # the same with Unreal's sun light off (R3D_UE_SUNLIGHT=0): the photograph's sun and the air's warming
+  function july_photo() -> Render3dState {
+    let st = july()
+    st.ue_sun_on = 0
     return st
   }
   function disc_el(st: Render3dState) -> float { return Math.rad_to_deg(Math.asin(st.sky_disc_dir[1])) }
@@ -39,7 +47,7 @@ program SunDiscTest {
   }
 
   test "a low sun is warm and dimmer than noon's: the disc takes the light's colour" {
-    let st = july()
+    let st = july_photo()
     daylight_set(st, 13.0)
     let noon = st.sky_disc_col[1]
     expect(noon > 1.0)
@@ -53,7 +61,7 @@ program SunDiscTest {
   function blue_red(st: Render3dState) -> float { return (st.sun_color[2] / 8.0) / (st.sun_color[0] / 9.0) }
 
   test "the air takes the blue first: white high up, a fifth of the blue gone at 21 degrees, near half at 11" {
-    let st = july()
+    let st = july_photo()
     daylight_set(st, 13.0)
     expect_near(blue_red(st), 1.0, 0.001)
     daylight_set(st, 18.5)
@@ -65,11 +73,34 @@ program SunDiscTest {
   }
 
   test "thin dry air warms a low sun less than the sea's" {
-    let st = july()
+    let st = july_photo()
     daylight_set(st, 19.4)
     let sea = blue_red(st)
     daylight_air(st, 0.7, 0.02)
     daylight_set(st, 19.4)
     expect(blue_red(st) > sea + 0.05)
+  }
+
+  # Unreal's: a white sun above the air times the atmosphere's transmittance on the ground. UE 5.8 on the PC,
+  # GetAtmosphereTransmitanceOnGroundAtPlanetTop for a white sun at 50 degrees: (0.904, 0.802, 0.652), red/green 1.13, blue/green 0.81
+  test "Unreal's sun at 51 degrees is the colour Unreal's atmosphere leaves of a white sun at 50" {
+    let st = july()
+    daylight_set(st, 10.5)
+    expect_near(disc_el(st), 51.1, 0.5)
+    expect_near(st.sun_color[0] / st.sun_color[1], 1.13, 0.01)
+    expect_near(st.sun_color[2] / st.sun_color[1], 0.81, 0.01)
+  }
+
+  test "Unreal's sun lower down is warmer and dimmer, and the disc is the light's colour" {
+    let st = july()
+    daylight_set(st, 10.5)
+    let g51 = st.sun_color[1]
+    let rg51 = st.sun_color[0] / st.sun_color[1]
+    daylight_set(st, 18.0)
+    expect(st.sun_color[1] < g51)
+    expect(st.sun_color[0] / st.sun_color[1] > rg51 + 0.05)
+    expect(st.sun_color[2] / st.sun_color[1] < 0.75)
+    expect_near(st.sky_disc_col[0], st.sun_color[0], 0.001)
+    expect_near(st.sky_disc_col[2], st.sun_color[2], 0.001)
   }
 }
