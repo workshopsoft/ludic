@@ -40,7 +40,11 @@ property UeVolFog {
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 export function r3d_volumetric_fog(render3d_st: mut Render3dState) -> UeVolFog {
-  if render3d_st.ue_vf_s == null { render3d_st.ue_vf_s = new UeVolFog }
+  if render3d_st.ue_vf_s == null {
+    render3d_st.ue_vf_s = new UeVolFog
+    # R3D_UE_VOLFOG_G=<g>: VolumetricFogScatteringDistribution for shots and tuning (Unreal's default 0.2)
+    if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_G") { render3d_st.ue_vf_s.scattering_distribution = ue_parse_float(r3d_env(render3d_st, "R3D_UE_VOLFOG_G")) }
+  }
   return render3d_st.ue_vf_s
 }
 export function r3d_ue_volfog(render3d_st: mut Render3dState, on: bool) -> void {
@@ -147,7 +151,7 @@ function ue_volfog_pass(render3d_st: mut Render3dState) -> void {
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "vf_vp"), render3d_st.cam_vp)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "vf_prev_vp"), render3d_st.ue_vf_prev_vp)
   var hist_on = 0.0
-  if vf.temporal_reprojection and render3d_st.ue_vf_hist_ok { hist_on = 1.0 }
+  if vf.temporal_reprojection and render3d_st.ue_vf_hist_ok and ue_vf_debug(render3d_st) < 0.5 { hist_on = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_hist_on"), hist_on)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_hist_weight"), vf.history_weight)
   # VolumetricFogTemporalRandom: Halton (2, 3, 5) of the frame with jitter and reprojection, else the cell's centre
@@ -175,6 +179,7 @@ function ue_volfog_pass(render3d_st: mut Render3dState) -> void {
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "vf_sky_color"), sl.light_color_r * ks, sl.light_color_g * ks, sl.light_color_b * ks)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_center_offset"), vf.grid_center_offset_from_depth_buffer)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_center_threshold"), vf.offset_threshold_to_accept_depth_buffer_offset)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_debug"), ue_vf_debug(render3d_st))
   let gz = render3d_st.ue_vf_gz
   for z in 0 .. gz {
     gpu_fb_bind(render3d_st, cur_fb[z])
@@ -213,10 +218,20 @@ function ue_volfog_bind(render3d_st: mut Render3dState, p: int) -> void {
   let vf = r3d_volumetric_fog(render3d_st)
   let zp = render3d_st.ue_vf_zp
   let px = float(max(vf.grid_pixel_size, 4))
-  r3d_bind_tex(render3d_st, p, "uf_vol", 3, GPU_TEX2D_ARRAY, render3d_st.ue_vf_i)
+  # the debug view shows this frame's scattering grid (the shadow factor) rather than the integrated one
+  var vol = render3d_st.ue_vf_i
+  if ue_vf_debug(render3d_st) > 0.5 { vol = render3d_st.ue_vf_a;  if not render3d_st.ue_vf_flip { vol = render3d_st.ue_vf_b } }
+  r3d_bind_tex(render3d_st, p, "uf_vol", 3, GPU_TEX2D_ARRAY, vol)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_debug"), ue_vf_debug(render3d_st))
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_grid"), float(render3d_st.ue_vf_gw), float(render3d_st.ue_vf_gh), float(render3d_st.ue_vf_gz))
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_zp"), zp[0], zp[1], zp[2])
   u_f2(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_uv"), float(render3d_st.post_w) / (float(render3d_st.ue_vf_gw) * px), float(render3d_st.post_h) / (float(render3d_st.ue_vf_gh) * px))
   u_f(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_dist"), vf.distance)
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "uf_fwd"), render3d_st.cam_fwd)
+}
+
+# R3D_UE_VOLFOG_DEBUG=1: the grid's sun shadow factor alone, shown at each pixel's depth in place of the scene (ue_fog.frag)
+function ue_vf_debug(render3d_st: mut Render3dState) -> float {
+  if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_DEBUG") and r3d_env(render3d_st, "R3D_UE_VOLFOG_DEBUG") == "1" { return 1.0 }
+  return 0.0
 }

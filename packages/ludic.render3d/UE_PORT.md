@@ -16,7 +16,7 @@ off switch, and its settings live in `UePost` (ue_post.ludic) under Unreal's nam
 | Real-time sky light (capture, GGX cube, SH diffuse) | ue_skylight.ludic, ue_skylight.frag, lighting.glsl `u_ue_sl` | `R3D_UE_SKYLIGHT=0`, `r3d_ue_skylight` |
 | Atmosphere sun light (sun colour = outer illuminance x ground transmittance) | ue_skylight.ludic `ue_sunlight_on`, daylight.ludic `daylight_set` | `R3D_UE_SUNLIGHT=0`, `r3d_ue_sunlight` |
 | The hour's grade in Unreal's settings (lowest-priority unbound volume) | ue_post.ludic `ue_tod_grade`, daylight.ludic | `R3D_UE_HOUR_GRADE=0`, `r3d_ue_hour_grade` |
-| Volumetric fog (froxel grid: media, sun + sky light scattering, temporal, integration) | ue_volfog.ludic, ue_volfog.frag, ue_fog.frag | `R3D_UE_VOLFOG=0`, `r3d_ue_volfog`; `R3D_UE_FOG_DENSITY` for tuning |
+| Volumetric fog (froxel grid: media, sun + sky light scattering, temporal, integration) | ue_volfog.ludic, ue_volfog.frag, ue_fog.frag | `R3D_UE_VOLFOG=0`, `r3d_ue_volfog`; `R3D_UE_FOG_DENSITY`, `R3D_UE_VOLFOG_G` for tuning; `R3D_UE_VOLFOG_DEBUG=1` shadow view |
 
 ## Behaviours to tune for the game (Unreal's, not bugs)
 
@@ -75,9 +75,13 @@ These are how Unreal's defaults behave on our scenes. Change them in the game's 
 - **Volumetric fog is on although Unreal's component default is off** (bEnableVolumetricFog false); the game asked for shafts.
   At Unreal's default density (0.02) it is a light haze; shafts want denser fog (R3D_UE_FOG_DENSITY to try). It replaces our old
   shaft pass (volumetric.frag). It costs about 5 ms a frame headless in the gym (80 frames 1.57 s -> 2.01 s; not profiled per pass).
-- **Shafts are not verified yet.** The fog is lit and scatters forward toward the sun as Unreal's does, but in the test shots
-  (density 0.4, 19:00, against the sun) shadowed wedges behind buildings are not clearly visible; the sun's shadow in the grid
-  (cascades, height-field, clouds) needs its own check. Lamp and headlight beams need general local lights, which are not ported.
+- **Shafts: the shadow works; Unreal's default medium hardly shows them.** R3D_UE_VOLFOG_DEBUG=1 shows the grid's sun shadow
+  factor at each pixel's depth: it matches the scene's shadows (19:00, the box's long shadow), so the cascades are sampled right.
+  At Unreal's VolumetricFogScatteringDistribution 0.2 the medium scatters nearly evenly, so toward the sun it glows far less than
+  the analytic fog's sun lobe (about 40 levels darker in the test frame) and shadow wedges have little to cut. With g 0.8 and
+  density 0.4 (R3D_UE_VOLFOG_G, R3D_UE_FOG_DENSITY) the sun's glow fills the air and buildings visibly cut it. For shafts in the
+  game: raise `scattering_distribution` (Unreal projects commonly use 0.6-0.9) and the density, per area with volumes later.
+  Lamp and headlight beams need general local lights, which are not ported.
 - **Not ported in the volumetric fog:** local lights, light functions, the conservative depth test and its history fix-up,
   super-sampling on a history miss, local fog volumes, Lumen GI.
 

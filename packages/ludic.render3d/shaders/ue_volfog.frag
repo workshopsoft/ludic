@@ -49,6 +49,7 @@ uniform float vf_sky_on;            // the sky light's SH is bound (u_irradiance
 uniform vec3 vf_sky_color;          // SkyLightColor x SkyLightVolumetricScatteringIntensity
 uniform float vf_center_offset;     // r.VolumetricFog.GridCenterOffsetFromDepthBuffer
 uniform float vf_center_threshold;  // r.VolumetricFog.OffsetThresholdToAcceptDepthBufferOffset
+uniform float vf_debug;             // R3D_UE_VOLFOG_DEBUG: 1 stores the sun's shadow factor alone (no history)
 
 // HenyeyGreensteinPhase (ParticipatingMediaCommon.ush): 1 + g^2 + 2 g cos
 float vfPhase(float g, float c) {
@@ -113,11 +114,10 @@ void main() {
   vec3 pos = vfCellPos(coord, off, sceneDepth);
   vec3 camVec = normalize(pos - vf_cam);
   vec3 L = vec3(0.0);
-  {
-    vec4 lzAmb;
-    float shadow = vfShadow(pos, sceneDepth) * (1.0 - lightZone(pos, lzAmb));     // no sun inside a light zone (tunnels)
-    L += vf_sun_color * shadow * vfPhase(vf_g, dot(vf_sun_dir, -camVec));
-  }
+  vec4 lzAmb;
+  float shadow = vfShadow(pos, sceneDepth) * (1.0 - lightZone(pos, lzAmb));       // no sun inside a light zone (tunnels)
+  if (vf_debug > 0.5) { o_color = vec4(vec3(shadow), 1.0);  return; }
+  L += vf_sun_color * shadow * vfPhase(vf_g, dot(vf_sun_dir, -camVec));
   if (vf_sky_on > 0.5) L += vf_sky_color * vfSkySHSimple(camVec * -vf_g);
   vec4 cur = vec4(L * scattering + vf_emissive, extinction);
   // temporal reprojection of the cell's centre into last frame's grid

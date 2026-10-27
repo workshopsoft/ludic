@@ -28,6 +28,7 @@ uniform vec3 uf_vol_zp;            // GridZParams
 uniform vec2 uf_vol_uv;            // the view's uv to the grid's (VolumetricFogSVPosToVolumeUV over the view)
 uniform float uf_vol_dist;         // VolumetricFogMaxDistance (m)
 uniform vec3 uf_fwd;               // the view's forward
+uniform float uf_vol_debug;        // R3D_UE_VOLFOG_DEBUG: show the grid's cell at the pixel's depth (the sun's shadow factor)
 const float UF_PI = 3.14159265358979;
 
 float ufLineIntegralShared(float falloff, float rayDirZ, float rayOriginTerms) {
@@ -143,6 +144,12 @@ void main() {
     float z0 = floor(zz);
     float z1 = min(z0 + 1.0, uf_vol_grid.z - 1.0);
     vec4 vol = mix(texture(uf_vol, vec3(guv, z0)), texture(uf_vol, vec3(guv, z1)), zz - z0);
+    if (uf_vol_debug > 0.5) {
+      // the cell just in front of the surface (Unreal's samples are pulled onto it), the scene replaced
+      float zd = clamp(floor(zs * uf_vol_grid.z) - 0.5, 0.0, uf_vol_grid.z - 1.0);
+      o_color = vec4(texture(uf_vol, vec3(guv, zd)).rgb, 0.0);
+      return;
+    }
     fog = vec4(vol.rgb + fog.rgb * vol.a, vol.a * fog.a);
   }
   o_color = vec4(sane(fog.rgb), clamp(fog.a, 0.0, 1.0));

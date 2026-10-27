@@ -1934,7 +1934,7 @@ T 7cf3f83a u_tershadow 9
 T 7cf3f83a u_tershadow_aux 10
 T 7cf3f83a u_ts_height 11
 P 22a9f6a8 fullscreen.vert ue_fog.frag 
-B 22a9f6a8 frag 1 2348
+B 22a9f6a8 frag 1 2352
 U 22a9f6a8 frag u_cascade_vp 0 mat4 5 64
 U 22a9f6a8 frag u_cascade_split 320 float 5 16
 U 22a9f6a8 frag u_cascade_range 400 float 5 16
@@ -2010,6 +2010,7 @@ U 22a9f6a8 frag uf_vol_zp 2304 vec3 1 0
 U 22a9f6a8 frag uf_vol_uv 2320 vec2 1 0
 U 22a9f6a8 frag uf_vol_dist 2328 float 1 0
 U 22a9f6a8 frag uf_fwd 2336 vec3 1 0
+U 22a9f6a8 frag uf_vol_debug 2348 float 1 0
 T 22a9f6a8 u_brdf 2
 T 22a9f6a8 u_depth 3
 T 22a9f6a8 u_hairsh 4
@@ -2562,7 +2563,7 @@ T d39e7116 u_ts_height 10
 T d39e7116 vf_hist 11
 T d39e7116 vf_scatter 12
 P 1d59230d fullscreen.vert ue_volfog.frag #define VF_SCATTER;
-B 1d59230d frag 1 2484
+B 1d59230d frag 1 2488
 U 1d59230d frag u_cascade_vp 0 mat4 5 64
 U 1d59230d frag u_cascade_split 320 float 5 16
 U 1d59230d frag u_cascade_range 400 float 5 16
@@ -2644,6 +2645,7 @@ U 1d59230d frag vf_sky_on 2460 float 1 0
 U 1d59230d frag vf_sky_color 2464 vec3 1 0
 U 1d59230d frag vf_center_offset 2476 float 1 0
 U 1d59230d frag vf_center_threshold 2480 float 1 0
+U 1d59230d frag vf_debug 2484 float 1 0
 T 1d59230d u_brdf 2
 T 1d59230d u_depth 3
 T 1d59230d u_hairsh 4
