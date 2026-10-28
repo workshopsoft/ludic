@@ -686,6 +686,9 @@ void main() {
     // two surfaces: the ground's (its second's share 0), or a world-laid mesh's alternative in patches (a kit's alternative,
     // by instance, is kit.frag's: a model in a kit's material keeps the first alone)
     bool ground = u_s2.x > 0.0 && u_s2_e.y == 0.0;
+    // R3D_STATIC_FAR_SIMPLE (u_surf_q.w 0): the normal below is the geometric one from 120 m on (smoothstep(30, 120, dist)), so the
+    // surfaces' normal maps are not read there
+    if (u_surf_q.w < 0.5) g_surf_flat_at = 120.0;
     if (ground || (u_s2.x > 0.0 && u_surf.y < 0.5)) surfaceGround(u_diff, u_nrm, u_arm, v_wpos, N, base, v_uv, sa, sn, sr);
     else surfaceAtP(u_diff, u_nrm, u_arm, surfMain(), surfPlace(surfMain(), v_wpos, v_uv, v_wpos), N, N, v_wpos, base, sa, sn, sr);
     d.rgb = (u_surf_b.x > 0.5 || ground) ? sa : sa * v_col.rgb;

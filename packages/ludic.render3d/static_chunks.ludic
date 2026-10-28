@@ -183,6 +183,28 @@ function stc_box_in_view(render3d_st: Render3dState, x: float, y: float, z: floa
   return true
 }
 
+# Unreal's screen radius of a box b (SceneVisibility.cpp: ScreenRadius = max(0.5 ProjMatrix[0][0], 0.5 ProjMatrix[1][1]) x the bounds'
+# sphere radius / the distance to its centre, at least 1): a fraction of the half screen
+function stc_screen_radius(render3d_st: Render3dState, b: floats) -> float {
+  let pm = render3d_st.cam_proj
+  if pm == null { return 1.0 }
+  let dx = b[0] - render3d_st.cam_pos[0];  let dy = b[1] - render3d_st.cam_pos[1];  let dz = b[2] - render3d_st.cam_pos[2]
+  let d = Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 1.0)
+  return Math.max(0.5 * Math.abs(pm[0]), 0.5 * Math.abs(pm[5])) * stc_radius(b) / d
+}
+# R3D_STATIC_MIN_PX (0.75 by default; 0 off): a box whose sphere is under that many pixels in radius on the render target is not drawn
+# in view (Unreal's cull distance volume, ACullDistanceVolume CullDistances: a size's draw distance; here the distance at which it is
+# under a pixel and a half across: a house number, a name blade, a lamp far off); a shadow caster keeps its own rule
+function stc_tiny(render3d_st: mut Render3dState, b: floats) -> bool {
+  if render3d_st.stc_min_px < 0.0 {
+    render3d_st.stc_min_px = 0.75
+    if r3d_env_has(render3d_st, "R3D_STATIC_MIN_PX") { render3d_st.stc_min_px = Math.max(Text.to_float(r3d_env(render3d_st, "R3D_STATIC_MIN_PX")), 0.0) }
+  }
+  if render3d_st.stc_min_px <= 0.0 or render3d_st.post_h <= 0 { return false }
+  # the fraction of the half screen times the half height is pixels of radius; the NDC's 2 across H pixels: x H / 2 x 2
+  return stc_screen_radius(render3d_st, b) * float(render3d_st.post_h) < render3d_st.stc_min_px
+}
+
 # is actor a drawn in this view: shown, within the fog wall and its draw distance, not hidden behind the scene last frame (when `occ`),
 # its box in view (in the water's reflection, its mirror image's). Its box is left in stc_b.
 function stc_in_view(render3d_st: mut Render3dState, a: Actor, occ: bool) -> bool {
@@ -191,6 +213,7 @@ function stc_in_view(render3d_st: mut Render3dState, a: Actor, occ: bool) -> boo
   stc_bounds(a, b)
   if r3d_beyond_fog(render3d_st, b[0], b[1], b[2], stc_radius(b)) { return false }
   if a.cull > 0.0 and stc_far(render3d_st, b) > a.cull { return false }
+  if stc_tiny(render3d_st, b) { return false }
   if occ and occ_hidden(render3d_st, a) { return false }
   var cy = b[1]
   if render3d_st.ter_reflect { cy = 2.0 * render3d_st.water_level - cy }
@@ -382,6 +405,96 @@ function static_chunks_draw(render3d_st: mut Render3dState) -> void {
     render3d_st.stc_tris = tris
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { static_chunks_census(render3d_st) }
   }
+}
+
+# ---- the depth prepass (R3D_STATIC_PREPASS) -------------------------------------------------------------------------------------------
+
+# Unreal draws the opaque static meshes' depth before the base pass (r.EarlyZPass: DepthRendering.cpp FDepthPassMeshProcessor, its
+# DDM_NonMaskedOnly / DDM_AllOpaque modes; a mesh under r.MinScreenRadiusForDepthPrepass, 0.03 of the half screen, left out:
+# SceneVisibility.cpp ComputeDynamicMeshRelevance / the cached commands' bUseForDepthPass), so a pixel of what is behind them (the
+# ground's patches under a road, a road behind a wall, a road under its paint) is rejected before it is shaded. Here the bucket's
+# opaque commands, in view in the main view, lay down their depth before the scene is drawn: no colour, the lit pass's own discards
+# (depth.frag OPAQUE_DEPTH: the clip plane, the fog wall's dissolve), each actor's own face culling and hidden primitives, the
+# cut-outs left out. Its depth is biased a little away from the camera (slope-scaled, as the water's), so the lit pass's own triangle
+# passes its normal nearer-than test over it whatever the two programs' rounding (no equal test, nothing that can z-fight), and so
+# nothing the prepass lays can hide what was in front of or level with the static draw before (a coplanar ground still wins as
+# before). The lit pass draws the same commands after it. R3D_STATIC_PREPASS=0 turns it off.
+const STC_PRE_BIAS_F: fixed = -1.0     # slope factor, reversed depth: toward 0 (away from the camera)
+const STC_PRE_BIAS_U: fixed = -2.0
+const STC_PRE_MIN_SR: float = 0.03     # Unreal's r.MinScreenRadiusForDepthPrepass
+
+function stc_pre_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.stc_pre_mode < 0 {
+    render3d_st.stc_pre_mode = 1
+    if r3d_env_has(render3d_st, "R3D_STATIC_PREPASS") and r3d_env(render3d_st, "R3D_STATIC_PREPASS") == "0" { render3d_st.stc_pre_mode = 0 }
+  }
+  return render3d_st.stc_pre_mode == 1
+}
+# R3D_STATIC_LAST (on unless 0): the game draws the bucket's lit pass after its other opaque parts (the buildings, the layers), as
+# Unreal's base pass draws every opaque mesh after the depth prepass has them all: a road's pixel behind a building is then rejected
+# by the building's depth before it is shaded, and the prepass already has the bucket's depth in for what is drawn before it
+export function static_chunks_last(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.stc_last_mode < 0 {
+    render3d_st.stc_last_mode = 1
+    if r3d_env_has(render3d_st, "R3D_STATIC_LAST") and r3d_env(render3d_st, "R3D_STATIC_LAST") == "0" { render3d_st.stc_last_mode = 0 }
+  }
+  return render3d_st.stc_last_mode == 1
+}
+@alloc_ok("the static prepass's program: made once, at its first frame")
+function stc_pre_make(render3d_st: mut Render3dState) -> void {
+  render3d_st.stc_pre = ac_prog_new(render3d_st, "skin.vert", "depth.frag", "#define OPAQUE_DEPTH\n")
+}
+
+# The bucket's opaque depth for the main view (the scene callback, first, before the actors: the game's ot_draw_scene). Nothing in
+# the water's reflection (its own clip plane and mirror) nor with the bucket off.
+export function static_chunks_prepass(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.stc_actors
+  render3d_st.stc_pre_draws = 0
+  if l == null or len(l) == 0 or render3d_st.ter_reflect or not stc_pre_on(render3d_st) { return }
+  if render3d_st.stc_pre == null { stc_pre_make(render3d_st) }
+  let ap = render3d_st.stc_pre
+  if ap == null or ap.prog == 0 { return }
+  stc_build_if(render3d_st)
+  render3d_st.stc_pass += 1
+  let pass = render3d_st.stc_pass
+  var any = false
+  let b = render3d_st.stc_b
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if a.cutout or not stc_in_view(render3d_st, a, true) { continue }
+    # (stc_in_view left its box in stc_b)
+    if stc_screen_radius(render3d_st, b) < STC_PRE_MIN_SR { continue }
+    a.stc_vis = pass
+    any = true
+  }
+  if not any { return }
+  ac_bind_scene(render3d_st, ap)
+  gpu_use_program(render3d_st, ap.prog)
+  u_f(render3d_st, ap.l_skin, 0.0)
+  gpu_color_write(render3d_st, false)
+  gpu_depth_bias(render3d_st, STC_PRE_BIAS_F, STC_PRE_BIAS_U)
+  var last_a: Actor = null
+  var draws = 0
+  for i in 0 .. render3d_st.stc_cmd_n {
+    let a = render3d_st.stc_cmd_a[i]
+    if a == null or a.stc_vis != pass { continue }
+    let p = render3d_st.stc_cmd_p[i]
+    let m = a.model
+    if m == null or p >= len(m.prims) { continue }
+    if a.hide != null and a.hide[p] != 0 { continue }
+    if a != last_a {
+      last_a = a
+      u_mat4(render3d_st, ap.l_model, a.mat)
+      gpu_cull(render3d_st, a.one_sided)            # as the lit pass culls it: a face it does not draw lays no depth
+    }
+    mesh_draw(render3d_st, m.prims[p].mesh)
+    draws += 1
+  }
+  gpu_cull(render3d_st, true)
+  gpu_depth_bias(render3d_st, 0.0, 0.0)
+  gpu_color_write(render3d_st, true)
+  render3d_st.stc_pre_draws = draws
+  render3d_st.stc_pre_frame = render3d_st.ac_frame
 }
 
 # The static casters into the light light_vp (the casters callback, beside actor_draw_casters): every pass but the moving one over the

@@ -1076,6 +1076,17 @@ uniform vec4 u_s2_e;
 uniform sampler2D u_s2_diff;
 uniform sampler2D u_s2_nrm;
 uniform sampler2D u_s2_arm;
+// The surfaces' shading-cost switches (surface.ludic surf_bind; 0 on, so a program that never sets them has them on): x the parallax
+// marched in as many steps as its reach on screen needs and not at all under half a pixel (R3D_SURF_POM_ADAPT), y two surfaces' each
+// read only where its weight is not 0 (R3D_SURF_ALT_SKIP), z the anti-tiling's second tap read only where it shows (R3D_SURF_ANTI_SKIP),
+// w the normal maps not read where the caller flattens the normal anyway (R3D_STATIC_FAR_SIMPLE: g_surf_flat_at). None changes a
+// pixel beyond the half-pixel parallax cut: what is skipped is weighted 0. Unreal keeps such work apart by its material quality and
+// LOD materials (MaterialShared.h EMaterialQualityLevel, r.MaterialQualityLevel) and lerps a POM's steps between MinSteps and MaxSteps
+// (Engine/Content/Functions/Engine_MaterialFunctions01/Texturing/ParallaxOcclusionMapping).
+uniform vec4 u_surf_q;
+// metres from the camera past which a caller lays the geometric normal over the surface's (model.frag: smoothstep(30, 120, dist)
+// leaves nothing of it at 120 m), so the surfaces' normal maps need not be read there; never by default (kit.frag)
+float g_surf_flat_at = 1e30;
 uniform sampler2D u_lu;  // the ground's lawn coverage of the patch's tile (tilemap_mask.ludic tmk_lawn): 1 lawn, 0 paving, its edge softened
 uniform vec4 u_lu_on;    // x 1: read it (0: the vertex colour decides), y z the tile's place in the uvs' tile grid
 struct SurfP { vec4 a; vec4 b; vec4 c; vec4 d; vec4 e; };
@@ -1100,13 +1111,26 @@ mat3 surfFrame(vec3 N, vec3 dp1, vec3 dp2, vec2 duv1, vec2 duv2) {
 vec2 surfParallax(sampler2D d, vec2 uv, vec2 dx, vec2 dy, vec3 vt, float depth) {
   if (depth <= 0.0) return uv;
   const int N = 16;
-  float layer = 1.0 / float(N);
-  vec2 step = -vt.xy / max(vt.z, 0.2) * depth * layer;
+  vec2 reach = -vt.xy / max(vt.z, 0.2) * depth;      // the march's whole length, in tiles
+  int n = N;
+  if (u_surf_q.x < 0.5) {
+    // R3D_SURF_POM_ADAPT: that length in screen pixels (through the inverse of the tiles' screen Jacobian: dx, dy are tiles a pixel).
+    // Under half a pixel the relief moves nothing a pixel shows (a road's 6 mm past a few metres): no march. Above it, four steps a
+    // pixel of reach (each step's error under a quarter pixel), 4 .. 16.
+    float det = dx.x * dy.y - dy.x * dx.y;
+    if (abs(det) < 1e-20) return uv;
+    vec2 px = vec2(dy.y * reach.x - dy.x * reach.y, dx.x * reach.y - dx.y * reach.x) / det;
+    float rp = length(px);
+    if (rp < 0.5) return uv;
+    n = int(clamp(ceil(rp * 4.0), 4.0, float(N)));
+  }
+  float layer = 1.0 / float(n);
+  vec2 step = reach * layer;
   vec2 p = uv;
   float cur = 0.0;
   float h = 1.0 - textureGrad(d, p, dx, dy).a;
   for (int i = 0; i < N; ++i) {
-    if (cur >= h) break;
+    if (i >= n || cur >= h) break;
     p += step;
     cur += layer;
     h = 1.0 - textureGrad(d, p, dx, dy).a;
@@ -1118,18 +1142,28 @@ vec2 surfParallax(sampler2D d, vec2 uv, vec2 dx, vec2 dy, vec3 vt, float depth) 
   return mix(p, prev, clamp(w, 0.0, 1.0));
 }
 // one projection: uv in tiles, its screen derivatives; the albedo, the tangent-space normal and AO/roughness/metal
-void surfTap(sampler2D d, sampler2D nm, sampler2D am, float anti, vec2 uv, vec2 dx, vec2 dy, vec3 vt, float depth,
+// (wantN false: the normal map is not read, tn flat)
+void surfTap(sampler2D d, sampler2D nm, sampler2D am, float anti, vec2 uv, vec2 dx, vec2 dy, vec3 vt, float depth, bool wantN,
              out vec3 alb, out vec3 tn, out vec3 arm) {
   float k = surfNoise(uv * 0.25, 256.0) * 8.0 * anti;
   float i = floor(k), f = fract(k);
   vec2 oa = sin(vec2(3.0, 7.0) * i), ob = sin(vec2(3.0, 7.0) * (i + 1.0));
   // the parallax found once, on the first tap's place, and moved with both
   uv += surfParallax(d, uv + oa, dx, dy, vt, depth) - (uv + oa);
+  bool skip = u_surf_q.z < 0.5;
   vec3 a1 = textureGrad(d, uv + oa, dx, dy).rgb;
-  vec3 a2 = textureGrad(d, uv + ob, dx, dy).rgb;
+  // (no anti-tiling: the second tap is weighted 0, and with R3D_SURF_ANTI_SKIP not read)
+  vec3 a2 = (anti <= 0.0 && skip) ? a1 : textureGrad(d, uv + ob, dx, dy).rgb;
   float w = (anti <= 0.0) ? 0.0 : smoothstep(0.2, 0.8, f - 0.1 * dot(a1 - a2, vec3(1.0)));
   alb = mix(a1, a2, w);
-  tn = mix(textureGrad(nm, uv + oa, dx, dy).rgb, textureGrad(nm, uv + ob, dx, dy).rgb, w) * 2.0 - 1.0;
+  if (skip && (w <= 0.0 || w >= 1.0)) {
+    // R3D_SURF_ANTI_SKIP: one tap's weight is 0 (mix gives the other exactly): its normal and ARM not read
+    vec2 u1 = uv + ((w >= 1.0) ? ob : oa);
+    tn = wantN ? textureGrad(nm, u1, dx, dy).rgb * 2.0 - 1.0 : vec3(0.0, 0.0, 1.0);
+    arm = textureGrad(am, u1, dx, dy).rgb;
+    return;
+  }
+  tn = wantN ? mix(textureGrad(nm, uv + oa, dx, dy).rgb, textureGrad(nm, uv + ob, dx, dy).rgb, w) * 2.0 - 1.0 : vec3(0.0, 0.0, 1.0);
   arm = mix(textureGrad(am, uv + oa, dx, dy).rgb, textureGrad(am, uv + ob, dx, dy).rgb, w);
 }
 // the place in tiles of world point wp / the mesh's uv / the kit's frame point lp (+ a seed's offset), for the surface P
@@ -1140,13 +1174,16 @@ vec3 surfPlace(SurfP P, vec3 wp, vec2 uv, vec3 lp) {
 }
 // surface P at q (tiles, in the mapping's frame) with that frame's normal nq; N, wp the world normal and position (their
 // derivatives give the tangent frames); base the material's colour (tone). Out: albedo, world normal, ao/roughness/metal.
-void surfaceAtP(sampler2D d, sampler2D nm, sampler2D am, SurfP P, vec3 q, vec3 nq, vec3 N, vec3 wp, vec3 base,
-                out vec3 alb, out vec3 n, out vec3 arm) {
-  vec3 dqx = dFdx(q), dqy = dFdy(q);
-  vec3 dpx = dFdx(wp), dpy = dFdy(wp);
+// surfaceAtPd: the same with the screen derivatives of q and wp given (taken by the caller before any branch: a surface read only
+// where it shows, surfaceGround)
+void surfaceAtPd(sampler2D d, sampler2D nm, sampler2D am, SurfP P, vec3 q, vec3 dqx, vec3 dqy, vec3 nq, vec3 N, vec3 wp,
+                 vec3 dpx, vec3 dpy, vec3 base, out vec3 alb, out vec3 n, out vec3 arm) {
   vec3 V = normalize(u_cam_pos - wp);
+  float dist = length(u_cam_pos - wp);
   // the depth fades out by 25 m (a pixel there spans more than the relief)
-  float depth = P.e.x * (1.0 - smoothstep(12.0, 25.0, length(u_cam_pos - wp)));
+  float depth = P.e.x * (1.0 - smoothstep(12.0, 25.0, dist));
+  // R3D_STATIC_FAR_SIMPLE: past where the caller lays the geometric normal over this one, the normal maps are not read
+  bool wantN = dist < g_surf_flat_at;
   vec3 w = (P.a.y == 1.0) ? vec3(0.0, 0.0, 1.0) : pow(abs(nq), vec3(8.0));
   w /= max(w.x + w.y + w.z, 1e-5);
   alb = vec3(0.0);  arm = vec3(0.0);
@@ -1161,12 +1198,16 @@ void surfaceAtP(sampler2D d, sampler2D nm, sampler2D am, SurfP P, vec3 q, vec3 n
     vec2 ux  = (a == 0) ? dqx.zy : ((a == 1) ? dqx.xz : dqx.xy);
     vec2 uy  = (a == 0) ? dqy.zy : ((a == 1) ? dqy.xz : dqy.xy);
     vec3 ta, tt, tr;
-    mat3 tbn = surfFrame(N, dpx, dpy, ux, uy);
-    vec3 vt = vec3(dot(V, normalize(tbn[0])), dot(V, normalize(tbn[1])), dot(V, N));
-    surfTap(d, nm, am, P.b.y, uv, ux, uy, vt, depth, ta, tt, tr);
+    mat3 tbn = mat3(1.0);
+    vec3 vt = vec3(0.0, 0.0, 1.0);
+    if (wantN || depth > 0.0) {
+      tbn = surfFrame(N, dpx, dpy, ux, uy);
+      vt = vec3(dot(V, normalize(tbn[0])), dot(V, normalize(tbn[1])), dot(V, N));
+    }
+    surfTap(d, nm, am, P.b.y, uv, ux, uy, vt, depth, wantN, ta, tt, tr);
     tt.y *= gs;
     tt.xy *= str;
-    nsum += wa * normalize(tbn * tt);
+    nsum += wa * (wantN ? normalize(tbn * tt) : N);
     alb += wa * ta;
     arm += wa * tr;
   }
@@ -1182,22 +1223,30 @@ void surfaceAtP(sampler2D d, sampler2D nm, sampler2D am, SurfP P, vec3 q, vec3 n
   alb = max(mix(vec3(l), alb, P.d.y), vec3(0.0)) * P.d.x;
   arm.g = clamp(arm.g * P.d.z, 0.02, 1.0);
 }
+void surfaceAtP(sampler2D d, sampler2D nm, sampler2D am, SurfP P, vec3 q, vec3 nq, vec3 N, vec3 wp, vec3 base,
+                out vec3 alb, out vec3 n, out vec3 arm) {
+  surfaceAtPd(d, nm, am, P, q, dFdx(q), dFdy(q), nq, N, wp, dFdx(wp), dFdy(wp), base, alb, n, arm);
+}
 SurfP surfMain() { return SurfP(u_surf, u_surf_b, u_surf_c, u_surf_d, u_surf_e); }
 SurfP surfSecond() { return SurfP(u_s2, u_s2_b, u_s2_c, u_s2_d, u_s2_e); }
 // two surfaces blended: the ground's (u_s2_e.y 0) the first where the vertex colour (the land-use tone) is green, the second (paving)
 // elsewhere, the edge broken by a noise a metre or so across; a mesh's alternative (u_s2_e.y its share, .z its patch's metres: a
 // worn asphalt, a marking's paint worn through) the second over that share of the surface, in patches with a ragged edge
+// (R3D_SURF_ALT_SKIP: the weight first, then each surface read only where its weight is not 0 - mix gives the other exactly - with
+// every derivative taken before the branch; the patches' ragged edges, where both are read, are a few percent of the area)
 void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec3 col, vec2 uv, out vec3 alb, out vec3 n, out vec3 arm) {
   SurfP A = surfMain(), B = surfSecond();
-  vec3 a1, n1, r1, a2, n2, r2;
-  surfaceAtP(d, nm, am, A, surfPlace(A, wp, uv, wp), N, N, wp, col, a1, n1, r1);
+  vec3 a1 = vec3(0.0), n1 = N, r1 = vec3(0.0), a2 = vec3(0.0), n2 = N, r2 = vec3(0.0);
+  vec3 qa = surfPlace(A, wp, uv, wp), qb = surfPlace(B, wp, uv, wp);
+  vec3 qax = dFdx(qa), qay = dFdy(qa), qbx = dFdx(qb), qby = dFdy(qb);
+  vec3 dpx = dFdx(wp), dpy = dFdy(wp);
   // the ground's paving takes the land use's tone, but no brighter than the sidewalk's concrete (a pale map colour would blow out in
   // the sun); a mesh's alternative takes the colour as it is
   float cl = dot(col, vec3(0.2126, 0.7152, 0.0722));
   vec3 col2 = B.e.y > 0.0 ? col : col * min(1.0, 0.18 / max(cl, 1e-3));
   // where the lawn texture says paving, a green the vertex colour drew in from a lawn a cell away (or a sliver taken out) is not paving's
   if (B.e.y == 0.0 && u_lu_on.x > 0.5) col2 = mix(col2, vec3(dot(col2, vec3(0.2126, 0.7152, 0.0722))), clamp((col.g - max(col.r, col.b)) * 25.0, 0.0, 1.0));
-  surfaceAtP(u_s2_diff, u_s2_nrm, u_s2_arm, B, surfPlace(B, wp, uv, wp), N, N, wp, col2, a2, n2, r2);
+  bool all2 = u_surf_q.y > 0.5;
   float w;
   if (B.e.y > 0.0) {
     // world metres from the first's own origin offset (whole 1024-tile spans: a rebase moves no patch)
@@ -1213,6 +1262,8 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     float aa = max(fwidth(v), 1e-4);
     w = smoothstep(0.5 - aa, 0.5 + aa, v);
     float soil = w * (1.0 - smoothstep(0.5, 0.56 + aa, v));
+    if (all2 || w > 0.0) surfaceAtPd(d, nm, am, A, qa, qax, qay, N, N, wp, dpx, dpy, col, a1, n1, r1);
+    if (all2 || w < 1.0) surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, col2, a2, n2, r2);
     vec3 mixed = mix(a2, a1, w);
     alb = mix(mixed, mixed * vec3(0.55, 0.5, 0.42), soil * 0.7);
     n = normalize(mix(n2, n1, w));
@@ -1224,6 +1275,8 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     // a narrow step: the vertex colour runs between land uses over a whole triangle, so a wide one smears a lawn's edge metres wide
     w = smoothstep(0.036, 0.044, green + e * 0.012);
   }
+  if (all2 || w > 0.0) surfaceAtPd(d, nm, am, A, qa, qax, qay, N, N, wp, dpx, dpy, col, a1, n1, r1);
+  if (all2 || w < 1.0) surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, col2, a2, n2, r2);
   alb = mix(a2, a1, w);
   n = normalize(mix(n2, n1, w));
   arm = mix(r2, r1, w);

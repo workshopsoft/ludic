@@ -90,6 +90,7 @@ skin.vert|model.frag|#define FABRIC;#define ALPHA_TEST;
 skin.vert|model.frag|#define ALPHA_TEST;#define EYE;
 skin.vert|eyeshell.frag|
 skin.vert|model.frag|#define SSS_SPLIT;
+skin.vert|depth.frag|#define OPAQUE_DEPTH;
 skin.vert|outline.frag|#define OUTLINE;
 skin.vert|outline.frag|#define OUTLINE;#define ALPHA_TEST;
 skin.vert|shadow.frag|#define SHADOW_PASS;
