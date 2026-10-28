@@ -312,6 +312,12 @@ vec3 fabLayer(vec3 avgc, vec4 msk, sampler2D kit, vec4 p0, vec4 p1, vec4 p2, vec
 }
 #endif
 
+// An opaque mesh's vertex alpha in bands (a far car's archetype, game/art/car/bake_archetypes.py): 0 its paint (the tint applies, no
+// glow), 0.5 trim, glass and tyres (their own colour: no tint, no glow), 0.75 a lamp's lens (no tint, glows), 1 (or no COLOR_0) as
+// before: tinted, glowing. Unreal's merged car material reads such a vertex-colour mask to keep its per-instance colour
+// (PerInstanceSMCustomData) to the paint. Any other alpha keeps its old meaning (a glow mask).
+float vaTint(float a) { return (a > 0.4 && a < 0.85) ? 0.0 : 1.0; }
+float vaGlow(float a) { return (a > 0.4 && a < 0.6) ? 0.0 : ((a >= 0.6 && a < 0.85) ? 1.0 : a); }
 void main() {
 #ifdef SSS_SPLIT
   if (v_uv.x >= u_sss_u) discard;
@@ -699,7 +705,11 @@ void main() {
   // a crown's interior is occluded by its own cards
   if (u_model_h > 2.0) arm.r *= mix(0.5, 1.0, v_hull);
 #endif
+#if !defined(TRANSLUCENT) && !defined(ALPHA_TEST)
+  alb *= mix(vec3(1.0), u_tint, vaTint(v_col.a)) * (0.85 + 0.3 * fract(v_seed * 7.13));
+#else
   alb *= u_tint * (0.85 + 0.3 * fract(v_seed * 7.13));
+#endif
 #ifdef EYE
   // which eye's cell this texel is in, and the eye's own UV there (both computed for every pixel: the samplers below take their
   // derivatives, so none of them may sit in a branch some of a quad skips)
@@ -932,7 +942,7 @@ void main() {
   // Merge Actors, MeshMergeUtilities.cpp FMeshMergeUtilities::MergeComponentsToStaticMesh with bMergeMaterials) lights only its lamps'
   // vertices (alpha 1) by the instance's glow, as a merged mesh's material reads a vertex colour mask times per-instance data
   // (InstancedStaticMeshComponent.h PerInstanceSMCustomData). A mesh without COLOR_0 reads white: glows whole, as before
-  col += alb * u_emissive * v_col.a;
+  col += alb * u_emissive * vaGlow(v_col.a);
 #else
   col += alb * u_emissive;
 #endif

@@ -195,7 +195,7 @@ void main() {
 #ifndef WIND
   // an instance's own colour (scatter.ludic layer_add_tint: Unreal's PerInstanceSMCustomData): a negative fourth rotation float holds
   // r g b, each the square root in 8 bits, packed below 2^24 (exact in a float), negated less one; the vertex colour times it
-  if (i_rot.w < 0.0) {
+  if (i_rot.w < 0.0 && !(v_col.a > 0.4 && v_col.a < 0.85)) {     // model.frag vaTint: trim, glass and lamps keep their colour
     float pk = -i_rot.w - 1.0;
     float bq = floor(pk / 65536.0);
     float gq = floor((pk - bq * 65536.0) / 256.0);
