@@ -61,6 +61,8 @@ property Layer {
   cheap:    bool = false,      # distant cover: no shadows, no wind, flat lighting
   atlas:    Impostor,
   streamed: bool = false,      # fed by a Stream: already frustum-culled per chunk, no split needed
+  cast_b:   words,             # a streamed layer's casters this frame (layer_casters_make): each instance's distance bucket,
+  cast_end: words,             # the casters in sh_buf up to the end of each bucket
   grounded: bool = false,      # the vertex shader stands each instance on the drawn terrain
   view_gen: int = -1,          # sc_view_gen this layer's partition was built for
   # static layers with many instances are sorted into a cell grid once, and only the
@@ -1158,9 +1160,77 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
         for k in 0 .. 3 { layer_draw_model(render3d_st, l, l.lods[2], l.lod_buf[k], l.n_lod[k], false, true, light_vp) }
       }
     }
+    else if l.streamed and sc_cast_cull_on(render3d_st) {
+      if render3d_st.sh_cascade == 0 { layer_casters_make(render3d_st, l) }
+      layer_draw_model(render3d_st, l, l.model, l.sh_buf, layer_casters_in(render3d_st, l), l.card, true, light_vp)
+    }
     else { layer_draw_near(render3d_st, l, true, light_vp, true) }
   }
   prof_cpu_mark(render3d_st, "shadow scatter")
+}
+
+# A streamed layer with no impostor (a street's lamps, benches, bins and signs) cast every instance in reach into every cascade: 46k
+# instances, 9M triangles a frame on the island. As Unreal culls its casters (ShadowSetup.cpp): one too small for its distance casts
+# nothing (r.Shadow.RadiusThreshold, the actors' ac_caster_small: its bounds sphere under that share of its distance from the view),
+# and a cascade draws only the casters near enough to shade what it covers (cast_band_reaches' outer test). Made once a frame, at
+# the first cascade: the casters kept, in distance buckets of SC_CAST_M metres, into sh_buf; a cascade draws the buckets up to its
+# reach, a prefix. R3D_SC_CAST_CULL=0 casts every instance into every cascade again.
+const SC_CAST_BUCKETS: int = 64
+const SC_CAST_M: float = 8.0
+function sc_cast_cull_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.sc_cast_cull < 0 {
+    render3d_st.sc_cast_cull = 1
+    if r3d_env_has(render3d_st, "R3D_SC_CAST_CULL") and r3d_env(render3d_st, "R3D_SC_CAST_CULL") == "0" { render3d_st.sc_cast_cull = 0 }
+  }
+  return render3d_st.sc_cast_cull == 1
+}
+@alloc_ok("a layer's caster buckets, made once at its first shadow")
+function layer_casters_make(render3d_st: mut Render3dState, l: Layer) -> void {
+  if l.cast_b == null { l.cast_b = words(max(l.cap, 1));  l.cast_end = words(SC_CAST_BUCKETS) }
+  for b in 0 .. SC_CAST_BUCKETS { l.cast_end[b] = 0 }
+  # the same threshold the actors read (actor.ludic ac_caster_small: Unreal's 0.01, R3D_SHADOW_RADIUS_THRESHOLD)
+  if render3d_st.ac_sh_rt < 0.0 {
+    render3d_st.ac_sh_rt = 0.01
+    if r3d_env_has(render3d_st, "R3D_SHADOW_RADIUS_THRESHOLD") { render3d_st.ac_sh_rt = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_RADIUS_THRESHOLD")), 0.0) }
+  }
+  let t = render3d_st.ac_sh_rt
+  let hh = l.model.height * 0.5
+  let r0 = Math.sqrt(l.model.radius * l.model.radius + hh * hh)
+  let src = l.inst
+  for i in 0 .. l.count {
+    let o = i * INST_FLOATS
+    let s = src[o + 3]
+    let dx = src[o] - render3d_st.cam_pos[0];  let dy = src[o + 1] + hh * s - render3d_st.cam_pos[1];  let dz = src[o + 2] - render3d_st.cam_pos[2]
+    let d = Math.sqrt(dx * dx + dy * dy + dz * dz)
+    let r = r0 * s
+    if t > 0.0 and r <= t * d { l.cast_b[i] = -1;  continue }
+    let b = min(int(Math.max(d - r, 0.0) / SC_CAST_M), SC_CAST_BUCKETS - 1)
+    l.cast_b[i] = b
+    l.cast_end[b] += 1
+  }
+  # each bucket's first place, then the casters into the scratch in bucket order; the ends left as the running counts
+  var acc = 0
+  for b in 0 .. SC_CAST_BUCKETS { let n = l.cast_end[b];  l.cast_end[b] = acc;  acc += n }
+  let tmp = l.scratch
+  for i in 0 .. l.count {
+    let b = l.cast_b[i]
+    if b < 0 { continue }
+    let q = l.cast_end[b] * INST_FLOATS
+    l.cast_end[b] += 1
+    for k in 0 .. INST_FLOATS { tmp[q + k] = src[i * INST_FLOATS + k] }
+  }
+  if acc > 0 { gpu_buffer_upload(render3d_st, l.sh_buf, acc * INST_FLOATS * 4, data_of(tmp), GPU_DYNAMIC) }
+}
+# the casters cascade sh_cascade draws: the buckets that begin inside its reach (cast_band_reaches: dmin - reach past far x k casts nothing)
+function layer_casters_in(render3d_st: mut Render3dState, l: Layer) -> int {
+  if l.cast_end == null { return 0 }
+  # (cast_band_reaches keeps sc_cast_k, the frustum's corner factor, for this view)
+  if not cast_band_reaches(render3d_st, 0.0, 0.0, l.model.height) { return 0 }
+  if render3d_st.sc_cast_all == 1 or render3d_st.sh_split == null or render3d_st.sh_local { return l.cast_end[SC_CAST_BUCKETS - 1] }
+  let reach = Math.max(Math.min(l.model.height * 6.0, 40.0), 8.0)
+  let far = render3d_st.sh_split[render3d_st.sh_cascade] * render3d_st.sc_cast_k + reach
+  let b = min(int(far / SC_CAST_M), SC_CAST_BUCKETS - 1)
+  return l.cast_end[b]
 }
 
 # ---------------------------------------------------------------------------

@@ -71,6 +71,14 @@ function prof_end(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_active = -1
 }
 
+# The pass open now carries on under another name: a game's part of a pass (the scene's callback: its actors, its layers, its
+# buildings) timed and counted on its own. The regions do not nest, so a part ends the one before it; the pass's own name keeps what
+# came before the first part, and the pass's prof_end closes the last. Call it inside a pass only (a hook the pass calls).
+export function prof_split(render3d_st: mut Render3dState, name: pointer) -> void {
+  prof_end(render3d_st)
+  prof_begin(render3d_st, name)
+}
+
 # Collect the queries issued PROF_RING-1 frames ago — long finished, so no stall.
 function prof_collect(render3d_st: mut Render3dState) -> void {
   if not render3d_st.prof_on { return }
