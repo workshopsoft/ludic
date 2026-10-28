@@ -211,7 +211,7 @@ install_from_source() {
   # still bootstraps through main.ludic. A release older than either predates the
   # CLI entirely, and saying so beats failing deep inside clang.
   if [ -f "${_src}/tools/ludic-cli/dev.ludic" ]; then
-    _boot='bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev && bin/ludic-dev build'
+    _boot='bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev && bin/ludic-dev build'
   elif [ -f "${_src}/tools/ludic-cli/main.ludic" ]; then
     _boot='bin/ludicc tools/ludic-cli/main.ludic -o bin/ludic && bin/ludic dev build'
   else

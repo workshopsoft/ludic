@@ -46,7 +46,7 @@ jobs:
           set -eu
           mkdir -p bin
           clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
-          bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+          bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
 
       - name: Rebuild the compiler from the seed and assert byte-identity
         # `ludic-dev bootstrap-cfree` assembles the seed with clang, has that seed

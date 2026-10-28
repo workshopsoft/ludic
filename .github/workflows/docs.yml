@@ -69,7 +69,7 @@ jobs:
           export LUDIC_HOME="$(pwd)"
           mkdir -p bin
           clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
-          bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+          bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
           bin/ludic-dev docs-gen --out "$RUNNER_TEMP/public"
           bin/ludic-dev docs-check "$RUNNER_TEMP/public"
           echo "--- generated files ---"

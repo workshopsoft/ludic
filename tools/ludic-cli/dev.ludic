@@ -12,7 +12,7 @@
 # Ludic needs a compiler):
 #
 #   mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
-#   bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+#   bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
 #   bin/ludic-dev build
 #
 # Thereafter `ludic-dev build` rebuilds the whole toolchain — bin/ludic, this

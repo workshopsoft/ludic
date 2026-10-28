@@ -17,7 +17,7 @@
 # compiling Ludic needs a compiler:
 #
 #   mkdir -p bin && clang selfhost/ludicc.seed.ll -o bin/ludicc
-#   bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev
+#   bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
 #   bin/ludic-dev build
 program Ludic {
   import "prelude.ludic"
@@ -167,7 +167,7 @@ program Ludic {
       err("ludic: the toolchain's own tasks live in `ludic-dev`, which is built from a\n")
       err("  checkout of the Ludic repository and is not part of an install:\n")
       err("    clang selfhost/ludicc.seed.ll -o bin/ludicc\n")
-      err("    bin/ludicc tools/ludic-cli/dev.ludic -o bin/ludic-dev && bin/ludic-dev help\n")
+      err("    bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev && bin/ludic-dev help\n")
       return 1
     }
     return -1
