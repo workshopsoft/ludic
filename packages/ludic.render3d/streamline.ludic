@@ -75,6 +75,12 @@ function gsl_init(render3d_st: mut Render3dState) -> void {
   render3d_st.gsl_feats = gsl_struct(20)
   Vk.put_i32(render3d_st.gsl_feats, 0, GSL_DLSS);  Vk.put_i32(render3d_st.gsl_feats, 4, GSL_REFLEX);  Vk.put_i32(render3d_st.gsl_feats, 8, GSL_PCL)
   Vk.put_i32(render3d_st.gsl_feats, 12, GSL_DLSS_RR);  Vk.put_i32(render3d_st.gsl_feats, 16, GSL_DLSS_G)
+  # Frame generation is not loaded unless R3D_SL_DLSSG=1 asks: nothing turns it on, and loaded it takes the swapchain over -
+  # the game renders off-screen and every present pays a copy to the back buffer and a sync with DLSS-G's own queue (Streamline
+  # 2.14.1 docs/ProgrammingGuideDLSS_G.md, 18.0 "How to avoid unnecessary overhead when DLSS-G is turned off"). It is the
+  # list's last, so the count leaves it out.
+  var nfeat = 4
+  if r3d_env_has(render3d_st, "R3D_SL_DLSSG") and r3d_env(render3d_st, "R3D_SL_DLSSG") == "1" { nfeat = 5 }
   # sl::Preferences
   let pref = gsl_struct(144)
   gsl_header(pref, 0x1ca1, 0x0965, 0xbf8e, 0x432b, 0x8da1, 0x6716, 0xd879, 0xfb14, 1)
@@ -93,7 +99,7 @@ function gsl_init(render3d_st: mut Render3dState) -> void {
   let flags: long = 1 | 8 | 64 | 128
   Vk.put_i64(pref, 88, flags)
   Vk.put_ptr(pref, 96, render3d_st.gsl_feats)
-  Vk.put_i32(pref, 104, 5)
+  Vk.put_i32(pref, 104, nfeat)
   Vk.put_i32(pref, 112, 0)                         # engine eCustom
   Vk.put_ptr(pref, 120, "ludic render3d")
   Vk.put_ptr(pref, 128, "a0f57b54-1daf-4934-90ae-c4035c19df04")
@@ -244,13 +250,26 @@ function gsl_fill_options(render3d_st: mut Render3dState, w: int, h: int) -> voi
   Vk.put_i32(render3d_st.gsl_opts, 48, float_bits(1.0))                   # preExposure
   Vk.put_i32(render3d_st.gsl_opts, 52, float_bits(1.0))                   # exposureScale
   Vk.put_i32(render3d_st.gsl_opts, 56, 1)                       # colorBuffersHDR eTrue
-  # The model: preset K (the transformer NVIDIA calls its best image quality) in every mode. The
-  # defaults put Performance on preset M, which on an RTX 3070 Ti at 4K evaluated in 18 ms against
-  # K's 2.8 - slower than no DLSS at all (33 fps against 41; with K, 60). R3D_DLSS_PRESET=<n>
-  # (sl::DLSSPreset: 11 K, 12 L, 13 M) sets every mode's, to measure them against each other.
-  var preset = 11
-  if r3d_env_has(render3d_st, "R3D_DLSS_PRESET") { preset = Text.to_int(r3d_env(render3d_st, "R3D_DLSS_PRESET")) }
-  if preset > 0 { for f in 0 .. 6 { Vk.put_i32(render3d_st.gsl_opts, 60 + f * 4, preset) } }   # dlaa, quality, balanced, performance, ultra performance, ultra quality
+  # The model per mode. Streamline's defaults are all transformers (sl_dlss.h, SDK 2.14.1: ePresetK "default preset for
+  # DLAA/Balanced/Quality modes that is transformer based ... at a higher performance cost", ePresetM default for Performance,
+  # ePresetL for Ultra Performance; ProgrammingGuideDLSS.md sets the same). M at Performance evaluated in 18 ms on an RTX 3070 Ti
+  # at 4K, K in 2.8 at Quality where NVIDIA's guide expects about half that for the CNN model. So Quality, Balanced and
+  # Performance take the CNN preset E and Ultra Performance the CNN preset F (sl_dlss.h ePresetE = 5, ePresetF = 6: "legacy",
+  # support deprecated but still in the 310.x DLL); DLAA, asked for image quality first, keeps K.
+  # R3D_DLSS_PRESET=<n> (sl::DLSSPreset: 0 Streamline's defaults, 5 E, 6 F, 10 J, 11 K, 12 L, 13 M) sets every mode's.
+  var dlaa = 11
+  var cnn = 5
+  var ultra = 6
+  if r3d_env_has(render3d_st, "R3D_DLSS_PRESET") {
+    let p = max(Text.to_int(r3d_env(render3d_st, "R3D_DLSS_PRESET")), 0)
+    dlaa = p;  cnn = p;  ultra = p
+  }
+  Vk.put_i32(render3d_st.gsl_opts, 60, dlaa)                      # dlaaPreset (0 = eDefault)
+  Vk.put_i32(render3d_st.gsl_opts, 64, cnn)                       # qualityPreset
+  Vk.put_i32(render3d_st.gsl_opts, 68, cnn)                       # balancedPreset
+  Vk.put_i32(render3d_st.gsl_opts, 72, cnn)                       # performancePreset
+  Vk.put_i32(render3d_st.gsl_opts, 76, ultra)                     # ultraPerformancePreset
+  Vk.put_i32(render3d_st.gsl_opts, 80, cnn)                       # ultraQualityPreset
   # useAutoExposure (sl::Boolean at 84): the colour is the scene's linear HDR before the eye's adaptation, and nothing tells DLSS
   # its exposure (no kBufferTypeExposure is tagged): without this it resolved bright edges on dark at exposure 1, with dark
   # rings and dotted outlines round the depot's sign at Quality (PC shots, 2026-10-28). MetalFX meters it the same way

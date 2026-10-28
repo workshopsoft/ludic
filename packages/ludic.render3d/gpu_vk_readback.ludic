@@ -29,6 +29,7 @@ function gvk_tex_read_layer(render3d_st: mut Render3dState, tex: int, layer: int
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
   Vk.cmd_copy_image_to_buffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_st_buf, 1, bic)
+  gvk_host_read_barrier(render3d_st, cb)
   gvk_barrier(render3d_st, cb, image, false, 0, levels, layers, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   let ok = gvk_once_end(render3d_st, cb)
   if ok { mem_copy(out, src, n) }

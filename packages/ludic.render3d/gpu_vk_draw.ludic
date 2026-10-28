@@ -2050,7 +2050,7 @@ function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
   var cname = "SDR"
   if render3d_st.gvk_hdr_on { cname = "HDR10" }
   print(`r3d: vulkan swapchain {ew}x{eh}, {render3d_st.gvk_swap_n} images, {mname}, {cname}`)
-  return true
+  return gvk_swap_sems_make(render3d_st)
 }
 
 function gvk_present_window(render3d_st: mut Render3dState) -> void {
@@ -2067,17 +2067,34 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
   }
   if render3d_st.gvk_swap_stale { gvk_once_end(render3d_st, cb);  render3d_st.gvk_cb = null;  print("r3d: vulkan: swapchain remade at acquire");  gvk_swap_make(render3d_st, render3d_st.gvk_swap_w, render3d_st.gvk_swap_h);  return }
   let idx = gvk_tmp(render3d_st, 4)
-  Vk.reset_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_acq_fence)
   let forever: long = -1
   let zero: long = 0
-  var r = Vk.acquire_next_image_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, forever, zero, Vk.get_i64(render3d_st.gvk_acq_fence, 0), idx)
+  # With the swapchain's semaphores (gvk_swap_sems_on, as UE's FVulkanSwapChain::AcquireImageIndex with
+  # r.Vulkan.CpuWaitForFence=0) the acquire signals the ring's next semaphore and the CPU goes on; the submit below waits on
+  # it. Else the old way: a fence, waited for here.
+  let sems = gvk_swap_sems_on(render3d_st) and render3d_st.gvk_acq_n >= 2
+  var acq = zero
+  var r = VK_SUCCESS
+  if sems {
+    acq = Vk.get_i64(render3d_st.gvk_acq_sems, render3d_st.gvk_acq_i * 8)
+    render3d_st.gvk_acq_i = (render3d_st.gvk_acq_i + 1) % render3d_st.gvk_acq_n
+    r = Vk.acquire_next_image_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, forever, acq, zero, idx)
+  } else {
+    Vk.reset_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_acq_fence)
+    r = Vk.acquire_next_image_khr(render3d_st.gvk_dev, render3d_st.gvk_swap, forever, zero, Vk.get_i64(render3d_st.gvk_acq_fence, 0), idx)
+  }
   if r == VK_ERROR_OUT_OF_DATE_KHR { gvk_once_end(render3d_st, cb);  render3d_st.gvk_cb = null;  print("r3d: vulkan: swapchain remade at acquire");  gvk_swap_make(render3d_st, render3d_st.gvk_swap_w, render3d_st.gvk_swap_h);  return }
-  Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_acq_fence, 1, forever)
+  # any other failure signals nothing: the frame goes without a wait on it, and the chain is remade at the next present
+  if r != VK_SUCCESS and r != VK_SUBOPTIMAL_KHR { gvk_once_end(render3d_st, cb);  render3d_st.gvk_cb = null;  render3d_st.gvk_swap_stale = true;  return }
+  if not sems { Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_acq_fence, 1, forever) }
   let i = Vk.get_i32(idx, 0)
   let dst = Vk.get_i64(render3d_st.gvk_swap_images, i * 8)
   let src = render3d_st.gvk_tex_image[render3d_st.gvk_screen_color]
   gvk_barrier(render3d_st, cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-  gvk_barrier(render3d_st, cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  # the swapchain image's barrier starts at the stages the acquire semaphore is waited at, so the layout change is ordered after
+  # the image is free (UE VulkanBarriers.cpp GetVkStageAndAccessFlags: ERHIAccess::Present as the source state is
+  # COLOR_ATTACHMENT_OUTPUT, access 0, "the sema handles access")
+  gvk_barrier_from(render3d_st, cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT)
   let blit = gvk_tmp(render3d_st, VkImageBlit_sizeof)
   Vk.zero(blit, VkImageBlit_sizeof)
   Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
@@ -2094,16 +2111,29 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
   Vk.cmd_blit_image(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blit, VK_FILTER_LINEAR)
   gvk_barrier(render3d_st, cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   gvk_barrier(render3d_st, cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
-  if gvk_inflight_on(render3d_st) { gvk_frame_submit(render3d_st, cb) } else { gvk_once_end(render3d_st, cb) }
+  # the frame's last submit waits on the acquire and signals this image's rendering-done semaphore, which the present waits on
+  var done = zero
+  if sems { done = Vk.get_i64(render3d_st.gvk_done_sems, i * 8) }
+  var sent = false
+  if gvk_inflight_on(render3d_st) { sent = gvk_frame_submit_sems(render3d_st, cb, acq, done) } else { sent = gvk_once_end_sems(render3d_st, cb, acq, done) }
   render3d_st.gvk_cb = null
+  # a submit that failed signalled nothing: a present waiting on it would never run
+  if sems and not sent { return }
   let pi = gvk_tmp(render3d_st, VkPresentInfoKHR_sizeof)
   Vk.zero(pi, VkPresentInfoKHR_sizeof)
   Vk.put_i32(pi, VkPresentInfoKHR_sType, VK_STRUCTURE_TYPE_PRESENT_INFO_KHR)
+  if sems {
+    let ws = gvk_tmp(render3d_st, 8)
+    Vk.put_i64(ws, 0, done)
+    Vk.put_i32(pi, VkPresentInfoKHR_waitSemaphoreCount, 1)
+    Vk.put_ptr(pi, VkPresentInfoKHR_pWaitSemaphores, ws)
+  }
   let chains = gvk_tmp(render3d_st, 8)
   Vk.put_i64(chains, 0, render3d_st.gvk_swap)
   Vk.put_i32(pi, VkPresentInfoKHR_swapchainCount, 1)
   Vk.put_ptr(pi, VkPresentInfoKHR_pSwapchains, chains)
   Vk.put_ptr(pi, VkPresentInfoKHR_pImageIndices, idx)
+  # Reflex's markers keep their order: the submit has ended above, the present starts here
   gsl_before_present(render3d_st)
   r = Vk.queue_present_khr(render3d_st.gvk_queue, pi)
   if r == VK_ERROR_OUT_OF_DATE_KHR or r == VK_SUBOPTIMAL_KHR { render3d_st.gvk_swap_stale = true }
