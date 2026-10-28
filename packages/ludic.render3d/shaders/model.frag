@@ -907,7 +907,15 @@ void main() {
     col += u_sun_color * sheen * shadow * cloudShadow(v_wpos) * 0.4 * (0.45 + 0.55 * arm.r) * sunLeft;
   }
 #endif
+#if !defined(TRANSLUCENT) && !defined(ALPHA_TEST)
+  // an opaque mesh's vertex alpha masks its glow: a car merged into one mesh and one material (its body, glass and lamp lenses: Unreal's
+  // Merge Actors, MeshMergeUtilities.cpp FMeshMergeUtilities::MergeComponentsToStaticMesh with bMergeMaterials) lights only its lamps'
+  // vertices (alpha 1) by the instance's glow, as a merged mesh's material reads a vertex colour mask times per-instance data
+  // (InstancedStaticMeshComponent.h PerInstanceSMCustomData). A mesh without COLOR_0 reads white: glows whole, as before
+  col += alb * u_emissive * v_col.a;
+#else
   col += alb * u_emissive;
+#endif
   if (any(isnan(col))) col = vec3(0.0);
   col += u_fac_emis;
 #ifdef TRANSLUCENT

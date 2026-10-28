@@ -59,6 +59,7 @@ extern function jph_vs_diff_lsd(vs: pointer, ratio: float) -> void = "jph_vs_dif
 extern function jph_vs_bar(vs: pointer, left: int, right: int, stiffness: float) -> void = "jph_vs_bar"
 extern function jph_vehicle_add(w: pointer, id: int, vs: pointer) -> pointer = "jph_vehicle_add"
 extern function jph_vehicle_free(v: pointer) -> void = "jph_vehicle_free"
+extern function jph_vehicle_kinematic(v: pointer, on: int) -> int = "jph_vehicle_kinematic"
 extern function jph_vehicle_input(v: pointer, forward: float, right: float, brake: float, hand: float) -> void = "jph_vehicle_input"
 extern function jph_vehicle_torque(v: pointer, max_torque: float) -> void = "jph_vehicle_torque"
 extern function jph_vehicle_grip(v: pointer, i: int, k: float) -> void = "jph_vehicle_grip"

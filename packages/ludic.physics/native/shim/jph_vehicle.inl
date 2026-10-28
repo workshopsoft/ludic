@@ -20,6 +20,7 @@ struct Vehicle {
   float steer[16];      // each wheel's own most steer as it was given (the Ackermann angles are worked out from it)
   float rear_z = 0.0f;  // where the wheels that do not steer are, along the body: the turn's centre is level with them
   float bar_k[16];      // each anti-roll bar's stiffness as given, N/m (Jolt's own is set from it every step: bars_in_newtons)
+  bool kin = false;     // its body kinematic, moved by the game (jph_vehicle_kinematic): the constraint off and not a step listener
 };
 
 // Jolt's anti-roll bar is not in N/m. It works out an impulse, difference * stiffness * dt (N.s), and hands it to each wheel's soft
@@ -302,10 +303,38 @@ JPH_SHIM void *jph_vehicle_add(void *w, int id, void *vs) {
 JPH_SHIM void jph_vehicle_free(void *vh) {
   Vehicle *v = static_cast<Vehicle *>(vh);
   if (v == nullptr) return;
-  v->w->sys.RemoveStepListener(v->c);
+  if (!v->kin) v->w->sys.RemoveStepListener(v->c);
   v->w->sys.RemoveConstraint(v->c);
   delete v;
 }
+
+// The vehicle's body made kinematic (on) or dynamic again (off): a car the game moves to a pose each frame (a traffic car near the
+// player, driven by the traffic, not by its tyres) needs no wheel casts, no suspension, no gravity and no contacts with the ground and
+// the still things (Jolt makes no pair of two bodies neither of which is dynamic), only its own against what is dynamic (a car rammed
+// into it, a thrown body). Kinematic, the constraint is disabled and taken off the step listeners (VehicleConstraint::OnStep casts the
+// wheels whatever its body's motion), its velocities zeroed; dynamic, both back, the body awake. As CARLA's hybrid physics turns a
+// vehicle's simulation off away from the hero (and Chaos vehicles go to sleep: ChaosVehicleMovementComponent), here near the player
+// too until something hits it. 1 when the state changed.
+JPH_SHIM int jph_vehicle_kinematic(void *vh, int on) {
+  Vehicle *v = static_cast<Vehicle *>(vh);
+  if (v == nullptr) return 0;
+  bool want = on != 0;
+  if (v->kin == want) return 0;
+  BodyInterface &bi = v->w->sys.GetBodyInterface();
+  if (want) {
+    v->w->sys.RemoveStepListener(v->c);
+    v->c->SetEnabled(false);
+    bi.SetMotionType(v->body, EMotionType::Kinematic, EActivation::Activate);
+    bi.SetLinearAndAngularVelocity(v->body, Vec3::sZero(), Vec3::sZero());
+  } else {
+    bi.SetMotionType(v->body, EMotionType::Dynamic, EActivation::Activate);
+    v->c->SetEnabled(true);
+    v->w->sys.AddStepListener(v->c);
+  }
+  v->kin = want;
+  return 1;
+}
+
 
 // the driver: forward -1..1 (negative: reverse), right -1..1, brake and handbrake 0..1. A body asleep is woken by a pedal or the wheel
 JPH_SHIM void jph_vehicle_input(void *vh, float forward, float right, float brake, float hand) {
