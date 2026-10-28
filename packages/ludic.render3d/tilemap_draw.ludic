@@ -15,8 +15,9 @@
 # A frame allocates nothing: every patch slot's mesh, model and primitive records are made once with the draw (tmd_new) and a
 # change of level refills them, its old buffers given back and the new ones uploaded into the same mesh. (Made at each change
 # and freed with the old level, they were memory that rose with the patches in view for as long as a drive went into new
-# ground, and the allocation fence failed the run.) The ground casts no shadow map of its own (buildings and trees still
-# fall on it).
+# ground, and the allocation fence failed the run.) The patches are drawn by the terrain pass
+# (terrain_pass.ludic), not among the actors, and cast into the sun's cached cascades there (R3D_TERRAIN_CASTS=0: none, as
+# before); their level is Landscape's by screen size (R3D_TERRAIN_LOD=0: the distance bands).
 # ============================================================================
 numbers float
 
@@ -208,13 +209,12 @@ function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slo
   pr.lu = 0
   if coloured and td.mk_tile[slot] == p.tile { pr.lu = td.lu_tex[slot] }
   pr.lu_tx = float(tx);  pr.lu_tz = float(tz)
+  # the terrain pass's (terrain_pass.ludic: out of the actors' list, culled by its box, casting into the sun's cached cascades;
+  # R3D_TERRAIN_PASS=0 an actor on the stage as before)
   if p.actor == null {
-    p.actor = actor_new(render3d_st, p.model)
-    p.actor.tag = "terrain/near"
-    p.actor.casts = false
-    p.actor.cull = 0.0
+    p.actor = actor_new_terrain(render3d_st, p.model, "terrain/near")
     td.shown += 1
-  } else { p.actor.model = p.model }
+  } else { p.actor.model = p.model;  terrain_patch_changed(p.actor) }
   # a masked patch's colour is the tones alone (they carry the tint where a class has none); else the tint
   if coloured { p.actor.tint[0] = 1.0;  p.actor.tint[1] = 1.0;  p.actor.tint[2] = 1.0 }
   else { p.actor.tint[0] = td.color[0];  p.actor.tint[1] = td.color[1];  p.actor.tint[2] = td.color[2] }
@@ -273,6 +273,7 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
       if p.actor != null and (dox != 0.0 or doz != 0.0) { actor_place(p.actor, p.actor.x - dox, p.actor.y, p.actor.z - doz, 0.0) }
     }
   }
+  let cam_y = render3d_st.cam_pos[1]
   # the nearest patches that need another level, a few a frame
   for n in 0 .. td.build_budget {
     var bi = -1
@@ -284,7 +285,7 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
         let p = td.patches[s * pp + k]
         let d = tmd_dist(tm, tmap_patch_cx(tm, t % tm.cols, k % tm.patches), tmap_patch_cz(tm, t / tm.cols, k / tm.patches), cam_x, cam_z)
         if d > radius or d >= bd { continue }
-        if tmap_lod_for(tm, d, p.lod) == p.lod { continue }
+        if tmd_lod_want(render3d_st, td, s, k, d, cam_x, cam_y, cam_z) == p.lod { continue }
         bi = s * pp + k;  bd = d
       }
     }
@@ -293,9 +294,30 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
     let k = bi % pp
     let p = td.patches[bi]
     p.tile = ms.slot_tile[s];  p.px = k % tm.patches;  p.pz = k / tm.patches
-    let want = tmap_lod_for(tm, bd, p.lod)
+    let want = tmd_lod_want(render3d_st, td, s, k, bd, cam_x, cam_y, cam_z)
     if not tmd_build(render3d_st, td, p, s, want) { p.lod = want }      # unreadable: no mesh, and not asked for again every frame
   }
+}
+
+# The level patch k of mesh slot s asks for, `d` metres from the camera (WORLD x and z, render y): by its size on screen as Unreal's
+# Landscape picks a component's (terrain_pass.ludic terrain_lod_pick: its bounds - the patch's square and its finest level's height
+# range - against LOD0ScreenSize and the two distributions), or by the distance bands with R3D_TERRAIN_LOD=0 (tmap_lod_for)
+function tmd_lod_want(render3d_st: mut Render3dState, td: TileDraw, s: int, k: int, d: float, cam_x: float, cam_y: float, cam_z: float) -> int {
+  let tm = td.tm
+  let p = td.patches[s * tm.patches * tm.patches + k]
+  if not terrain_lod_on(render3d_st) { return tmap_lod_for(tm, d, p.lod) }
+  let t = td.ms.slot_tile[s]
+  let px = k % tm.patches
+  let pz = k / tm.patches
+  let y0 = tmm_ymin(td.ms, tm, s, px, pz, 0)
+  let y1 = tmm_ymax(td.ms, tm, s, px, pz, 0)
+  let half = tmap_patch_size(tm) * 0.5
+  let hy = (y1 - y0) * 0.5
+  let r = Math.sqrt(2.0 * half * half + hy * hy)
+  # the bounds' centre in the camera's frame (render space: the floating origin's x and z off the world's)
+  let x = tmap_patch_cx(tm, t % tm.cols, px) - cam_x + render3d_st.cam_pos[0]
+  let z = tmap_patch_cz(tm, t / tm.cols, pz) - cam_z + render3d_st.cam_pos[2]
+  return terrain_lod_pick(render3d_st, x, (y0 + y1) * 0.5 - cam_y + render3d_st.cam_pos[1], z, r, tm.lod_max, p.lod)
 }
 
 # the ground's surfaces from the renderer's library (r3d_surfaces_use): `green` over the green tones (grass), `paved` over the rest

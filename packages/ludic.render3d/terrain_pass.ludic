@@ -1,0 +1,375 @@
+# ============================================================================
+# terrain_pass.ludic — the ground's patches (tilemap_draw.ludic) and far tiles (tilemap_far.ludic) drawn in a pass of their own, out of
+# the actors' list, and the level each patch is drawn at chosen by its size on screen as Unreal's Landscape chooses it.
+#
+# Unreal draws a Landscape through its own proxies (LandscapeRender.cpp FLandscapeComponentSceneProxy), never as static meshes among the
+# scene's actors: each component is culled by its own bounds (SceneVisibility.cpp FrustumCull, the HZB occlusion), is Static mobility (its
+# depth kept in the sun's cached cascades, ShadowSetup.cpp r.Shadow.CSMCaching), and outputs no velocity of its own (it never moves: the
+# camera's motion from depth covers it). Here the same: a patch made by actor_new_terrain is not on the stage (ac_actors) but in tpa_actors;
+# render.ludic draws them before the scene's callback under their own timer ("scene: terrain"), each culled by its own box (the patch's
+# square and its height range: Actor.occ_hx / occ_hy about its cull sphere's middle) against the view's planes, the fog wall and last
+# frame's occlusion (occlusion.ludic tests the bucket as it tests the static one). They cast into the sun's cascades as still actors do
+# (shadow_cache.ludic: drawn in the static phase, never in the moving one); a patch that came, went, moved (a rebase) or was given another
+# level puts the cached cascades due a rebuild when it lies inside their window.
+#
+# The level (terrain_lod_pick): Unreal's FLandscapeComponentSceneProxy::GetComponentLODFromScreenSize / FLandscapeRenderSystem::
+# ComputeLODFromScreenSize (LandscapeRender.cpp, UE 5.8): the component's bounds' screen radius squared (SceneManagement.cpp
+# ComputeBoundsScreenRadiusSquared), against LOD0ScreenSize (0.5), LOD1 at LOD0ScreenSize / LOD0DistributionSetting (1.25,
+# x r.LandscapeLOD0DistributionScale), each further level LODDistributionSetting (3.0, x r.LandscapeLODDistributionScale) smaller
+# (FLandscapeComponentSceneProxy's constructor: LODScreenRatioSquared). The levels are the bake's (tilemap_bake.ludic: every level halves
+# the grid: every 2nd, 4th ... row and column of the patch); a skirt hangs from every edge, so a coarser neighbour leaves no crack.
+#
+# R3D_TERRAIN_PASS=0: every patch an actor on the stage again (not casting, never distance-culled), as before. R3D_TERRAIN_LOD=0: the
+# distance bands (tilemap.ludic tmap_lod_for). R3D_TERRAIN_CASTS=0: the patches cast nothing. R3D_TERRAIN_LOD0_SCREEN_SIZE,
+# R3D_TERRAIN_LOD0_DISTRIBUTION, R3D_TERRAIN_LOD_DISTRIBUTION: Landscape's three settings (its defaults 0.5, 1.25, 3.0).
+# ============================================================================
+
+const TPA_ROOM: int = 4096          # patches the bucket holds without growing
+# the grazing-light push the ground's own shadow lookup may take (lighting.glsl sunShadow): the terrain's own 10 (actor.ludic
+# ACTOR_SHADOW_TAN), now that the ground casts into the cascades it is lit by
+const TPA_SHADOW_TAN: float = 10.0
+
+# ---- switches -------------------------------------------------------------------------------------------------------------------------
+
+function tpa_env_on(render3d_st: mut Render3dState, name: string) -> int {
+  if r3d_env_has(render3d_st, name) and r3d_env(render3d_st, name) == "0" { return 0 }
+  return 1
+}
+export function terrain_pass_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.tpa_mode < 0 { render3d_st.tpa_mode = tpa_env_on(render3d_st, "R3D_TERRAIN_PASS") }
+  return render3d_st.tpa_mode == 1
+}
+function tpa_cast_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.tpa_cast < 0 { render3d_st.tpa_cast = tpa_env_on(render3d_st, "R3D_TERRAIN_CASTS") }
+  return render3d_st.tpa_cast == 1
+}
+# Landscape's screen-size levels (R3D_TERRAIN_LOD), its settings read with it (LandscapeEdit.cpp clamps: the screen size 0.1 .. 10, the
+# distributions 1 .. 10)
+export function terrain_lod_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.tpa_lod < 0 {
+    render3d_st.tpa_lod = tpa_env_on(render3d_st, "R3D_TERRAIN_LOD")
+    if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD0_SCREEN_SIZE") { render3d_st.tpa_lod0_ss = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD0_SCREEN_SIZE")), 0.1, 10.0) }
+    if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD0_DISTRIBUTION") { render3d_st.tpa_lod0_dist = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD0_DISTRIBUTION")), 1.0, 10.0) }
+    if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD_DISTRIBUTION") { render3d_st.tpa_lod_dist = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD_DISTRIBUTION")), 1.0, 10.0) }
+  }
+  return render3d_st.tpa_lod == 1
+}
+
+# ---- the level --------------------------------------------------------------------------------------------------------------------------
+
+# Unreal's fractional level for bounds of radius r about (x, y, z) (render space, the camera's), levels 0 .. last: ComputeLODFromScreenSize
+# over ComputeBoundsScreenRadiusSquared (perspective: ProjMatrix.M[2][3] = 1; ScreenMultiple the larger of the projection's x and y scales
+# halved). r.StaticMeshLODDistanceScale and the view's LOD factor are 1 here (Landscape cancels the first out).
+export function terrain_lod_fraction(render3d_st: mut Render3dState, x: float, y: float, z: float, r: float, last: int) -> float {
+  terrain_lod_on(render3d_st)
+  let p = render3d_st.cam_proj
+  if p == null { return 0.0 }
+  let dx = x - render3d_st.cam_pos[0];  let dy = y - render3d_st.cam_pos[1];  let dz = z - render3d_st.cam_pos[2]
+  let sm = Math.max(0.5 * Math.abs(p[0]), 0.5 * Math.abs(p[5]))
+  let ss2 = (sm * r) * (sm * r) / Math.max(1.0, dx * dx + dy * dy + dz * dz)
+  # FLandscapeComponentSceneProxy's LODScreenRatioSquared
+  let lod0 = render3d_st.tpa_lod0_ss
+  let lod1 = lod0 / Math.max(render3d_st.tpa_lod0_dist, 1.01)
+  let step = Math.max(render3d_st.tpa_lod_dist, 1.01)
+  let l0 = lod0 * lod0
+  let l1 = lod1 * lod1
+  var lastr = lod0
+  if last >= 1 { lastr = lod1 / Math.pow(step, float(last - 1)) }
+  if ss2 <= lastr * lastr { return float(last) }
+  if ss2 > l1 { return (l0 - Math.min(ss2, l0)) / (l0 - l1) }
+  # FMath::LogX(LODOnePlusDistributionScalarSquared, LOD1ScreenSizeSquared / ScreenSizeSquared)
+  return 1.0 + Math.log(l1 / ss2) / Math.log(step * step)
+}
+# the level a patch is drawn at: the fraction's whole part (the bake has no morph between levels), kept while the fraction stays within a
+# tenth of its band, so a camera pacing a boundary changes nothing; `cur` the level it has (-1 none)
+export function terrain_lod_pick(render3d_st: mut Render3dState, x: float, y: float, z: float, r: float, last: int, cur: int) -> int {
+  let f = terrain_lod_fraction(render3d_st, x, y, z, r, last)
+  if cur >= 0 and cur <= last and f >= float(cur) - 0.1 and f < float(cur) + 1.1 { return cur }
+  return min(max(int(Math.floor(f)), 0), last)
+}
+
+# ---- the bucket -------------------------------------------------------------------------------------------------------------------------
+
+@alloc_ok("the terrain pass's list: made once, when the first patch comes")
+function tpa_init(render3d_st: mut Render3dState) -> void {
+  if render3d_st.tpa_actors != null { return }
+  render3d_st.tpa_actors = new []Actor
+  actor_room(render3d_st.tpa_actors, TPA_ROOM)
+}
+
+# A patch of the ground (or a far tile) for `model`: in the terrain pass, casting (R3D_TERRAIN_CASTS), never distance-culled. Placed with
+# actor_place; its box is Actor.occ_hx / occ_hy about (x, y + radius, z), which its maker sets. With the pass off, an actor on the stage
+# that casts nothing, as the ground was. Released with actor_release.
+@creates(Actor)
+export function actor_new_terrain(render3d_st: mut Render3dState, model: Model, tag: string) -> Actor {
+  if not terrain_pass_on(render3d_st) {
+    let b = actor_new(render3d_st, model)
+    b.tag = tag
+    b.casts = false
+    b.cull = 0.0
+    return b
+  }
+  tpa_init(render3d_st)
+  let a = actor_fresh(render3d_st)
+  a.model = model
+  a.scale = 1.0
+  a.rough = 1.0
+  render3d_st.ac_next_id += 1;  a.id = render3d_st.ac_next_id
+  if model != null { a.radius = Math.max(model.radius, model.height) + 1.0 }
+  a.cull = 0.0
+  a.still = true
+  a.casts = tpa_cast_on(render3d_st)
+  a.no_velocity = true
+  a.tpa = true
+  a.tag = tag
+  tpa_keep(render3d_st, a)
+  return a
+}
+# its mesh was given another level (or remade): the cached cascades hold the old one
+export function terrain_patch_changed(a: Actor) -> void {
+  if a != null and a.tpa { a.sc_seen = 0 }
+}
+
+# into the bucket (actor_keep's, for one of its own)
+function tpa_keep(render3d_st: mut Render3dState, a: Actor) -> void {
+  if a == null { return }
+  tpa_init(render3d_st)
+  if a.row >= 0 and a.row < len(render3d_st.tpa_actors) and render3d_st.tpa_actors[a.row] == a { return }
+  a.row = len(render3d_st.tpa_actors)
+  @alloc_ok("within the bucket's room made with it (@max 4096)")
+  push(render3d_st.tpa_actors, a)
+}
+# out of it: the last takes its row (actor_remove's, for one of its own)
+function tpa_remove(render3d_st: mut Render3dState, a: Actor) -> void {
+  let l = render3d_st.tpa_actors
+  if l == null or a == null { return }
+  let r = a.row
+  if r < 0 or r >= len(l) or l[r].id != a.id { return }
+  if a.sc_seen > 0 and a.sc_vis and tpa_in_cache(render3d_st, a) { render3d_st.sc_dirty = true }   # its shadow is in the cache
+  let last = List.pop(l)
+  if last.id != a.id {
+    l[r] = last
+    last.row = r
+  }
+  a.row = -1
+}
+# a world replaced (actor_release_all): every one not held released
+function tpa_release_all(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.tpa_actors
+  if l == null { return }
+  var i = len(l) - 1
+  while i >= 0 {
+    if i < len(l) {
+      let a = l[i]
+      if a.held { a.held = false } else { actor_release(render3d_st, a) }
+    }
+    i -= 1
+  }
+}
+# every one out at once (actor_clear_all)
+function tpa_clear_all(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.tpa_actors
+  if l == null { return }
+  for i in 0 .. len(l) {
+    if l[i].sc_seen > 0 { render3d_st.sc_dirty = true }
+    l[i].row = -1
+  }
+  List.clear(l)
+}
+
+# ---- bounds and culling -----------------------------------------------------------------------------------------------------------------
+
+# patch a's box in render space into b: centre and half extents (its maker's tight box about its cull sphere's middle; else a cube of its
+# radius)
+function tpa_bounds(a: Actor, b: floats) -> void {
+  let s = a.scale
+  if a.occ_hx > 0.0 {
+    b[0] = a.x;  b[1] = a.y + a.radius * s;  b[2] = a.z
+    b[3] = a.occ_hx;  b[4] = a.occ_hy;  b[5] = a.occ_hx
+    return
+  }
+  var r = a.radius * s
+  if r <= 0.0 { r = 20.0 }
+  b[0] = a.x;  b[1] = a.y + r;  b[2] = a.z
+  b[3] = r;  b[4] = r;  b[5] = r
+}
+function tpa_radius(b: floats) -> float { return Math.sqrt(b[3] * b[3] + b[4] * b[4] + b[5] * b[5]) }
+
+# is patch a drawn in this view: shown, within the fog wall, not hidden behind the scene last frame (when `occ`), its box inside the view's
+# side planes (in the water's reflection, its mirror image's: stc_box_in_view, SceneVisibility.cpp's box test). Its box is left in tpa_b.
+function tpa_in_view(render3d_st: mut Render3dState, a: Actor, occ: bool) -> bool {
+  if a.model == null or not a.visible { return false }
+  let b = render3d_st.tpa_b
+  tpa_bounds(a, b)
+  if r3d_beyond_fog(render3d_st, b[0], b[1], b[2], tpa_radius(b)) { return false }
+  if occ and occ_hidden(render3d_st, a) { return false }
+  var cy = b[1]
+  if render3d_st.ter_reflect { cy = 2.0 * render3d_st.water_level - cy }
+  return stc_box_in_view(render3d_st, b[0], cy, b[2], b[3], b[4], b[5])
+}
+
+# an occlusion candidate (occlusion.ludic): in view by its own test, and the near plane does not cut its box (Unreal's BoxPushOut: the
+# patch the camera stands over is never tested); its box into b
+function tpa_occ_candidate(render3d_st: mut Render3dState, a: Actor, b: floats) -> bool {
+  if a.model == null { return false }
+  if not tpa_in_view(render3d_st, a, false) { return false }
+  let s = render3d_st.tpa_b
+  for k in 0 .. 6 { b[k] = s[k] }
+  let f = render3d_st.cam_fwd
+  let cp = render3d_st.cam_pos
+  let d = (b[0] - cp[0]) * f[0] + (b[1] - cp[1]) * f[1] + (b[2] - cp[2]) * f[2] - render3d_st.cam_near
+  let push = b[3] * Math.abs(f[0]) + b[4] * Math.abs(f[1]) + b[5] * Math.abs(f[2])
+  return d > push
+}
+
+# whether patch a casts into the light light_vp is drawing now: casting, shown, within the fog wall, its sphere inside the light's box and
+# near enough a receiver the cascade covers (scatter.ludic cast_band_reaches), as a static chunk (static_chunks.ludic stc_casts)
+function tpa_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) -> bool {
+  if a.model == null or not a.casts or not (a.visible or a.cast_hidden) { return false }
+  let b = render3d_st.tpa_b
+  tpa_bounds(a, b)
+  let r = tpa_radius(b)
+  if r3d_beyond_fog(render3d_st, b[0], b[1], b[2], r) { return false }
+  if not ac_in_light(render3d_st, light_vp, b[0], b[1], b[2], r) { return false }
+  let dx = b[0] - render3d_st.cam_pos[0];  let dz = b[2] - render3d_st.cam_pos[2]
+  let dh = Math.sqrt(dx * dx + dz * dz)
+  let rh = Math.sqrt(b[3] * b[3] + b[5] * b[5])
+  return cast_band_reaches(render3d_st, Math.max(dh - rh, 0.0), dh + rh, b[4] * 2.0)
+}
+
+# ---- drawing ----------------------------------------------------------------------------------------------------------------------------
+
+# The lit pass's ground (render.ludic, before the scene's callback; water.ludic's mirror): every patch in view, with the actors' lit program
+# (model.frag: the sun and its cascades, the sky, the fog, the ground's surfaces and land-use colours as before)
+function terrain_pass_draw(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.tpa_actors
+  if l == null or len(l) == 0 or render3d_st.ac_lit == null { return }
+  occ_read(render3d_st)                                     # last frame's occlusion tests (once a frame, whoever asks first)
+  let main = not render3d_st.ter_reflect
+  let ap = render3d_st.ac_lit
+  # the scene's lighting bound for this view now: the actors bind theirs once a frame (ac_bind_scene) after this pass, and in the
+  # water's mirror the view is the mirrored one
+  ap.scene_frame = -1
+  ac_bind_scene(render3d_st, ap)
+  ap.scene_frame = -1                                       # bound again by the actors' pass for its own frame
+  gpu_use_program(render3d_st, ap.prog)
+  u_f(render3d_st, ap.l_skin, 0.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_shadow_tan_max"), TPA_SHADOW_TAN)
+  gpu_cull(render3d_st, false)                              # both sides, as the patches' actors were drawn (a skirt is seen from either)
+  var shown = 0
+  var tris = 0
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if not tpa_in_view(render3d_st, a, true) { continue }
+    u_mat4(render3d_st, ap.l_model, a.mat)
+    u_f(render3d_st, ap.l_emis, a.emissive)
+    u_f(render3d_st, ap.l_rough, a.rough)
+    u_f(render3d_st, ap.l_clit, a.char_lit)
+    u_v3(render3d_st, ap.l_tint, a.tint)
+    let m = a.model
+    for p in 0 .. len(m.prims) {
+      if a.hide != null and a.hide[p] != 0 { continue }
+      let pr = m.prims[p]
+      gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+      prim_factors(render3d_st, ap.prog, pr)
+      ac_bind_headmap(render3d_st, ap, pr);  ac_bind_micro(render3d_st, ap, pr);  ac_bind_bent(render3d_st, ap, pr)
+      gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
+      gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
+      mesh_draw(render3d_st, pr.mesh)
+      tris += pr.mesh.count / 3
+    }
+    shown += 1
+  }
+  gpu_cull(render3d_st, true)
+  if main {
+    render3d_st.tpa_drawn = shown
+    render3d_st.tpa_tris = tris
+    # R3D_ACTOR_CENSUS=<frame>: the actors' pass counts its frame after this one
+    if render3d_st.ac_census_at > 0 and render3d_st.ac_frame + 1 == render3d_st.ac_census_at { terrain_pass_census(render3d_st) }
+  }
+}
+
+# The ground's casters into the light light_vp (shadow.ludic, shadow_cache.ludic sc_casters): the live cascade and the cached cascades'
+# static draws (its share of a sliced rebuild is the actors'), never the moving phase over them (they hold it already), no local light
+function terrain_pass_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
+  let l = render3d_st.tpa_actors
+  if l == null or len(l) == 0 or render3d_st.ac_sh == null { return }
+  if render3d_st.sh_phase == SH_PHASE_DYN or render3d_st.sh_local { return }
+  if not shadow_casts(render3d_st, SH_PART_ACTORS) { return }
+  let ap = render3d_st.ac_sh
+  var bound = false
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if not tpa_casts(render3d_st, a, light_vp) { continue }
+    if not bound {
+      bound = true
+      gpu_use_program(render3d_st, ap.prog)
+      u_mat4(render3d_st, ap.l_lvp, light_vp)
+      u_f(render3d_st, ap.l_skin, 0.0)
+      gpu_cull(render3d_st, false)            # both sides, as an actor's shadow
+    }
+    u_mat4(render3d_st, ap.l_model, a.mat)
+    let m = a.model
+    for p in 0 .. len(m.prims) {
+      if a.hide != null and a.hide[p] != 0 { continue }
+      let pr = m.prims[p]
+      gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+      prim_factors(render3d_st, ap.prog, pr)
+      mesh_draw(render3d_st, pr.mesh)
+    }
+  }
+  if bound { gpu_cull(render3d_st, true) }
+}
+
+# ---- the sun's cache (shadow_cache.ludic) -------------------------------------------------------------------------------------------------
+
+# does patch a lie inside the widest cached cascade's window (what a change of it could leave stale there)? Patches far past it come
+# and go and change level as the camera moves, and must not keep the cache rebuilding
+function tpa_in_cache(render3d_st: mut Render3dState, a: Actor) -> bool {
+  if render3d_st.sc_vp_v == null { return true }
+  let b = render3d_st.tpa_b
+  tpa_bounds(a, b)
+  return ac_in_light(render3d_st, render3d_st.sc_vp_v[SC_LAST], b[0], b[1], b[2], tpa_radius(b))
+}
+# one that came casting, moved (a rebase), changed level, or began or stopped casting since the last static draw, inside the window: the
+# cached cascades are due a rebuild
+function tpa_still_check(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.tpa_actors
+  if l == null { return }
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if a.sc_seen == 0 {
+      if sc_casting(a) and tpa_in_cache(render3d_st, a) { render3d_st.sc_dirty = true }
+      continue
+    }
+    if a.x != a.sc_x or a.y != a.sc_y or a.z != a.sc_z or sc_casting(a) != a.sc_vis { render3d_st.sc_dirty = true }
+  }
+}
+# what a static draw saw
+function tpa_still_stamp(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.tpa_actors
+  if l == null { return }
+  for i in 0 .. len(l) {
+    let a = l[i]
+    a.sc_seen = render3d_st.sc_gen
+    a.sc_x = a.x;  a.sc_y = a.y;  a.sc_z = a.z;  a.sc_vis = sc_casting(a)
+  }
+}
+
+# ---- the census (R3D_ACTOR_CENSUS) ------------------------------------------------------------------------------------------------------
+
+@alloc_ok("a debug census, only under its switch")
+function terrain_pass_census(render3d_st: Render3dState) -> void {
+  let l = render3d_st.tpa_actors
+  if l == null { return }
+  let tags = new []string
+  let n = new []int
+  for i in 0 .. len(l) {
+    var k = -1
+    for j in 0 .. len(tags) { if tags[j] == l[i].tag { k = j } }
+    if k < 0 { push(tags, l[i].tag);  push(n, 0);  k = len(tags) - 1 }
+    n[k] += 1
+  }
+  for j in 0 .. len(tags) { print(`terrain census: {tags[j]}: {n[j]} patches`) }
+  print(`terrain census: {len(l)} patches, {render3d_st.tpa_drawn} in view, {render3d_st.tpa_tris} tris`)
+}

@@ -341,6 +341,10 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
     terrain_draw(render3d_st)
     prof_end(render3d_st)
   }
+  # the ground's patches and far tiles, a pass of their own out of the actors' (terrain_pass.ludic, R3D_TERRAIN_PASS)
+  prof_begin(render3d_st, "scene: terrain")
+  terrain_pass_draw(render3d_st)
+  prof_end(render3d_st)
   prof_cpu_mark(render3d_st, "terrain")
   prof_begin(render3d_st, "scene (vegetation)")
   r3d_scene_draw(render3d_st)

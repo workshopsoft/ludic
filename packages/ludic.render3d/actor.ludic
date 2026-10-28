@@ -109,7 +109,9 @@ property Actor {
   # in the static bucket (static_chunks.ludic: actor_new_static), not on the stage; row is its place there. stc_vis: the bucket's
   # pass that found it in view
   stc:        bool = false,
-  stc_vis:    int = 0
+  stc_vis:    int = 0,
+  # in the terrain pass's bucket (terrain_pass.ludic: actor_new_terrain), not on the stage; row is its place there
+  tpa:        bool = false
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
@@ -284,6 +286,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
 # (it was a new list of every other actor per removal, never freed)
 function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
   if a != null and a.stc { stc_remove(render3d_st, a);  return }   # the static bucket's (static_chunks.ludic)
+  if a != null and a.tpa { tpa_remove(render3d_st, a);  return }   # the terrain pass's (terrain_pass.ludic)
   let l = render3d_st.ac_actors
   if l == null or a == null { return }
   let r = a.row
@@ -301,6 +304,7 @@ function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
 function actor_keep(render3d_st: mut Render3dState, a: Actor) -> void {
   if a == null { return }
   if a.stc { stc_keep(render3d_st, a);  return }
+  if a.tpa { tpa_keep(render3d_st, a);  return }
   a.row = len(render3d_st.ac_actors)
   @alloc_ok("within the stage's room made at start-up (@max 2048)")
   push(render3d_st.ac_actors, a)
@@ -994,6 +998,7 @@ function actor_release_all(render3d_st: mut Render3dState) -> void {
     i -= 1
   }
   stc_release_all(render3d_st)                   # and the static bucket's (static_chunks.ludic)
+  tpa_release_all(render3d_st)                   # and the terrain pass's (terrain_pass.ludic)
   outline_clear(render3d_st)
 }
 
@@ -1004,6 +1009,7 @@ function actor_clear_all(render3d_st: mut Render3dState) -> void {
   for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].row = -1 }
   List.clear(render3d_st.ac_actors)
   stc_clear_all(render3d_st)
+  tpa_clear_all(render3d_st)
   outline_clear(render3d_st)
 }
 
@@ -1030,7 +1036,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.prev_seen = -1;  a.prev_n = 0;  a.no_velocity = false;  a.vel_mark = -1;  a.vel_want = false
   a.still = false;  a.sc_seen = 0;  a.ai_bframe = 0;  a.ai_pbframe = 0
   a.sh_lods = null;  a.sh_lod_d = null;  a.sh_keep = null
-  a.tag = "";  a.stc = false;  a.stc_vis = 0
+  a.tag = "";  a.stc = false;  a.stc_vis = 0;  a.tpa = false
   return a
 }
 
