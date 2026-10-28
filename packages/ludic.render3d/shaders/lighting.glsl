@@ -1087,6 +1087,10 @@ uniform vec4 u_surf_q;
 // metres from the camera past which a caller lays the geometric normal over the surface's (model.frag: smoothstep(30, 120, dist)
 // leaves nothing of it at 120 m), so the surfaces' normal maps need not be read there; never by default (kit.frag)
 float g_surf_flat_at = 1e30;
+// R3D_TERRAIN_FAR_SIMPLE (terrain_pass.ludic, the ground's draws alone; 0 0 off, as for every program that never sets it): from x to y
+// metres a surface blends to its maps' means (their last mip), Unreal's cheaper far landscape material (LandscapeRender.cpp
+// LODIndexToMaterialIndex) by the pixel's distance; past y no tile is read
+uniform vec4 u_ter_far;
 uniform sampler2D u_lu;  // the ground's lawn coverage of the patch's tile (tilemap_mask.ludic tmk_lawn): 1 lawn, 0 paving, its edge softened
 uniform vec4 u_lu_on;    // x 1: read it (0: the vertex colour decides), y z the tile's place in the uvs' tile grid
 struct SurfP { vec4 a; vec4 b; vec4 c; vec4 d; vec4 e; };
@@ -1190,9 +1194,10 @@ void surfaceAtPd(sampler2D d, sampler2D nm, sampler2D am, SurfP P, vec3 q, vec3 
   vec3 nsum = vec3(0.0);
   float gs = P.b.w < 0.0 ? -1.0 : 1.0;
   float str = abs(P.b.w);
+  float far = (u_ter_far.y > 0.0) ? smoothstep(u_ter_far.x, u_ter_far.y, dist) : 0.0;
   for (int a = 0; a < 3; ++a) {
     float wa = (a == 0) ? w.x : ((a == 1) ? w.y : w.z);
-    if (wa < 0.01) continue;
+    if (wa < 0.01 || far >= 1.0) continue;
     // x looks along x: (z, y); y up: (x, z); z: (x, y); the mesh's uvs ride in q.xy with w on z
     vec2 uv  = (a == 0) ? q.zy : ((a == 1) ? q.xz : q.xy);
     vec2 ux  = (a == 0) ? dqx.zy : ((a == 1) ? dqx.xz : dqx.xy);
@@ -1210,6 +1215,12 @@ void surfaceAtPd(sampler2D d, sampler2D nm, sampler2D am, SurfP P, vec3 q, vec3 
     nsum += wa * (wantN ? normalize(tbn * tt) : N);
     alb += wa * ta;
     arm += wa * tr;
+  }
+  if (far > 0.0) {
+    // the maps' means: their last mip (every projection's the same), the geometric normal
+    alb = mix(alb, textureLod(d, vec2(0.5), 16.0).rgb, far);
+    arm = mix(arm, textureLod(am, vec2(0.5), 16.0).rgb, far);
+    nsum = mix(nsum, N, far);
   }
   n = normalize(nsum + N * 1e-4);
   // the slow variation: a patch every 8 tiles or so, brighter or darker by the share
