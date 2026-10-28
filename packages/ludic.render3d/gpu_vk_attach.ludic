@@ -1,0 +1,62 @@
+# R3D_VK_ATTACH_OPT (on unless =0): a tile-based GPU's attachment traffic (Apple's, through MoltenVK). Every render pass
+# loads its attachments into tile memory as it begins and stores them as it ends, so a pass split in two pays a store and
+# a load of everything it holds, and a pass that overwrites its target pays a load for nothing.
+#  - One command buffer for the frame: the 512-draw bound (GVK_CB_DRAWS) submitted the frame in pieces mid-pass and waited
+#    for each (gvk_once_end), so the scene was four passes and each cascade two, the scene's 24 MB and a cascade's 16 MB
+#    stored and loaded again at every break, and the GPU idle while the CPU recorded the next piece. The bound is
+#    GVK_CB_DRAWS_WIDE instead, still warmed at start-up (r3d_warm_commands) so play never grows Metal's command storage.
+#  - No load before a full overwrite: Unreal's own rule (ScreenPass.cpp, AddDrawTexturePass: "Don't prime color data if
+#    the whole texture is being overwritten" - ERenderTargetLoadAction::ENoAction): a pass whose first draw is a fullscreen
+#    triangle that writes every pixel of its one colour target begins with that colour's load op DONT_CARE.
+# The timers (R3D_PROF) inside one render pass read at its boundaries on MoltenVK (Apple samples GPU counters only between
+# encoders), so a part's own time (the scene's actors, layers, buildings) needs R3D_VK_ATTACH_OPT=0 or R3D_CB_DRAWS=512.
+
+const GVK_CB_DRAWS_WIDE: int = 8192
+
+function gvk_attach_opt_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_attach_opt < 0 {
+    render3d_st.gvk_attach_opt = 1
+    if r3d_env_has(render3d_st, "R3D_VK_ATTACH_OPT") and r3d_env(render3d_st, "R3D_VK_ATTACH_OPT") == "0" { render3d_st.gvk_attach_opt = 0 }
+  }
+  return render3d_st.gvk_attach_opt == 1
+}
+
+# A fragment stage that may leave a pixel as it was: its SPIR-V has OpKill (discard), OpTerminateInvocation or
+# OpDemoteToHelperInvocation. Read once, as the program is made.
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function gvk_spv_kills(render3d_st: mut Render3dState, path: string) -> bool {
+  let spv = gvk_read_spv(render3d_st, path)
+  if spv == null { return true }
+  let n = render3d_st.gvk_spv_len / 4
+  var kills = false
+  var i = 5                                   # past the header: magic, version, generator, bound, schema
+  while i < n and not kills {
+    let w = Vk.get_i32(spv, i * 4)
+    let op = w & 0xFFFF
+    let wc = (w >> 16) & 0xFFFF
+    if op == 252 or op == 4416 or op == 5380 { kills = true }
+    if wc <= 0 { i = n } else { i += wc }
+  }
+  free(spv)
+  return kills
+}
+
+# the draw about to begin a pass writes every pixel its target has, whatever was there: a fullscreen program's three
+# vertices, once, unblended, every channel written, nothing tested; the target's size is gvk_pass_overwrites'
+function gvk_draw_covers(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState, first: int, count: int, instances: int) -> bool {
+  if not gvk_attach_opt_on(render3d_st) { return false }
+  if render3d_st.gvk_prog_covers == null or p <= 0 or p >= len(render3d_st.gvk_prog_covers) or render3d_st.gvk_prog_covers[p] != 1 { return false }
+  if m == null or m.ebo != 0 or render3d_st.gvk_mesh_x > 0 or render3d_st.gvk_ind_buf > 0 { return false }
+  var n = count
+  if n == 0 { n = m.count }
+  if n != 3 or first != 0 or instances != 1 { return false }
+  return st.blend == 0 and st.color_write == 1 and st.a2c == 0 and st.depth_test == 0
+}
+# ... and the pass it begins is one colour target the viewport covers whole, no scissor
+function gvk_pass_overwrites(render3d_st: Render3dState) -> bool {
+  if not render3d_st.gvk_pass_full or render3d_st.gvk_pass_ncolor != 1 { return false }
+  if render3d_st.gvk_sc != null and render3d_st.gvk_sc[0] == 1 { return false }
+  let tex = render3d_st.gvk_pass_col[0]
+  let vp = render3d_st.gvk_vp
+  return vp[0] <= 0 and vp[1] <= 0 and vp[0] + vp[2] >= gvk_tex_w(render3d_st, tex) and vp[1] + vp[3] >= gvk_tex_h(render3d_st, tex)
+}

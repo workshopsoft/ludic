@@ -59,9 +59,10 @@ function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_di
   if render3d_st.gvk_prog_var == null {
     render3d_st.gvk_prog_var = new []GpuVariant;  render3d_st.gvk_prog_vs = new []long;  render3d_st.gvk_prog_fs = new []long
     render3d_st.gvk_prog_dsl = new []long;  render3d_st.gvk_prog_layout = new []long;  render3d_st.gvk_prog_mesh = new []int
+    render3d_st.gvk_prog_covers = new []int
   }
   while len(render3d_st.gvk_prog_var) <= p {
-    push(render3d_st.gvk_prog_var, null);  push(render3d_st.gvk_prog_vs, zero);  push(render3d_st.gvk_prog_fs, zero);  push(render3d_st.gvk_prog_dsl, zero);  push(render3d_st.gvk_prog_layout, zero);  push(render3d_st.gvk_prog_mesh, 0)
+    push(render3d_st.gvk_prog_var, null);  push(render3d_st.gvk_prog_vs, zero);  push(render3d_st.gvk_prog_fs, zero);  push(render3d_st.gvk_prog_dsl, zero);  push(render3d_st.gvk_prog_layout, zero);  push(render3d_st.gvk_prog_mesh, 0);  push(render3d_st.gvk_prog_covers, 0)
   }
   let parts = Text.split(key, "|")
   var defs = ""
@@ -78,6 +79,8 @@ function gvk_program(render3d_st: mut Render3dState, p: int, key: string, spv_di
   if Text.ends_with(v.vs, ".mesh") { render3d_st.gvk_prog_mesh[p] = 1 } else { render3d_st.gvk_prog_mesh[p] = 0 }
   let fpath = `{spv_dir}/{v.id}.frag.spv`
   let fs = gvk_module(render3d_st, fpath)
+  render3d_st.gvk_prog_covers[p] = 0
+  if v.vs == "fullscreen.vert" and not gvk_spv_kills(render3d_st, fpath) { render3d_st.gvk_prog_covers[p] = 1 }
   free(fpath)
   if vs == 0 or fs == 0 { return false }
 
@@ -220,11 +223,12 @@ function gvk_dispatch(render3d_st: mut Render3dState, c: int, params: pointer, n
 function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointer, n_params: int, bufs: words, texs: words, gx: int, gy: int, gz: int) -> void {
   let zero: long = 0
   if render3d_st.gvk_cp_pipe == null or c <= 0 or c >= len(render3d_st.gvk_cp_pipe) { return }
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gvk_dispatch_tex";  gvk_pass_end(render3d_st)
   let cb = gvk_frame_cb(render3d_st)
   let nb = render3d_st.gvk_cp_nbuf[c]
   var nt = 0
   if render3d_st.gvk_cp_ntex != null and c < len(render3d_st.gvk_cp_ntex) { nt = render3d_st.gvk_cp_ntex[c] }
+  if render3d_st.gvk_plog { gvk_plog_dispatch(render3d_st, texs, nt) }
   let dsai = gvk_tmp(render3d_st, VkDescriptorSetAllocateInfo_sizeof)
   Vk.zero(dsai, VkDescriptorSetAllocateInfo_sizeof)
   Vk.put_i32(dsai, VkDescriptorSetAllocateInfo_sType, VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO)
@@ -977,6 +981,7 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
       if render3d_st.gvk_default_smp == 0 { render3d_st.gvk_default_smp = gvk_sampler(render3d_st, GPU_LINEAR, GPU_LINEAR, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE, 0, 0) }
       smp = render3d_st.gvk_default_smp
     }
+    if render3d_st.gvk_plog and tex != render3d_st.gvk_white { gvk_plog_read(render3d_st, tex) }
     let tg: long = tex * 65536 + render3d_st.gvk_tex_gen[tex]
     render3d_st.gvk_sc_tmp[t * 2] = tg
     render3d_st.gvk_sc_tmp[t * 2 + 1] = smp
@@ -1311,6 +1316,16 @@ function gvk_pass_no_compressed(render3d_st: mut Render3dState) -> void {
   }
   render3d_st.gvk_pass_ncolor = w
 }
+# what a pass about to begin does with its colour (or depth) on the way in and out: a clear asked for
+# before it is its load op; otherwise what was there is loaded, and what it draws is stored
+function gvk_att_load(render3d_st: Render3dState, depth: bool) -> int {
+  var bit = GPU_COLOR_BUFFER_BIT
+  if depth { bit = GPU_DEPTH_BUFFER_BIT }
+  if (render3d_st.gvk_clear_bits & bit) != 0 { return VK_ATTACHMENT_LOAD_OP_CLEAR }
+  if not depth and gvk_pass_overwrites(render3d_st) { return VK_ATTACHMENT_LOAD_OP_DONT_CARE }
+  return VK_ATTACHMENT_LOAD_OP_LOAD
+}
+function gvk_att_store(render3d_st: Render3dState, depth: bool) -> int { return VK_ATTACHMENT_STORE_OP_STORE }
 function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) -> void {
   if render3d_st.gvk_in_pass { return }
   let cb = gvk_frame_cb(render3d_st)
@@ -1331,11 +1346,11 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
     Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
     Vk.put_i64(catt, c * aw + VkRenderingAttachmentInfo_imageView, gvk_view_of(render3d_st, tex, layer1))
     Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
-    Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
+    Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_storeOp, gvk_att_store(render3d_st, false))
+    Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, gvk_att_load(render3d_st, false))
     if (render3d_st.gvk_clear_bits & GPU_COLOR_BUFFER_BIT) != 0 {
-      Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
       for k in 0 .. 4 { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_clearValue + k * 4, float_bits(render3d_st.gvk_clear_rgba[k])) }
-    } else { Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
+    }
     render3d_st.gvk_pass_cfmt = render3d_st.gvk_tex_vkfmt[tex]
     render3d_st.gvk_pass_samples = gvk_tex_samples_of(render3d_st, tex)
     if render3d_st.gvk_pass_w == 0 { render3d_st.gvk_pass_w = gvk_tex_w(render3d_st, tex);  render3d_st.gvk_pass_h = gvk_tex_h(render3d_st, tex) }
@@ -1348,15 +1363,14 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
     Vk.put_i32(datt, VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
     Vk.put_i64(datt, VkRenderingAttachmentInfo_imageView, gvk_view_of(render3d_st, dtex, render3d_st.gvk_pass_dep[1]))
     Vk.put_i32(datt, VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
-    Vk.put_i32(datt, VkRenderingAttachmentInfo_storeOp, VK_ATTACHMENT_STORE_OP_STORE)
-    if (render3d_st.gvk_clear_bits & GPU_DEPTH_BUFFER_BIT) != 0 {
-      Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_CLEAR)
-      Vk.put_i32(datt, VkRenderingAttachmentInfo_clearValue, 0)             # the far plane: reversed depth (fmath.ludic)
-    } else { Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, VK_ATTACHMENT_LOAD_OP_LOAD) }
+    Vk.put_i32(datt, VkRenderingAttachmentInfo_storeOp, gvk_att_store(render3d_st, true))
+    Vk.put_i32(datt, VkRenderingAttachmentInfo_loadOp, gvk_att_load(render3d_st, true))
+    Vk.put_i32(datt, VkRenderingAttachmentInfo_clearValue, 0)             # the far plane: reversed depth (fmath.ludic)
     render3d_st.gvk_pass_dfmt = VK_FORMAT_D32_SFLOAT
     render3d_st.gvk_pass_samples = gvk_tex_samples_of(render3d_st, dtex)
     if render3d_st.gvk_pass_w == 0 { render3d_st.gvk_pass_w = gvk_tex_w(render3d_st, dtex);  render3d_st.gvk_pass_h = gvk_tex_h(render3d_st, dtex) }
   }
+  if render3d_st.gvk_plog { gvk_plog_pass_atts(render3d_st) }
   render3d_st.gvk_clear_bits = 0
   let ri = gvk_tmp(render3d_st, VkRenderingInfo_sizeof)
   Vk.zero(ri, VkRenderingInfo_sizeof)
@@ -1368,6 +1382,7 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
   Vk.put_ptr(ri, VkRenderingInfo_pColorAttachments, catt)
   if dtex > 0 { Vk.put_ptr(ri, VkRenderingInfo_pDepthAttachment, datt) }
   Vk.cmd_begin_rendering(cb, ri)
+  render3d_st.gvk_plog_n += 1
   render3d_st.gvk_in_pass = true
 }
 
@@ -1375,6 +1390,7 @@ function gvk_pass_end(render3d_st: mut Render3dState) -> void {
   if not render3d_st.gvk_in_pass { return }
   let cb = render3d_st.gvk_cb
   Vk.cmd_end_rendering(cb)
+  if render3d_st.gvk_plog { gvk_plog_say_end_pass(render3d_st) }
   for c in 0 .. render3d_st.gvk_pass_ncolor {
     gvk_att_barrier(render3d_st, cb, render3d_st.gvk_pass_col[c * 2], render3d_st.gvk_pass_col[c * 2 + 1], false, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   }
@@ -1453,7 +1469,9 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
   let prof = gvk_prof(render3d_st)
   var t0: long = 0
   if prof { t0 = clock_now_us() }
+  if not render3d_st.gvk_in_pass { render3d_st.gvk_pass_full = gvk_draw_covers(render3d_st, p, m, st, first, count, instances) }
   gvk_pass_begin(render3d_st, rec, rec_o)
+  render3d_st.gvk_pass_full = false
   let cb = render3d_st.gvk_cb
   let samples = render3d_st.gvk_pass_samples
   let pipe = gvk_pipeline_fast(render3d_st, p, m, st, render3d_st.gvk_pass_ncolor, render3d_st.gvk_pass_cfmt, render3d_st.gvk_pass_dfmt, samples)
@@ -1553,7 +1571,7 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
 function gvk_flush(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_cb == null { return }
   render3d_st.gvk_n_flush += 1
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gvk_flush";  gvk_pass_end(render3d_st)
   gvk_labels_close(render3d_st)
   gvk_once_end(render3d_st, render3d_st.gvk_cb)
   render3d_st.gvk_cb = null
@@ -1574,7 +1592,7 @@ function gvk_present(render3d_st: mut Render3dState) -> void {
     return
   }
   if render3d_st.gvk_cb == null { return }
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gvk_present";  gvk_pass_end(render3d_st)
   gvk_labels_close(render3d_st)
   gvk_once_end(render3d_st, render3d_st.gvk_cb)
   render3d_st.gvk_cb = null
@@ -1703,11 +1721,11 @@ function gvk_fb_colors(render3d_st: mut Render3dState, fb: int, n: int) -> void 
 function gvk_rebind(render3d_st: mut Render3dState, fb: int) -> void {
   if fb == render3d_st.gvk_fb_cur { return }
   if not render3d_st.gvk_in_pass and render3d_st.gvk_clear_bits != 0 { gvk_pass_begin(render3d_st, render3d_st.gpu_fb, gpu_fb_at(render3d_st, render3d_st.gvk_fb_cur)) }
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gvk_rebind";  gvk_pass_end(render3d_st)
   render3d_st.gvk_fb_cur = fb
 }
 function gvk_fb_forget(render3d_st: mut Render3dState, fb: int) -> void {
-  if fb == render3d_st.gvk_fb_cur { gvk_pass_end(render3d_st) }
+  if fb == render3d_st.gvk_fb_cur { render3d_st.gvk_plog_why = "gvk_fb_forget";  gvk_pass_end(render3d_st) }
   gvk_fb_colors(render3d_st, fb, 1)
 }
 
@@ -1798,6 +1816,7 @@ function gvk_resolve(render3d_st: mut Render3dState, cb: pointer, src: int, dst:
 }
 function gvk_copy(render3d_st: mut Render3dState, cb: pointer, src: int, dst: int, depth: bool, w: int, h: int) -> void {
   if src <= 0 or dst <= 0 or render3d_st.gvk_tex_image[src] == 0 or render3d_st.gvk_tex_image[dst] == 0 { return }
+  if render3d_st.gvk_plog { gvk_plog_copy(render3d_st, "K copy", src, dst, depth) }
   if gvk_tex_samples_of(render3d_st, src) > 1 and gvk_tex_samples_of(render3d_st, dst) == 1 { gvk_resolve(render3d_st, cb, src, dst, depth, w, h);  return }
   gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
   gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
@@ -1817,7 +1836,7 @@ function gvk_copy(render3d_st: mut Render3dState, cb: pointer, src: int, dst: in
   gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 }
 function gvk_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> void {
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gvk_blit";  gvk_pass_end(render3d_st)
   let cb = gvk_frame_cb(render3d_st)
   if (mask & GPU_COLOR_BUFFER_BIT) != 0 { gvk_copy(render3d_st, cb, gvk_fb_att(render3d_st, render3d_st.gvk_fb_read, false), gvk_fb_att(render3d_st, render3d_st.gvk_fb_draw, false), false, w, h) }
   if (mask & GPU_DEPTH_BUFFER_BIT) != 0 { gvk_copy(render3d_st, cb, gvk_fb_att(render3d_st, render3d_st.gvk_fb_read, true), gvk_fb_att(render3d_st, render3d_st.gvk_fb_draw, true), true, w, h) }
@@ -2004,7 +2023,7 @@ function gvk_swap_make(render3d_st: mut Render3dState, w: int, h: int) -> bool {
 
 function gvk_present_window(render3d_st: mut Render3dState) -> void {
   let cb = gvk_frame_cb(render3d_st)
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gvk_present_window";  gvk_pass_end(render3d_st)
   gvk_labels_close(render3d_st)
   # a covered window is not drawn to: its layer would hold the frame for a drawable the compositor
   # hands back once a second. The frame still runs, paced at about 60 Hz, so the game keeps time.
@@ -2082,7 +2101,7 @@ function gvk_resize_check(render3d_st: mut Render3dState) -> bool {
 function gvk_mips_now(render3d_st: mut Render3dState, tex: int, w: int, h: int) -> void {
   if gvk_is_compressed(render3d_st.gvk_tex_glfmt[tex]) { return }        # its levels came with it
   if render3d_st.gvk_cb == null or render3d_st.gvk_tex_levels[tex] <= 1 { gvk_flush(render3d_st);  gvk_tex_mips(render3d_st, tex, w, h);  return }
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gvk_mips_now";  gvk_pass_end(render3d_st)
   gvk_tex_mips_into(render3d_st, render3d_st.gvk_cb, tex, w, h)
 }
 
@@ -2235,6 +2254,7 @@ const GVK_CB_DRAWS: int = 512
 function gvk_cb_cap_of(render3d_st: mut Render3dState) -> int {
   if render3d_st.gvk_cb_cap < 0 {
     render3d_st.gvk_cb_cap = GVK_CB_DRAWS
+    if gvk_attach_opt_on(render3d_st) { render3d_st.gvk_cb_cap = GVK_CB_DRAWS_WIDE }
     if r3d_env_has(render3d_st, "R3D_CB_DRAWS") { render3d_st.gvk_cb_cap = Text.to_int(r3d_env(render3d_st, "R3D_CB_DRAWS")) }
   }
   return render3d_st.gvk_cb_cap

@@ -52,6 +52,7 @@ function prof_slot(render3d_st: mut Render3dState, name: pointer) -> int {
 
 function prof_begin(render3d_st: mut Render3dState, name: pointer) -> void {
   ds_set_pass(render3d_st, name)
+  render3d_st.gvk_plog_name = name
   if render3d_st.gvk_labels { gvk_label_begin(render3d_st, name) }
   if not render3d_st.prof_on { return }
   if render3d_st.prof_active >= 0 { return }        # GPU_TIME_ELAPSED queries cannot nest
@@ -118,6 +119,10 @@ function prof_collect(render3d_st: mut Render3dState) -> void {
     }
     s += 1
   }
+  # the wall clock between frames: what the player waits for, the CPU and the GPU together
+  let now = clock_now_us()
+  if render3d_st.prof_wall_last > 0 and not stale { render3d_st.prof_wall_us = render3d_st.prof_wall_us + (now - render3d_st.prof_wall_last);  render3d_st.prof_wall_hits = render3d_st.prof_wall_hits + 1 }
+  render3d_st.prof_wall_last = now
   let fq = PROF_SLOTS * PROF_RING + slot_frame
   let fused = render3d_st.prof_used[fq] == 1
   render3d_st.prof_used[fq] = 0
@@ -142,6 +147,8 @@ function prof_reset(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_whole_ns = 0
   render3d_st.prof_whole_hits = 0
   render3d_st.prof_whole_min = 0
+  render3d_st.prof_wall_us = 0
+  render3d_st.prof_wall_hits = 0
   render3d_st.prof_skip = PROF_RING - 1
 }
 
@@ -170,6 +177,7 @@ function prof_report(render3d_st: Render3dState) -> void {
   if render3d_st.prof_whole_hits > 0 {
     print(`  {Text.pad_right("WHOLE FRAME", 22)} {Text.pad_left(string(render3d_st.prof_whole_ns / render3d_st.prof_whole_hits / 1000), 7)} us   least {string(render3d_st.prof_whole_min / 1000)} us   (first GPU work to the end of post: gaps included, the HUD and present not)`)
   }
+  if render3d_st.prof_wall_hits > 0 { print(`  {Text.pad_right("WALL", 22)} {Text.pad_left(string(render3d_st.prof_wall_us / render3d_st.prof_wall_hits), 7)} us   (one frame to the next on the clock: the CPU and the GPU together)`) }
 }
 
 # ---- streaming work per frame (R3D_PROF=1) ----------------------------------

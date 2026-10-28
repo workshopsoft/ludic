@@ -668,22 +668,22 @@ function gpu_fb_bind(render3d_st: mut Render3dState, fb: int) -> void {
 function gpu_fb_bind_read(render3d_st: mut Render3dState, fb: int) -> void { render3d_st.gvk_fb_read = fb }
 function gpu_fb_bind_draw(render3d_st: mut Render3dState, fb: int) -> void { render3d_st.gvk_fb_draw = fb }
 function gpu_fb_color(render3d_st: mut Render3dState, slot: int, tex: int) -> void {
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gpu_fb_color";  gvk_pass_end(render3d_st)
   let o = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur)
   if o >= 0 and slot < 2 { render3d_st.gpu_fb[o + slot] = tex;  if slot == 0 { render3d_st.gpu_fb[o + 7] = 0 } }
 }
 function gpu_fb_color_layer(render3d_st: mut Render3dState, slot: int, tex: int, layer: int) -> void {
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gpu_fb_color_layer";  gvk_pass_end(render3d_st)
   let o = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur)
   if o >= 0 and slot < 2 { render3d_st.gpu_fb[o + slot] = tex;  if slot == 0 { render3d_st.gpu_fb[o + 7] = layer + 1 } }
 }
 function gpu_fb_depth(render3d_st: mut Render3dState, tex: int) -> void {
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gpu_fb_depth";  gvk_pass_end(render3d_st)
   let o = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur)
   if o >= 0 { render3d_st.gpu_fb[o + 2] = tex;  render3d_st.gpu_fb[o + 3] = 0 }
 }
 function gpu_fb_depth_layer(render3d_st: mut Render3dState, tex: int, layer: int) -> void {
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gpu_fb_depth_layer";  gvk_pass_end(render3d_st)
   let o = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur)
   if o >= 0 { render3d_st.gpu_fb[o + 2] = tex;  render3d_st.gpu_fb[o + 3] = layer + 1 }
 }
@@ -699,10 +699,10 @@ function gpu_rb_storage(render3d_st: mut Render3dState, rb: int, ifmt: int, w: i
   render3d_st.gvk_storage_samples = 1
 }
 function gpu_fb_color_rb(render3d_st: mut Render3dState, slot: int, rb: int) -> void {
-  gvk_pass_end(render3d_st);  let co = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur);  if co >= 0 and slot < 2 { render3d_st.gpu_fb[co + slot] = rb }
+  render3d_st.gvk_plog_why = "gpu_fb_color_rb";  gvk_pass_end(render3d_st);  let co = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur);  if co >= 0 and slot < 2 { render3d_st.gpu_fb[co + slot] = rb }
 }
 function gpu_fb_depth_rb(render3d_st: mut Render3dState, rb: int) -> void {
-  gvk_pass_end(render3d_st);  let dop = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur);  if dop >= 0 { render3d_st.gpu_fb[dop + 2] = rb;  render3d_st.gpu_fb[dop + 3] = 0 }
+  render3d_st.gvk_plog_why = "gpu_fb_depth_rb";  gvk_pass_end(render3d_st);  let dop = gpu_fb_at(render3d_st, render3d_st.gpu_fb_cur);  if dop >= 0 { render3d_st.gpu_fb[dop + 2] = rb;  render3d_st.gpu_fb[dop + 3] = 0 }
 }
 # colour slots 0 .. n-1 are drawn into (several: an MRT bake)
 function gpu_fb_draw_buffers(render3d_st: mut Render3dState, n: int) -> void {

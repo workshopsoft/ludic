@@ -440,7 +440,7 @@ function gsl_dlss_eval(render3d_st: mut Render3dState) -> int {
     gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
     gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
   }
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gsl_dlss_eval";  gvk_pass_end(render3d_st)
   let cb = gvk_frame_cb(render3d_st)
   if render3d_st.gsl_set_mode != render3d_st.gsl_dlss_mode or render3d_st.gsl_set_w != gfx_width() or render3d_st.gsl_set_h != gfx_height() {
     let f = gsl_fn(GSL_DLSS, "slDLSSSetOptions")
