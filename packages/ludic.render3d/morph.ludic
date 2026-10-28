@@ -411,9 +411,18 @@ export function model_set_fabric(render3d_st: mut Render3dState, model: Model, p
   if model == null or len(p) != 68 { return false }
   let paths = [mask, kit, dn, kitb, dnb]
   let ids = words(5)
+  # a hair card's groom atlas (mode 3: R its coverage) keeps its coverage down its mips (R3D_ALPHA_MIP_COVERAGE, texture.ludic
+  # tex_upload_cov) at the coverage M_hair_v4's mask reaches the cut at: pow(R x scale, power) = DitherTemporalAA's middle
+  ac_card_flags(render3d_st)
+  let card = int(p[67]) == 3 and p[13] > 0.0 and p[14] > 0.0
   for k in 0 .. 5 {
     ids[k] = 0
+    if k == 0 and card {
+      render3d_st.tex_cov_ch = 0
+      render3d_st.tex_cov_ref = Math.pow(0.33 - 0.1666 * 0.5, 1.0 / p[14]) / p[13]
+    }
     if paths[k] != "" { ids[k] = tex_cached(render3d_st, paths[k], false, 0) }
+    render3d_st.tex_cov_ch = -1
   }
   if ids[0] == 0 {
     free(ids)

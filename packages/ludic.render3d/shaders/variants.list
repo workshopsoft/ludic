@@ -94,6 +94,8 @@ skin.vert|outline.frag|#define OUTLINE;
 skin.vert|outline.frag|#define OUTLINE;#define ALPHA_TEST;
 skin.vert|shadow.frag|#define SHADOW_PASS;
 skin.vert|shadow.frag|#define SHADOW_PASS;#define ALPHA_TEST;
+skin.vert|shadow.frag|#define SHADOW_PASS;#define ALPHA_TEST;#define HAIR_CARD;
+skin.vert|shadow.frag|#define SHADOW_PASS;#define CARD_DOM;
 skin.vert|shadow.frag|#define SHADOW_PASS;#define ACTOR_INST;
 skin.vert|shadow.frag|#define SHADOW_PASS;#define ACTOR_INST;#define ALPHA_TEST;
 terrain.vert|terrain.frag|
@@ -118,6 +120,7 @@ hlod.vert|hlod.frag|
 kit.vert|bake.frag|
 skin.vert|velocity.frag|#define VELOCITY;
 skin.vert|velocity.frag|#define VELOCITY;#define ALPHA_TEST;
+skin.vert|velocity.frag|#define VELOCITY;#define ALPHA_TEST;#define HAIR_CARD;
 skin.vert|strands.frag|#define STRANDS;
 skin.vert|strands.frag|#define STRANDS;#define TRANSMITTANCE;
 fullscreen.vert|strands_resolve.frag|
