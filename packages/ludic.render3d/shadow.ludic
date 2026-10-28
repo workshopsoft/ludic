@@ -212,7 +212,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
     let vp = shadow_cascade_vp(render3d_st, c)
     # shadows off (a video setting): the cascades stay cleared, so everything reads lit
     if render3d_st.sh_enabled and not past {
-      if not render3d_st.sh_skip_terrain { terrain_draw_shadow(vp) }
+      if not render3d_st.sh_skip_terrain { terrain_draw_shadow(vp);  terrain_pass_casters(render3d_st, vp) }
       r3d_scene_casters(render3d_st, vp)
     }
   }

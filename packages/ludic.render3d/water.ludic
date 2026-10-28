@@ -78,6 +78,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.ter_reflect = true
   prof_cpu_mark(render3d_st, "reflection setup")
   if not render3d_st.r3d_plate { terrain_draw(render3d_st) }   # a plate has no terrain to mirror
+  terrain_pass_draw(render3d_st)                                # the ground's patches (terrain_pass.ludic), mirrored
   prof_cpu_mark(render3d_st, "reflection terrain")
   r3d_scene_draw(render3d_st)
   prof_cpu_mark(render3d_st, "reflection scene")

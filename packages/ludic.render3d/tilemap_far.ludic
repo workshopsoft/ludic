@@ -218,12 +218,9 @@ function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> bool {
   }
   tmf_fill(render3d_st, f, q, nv, ni)
   if q.actor == null {
-    q.actor = actor_new(render3d_st, q.model)
-    q.actor.tag = "terrain/far"
-    q.actor.casts = false
-    q.actor.cull = 0.0
+    q.actor = actor_new_terrain(render3d_st, q.model, "terrain/far")     # the terrain pass's (terrain_pass.ludic)
     f.shown += 1
-  } else { q.actor.model = q.model }
+  } else { q.actor.model = q.model;  terrain_patch_changed(q.actor) }
   q.actor.tint[0] = 1.0;  q.actor.tint[1] = 1.0;  q.actor.tint[2] = 1.0
   q.actor.radius = r
   q.actor.occ_hx = half + 0.5;  q.actor.occ_hy = (y1 - y0) * 0.5 + 0.5     # its occlusion test's box (occlusion.ludic)
