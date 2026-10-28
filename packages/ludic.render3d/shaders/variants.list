@@ -124,6 +124,8 @@ kit.vert|kit.frag|
 kit.vert|kit.frag|#define INTERIOR_MAP;
 kit.vert|kit.frag|#define INTERIOR_MAP;#define FACADE;
 kit.vert|kit.frag|#define INTERIOR_MAP;#define FACADE;#define BAKE;
+kit.vert|kit.frag|#define DEPTH_ONLY;
+kit.vert|kit.frag|#define INTERIOR_MAP;#define FACADE;#define DEPTH_ONLY;
 kit.vert|shadow.frag|#define SHADOW_PASS;
 oimp.vert|oimp.frag|
 hlod.vert|hlod.frag|

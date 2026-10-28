@@ -27,6 +27,26 @@ uniform sampler2D u_arm;
 uniform mat4 u_view;
 uniform float u_rough_scale;
 uniform vec2 u_storey;           // a line every x metres up the walls from the instance's base (0: none), y metres thick
+// the shading-cost switches (kgpu.ludic kgpu_bind_opt; 0 off, so a program that never sets them - the card bake - has them off): x the
+// mesh's own maps not read under a surface that replaces them (R3D_KIT_SKIP_MESHMAPS), y a FACADE's glass with nothing of the wall behind
+// it read (R3D_KIT_GLASS_SKIP), z the far simplification (R3D_KIT_FAR_SIMPLE: no normal map from KIT_FLAT_AT on, sub-pixel noise at its
+// mean). Unreal keeps such work apart by material quality and distance (MaterialShared.h EMaterialQualityLevel; the static switches a
+// material compiles out); here a branch on a uniform, or on a pixel's own state where the quad agrees (quadAll)
+uniform vec4 u_kit_opt;
+// where the normal is the geometric one whatever the maps say: main()'s smoothstep(30.0, 120.0, dist) leaves nothing of them from here on
+const float KIT_FLAT_AT = 120.0;
+// R3D_KIT_FAR_SIMPLE: this pixel is past KIT_FLAT_AT (set by main before facadeAt and weathering read it; never in the card bake)
+bool g_kit_far = false;
+
+// true where b holds at all four pixels of the 2 x 2 quad, and then at each of them (else false at each): the fine derivatives of a 0/1
+// flag see a pixel's row and column neighbours, and those of their sum the diagonal one. A branch on it is uniform over the quad, so the
+// derivatives and the implicit-LOD taps inside it stay defined (a per-pixel branch would leave a neighbour's lanes out). Call it where the
+// whole quad runs.
+bool quadAll(bool b) {
+  float g = b ? 0.0 : 1.0;
+  float m = g + abs(dFdxFine(g)) + abs(dFdyFine(g));
+  return m + abs(dFdxFine(m)) + abs(dFdyFine(m)) == 0.0;
+}
 
 // 1 on a storey line of an upright face, 0 between them. A box instance's lines hang from its top (its own h, the eave) every u_storey.x
 // metres down to its base, so a plinth under the building (its base lower than its pad) shifts nothing: the lines are every storey up from
@@ -61,7 +81,11 @@ float weathering(float h, float top, float ny, vec3 p, float seed) {
   float foot = 0.8 + 0.8 * surfNoise(vec2(along * 0.7, 0.0), 1024.0);
   float splash = (1.0 - smoothstep(0.0, foot, h - pad)) * 0.9;
   float down = top - h;
-  float streak = surfNoise(vec2(along * 2.3, h * 0.08), 1024.0) * 0.6 + surfNoise(vec2(along * 9.0, h * 0.25), 1024.0) * 0.4;
+  // (R3D_KIT_FAR_SIMPLE: past KIT_FLAT_AT the fine octave, cells of 11 cm along the wall, is under a pixel at 1080p (a pixel there is
+  // ~15 cm): its mean, 0.5, in its place - one of the far simplification's two changes of a pixel (the sill's streaks the other), the
+  // streaks' speckle traded for its average)
+  float fine = g_kit_far ? 0.5 : surfNoise(vec2(along * 9.0, h * 0.25), 1024.0);
+  float streak = surfNoise(vec2(along * 2.3, h * 0.08), 1024.0) * 0.6 + fine * 0.4;
   float reach = 1.0 + 4.0 * streak;
   float runoff = (1.0 - smoothstep(0.0, reach, down)) * smoothstep(0.3, 0.6, streak) * 0.75;
   return clamp((splash + runoff) * amount, 0.0, 0.8);
@@ -266,7 +290,8 @@ Fac facadeAt(vec3 ray) {
   if (!shop && b < 0.0 && b > -0.07 && a > -0.07 && a < gw + 0.07) { f.kind = 4; return f; }
   // under a sill: rain off it in streaks down the wall, a hand to a stride apart, fading over a metre and a half; each building its own
   if (!shop && b <= -0.07 && b > -1.5 && a > -0.03 && a < gw + 0.03) {
-    float st = surfNoise(vec2((a + float(ci) * 1.7) * 6.0, b * 0.6 + fract(v_seed * 3.7) * 37.0), 1024.0);
+    // (R3D_KIT_FAR_SIMPLE: past KIT_FLAT_AT its cells, 17 cm across, are about a pixel: the noise's mean in its place)
+    float st = g_kit_far ? 0.5 : surfNoise(vec2((a + float(ci) * 1.7) * 6.0, b * 0.6 + fract(v_seed * 3.7) * 37.0), 1024.0);
     float fade = pow(1.0 - clamp((-b - 0.07) / 1.43, 0.0, 1.0), 1.6);
     f.shade *= 1.0 - smoothstep(0.35, 0.8, st) * fade * (0.12 + 0.2 * fract(v_seed * 11.3 + 0.4));
   }
@@ -356,26 +381,71 @@ void main() {
 #if !defined(SHADOW_PASS) && !defined(BAKE)
   if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
 #endif
+#ifdef DEPTH_ONLY
+  // R3D_KIT_PREPASS (kgpu.ludic kgpu_draw_depth): the depth alone, where the lit pass keeps the pixel - its own discards above (the clip
+  // plane, a party wall's side, the fog wall's dissolve) and nothing else, so it never lays depth the lit pass would not
+  return;
+#endif
   vec3 N = normalize(v_nrm);
   if (!gl_FrontFacing) N = -N;
   g_ground_grey = 1.0;   // built things stand over paving: what lights them from below has the ground's brightness, not its hue (lighting.glsl)
   float dist = length(v_wpos - u_cam_pos);
   float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;
-  vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv) * v_col;
-  vec3 tn = texture(u_nrm, v_uv).rgb * 2.0 - 1.0;
-  mat3 tbn = cotangentFrame(N, v_wpos, v_uv);
-  vec3 n = normalize(tbn * tn);
-  vec3 arm = texture(u_arm, v_uv).rgb;
-  arm.gb *= vec2(1.0) - u_fac_mr_inv;
-  n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
-  vec3 alb = d.rgb * v_tint.rgb * (0.92 + 0.16 * fract(v_seed * 7.13));
-  alb *= 1.0 - 0.45 * storeyLine(v_h, v_top, N.y);
+#ifndef BAKE
+  // R3D_KIT_FAR_SIMPLE: past KIT_FLAT_AT the normal is the geometric one (main's smoothstep below): no normal map is read there (exact),
+  // and the sub-pixel noise of the streaks takes its mean (weathering, facadeAt: the documented change)
+  bool far = u_kit_opt.z > 0.5 && dist >= KIT_FLAT_AT;
+  g_kit_far = far;
+  if (far) g_surf_flat_at = KIT_FLAT_AT;
+  // the mesh's normal map is left out only where the whole quad is past it (cotangentFrame's derivatives, the tap's implicit LOD)
+  bool farQuad = u_kit_opt.z > 0.5 && quadAll(dist >= KIT_FLAT_AT);
+#else
+  bool farQuad = false;
+#endif
+#ifdef FACADE
+  // the derivatives first, where every invocation of the quad is still running (the window grid before the wall: a glass pixel needs
+  // nothing of the wall behind it)
+  float pxm = length(fwidth(v_lpos));
+  float lod = clamp(log2(max(pxm, 1e-5) / max(u_im_gain.w, 1e-4)), 0.0, 6.0);
+  vec3 fray = normalize(v_lpos - v_lcam);
+  Fac fa = facadeAt(fray);
+  vec3 glow = vec3(0.0);
+  // a bay smaller than a few pixels: the grid fades to the wall darkened by what its glass would take (no shimmer far off)
+  float gone = smoothstep(0.12 * fa.bay, 0.35 * fa.bay, pxm);
+#endif
+  // R3D_KIT_GLASS_SKIP: glass with the grid fully drawn (gone exactly 0) takes the glass's own albedo, roughness, normal and occlusion
+  // below (mix(.., .., 0.0) keeps the first exactly): the wall's maps, its surface, storey line and weathering are not read. Only where
+  // the whole quad is such glass, so the wall's derivatives stay defined for its neighbours
+  bool glassOnly = false;
+#if defined(FACADE) && !defined(BAKE)
+  glassOnly = u_kit_opt.y > 0.5 && quadAll(fa.kind == 1 && gone == 0.0);
+#endif
+  // R3D_KIT_SKIP_MESHMAPS: a surface replaces the mesh's albedo, normal, roughness and occlusion whole (below): its own maps and tangent
+  // frame are not read then
+  bool meshMaps = !glassOnly && !(u_kit_opt.x > 0.5 && u_surf.x > 0.0);
+  vec3 alb = vec3(0.0);
+  vec3 n = N;
+  float roughF = 0.35;
+  float ao = 1.0;
+  if (meshMaps) {
+    vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv) * v_col;
+    if (!farQuad) {
+      vec3 tn = texture(u_nrm, v_uv).rgb * 2.0 - 1.0;
+      mat3 tbn = cotangentFrame(N, v_wpos, v_uv);
+      n = normalize(tbn * tn);
+    }
+    vec3 arm = texture(u_arm, v_uv).rgb;
+    arm.gb *= vec2(1.0) - u_fac_mr_inv;
+    n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
+    alb = d.rgb * v_tint.rgb * (0.92 + 0.16 * fract(v_seed * 7.13));
+    alb *= 1.0 - 0.45 * storeyLine(v_h, v_top, N.y);
+    roughF = clamp(arm.g * u_rough_scale, 0.35, 1.0);
+    ao = arm.r;
+  }
   float shadow = sunShadow(v_wpos, N, viewDepth);
-  float roughF = clamp(arm.g * u_rough_scale, 0.35, 1.0);
-  float ao = arm.r;
   // a surface (surface.ludic): the scanned material its name asks for, tiled in metres over the kit's own frame (a building's seed moves
   // its tiles, so no two walls start their bricks at the same place), in place of the mesh's own maps
-  if (u_surf.x > 0.0) {
+  if (u_surf.x > 0.0 && !glassOnly) {
     vec3 off = vec3(fract(v_seed * 13.7) * 37.0, fract(v_seed * 3.1) * 11.0, fract(v_seed * 7.31) * 23.0);
     // a share of the instances (u_s2_e.y, by seed) wear the row's alternative (brick for render, gravel on a flat roof)
     // a flat roof's alternative (u_s2_e.w) its own share of the buildings, on its near-level faces alone
@@ -399,14 +469,6 @@ void main() {
     ao = sr.r;
   }
 #ifdef FACADE
-  // the derivatives first, where every invocation of the quad is still running
-  float pxm = length(fwidth(v_lpos));
-  float lod = clamp(log2(max(pxm, 1e-5) / max(u_im_gain.w, 1e-4)), 0.0, 6.0);
-  vec3 fray = normalize(v_lpos - v_lcam);
-  Fac fa = facadeAt(fray);
-  vec3 glow = vec3(0.0);
-  // a bay smaller than a few pixels: the grid fades to the wall darkened by what its glass would take (no shimmer far off)
-  float gone = smoothstep(0.12 * fa.bay, 0.35 * fa.bay, pxm);
 #ifdef BAKE
   gone = 0.0;   // the card keeps the grid: its frames are drawn far smaller than the wall, and their mips do the fading
 #endif

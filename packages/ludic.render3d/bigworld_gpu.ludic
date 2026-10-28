@@ -7,7 +7,7 @@
 #   let bw = bw_open(st, "assets/maps/city/cells", row, kits.rows, true, "assets", 2000000)    # the map's data
 #   bw_setup_kits(st, bw, 8, 128)              # models, impostor frames, interior atlases (a person's load, once)
 #   r3d_on_prepare(st, fn prepare)             #   function prepare() { bw_prepare(st, bw) }
-#   r3d_on_draw(st, fn draw)                   #   function draw() { bw_draw(st, bw) }
+#   r3d_on_draw(st, fn draw)                   #   function draw() { bw_prepass(st, bw); ...; bw_draw(st, bw) }
 #   r3d_on_casters(st, fn casters)             #   function casters(vp: floats) { bw_draw_casters(st, bw, vp) }
 #   each frame, with the camera's WORLD position (doubles) and heading:  bw_frame(st, bw, wx, wy, wz, yaw, pitch, 2000.0)
 #
@@ -310,6 +310,12 @@ function bw_drop(render3d_st: mut Render3dState, bw: BigWorld, slot: int, layer:
 # before the frame's first pass (r3d_on_prepare): the GPU cull
 export function bw_prepare(render3d_st: mut Render3dState, bw: BigWorld) -> void {
   if bw_gpu_culls(bw) { kgpu_frame(render3d_st, bw.gpu, bw.origin) }
+}
+
+# the kits' depth prepass (kgpu.ludic kgpu_draw_depth, R3D_KIT_PREPASS): first in the scene callback, before anything is shaded; the main
+# view alone (a water reflection draws none). The CPU culler's path has none.
+export function bw_prepass(render3d_st: mut Render3dState, bw: BigWorld) -> void {
+  if bw.gpu != null and bw_gpu_culls(bw) { kgpu_draw_depth(render3d_st, bw.gpu) }
 }
 
 # the scene: proxies of the far cells, then the kits (every pass that draws the scene)
