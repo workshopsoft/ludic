@@ -91,6 +91,7 @@ skin.vert|model.frag|#define ALPHA_TEST;#define EYE;
 skin.vert|eyeshell.frag|
 skin.vert|model.frag|#define SSS_SPLIT;
 skin.vert|depth.frag|#define OPAQUE_DEPTH;
+skin.vert|depth.frag|#define OPAQUE_DEPTH;#define NO_DISCARD;
 skin.vert|outline.frag|#define OUTLINE;
 skin.vert|outline.frag|#define OUTLINE;#define ALPHA_TEST;
 skin.vert|shadow.frag|#define SHADOW_PASS;

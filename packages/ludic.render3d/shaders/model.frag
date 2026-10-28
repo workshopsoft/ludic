@@ -847,7 +847,13 @@ void main() {
   // an unlit glow looks up no shadow
   float shadow = (u_tr.w > 0.5) ? 1.0 : sunShadow(v_wpos, N, viewDepth);
 #else
+#if !defined(FABRIC) && !defined(EYE) && !defined(SSS_SPLIT) && !defined(TRANSLUCENT)
+  // a surface (a road, a wall, a lot's edge: the static ground) by Unreal's 3x3 gather PCF in the near cascades, four fetches for the
+  // disc's eight (R3D_SURF_SHADOW_PCF3, u_surf_q2.y; lighting.glsl sunShadowQ)
+  float shadow = sunShadowQ(v_wpos, N, viewDepth, u_surf.x > 0.0 && u_surf_q2.y < 0.5);
+#else
   float shadow = sunShadow(v_wpos, N, viewDepth);
+#endif
 #if defined(EYE) || defined(SSS_SPLIT)
   shadow *= hairShadow(v_wpos);                // the brows' and lashes' own shadow (strands.ludic)
 #endif
