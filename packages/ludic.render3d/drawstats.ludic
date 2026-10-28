@@ -114,6 +114,16 @@ function ds_tex_bind(render3d_st: mut Render3dState) -> void {
   render3d_st.ds_pass_tex[render3d_st.ds_pass_i] = render3d_st.ds_pass_tex[render3d_st.ds_pass_i] + 1
 }
 
+# the binds R3D_VK_SKIP_REBIND left out: a texture already on its unit, a descriptor set already bound
+function ds_tex_saved(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ds_on != 1 or not render3d_st.ds_counting { return }
+  render3d_st.ds_tex_saved = render3d_st.ds_tex_saved + 1
+}
+function ds_set_saved(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ds_on != 1 or not render3d_st.ds_counting { return }
+  render3d_st.ds_set_saved = render3d_st.ds_set_saved + 1
+}
+
 function ds_kind_name(k: int) -> pointer {
   if k == DS_MESH { return "mesh" }
   if k == DS_INSTANCED { return "instanced" }
@@ -157,6 +167,7 @@ function ds_report(render3d_st: mut Render3dState) -> void {
   for s in 0 .. n_pass {
     print(`  {Text.pad_right(render3d_st.ds_pass_names[s], 24)} {Text.pad_left(ds_per(render3d_st, pass_draws[s]), 9)} {Text.pad_left(ds_per(render3d_st, pass_inst[s]), 11)} {Text.pad_left(ds_per(render3d_st, render3d_st.ds_pass_prog[s]), 17)} {Text.pad_left(ds_per(render3d_st, render3d_st.ds_pass_tex[s]), 15)}`)
   }
+  print(`  binds skipped (R3D_VK_SKIP_REBIND): textures {ds_per(render3d_st, render3d_st.ds_tex_saved)}, descriptor sets {ds_per(render3d_st, render3d_st.ds_set_saved)}`)
   # rows by draws, most first
   let order = new []int
   for r in 0 .. n_rows { push(order, r) }

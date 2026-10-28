@@ -81,6 +81,8 @@ property Actor {
   occ_hx:     float = 0.0,
   occ_hy:     float = 0.0,
   ai_stamp:   int = 0,           # the pass that drew it in its model's instanced group (actor_inst.ludic)
+  ai_bframe:  int = 0,           # the gvk frame its palette went into the instances' bone buffer, and its first row there (ai_palette)
+  ai_boff:    int = 0,
   # Unreal's Static mobility: it never moves, so the sun's cached cascades draw it once (shadow_cache.ludic). Moved, added or removed,
   # it puts them due a rebuild; the stamp and place are what the last static draw saw.
   still:      bool = false,
@@ -552,16 +554,16 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_census_at == -2 { render3d_st.ac_census_at = -1;  if r3d_env_has(render3d_st, "R3D_ACTOR_CENSUS") { render3d_st.ac_census_at = Text.to_int(r3d_env(render3d_st, "R3D_ACTOR_CENSUS")) } }
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { actor_census(render3d_st) }
   occ_read(render3d_st)                                     # last frame's occlusion tests (occlusion.ludic)
-  # the plain rigid actors that share a model, instanced (actor_inst.ludic); not in the water's reflection, which would refill the buffer
+  # the plain actors that share a model, instanced (actor_inst.ludic); not in the water's reflection, which would refill the buffer
   var grouped = false
   if not render3d_st.ter_reflect and ai_on(render3d_st) {
     ai_begin(render3d_st)
     for i in 0 .. len(render3d_st.ac_actors) {
       let a = render3d_st.ac_actors[i]
-      if ai_plain(a) and ac_visible(render3d_st, a, false) { ai_gather(render3d_st, a) }
+      if ai_plain(render3d_st, a) and ac_visible(render3d_st, a, false) { ai_gather(render3d_st, a) }
     }
     grouped = ai_build(render3d_st, 0)
-    if grouped { ai_draw(render3d_st, render3d_st.ac_lit_inst, false) }
+    if grouped { ai_draw(render3d_st, false) }
   }
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
@@ -756,12 +758,13 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     for i in 0 .. len(render3d_st.ac_actors) {
       let a = render3d_st.ac_actors[i]
       if ac_phase_skips(render3d_st, a) { continue }
-      if ai_plain(a) and ac_casts(render3d_st, a, light_vp) { ai_gather(render3d_st, a) }
+      if ai_plain(render3d_st, a) and ac_casts(render3d_st, a, light_vp) and not ac_proxy_figure(render3d_st, a) { ai_gather(render3d_st, a) }
     }
     grouped = ai_build(render3d_st, slot)
     if grouped {
       gpu_use_program(render3d_st, render3d_st.ac_sh_inst.prog);  u_mat4(render3d_st, render3d_st.ac_sh_inst.l_lvp, light_vp)
-      ai_draw(render3d_st, render3d_st.ac_sh_inst, true)
+      if render3d_st.ac_sh_cut_inst != null { gpu_use_program(render3d_st, render3d_st.ac_sh_cut_inst.prog);  u_mat4(render3d_st, render3d_st.ac_sh_cut_inst.l_lvp, light_vp) }
+      ai_draw(render3d_st, true)
     }
   }
   for i in 0 .. len(render3d_st.ac_actors) {
@@ -929,7 +932,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.shell = false;  a.strands = false;  a.own_blend = false;  a.spec = 1.0
   a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
   a.prev_seen = -1;  a.prev_n = 0
-  a.still = false;  a.sc_seen = 0
+  a.still = false;  a.sc_seen = 0;  a.ai_bframe = 0
   a.sh_lods = null;  a.sh_lod_d = null;  a.sh_keep = null
   return a
 }

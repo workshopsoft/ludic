@@ -16,9 +16,21 @@ layout(location = 3) in vec4 i_m0;
 layout(location = 4) in vec4 i_m1;
 layout(location = 8) in vec4 i_m2;
 layout(location = 9) in vec4 i_te;
+// x: the first row of the instance's palette in u_ai_bones (actor_inst.ludic ai_palette), three rows a joint: Unreal's instanced
+// skinned mesh reads each instance's own bone data the same way (Components/InstancedSkinnedMeshComponent.h)
+layout(location = 12) in vec4 i_bo;
+readonly buffer u_ai_bones { vec4 ai_bones[]; };
 out vec4 v_te;
-#endif
+// one influence: weight w of joint j's three rows, added in
+void aiBone(float j, float w, inout vec4 r0, inout vec4 r1, inout vec4 r2) {
+  int o = int(i_bo.x + 0.5) + int(j + 0.5) * 3;
+  r0 += w * ai_bones[o];
+  r1 += w * ai_bones[o + 1];
+  r2 += w * ai_bones[o + 2];
+}
+#else
 uniform mat4 u_bones[160];                  // skin.ludic SKIN_MAX_JOINTS
+#endif
 uniform float u_skinned;                    // 0: a rigid model on the same path
 uniform mat4 u_view;
 uniform mat4 u_proj;
@@ -90,6 +102,19 @@ void main() {
   mat4 m = u_model;
 #endif
   if (u_skinned > 0.5) {
+#ifdef ACTOR_INST
+    // the instance's own palette (actor_inst.ludic): the eight influences' rows blended, then its model matrix
+    vec4 r0 = vec4(0.0), r1 = vec4(0.0), r2 = vec4(0.0);
+    aiBone(a_joints.x, a_weights.x, r0, r1, r2);
+    aiBone(a_joints.y, a_weights.y, r0, r1, r2);
+    aiBone(a_joints.z, a_weights.z, r0, r1, r2);
+    aiBone(a_joints.w, a_weights.w, r0, r1, r2);
+    aiBone(a_joints1.x, a_weights1.x, r0, r1, r2);
+    aiBone(a_joints1.y, a_weights1.y, r0, r1, r2);
+    aiBone(a_joints1.z, a_weights1.z, r0, r1, r2);
+    aiBone(a_joints1.w, a_weights1.w, r0, r1, r2);
+    m = m * transpose(mat4(r0, r1, r2, vec4(0.0, 0.0, 0.0, 1.0)));
+#else
     mat4 sk = a_weights.x * u_bones[int(a_joints.x + 0.5)]
             + a_weights.y * u_bones[int(a_joints.y + 0.5)]
             + a_weights.z * u_bones[int(a_joints.z + 0.5)]
@@ -99,6 +124,7 @@ void main() {
             + a_weights1.z * u_bones[int(a_joints1.z + 0.5)]
             + a_weights1.w * u_bones[int(a_joints1.w + 0.5)];
     m = u_model * sk;
+#endif
   }
   vec4 w = m * vec4(a_pos, 1.0);
 #ifdef VELOCITY

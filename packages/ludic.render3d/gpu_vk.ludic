@@ -615,6 +615,7 @@ function gvk_once_begin(render3d_st: mut Render3dState) -> pointer {
   Vk.put_i32(cbbi, VkCommandBufferBeginInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO)
   Vk.put_i32(cbbi, VkCommandBufferBeginInfo_flags, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)
   Vk.begin_command_buffer(cb, cbbi)
+  render3d_st.gvk_dsb_set = 0                 # nothing bound in it yet (gvk_bind_set)
   return cb
 }
 # end it, submit it, wait for it, free it
