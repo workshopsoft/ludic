@@ -2657,7 +2657,11 @@ print - as floats; `expect_eq` on strings compares their text, a null equal only
 prints both: `expect_eq failed (got "camp", want "lake")`); a test block is type-checked like `entry`, so a generic function
 called from one works as it does anywhere. `ludic test` finds `tests/*.ludic` and `src/**/*_test.ludic`;
 given a directory, it runs every `*_test.ludic` under it and every file straight inside a `tests/`
-directory under it. **Each test block runs in a process of its own**, so a global one test changes
+directory under it; a file with no `test` block is not a test program (a module a test imports, a
+checker run by hand). A
+test program over a package with no native library for this host (a `native` line for every target
+but this one) that does not link is skipped, and says which package; so, off macOS, is one that lacks
+only macOS's own runtime (the window layer, Http, the crash layer). **Each test block runs in a process of its own**, so a global one test changes
 is back to its initial value in the next - no test depends on another having run, or not. A
 failed assertion names its file, as the compiler was given it, and its line:
 

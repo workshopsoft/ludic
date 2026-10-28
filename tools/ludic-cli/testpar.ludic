@@ -66,14 +66,43 @@ function test_parallel(files: []pointer, only: pointer, verbose: bool) -> int {
   test_stage(jd, "t")
   return test_report(files, bins, names, only, verbose)
 }
+# "ludic.physics linux-x64" -> "ludic.physics has no native library for linux-x64"
+function native_missing_why(m: pointer) -> pointer {
+  let sp = s_index(m, " ", 0)
+  if sp <= 0 { return `{m} has no native library here` }
+  return `{sslice(m, 0, sp)} has no native library for {sslice(m, sp + 1, slen(m))}`
+}
+# why a test that compiled and did not link is skipped rather than failed, or "": a package it is
+# built over has no native library for this host, or (off macOS) all it lacked is macOS's own: the
+# window layer (win_*, over Objective-C), Http (Foundation), the crash layer's dyld, pthread *_np and
+# sysctl, the process layer's _NSGetEnviron
+function link_skip_why(bin: pointer) -> pointer {
+  if test_rc(`{bin}.rc1`) != 0 or test_rc(`{bin}.rc2`) == 0 { return "" }
+  let missing = capture_line(`grep -m1 '^; ludic-native-missing: ' {bin}.ll 2>/dev/null | cut -c25-`)
+  if missing != "" { return native_missing_why(missing) }
+  if is_darwin() { return "" }
+  let undef = `grep -o 'undefined reference to .[A-Za-z_0-9]*' {bin}.log 2>/dev/null | sed 's/.*to .//' | sort -u`
+  if capture_line(`{undef} | head -1`) == "" { return "" }
+  if capture_line(`{undef} | grep -v -E '^(objc_|sel_|class_|_dyld_|_NS|win_|sysctlbyname$)|_np$' | head -1`) != "" { return "" }
+  return "needs macOS's own runtime"
+}
 # the report, file by file, as the sequential run gives it
 function test_report(files: []pointer, bins: []pointer, names: [][]pointer, only: pointer, verbose: bool) -> int {
   var failed = 0
   var ntests = 0
+  var skipped = 0
   for i in 0 .. len(files) {
     let f = files[i]
     let bin = bins[i]
     if verbose { say(`  RUN  {f}`) }
+    # it compiled but did not link for want of what this host lacks: skipped, said why
+    let lacks = link_skip_why(bin)
+    if lacks != "" {
+      let line = `  skip {f}  ({lacks})`
+      if verbose { say(line) } else { print(line) }
+      skipped += 1
+      continue
+    }
     if test_rc(`{bin}.rc1`) != 0 or test_rc(`{bin}.rc2`) != 0 {
       let line = `  {c_red()}FAIL{c_reset()} {f}  (did not compile)`
       if verbose { say(line) } else { print(line) }
@@ -110,10 +139,12 @@ function test_report(files: []pointer, bins: []pointer, names: [][]pointer, only
     if bad > 0 or (len(mine) == 0 and only != "") { failed += 1 }
   }
   print("")
+  var sk = ""
+  if skipped > 0 { sk = `, {string(skipped)} skipped` }
   if failed == 0 {
-    print(`== {string(len(files))} test files passed ({string(ntests)} tests) ==`)
+    print(`== {string(len(files) - skipped)} test files passed ({string(ntests)} tests){sk} ==`)
     return 0
   }
-  print(`== {string(failed)} of {string(len(files))} test files failed ==`)
+  print(`== {string(failed)} of {string(len(files))} test files failed{sk} ==`)
   return 1
 }
