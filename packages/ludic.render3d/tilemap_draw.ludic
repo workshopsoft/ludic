@@ -313,7 +313,8 @@ function tmd_lod_want(render3d_st: mut Render3dState, td: TileDraw, s: int, k: i
   let y1 = tmm_ymax(td.ms, tm, s, px, pz, 0)
   let half = tmap_patch_size(tm) * 0.5
   let hy = (y1 - y0) * 0.5
-  let r = Math.sqrt(2.0 * half * half + hy * hy)
+  # measured as a 63-quad component's would be (terrain_pass.ludic terrain_lod_scale, R3D_TERRAIN_LOD_SCALE)
+  let r = Math.sqrt(2.0 * half * half + hy * hy) / terrain_lod_scale(render3d_st, tm.patch_texels)
   # the bounds' centre in the camera's frame (render space: the floating origin's x and z off the world's)
   let x = tmap_patch_cx(tm, t % tm.cols, px) - cam_x + render3d_st.cam_pos[0]
   let z = tmap_patch_cz(tm, t / tm.cols, pz) - cam_z + render3d_st.cam_pos[2]

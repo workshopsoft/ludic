@@ -22,6 +22,26 @@
 # R3D_TERRAIN_PASS=0: every patch an actor on the stage again (not casting, never distance-culled), as before. R3D_TERRAIN_LOD=0: the
 # distance bands (tilemap.ludic tmap_lod_for). R3D_TERRAIN_CASTS=0: the patches cast nothing. R3D_TERRAIN_LOD0_SCREEN_SIZE,
 # R3D_TERRAIN_LOD0_DISTRIBUTION, R3D_TERRAIN_LOD_DISTRIBUTION: Landscape's three settings (its defaults 0.5, 1.25, 3.0).
+#
+# The levels' triangle density (R3D_TERRAIN_LOD_SCALE): Unreal's levels are a subsection's (LandscapeRender.cpp,
+# FLandscapeComponentSceneProxy's constructor: MaxLOD = CeilLogTwo(SubsectionSizeQuads + 1) - 1) and its screen-size settings were
+# tuned on components of 63-quad sections (the Landscape docs' recommended sizes; 1 m a quad at the default scale 100). A patch here
+# is a 128-quad component of one section, twice the side: the same thresholds hold LOD0 out twice as far, four times the area at
+# full density. So a patch's bounds are measured for the level as a 63-quad component's would be (its radius times 63 / its quads:
+# the thresholds scaled by quads / 63), which keeps Unreal's triangles on screen. R3D_TERRAIN_LOD_SCALE=<s> sets the scale, 0 or 1
+# Landscape's defaults on the whole patch as before.
+#
+# Late (R3D_TERRAIN_LATE): Unreal's base pass draws every opaque mesh after its depth prepass (DeferredShadingRenderer.cpp
+# RenderPrePass, then RenderBasePass), so the ground under a road, a lot or a building is rejected by depth before it is shaded. Here
+# the game's scene callback calls terrain_pass_late after its opaque parts (the static bucket, the buildings, the layers: their depth
+# is in) and before its viewmodel; the early slot (render.ludic terrain_pass_early) then draws nothing. A game that never calls the
+# hook keeps the early draw. R3D_TERRAIN_LATE=0: the patches before the scene, as before.
+#
+# Far surfaces (R3D_TERRAIN_FAR_SIMPLE): Unreal's per-LOD landscape materials (LandscapeRender.cpp LODIndexToMaterialIndex,
+# ALandscapeProxy::PerLODOverrideMaterials) give far components a cheaper material. Here, by the pixel's distance (no seam between
+# patches): from R3D_TERRAIN_FAR_START (500 m) to R3D_TERRAIN_FAR_END (800 m) the ground's surfaces blend to their maps' means (the
+# last mip: what a pixel there averages anyway, lighting.glsl surfaceAtPd u_ter_far), so past it no tile, anti-tiling, normal or
+# parallax tap is read, two fetches of a texel a surface. R3D_TERRAIN_FAR_SIMPLE=0: the full surfaces everywhere.
 # ============================================================================
 
 const TPA_ROOM: int = 4096          # patches the bucket holds without growing
@@ -51,8 +71,36 @@ export function terrain_lod_on(render3d_st: mut Render3dState) -> bool {
     if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD0_SCREEN_SIZE") { render3d_st.tpa_lod0_ss = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD0_SCREEN_SIZE")), 0.1, 10.0) }
     if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD0_DISTRIBUTION") { render3d_st.tpa_lod0_dist = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD0_DISTRIBUTION")), 1.0, 10.0) }
     if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD_DISTRIBUTION") { render3d_st.tpa_lod_dist = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD_DISTRIBUTION")), 1.0, 10.0) }
+    if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD_SCALE") {
+      let v = ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD_SCALE"))
+      render3d_st.tpa_lod_scale = 1.0
+      if v > 0.0 { render3d_st.tpa_lod_scale = Math.clamp(v, 0.1, 16.0) }
+    }
   }
   return render3d_st.tpa_lod == 1
+}
+# the scale on Landscape's screen-size thresholds for a patch of `quads` quads a side (R3D_TERRAIN_LOD_SCALE, the header): its quads
+# over Unreal's 63-quad section unless set; the level is picked for its bounds' radius divided by this
+const TPA_UE_SECTION_QUADS: float = 63.0
+export function terrain_lod_scale(render3d_st: mut Render3dState, quads: int) -> float {
+  terrain_lod_on(render3d_st)
+  if render3d_st.tpa_lod_scale > 0.0 { return render3d_st.tpa_lod_scale }
+  return Math.max(float(quads) / TPA_UE_SECTION_QUADS, 1.0)
+}
+# R3D_TERRAIN_LATE (the header)
+function terrain_late_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.tpa_late < 0 { render3d_st.tpa_late = tpa_env_on(render3d_st, "R3D_TERRAIN_LATE") }
+  return render3d_st.tpa_late == 1
+}
+# R3D_TERRAIN_FAR_SIMPLE (the header), its band read with it
+function terrain_far_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.tpa_far < 0 {
+    render3d_st.tpa_far = tpa_env_on(render3d_st, "R3D_TERRAIN_FAR_SIMPLE")
+    if r3d_env_has(render3d_st, "R3D_TERRAIN_FAR_START") { render3d_st.tpa_far_m0 = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_FAR_START")), 0.0) }
+    if r3d_env_has(render3d_st, "R3D_TERRAIN_FAR_END") { render3d_st.tpa_far_m1 = ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_FAR_END")) }
+    render3d_st.tpa_far_m1 = Math.max(render3d_st.tpa_far_m1, render3d_st.tpa_far_m0 + 1.0)
+  }
+  return render3d_st.tpa_far == 1
 }
 
 # ---- the level --------------------------------------------------------------------------------------------------------------------------
@@ -255,6 +303,9 @@ function terrain_pass_draw(render3d_st: mut Render3dState) -> void {
   gpu_use_program(render3d_st, ap.prog)
   u_f(render3d_st, ap.l_skin, 0.0)
   u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_shadow_tan_max"), TPA_SHADOW_TAN)
+  # the far surfaces' band (R3D_TERRAIN_FAR_SIMPLE), set for the ground alone: given back as off below, as the program is the actors'
+  let far_u = gpu_uniform(render3d_st, ap.prog, "u_ter_far")
+  if terrain_far_on(render3d_st) { u_f4(render3d_st, far_u, render3d_st.tpa_far_m0, render3d_st.tpa_far_m1, 0.0, 0.0) }
   gpu_cull(render3d_st, false)                              # both sides, as the patches' actors were drawn (a skirt is seen from either)
   var shown = 0
   var tris = 0
@@ -281,12 +332,33 @@ function terrain_pass_draw(render3d_st: mut Render3dState) -> void {
     shown += 1
   }
   gpu_cull(render3d_st, true)
+  u_f4(render3d_st, far_u, 0.0, 0.0, 0.0, 0.0)
   if main {
     render3d_st.tpa_drawn = shown
     render3d_st.tpa_tris = tris
-    # R3D_ACTOR_CENSUS=<frame>: the actors' pass counts its frame after this one
-    if render3d_st.ac_census_at > 0 and render3d_st.ac_frame + 1 == render3d_st.ac_census_at { terrain_pass_census(render3d_st) }
+    # R3D_ACTOR_CENSUS=<frame>: the actors' pass counts its frame after this one (drawn late, before it: the actors counted it already)
+    var at = render3d_st.ac_frame + 1
+    if render3d_st.tpa_late_at == render3d_st.tpa_frame { at = render3d_st.ac_frame }
+    if render3d_st.ac_census_at > 0 and at == render3d_st.ac_census_at { terrain_pass_census(render3d_st) }
   }
+}
+
+# The main view's early slot (render.ludic, before the scene's callback): the patches, unless the game's late hook drew them last frame
+# and so will this one (R3D_TERRAIN_LATE). It counts the main view's frames.
+export function terrain_pass_early(render3d_st: mut Render3dState) -> void {
+  render3d_st.tpa_frame += 1
+  if terrain_late_on(render3d_st) and render3d_st.tpa_late_at == render3d_st.tpa_frame - 1 { return }
+  terrain_pass_draw(render3d_st)
+  render3d_st.tpa_early_at = render3d_st.tpa_frame
+}
+# The game's late hook (its scene callback, after its opaque parts and before its viewmodel: the header's R3D_TERRAIN_LATE): the patches
+# with the scene's depth in, each pixel under a road, lot or building rejected before it is shaded. Nothing in the water's mirror (the
+# mirror draws them first, water.ludic) nor when the early slot drew them this frame (the first frame, or the switch off).
+export function terrain_pass_late(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ter_reflect or not terrain_late_on(render3d_st) { return }
+  render3d_st.tpa_late_at = render3d_st.tpa_frame
+  if render3d_st.tpa_early_at == render3d_st.tpa_frame { return }
+  terrain_pass_draw(render3d_st)
 }
 
 # The ground's casters into the light light_vp (shadow.ludic, shadow_cache.ludic sc_casters): the live cascade and the cached cascades'
