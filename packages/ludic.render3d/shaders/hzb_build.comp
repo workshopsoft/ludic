@@ -1,0 +1,24 @@
+// hzb_build.comp - one mip of Unreal's furthest HZB (HZB.cpp, EHZBType::FurthestHZB; HZB.usf HZBBuildCS), for the actors' HZB
+// occlusion (occlusion.ludic). Mip 0 is half the frame's power-of-two size (Unreal's HZBMipmap0Size), each texel the furthest
+// (reversed depth: the smallest) of the 2 x 2 under it, the frame's edge clamped as Unreal's build clamps its UVs; mip k + 1 the
+// furthest of mip k's 2 x 2. Kept in one storage buffer, mip after mip, as device depth. Unreal reduces 4 mips a dispatch in
+// group shared memory; here one dispatch a mip.
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0) uniform Params {
+  ivec4 dst;            // this mip's width, height, first float in Hzb; 0 from the depth, 1 from the mip before
+  ivec4 src;            // the source's width, height, first float in Hzb (from the mip before)
+} pr;
+layout(set = 0, binding = 1) buffer Hzb { float hzb[]; };
+layout(set = 0, binding = 2) uniform sampler2D u_depth;
+float src(ivec2 q) {
+  q = min(q, pr.src.xy - 1);
+  if (pr.dst.w == 0) return texelFetch(u_depth, q, 0).r;
+  return hzb[pr.src.z + q.y * pr.src.x + q.x];
+}
+void main() {
+  ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+  if (p.x >= pr.dst.x || p.y >= pr.dst.y) return;
+  ivec2 q = p * 2;
+  float d = min(min(src(q), src(q + ivec2(1, 0))), min(src(q + ivec2(0, 1)), src(q + ivec2(1, 1))));
+  hzb[pr.dst.z + p.y * pr.dst.x + p.x] = d;
+}

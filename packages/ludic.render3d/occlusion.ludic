@@ -6,6 +6,9 @@
 # tested this frame is visible the next, a query not ready is visible. Not kept: its grouped queries for the occluded and its random
 # re-test of the visible (every candidate is tested every frame). R3D_UE_OCCLUSION=0 switches it off; R3D_UE_OCCLUSION_MIN_TRIS (1000)
 # is the smallest model tested, below which a query costs more than it saves.
+# By default it is Unreal's r.HZBOcclusion 1 instead (R3D_UE_HZB_OCCLUSION=0: the queries above) ("less GPU and CPU cost, more conservative"): after the resolve the
+# furthest HZB is built from the frame's depth (hzb_build.comp) and one dispatch tests every candidate's box against it
+# (hzb_test.comp, FHZBOcclusionTester / HZBOcclusion.usf), into a buffer read the next frame by the same rules.
 const OCC_MAX: int = 4096
 const OCC_MIN_TRIS: int = 1000
 const OCC_SLACK: float = 1.1          # a model's box widened: a skinned figure's pose leaves its bind pose's bounds
@@ -13,8 +16,10 @@ const OCC_SLACK: float = 1.1          # a model's box widened: a skinned figure'
 function occ_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.occ_state == 0 {
     render3d_st.occ_state = 2
-    if render3d_st.gpu_kind == GPU_VK and render3d_st.gvk_has_hqr and not (r3d_env_has(render3d_st, "R3D_UE_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_OCCLUSION") == "0") {
-      if occ_init(render3d_st) { render3d_st.occ_state = 1 }
+    if render3d_st.gpu_kind == GPU_VK and not (r3d_env_has(render3d_st, "R3D_UE_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_OCCLUSION") == "0") {
+      if not (r3d_env_has(render3d_st, "R3D_UE_HZB_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_HZB_OCCLUSION") == "0") {
+        if occ_hzb_init(render3d_st) { render3d_st.occ_state = 1;  render3d_st.occ_hzb = true }
+      } else if render3d_st.gvk_has_hqr and occ_init(render3d_st) { render3d_st.occ_state = 1 }
     }
     render3d_st.occ_min_tris = OCC_MIN_TRIS
     if r3d_env_has(render3d_st, "R3D_UE_OCCLUSION_MIN_TRIS") { render3d_st.occ_min_tris = Text.to_int(r3d_env(render3d_st, "R3D_UE_OCCLUSION_MIN_TRIS")) }
@@ -76,20 +81,22 @@ function occ_read(render3d_st: mut Render3dState) -> void {
   let n = render3d_st.occ_n
   render3d_st.occ_hidden_n = 0
   if n == 0 { return }
-  let data = gvk_tmp(render3d_st, n * 16)
-  let size: long = n * 16
-  let stride: long = 16
-  # not waited for: a query not yet available reads as visible
-  Vk.get_query_pool_results(render3d_st.gvk_dev, render3d_st.gvk_occ_pool, 0, n, size, data, stride, VK_QUERY_RESULT_64_BIT + VK_QUERY_RESULT_WITH_AVAILABILITY_BIT)
-  for i in 0 .. n {
-    let a = render3d_st.occ_list[i]
-    render3d_st.occ_list[i] = null
-    if a == null or a.id != render3d_st.occ_ids[i] { continue }             # released and taken again since
-    let ready = Vk.get_i64(data, i * 16 + 8) != 0
-    a.occ_hidden = ready and Vk.get_i64(data, i * 16) == 0
-    if a.occ_hidden { render3d_st.occ_hidden_n += 1 }
+  if render3d_st.occ_hzb { occ_hzb_read(render3d_st, n) } else {
+    let data = gvk_tmp(render3d_st, n * 16)
+    let size: long = n * 16
+    let stride: long = 16
+    # not waited for: a query not yet available reads as visible
+    Vk.get_query_pool_results(render3d_st.gvk_dev, render3d_st.gvk_occ_pool, 0, n, size, data, stride, VK_QUERY_RESULT_64_BIT + VK_QUERY_RESULT_WITH_AVAILABILITY_BIT)
+    for i in 0 .. n {
+      let a = render3d_st.occ_list[i]
+      render3d_st.occ_list[i] = null
+      if a == null or a.id != render3d_st.occ_ids[i] { continue }             # released and taken again since
+      let ready = Vk.get_i64(data, i * 16 + 8) != 0
+      a.occ_hidden = ready and Vk.get_i64(data, i * 16) == 0
+      if a.occ_hidden { render3d_st.occ_hidden_n += 1 }
+    }
+    Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_occ_pool, 0, n)
   }
-  Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_occ_pool, 0, n)
   render3d_st.occ_n = 0
   # R3D_UE_OCCLUSION_STATS=k: every k frames, how many were tested and how many of them hidden
   if r3d_env_has(render3d_st, "R3D_UE_OCCLUSION_STATS") {
@@ -121,12 +128,24 @@ function occ_bounds(a: Actor, b: floats) -> void {
   b[3] = r;  b[4] = hy;  b[5] = r
 }
 
-# The tests, after the opaque scene and in its pass: every actor worth one that is in view, each box drawn into its own query
-function occ_pass(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.occ_live or render3d_st.ac_actors == null { return }
-  let b = render3d_st.occ_b
+# whether actor a is tested this frame, its box into b: worth a test and in view, and the near plane does not cut its box (cut: visible,
+# untested - Unreal's NearClippingPlane.PlaneDot against BoxPushOut). Asked with occ_live off: the actors' own view test, not last frame's result
+function occ_candidate(render3d_st: Render3dState, a: Actor, b: floats) -> bool {
+  if a.leader != null or a.blend != 0 or a.shell or a.strands or a.model == null { return false }
+  if a.occ_hx <= 0.0 and a.model.tris < render3d_st.occ_min_tris { return false }
+  if not ac_visible(render3d_st, a, false) { return false }
+  occ_bounds(a, b)
   let f = render3d_st.cam_fwd
   let cp = render3d_st.cam_pos
+  let d = (b[0] - cp[0]) * f[0] + (b[1] - cp[1]) * f[1] + (b[2] - cp[2]) * f[2] - render3d_st.cam_near
+  let push = b[3] * Math.abs(f[0]) + b[4] * Math.abs(f[1]) + b[5] * Math.abs(f[2])
+  return d > push
+}
+
+# The tests, after the opaque scene and in its pass: every actor worth one that is in view, each box drawn into its own query
+function occ_pass(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.occ_live or render3d_st.occ_hzb or render3d_st.ac_actors == null { return }
+  let b = render3d_st.occ_b
   let p = render3d_st.occ_prog
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_vp"), render3d_st.cam_vp)
@@ -142,15 +161,7 @@ function occ_pass(render3d_st: mut Render3dState) -> void {
   var n = 0
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if a.leader != null or a.blend != 0 or a.shell or a.strands or a.model == null { continue }
-    if a.occ_hx <= 0.0 and a.model.tris < render3d_st.occ_min_tris { continue }
-    if n >= OCC_MAX { continue }
-    if not ac_visible(render3d_st, a, false) { continue }
-    occ_bounds(a, b)
-    # the near plane cuts the box: visible, untested (Unreal's NearClippingPlane.PlaneDot against BoxPushOut)
-    let d = (b[0] - cp[0]) * f[0] + (b[1] - cp[1]) * f[1] + (b[2] - cp[2]) * f[2] - render3d_st.cam_near
-    let push = b[3] * Math.abs(f[0]) + b[4] * Math.abs(f[1]) + b[5] * Math.abs(f[2])
-    if d <= push { continue }
+    if n >= OCC_MAX or not occ_candidate(render3d_st, a, b) { continue }
     u_f3(render3d_st, l_c, b[0], b[1], b[2])
     u_f3(render3d_st, l_e, b[3], b[4], b[5])
     render3d_st.gvk_occ_q = n
@@ -165,4 +176,125 @@ function occ_pass(render3d_st: mut Render3dState) -> void {
   gpu_color_write(render3d_st, true)
   gpu_depth_write(render3d_st, true)
   gpu_depth_func(render3d_st, GPU_GREATER)
+}
+
+# ---- the HZB path (the default; R3D_UE_HZB_OCCLUSION=0 the queries) ----------------------------------------------------------------------------------------
+const OCC_HZB_MIPS: int = 16
+
+function occ_hzb_init(render3d_st: mut Render3dState) -> bool {
+  render3d_st.occ_hzb_build = gpu_compute_tex(render3d_st, "hzb_build", 1, 1)
+  render3d_st.occ_hzb_test = gpu_compute(render3d_st, "hzb_test", 3)
+  if render3d_st.occ_hzb_build == 0 or render3d_st.occ_hzb_test == 0 { return false }
+  render3d_st.occ_list = new []Actor
+  for i in 0 .. OCC_MAX { push(render3d_st.occ_list, null) }
+  render3d_st.occ_ids = words(OCC_MAX)
+  render3d_st.occ_b = floats(6)
+  render3d_st.occ_hzb_box = floats(OCC_MAX * 8)
+  render3d_st.occ_hzb_mips = words(OCC_HZB_MIPS * 4)
+  render3d_st.occ_hzb_pr = words(24 + OCC_HZB_MIPS * 4)
+  render3d_st.occ_hzb_bufs = words(3)
+  render3d_st.occ_hzb_texs = words(1)
+  render3d_st.occ_hzb_buf = gpu_buffer_new(render3d_st)
+  render3d_st.occ_hzb_bounds = words(2)
+  render3d_st.occ_hzb_res = words(2)
+  for k in 0 .. 2 {
+    let bb = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, bb, OCC_MAX * 32, null, GPU_DYNAMIC)
+    render3d_st.occ_hzb_bounds[k] = bb
+    let rb = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, rb, OCC_MAX * 4, null, GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, rb)
+    Vk.zero(gpu_buffer_map(render3d_st, rb), OCC_MAX * 4)              # no tag: read as visible
+    render3d_st.occ_hzb_res[k] = rb
+  }
+  return true
+}
+
+# The pyramid's layout for a w x h frame: mip 0 half its power-of-two size (Unreal's HZBMipmap0Size), down to 1 x 1, one buffer
+@alloc_ok("made again only when the frame's size changes, as the post targets are")
+function occ_hzb_size(render3d_st: mut Render3dState, w: int, h: int) -> void {
+  if w == render3d_st.occ_hzb_w and h == render3d_st.occ_hzb_h { return }
+  render3d_st.occ_hzb_w = w;  render3d_st.occ_hzb_h = h
+  var mw = 1
+  while mw < w { mw = mw * 2 }
+  var mh = 1
+  while mh < h { mh = mh * 2 }
+  mw = max(mw / 2, 1);  mh = max(mh / 2, 1)
+  let mips = render3d_st.occ_hzb_mips
+  var n = 0
+  var at = 0
+  while n < OCC_HZB_MIPS {
+    mips[n * 4] = mw;  mips[n * 4 + 1] = mh;  mips[n * 4 + 2] = at;  mips[n * 4 + 3] = 0
+    at += mw * mh
+    n += 1
+    if mw == 1 and mh == 1 { break }
+    mw = max(mw / 2, 1);  mh = max(mh / 2, 1)
+  }
+  render3d_st.occ_hzb_n_mips = n
+  gpu_buffer_upload(render3d_st, render3d_st.occ_hzb_buf, at * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, render3d_st.occ_hzb_buf)
+}
+
+# After the resolve: the candidates' boxes, the furthest HZB from the depth copy, and one dispatch testing every box against it
+function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.occ_live or render3d_st.ac_actors == null or render3d_st.post_depth_copy == null { return }
+  let b = render3d_st.occ_b
+  let box = render3d_st.occ_hzb_box
+  render3d_st.occ_live = false                               # the actors' own view test, not last frame's result
+  var n = 0
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if n >= OCC_MAX or not occ_candidate(render3d_st, a, b) { continue }
+    for k in 0 .. 3 { box[n * 8 + k] = b[k];  box[n * 8 + 4 + k] = b[3 + k] }
+    box[n * 8 + 3] = 0.0;  box[n * 8 + 7] = 0.0
+    render3d_st.occ_list[n] = a
+    render3d_st.occ_ids[n] = a.id
+    n += 1
+  }
+  render3d_st.occ_live = true
+  render3d_st.occ_n = n
+  if n == 0 { return }
+  let w = render3d_st.post_w
+  let h = render3d_st.post_h
+  occ_hzb_size(render3d_st, w, h)
+  let mips = render3d_st.occ_hzb_mips
+  let pr = render3d_st.occ_hzb_pr
+  let bufs = render3d_st.occ_hzb_bufs
+  let texs = render3d_st.occ_hzb_texs
+  bufs[0] = render3d_st.occ_hzb_buf
+  texs[0] = render3d_st.post_depth_copy.depth
+  # the pyramid, a dispatch a mip: mip 0 from the depth, each next from the one before
+  for m in 0 .. render3d_st.occ_hzb_n_mips {
+    pr[0] = mips[m * 4];  pr[1] = mips[m * 4 + 1];  pr[2] = mips[m * 4 + 2];  pr[3] = min(m, 1)
+    if m == 0 { pr[4] = w;  pr[5] = h;  pr[6] = 0 } else { pr[4] = mips[m * 4 - 4];  pr[5] = mips[m * 4 - 3];  pr[6] = mips[m * 4 - 2] }
+    pr[7] = 0
+    gpu_dispatch_tex(render3d_st, render3d_st.occ_hzb_build, data_of(pr), 32, bufs, texs, (pr[0] + 7) / 8, (pr[1] + 7) / 8)
+  }
+  # the tests, into this frame's result slot under its tag (never 0: a zeroed slot is no result)
+  let slot = render3d_st.gvk_frame_no & 1
+  let tag = render3d_st.gvk_frame_no % 0x3FFFFFFF + 1
+  render3d_st.occ_hzb_slot = slot
+  render3d_st.occ_hzb_tag = tag
+  let bounds = render3d_st.occ_hzb_bounds[slot]
+  gpu_buffer_upload(render3d_st, bounds, n * 32, data_of(box), GPU_DYNAMIC)
+  let vp = render3d_st.cam_vp
+  for i in 0 .. 16 { pr[i] = float_bits(vp[i]) }
+  pr[16] = w;  pr[17] = h;  pr[18] = n;  pr[19] = tag
+  pr[20] = mips[0];  pr[21] = mips[1];  pr[22] = render3d_st.occ_hzb_n_mips;  pr[23] = 0
+  for i in 0 .. OCC_HZB_MIPS * 4 { pr[24 + i] = mips[i] }
+  bufs[0] = bounds;  bufs[1] = render3d_st.occ_hzb_buf;  bufs[2] = render3d_st.occ_hzb_res[slot]
+  gpu_dispatch(render3d_st, render3d_st.occ_hzb_test, data_of(pr), (24 + OCC_HZB_MIPS * 4) * 4, bufs, (n + 63) / 64)
+}
+
+# last frame's n results: hidden where its own tag says not visible; a slot the GPU has not reached yet is visible
+function occ_hzb_read(render3d_st: mut Render3dState, n: int) -> void {
+  let res = gpu_buffer_map(render3d_st, render3d_st.occ_hzb_res[render3d_st.occ_hzb_slot])
+  let hidden = render3d_st.occ_hzb_tag << 1
+  for i in 0 .. n {
+    let a = render3d_st.occ_list[i]
+    render3d_st.occ_list[i] = null
+    if a == null or a.id != render3d_st.occ_ids[i] { continue }             # released and taken again since
+    a.occ_hidden = res != null and Vk.get_i32(res, i * 4) == hidden
+    if a.occ_hidden { render3d_st.occ_hidden_n += 1 }
+  }
 }
