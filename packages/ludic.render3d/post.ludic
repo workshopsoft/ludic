@@ -262,12 +262,17 @@ function post_capture_scene(render3d_st: mut Render3dState) -> void {
 
 # Keep a copy of the finished scene colour: the SSGI bounce reads last frame's colour.
 function post_capture_prev(render3d_st: mut Render3dState) -> void {
-  if taa_ran(render3d_st) { render3d_st.post_frame += 1;  return }    # the bounce reads the resolved frame itself (post_ssao_pass)
+  post_copy_prev(render3d_st)
+  render3d_st.post_frame += 1
+}
+# the copy alone (the frame's count moves at its end): MetalFX's early order makes it before the upscale, as nothing after
+# the upscale writes post_hdr's colour (mfx.ludic)
+function post_copy_prev(render3d_st: mut Render3dState) -> void {
+  if taa_ran(render3d_st) { return }        # the bounce reads the resolved frame itself (post_ssao_pass)
   gpu_fb_bind_read(render3d_st, render3d_st.post_hdr.fbo)
   gpu_fb_bind_draw(render3d_st, render3d_st.post_prev.fbo)
   gpu_blit(render3d_st, render3d_st.post_w, render3d_st.post_h, GPU_COLOR_BUFFER_BIT)
   gpu_fb_bind(render3d_st, 0)
-  render3d_st.post_frame += 1
 }
 
 # Unreal's AO taps read its furthest HZB (PostProcessAmbientOcclusionCommon.ush GetHZBDepth) at ComputeMipLevel's mip, which at

@@ -78,6 +78,41 @@ function ups_temporal(render3d_st: Render3dState) -> int {
   return 0
 }
 
+# ---- the auto preset ----------------------------------------------------------------------------------------------
+# Mode 5 (DLSS's and MetalFX's alike: a game's setting, R3D_DLSS or R3D_METALFX) is auto: performance (50%) when the output
+# is 2560 px wide or more (a Retina display full screen, 1440p and up, 4K), quality (67%) below. The upscaler's own cost grows
+# with the OUTPUT's pixels while the scene's shrinks with the input's, so at a large output the 50% input is where it pays for
+# itself: NVIDIA's DLSS Programming Guide ties the default mode to the output resolution the same way (performance at 4K), and
+# Apple's MetalFX talk (WWDC22 10103, "Boost performance with MetalFX Upscaling") renders half the output's size on each axis
+# for its 4K example. An explicit mode (0..4) is kept as it is. R3D_UPSCALE_AUTO=0: auto is quality at every size (the old default).
+const UPS_MODE_AUTO: int = 5
+const UPS_AUTO_WIDE: int = 2560
+
+function ups_auto_mode(render3d_st: mut Render3dState) -> int {
+  if render3d_st.ups_auto < 0 {
+    render3d_st.ups_auto = 1
+    if r3d_env_has(render3d_st, "R3D_UPSCALE_AUTO") and r3d_env(render3d_st, "R3D_UPSCALE_AUTO") == "0" { render3d_st.ups_auto = 0 }
+  }
+  if render3d_st.ups_auto == 1 and gfx_width() >= UPS_AUTO_WIDE { return 4 }
+  return 2
+}
+# a mode as asked (0..5) to the one that runs (0..4)
+function ups_resolve_mode(render3d_st: mut Render3dState, m: int) -> int {
+  if m == UPS_MODE_AUTO { return ups_auto_mode(render3d_st) }
+  return m
+}
+# each frame, before the render size: an auto mode follows the output's width (a window dragged to another display, full screen)
+function ups_auto_follow(render3d_st: mut Render3dState) -> void {
+  if render3d_st.mfx_want == UPS_MODE_AUTO {
+    let m = ups_auto_mode(render3d_st)
+    if m != render3d_st.mfx_mode { render3d_st.mfx_mode = m;  render3d_st.mfx_reset = true }
+  }
+  if render3d_st.gsl_dlss_want == UPS_MODE_AUTO {
+    let m = ups_auto_mode(render3d_st)
+    if m != render3d_st.gsl_dlss_mode { render3d_st.gsl_dlss_mode = m;  render3d_st.gsl_reset = true }
+  }
+}
+
 # the screen percentage without dynamic resolution, as a fraction of the display
 function ups_fixed_fraction(render3d_st: mut Render3dState) -> float {
   if render3d_st.ups_sp > 0.0 { return render3d_st.ups_sp }
@@ -96,6 +131,7 @@ function ups_lo(render3d_st: Render3dState) -> float {
 
 # r3d_frame, before the camera: this frame's render size, the targets remade when it moved
 function ups_frame(render3d_st: mut Render3dState) -> void {
+  ups_auto_follow(render3d_st)
   if render3d_st.post_hdr == null or gfx_width() <= 0 or gfx_height() <= 0 { return }
   var f = ups_fixed_fraction(render3d_st)
   if render3d_st.ups_dr {

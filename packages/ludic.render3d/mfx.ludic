@@ -13,32 +13,58 @@
 # of the frame follows in a new Vulkan command buffer: Metal runs a queue's command buffers in commit order, and every
 # texture MoltenVK makes is hazard-tracked, so the scaler reads the finished frame and the passes after it read its result.
 #
-# R3D_METALFX=0..4: off, native AA (100%), quality (67%), balanced (58%), performance (50%) - DLSS's modes and their
-# screen percentages. Quality is the default where the device has MetalFX (mfx_default_mode). R3D_METALFX_JX / _JY /
-# _MVY = -1 flip a sign of the jitter or the vertical motion, to check the conventions against the picture.
+# R3D_METALFX=0..5: off, native AA (100%), quality (67%), balanced (58%), performance (50%) - DLSS's modes and their
+# screen percentages - or 5, auto (upscale.ludic ups_auto_mode: performance at an output 2560 px wide or more, else quality),
+# the default where the device has MetalFX (mfx_default_mode). R3D_METALFX_JX / _JY / _MVY = -1 flip a sign of the jitter or
+# the vertical motion, to check the conventions against the picture.
+#
+# The queue around the scaler (R3D_MFX_EARLY=0: the old order). Apple's guidance is to keep the GPU fed and to commit work as
+# soon as it is encoded (Metal Best Practices Guide, "Command Buffers": submit as few as are needed, as early as possible; WWDC22
+# 10103: MetalFX encodes into the app's command buffer between its render passes). The scaler needs the whole lit frame, so
+# what does not read its output - the AO and its blur at the render size (they read the depth and LAST frame's colour), the
+# copy of this frame's colour the next frame's bounce reads - is recorded before the split and runs ahead of it; after the
+# tonemap the frame is split again (gvk_frame_split), so the upscaled tail (the lens, bloom, the tonemap) goes to the GPU while
+# the CPU still records the HUD, instead of waiting for the frame's last submit. Bloom stays after the scaler at the output's
+# size, as Unreal's does after TSR (PostProcessing.cpp: AddTemporalAAPass / the third-party upscaler first, then the scene
+# colour's half-size downsample that bloom and the exposure read, TSR's own DownsampledSceneColor output).
+#
+# The scaler's GPU time (R3D_PROF "MetalFX") is Metal's own clock for its command buffer (MTLCommandBuffer GPUStartTime /
+# GPUEndTime): a Vulkan timestamp pair around it would count the queue waiting for the second submit too.
+#
+# R3D_MFX_KEEP=0: one scaler, made anew whenever the render size moves. By default the scalers made for this output size are
+# kept, one per input size (MFX_KEEP), so a mode switched back and forth or dynamic resolution's handful of levels make each
+# once, and none is let go with the queue drained under it; a new OUTPUT size drops them all. (MetalFX's own dynamic resolution,
+# MTLFXTemporalScalerDescriptor.inputContentPropertiesEnabled with inputContentWidth / Height per frame, reads a region of a
+# colour texture made at the descriptor's full input size - MTLFXTemporalScaler.h: "the region within the color texture" - and
+# this renderer remakes its targets at each render size (post_rescale), so it does not fit here: Unreal's view rect inside
+# max-size targets would have to come first.)
 # ============================================================================
 
 const MFX_PHASES: int = 32                # as DLSS's (streamline.ludic): at least 8 x (display / render)^2 phases
 const MTL_PIXEL_RG16F: int = 105          # MTLPixelFormatRG16Float
 const MTL_PIXEL_RGBA16F: int = 115        # MTLPixelFormatRGBA16Float
 const MTL_PIXEL_DEPTH32F: int = 252       # MTLPixelFormatDepth32Float
-const MFX_MODE_DEFAULT: int = 2           # quality, where the device has MetalFX
+const MFX_MODE_DEFAULT: int = 5           # auto (upscale.ludic), where the device has MetalFX
+const MFX_KEEP: int = 4                   # the scalers kept for one output size, one per input size
+const MFX_TSLOTS: int = 8                 # the scaler's command buffers held for their GPU time (vk_mac.ll lmfx_hold's slots)
 # VK_EXT_metal_objects' structure types (vulkan_core.h; vk_api.ludic was generated without them)
 const MFX_ST_OBJECTS: int = 1000311001     # VkExportMetalObjectsInfoEXT
 const MFX_ST_DEVICE: int = 1000311002      # VkExportMetalDeviceInfoEXT
 const MFX_ST_QUEUE: int = 1000311003       # VkExportMetalCommandQueueInfoEXT
 const MFX_ST_TEXTURE: int = 1000311006     # VkExportMetalTextureInfoEXT
 
-# the mode when the game says none: quality on a Mac whose device has MetalFX, off elsewhere
+# the mode when the game says none: auto on a Mac whose device has MetalFX, off elsewhere
 function mfx_default_mode(render3d_st: Render3dState) -> int {
   if Os.platform() != "macos" { return 0 }
   return MFX_MODE_DEFAULT
 }
 
-# the setting, a game's; R3D_METALFX=0..4 wins over it
+# the setting, a game's; R3D_METALFX=0..5 wins over it (5: auto)
 export function r3d_metalfx(render3d_st: mut Render3dState, mode: int) -> void {
   var m = mode
   if r3d_env_has(render3d_st, "R3D_METALFX") { m = Text.to_int(r3d_env(render3d_st, "R3D_METALFX")) }
+  render3d_st.mfx_want = m
+  m = ups_resolve_mode(render3d_st, m)
   if m != render3d_st.mfx_mode { render3d_st.mfx_reset = true }
   render3d_st.mfx_mode = m
 }
@@ -48,9 +74,20 @@ export function r3d_metalfx(render3d_st: mut Render3dState, mode: int) -> void {
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function mfx_init(render3d_st: mut Render3dState) -> void {
   if render3d_st.mfx_mode < 0 {
-    render3d_st.mfx_mode = mfx_default_mode(render3d_st)
-    if r3d_env_has(render3d_st, "R3D_METALFX") { render3d_st.mfx_mode = Text.to_int(r3d_env(render3d_st, "R3D_METALFX")) }
+    render3d_st.mfx_want = mfx_default_mode(render3d_st)
+    if r3d_env_has(render3d_st, "R3D_METALFX") { render3d_st.mfx_want = Text.to_int(r3d_env(render3d_st, "R3D_METALFX")) }
+    render3d_st.mfx_mode = ups_resolve_mode(render3d_st, render3d_st.mfx_want)
   }
+  # the kept scalers' table (mfx_targets): R3D_MFX_KEEP=0 keeps one, made anew at each input size
+  var keep = MFX_KEEP
+  if r3d_env_has(render3d_st, "R3D_MFX_KEEP") and r3d_env(render3d_st, "R3D_MFX_KEEP") == "0" { keep = 1 }
+  render3d_st.mfx_keep = new []pointer
+  render3d_st.mfx_keep_w = new []int
+  render3d_st.mfx_keep_h = new []int
+  render3d_st.mfx_keep_at = new []int
+  for i in 0 .. keep { push(render3d_st.mfx_keep, null);  push(render3d_st.mfx_keep_w, 0);  push(render3d_st.mfx_keep_h, 0);  push(render3d_st.mfx_keep_at, 0) }
+  render3d_st.mfx_early = 1
+  if r3d_env_has(render3d_st, "R3D_MFX_EARLY") and r3d_env(render3d_st, "R3D_MFX_EARLY") == "0" { render3d_st.mfx_early = 0 }
   if Os.platform() != "macos" or not render3d_st.gvk_has_metal_objects or Vk.mfx_open() == 0 { return }
   render3d_st.mfx_export = Vk.get_device_proc_addr(render3d_st.gvk_dev, "vkExportMetalObjectsEXT")
   if render3d_st.mfx_export == null { return }
@@ -128,17 +165,53 @@ function mfx_targets(render3d_st: mut Render3dState) -> bool {
     render3d_st.gvk_storage_next = false
     render3d_st.mfx_reset = true
   }
-  if render3d_st.mfx_scaler == null or render3d_st.mfx_iw != render3d_st.post_w or render3d_st.mfx_ih != render3d_st.post_h or render3d_st.mfx_ow != gfx_width() or render3d_st.mfx_oh != gfx_height() {
-    # the frame before still reads the old scaler: it goes once the queue has finished with it
-    if render3d_st.mfx_scaler != null { gvk_frame_wait(render3d_st);  Vk.queue_wait_idle(render3d_st.gvk_queue);  Vk.mfx_release(render3d_st.mfx_scaler) }
-    render3d_st.mfx_iw = render3d_st.post_w;  render3d_st.mfx_ih = render3d_st.post_h;  render3d_st.mfx_ow = gfx_width();  render3d_st.mfx_oh = gfx_height()
-    # no exposure texture: the colour is the scene's own linear HDR, before the eye's adaptation, and MetalFX meters it
-    render3d_st.mfx_scaler = Vk.mfx_new(render3d_st.mfx_dev, render3d_st.mfx_iw, render3d_st.mfx_ih, render3d_st.mfx_ow, render3d_st.mfx_oh, MTL_PIXEL_RGBA16F, MTL_PIXEL_DEPTH32F, MTL_PIXEL_RG16F, MTL_PIXEL_RGBA16F, 1)
-    render3d_st.mfx_reset = true
-    if render3d_st.mfx_scaler == null { mfx_say_failed("newTemporalScalerWithDevice");  render3d_st.mfx_ok = false;  return false }
-    if not render3d_st.mfx_said_usage { render3d_st.mfx_said_usage = true;  mfx_say_usage(render3d_st) }
+  # a new output size: every kept scaler was made for the old one
+  if render3d_st.mfx_ow != gfx_width() or render3d_st.mfx_oh != gfx_height() {
+    mfx_drop_all(render3d_st)
+    render3d_st.mfx_ow = gfx_width();  render3d_st.mfx_oh = gfx_height()
   }
+  if render3d_st.mfx_scaler != null and render3d_st.mfx_iw == render3d_st.post_w and render3d_st.mfx_ih == render3d_st.post_h { return true }
+  # another input size: its kept scaler if there is one (the history was of another size, so it starts afresh)
+  render3d_st.mfx_reset = true
+  render3d_st.mfx_scaler = null
+  var slot = 0
+  for i in 0 .. len(render3d_st.mfx_keep) {
+    if render3d_st.mfx_keep[i] != null and render3d_st.mfx_keep_w[i] == render3d_st.post_w and render3d_st.mfx_keep_h[i] == render3d_st.post_h {
+      render3d_st.mfx_scaler = render3d_st.mfx_keep[i]
+      render3d_st.mfx_keep_at[i] = render3d_st.mfx_frame
+      render3d_st.mfx_iw = render3d_st.post_w;  render3d_st.mfx_ih = render3d_st.post_h
+      return true
+    }
+    # else the slot a new one takes: an empty one, or the one least recently used
+    if render3d_st.mfx_keep[slot] != null and (render3d_st.mfx_keep[i] == null or render3d_st.mfx_keep_at[i] < render3d_st.mfx_keep_at[slot]) { slot = i }
+  }
+  # the frame before may still read the scaler that goes: it goes once the queue has finished with it
+  if render3d_st.mfx_keep[slot] != null {
+    gvk_frame_wait(render3d_st);  Vk.queue_wait_idle(render3d_st.gvk_queue)
+    Vk.mfx_release(render3d_st.mfx_keep[slot]);  render3d_st.mfx_keep[slot] = null
+  }
+  render3d_st.mfx_iw = render3d_st.post_w;  render3d_st.mfx_ih = render3d_st.post_h
+  # no exposure texture: the colour is the scene's own linear HDR, before the eye's adaptation, and MetalFX meters it
+  let sc = Vk.mfx_new(render3d_st.mfx_dev, render3d_st.mfx_iw, render3d_st.mfx_ih, render3d_st.mfx_ow, render3d_st.mfx_oh, MTL_PIXEL_RGBA16F, MTL_PIXEL_DEPTH32F, MTL_PIXEL_RG16F, MTL_PIXEL_RGBA16F, 1)
+  if sc == null { mfx_say_failed("newTemporalScalerWithDevice");  render3d_st.mfx_ok = false;  return false }
+  render3d_st.mfx_keep[slot] = sc
+  render3d_st.mfx_keep_w[slot] = render3d_st.mfx_iw;  render3d_st.mfx_keep_h[slot] = render3d_st.mfx_ih
+  render3d_st.mfx_keep_at[slot] = render3d_st.mfx_frame
+  render3d_st.mfx_scaler = sc
+  if not render3d_st.mfx_said_usage { render3d_st.mfx_said_usage = true;  mfx_say_usage(render3d_st) }
   return true
+}
+# every kept scaler let go, once the queue has finished with them
+function mfx_drop_all(render3d_st: mut Render3dState) -> void {
+  render3d_st.mfx_scaler = null
+  if render3d_st.mfx_keep == null { return }
+  var waited = false
+  for i in 0 .. len(render3d_st.mfx_keep) {
+    if render3d_st.mfx_keep[i] != null {
+      if not waited { gvk_frame_wait(render3d_st);  Vk.queue_wait_idle(render3d_st.gvk_queue);  waited = true }
+      Vk.mfx_release(render3d_st.mfx_keep[i]);  render3d_st.mfx_keep[i] = null
+    }
+  }
 }
 
 # Upscale post_hdr into mfx_out; the colour the rest of post reads (post_hdr's own if it could not).
@@ -150,6 +223,7 @@ function mfx_eval(render3d_st: mut Render3dState) -> int {
     render3d_st.mfx_reset = true
   }
   if not gvk_frame_split(render3d_st) { render3d_st.mfx_eval_ok = false;  return render3d_st.post_hdr.color }
+  render3d_st.mfx_split_now = true
   let color = mfx_texture(render3d_st, render3d_st.post_hdr.color)
   let depth = mfx_texture(render3d_st, render3d_st.post_hdr.depth)
   let motion = mfx_texture(render3d_st, render3d_st.taa_vel.color)
@@ -175,12 +249,36 @@ function mfx_eval(render3d_st: mut Render3dState) -> int {
   render3d_st.gsl_reset = false
   render3d_st.mfx_eval_ok = ok == 1
   if ok != 1 { mfx_say_failed("commandBuffer");  return render3d_st.post_hdr.color }
+  # under R3D_PROF the command buffer is kept for its GPU time (mfx_time_collect); a slot still unread is let go
+  if render3d_st.prof_on {
+    if render3d_st.mfx_t_w - render3d_st.mfx_t_r >= MFX_TSLOTS { render3d_st.mfx_t_r += 1 }
+    Vk.mfx_hold(render3d_st.mfx_t_w % MFX_TSLOTS)
+    render3d_st.mfx_t_w += 1
+  }
   render3d_st.post_color_w = gfx_width();  render3d_st.post_color_h = gfx_height()
   return render3d_st.mfx_out.color
 }
 
+# Each frame under R3D_PROF: the scaler's finished command buffers' GPU time into the "MetalFX" pass (prof_add_ns), oldest first,
+# stopping at the first still running. Metal's clock (MTLCommandBuffer GPUStartTime / GPUEndTime) times the buffer alone; the
+# Vulkan pair it replaces spanned the queue's wait for the frame's next submit as well.
+function mfx_time_collect(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.prof_on { return }
+  var more = true
+  while more and render3d_st.mfx_t_r < render3d_st.mfx_t_w {
+    let ns = Vk.mfx_slot_ns(render3d_st.mfx_t_r % MFX_TSLOTS)
+    if ns == -1 { more = false } else {
+      if ns >= 0 { prof_add_ns(render3d_st, "MetalFX", int(ns)) }
+      render3d_st.mfx_t_r += 1
+    }
+  }
+}
+
+# after the device is idle
 function mfx_free(render3d_st: mut Render3dState) -> void {
-  if render3d_st.mfx_scaler != null { Vk.mfx_release(render3d_st.mfx_scaler);  render3d_st.mfx_scaler = null }
+  render3d_st.mfx_scaler = null
+  if render3d_st.mfx_keep == null { return }
+  for i in 0 .. len(render3d_st.mfx_keep) { if render3d_st.mfx_keep[i] != null { Vk.mfx_release(render3d_st.mfx_keep[i]);  render3d_st.mfx_keep[i] = null } }
 }
 
 # messages, each built in a function of its own so the path that says it holds no allocation

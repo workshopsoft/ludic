@@ -412,13 +412,25 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   ue_fog_pass(render3d_st)                  # Unreal's height fog + aerial perspective over the scene (ue_fog.ludic)
   prof_begin(render3d_st, "volumetric");  post_volumetric_pass(render3d_st);  prof_end(render3d_st)
   render3d_st.post_color = render3d_st.post_hdr.color;  render3d_st.post_color_w = render3d_st.post_w;  render3d_st.post_color_h = render3d_st.post_h
+  let gi_on = not render3d_st.post_no_gi and not render3d_st.r3d_env_no_gi
+  let mfx_on = not gsl_dlss_live(render3d_st) and mfx_live(render3d_st)
+  # MetalFX's early order (R3D_MFX_EARLY, mfx.ludic): the AO at the render size and the copy of this frame's colour read nothing
+  # the scaler makes, so they are recorded before its split and run ahead of it on the queue
+  let mfx_early = mfx_on and render3d_st.mfx_early == 1
+  render3d_st.mfx_split_now = false
+  if mfx_early {
+    render3d_st.taa_live = false
+    if gi_on { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }
+    prof_begin(render3d_st, "prev-colour copy");  post_copy_prev(render3d_st);  prof_end(render3d_st)
+  }
   # DLSS super resolution: the lit frame up to the display's size, before anything reads it; or, without
   # it, the temporal resolve (taa.ludic) at the frame's own size
   if gsl_dlss_live(render3d_st) { render3d_st.taa_live = false;  prof_begin(render3d_st, "DLSS");  render3d_st.post_color = gsl_dlss_eval(render3d_st);  prof_end(render3d_st) }
-  else if mfx_live(render3d_st) { render3d_st.taa_live = false;  prof_begin(render3d_st, "MetalFX");  render3d_st.post_color = mfx_eval(render3d_st);  prof_end(render3d_st) }
+  # MetalFX's command buffer is timed by Metal's own clock (mfx_time_collect), not by a Vulkan pair spanning the split
+  else if mfx_on { render3d_st.taa_live = false;  render3d_st.post_color = mfx_eval(render3d_st) }
   else if taa_ran(render3d_st) { prof_begin(render3d_st, "TAA resolve");  render3d_st.post_color = taa_resolve(render3d_st);  prof_end(render3d_st) }
   prof_begin(render3d_st, "dof");  post_dof_pass(render3d_st);  prof_end(render3d_st)
-  if not render3d_st.post_no_gi and not render3d_st.r3d_env_no_gi { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }
+  if gi_on and not mfx_early { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }
   if render3d_st.r3d_debug_max { tex_max(render3d_st, render3d_st.post_hdr.color, render3d_st.post_hdr.w, render3d_st.post_hdr.h, "hdr") }
   prof_begin(render3d_st, "bloom")
   ue_pp_frame(render3d_st)                  # Unreal's settings at the camera, the post-process volumes blended in (ue_post.ludic)
@@ -427,10 +439,12 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   prof_begin(render3d_st, "tonemap+exposure")
   post_tonemap(render3d_st, render3d_st.post_color)
   prof_end(render3d_st)
+  # the upscaled tail to the queue now, behind the scaler, while the CPU records the HUD (mfx.ludic)
+  if mfx_early and render3d_st.mfx_split_now { gvk_frame_split(render3d_st) }
   prof_cpu_mark(render3d_st, "post")
-  prof_begin(render3d_st, "prev-colour copy")
-  post_capture_prev(render3d_st)
-  prof_end(render3d_st)
+  # under MetalFX's early order the copy was made before the upscale, and only the frame's count moves here
+  if mfx_early { render3d_st.post_frame += 1 } else { prof_begin(render3d_st, "prev-colour copy");  post_capture_prev(render3d_st);  prof_end(render3d_st) }
+  mfx_time_collect(render3d_st)
   taa_end_frame(render3d_st)
   prof_frame_end(render3d_st)
   prof_collect(render3d_st)
