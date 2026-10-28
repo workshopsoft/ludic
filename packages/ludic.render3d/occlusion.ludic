@@ -78,6 +78,7 @@ function occ_read(render3d_st: mut Render3dState) -> void {
   render3d_st.occ_live = true
   # an actor untested last frame is visible in this one
   if render3d_st.ac_actors != null { for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].occ_hidden = false } }
+  if render3d_st.stc_actors != null { for i in 0 .. len(render3d_st.stc_actors) { render3d_st.stc_actors[i].occ_hidden = false } }
   let n = render3d_st.occ_n
   render3d_st.occ_hidden_n = 0
   if n == 0 { return }
@@ -171,6 +172,21 @@ function occ_pass(render3d_st: mut Render3dState) -> void {
     render3d_st.occ_ids[n] = a.id
     n += 1
   }
+  # the static bucket's (static_chunks.ludic), each by its own box
+  if render3d_st.stc_actors != null {
+    for i in 0 .. len(render3d_st.stc_actors) {
+      let a = render3d_st.stc_actors[i]
+      if n >= OCC_MAX or not stc_occ_candidate(render3d_st, a, b) { continue }
+      u_f3(render3d_st, l_c, b[0], b[1], b[2])
+      u_f3(render3d_st, l_e, b[3], b[4], b[5])
+      render3d_st.gvk_occ_q = n
+      mesh_draw(render3d_st, render3d_st.occ_box)
+      render3d_st.gvk_occ_q = -1
+      render3d_st.occ_list[n] = a
+      render3d_st.occ_ids[n] = a.id
+      n += 1
+    }
+  }
   render3d_st.occ_live = true
   render3d_st.occ_n = n
   gpu_color_write(render3d_st, true)
@@ -260,6 +276,18 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
     render3d_st.occ_list[n] = a
     render3d_st.occ_ids[n] = a.id
     n += 1
+  }
+  # the static bucket's (static_chunks.ludic), each by its own box
+  if render3d_st.stc_actors != null {
+    for i in 0 .. len(render3d_st.stc_actors) {
+      let a = render3d_st.stc_actors[i]
+      if n >= OCC_MAX or not stc_occ_candidate(render3d_st, a, b) { continue }
+      for k in 0 .. 3 { box[n * 8 + k] = b[k];  box[n * 8 + 4 + k] = b[3 + k] }
+      box[n * 8 + 3] = 0.0;  box[n * 8 + 7] = 0.0
+      render3d_st.occ_list[n] = a
+      render3d_st.occ_ids[n] = a.id
+      n += 1
+    }
   }
   render3d_st.occ_live = true
   render3d_st.occ_n = n

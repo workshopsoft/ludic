@@ -258,6 +258,7 @@ function sc_still_check(render3d_st: mut Render3dState) -> void {
     }
     if a.x != a.sc_x or a.y != a.sc_y or a.z != a.sc_z or a.yaw != a.sc_yaw or sc_casting(a) != a.sc_vis { render3d_st.sc_dirty = true }
   }
+  stc_still_check(render3d_st)                 # and the static bucket's (static_chunks.ludic)
 }
 
 # the still actors a static draw saw, as it saw them
@@ -270,6 +271,7 @@ function sc_still_stamp(render3d_st: mut Render3dState) -> void {
     a.sc_seen = render3d_st.sc_gen
     a.sc_x = a.x;  a.sc_y = a.y;  a.sc_z = a.z;  a.sc_yaw = a.yaw;  a.sc_vis = sc_casting(a)
   }
+  stc_still_stamp(render3d_st)
 }
 # does it cast at all (a chunk shown or hidden by its own distance, a level of detail switched)
 function sc_casting(a: Actor) -> bool { return a.casts and (a.visible or a.cast_hidden) }

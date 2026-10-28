@@ -1,0 +1,495 @@
+# ============================================================================
+# static_chunks.ludic — the static bucket: what never moves and is drawn whole (a road chunk, a retaining wall's chunk, a lot's edges, an
+# enclosure's wall), registered once and drawn by commands built once, culled each pass by its own box.
+#
+# Unreal 5.8 keeps a static primitive's mesh draw commands from when it is added to the scene (PrimitiveSceneInfo.cpp
+# FPrimitiveSceneInfo::CacheMeshDrawCommands, r.MeshDrawCommands.UseCachedCommands 1) and each frame only culls: the view's frustum
+# and distance (SceneVisibility.cpp FrustumCull: the bounds' box against the view's planes, MaxDrawDistance against the bounds), the
+# HZB occlusion (r.HZBOcclusion: occlusion.ludic), then the visible primitives' cached commands are submitted sorted by their state
+# (MeshPassProcessor.cpp FMeshDrawCommandSortKey: the pipeline, then the material's bindings). Here the same: an actor made by
+# actor_new_static is not on the stage (ac_actors) but in stc_actors; the commands - an actor and one of its primitives - are built
+# again only when an actor comes or goes (stc_gen), ordered by program (opaque, then cut-out) and within it by material group (two
+# primitives whose textures, factors and surfaces are equal: the group's bindings are made once for its run of commands); each pass
+# marks the actors whose box is in view (Actor.stc_vis) and walks the commands. A static caster joins the sun's cached cascades as a
+# still actor does (shadow_cache.ludic: drawn in the static phase, never in the moving one; one that came, went, moved or stopped
+# casting puts them due a rebuild).
+#
+# The cull box is the model's own box (Model.has_box: the positions' accessor min/max, a made model's vertices) through the actor's
+# matrix, so a chunk whose vertices are world metres needs no radius from its maker. Actor.cull is the distance from the camera to
+# that box (horizontal) past which it is not drawn (Unreal's MaxDrawDistance); 0 always (to the fog wall).
+#
+# R3D_STATIC_CHUNKS=0 (or static_chunks_set(st, false) before anything static is made) puts every one on the stage as a still actor,
+# as before. R3D_ACTOR_CENSUS=<frame> names the bucket's actors by their makers (Actor.tag): static_chunks_census.
+# ============================================================================
+
+const STC_ROOM: int = 4096          # actors the bucket holds without growing
+const STC_MAX_CMDS: int = 32768     # commands (an actor's primitives); past it, the rest are not drawn
+const STC_MAX_GROUPS: int = 1024    # material groups; a command no group takes binds its own material
+
+# is the bucket on (read once)
+function stc_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.stc_mode < 0 {
+    render3d_st.stc_mode = 1
+    if r3d_env_has(render3d_st, "R3D_STATIC_CHUNKS") and r3d_env(render3d_st, "R3D_STATIC_CHUNKS") == "0" { render3d_st.stc_mode = 0 }
+  }
+  return render3d_st.stc_mode == 1
+}
+# the game's switch (OCCUTOWN_STATIC_CHUNKS): before anything static is made; what is in the bucket already stays there
+export function static_chunks_set(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.stc_mode = 0
+  if on { render3d_st.stc_mode = 1 }
+}
+export function static_chunks_on(render3d_st: mut Render3dState) -> bool { return stc_on(render3d_st) }
+
+@alloc_ok("the static bucket's list and command arrays: made once, when the first static actor comes")
+function stc_init(render3d_st: mut Render3dState) -> void {
+  if render3d_st.stc_actors != null { return }
+  render3d_st.stc_actors = new []Actor
+  actor_room(render3d_st.stc_actors, STC_ROOM)
+  render3d_st.stc_cmd_a = new []Actor
+  render3d_st.stc_tmp_a = new []Actor
+  for i in 0 .. STC_MAX_CMDS { push(render3d_st.stc_cmd_a, null);  push(render3d_st.stc_tmp_a, null) }
+  render3d_st.stc_cmd_p = words(STC_MAX_CMDS)
+  render3d_st.stc_cmd_g = words(STC_MAX_CMDS)
+  render3d_st.stc_tmp_p = words(STC_MAX_CMDS)
+  render3d_st.stc_tmp_g = words(STC_MAX_CMDS)
+  render3d_st.stc_rep = words(STC_MAX_GROUPS)
+  render3d_st.stc_grp_n = words(STC_MAX_GROUPS)
+}
+
+# A static actor for `model`: placed by its matrix (a.mat; its box is the model's through it), shown by a.visible, casting by a.casts, as
+# any actor - but never moved by the frame's own placement, never instanced, never outlined. `tag` names its maker for the census. With
+# the bucket off, an actor on the stage (still, never distance-culled) as before. Released with actor_release, taken off with actor_remove.
+@creates(Actor)
+function actor_new_static(render3d_st: mut Render3dState, model: Model, tag: string) -> Actor {
+  if not stc_on(render3d_st) {
+    let b = actor_new(render3d_st, model)
+    b.cull = 0.0
+    b.still = true
+    b.tag = tag
+    return b
+  }
+  stc_init(render3d_st)
+  let a = actor_fresh(render3d_st)
+  a.model = model
+  a.scale = 1.0
+  a.rough = 1.0
+  render3d_st.ac_next_id += 1;  a.id = render3d_st.ac_next_id
+  if model != null { a.radius = Math.max(model.radius, model.height) + 1.0 }
+  a.cull = 0.0
+  a.still = true
+  a.stc = true
+  a.tag = tag
+  stc_keep(render3d_st, a)
+  return a
+}
+# its draw distance (metres from the camera to its box, horizontally): set only in the bucket, where it is a box's distance; an actor on
+# the stage (the bucket off) keeps its own rule (none, for these)
+export function actor_static_far(a: Actor, d: float) -> void {
+  if a != null and a.stc { a.cull = Math.max(d, 0.0) }
+}
+
+# into the bucket (actor_keep's, for one of its own)
+function stc_keep(render3d_st: mut Render3dState, a: Actor) -> void {
+  if a == null { return }
+  stc_init(render3d_st)
+  if a.row >= 0 and a.row < len(render3d_st.stc_actors) and render3d_st.stc_actors[a.row] == a { return }
+  a.row = len(render3d_st.stc_actors)
+  @alloc_ok("within the bucket's room made with it (@max 4096)")
+  push(render3d_st.stc_actors, a)
+  render3d_st.stc_gen += 1
+}
+# out of it: the last takes its row (actor_remove's, for one of its own)
+function stc_remove(render3d_st: mut Render3dState, a: Actor) -> void {
+  let l = render3d_st.stc_actors
+  if l == null or a == null { return }
+  let r = a.row
+  if r < 0 or r >= len(l) or l[r].id != a.id { return }
+  if a.sc_seen > 0 { render3d_st.sc_dirty = true }      # its shadow is in the cache (shadow_cache.ludic)
+  let last = List.pop(l)
+  if last.id != a.id {
+    l[r] = last
+    last.row = r
+  }
+  a.row = -1
+  render3d_st.stc_gen += 1
+}
+# a world replaced (actor_release_all): every one not held released
+function stc_release_all(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.stc_actors
+  if l == null { return }
+  var i = len(l) - 1
+  while i >= 0 {
+    if i < len(l) {
+      let a = l[i]
+      if a.held { a.held = false } else { actor_release(render3d_st, a) }
+    }
+    i -= 1
+  }
+}
+# every one out at once (actor_clear_all)
+function stc_clear_all(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.stc_actors
+  if l == null { return }
+  for i in 0 .. len(l) {
+    if l[i].sc_seen > 0 { render3d_st.sc_dirty = true }
+    l[i].row = -1
+  }
+  List.clear(l)
+  render3d_st.stc_gen += 1
+}
+
+# ---- bounds ---------------------------------------------------------------------------------------------------------------------------
+
+# actor a's box in render space into b: its centre and half extents (Unreal's FBoxSphereBounds::TransformBy: the extent through the
+# matrix's absolute values). A model with no box: a cube about the actor's place, its radius each way.
+function stc_bounds(a: Actor, b: floats) -> void {
+  let m = a.model
+  if m == null or not m.has_box {
+    var r = a.radius * a.scale
+    if r <= 0.0 { r = 20.0 }
+    b[0] = a.x;  b[1] = a.y;  b[2] = a.z
+    b[3] = r;  b[4] = r;  b[5] = r
+    return
+  }
+  let t = a.mat
+  let cx = (m.bx0 + m.bx1) * 0.5;  let cy = (m.by0 + m.by1) * 0.5;  let cz = (m.bz0 + m.bz1) * 0.5
+  let ex = (m.bx1 - m.bx0) * 0.5;  let ey = (m.by1 - m.by0) * 0.5;  let ez = (m.bz1 - m.bz0) * 0.5
+  b[0] = t[0] * cx + t[4] * cy + t[8] * cz + t[12]
+  b[1] = t[1] * cx + t[5] * cy + t[9] * cz + t[13]
+  b[2] = t[2] * cx + t[6] * cy + t[10] * cz + t[14]
+  b[3] = Math.abs(t[0]) * ex + Math.abs(t[4]) * ey + Math.abs(t[8]) * ez
+  b[4] = Math.abs(t[1]) * ex + Math.abs(t[5]) * ey + Math.abs(t[9]) * ez
+  b[5] = Math.abs(t[2]) * ex + Math.abs(t[6]) * ey + Math.abs(t[10]) * ez
+}
+function stc_radius(b: floats) -> float { return Math.sqrt(b[3] * b[3] + b[4] * b[4] + b[5] * b[5]) }
+# the camera's horizontal distance to the box b (0 inside it)
+function stc_far(render3d_st: Render3dState, b: floats) -> float {
+  let dx = Math.max(Math.abs(b[0] - render3d_st.cam_pos[0]) - b[3], 0.0)
+  let dz = Math.max(Math.abs(b[2] - render3d_st.cam_pos[2]) - b[5], 0.0)
+  return Math.sqrt(dx * dx + dz * dz)
+}
+# is the box (centre, half extents) at least partly inside the view's side planes (SceneVisibility.cpp's box test: the centre's distance
+# against the extent projected on each plane's normal)
+function stc_box_in_view(render3d_st: Render3dState, x: float, y: float, z: float, ex: float, ey: float, ez: float) -> bool {
+  let pl = render3d_st.cam_planes
+  if pl == null { return true }
+  for p in 0 .. 4 {
+    let o = p * 4
+    let d = pl[o] * x + pl[o + 1] * y + pl[o + 2] * z + pl[o + 3]
+    let reach = Math.abs(pl[o]) * ex + Math.abs(pl[o + 1]) * ey + Math.abs(pl[o + 2]) * ez
+    if d < -reach { return false }
+  }
+  return true
+}
+
+# is actor a drawn in this view: shown, within the fog wall and its draw distance, not hidden behind the scene last frame (when `occ`),
+# its box in view (in the water's reflection, its mirror image's). Its box is left in stc_b.
+function stc_in_view(render3d_st: mut Render3dState, a: Actor, occ: bool) -> bool {
+  if a.model == null or not a.visible { return false }
+  let b = render3d_st.stc_b
+  stc_bounds(a, b)
+  if r3d_beyond_fog(render3d_st, b[0], b[1], b[2], stc_radius(b)) { return false }
+  if a.cull > 0.0 and stc_far(render3d_st, b) > a.cull { return false }
+  if occ and occ_hidden(render3d_st, a) { return false }
+  var cy = b[1]
+  if render3d_st.ter_reflect { cy = 2.0 * render3d_st.water_level - cy }
+  return stc_box_in_view(render3d_st, b[0], cy, b[2], b[3], b[4], b[5])
+}
+
+# whether actor a casts into the light light_vp is drawing now: casting, shown (or casting hidden), within the fog wall and its draw
+# distance, its sphere inside the light's box, and near enough a receiver the cascade covers (scatter.ludic cast_band_reaches)
+function stc_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) -> bool {
+  if a.model == null or not a.casts or not (a.visible or a.cast_hidden) { return false }
+  let b = render3d_st.stc_b
+  stc_bounds(a, b)
+  let r = stc_radius(b)
+  if r3d_beyond_fog(render3d_st, b[0], b[1], b[2], r) { return false }
+  if a.cull > 0.0 and stc_far(render3d_st, b) > a.cull { return false }
+  if not ac_in_light(render3d_st, light_vp, b[0], b[1], b[2], r) { return false }
+  let dx = b[0] - render3d_st.cam_pos[0];  let dz = b[2] - render3d_st.cam_pos[2]
+  let dh = Math.sqrt(dx * dx + dz * dz)
+  let rh = Math.sqrt(b[3] * b[3] + b[5] * b[5])
+  return cast_band_reaches(render3d_st, Math.max(dh - rh, 0.0), dh + rh, b[4] * 2.0)
+}
+
+# an occlusion candidate (occlusion.ludic): worth a test, in view by its own test, and the near plane does not cut its box (Unreal's
+# BoxPushOut); its box into b
+function stc_occ_candidate(render3d_st: mut Render3dState, a: Actor, b: floats) -> bool {
+  if a.model == null or a.model.tris < render3d_st.occ_min_tris { return false }
+  if not stc_in_view(render3d_st, a, false) { return false }
+  let s = render3d_st.stc_b
+  for k in 0 .. 6 { b[k] = s[k] }
+  let f = render3d_st.cam_fwd
+  let cp = render3d_st.cam_pos
+  let d = (b[0] - cp[0]) * f[0] + (b[1] - cp[1]) * f[1] + (b[2] - cp[2]) * f[2] - render3d_st.cam_near
+  let push = b[3] * Math.abs(f[0]) + b[4] * Math.abs(f[1]) + b[5] * Math.abs(f[2])
+  return d > push
+}
+
+# ---- the cached commands --------------------------------------------------------------------------------------------------------------
+
+# two primitives bind the same: their textures, factors and surfaces equal, and nothing of a figure's (a face's maps, a garment, morphs)
+function stc_same_mat(p: Prim, q: Prim) -> bool {
+  if p == q { return true }
+  if p.diff != q.diff or p.nrm != q.nrm or p.arm != q.arm { return false }
+  if p.diff2 != q.diff2 or p.nrm2 != q.nrm2 or p.arm2 != q.arm2 or p.lu != q.lu or p.hmap != q.hmap or p.btex != q.btex { return false }
+  if p.lu_tx != q.lu_tx or p.lu_tz != q.lu_tz { return false }
+  if p.micro != null or q.micro != null or p.fab != null or q.fab != null or p.eye != null or q.eye != null { return false }
+  if p.morph != null or q.morph != null { return false }
+  return stc_same_floats(p.fac, q.fac) and stc_same_floats(p.ext, q.ext) and stc_same_floats(p.surf, q.surf) and stc_same_floats(p.surf2, q.surf2)
+}
+function stc_same_floats(a: floats, b: floats) -> bool {
+  if a == null or b == null { return a == null and b == null }
+  if len(a) != len(b) { return false }
+  for i in 0 .. len(a) { if a[i] != b[i] { return false } }
+  return true
+}
+
+# the commands again when an actor came or went since they were built
+function stc_build_if(render3d_st: mut Render3dState) -> void {
+  if render3d_st.stc_cmd_gen != render3d_st.stc_gen { stc_build(render3d_st) }
+}
+# Every actor's primitives as commands, each in the first material group that binds as it does (its own new one otherwise), then laid out
+# group by group: the opaque program's groups, the cut-outs', and last the commands no group took (past STC_MAX_GROUPS)
+function stc_build(render3d_st: mut Render3dState) -> void {
+  render3d_st.stc_cmd_gen = render3d_st.stc_gen
+  let l = render3d_st.stc_actors
+  let ta = render3d_st.stc_tmp_a
+  let tp = render3d_st.stc_tmp_p
+  let tg = render3d_st.stc_tmp_g
+  let rep = render3d_st.stc_rep
+  let cnt = render3d_st.stc_grp_n
+  var n = 0
+  var groups = 0
+  for i in 0 .. len(l) {
+    let a = l[i]
+    let m = a.model
+    if m == null { continue }
+    for p in 0 .. len(m.prims) {
+      if n >= STC_MAX_CMDS { break }
+      let pr = m.prims[p]
+      var g = -1
+      for k in 0 .. groups {
+        let r = rep[k]
+        let ra = ta[r]
+        if ra.cutout == a.cutout and stc_same_mat(pr, ra.model.prims[tp[r]]) { g = k;  break }
+      }
+      if g < 0 and groups < STC_MAX_GROUPS { g = groups;  rep[g] = n;  groups += 1 }
+      ta[n] = a;  tp[n] = p;  tg[n] = g
+      n += 1
+    }
+  }
+  for k in 0 .. groups { cnt[k] = 0 }
+  for i in 0 .. n { if tg[i] >= 0 { cnt[tg[i]] = cnt[tg[i]] + 1 } }
+  # each group's first slot (rep: no longer the groups' first commands)
+  var at = 0
+  for pass in 0 .. 2 {
+    for k in 0 .. groups {
+      let cut = ta[rep[k]].cutout
+      if (pass == 0 and cut) or (pass == 1 and not cut) { continue }
+      let c = cnt[k]
+      rep[k] = at
+      at += c
+    }
+  }
+  var loose = at
+  for i in 0 .. n {
+    let g = tg[i]
+    var o = 0
+    if g >= 0 { o = rep[g];  rep[g] = o + 1 } else { o = loose;  loose += 1 }
+    render3d_st.stc_cmd_a[o] = ta[i]
+    render3d_st.stc_cmd_p[o] = tp[i]
+    render3d_st.stc_cmd_g[o] = g
+  }
+  for i in 0 .. n { ta[i] = null }
+  if n < render3d_st.stc_cmd_n { for i in n .. render3d_st.stc_cmd_n { render3d_st.stc_cmd_a[i] = null } }
+  render3d_st.stc_cmd_n = n
+}
+
+# ---- drawing --------------------------------------------------------------------------------------------------------------------------
+
+# The lit pass's static actors (the scene callback, after actor_draw: the frame's scene bindings are the actors')
+function static_chunks_draw(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.stc_actors
+  if l == null { return }
+  stc_build_if(render3d_st)
+  render3d_st.stc_pass += 1
+  let pass = render3d_st.stc_pass
+  let main = not render3d_st.ter_reflect
+  if main { render3d_st.stc_main = pass }
+  var shown = 0
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if stc_in_view(render3d_st, a, true) { a.stc_vis = pass;  shown += 1 }
+  }
+  var draws = 0
+  var tris = 0
+  if shown > 0 {
+    var ap: AcProg = null
+    var last_a: Actor = null
+    var last_g = -2
+    for i in 0 .. render3d_st.stc_cmd_n {
+      let a = render3d_st.stc_cmd_a[i]
+      if a == null or a.stc_vis != pass { continue }
+      let p = render3d_st.stc_cmd_p[i]
+      let m = a.model
+      if m == null or p >= len(m.prims) { continue }
+      if a.hide != null and a.hide[p] != 0 { continue }
+      let pr = m.prims[p]
+      var want = render3d_st.ac_lit
+      if a.cutout { want = render3d_st.ac_lit_cut }
+      if want != ap {
+        ap = want
+        ac_bind_scene(render3d_st, ap)
+        gpu_use_program(render3d_st, ap.prog)
+        u_f(render3d_st, ap.l_skin, 0.0)
+        u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_shadow_tan_max"), ACTOR_SHADOW_TAN)
+        last_a = null
+        last_g = -2
+      }
+      if a != last_a {
+        last_a = a
+        u_mat4(render3d_st, ap.l_model, a.mat)
+        u_f(render3d_st, ap.l_emis, a.emissive)
+        u_f(render3d_st, ap.l_rough, a.rough)
+        u_f(render3d_st, ap.l_clit, a.char_lit)
+        gpu_cull(render3d_st, a.one_sided)
+        u_v3(render3d_st, ap.l_tint, a.tint)
+      }
+      if a.ptint != null {
+        if a.ptint[p * 4] != 0 { u_f3(render3d_st, ap.l_tint, float_from_bits(a.ptint[p * 4 + 1]), float_from_bits(a.ptint[p * 4 + 2]), float_from_bits(a.ptint[p * 4 + 3])) }
+        else { u_v3(render3d_st, ap.l_tint, a.tint) }
+      }
+      let g = render3d_st.stc_cmd_g[i]
+      if g < 0 or g != last_g {
+        last_g = g
+        gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+        prim_factors(render3d_st, ap.prog, pr)
+        ac_bind_headmap(render3d_st, ap, pr);  ac_bind_micro(render3d_st, ap, pr);  ac_bind_bent(render3d_st, ap, pr)
+        gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
+        gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
+      }
+      mesh_draw(render3d_st, pr.mesh)
+      draws += 1
+      tris += pr.mesh.count / 3
+    }
+    gpu_cull(render3d_st, true)
+  }
+  if main {
+    render3d_st.stc_drawn = shown
+    render3d_st.stc_draws = draws
+    render3d_st.stc_tris = tris
+    if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { static_chunks_census(render3d_st) }
+  }
+}
+
+# The static casters into the light light_vp (the casters callback, beside actor_draw_casters): every pass but the moving one over the
+# sun's cached cascades, which holds them already
+function static_chunks_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
+  let l = render3d_st.stc_actors
+  if l == null or len(l) == 0 { return }
+  if render3d_st.sh_phase == SH_PHASE_DYN and not render3d_st.sh_local { return }
+  stc_build_if(render3d_st)
+  render3d_st.stc_pass += 1
+  let pass = render3d_st.stc_pass
+  var any = false
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if stc_casts(render3d_st, a, light_vp) { a.stc_vis = pass;  any = true }
+  }
+  if not any { return }
+  var ap: AcProg = null
+  var last_a: Actor = null
+  var last_g = -2
+  gpu_cull(render3d_st, false)              # both sides, as an actor's shadow
+  for i in 0 .. render3d_st.stc_cmd_n {
+    let a = render3d_st.stc_cmd_a[i]
+    if a == null or a.stc_vis != pass { continue }
+    let p = render3d_st.stc_cmd_p[i]
+    let m = a.model
+    if m == null or p >= len(m.prims) { continue }
+    if a.hide != null and a.hide[p] != 0 { continue }
+    let pr = m.prims[p]
+    var want = render3d_st.ac_sh
+    if a.cutout { want = render3d_st.ac_sh_cut }
+    if want != ap {
+      ap = want
+      gpu_use_program(render3d_st, ap.prog)
+      u_mat4(render3d_st, ap.l_lvp, light_vp)
+      u_f(render3d_st, ap.l_skin, 0.0)
+      last_a = null
+      last_g = -2
+    }
+    if a != last_a {
+      last_a = a
+      u_mat4(render3d_st, ap.l_model, a.mat)
+    }
+    let g = render3d_st.stc_cmd_g[i]
+    if g < 0 or g != last_g {
+      last_g = g
+      gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+      prim_factors(render3d_st, ap.prog, pr)
+    }
+    mesh_draw(render3d_st, pr.mesh)
+  }
+  gpu_cull(render3d_st, true)
+}
+
+# ---- the sun's cache (shadow_cache.ludic) -----------------------------------------------------------------------------------------------
+
+# one that came casting, moved, or began or stopped casting since the last static draw: the cached cascades are due a rebuild
+function stc_still_check(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.stc_actors
+  if l == null { return }
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if a.sc_seen == 0 {
+      if sc_casting(a) { render3d_st.sc_dirty = true }
+      continue
+    }
+    if a.mat[12] != a.sc_x or a.mat[13] != a.sc_y or a.mat[14] != a.sc_z or sc_casting(a) != a.sc_vis { render3d_st.sc_dirty = true }
+  }
+}
+# what a static draw saw (its matrix's place: what moves a static chunk is the floating origin)
+function stc_still_stamp(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.stc_actors
+  if l == null { return }
+  for i in 0 .. len(l) {
+    let a = l[i]
+    a.sc_seen = render3d_st.sc_gen
+    a.sc_x = a.mat[12];  a.sc_y = a.mat[13];  a.sc_z = a.mat[14];  a.sc_vis = sc_casting(a)
+  }
+}
+
+# ---- the census (R3D_ACTOR_CENSUS) ----------------------------------------------------------------------------------------------------
+
+# the bucket by maker: actors, those in view in the main pass, their draws and triangles
+@alloc_ok("a debug census, only under its switch")
+function static_chunks_census(render3d_st: Render3dState) -> void {
+  let l = render3d_st.stc_actors
+  if l == null { return }
+  let tags = new []string
+  let n = new []int
+  let vis = new []int
+  let draws = new []int
+  let tris = new []int
+  for i in 0 .. len(l) {
+    let a = l[i]
+    var k = -1
+    for j in 0 .. len(tags) { if tags[j] == a.tag { k = j } }
+    if k < 0 { push(tags, a.tag);  push(n, 0);  push(vis, 0);  push(draws, 0);  push(tris, 0);  k = len(tags) - 1 }
+    n[k] += 1
+    if a.stc_vis == render3d_st.stc_main and a.model != null {
+      vis[k] += 1
+      draws[k] += len(a.model.prims)
+      tris[k] += a.model.tris
+    }
+  }
+  for j in 0 .. len(tags) {
+    var t = tags[j]
+    if Text.length(t) == 0 { t = "-" }
+    print(`static census: {t}: {n[j]} actors, {vis[j]} in view, {draws[j]} draws, {tris[j]} tris`)
+  }
+  print(`static census: {len(l)} actors, {render3d_st.stc_cmd_n} cached commands, {render3d_st.stc_drawn} in view, {render3d_st.stc_draws} draws, {render3d_st.stc_tris} tris`)
+}

@@ -59,6 +59,16 @@ property Model {
   height: float = 0.0,       # float bits: y extent above ymin
   ymin:   float = 0.0,
   tris:   int = 0,
+  # its box in its own space, from the positions' accessor min/max (a model made in code: its vertices); has_box false when unknown.
+  # A static chunk's cull box (static_chunks.ludic) is this through its matrix: a road chunk's vertices are world metres, so its
+  # radius from the origin says nothing about where it is
+  has_box: bool = false,
+  bx0:    float = 0.0,
+  by0:    float = 0.0,
+  bz0:    float = 0.0,
+  bx1:    float = 0.0,
+  by1:    float = 0.0,
+  bz1:    float = 0.0,
   sss:    float = 0.0,       # skin for the subsurface pass (sss.ludic): its texels below this u; 0 none
   # this pass's instanced group of its actors (actor_inst.ludic): the pass it was gathered in, how many, the first (its key), where in the buffer
   ai_stamp: int = 0,
@@ -583,6 +593,7 @@ function gltf_load__t(render3d_st: mut Render3dState, dir: string, file: string,
   let mesh = value_at(value_get(render3d_st.gltf_doc, "meshes"), mesh_idx)
   let prims = value_get(mesh, "primitives")
   var r2 = 0.0;  var ymin = 1000.0;  var ymax = -1000.0
+  model_box_reset(model)
   for i in 0 .. value_count(prims) {
     let p = value_at(prims, i)
     let pr = gltf_prim(render3d_st, p)
@@ -600,6 +611,7 @@ function gltf_load__t(render3d_st: mut Render3dState, dir: string, file: string,
     let y0 = jnum(value_at(mn, 1));  let y1 = jnum(value_at(mx, 1))
     if y0 < ymin { ymin = y0 }
     if y1 > ymax { ymax = y1 }
+    model_box_grow(model, jnum(value_at(mn, 0)), y0, jnum(value_at(mn, 2)), jnum(value_at(mx, 0)), y1, jnum(value_at(mx, 2)))
   }
   if skin_idx >= 0 { model.skin = skin_load(render3d_st, skin_idx) }
   file_close(render3d_st.gltf_bin)
@@ -641,6 +653,7 @@ function gltf_load_nodes__t(render3d_st: mut Render3dState, dir: string, file: s
     if model == null {
       model = new Model
       model.prims = new []Prim
+      model_box_reset(model)
     }
     let prims = value_get(value_at(meshes, mi), "primitives")
     for i in 0 .. value_count(prims) {
@@ -657,6 +670,7 @@ function gltf_load_nodes__t(render3d_st: mut Render3dState, dir: string, file: s
       let y0 = jnum(value_at(mn, 1));  let y1 = jnum(value_at(mx, 1))
       if y0 < ymin { ymin = y0 }
       if y1 > ymax { ymax = y1 }
+      model_box_grow(model, jnum(value_at(mn, 0)), y0, jnum(value_at(mn, 2)), jnum(value_at(mx, 0)), y1, jnum(value_at(mx, 2)))
     }
   }
   file_close(render3d_st.gltf_bin)

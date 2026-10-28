@@ -41,7 +41,40 @@ function model_from_arrays(render3d_st: mut Render3dState, v: floats, c: floats,
   model.tris = ni / 3
   model.radius = radius
   model.height = radius
+  model_box_of(model, v, nv)
   return model
+}
+
+# ---- a model's box (Model.has_box, bx0 .. bz1: static_chunks.ludic culls by it) -----------------------------------------------------------
+# empty: the next grow sets it
+function model_box_reset(m: Model) -> void {
+  m.has_box = false
+  m.bx0 = 0.0;  m.by0 = 0.0;  m.bz0 = 0.0;  m.bx1 = 0.0;  m.by1 = 0.0;  m.bz1 = 0.0
+}
+# grown to hold the box (x0, y0, z0) .. (x1, y1, z1)
+function model_box_grow(m: Model, x0: float, y0: float, z0: float, x1: float, y1: float, z1: float) -> void {
+  if not m.has_box {
+    m.has_box = true
+    m.bx0 = x0;  m.by0 = y0;  m.bz0 = z0;  m.bx1 = x1;  m.by1 = y1;  m.bz1 = z1
+    return
+  }
+  m.bx0 = Math.min(m.bx0, x0);  m.by0 = Math.min(m.by0, y0);  m.bz0 = Math.min(m.bz0, z0)
+  m.bx1 = Math.max(m.bx1, x1);  m.by1 = Math.max(m.by1, y1);  m.bz1 = Math.max(m.bz1, z1)
+}
+# from model_from_arrays' vertices (8 numbers a vertex, its position first)
+function model_box_of(m: Model, v: floats, nv: int) -> void {
+  model_box_reset(m)
+  for i in 0 .. nv {
+    let o = i * 8
+    model_box_grow(m, v[o], v[o + 1], v[o + 2], v[o], v[o + 1], v[o + 2])
+  }
+}
+# a game that merges models' primitives into one (a chunk's parts) grows the one's box by each other's: false when either has none
+export function model_box_union(dst: Model, src: Model) -> bool {
+  if dst == null or src == null or not src.has_box { return false }
+  if not dst.has_box { return false }
+  model_box_grow(dst, src.bx0, src.by0, src.bz0, src.bx1, src.by1, src.bz1)
+  return true
 }
 
 # Fill a model made by model_from_arrays again, in the same buffers and with no new memory: a decal's shape changes with the wall it lands on, and a
@@ -61,5 +94,6 @@ function model_set_arrays(render3d_st: mut Render3dState, m: Model, v: floats, c
   me.count = ni
   pr.verts = nv
   m.tris = ni / 3
+  model_box_of(m, v, nv)
   return true
 }
