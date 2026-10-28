@@ -161,6 +161,18 @@ export function phys_vehicle_remove(physics_st: mut PhysicsState, v: int) -> voi
   physics_st.ph_vbody[v] = -1
 }
 
+# The vehicle's body kinematic (on: moved by the game to a pose each frame, phys_set_pose; no wheel casts, no suspension, no gravity, no
+# contacts with the ground or the still things, only with what is dynamic) or a dynamic vehicle again (off). CARLA's hybrid physics and a
+# Chaos vehicle's sleep (ChaosVehicleMovementComponent) in Jolt's terms: BodyInterface::SetMotionType, the VehicleConstraint disabled and
+# off the step listeners. true when it changed.
+export function phys_vehicle_kinematic(physics_st: mut PhysicsState, v: int, on: bool) -> bool {
+  let h = ph_vehicle(physics_st, v)
+  if h == null { return false }
+  var k = 0
+  if on { k = 1 }
+  return jph_vehicle_kinematic(h, k) == 1
+}
+
 # every vehicle out (before the world goes)
 function ph_vehicles_free(physics_st: mut PhysicsState) -> void {
   for i in 0 .. len(physics_st.ph_vehicles) {
