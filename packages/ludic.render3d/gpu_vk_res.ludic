@@ -122,8 +122,39 @@ function gvk_layout_access(layout: int) -> int {
   if layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL { return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT }
   return 0
 }
+# R3D_VK_NARROW_BARRIERS: an image barrier waits only on the stages that can use the image in its old layout and blocks only
+# those that use it in the new one, as UE's do (VulkanBarriers.cpp GetVkStageFlagsForLayout, GetVkStageAndAccessFlags,
+# FVulkanPipelineBarrier::AddImageLayoutTransition). ALL_COMMANDS on both sides, as before, drains NVIDIA's whole pipeline at
+# every copy and mip. On by default; R3D_VK_NARROW_BARRIERS=0 restores ALL_COMMANDS -> ALL_COMMANDS.
+function gvk_narrow_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_narrow < 0 {
+    render3d_st.gvk_narrow = 1
+    if r3d_env_has(render3d_st, "R3D_VK_NARROW_BARRIERS") { render3d_st.gvk_narrow = Text.to_int(r3d_env(render3d_st, "R3D_VK_NARROW_BARRIERS")) }
+  }
+  return render3d_st.gvk_narrow == 1
+}
+# The stages that use an image in a layout; 0 where it is not one this file knows, which keeps ALL_COMMANDS. UE's
+# GetVkStageFlagsForLayout, but wider where this renderer is: SHADER_READ_ONLY is the layout every texture rests in between
+# uses, read by vertex, fragment and compute programs alike, so all three are its stages (UE says fragment alone); the same
+# set on both sides keeps a barrier into it chained to the next one out of it.
+function gvk_layout_stages(layout: int) -> int {
+  if layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL or layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL { return VK_PIPELINE_STAGE_TRANSFER_BIT }
+  if layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL { return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT }
+  if layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL { return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT }
+  if layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL { return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT }
+  # nothing before it is kept, and nothing has to be waited for: a new image (UE: TOP_OF_PIPE)
+  if layout == VK_IMAGE_LAYOUT_UNDEFINED { return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT }
+  # vkQueuePresentKHR's own wait on the rendering-done semaphore makes it visible (UE: BOTTOM_OF_PIPE, access 0)
+  if layout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR { return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT }
+  return 0
+}
 # levels [base, base + n) of every layer of an image, from one layout to another
 function gvk_barrier(render3d_st: mut Render3dState, cb: pointer, image: long, depth: bool, base: int, n: int, layers: int, old_layout: int, new_layout: int) -> void {
+  gvk_barrier_from(render3d_st, cb, image, depth, base, n, layers, old_layout, new_layout, 0)
+}
+# the same, its source stages given (0: those of the old layout) - a swapchain image's are the stages its acquire semaphore
+# is waited at, so the transition is ordered after the image is free
+function gvk_barrier_from(render3d_st: mut Render3dState, cb: pointer, image: long, depth: bool, base: int, n: int, layers: int, old_layout: int, new_layout: int, src_stages: int) -> void {
   # an image that was never made (its memory could not be had) has nothing to transition
   if image == 0 { return }
   let b = gvk_tmp(render3d_st, VkImageMemoryBarrier_sizeof)
@@ -144,7 +175,27 @@ function gvk_barrier(render3d_st: mut Render3dState, cb: pointer, image: long, d
   Vk.put_i32(b, r + VkImageSubresourceRange_levelCount, n)
   Vk.put_i32(b, r + VkImageSubresourceRange_baseArrayLayer, 0)
   Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, layers)
-  Vk.cmd_pipeline_barrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, null, 0, null, 1, b)
+  var src = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+  var dst = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+  if gvk_narrow_on(render3d_st) {
+    var s = src_stages
+    if s == 0 { s = gvk_layout_stages(old_layout) }
+    let d = gvk_layout_stages(new_layout)
+    if s != 0 and d != 0 { src = s;  dst = d }
+  }
+  Vk.cmd_pipeline_barrier(cb, src, dst, 0, 0, null, 0, null, 1, b)
+}
+
+# A copy into a host-visible buffer that the CPU reads once the fence is waited for: the transfer's writes made visible to the
+# host (the Vulkan spec's host access rule; UE VulkanBarriers.cpp GetVkStageAndAccessFlags, ERHIAccess::CPURead = HOST stage,
+# HOST_READ access): a fence wait alone does not make device writes visible to the host.
+function gvk_host_read_barrier(render3d_st: mut Render3dState, cb: pointer) -> void {
+  let mb = gvk_tmp(render3d_st, VkMemoryBarrier_sizeof)
+  Vk.zero(mb, VkMemoryBarrier_sizeof)
+  Vk.put_i32(mb, VkMemoryBarrier_sType, VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+  Vk.put_i32(mb, VkMemoryBarrier_srcAccessMask, VK_ACCESS_TRANSFER_WRITE_BIT)
+  Vk.put_i32(mb, VkMemoryBarrier_dstAccessMask, VK_ACCESS_HOST_READ_BIT)
+  Vk.cmd_pipeline_barrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT, 0, 1, mb, 0, null, 0, null)
 }
 
 # a host-visible buffer of n bytes, mapped; gvk_staging_free unmaps and frees it
@@ -474,6 +525,7 @@ function gvk_tex_read(render3d_st: mut Render3dState, tex: int, ifmt: int, w: in
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_height, h)
   Vk.put_i32(bic, VkBufferImageCopy_imageExtent + VkExtent3D_depth, 1)
   Vk.cmd_copy_image_to_buffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_st_buf, 1, bic)
+  gvk_host_read_barrier(render3d_st, cb)
   gvk_barrier(render3d_st, cb, image, depth, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   let ok = gvk_once_end(render3d_st, cb)
   if ok and cwant == cout { mem_copy(out, src, n) }
