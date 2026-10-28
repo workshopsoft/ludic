@@ -141,6 +141,7 @@ function r3d_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
   if r3d_env_has(render3d_st, "R3D_NOVSYNC") { gpu_vsync(render3d_st, 0) }
   var renderer: string = gpu_renderer_name(render3d_st)
   print(`r3d: {gfx_width()}x{gfx_height()} on {renderer}`)
+  ups_init(render3d_st)                     # the screen percentage and dynamic resolution (upscale.ludic), before prof_init makes its timestamps
   prof_init(render3d_st)
   cam_init(render3d_st, float(gfx_width()) / float(gfx_height()))
   return len(render3d_st.r3d_fault) == 0
@@ -283,6 +284,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # covers is exactly one frame, from this point to the same point next time
   prof_gen_frame(render3d_st)
   prof_mark_start(render3d_st)
+  ups_frame(render3d_st)                    # this frame's render size: the screen percentage, dynamic resolution (upscale.ludic)
   cam_begin_frame(render3d_st, render3d_st.post_frame, gfx_width(), gfx_height())
   # R3D_CAM_LOG=1: the camera each frame, in millimetres and thousandths of a radian - to tell a
   # camera that moves while the hiker stands still from a picture that shakes on its own
@@ -413,6 +415,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # DLSS super resolution: the lit frame up to the display's size, before anything reads it; or, without
   # it, the temporal resolve (taa.ludic) at the frame's own size
   if gsl_dlss_live(render3d_st) { render3d_st.taa_live = false;  prof_begin(render3d_st, "DLSS");  render3d_st.post_color = gsl_dlss_eval(render3d_st);  prof_end(render3d_st) }
+  else if mfx_live(render3d_st) { render3d_st.taa_live = false;  prof_begin(render3d_st, "MetalFX");  render3d_st.post_color = mfx_eval(render3d_st);  prof_end(render3d_st) }
   else if taa_ran(render3d_st) { prof_begin(render3d_st, "TAA resolve");  render3d_st.post_color = taa_resolve(render3d_st);  prof_end(render3d_st) }
   prof_begin(render3d_st, "dof");  post_dof_pass(render3d_st);  prof_end(render3d_st)
   if not render3d_st.post_no_gi and not render3d_st.r3d_env_no_gi { prof_begin(render3d_st, "SSAO/GI");  post_ssao_pass(render3d_st);  prof_end(render3d_st) }

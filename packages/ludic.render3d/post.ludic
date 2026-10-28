@@ -67,6 +67,25 @@ function post_init(render3d_st: mut Render3dState, w: int, h: int) -> void {
 }
 @alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
+  post_targets__t(render3d_st, w, h)
+  post_settings(render3d_st)
+}
+
+# The render size changed and the display did not (the screen percentage, dynamic resolution: upscale.ludic): every
+# render-sized target again, the settings, the exposure's adaptation and the fullscreen mesh kept, as Unreal's view rect moves
+# inside targets that stay. The GPU memory it makes is counted as VKM_TARGET (R3D_VKMEM).
+function post_rescale(render3d_st: mut Render3dState, w: int, h: int) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TARGET
+  post_free(render3d_st)
+  post_targets__t(render3d_st, w, h)
+  if render3d_st.water_refl != null { target_free(render3d_st, render3d_st.water_refl);  render3d_st.water_refl = null }
+  render3d_st.gvk_tag = was
+}
+
+# the targets at the render size w x h; the LDR image the tonemap writes, at the display's
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function post_targets__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_w = w;  render3d_st.post_h = h
   # the exposure's two 1x1 targets: made once, here, rather than by the first frame that measured
   if render3d_st.post_adapt_t == null {
@@ -110,7 +129,7 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_ao_hzb = target_new(render3d_st, (w + 1) / 2, (h + 1) / 2, GPU_R32F, GPU_RED, GPU_FLOAT, false, GPU_NEAREST)
   if render3d_st.post_neutral == 0 { render3d_st.post_neutral = tex_solid(render3d_st, 0, 0, 0, 255) }
   if render3d_st.post_p_ao == 0 { render3d_st.post_p_ao = r3d_program(render3d_st, "fullscreen.vert", "ssgi.frag", "");  render3d_st.post_p_ao_blur = r3d_program(render3d_st, "fullscreen.vert", "ssao_blur.frag", "");  render3d_st.post_p_ao_hzb = r3d_program(render3d_st, "fullscreen.vert", "ao_hzb.frag", "") }
-  render3d_st.post_ldr = target_new(render3d_st, w, h, post_ldr_fmt(render3d_st), GPU_RGBA, GPU_UNSIGNED_BYTE, false, GPU_LINEAR)
+  render3d_st.post_ldr = target_new(render3d_st, gfx_width(), gfx_height(), post_ldr_fmt(render3d_st), GPU_RGBA, GPU_UNSIGNED_BYTE, false, GPU_LINEAR)
   render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
   render3d_st.post_depth_copy = target_new(render3d_st, w, h, GPU_R8, GPU_RED, GPU_UNSIGNED_BYTE, true, GPU_NEAREST)
   render3d_st.post_dof = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
@@ -122,6 +141,13 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   if render3d_st.post_p_sharp == 0 { render3d_st.post_p_sharp = r3d_program(render3d_st, "fullscreen.vert", "sharpen.frag", "") }
   taa_init(render3d_st, w, h)
   sss_init(render3d_st, w, h)
+  var m = 1;  var sz = max(w, h)
+  while sz > 1 { sz = sz / 2;  m += 1 }
+  render3d_st.post_mips = m
+}
+
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function post_settings(render3d_st: mut Render3dState) -> void {
   render3d_st.post_sharpen = 1.2
   render3d_st.post_grain = float_bits(0.025)
   render3d_st.post_ao_radius = 0.7
@@ -135,9 +161,6 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   render3d_st.post_contrast = 1.12
   render3d_st.post_key = 0.28       # the target for the meter's band mean (post_meter.ludic); 0.19 was the whole frame's
   render3d_st.post_lum = words(4)
-  var m = 1;  var sz = max(w, h)
-  while sz > 1 { sz = sz / 2;  m += 1 }
-  render3d_st.post_mips = m
   render3d_st.post_adapt = 0.0
 }
 
@@ -388,12 +411,12 @@ function post_dof_pass(render3d_st: mut Render3dState) -> void {
   r3d_bind_2d(render3d_st, render3d_st.post_p_dof, "u_src", 0, render3d_st.post_color)
   r3d_bind_2d(render3d_st, render3d_st.post_p_dof, "u_depth", 1, render3d_st.post_hdr.depth)
   u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_inv_proj"), render3d_st.cam_inv_proj)
-  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_texel"), 1.0 / float(render3d_st.post_w), 1.0 / float(render3d_st.post_h))
+  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_texel"), 1.0 / float(render3d_st.post_color_w), 1.0 / float(render3d_st.post_color_h))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_focus"), render3d_st.post_dof_focus)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_aperture"), render3d_st.post_dof_aperture)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_dof, "u_max_coc"), render3d_st.post_dof_max)
   mesh_draw(render3d_st, render3d_st.post_fs)
-  render3d_st.post_color = render3d_st.post_dof.color
+  render3d_st.post_color = render3d_st.post_dof.color;  render3d_st.post_color_w = render3d_st.post_w;  render3d_st.post_color_h = render3d_st.post_h
 }
 
 function post_bloom_pass(render3d_st: mut Render3dState) -> void {
@@ -491,9 +514,14 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   gpu_use_program(render3d_st, render3d_st.post_p_sharp)
   r3d_bind_2d(render3d_st, render3d_st.post_p_sharp, "u_src", 0, render3d_st.post_ldr.color)
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_texel"), 1.0 / float(render3d_st.post_ldr.w), 1.0 / float(render3d_st.post_ldr.h))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_amount"), render3d_st.post_sharpen)
+  # no unsharp mask over a temporal upscaler's frame either: DLSS and MetalFX reconstruct the detail themselves, and Unreal
+  # sharpens nothing after them (r.Tonemapper.Sharpen 0); the mask drew a bright and a dark line round every edge they resolved
+  var sharpen = render3d_st.post_sharpen
+  if ups_temporal(render3d_st) != 0 { sharpen = 0.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_amount"), sharpen)
   var fx = render3d_st.post_fxaa
-  if r3d_env_has(render3d_st, "R3D_NOFXAA") or taa_ran(render3d_st) { fx = 0.0 }
+  # nor over DLSS's or MetalFX's: the temporal upscaler is the anti-aliasing (Unreal runs no FXAA after TSR or a third-party one)
+  if r3d_env_has(render3d_st, "R3D_NOFXAA") or taa_ran(render3d_st) or ups_temporal(render3d_st) != 0 { fx = 0.0 }
   # after the temporal resolve the frame is sharpened by RCAS instead of FXAA and the unsharp mask (sharpen.frag)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_rcas"), taa_rcas(render3d_st))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_fxaa"), fx)

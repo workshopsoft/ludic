@@ -18,16 +18,19 @@ const PROF_RING:  int = 4            # frames of latency before a result is read
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function prof_init(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_on = r3d_env_has(render3d_st, "R3D_PROF")
-  if not render3d_st.prof_on { return }
+  # the backend keeps one timestamp pool (gvk_query_new makes it anew): dynamic resolution's pairs live in it too, after the passes'
+  # rings and the whole frame's, so the pool is made for either (ups_init has read its switch)
+  if not render3d_st.prof_on and not render3d_st.ups_dr { return }
   render3d_st.prof_names = new []pointer
   render3d_st.prof_ns = new []long
   render3d_st.prof_hits = new []long
   render3d_st.prof_min = new []long
   # the pass slots' rings, then one more ring: the whole frame's (prof_frame_begin)
-  render3d_st.prof_ids = words((PROF_SLOTS + 1) * PROF_RING)
+  render3d_st.prof_ids = words((PROF_SLOTS + 1) * PROF_RING + UPS_RING)
   render3d_st.prof_used = words((PROF_SLOTS + 1) * PROF_RING)
   render3d_st.prof_scratch = words(4)
-  gpu_query_new(render3d_st, (PROF_SLOTS + 1) * PROF_RING, render3d_st.prof_ids)
+  gpu_query_new(render3d_st, (PROF_SLOTS + 1) * PROF_RING + UPS_RING, render3d_st.prof_ids)
+  for k in 0 .. UPS_RING { render3d_st.ups_q_ids[k] = render3d_st.prof_ids[(PROF_SLOTS + 1) * PROF_RING + k] }
   render3d_st.prof_n = 0
   render3d_st.prof_frame = 0
   render3d_st.prof_active = -1
@@ -84,12 +87,14 @@ export function prof_split(render3d_st: mut Render3dState, name: pointer) -> voi
 # The whole frame on the GPU, from its first work to the end of its post: a pair of timestamps of its own, outside the passes' slots so
 # it may span them (they do not nest). The passes' TOTAL is their means added up; this is what the frame took, gaps and all.
 function prof_frame_begin(render3d_st: mut Render3dState) -> void {
+  ups_stamp_begin(render3d_st)              # dynamic resolution's own pair (upscale.ludic)
   if not render3d_st.prof_on { return }
   let qi = PROF_SLOTS * PROF_RING + (render3d_st.prof_frame % PROF_RING)
   render3d_st.prof_used[qi] = 1
   gvk_stamp(render3d_st, render3d_st.prof_ids[qi], false)
 }
 function prof_frame_end(render3d_st: mut Render3dState) -> void {
+  ups_stamp_end(render3d_st)
   if not render3d_st.prof_on { return }
   gvk_stamp(render3d_st, render3d_st.prof_ids[PROF_SLOTS * PROF_RING + (render3d_st.prof_frame % PROF_RING)], true)
 }

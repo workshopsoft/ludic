@@ -243,7 +243,7 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueFamilyIndex, render3d_st.gvk_family)
   Vk.put_i32(qci, VkDeviceQueueCreateInfo_queueCount, 1)
   Vk.put_ptr(qci, VkDeviceQueueCreateInfo_pQueuePriorities, prio)
-  let dext_names = bytes(48)
+  let dext_names = bytes(64)
   var n_dext = 0
   let dci = bytes(VkDeviceCreateInfo_sizeof)
   Vk.zero(dci, VkDeviceCreateInfo_sizeof)
@@ -264,6 +264,9 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
     if render3d_st.gvk_has_hdr_meta { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_HDR_METADATA_EXTENSION_NAME);  n_dext += 1 }
   }
   if render3d_st.gvk_has_mesh { Vk.put_ptr(dext_names, n_dext * 8, VK_EXT_MESH_SHADER_EXTENSION_NAME);  n_dext += 1 }
+  # MoltenVK's Metal objects - the MTLDevice, the queue's MTLCommandQueue, an image's MTLTexture - for MetalFX (mfx.ludic)
+  render3d_st.gvk_has_metal_objects = gvk_ext_in(dexts, nde, "VK_EXT_metal_objects")
+  if render3d_st.gvk_has_metal_objects { Vk.put_ptr(dext_names, n_dext * 8, "VK_EXT_metal_objects");  n_dext += 1 }
   if n_dext > 0 {
     Vk.put_i32(dci, VkDeviceCreateInfo_enabledExtensionCount, n_dext)
     Vk.put_ptr(dci, VkDeviceCreateInfo_ppEnabledExtensionNames, dext_names)
@@ -273,7 +276,11 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.gvk_dev = Vk.get_ptr(out, 0)
   Vk.get_device_queue(render3d_st.gvk_dev, render3d_st.gvk_family, 0, out)
   render3d_st.gvk_queue = Vk.get_ptr(out, 0)
+  # two frames' splits at most are in flight (gvk_frame_split); room for a few each
+  render3d_st.gvk_split_cbs = new []pointer
+  for i in 0 .. 8 { push(render3d_st.gvk_split_cbs, null) }
   gsl_probe_device(render3d_st, render3d_st.gvk_pd)
+  mfx_init(render3d_st)                     # MetalFX through MoltenVK's Metal objects (mfx.ludic), macOS
   if render3d_st.gvk_has_mesh {
     render3d_st.gvk_mesh_fn = Vk.get_device_proc_addr(render3d_st.gvk_dev, "vkCmdDrawMeshTasksEXT")
     if render3d_st.gvk_mesh_fn == null { render3d_st.gvk_has_mesh = false }
@@ -628,6 +635,7 @@ function gvk_once_end(render3d_st: mut Render3dState, cb: pointer) -> bool {
   let forever: long = -1
   r = Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_fence, 1, forever)
   Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
+  if r == VK_SUCCESS { gvk_split_free(render3d_st, render3d_st.gvk_split_n) }
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkWaitForFences", r) }
   return true
 }
@@ -668,8 +676,47 @@ function gvk_frame_submit(render3d_st: mut Render3dState, cb: pointer) -> bool {
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkQueueSubmit", r) }
   render3d_st.gvk_frame_pending = true
   render3d_st.gvk_frame_pending_cb = cb
+  render3d_st.gvk_split_held = render3d_st.gvk_split_n          # every split so far is this frame's or older: its fence covers them
   render3d_st.gvk_frame_pending_no = render3d_st.gvk_frame_no
   return true
+}
+
+# The frame so far submitted without a wait, and a new command buffer begun for the rest: work outside Vulkan (MetalFX on
+# MoltenVK's queue, mfx.ludic) goes in between, in queue order. The ring, the descriptor pool and the frame number stay; the
+# command buffers split off are freed by the next wait on the queue, which covers every submit before its own.
+function gvk_frame_split(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_cb == null { return false }
+  gvk_pass_end(render3d_st)
+  gvk_labels_close(render3d_st)
+  let cb = render3d_st.gvk_cb
+  var r = Vk.end_command_buffer(cb)
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkEndCommandBuffer", r) }
+  let cbs = gvk_tmp(render3d_st, 8)
+  Vk.put_ptr(cbs, 0, cb)
+  let si = gvk_tmp(render3d_st, VkSubmitInfo_sizeof)
+  Vk.zero(si, VkSubmitInfo_sizeof)
+  Vk.put_i32(si, VkSubmitInfo_sType, VK_STRUCTURE_TYPE_SUBMIT_INFO)
+  Vk.put_i32(si, VkSubmitInfo_commandBufferCount, 1)
+  Vk.put_ptr(si, VkSubmitInfo_pCommandBuffers, cbs)
+  let none: long = 0
+  r = Vk.queue_submit(render3d_st.gvk_queue, 1, si, none)
+  if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkQueueSubmit", r) }
+  if render3d_st.gvk_split_cbs == null or render3d_st.gvk_split_n >= len(render3d_st.gvk_split_cbs) { return gvk_fail(render3d_st, "gvk_frame_split: more splits than kept", 0) }
+  render3d_st.gvk_split_cbs[render3d_st.gvk_split_n] = cb
+  render3d_st.gvk_split_n += 1
+  render3d_st.gvk_cb = gvk_once_begin(render3d_st)
+  return render3d_st.gvk_cb != null
+}
+# The first n split-off command buffers, once the queue has been waited on past them: all of them after a wait on the whole
+# queue (gvk_once_end), those of the frames submitted before it after the frame fence (gvk_frame_wait, gvk_split_held). The
+# frame being recorded may already have split its own off, and they stay.
+function gvk_split_free(render3d_st: mut Render3dState, n: int) -> void {
+  if n <= 0 { return }
+  let cbs = gvk_tmp(render3d_st, 8)
+  for i in 0 .. n { Vk.put_ptr(cbs, 0, render3d_st.gvk_split_cbs[i]);  Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs) }
+  for i in n .. render3d_st.gvk_split_n { render3d_st.gvk_split_cbs[i - n] = render3d_st.gvk_split_cbs[i] }
+  render3d_st.gvk_split_n -= n
+  render3d_st.gvk_split_held = max(render3d_st.gvk_split_held - n, 0)
 }
 
 function gvk_frame_wait(render3d_st: mut Render3dState) -> void {
@@ -681,6 +728,7 @@ function gvk_frame_wait(render3d_st: mut Render3dState) -> void {
   Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
   render3d_st.gvk_frame_pending = false
   render3d_st.gvk_frame_pending_cb = null
+  gvk_split_free(render3d_st, render3d_st.gvk_split_held)
   gvk_retire_upto(render3d_st, render3d_st.gvk_frame_pending_no)
 }
 

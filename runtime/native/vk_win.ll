@@ -398,3 +398,37 @@ define i64 @lvk_ac_scope_bytes(i32 %scope) {
 entry:
   ret i64 0
 }
+
+; ---- MetalFX (vk_mac.ll): none here; the same symbols so a program that names them links ----
+define i32 @lmfx_open() {
+entry:
+  ret i32 0
+}
+define i32 @lmfx_supports(ptr %d) {
+entry:
+  ret i32 0
+}
+define i32 @lmfx_max_scale(ptr %d) {
+entry:
+  ret i32 0
+}
+define ptr @lmfx_new(ptr %dev, i32 %iw, i32 %ih, i32 %ow, i32 %oh, i32 %cfmt, i32 %dfmt, i32 %mfmt, i32 %ofmt, i32 %autoexp) {
+entry:
+  ret ptr null
+}
+define void @lmfx_release(ptr %o) {
+entry:
+  ret void
+}
+define i32 @lmfx_usage(ptr %sc, i32 %which) {
+entry:
+  ret i32 0
+}
+define i32 @lmfx_tex_info(ptr %t, i32 %which) {
+entry:
+  ret i32 0
+}
+define i32 @lmfx_encode(ptr %sc, ptr %queue, ptr %color, ptr %depth, ptr %motion, ptr %output, i32 %jx, i32 %jy, i32 %mx, i32 %my, i32 %reset, i32 %reversed) {
+entry:
+  ret i32 0
+}

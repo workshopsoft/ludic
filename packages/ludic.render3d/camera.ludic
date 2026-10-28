@@ -20,6 +20,7 @@ function cam_init(render3d_st: mut Render3dState, aspect: float) -> void {
 }
 function cam_begin_frame(render3d_st: mut Render3dState, n: int, w: int, h: int) -> void {
   gsl_jitter_frame(render3d_st)
+  mfx_jitter_frame(render3d_st)       # MetalFX's, while it resolves (mfx.ludic)
   taa_jitter_frame(render3d_st)       # TAA's own sub-pixel offset when DLSS is not resolving (taa.ludic)
   cam_update(render3d_st)
 }

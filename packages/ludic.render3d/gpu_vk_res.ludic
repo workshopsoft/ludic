@@ -199,6 +199,9 @@ function gvk_tex_storage(render3d_st: mut Render3dState, tex: int, array: bool, 
   # DLSS reads and writes the frame from compute: a float colour target is storage too while
   # Streamline is running (8-bit sRGB formats cannot be, so only the float ones)
   if render3d_st.gsl_on and samples == 1 and (vkfmt == VK_FORMAT_R16G16B16A16_SFLOAT or vkfmt == VK_FORMAT_R32_SFLOAT) { usage = usage | VK_IMAGE_USAGE_STORAGE_BIT }
+  # MetalFX writes its output from compute (MTLTextureUsageShaderWrite, which MoltenVK gives a storage image): that one target
+  # alone, as storage keeps Apple's GPUs from compressing the image (mfx_targets)
+  if render3d_st.gvk_storage_next and samples == 1 { usage = usage | VK_IMAGE_USAGE_STORAGE_BIT }
   let ici = bytes(VkImageCreateInfo_sizeof)
   Vk.zero(ici, VkImageCreateInfo_sizeof)
   Vk.put_i32(ici, VkImageCreateInfo_sType, VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO)
@@ -556,8 +559,10 @@ function gvk_compare_op(f: int) -> int {
 function gvk_mip_bias(render3d_st: mut Render3dState) -> float {
   # R3D_NO_MIPBIAS=1 puts it back the way it was, so one build can be compared against itself
   if r3d_env_has(render3d_st, "R3D_NO_MIPBIAS") { return 0.0 }
-  if not r3d_dlss_live(render3d_st) { return 0.0 }
-  let rw = r3d_dlss_render_w(render3d_st)
+  # MetalFX (and a screen percentage under any other temporal upscaler): Unreal's automatic view mip bias (upscale.ludic)
+  if not r3d_dlss_live(render3d_st) { return ups_mip_bias(render3d_st) }
+  # the size the scene draws at (post_w), which the screen percentage or dynamic resolution may set off DLSS's own
+  let rw = render3d_st.post_w
   if rw <= 0 or gfx_width() <= 0 or rw >= gfx_width() { return 0.0 }
   # log2 from the natural log the runtime has: log2(x) = ln(x) * 1/ln(2)
   return Math.log(float(rw) / float(gfx_width())) * 1.4426950408889634 - 1.0
