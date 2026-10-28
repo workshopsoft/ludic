@@ -152,7 +152,7 @@ function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: fl
   # casters up to ~900 m toward the sun (a mountain across the valley), and the
   # slice itself behind the centre: a tight depth range keeps the bias small
   let back = radius + 900.0
-  v3_madd(eye, center, render3d_st.sun_dir, back)
+  v3_madd(eye, center, render3d_st.sh_sun, back)               # the shadows' sun: stepped while the cache is on (shadow_cache.ludic)
   let up = render3d_st.sh_fit_up
   v3_set(up, 0.0, 1.0, 0.0)
   m4_look_at(render3d_st.sh_tmp_view, eye, center, up)
@@ -185,13 +185,21 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
   # a fog wall: a cascade reaches no further than it, and one that begins past it is only cleared
   let wall = r3d_reach(render3d_st, 0.0)
   shadow_ue_splits(render3d_st, near)
+  # the far cascades cached (shadow_cache.ludic, R3D_UE_SHADOW_CACHE): its plan said so before the frame's first pass
+  if render3d_st.sc_active {
+    shadow_cache_pass(render3d_st)
+    gpu_depth_bias(render3d_st, 0.0, 0.0)
+    gpu_fb_bind(render3d_st, 0)
+    return
+  }
+  if render3d_st.sc_mode != 1 { v3_copy(render3d_st.sh_sun, render3d_st.sun_dir) }
   for c in 0 .. SHADOW_CASCADES {
     render3d_st.sh_cascade = c
     # past Unreal's cascades: fitted to nothing, never drawn (its lookups read lit)
     if c >= shadow_ue_count(render3d_st) { shadow_cascade_none(render3d_st, c);  continue }
     var far = render3d_st.sh_split[c]
     if wall > 0.0 and far > wall { far = Math.max(wall, near + 1.0) }
-    shadow_fit(render3d_st, c, near, far)
+    if render3d_st.sc_mode == 2 and c >= 1 and c <= 3 { sc_live_window(render3d_st, c) } else { shadow_fit(render3d_st, c, near, far) }
     prof_cpu_mark(render3d_st, "shadow fit")
     let past = wall > 0.0 and near >= wall
     near = render3d_st.sh_split[c]
@@ -368,7 +376,7 @@ function shadow_fog(render3d_st: mut Render3dState) -> void {
 # instanced layers, 3 the buildings. The engine splits before the terrain; a game's casters callback before its own three. A local
 # light's shadow maps stay under their own pass's name.
 export function prof_shadow_split(render3d_st: mut Render3dState, part: int) -> void {
-  if not render3d_st.prof_on or render3d_st.sh_local { return }
+  if not render3d_st.prof_on or render3d_st.sh_local or render3d_st.sh_phase == SH_PHASE_STATIC { return }   # a cache rebuild: under its own name
   prof_split(render3d_st, prof_shadow_name(render3d_st.sh_cascade, part))
 }
 function prof_shadow_name(c: int, part: int) -> pointer {

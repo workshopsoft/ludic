@@ -899,7 +899,7 @@ function cast_band_reaches(render3d_st: mut Render3dState, dmin: float, dmax: fl
   # its receivers start there, not at the split: starting at the split changed 19 pixels in town
   if c > 0 { near = render3d_st.sh_split[c - 1] * 0.85 }
   let far = render3d_st.sh_split[c]
-  let reach = Math.max(Math.min(height * 6.0, 40.0), 8.0)
+  let reach = Math.max(Math.min(height * 6.0, 40.0), 8.0) + render3d_st.sh_cast_slack   # a cached cascade's: its window's margin more
   if dmax != 0.0 and dmax + reach + render3d_st.sc_cast_dy < near { return false }
   if dmin - reach > far * render3d_st.sc_cast_k { return false }
   return true
@@ -1261,7 +1261,7 @@ function layer_casters_in(render3d_st: mut Render3dState, l: Layer) -> int {
   # (cast_band_reaches keeps sc_cast_k, the frustum's corner factor, for this view)
   if not cast_band_reaches(render3d_st, 0.0, 0.0, l.model.height) { return 0 }
   if render3d_st.sc_cast_all == 1 or render3d_st.sh_split == null or render3d_st.sh_local { return l.cast_end[SC_CAST_BUCKETS - 1] }
-  let reach = Math.max(Math.min(l.model.height * 6.0, 40.0), 8.0)
+  let reach = Math.max(Math.min(l.model.height * 6.0, 40.0), 8.0) + render3d_st.sh_cast_slack
   let far = render3d_st.sh_split[render3d_st.sh_cascade] * render3d_st.sc_cast_k + reach
   let b = min(int(far / SC_CAST_M), SC_CAST_BUCKETS - 1)
   return l.cast_end[b]

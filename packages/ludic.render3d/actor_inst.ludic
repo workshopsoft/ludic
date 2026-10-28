@@ -7,7 +7,8 @@
 # with its own instance buffer, filled once a frame. R3D_UE_DYNAMIC_INSTANCING=0 draws every actor on its own.
 const AI_MAX: int = 2048              # instances a pass; past it, actors are drawn on their own
 const AI_FLOATS: int = 16             # three rows of the model matrix, then the tint and the glow
-const AI_PASSES: int = 6              # the main view, then a cascade each (shadow.ludic's up to five)
+const AI_PASSES: int = 9              # the main view, then a cascade each (shadow.ludic's up to five), then a cached cascade's rebuild each
+const AI_CACHE_SLOT: int = 5          # + the cascade (1 .. 3): the still actors drawn into the shadow cache (shadow_cache.ludic)
 const AI_MODELS: int = 512
 
 function ai_on(render3d_st: mut Render3dState) -> bool {

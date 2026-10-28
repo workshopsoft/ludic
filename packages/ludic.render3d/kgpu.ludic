@@ -82,6 +82,13 @@ export property KGpu {
   l_ready: bool = false,    # this frame's local light casters are in b_l_cmds
   prm_l: words,
   dbg_n: int = 0,
+  b_s_counts: int = 0,      # the sun's cached cascades' casters (shadow_cache.ludic): culled to the window being drawn, not the view,
+  b_s_offs: int = 0,        # their instances after everything else in b_dst (from dst_cap, s_cap of them)
+  b_s_cursors: int = 0,
+  b_s_cmds: int = 0,
+  s_cap: int = 0,
+  s_ready: bool = false,    # this frame's cached cascades' casters are in b_s_cmds
+  s_planes: floats,
   b_ident: int = 0,
   b_ident_box: int = 0,     # an identity instance with a box kit's reference w, d, h, for its impostor bake
   kt_u: floats,             # a box kit's tuples as the card shader takes them (kitbox_uniforms)
@@ -184,8 +191,10 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   gpu_buffer_upload(render3d_st, g.b_src, src_cap * KG_SRC_FLOATS * 4, null, GPU_DYNAMIC)
   gpu_buffer_gpu_owned(render3d_st, g.b_src)
   kgpu_fill_dead(render3d_st, g, 0, src_cap)
+  # the shadow cache's casters (R3D_UE_SHADOW_CACHE) take a list of their own after the rest
+  if shadow_cache_mode(render3d_st) == 1 { g.s_cap = max(dst_cap / 2, 1) }
   g.b_dst = gpu_buffer_new(render3d_st)
-  gpu_buffer_upload(render3d_st, g.b_dst, dst_cap * KG_DST_FLOATS * 4, null, GPU_DYNAMIC)
+  gpu_buffer_upload(render3d_st, g.b_dst, (dst_cap + g.s_cap) * KG_DST_FLOATS * 4, null, GPU_DYNAMIC)
   gpu_buffer_gpu_owned(render3d_st, g.b_dst)
   g.b_kits = gpu_buffer_new(render3d_st)
   gpu_buffer_upload(render3d_st, g.b_kits, n_kits * 32, null, GPU_DYNAMIC)
@@ -225,6 +234,21 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   gpu_buffer_upload(render3d_st, g.b_l_cmds, n_kits * KG_REC * 20, data_of(rec), GPU_DYNAMIC)
   gpu_buffer_gpu_owned(render3d_st, g.b_l_cmds)
   g.b_lights = gpu_buffer_new(render3d_st)
+  if g.s_cap > 0 {
+    g.s_planes = floats(24)
+    g.b_s_counts = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, g.b_s_counts, n_kits * 2 * 4, null, GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, g.b_s_counts)
+    g.b_s_offs = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, g.b_s_offs, n_kits * 2 * 4, null, GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, g.b_s_offs)
+    g.b_s_cursors = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, g.b_s_cursors, n_kits * 2 * 4, null, GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, g.b_s_cursors)
+    g.b_s_cmds = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, g.b_s_cmds, n_kits * KG_REC * 20, data_of(rec), GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, g.b_s_cmds)
+  }
   g.b_ident = gpu_buffer_new(render3d_st)
   kgpu_ident(render3d_st, g)
   g.card_mesh = mesh_card(render3d_st)
@@ -591,6 +615,8 @@ export function kgpu_frame(render3d_st: mut Render3dState, g: KGpu, o: ForgOrigi
   kgpu_bind_cull(g)
   gpu_dispatch(render3d_st, g.c_cull, data_of(g.prm), 128, g.bufs, (g.arena.high + 63) / 64)
   if lights { kgpu_frame_lights(render3d_st, g, main_cap) }
+  g.s_ready = false
+  if render3d_st.sc_cull and g.s_cap > 0 { kgpu_frame_cache(render3d_st, g) }
   if r3d_env_has(render3d_st, "R3D_UE_LS_DEBUG") { kgpu_lights_debug(render3d_st, g) }
 }
 
@@ -638,6 +664,30 @@ function kgpu_frame_lights(render3d_st: mut Render3dState, g: KGpu, start: int) 
     }
   }
   g.l_ready = true
+}
+
+# The sun's cached cascades' casters (shadow_cache.ludic): Unreal culls a whole-scene shadow's casters to the light's own volume, so a
+# cached window holds the buildings beside and behind the camera too, whichever way it turns. The main cull's four steps with the
+# window's planes (sc_cull_vp; the level by the camera's distance as ever), into their own counters and records after everything in b_dst.
+function kgpu_frame_cache(render3d_st: mut Render3dState, g: KGpu) -> void {
+  let bins = g.n_kits * 2
+  kinst_planes(render3d_st.sc_cull_vp, g.s_planes)
+  g.pr[0] = bins;  g.pr[1] = 0;  g.pr[2] = 0;  g.pr[3] = 0
+  g.bufs[0] = g.b_s_counts;  g.bufs[1] = g.b_s_cursors
+  gpu_dispatch(render3d_st, g.c_reset, data_of(g.pr), 16, g.bufs, (bins + 63) / 64)
+  for pass in 0 .. 2 {
+    kgpu_cull_params(render3d_st, g, pass)
+    for i in 0 .. 24 { g.prm[i] = float_bits(g.s_planes[i]) }
+    g.bufs[0] = g.b_src;  g.bufs[1] = g.b_kits;  g.bufs[2] = g.b_cells;  g.bufs[3] = g.b_s_counts
+    g.bufs[4] = g.b_s_offs;  g.bufs[5] = g.b_s_cursors;  g.bufs[6] = g.b_dst
+    gpu_dispatch(render3d_st, g.c_cull, data_of(g.prm), 128, g.bufs, (g.arena.high + 63) / 64)
+    if pass == 0 {
+      g.pa[0] = bins;  g.pa[1] = g.n_kits;  g.pa[2] = g.dst_cap + g.s_cap;  g.pa[3] = g.dst_cap
+      g.bufs[0] = g.b_s_counts;  g.bufs[1] = g.b_s_offs;  g.bufs[2] = g.b_kits;  g.bufs[3] = g.b_s_cmds
+      gpu_dispatch(render3d_st, g.c_args, data_of(g.pa), 16, g.bufs, 1)
+    }
+  }
+  g.s_ready = true
 }
 
 # the cull's Params (kinst_cull.comp): six planes, the camera and scale, then instances, bins, pass, capacity
@@ -765,6 +815,8 @@ export function kgpu_draw_casters(render3d_st: mut Render3dState, g: KGpu, light
   # a local light's map draws the casters gathered from the lights' bounds (kgpu_frame_lights), the sun's the camera's list
   var cmds = g.b_cmds
   if render3d_st.sh_local and g.l_ready { cmds = g.b_l_cmds }
+  if render3d_st.sh_phase == SH_PHASE_STATIC and g.s_ready { cmds = g.b_s_cmds }   # a cached cascade's (shadow_cache.ludic)
+  if render3d_st.sh_phase == SH_PHASE_DYN { return }                                  # buildings never move
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
   gpu_cull(render3d_st, false)

@@ -1816,6 +1816,38 @@ function gvk_copy(render3d_st: mut Render3dState, cb: pointer, src: int, dst: in
   gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 }
+# n layers of one array texture into layers of another of the same size and format, outside any pass (a cached shadow cascade
+# into the frame's: shadow.ludic): pairs[2 i] the source layer, pairs[2 i + 1] the destination's. Both rest in shader-read, as
+# every texture does between passes; one barrier each way for the whole batch.
+function gvk_copy_layers(render3d_st: mut Render3dState, src: int, dst: int, depth: bool, pairs: words, n: int) -> void {
+  if n <= 0 or src <= 0 or dst <= 0 or render3d_st.gvk_tex_image[src] == 0 or render3d_st.gvk_tex_image[dst] == 0 { return }
+  gvk_pass_end(render3d_st)
+  let cb = gvk_frame_cb(render3d_st)
+  let w = render3d_st.gvk_tex_dims_w[src]
+  let h = render3d_st.gvk_tex_dims_h[src]
+  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  let sz = VkImageCopy_sizeof
+  let ic = gvk_tmp(render3d_st, sz * n)
+  Vk.zero(ic, sz * n)
+  var aspect = VK_IMAGE_ASPECT_COLOR_BIT
+  if depth { aspect = VK_IMAGE_ASPECT_DEPTH_BIT }
+  for i in 0 .. n {
+    let o = i * sz
+    Vk.put_i32(ic, o + VkImageCopy_srcSubresource + VkImageSubresourceLayers_aspectMask, aspect)
+    Vk.put_i32(ic, o + VkImageCopy_srcSubresource + VkImageSubresourceLayers_baseArrayLayer, pairs[i * 2])
+    Vk.put_i32(ic, o + VkImageCopy_srcSubresource + VkImageSubresourceLayers_layerCount, 1)
+    Vk.put_i32(ic, o + VkImageCopy_dstSubresource + VkImageSubresourceLayers_aspectMask, aspect)
+    Vk.put_i32(ic, o + VkImageCopy_dstSubresource + VkImageSubresourceLayers_baseArrayLayer, pairs[i * 2 + 1])
+    Vk.put_i32(ic, o + VkImageCopy_dstSubresource + VkImageSubresourceLayers_layerCount, 1)
+    Vk.put_i32(ic, o + VkImageCopy_extent + VkExtent3D_width, w)
+    Vk.put_i32(ic, o + VkImageCopy_extent + VkExtent3D_height, h)
+    Vk.put_i32(ic, o + VkImageCopy_extent + VkExtent3D_depth, 1)
+  }
+  Vk.cmd_copy_image(cb, render3d_st.gvk_tex_image[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_tex_image[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, n, ic)
+  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+}
 function gvk_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> void {
   gvk_pass_end(render3d_st)
   let cb = gvk_frame_cb(render3d_st)
