@@ -432,3 +432,11 @@ define i32 @lmfx_encode(ptr %sc, ptr %queue, ptr %color, ptr %depth, ptr %motion
 entry:
   ret i32 0
 }
+define void @lmfx_hold(i32 %i) {
+entry:
+  ret void
+}
+define i64 @lmfx_slot_ns(i32 %i) {
+entry:
+  ret i64 -2
+}

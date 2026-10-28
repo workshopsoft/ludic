@@ -84,6 +84,17 @@ export function prof_split(render3d_st: mut Render3dState, name: pointer) -> voi
   prof_begin(render3d_st, name)
 }
 
+# A pass timed outside the Vulkan queries (MetalFX's own command buffer, by Metal's clock: mfx.ludic mfx_time_collect), added to
+# its slot as a query's result is; read a frame or more after it ran, as the queries are
+function prof_add_ns(render3d_st: mut Render3dState, name: pointer, ns: int) -> void {
+  if not render3d_st.prof_on or render3d_st.prof_skip > 0 { return }
+  let s = prof_slot(render3d_st, name)
+  if s < 0 { return }
+  render3d_st.prof_ns[s] = render3d_st.prof_ns[s] + ns
+  if render3d_st.prof_hits[s] == 0 or ns < render3d_st.prof_min[s] { render3d_st.prof_min[s] = ns }
+  render3d_st.prof_hits[s] = render3d_st.prof_hits[s] + 1
+}
+
 # The whole frame on the GPU, from its first work to the end of its post: a pair of timestamps of its own, outside the passes' slots so
 # it may span them (they do not nest). The passes' TOTAL is their means added up; this is what the frame took, gaps and all.
 function prof_frame_begin(render3d_st: mut Render3dState) -> void {

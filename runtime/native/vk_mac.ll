@@ -541,7 +541,14 @@ declare ptr @objc_msgSend(ptr, ptr, ...)
 @.mfx_s_ousage = private unnamed_addr constant [19 x i8] c"outputTextureUsage\00"
 @.mfx_s_usage = private unnamed_addr constant [6 x i8] c"usage\00"
 @.mfx_s_smode = private unnamed_addr constant [12 x i8] c"storageMode\00"
+@.mfx_s_retain = private unnamed_addr constant [7 x i8] c"retain\00"
+@.mfx_s_status = private unnamed_addr constant [7 x i8] c"status\00"
+@.mfx_s_gstart = private unnamed_addr constant [13 x i8] c"GPUStartTime\00"
+@.mfx_s_gend = private unnamed_addr constant [11 x i8] c"GPUEndTime\00"
 @lmfx_class = internal global ptr null
+; the scaler's last committed command buffer (autoreleased, this frame only) and the ones kept for their GPU time
+@lmfx_last = internal global ptr null
+@lmfx_slots = internal global [8 x ptr] zeroinitializer
 
 ; 1 when MetalFX's temporal scaler is there to use
 define i32 @lmfx_open() {
@@ -701,7 +708,73 @@ go:
   call void (ptr, ptr, ptr) @objc_msgSend(ptr %sc, ptr %se, ptr %cb)
   %sm = call ptr @sel_registerName(ptr @.mfx_s_commit)
   call void (ptr, ptr) @objc_msgSend(ptr %cb, ptr %sm)
+  store ptr %cb, ptr @lmfx_last
   ret i32 1
 fail:
   ret i32 0
+}
+
+; The scaler's own GPU time. Its command buffer runs on MoltenVK's queue between two Vulkan submits, so a Vulkan timestamp pair
+; around it also counts the queue's wait for the second submit; Metal's own clock does not: MTLCommandBuffer GPUStartTime /
+; GPUEndTime (Apple, "MTLCommandBuffer.GPUStartTime": the host time in seconds the GPU started and finished the buffer, valid
+; once it has completed). lmfx_hold keeps the buffer just committed in slot i (retained; what the slot held is let go);
+; lmfx_slot_ns reads it once it is MTLCommandBufferStatusCompleted (4): its nanoseconds, the buffer let go; -1 while it runs;
+; -2 for an empty slot or one that failed (MTLCommandBufferStatusError, 5).
+define void @lmfx_hold(i32 %i) {
+entry:
+  %ok = icmp ult i32 %i, 8
+  br i1 %ok, label %go, label %done
+go:
+  %p = getelementptr [8 x ptr], ptr @lmfx_slots, i32 0, i32 %i
+  %old = load ptr, ptr %p
+  call void @lmfx_release(ptr %old)
+  %cb = load ptr, ptr @lmfx_last
+  store ptr null, ptr @lmfx_last
+  store ptr null, ptr %p
+  %has = icmp ne ptr %cb, null
+  br i1 %has, label %keep, label %done
+keep:
+  %sr = call ptr @sel_registerName(ptr @.mfx_s_retain)
+  %r = call ptr (ptr, ptr) @objc_msgSend(ptr %cb, ptr %sr)
+  store ptr %cb, ptr %p
+  br label %done
+done:
+  ret void
+}
+define i64 @lmfx_slot_ns(i32 %i) {
+entry:
+  %ok = icmp ult i32 %i, 8
+  br i1 %ok, label %look, label %empty
+look:
+  %p = getelementptr [8 x ptr], ptr @lmfx_slots, i32 0, i32 %i
+  %cb = load ptr, ptr %p
+  %has = icmp ne ptr %cb, null
+  br i1 %has, label %stat, label %empty
+stat:
+  %ss = call ptr @sel_registerName(ptr @.mfx_s_status)
+  %st = call i64 (ptr, ptr) @objc_msgSend(ptr %cb, ptr %ss)
+  %fin = icmp eq i64 %st, 4
+  br i1 %fin, label %time, label %notyet
+notyet:
+  %bad = icmp sgt i64 %st, 4
+  br i1 %bad, label %drop, label %wait
+wait:
+  ret i64 -1
+drop:
+  call void @lmfx_release(ptr %cb)
+  store ptr null, ptr %p
+  ret i64 -2
+time:
+  %s0 = call ptr @sel_registerName(ptr @.mfx_s_gstart)
+  %t0 = call double (ptr, ptr) @objc_msgSend(ptr %cb, ptr %s0)
+  %s1 = call ptr @sel_registerName(ptr @.mfx_s_gend)
+  %t1 = call double (ptr, ptr) @objc_msgSend(ptr %cb, ptr %s1)
+  call void @lmfx_release(ptr %cb)
+  store ptr null, ptr %p
+  %d = fsub double %t1, %t0
+  %ns = fmul double %d, 1.000000e+09
+  %n = fptosi double %ns to i64
+  ret i64 %n
+empty:
+  ret i64 -2
 }
