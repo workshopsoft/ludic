@@ -235,11 +235,12 @@ function occ_hzb_size(render3d_st: mut Render3dState, w: int, h: int) -> void {
   gpu_buffer_gpu_owned(render3d_st, render3d_st.occ_hzb_buf)
 }
 
-# mips a build dispatch writes: 4 as Unreal's FHZBBuildCS (HZB.usf MAX_MIP_BATCH_SIZE); R3D_HZB_BATCH=0 one a dispatch
+# mips a build dispatch writes: one by default; R3D_HZB_BATCH=1 four as Unreal's FHZBBuildCS (HZB.usf MAX_MIP_BATCH_SIZE). Off since
+# 2026-10-28: on the RTX 3070 Ti at 4K the batched build took 2.18 ms against 1.68 ms a mip a dispatch (island downtown, crowd x3)
 function occ_hzb_batch(render3d_st: mut Render3dState) -> int {
   if render3d_st.occ_hzb_batch == 0 {
-    render3d_st.occ_hzb_batch = 4
-    if r3d_env_has(render3d_st, "R3D_HZB_BATCH") and r3d_env(render3d_st, "R3D_HZB_BATCH") == "0" { render3d_st.occ_hzb_batch = 1 }
+    render3d_st.occ_hzb_batch = 1
+    if r3d_env_has(render3d_st, "R3D_HZB_BATCH") and r3d_env(render3d_st, "R3D_HZB_BATCH") == "1" { render3d_st.occ_hzb_batch = 4 }
   }
   return render3d_st.occ_hzb_batch
 }

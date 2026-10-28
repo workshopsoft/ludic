@@ -545,7 +545,9 @@ function actor_census(render3d_st: Render3dState) -> void {
   for j in 0 .. len(keys) {
     var kind = "skinned"
     if rigid[j] == 1 { kind = "rigid" }
-    print(`actor census: model {j} ({kind}, {len(keys[j].prims)} prims, {keys[j].tris} tris): {cnt[j]} actors, {prims[j]} draws`)
+    var mat = ""
+    if len(keys[j].prims) > 0 and keys[j].prims[0].name != null { mat = keys[j].prims[0].name }   # the first part's material: which model it is
+    print(`actor census: model {j} ({kind}, {len(keys[j].prims)} prims, {keys[j].tris} tris): {cnt[j]} actors, {prims[j]} draws, material {mat}`)
     total += prims[j]
   }
   print(`actor census: {len(keys)} models, {total} lit draws`)
