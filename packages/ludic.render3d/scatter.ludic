@@ -468,11 +468,11 @@ function layer_lod_screen_sizes(render3d_st: mut Render3dState, l: Layer, dev: [
     l.lod_ss[k] = ss
   }
 }
-# levels by screen size are on (off by default, R3D_UE_LOD_SCREEN_SIZE=1 on; off: a layer given screen sizes draws its first level only, as before it had more)
+# levels by screen size are on (on by default, R3D_UE_LOD_SCREEN_SIZE=0 off: a layer given screen sizes then draws its first level only, as before it had more)
 function sc_lod_ss_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.sc_lod_ss_on < 0 {
-    render3d_st.sc_lod_ss_on = 0
-    if r3d_env_has(render3d_st, "R3D_UE_LOD_SCREEN_SIZE") and r3d_env(render3d_st, "R3D_UE_LOD_SCREEN_SIZE") == "1" { render3d_st.sc_lod_ss_on = 1 }
+    render3d_st.sc_lod_ss_on = 1               # on by default (R3D_UE_LOD_SCREEN_SIZE=0: a layer's first level only)
+    if r3d_env_has(render3d_st, "R3D_UE_LOD_SCREEN_SIZE") and r3d_env(render3d_st, "R3D_UE_LOD_SCREEN_SIZE") == "0" { render3d_st.sc_lod_ss_on = 0 }
   }
   return render3d_st.sc_lod_ss_on == 1
 }
@@ -839,8 +839,8 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
 # model's sphere times its scale), the same rule in every layer, and an instance under S is not drawn. What the game set (its reach,
 # the layer's cull) stays the outer limit, as a level designer's MaxDrawDistance does: the shorter of the two (GetPrimitiveMaxDrawDistances).
 # It runs where the levels are chosen: layer_update's streamed and plain splits, layer_partition_lods and scatter_cull.comp.
-# R3D_UE_CULL_SCREEN_SIZE=<S> sets S (off by default), 0 turns it off.
-const SC_SS_DEFAULT: float = 0.0          # off by default; Unreal-scale value tried: 0.006
+# R3D_UE_CULL_SCREEN_SIZE=<S> sets S (0.006 by default, the Unreal-scale value tried), 0 turns it off.
+const SC_SS_DEFAULT: float = 0.006
 function sc_ss_min(render3d_st: mut Render3dState) -> float {
   if render3d_st.sc_ss_min < 0.0 {
     render3d_st.sc_ss_min = SC_SS_DEFAULT
@@ -1342,7 +1342,7 @@ function sc_cast_cull_on(render3d_st: mut Render3dState) -> bool {
 # A layer with levels chosen by screen size casts each caster at the level the view would choose for it with its LOD scale times
 # r.Shadow.LODDistanceFactor (Unreal's shadow LOD, ShadowSetup.cpp CalcAndUpdateLODToRender; actor.ludic sh_lod_distance_factor): the
 # casters are sorted by level, then by distance bucket, and a cascade draws each level's prefix. One sort serves every cascade, so the
-# factor's per-cascade scale is the actors' alone. R3D_UE_SHADOW_LOD=1 turns it on (off by default).
+# factor's per-cascade scale is the actors' alone. R3D_UE_SHADOW_LOD=0 turns it off (on by default).
 @alloc_ok("a layer's caster buckets, made once at its first shadow")
 function layer_casters_make(render3d_st: mut Render3dState, l: Layer) -> void {
   if l.cast_b == null { l.cast_b = words(max(l.cap, 1));  l.cast_end = words(SC_CAST_BUCKETS * max(l.n_lods, 1)) }

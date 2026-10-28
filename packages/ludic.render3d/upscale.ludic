@@ -42,6 +42,8 @@ const UPS_RING: int = 4                    # frames of latency before a timestam
 function ups_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ups_sp = -1.0
   if r3d_env_has(render3d_st, "R3D_UE_SCREEN_PERCENTAGE") { render3d_st.ups_sp = float(Text.to_int(r3d_env(render3d_st, "R3D_UE_SCREEN_PERCENTAGE"))) / 100.0 }
+  # off by default (R3D_UE_DYNAMIC_RES=1 on): on island downtown at 1080p it hunted between 50 and 72% (107 changes a run) and the
+  # frame on the clock was 24.2 ms with it against 19.3 without, where the GPU alone needs 12.0 of the 16.7 ms budget
   render3d_st.ups_dr = r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES") and r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES") != "0"
   render3d_st.ups_budget = 16.7
   if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_BUDGET") { render3d_st.ups_budget = Text.to_float(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_BUDGET")) }

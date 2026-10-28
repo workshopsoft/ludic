@@ -828,8 +828,8 @@ function ac_shadow_lod_factor(render3d_st: mut Render3dState) -> float {
 # r.Shadow.LODDistanceFactor alone (every cascade's), 0 when the shadow LOD is off
 function sh_lod_distance_factor(render3d_st: mut Render3dState) -> float {
   if render3d_st.sh_lod_on < 0 {
-    render3d_st.sh_lod_on = 0
-    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_LOD") and r3d_env(render3d_st, "R3D_UE_SHADOW_LOD") == "1" { render3d_st.sh_lod_on = 1 }
+    render3d_st.sh_lod_on = 1                  # on by default (R3D_UE_SHADOW_LOD=0: every cascade casts the view's level)
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_LOD") and r3d_env(render3d_st, "R3D_UE_SHADOW_LOD") == "0" { render3d_st.sh_lod_on = 0 }
     if r3d_env_has(render3d_st, "R3D_SHADOW_LOD_DISTANCE_FACTOR") { render3d_st.sh_lod_f = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_LOD_DISTANCE_FACTOR")), 0.01) }
     if r3d_env_has(render3d_st, "R3D_SHADOW_LOD_CASCADE_SCALE") { render3d_st.sh_lod_cs = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_LOD_CASCADE_SCALE")), 0.0) }
   }
