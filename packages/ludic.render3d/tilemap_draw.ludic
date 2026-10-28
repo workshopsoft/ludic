@@ -210,6 +210,7 @@ function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slo
   pr.lu_tx = float(tx);  pr.lu_tz = float(tz)
   if p.actor == null {
     p.actor = actor_new(render3d_st, p.model)
+    p.actor.tag = "terrain/near"
     p.actor.casts = false
     p.actor.cull = 0.0
     td.shown += 1

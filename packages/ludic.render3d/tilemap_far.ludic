@@ -219,6 +219,7 @@ function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> bool {
   tmf_fill(render3d_st, f, q, nv, ni)
   if q.actor == null {
     q.actor = actor_new(render3d_st, q.model)
+    q.actor.tag = "terrain/far"
     q.actor.casts = false
     q.actor.cull = 0.0
     f.shown += 1

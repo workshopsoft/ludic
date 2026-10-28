@@ -23,6 +23,7 @@ property Impostor {
   src_ok: bool = false     # its atlases came from that bake, so a re-open reads it rather than painting
 }
 property Layer {
+  full_said: bool = false,   # layer_full_say has said it filled
   model:    Model,
   imp:      Impostor,
   foliage:  bool = false,
@@ -318,12 +319,25 @@ function layer_room(l: Layer, n: int) -> void {
 }
 
 function layer_add(l: Layer, x: float, y: float, z: float, scale: float, yaw: float, seed: float, wind: float) -> void {
-  if l.count >= l.cap { return }
+  if l.count >= l.cap {
+    if not l.full_said { layer_full_say(l) }
+    return
+  }
   layer_room(l, l.count + 1)
   let o = l.count * INST_FLOATS
   l.inst[o] = x;  l.inst[o + 1] = y;  l.inst[o + 2] = z;  l.inst[o + 3] = scale
   l.inst[o + 4] = Math.sin(yaw);  l.inst[o + 5] = Math.cos(yaw);  l.inst[o + 6] = seed;  l.inst[o + 7] = wind
   l.count += 1
+}
+
+# a layer filled to its capacity, said once: a layer the game fills each frame and forgets to empty fills up and stays full (the merged
+# parked cars on 2026-10-29: about 53 000 instances a frame, fps 40-50 down to ~10 over a run)
+@alloc_ok("once a layer, the first time it is full")
+function layer_full_say(l: Layer) -> void {
+  l.full_said = true
+  var tris = 0
+  if l.model != null { tris = l.model.tris }
+  print(`r3d: layer full: {l.cap} instances of a {tris}-triangle model (an add past its capacity dropped; a layer filled each frame must be emptied each frame)`)
 }
 
 # ---- impostors ---------------------------------------------------------------------
