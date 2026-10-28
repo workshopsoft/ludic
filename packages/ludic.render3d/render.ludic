@@ -348,7 +348,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   prof_begin(render3d_st, "resolve MSAA")
   post_resolve(render3d_st)
   prof_end(render3d_st)
-  # or Unreal's HZB occlusion (R3D_UE_HZB_OCCLUSION=1): the furthest HZB from the resolved depth and every candidate's box
+  # or, by default, Unreal's HZB occlusion (R3D_UE_HZB_OCCLUSION=0: the queries): the furthest HZB from the resolved depth and every candidate's box
   # tested against it in one dispatch, read the next frame (occlusion.ludic)
   if render3d_st.occ_hzb { prof_begin(render3d_st, "HZB occlusion");  occ_hzb_pass(render3d_st);  prof_end(render3d_st) }
   # the motion target, from the opaque scene's depth and the moving actors (taa.ludic), for TAA or DLSS

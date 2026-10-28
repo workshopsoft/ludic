@@ -6,7 +6,7 @@
 # tested this frame is visible the next, a query not ready is visible. Not kept: its grouped queries for the occluded and its random
 # re-test of the visible (every candidate is tested every frame). R3D_UE_OCCLUSION=0 switches it off; R3D_UE_OCCLUSION_MIN_TRIS (1000)
 # is the smallest model tested, below which a query costs more than it saves.
-# R3D_UE_HZB_OCCLUSION=1 is Unreal's r.HZBOcclusion 1 instead ("less GPU and CPU cost, more conservative"): after the resolve the
+# By default it is Unreal's r.HZBOcclusion 1 instead (R3D_UE_HZB_OCCLUSION=0: the queries above) ("less GPU and CPU cost, more conservative"): after the resolve the
 # furthest HZB is built from the frame's depth (hzb_build.comp) and one dispatch tests every candidate's box against it
 # (hzb_test.comp, FHZBOcclusionTester / HZBOcclusion.usf), into a buffer read the next frame by the same rules.
 const OCC_MAX: int = 4096
@@ -17,7 +17,7 @@ function occ_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.occ_state == 0 {
     render3d_st.occ_state = 2
     if render3d_st.gpu_kind == GPU_VK and not (r3d_env_has(render3d_st, "R3D_UE_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_OCCLUSION") == "0") {
-      if r3d_env_has(render3d_st, "R3D_UE_HZB_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_HZB_OCCLUSION") == "1" {
+      if not (r3d_env_has(render3d_st, "R3D_UE_HZB_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_HZB_OCCLUSION") == "0") {
         if occ_hzb_init(render3d_st) { render3d_st.occ_state = 1;  render3d_st.occ_hzb = true }
       } else if render3d_st.gvk_has_hqr and occ_init(render3d_st) { render3d_st.occ_state = 1 }
     }
@@ -178,7 +178,7 @@ function occ_pass(render3d_st: mut Render3dState) -> void {
   gpu_depth_func(render3d_st, GPU_GREATER)
 }
 
-# ---- the HZB path (R3D_UE_HZB_OCCLUSION=1) ----------------------------------------------------------------------------------------
+# ---- the HZB path (the default; R3D_UE_HZB_OCCLUSION=0 the queries) ----------------------------------------------------------------------------------------
 const OCC_HZB_MIPS: int = 16
 
 function occ_hzb_init(render3d_st: mut Render3dState) -> bool {
