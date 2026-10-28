@@ -23,10 +23,11 @@ function prof_init(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_ns = new []long
   render3d_st.prof_hits = new []long
   render3d_st.prof_min = new []long
-  render3d_st.prof_ids = words(PROF_SLOTS * PROF_RING)
-  render3d_st.prof_used = words(PROF_SLOTS * PROF_RING)
+  # the pass slots' rings, then one more ring: the whole frame's (prof_frame_begin)
+  render3d_st.prof_ids = words((PROF_SLOTS + 1) * PROF_RING)
+  render3d_st.prof_used = words((PROF_SLOTS + 1) * PROF_RING)
   render3d_st.prof_scratch = words(4)
-  gpu_query_new(render3d_st, PROF_SLOTS * PROF_RING, render3d_st.prof_ids)
+  gpu_query_new(render3d_st, (PROF_SLOTS + 1) * PROF_RING, render3d_st.prof_ids)
   render3d_st.prof_n = 0
   render3d_st.prof_frame = 0
   render3d_st.prof_active = -1
@@ -79,6 +80,19 @@ export function prof_split(render3d_st: mut Render3dState, name: pointer) -> voi
   prof_begin(render3d_st, name)
 }
 
+# The whole frame on the GPU, from its first work to the end of its post: a pair of timestamps of its own, outside the passes' slots so
+# it may span them (they do not nest). The passes' TOTAL is their means added up; this is what the frame took, gaps and all.
+function prof_frame_begin(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.prof_on { return }
+  let qi = PROF_SLOTS * PROF_RING + (render3d_st.prof_frame % PROF_RING)
+  render3d_st.prof_used[qi] = 1
+  gvk_stamp(render3d_st, render3d_st.prof_ids[qi], false)
+}
+function prof_frame_end(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.prof_on { return }
+  gvk_stamp(render3d_st, render3d_st.prof_ids[PROF_SLOTS * PROF_RING + (render3d_st.prof_frame % PROF_RING)], true)
+}
+
 # Collect the queries issued PROF_RING-1 frames ago — long finished, so no stall.
 function prof_collect(render3d_st: mut Render3dState) -> void {
   if not render3d_st.prof_on { return }
@@ -104,6 +118,15 @@ function prof_collect(render3d_st: mut Render3dState) -> void {
     }
     s += 1
   }
+  let fq = PROF_SLOTS * PROF_RING + slot_frame
+  let fused = render3d_st.prof_used[fq] == 1
+  render3d_st.prof_used[fq] = 0
+  if fused and gpu_query_result(render3d_st, render3d_st.prof_ids[fq], render3d_st.prof_scratch) and not stale {
+    let ns = render3d_st.prof_scratch[0]
+    render3d_st.prof_whole_ns = render3d_st.prof_whole_ns + ns
+    if render3d_st.prof_whole_hits == 0 or ns < render3d_st.prof_whole_min { render3d_st.prof_whole_min = ns }
+    render3d_st.prof_whole_hits = render3d_st.prof_whole_hits + 1
+  }
 }
 
 # a fresh count: the means start again from the next frame (a lab holds one view, then the next)
@@ -116,6 +139,9 @@ function prof_reset(render3d_st: mut Render3dState) -> void {
     render3d_st.prof_min[s] = 0
     s += 1
   }
+  render3d_st.prof_whole_ns = 0
+  render3d_st.prof_whole_hits = 0
+  render3d_st.prof_whole_min = 0
   render3d_st.prof_skip = PROF_RING - 1
 }
 
@@ -141,6 +167,9 @@ function prof_report(render3d_st: Render3dState) -> void {
     s += 1
   }
   print(`  {Text.pad_right("TOTAL", 22)} {Text.pad_left(string(total / 1000), 7)} us`)
+  if render3d_st.prof_whole_hits > 0 {
+    print(`  {Text.pad_right("WHOLE FRAME", 22)} {Text.pad_left(string(render3d_st.prof_whole_ns / render3d_st.prof_whole_hits / 1000), 7)} us   least {string(render3d_st.prof_whole_min / 1000)} us   (first GPU work to the end of post: gaps included, the HUD and present not)`)
+  }
 }
 
 # ---- streaming work per frame (R3D_PROF=1) ----------------------------------

@@ -291,6 +291,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   prof_cpu_mark(render3d_st, "shadow rebake")
   stream_update_all(render3d_st)
   prof_cpu_mark(render3d_st, "streaming")
+  prof_frame_begin(render3d_st)             # the whole frame's GPU time from here (R3D_PROF: WHOLE FRAME)
   gg_cull_frame(render3d_st)                # before any pass: a dispatch inside one would split it
   ue_lights_frame(render3d_st)              # Unreal's visible local lights, packed for the shaders (ue_lights.ludic), before the
                                             # instance cull, which gathers the shadowed ones' casters (kgpu_frame_lights)
@@ -414,6 +415,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   post_capture_prev(render3d_st)
   prof_end(render3d_st)
   taa_end_frame(render3d_st)
+  prof_frame_end(render3d_st)
   prof_collect(render3d_st)
   gpu_check(render3d_st, "frame")
 }

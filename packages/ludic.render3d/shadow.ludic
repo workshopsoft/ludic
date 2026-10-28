@@ -197,6 +197,7 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
     near = render3d_st.sh_split[c]
     # a cascade the fog's shadow array has no layer for: fitted (its uniforms stay sane), never drawn
     if c >= render3d_st.sh_layers { shadow_cascade_none(render3d_st, c);  continue }
+    prof_shadow_split(render3d_st, 0)                         # R3D_PROF: each cascade's terrain, actors, layers and buildings on their own
     gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, c)
     if render3d_st.r3d_debug and c == 0 { shadow_debug_fbo(render3d_st) }
     gpu_clear(render3d_st, GPU_DEPTH_BUFFER_BIT)
@@ -361,4 +362,36 @@ function shadow_fog(render3d_st: mut Render3dState) -> void {
   gpu_tex_free(render3d_st, render3d_st.sh_tex)
   shadow_make_tex(render3d_st)
   render3d_st.gvk_tag = was
+}
+
+# The sun's shadow pass timed by cascade and by caster (R3D_PROF): `part` 0 the terrain (and the cascade's clear), 1 the actors, 2 the
+# instanced layers, 3 the buildings. The engine splits before the terrain; a game's casters callback before its own three. A local
+# light's shadow maps stay under their own pass's name.
+export function prof_shadow_split(render3d_st: mut Render3dState, part: int) -> void {
+  if not render3d_st.prof_on or render3d_st.sh_local { return }
+  prof_split(render3d_st, prof_shadow_name(render3d_st.sh_cascade, part))
+}
+function prof_shadow_name(c: int, part: int) -> pointer {
+  if c == 0 {
+    if part == 0 { return "shadow c0: terrain" }
+    if part == 1 { return "shadow c0: actors" }
+    if part == 2 { return "shadow c0: layers" }
+    return "shadow c0: buildings"
+  }
+  if c == 1 {
+    if part == 0 { return "shadow c1: terrain" }
+    if part == 1 { return "shadow c1: actors" }
+    if part == 2 { return "shadow c1: layers" }
+    return "shadow c1: buildings"
+  }
+  if c == 2 {
+    if part == 0 { return "shadow c2: terrain" }
+    if part == 1 { return "shadow c2: actors" }
+    if part == 2 { return "shadow c2: layers" }
+    return "shadow c2: buildings"
+  }
+  if part == 0 { return "shadow c3: terrain" }
+  if part == 1 { return "shadow c3: actors" }
+  if part == 2 { return "shadow c3: layers" }
+  return "shadow c3: buildings"
 }
