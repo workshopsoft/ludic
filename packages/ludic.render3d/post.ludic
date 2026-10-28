@@ -503,7 +503,11 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   gpu_use_program(render3d_st, render3d_st.post_p_sharp)
   r3d_bind_2d(render3d_st, render3d_st.post_p_sharp, "u_src", 0, render3d_st.post_ldr.color)
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_texel"), 1.0 / float(render3d_st.post_ldr.w), 1.0 / float(render3d_st.post_ldr.h))
-  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_amount"), render3d_st.post_sharpen)
+  # no unsharp mask over a temporal upscaler's frame either: DLSS and MetalFX reconstruct the detail themselves, and Unreal
+  # sharpens nothing after them (r.Tonemapper.Sharpen 0); the mask drew a bright and a dark line round every edge they resolved
+  var sharpen = render3d_st.post_sharpen
+  if ups_temporal(render3d_st) != 0 { sharpen = 0.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_amount"), sharpen)
   var fx = render3d_st.post_fxaa
   # nor over DLSS's or MetalFX's: the temporal upscaler is the anti-aliasing (Unreal runs no FXAA after TSR or a third-party one)
   if r3d_env_has(render3d_st, "R3D_NOFXAA") or taa_ran(render3d_st) or ups_temporal(render3d_st) != 0 { fx = 0.0 }

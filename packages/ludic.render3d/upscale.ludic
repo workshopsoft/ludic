@@ -63,7 +63,7 @@ function ups_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ups_q_used = words(UPS_RING)
   render3d_st.ups_q_ids = words(UPS_RING)
   render3d_st.ups_scratch = words(4)
-  if render3d_st.ups_dr { gpu_query_new(render3d_st, UPS_RING, render3d_st.ups_q_ids) }
+  # its timestamp pairs come from the backend's one pool, which prof_init makes (after this) for it as well
 }
 
 # the temporal upscaler resolving this frame: 1 DLSS, 2 MetalFX, 0 none

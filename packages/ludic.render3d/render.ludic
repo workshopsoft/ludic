@@ -132,8 +132,8 @@ function r3d_open(render3d_st: mut Render3dState, w: int, h: int, title: string)
   if r3d_env_has(render3d_st, "R3D_NOVSYNC") { gpu_vsync(render3d_st, 0) }
   var renderer: string = gpu_renderer_name(render3d_st)
   print(`r3d: {gfx_width()}x{gfx_height()} on {renderer}`)
+  ups_init(render3d_st)                     # the screen percentage and dynamic resolution (upscale.ludic), before prof_init makes its timestamps
   prof_init(render3d_st)
-  ups_init(render3d_st)                     # the screen percentage and dynamic resolution (upscale.ludic)
   cam_init(render3d_st, float(gfx_width()) / float(gfx_height()))
   return len(render3d_st.r3d_fault) == 0
 }
