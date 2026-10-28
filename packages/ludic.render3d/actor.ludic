@@ -104,8 +104,12 @@ property Actor {
   sh_lods:    []Model,
   sh_lod_d:   floats,
   sh_keep:    Model,
-  # placeholder of the velocity agent's field (perf/peds only references it): writes no motion vectors
-  no_velocity: bool = false
+  # who made it (set once by the game, e.g. "roads/lod0"): the census names it (actor_census, static_chunks_census)
+  tag:        string = "",
+  # in the static bucket (static_chunks.ludic: actor_new_static), not on the stage; row is its place there. stc_vis: the bucket's
+  # pass that found it in view
+  stc:        bool = false,
+  stc_vis:    int = 0
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
@@ -277,6 +281,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
 # off the stage: the last actor takes its row, so the list stays dense and nothing is rebuilt
 # (it was a new list of every other actor per removal, never freed)
 function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
+  if a != null and a.stc { stc_remove(render3d_st, a);  return }   # the static bucket's (static_chunks.ludic)
   let l = render3d_st.ac_actors
   if l == null or a == null { return }
   let r = a.row
@@ -293,6 +298,7 @@ function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
 # back on the stage (an actor kept across a world swap)
 function actor_keep(render3d_st: mut Render3dState, a: Actor) -> void {
   if a == null { return }
+  if a.stc { stc_keep(render3d_st, a);  return }
   a.row = len(render3d_st.ac_actors)
   @alloc_ok("within the stage's room made at start-up (@max 2048)")
   push(render3d_st.ac_actors, a)
@@ -595,6 +601,7 @@ function outline_frame(render3d_st: mut Render3dState) -> void { if render3d_st.
 @alloc_ok("a debug census and dumps, only under their switches")
 function actor_census(render3d_st: Render3dState) -> void {
   let keys = new []Model
+  let tags = new []string
   let cnt = new []int
   let prims = new []int
   let rigid = new []int
@@ -603,7 +610,7 @@ function actor_census(render3d_st: Render3dState) -> void {
     if not ac_visible(render3d_st, a, false) { continue }
     var k = -1
     for j in 0 .. len(keys) { if keys[j] == a.model { k = j } }
-    if k < 0 { push(keys, a.model);  push(cnt, 0);  push(prims, 0);  var r = 1;  if a.model.skin != null { r = 0 };  push(rigid, r);  k = len(keys) - 1 }
+    if k < 0 { push(keys, a.model);  push(tags, a.tag);  push(cnt, 0);  push(prims, 0);  var r = 1;  if a.model.skin != null { r = 0 };  push(rigid, r);  k = len(keys) - 1 }
     if a.skin != null { rigid[k] = 0 }
     cnt[k] += 1
     var shown = 0
@@ -616,7 +623,9 @@ function actor_census(render3d_st: Render3dState) -> void {
     if rigid[j] == 1 { kind = "rigid" }
     var mat = ""
     if len(keys[j].prims) > 0 and keys[j].prims[0].name != null { mat = keys[j].prims[0].name }   # the first part's material: which model it is
-    print(`actor census: model {j} ({kind}, {len(keys[j].prims)} prims, {keys[j].tris} tris): {cnt[j]} actors, {prims[j]} draws, material {mat}`)
+    var tag = tags[j]
+    if Text.length(tag) == 0 { tag = "-" }
+    print(`actor census: model {j} ({kind}, {len(keys[j].prims)} prims, {keys[j].tris} tris): {cnt[j]} actors, {prims[j]} draws, material {mat}, by {tag}`)
     total += prims[j]
   }
   print(`actor census: {len(keys)} models, {total} lit draws`)
@@ -982,6 +991,7 @@ function actor_release_all(render3d_st: mut Render3dState) -> void {
     }
     i -= 1
   }
+  stc_release_all(render3d_st)                   # and the static bucket's (static_chunks.ludic)
   outline_clear(render3d_st)
 }
 
@@ -991,6 +1001,7 @@ function actor_clear_all(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_actors == null { return }
   for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].row = -1 }
   List.clear(render3d_st.ac_actors)
+  stc_clear_all(render3d_st)
   outline_clear(render3d_st)
 }
 
@@ -1017,6 +1028,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.prev_seen = -1;  a.prev_n = 0;  a.no_velocity = false;  a.vel_mark = -1;  a.vel_want = false
   a.still = false;  a.sc_seen = 0;  a.ai_bframe = 0;  a.ai_pbframe = 0
   a.sh_lods = null;  a.sh_lod_d = null;  a.sh_keep = null
+  a.tag = "";  a.stc = false;  a.stc_vis = 0
   return a
 }
 
