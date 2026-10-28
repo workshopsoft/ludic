@@ -374,6 +374,56 @@ export function model_set_bent(render3d_st: mut Render3dState, model: Model, tex
   }
   return true
 }
+# A MetaHuman head's follicle mask, as Unreal's MF_skin_hairFollicleAdjustments reads its T_FollicleMap (MetaHumanDefaultEditorPipelineBase
+# ProcessGroomAndClothSlots: R the hair's roots, G the eyebrows', B the beard's and moustache's; the face's "Use Hair Mask" on): the
+# skin's base colour under the grooms darkened and desaturated (model.frag hairFollicle). The masks lie over the head's uvs (the atlas's
+# quarter u, v < 0.5, x 2), already averaged as the material function samples them (art/character/hair follicle.py): the face's (G, B)
+# and the worn hair's (R) in one texture, their texels' max (the channels are apart: Unreal rasters every pinned groom into one map,
+# each into its own channel). hair "" for none. R3D_HAIR_MASK=0: off (Use Hair Mask false)
+@alloc_ok("a look put on: an event, not a frame (the two masks decoded and merged once per pair)")
+export function model_set_follicle(render3d_st: mut Render3dState, model: Model, face: string, hair: string) -> bool {
+  if model == null { return false }
+  if r3d_env_has(render3d_st, "R3D_HAIR_MASK") and r3d_env(render3d_st, "R3D_HAIR_MASK") == "0" { return false }
+  let key = `follicle#{face}#{hair}`
+  var id = 0
+  if render3d_st.gltf_tex_paths != null {
+    for i in 0 .. render3d_st.gltf_tex_n { if render3d_st.gltf_tex_paths[i] == key { id = render3d_st.gltf_tex_ids[i] } }
+  }
+  if id != 0 { free(key) } else {
+    let a = png_decode_bytes(render3d_st, face, null)
+    if a == null {
+      free(key)
+      return false
+    }
+    let w = render3d_st.tex_w;  let h = render3d_st.tex_h;  let ch = render3d_st.tex_channels;  let dp = render3d_st.tex_depth
+    if hair != "" and Fs.exists(hair) {
+      let b = png_decode_bytes(render3d_st, hair, null)
+      if b != null and render3d_st.tex_w == w and render3d_st.tex_h == h and render3d_st.tex_channels == ch and render3d_st.tex_depth == dp {
+        for k in 0 .. w * h * ch * (dp / 8) { if b[k] > a[k] { a[k] = b[k] } }
+      } else { print(`r3d: {hair} is not a follicle mask the size and layout of {face}: the face's alone`) }
+      if b != null { free(b) }
+      render3d_st.tex_w = w;  render3d_st.tex_h = h;  render3d_st.tex_channels = ch;  render3d_st.tex_depth = dp
+    }
+    let was = render3d_st.gvk_tag
+    if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+    id = tex_upload_bytes(render3d_st, a, false, true)
+    render3d_st.gvk_tag = was
+    free(a)
+    if id == 0 {
+      free(key)
+      return false
+    }
+    tex_note_size(render3d_st, id)
+    gltf_tex_add(render3d_st, key, id, 0)
+  }
+  for pi in 0 .. len(model.prims) {
+    let pr = model.prims[pi]
+    gltf_tex_ref(render3d_st, id)
+    if pr.fol != 0 { gltf_tex_unref(render3d_st, pr.fol) }
+    pr.fol = id
+  }
+  return true
+}
 export function model_set_maps(render3d_st: mut Render3dState, model: Model, nrm: string, arm: string) -> bool {
   if model == null { return false }
   var ok = true

@@ -96,6 +96,7 @@ function model_release(render3d_st: mut Render3dState, m: Model) -> void {
       if pr.hmap != 0 { gltf_tex_unref(render3d_st, pr.hmap);  pr.hmap = 0 }
       if pr.micro != null { free(pr.micro) }
       if pr.btex != 0 { gltf_tex_unref(render3d_st, pr.btex);  pr.btex = 0 }
+      if pr.fol != 0 { gltf_tex_unref(render3d_st, pr.fol);  pr.fol = 0 }
       if pr.mtex != null {
         for k in 0 .. len(pr.mtex) { gltf_tex_unref(render3d_st, pr.mtex[k]) }
         free(pr.mtex)

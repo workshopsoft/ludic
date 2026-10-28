@@ -32,6 +32,26 @@ uniform sampler2D u_nrm;
 #if defined(EYE) || defined(SSS_SPLIT)
 uniform sampler2D u_headmap;  // a face's full-resolution head map (model_set_headmap): RGB normal, A roughness, over u, v < 0.5 x 2
 uniform float u_head_on;
+// A MetaHuman head's follicle mask (model_set_follicle, R3D_HAIR_MASK), as Unreal's MF_skin_hairFollicleAdjustments ("Use Hair Mask")
+// darkens the skin under its grooms (its graph read from the editor): over the head's uvs, R the hair's roots, G the eyebrows', B the
+// beard's and moustache's, each already the average of the function's five samples (art/character/hair follicle.py). Per channel in turn
+// (hair, eyebrows, mustache beard): the colour times its Multiply, desaturated by 1 - its Saturation (Desaturation: lerp to its
+// luminance, factors 0.212639, 0.715169, 0.072192), lerped in by the mask
+uniform sampler2D u_follicle;
+uniform vec4 u_fol_h;            // Basecolor Hair Mask Hair Multiply (rgb), Saturation
+uniform vec4 u_fol_b;            // ... Eyebrows Multiply, Saturation
+uniform vec4 u_fol_m;            // ... Mustache Beard Multiply, Saturation
+uniform float u_fol_on;
+vec3 follicleStep(vec3 c, vec4 p, float m) {
+  vec3 x = c * p.rgb;
+  vec3 ds = mix(x, vec3(dot(x, vec3(0.212639, 0.715169, 0.072192))), 1.0 - p.w);
+  return mix(c, ds, m);
+}
+vec3 hairFollicle(vec3 c, vec3 m) {
+  c = follicleStep(c, u_fol_h, m.r);
+  c = follicleStep(c, u_fol_b, m.g);
+  return follicleStep(c, u_fol_m, m.b);
+}
 #endif
 uniform sampler2D u_arm;
 uniform mat4 u_view;
@@ -696,6 +716,10 @@ void main() {
 #endif
   n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
   alb = d.rgb;
+#if defined(EYE) || defined(SSS_SPLIT)
+  // the skin under the grooms (u_follicle): its mask at its top level, as the function samples fixed levels (TMVM_MIP_LEVEL)
+  if (u_fol_on > 0.5 && v_uv.x < 0.5 && v_uv.y < 0.5) alb = hairFollicle(alb, textureLod(u_follicle, v_uv * 2.0, 0.0).rgb);
+#endif
   // a crown's interior is occluded by its own cards
   if (u_model_h > 2.0) arm.r *= mix(0.5, 1.0, v_hull);
 #endif
