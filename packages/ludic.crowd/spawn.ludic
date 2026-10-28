@@ -23,6 +23,7 @@ function cw_cfg_load(crowd_st: mut CrowdState) -> void {
   c.react_dt = s.react_dt
   c.mid_dt = s.mid_dt
   c.far_dt = s.far_dt
+  c.far_slices = cw_far_slices(s.far_slices)
   c.respawn_s = s.respawn_s
   c.fear_decay = s.fear_decay
   c.sync_r = s.sync_r
@@ -31,6 +32,17 @@ function cw_cfg_load(crowd_st: mut CrowdState) -> void {
   crowd_st.cw_lod_full = c.full_r
   crowd_st.cw_lod_mid = c.mid_r
   cw_ring_build(crowd_st)
+}
+
+# the far tier's time slices (tick.ludic cw_move_sliced): the row's, or CROWD_FAR_SLICE's (0 or 1: off, every far ped looked at every
+# frame as before)
+@alloc_ok("read with the settings, not in a frame")
+function cw_far_slices(row: int) -> int {
+  var v = row
+  if Os.has_env("CROWD_FAR_SLICE") { v = Text.to_int(Os.env("CROWD_FAR_SLICE")) }
+  if v < 1 { return 1 }
+  if v > 16 { return 16 }
+  return v
 }
 
 # the cell offsets round a player's cell that can hold a spawn (the ring of spawn_min .. spawn_max, a cell wider

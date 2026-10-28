@@ -214,47 +214,199 @@ function mix_items(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, rot: floats
   return any
 }
 
-# the skeleton's level of detail for the distance the game last said
-function lod_pick(pl: AnimPlayer) -> void {
+# the skeleton's level of detail for the distance the game last said; its row (0 the nearest, -1 none)
+function lod_pick(pl: AnimPlayer) -> int {
   pl.l_every = 1
   pl.l_layers = AM_LAYERS
   pl.l_events = true
-  if pl.skel < 0 or pl.skel >= len(AnimSkeletons) { return }
+  if pl.skel < 0 or pl.skel >= len(AnimSkeletons) { return -1 }
   let rows = AnimSkeletons[pl.skel].lod
-  if rows == null or len(rows) == 0 { return }
+  if rows == null or len(rows) == 0 { return -1 }
   var at = len(rows) - 1
   for i in 0 .. len(rows) { if pl.dist <= rows[i].dist { at = i;  break } }
   pl.l_every = rows[at].every
   pl.l_layers = rows[at].layers
   pl.l_events = rows[at].events
+  return at
 }
 
-# A tick of a player into its skin. A far actor (its skeleton's lod rows) is stepped one tick in `every`,
-# by the time the skipped ones left, and plays fewer layers. False when there is nothing to play.
+# ---- the skipped ticks' pose and the budget ---------------------------------------------------------------------------------------
+#
+# Interpolation (R3D_ANIM_INTERP, on; =0 off: a skipped tick keeps the last pose, as before). Unreal's update rate optimisation in its
+# trail mode: an evaluation is not shown at once but kept as the target (SkeletalMeshComponent.cpp RefreshBoneTransforms:
+# CachedBoneSpaceTransforms), and every tick, the evaluating one too, the pose shown moves toward it by
+# FAnimUpdateRateParameters::GetInterpolationAlpha (SkinnedMeshComponent.cpp): 1 / (EvaluationRate - SkippedEvalFrames), so it reaches
+# the target the tick before the next evaluation (FAnimationRuntime::LerpBoneTransforms). Unreal interpolates only below
+# MaxEvalRateForInterpolation (4, SkinnedMeshComponent.cpp ~6076): a rate of 4 or more still holds its pose. Here the pose is the
+# skin's per node rotation and offset (model frame), the rotations nlerped on the shorter arc.
+#
+# The budget (R3D_ANIM_BUDGET, on; =0 off; R3D_ANIM_BUDGET_MS, 1.0): Unreal's AnimationBudgetAllocator (AnimationBudgetAllocator.cpp
+# Update: BudgetInMs 1.0, MaxTickRate 10). Each evaluation's time is measured and smoothed into the time a work unit takes
+# (AverageWorkUnitTimeMs, FInterpTo); the budget is that many units a frame. The players within their skeleton's first lod row are
+# always ticked at their row's rate (Unreal's NumComponentsToNotSkip: the significant ones); when the rest ask for more units than the
+# budget leaves (its pressure, smoothed like SmoothedBudgetPressure), their rates are multiplied by it, at most MaxTickRate frames a
+# tick (Unreal spreads 2 .. MaxThrottleRate over the throttled by significance; here the lod rows already order them by distance, and
+# one factor keeps that order). The game calls anim_budget_frame once a frame; without it the budget never throttles.
+const AM_INTERP_MAX: int = 4        # MaxEvalRateForInterpolation
+const AM_BUD_MAX_RATE: int = 10     # FAnimationBudgetAllocatorParameters::MaxTickRate
+const AM_BUD_SMOOTH: float = 5.0    # the smoothing's speed (FInterpTo's), per second
+
+@alloc_ok("the flags, read once")
+function am_flags(anim_st: mut AnimState) -> void {
+  if anim_st.ip_flag < 0 {
+    anim_st.ip_flag = 1
+    if Os.has_env("R3D_ANIM_INTERP") and Os.env("R3D_ANIM_INTERP") == "0" { anim_st.ip_flag = 0 }
+  }
+  if anim_st.bud_flag < 0 {
+    anim_st.bud_flag = 1
+    if Os.has_env("R3D_ANIM_BUDGET") and Os.env("R3D_ANIM_BUDGET") == "0" { anim_st.bud_flag = 0 }
+    if Os.has_env("R3D_ANIM_BUDGET_MS") {
+      let v = Text.to_float(Os.env("R3D_ANIM_BUDGET_MS"))
+      if v > 0.0 { anim_st.bud_ms = v }
+    }
+  }
+}
+
+# once a frame, before the players tick: last frame's evaluations into the unit's time and the pressure, and the throttled rates'
+# factor for this frame
+export function anim_budget_frame(anim_st: mut AnimState, dt: float) -> void {
+  if anim_st.bud_flag < 0 { am_flags(anim_st) }
+  if anim_st.bud_flag == 1 and dt > 0.0 {
+    let k = 1.0 - Math.exp(-dt * AM_BUD_SMOOTH)
+    if anim_st.bud_n > 0 {
+      let unit = float(anim_st.bud_us) / 1000.0 / float(anim_st.bud_n)
+      anim_st.bud_unit += (unit - anim_st.bud_unit) * k
+    }
+    let units = anim_st.bud_ms / Math.max(anim_st.bud_unit, 0.001)
+    let left = Math.max(units - anim_st.bud_fixed, 1.0)
+    let press = anim_st.bud_ideal / left
+    anim_st.bud_press += (press - anim_st.bud_press) * k
+    anim_st.bud_scale = Math.clamp(anim_st.bud_press, 1.0, float(AM_BUD_MAX_RATE))
+  } else { anim_st.bud_scale = 1.0 }
+  anim_st.bud_us = 0
+  anim_st.bud_n = 0
+  anim_st.bud_ideal = 0.0
+  anim_st.bud_fixed = 0.0
+}
+
+# the throttled rate (a player beyond its first lod row): its row's times the budget's factor, at most AM_BUD_MAX_RATE (never less
+# than its row's)
+function bud_every(anim_st: AnimState, every: int) -> int {
+  if anim_st.bud_flag != 1 or anim_st.bud_scale <= 1.0 { return every }
+  let e = int(Math.ceil(float(every) * anim_st.bud_scale))
+  return Math.max(every, Math.min(e, AM_BUD_MAX_RATE))
+}
+
+@alloc_ok("made once a player's skin, kept after")
+function ip_grow(pl: AnimPlayer, n: int) -> void {
+  if pl.ip_n >= n { return }
+  pl.ip_r = floats(n * 4)
+  pl.ip_t = floats(n * 3)
+  pl.ip_cr = floats(n * 4)
+  pl.ip_ct = floats(n * 3)
+  pl.ip_n = n
+  pl.ip_on = false
+}
+
+function ip_save(sk: Skin, r: floats, t: floats) -> void {
+  for i in 0 .. sk.n_nodes * 4 { r[i] = sk.pose_r[i] }
+  for i in 0 .. sk.n_nodes * 3 { t[i] = sk.pose_t[i] }
+}
+
+function ip_load(sk: Skin, r: floats, t: floats) -> void {
+  for i in 0 .. sk.n_nodes * 4 { sk.pose_r[i] = r[i] }
+  for i in 0 .. sk.n_nodes * 3 { sk.pose_t[i] = t[i] }
+}
+
+# the pose shown moved toward the target by `a` (LerpBoneTransforms), folded into the joint matrices
+function ip_toward(pl: AnimPlayer, sk: Skin, a: float) -> void {
+  let n = sk.n_nodes
+  if a >= 1.0 {
+    ip_load(sk, pl.ip_r, pl.ip_t)
+  } else {
+    for i in 0 .. n {
+      let o = i * 4
+      let ax = sk.pose_r[o]
+      let ay = sk.pose_r[o + 1]
+      let az = sk.pose_r[o + 2]
+      let aw = sk.pose_r[o + 3]
+      var bx = pl.ip_r[o]
+      var by = pl.ip_r[o + 1]
+      var bz = pl.ip_r[o + 2]
+      var bw = pl.ip_r[o + 3]
+      if ax * bx + ay * by + az * bz + aw * bw < 0.0 {
+        bx = -bx
+        by = -by
+        bz = -bz
+        bw = -bw
+      }
+      let x = ax + (bx - ax) * a
+      let y = ay + (by - ay) * a
+      let z = az + (bz - az) * a
+      let w = aw + (bw - aw) * a
+      let l = Math.sqrt(x * x + y * y + z * z + w * w)
+      if l > 0.000001 {
+        sk.pose_r[o] = x / l
+        sk.pose_r[o + 1] = y / l
+        sk.pose_r[o + 2] = z / l
+        sk.pose_r[o + 3] = w / l
+      }
+      let p = i * 3
+      for c in 0 .. 3 { sk.pose_t[p + c] = sk.pose_t[p + c] + (pl.ip_t[p + c] - sk.pose_t[p + c]) * a }
+    }
+  }
+  skin_pose(sk)
+}
+
+# A tick of a player into its skin. A far actor (its skeleton's lod rows, slowed by the budget) is evaluated one tick in `every`, by
+# the time the skipped ones left, and plays fewer layers; below AM_INTERP_MAX its skipped ticks move toward the last evaluation's pose
+# (above). False when there is nothing to play.
 export function animset_tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, dt: float) -> bool {
   if not pl.ready or sk == null { return false }
-  if pl.sk != sk { animset_bind_skin(pl, sk) }
-  lod_pick(pl)
+  if anim_st.ip_flag < 0 or anim_st.bud_flag < 0 { am_flags(anim_st) }
+  if pl.sk != sk {
+    animset_bind_skin(pl, sk)
+    pl.ip_on = false
+  }
+  let row = lod_pick(pl)
+  var every = pl.l_every
+  if row > 0 { every = bud_every(anim_st, every) }
+  # the units this player asks for: the throttled ones' (beyond the first row) and the others' (within it, or no rows: the player)
+  if row > 0 { anim_st.bud_ideal += 1.0 / float(Math.max(pl.l_every, 1)) } else { anim_st.bud_fixed += 1.0 / float(Math.max(pl.l_every, 1)) }
+  pl.t_every = every
+  let interp = anim_st.ip_flag == 1 and every > 1 and every < AM_INTERP_MAX
   pl.acc += dt
-  if pl.posed and pl.l_every > 1 {
-    var ph = (pl.ticks + pl.seed) % pl.l_every
-    if ph < 0 { ph += pl.l_every }
+  if pl.posed and every > 1 {
+    var ph = (pl.ticks + pl.seed) % every
+    if ph < 0 { ph += every }
     if ph != 0 {
       pl.ticks += 1
+      # GetInterpolationAlpha in trail mode: 1 / (frames to the next evaluation)
+      if interp and pl.ip_on and pl.ip_n >= sk.n_nodes { ip_toward(pl, sk, 1.0 / float(every - ph)) }
       return true
     }
   }
+  let t0 = Time.now_us()
   pl.ticks += 1
   let step = pl.acc
   pl.acc = 0.0
   pl.frame += 1
   pl.n_it = 0
-  run_machine(anim_st, pl, pl.lm[0], step, 1.0)
   let n = sk.n_nodes
+  # the pose shown before this evaluation: where the interpolation goes on from
+  let keep = interp and pl.posed
+  if keep {
+    ip_grow(pl, n)
+    ip_save(sk, pl.ip_cr, pl.ip_ct)
+  }
+  run_machine(anim_st, pl, pl.lm[0], step, 1.0)
   scratch(anim_st, n)
   for i in 0 .. n { anim_st.hit_s[i] = 0 }
   skin_reset(sk)
-  if not mix_items(anim_st, pl, sk, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s, false) { return false }
+  if not mix_items(anim_st, pl, sk, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s, false) {
+    pl.ip_on = false
+    return false
+  }
   for li in 1 .. pl.nl {
     if li >= pl.l_layers { break }
     var w = pl.lw[li]
@@ -270,6 +422,13 @@ export function animset_tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, d
   anim_to_pose(anim_st, sk, anim_st.rot_s, anim_st.pos_s, anim_st.hit_s)
   skin_pose(sk)
   foot_ik_apply(anim_st, pl, sk, step)
+  if keep {
+    # the evaluation is the target; the pose shown takes its first step toward it (SkippedEvalFrames 0: 1 / every)
+    ip_save(sk, pl.ip_r, pl.ip_t)
+    ip_load(sk, pl.ip_cr, pl.ip_ct)
+    pl.ip_on = true
+    ip_toward(pl, sk, 1.0 / float(every))
+  } else { pl.ip_on = false }
   pl.posed = true
   if anim_st.root_port and pl.actor >= 0 {
     if pl.rm[0] != 0.0 or pl.rm[1] != 0.0 or pl.rm[2] != 0.0 or pl.rm[3] != 0.0 {
@@ -277,6 +436,8 @@ export function animset_tick(anim_st: mut AnimState, pl: AnimPlayer, sk: Skin, d
       for e in 0 .. 4 { pl.rm[e] = 0.0 }
     }
   }
+  anim_st.bud_us += Time.now_us() - t0
+  anim_st.bud_n += 1
   return true
 }
 
