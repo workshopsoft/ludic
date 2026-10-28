@@ -24,7 +24,7 @@
 #   R3D_UE_DYNAMIC_RES_MIN / _MAX=<pct>    r.DynamicRes.MinScreenPercentage / MaxScreenPercentage (50 / 100)
 #   R3D_UE_DYNAMIC_RES_HEADROOM=<pct>      r.DynamicRes.TargetedGPUHeadRoomPercentage (10)
 #   R3D_UE_DYNAMIC_RES_PERIOD=<frames>     r.DynamicRes.MinResolutionChangePeriod (8)
-#   R3D_UE_DYNAMIC_RES_STEPS=<n>           FHeuristicSettings::FractionQuantization (10 here, 0 in Unreal)
+#   R3D_UE_DYNAMIC_RES_STEPS=<n>           FHeuristicSettings::FractionQuantization (20 here, 0 in Unreal)
 #   R3D_UE_DYNAMIC_RES_LOG=1               the fraction and the GPU time, once a second
 #
 # One difference from Unreal, said plainly: Unreal keeps its targets at the maximum screen percentage and moves the view
@@ -53,7 +53,10 @@ function ups_init(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_HEADROOM") { render3d_st.ups_headroom = float(Text.to_int(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_HEADROOM"))) / 100.0 }
   render3d_st.ups_period = 8
   if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_PERIOD") { render3d_st.ups_period = Text.to_int(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_PERIOD")) }
-  render3d_st.ups_steps = 10
+  # 20 levels, 2.5% apart (about r.DynamicRes.ChangePercentageThreshold's 2%): at 10 the quadratic model's estimate never
+  # reached the next level on island downtown, whose fixed costs (shadows, fog) make it underestimate, and it held 50% at 26 ms
+  # under a 33 ms budget
+  render3d_st.ups_steps = 20
   if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_STEPS") { render3d_st.ups_steps = Text.to_int(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_STEPS")) }
   render3d_st.ups_log = r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_LOG")
   render3d_st.ups_cur = render3d_st.ups_max
