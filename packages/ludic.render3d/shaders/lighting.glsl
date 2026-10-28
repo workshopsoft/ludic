@@ -219,13 +219,38 @@ float shadowSample(int c, vec3 wpos, float biasWorld) {
   return s / 8.0;
 }
 
-// one cascade's lookup, with a normal offset and a slope-scaled depth bias
-float shadowSlope(int c, vec3 wpos, vec3 n, float tanT) {
+// Unreal's medium shadow filter (ShadowFilteringCommon.ush Manual3x3PCF, r.ShadowQuality 3): a 4x4 texel footprint read by four
+// comparing gathers about the texel corner and weighted by PCF3x3gather (a bilinear 3x3 box), four fetches where the rotated disc
+// takes eight. The gathers' component order is DX11's and Vulkan's alike: (-,+), (+,+), (+,-), (-,-)
+float shadowGather3(int c, vec3 wpos, float biasWorld) {
+  vec4 lp = u_cascade_vp[c] * vec4(wpos, 1.0);
+  vec3 p = vec3(lp.xy / lp.w * 0.5 + 0.5, lp.z / lp.w);
+  if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z < 0.0) return 1.0;
+  float ref = p.z + biasWorld / cascadeRange(c);          // reversed: toward the sun is up (as shadowSample)
+  vec2 size = vec2(textureSize(u_shadow, 0).xy);
+  vec2 tp = p.xy * size - 0.5;
+  vec2 fr = fract(tp);
+  vec3 q = vec3((floor(tp) + 1.0) / size, float(c));
+  vec4 v0 = textureGatherOffset(u_shadow, q, ref, ivec2(-1, -1));
+  vec4 v1 = textureGatherOffset(u_shadow, q, ref, ivec2(1, -1));
+  vec4 v2 = textureGatherOffset(u_shadow, q, ref, ivec2(-1, 1));
+  vec4 v3 = textureGatherOffset(u_shadow, q, ref, ivec2(1, 1));
+  // PCF3x3gather
+  vec4 r = vec4(v0.w, v0.x, v2.w, v2.x) * (1.0 - fr.x) + vec4(v0.z, v0.y, v2.z, v2.y) + vec4(v1.w, v1.x, v3.w, v3.x)
+         + vec4(v1.z, v1.y, v3.z, v3.y) * fr.x;
+  return dot(r, vec4(1.0 - fr.y, 1.0, 1.0, fr.y) * (1.0 / 9.0));
+}
+
+// one cascade's lookup, with a normal offset and a slope-scaled depth bias; gather: Unreal's 3x3 gather PCF in the near cascades
+// (its reach, a texel and a half, is the disc's there: the bias is the same), the disc beyond
+float shadowSlopeQ(int c, vec3 wpos, vec3 n, float tanT, bool gather) {
   float tx = cascadeTexel(c);
   float filt = (c >= 4) ? 2.6 : ((c == 3) ? 2.0 : 1.5);   // matches shadowSample's rad
   vec3 wp = wpos + n * tx * (2.5 + 1.5 * tanT);
+  if (gather && c <= 2) return shadowGather3(c, wp, tx * (1.0 + filt * tanT) + 0.02);
   return shadowSample(c, wp, tx * (1.0 + filt * tanT) + 0.02);
 }
+float shadowSlope(int c, vec3 wpos, vec3 n, float tanT) { return shadowSlopeQ(c, wpos, n, tanT, false); }
 
 // The baked height-field shadow (tershadow.frag): R = the lowest lit height over this
 // ground texel, G = distance to the occluder that set it. Any receiver — ground, crown,
@@ -269,7 +294,8 @@ float sunShadowCheap(vec3 wpos, vec3 n, float viewDepth) {
   if (p.x >= 0.0 && p.x <= 1.0 && p.y >= 0.0 && p.y <= 1.0 && p.z >= 0.0) s = shadowTap(p.xy, c, p.z + (tx * 2.0 + 0.02) / cascadeRange(c));
   return min(s, terrainShadow(wpos));
 }
-float sunShadow(vec3 wpos, vec3 n, float viewDepth) {
+// gather: Unreal's 3x3 gather PCF in the near cascades (a surface's pixel: model.frag, R3D_SURF_SHADOW_PCF3)
+float sunShadowQ(vec3 wpos, vec3 n, float viewDepth, bool gather) {
   int c = CASCADES - 1;
   if (u_force_cascade >= 0) { float tx0 = cascadeTexel(u_force_cascade); return shadowSample(u_force_cascade, wpos + n * tx0 * 1.5, tx0 * 1.5 + 0.02); }
   for (int i = 0; i < CASCADES - 1; i++) { if (viewDepth < u_cascade_split[i]) { c = i; break; } }
@@ -283,15 +309,16 @@ float sunShadow(vec3 wpos, vec3 n, float viewDepth) {
   // (a small caster, a character or a car, takes a lower cap: on a torso's curve the terrain's 10 pushed the lookup a hand's
   // width out of the body at grazing light, where it read lit: rings of light on a shaded back)
   float tanT = min(sqrt(max(1.0 - NoL * NoL, 0.0)) / max(NoL, 0.05), (u_shadow_tan_max > 0.0) ? u_shadow_tan_max : 10.0);
-  float s = shadowSlope(c, wpos, n, tanT);
+  float s = shadowSlopeQ(c, wpos, n, tanT, gather);
   // blend across the cascade edge
   float edge = u_cascade_split[c];
   float f = smoothstep(edge * 0.85, edge, viewDepth);
   if (f > 0.0 && c < CASCADES - 1) {
-    s = mix(s, shadowSlope(c + 1, wpos, n, tanT), f);
+    s = mix(s, shadowSlopeQ(c + 1, wpos, n, tanT, gather), f);
   }
   return min(s, terrainShadow(wpos));
 }
+float sunShadow(vec3 wpos, vec3 n, float viewDepth) { return sunShadowQ(wpos, n, viewDepth, false); }
 
 // patchy sunlight: a cloud layer projected along the sun onto the ground
 uniform float u_cloud_shadow;     // strength
@@ -1084,6 +1111,9 @@ uniform sampler2D u_s2_arm;
 // LOD materials (MaterialShared.h EMaterialQualityLevel, r.MaterialQualityLevel) and lerps a POM's steps between MinSteps and MaxSteps
 // (Engine/Content/Functions/Engine_MaterialFunctions01/Texturing/ParallaxOcclusionMapping).
 uniform vec4 u_surf_q;
+// The second set (surface.ludic surf_bind; 0 on, as u_surf_q): x the relief as Unreal's BumpOffset in place of the march
+// (R3D_SURF_BUMP_OFFSET: surfParallax), y the sun's shadow on a surface by Unreal's 3x3 gather PCF (R3D_SURF_SHADOW_PCF3: sunShadowQ)
+uniform vec4 u_surf_q2;
 // metres from the camera past which a caller lays the geometric normal over the surface's (model.frag: smoothstep(30, 120, dist)
 // leaves nothing of it at 120 m), so the surfaces' normal maps need not be read there; never by default (kit.frag)
 float g_surf_flat_at = 1e30;
@@ -1110,6 +1140,21 @@ mat3 surfFrame(vec3 N, vec3 dp1, vec3 dp2, vec2 duv1, vec2 duv2) {
 // meets the height map (the diffuse map's alpha, white high), `depth` tiles deep; marched in steps, refined between the last two
 vec2 surfParallax(sampler2D d, vec2 uv, vec2 dx, vec2 dy, vec3 vt, float depth) {
   if (depth <= 0.0) return uv;
+  if (u_surf_q2.x < 0.5) {
+    // R3D_SURF_BUMP_OFFSET: Unreal's BumpOffset (MaterialExpressions.cpp UMaterialExpressionBumpOffset::Compile: Coordinate +
+    // CameraVector's tangent xy x (HeightRatio x Height - ReferencePlane x HeightRatio)), the cheap parallax Unreal's gameplay
+    // materials use (a POM's march is for hero assets): one height tap, no march. HeightRatio is the relief's depth in tiles; the
+    // ReferencePlane 1 (Unreal's default is 0.5) keeps the mesh's plane at the relief's top, where the march starts, so a low texel
+    // slides away from the eye as the march finds it. Under half a pixel of the most it can slide (through the tiles' screen
+    // Jacobian, as below), the tap is not read.
+    vec2 most = vt.xy * depth;
+    float bdet = dx.x * dy.y - dy.x * dx.y;
+    if (abs(bdet) < 1e-20) return uv;
+    vec2 bpx = vec2(dy.y * most.x - dy.x * most.y, dx.x * most.y - dx.y * most.x) / bdet;
+    if (dot(bpx, bpx) < 0.25) return uv;
+    float hb = textureGrad(d, uv, dx, dy).a;
+    return uv + most * (hb - 1.0);
+  }
   const int N = 16;
   vec2 reach = -vt.xy / max(vt.z, 0.2) * depth;      // the march's whole length, in tiles
   int n = N;

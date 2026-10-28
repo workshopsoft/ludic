@@ -110,6 +110,7 @@ property Actor {
   # pass that found it in view
   stc:        bool = false,
   stc_vis:    int = 0,
+  stc_d:      float = 0.0,             # that pass's distance from the camera to its box's centre (the front-to-back order)
   # in the terrain pass's bucket (terrain_pass.ludic: actor_new_terrain), not on the stage; row is its place there
   tpa:        bool = false
 }
