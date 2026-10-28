@@ -192,10 +192,10 @@ function shadow_cache_plan(render3d_st: mut Render3dState) -> void {
   # what throws the whole cache away
   let jump = v3_dist(render3d_st.cam_pos, render3d_st.sc_cam) > SC_JUMP
   v3_copy(render3d_st.sc_cam, render3d_st.cam_pos)
-  if jump or render3d_st.sc_serial != render3d_st.sc_serial_now or render3d_st.sc_layers != render3d_st.sh_layers {
+  if jump or render3d_st.sc_serial != render3d_st.sc_serial_now or render3d_st.sc_shlayers != render3d_st.sh_layers {
     sc_invalidate(render3d_st)
   }
-  render3d_st.sc_serial = render3d_st.sc_serial_now;  render3d_st.sc_layers = render3d_st.sh_layers
+  render3d_st.sc_serial = render3d_st.sc_serial_now;  render3d_st.sc_shlayers = render3d_st.sh_layers
   sc_still_check(render3d_st)
   if render3d_st.sc_dirty {
     render3d_st.sc_dirty = false
