@@ -203,7 +203,9 @@ function ac_card_flags(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_card_velcut = ac_flag_on(render3d_st, "R3D_CARD_VELOCITY_CUT")
   render3d_st.ac_cards_dom = ac_flag_on(render3d_st, "R3D_CARDS_DOM")
   render3d_st.ac_card_dither = ac_flag_on(render3d_st, "R3D_CARD_DITHER")
-  render3d_st.tex_cov_on = ac_flag_on(render3d_st, "R3D_ALPHA_MIP_COVERAGE")
+  # off by default (R3D_ALPHA_MIP_COVERAGE=1 on): on 2026-10-29 the player's cards lost the fringe and thinned the beard and brows with it
+  # (island downtown, close shots against =0); the crowd's atlases follow the same switch
+  render3d_st.tex_cov_on = r3d_env_has(render3d_st, "R3D_ALPHA_MIP_COVERAGE") and r3d_env(render3d_st, "R3D_ALPHA_MIP_COVERAGE") == "1"
 }
 @alloc_ok("start-up: the switches read once")
 function ac_flag_on(render3d_st: mut Render3dState, name: string) -> bool {
