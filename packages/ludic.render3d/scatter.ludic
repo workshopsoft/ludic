@@ -62,6 +62,8 @@ property Layer {
   cheap:    bool = false,      # distant cover: no shadows, no wind, flat lighting
   atlas:    Impostor,
   streamed: bool = false,      # fed by a Stream: already frustum-culled per chunk, no split needed
+  casts:    bool = true,       # into the sun's cascades; false: none (Unreal Mass's instanced tier, MassRepresentationTypes.h
+                               # FMassStaticMeshInstanceVisualizationMeshDesc bCastShadows false: the far traffic's archetypes)
   cast_b:   words,             # a streamed layer's casters this frame (layer_casters_make): each instance's distance bucket,
   cast_end: words,             # the casters in sh_buf up to the end of each bucket (a level's buckets after the one before's)
   cast_nl:  int = 1,           # the levels the casters were sorted by (layer_casters_make: Unreal's shadow LOD), 1 for its first only
@@ -328,6 +330,18 @@ function layer_add(l: Layer, x: float, y: float, z: float, scale: float, yaw: fl
   l.inst[o] = x;  l.inst[o + 1] = y;  l.inst[o + 2] = z;  l.inst[o + 3] = scale
   l.inst[o + 4] = Math.sin(yaw);  l.inst[o + 5] = Math.cos(yaw);  l.inst[o + 6] = seed;  l.inst[o + 7] = wind
   l.count += 1
+}
+
+# An instance with its own colour (a far car's paint, the vertex colour times it): Unreal's per-instance custom data
+# (InstancedStaticMeshComponent.h PerInstanceSMCustomData, read by the material as PerInstanceCustomData) in the instance's fourth
+# rotation float, which only a wind layer reads (WIND: its sway weight, never negative). r g b (linear, 0 .. 1) are packed as their
+# square roots in 8 bits each (the darks keep their steps) into one integer below 2^24, stored negated less one: model.vert unpacks a
+# negative value and multiplies the vertex colour by it (layer tint stays the layer's, times this). A wind layer must not use it.
+function layer_add_tint(l: Layer, x: float, y: float, z: float, scale: float, yaw: float, seed: float, r: float, g: float, b: float) -> void {
+  let ri = Math.floor(Math.sqrt(Math.clamp(r, 0.0, 1.0)) * 255.0 + 0.5)
+  let gi = Math.floor(Math.sqrt(Math.clamp(g, 0.0, 1.0)) * 255.0 + 0.5)
+  let bi = Math.floor(Math.sqrt(Math.clamp(b, 0.0, 1.0)) * 255.0 + 0.5)
+  layer_add(l, x, y, z, scale, yaw, seed, -(ri + gi * 256.0 + bi * 65536.0) - 1.0)
 }
 
 # a layer filled to its capacity, said once: a layer the game fills each frame and forgets to empty fills up and stays full (the merged
@@ -1290,6 +1304,7 @@ function scatter_draw(render3d_st: mut Render3dState) -> void {
     if render3d_st.sc_skip_card and l.card { continue }
     if l.grass and sc_grass_replaced(render3d_st) { continue }
     if render3d_st.r3d_no_trees and l.imp != null and not l.card { continue }
+    if not l.casts { continue }
     layer_update(render3d_st, l)
     layer_draw_near(render3d_st, l, false, null, false)
     layer_draw_far(render3d_st, l, false, null)

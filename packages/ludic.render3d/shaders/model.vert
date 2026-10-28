@@ -192,6 +192,18 @@ void main() {
   v_nrm = n;
   v_uv = a_uv;
   v_col = (a_col == vec4(0.0)) ? vec4(1.0) : a_col;
+#ifndef WIND
+  // an instance's own colour (scatter.ludic layer_add_tint: Unreal's PerInstanceSMCustomData): a negative fourth rotation float holds
+  // r g b, each the square root in 8 bits, packed below 2^24 (exact in a float), negated less one; the vertex colour times it
+  if (i_rot.w < 0.0) {
+    float pk = -i_rot.w - 1.0;
+    float bq = floor(pk / 65536.0);
+    float gq = floor((pk - bq * 65536.0) / 256.0);
+    float rq = pk - bq * 65536.0 - gq * 256.0;
+    vec3 it = vec3(rq, gq, bq) / 255.0;
+    v_col.rgb *= it * it;
+  }
+#endif
   v_seed = i_rot.z;
 #ifdef SHADOW_PASS
   gl_Position = u_light_vp * vec4(w, 1.0);
