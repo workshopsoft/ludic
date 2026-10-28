@@ -32,7 +32,7 @@ Lighting and materials
 11. Foliage translucency and wrapped diffuse (thin-leaf subsurface approximation) — `shaders/model.frag` `FOLIAGE`
 12. Two-sided lighting for thin cards — `shaders/model.frag` `CARD`
 13. Ground-bounce fill light (one bounce from the sunlit meadow onto undersides) — `shaders/lighting.glsl` `bounce`
-14. Screen-space global illumination: one indirect diffuse bounce gathered from the previous anti-aliased frame, plus ambient occlusion, half resolution, depth-aware blur — `shaders/ssgi.frag`, `shaders/ssao_blur.frag`, `post.ludic` `post_ssao_pass`
+14. Screen-space global illumination: one indirect diffuse bounce gathered from the previous anti-aliased frame, plus ambient occlusion as Unreal's forward pass (full resolution, its taps from a half-size furthest depth as its HZB mip 0, its default quality 50: 3 directions × 2 steps and the quad blur; `R3D_UE_AO_QUALITY`, `R3D_UE_AO_HZB=0`), depth-aware blur — `shaders/ssgi.frag`, `shaders/ao_hzb.frag`, `shaders/ssao_blur.frag`, `post.ludic` `post_ssao_pass`
 15. Specular occlusion from ambient occlusion — `shaders/lighting.glsl`
 16. Cloud shadows projected along the sun from an animated cloud layer — `shaders/lighting.glsl` `cloudShadow`
 17. Regional vegetation colouring (aspen groves, dry ridges) and slope-aspect colouring — `shaders/lighting.glsl` `regionTint`, `shaders/terrain.frag`

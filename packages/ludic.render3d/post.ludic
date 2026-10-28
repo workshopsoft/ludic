@@ -31,7 +31,7 @@ function post_ldr_fmt(render3d_st: Render3dState) -> int { if gpu_hdr_active(ren
 function post_free(render3d_st: mut Render3dState) -> void {
   if render3d_st.post_hdr == null { return }
   if render3d_st.post_ms_fbo != 0 { gpu_fb_free(render3d_st, render3d_st.post_ms_fbo);  render3d_st.post_ms_fbo = 0 }
-  target_free(render3d_st, render3d_st.post_hdr);  target_free(render3d_st, render3d_st.post_ao);  target_free(render3d_st, render3d_st.post_ao_blur);  target_free(render3d_st, render3d_st.post_ldr)
+  target_free(render3d_st, render3d_st.post_hdr);  target_free(render3d_st, render3d_st.post_ao);  target_free(render3d_st, render3d_st.post_ao_blur);  target_free(render3d_st, render3d_st.post_ao_hzb);  target_free(render3d_st, render3d_st.post_ldr)
   target_free(render3d_st, render3d_st.post_depth_copy);  target_free(render3d_st, render3d_st.post_prev);  target_free(render3d_st, render3d_st.post_scene);  target_free(render3d_st, render3d_st.post_vol);  target_free(render3d_st, render3d_st.post_dof)
   for i in 0 .. len(render3d_st.post_bloom) { target_free(render3d_st, render3d_st.post_bloom[i]) }
   taa_free(render3d_st)
@@ -107,8 +107,9 @@ function post_init__t(render3d_st: mut Render3dState, w: int, h: int) -> void {
   # are nothing to do with the shadow map or the reflection.
   render3d_st.post_ao = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
   render3d_st.post_ao_blur = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+  render3d_st.post_ao_hzb = target_new(render3d_st, (w + 1) / 2, (h + 1) / 2, GPU_R32F, GPU_RED, GPU_FLOAT, false, GPU_NEAREST)
   if render3d_st.post_neutral == 0 { render3d_st.post_neutral = tex_solid(render3d_st, 0, 0, 0, 255) }
-  if render3d_st.post_p_ao == 0 { render3d_st.post_p_ao = r3d_program(render3d_st, "fullscreen.vert", "ssgi.frag", "");  render3d_st.post_p_ao_blur = r3d_program(render3d_st, "fullscreen.vert", "ssao_blur.frag", "") }
+  if render3d_st.post_p_ao == 0 { render3d_st.post_p_ao = r3d_program(render3d_st, "fullscreen.vert", "ssgi.frag", "");  render3d_st.post_p_ao_blur = r3d_program(render3d_st, "fullscreen.vert", "ssao_blur.frag", "");  render3d_st.post_p_ao_hzb = r3d_program(render3d_st, "fullscreen.vert", "ao_hzb.frag", "") }
   render3d_st.post_ldr = target_new(render3d_st, w, h, post_ldr_fmt(render3d_st), GPU_RGBA, GPU_UNSIGNED_BYTE, false, GPU_LINEAR)
   render3d_st.post_ldr_hdr = gpu_hdr_active(render3d_st)
   render3d_st.post_depth_copy = target_new(render3d_st, w, h, GPU_R8, GPU_RED, GPU_UNSIGNED_BYTE, true, GPU_NEAREST)
@@ -237,9 +238,36 @@ function post_capture_prev(render3d_st: mut Render3dState) -> void {
   render3d_st.post_frame += 1
 }
 
+# Unreal's AO taps read its furthest HZB (PostProcessAmbientOcclusionCommon.ush GetHZBDepth) at ComputeMipLevel's mip, which at
+# r.AmbientOcclusionMipLevelFactor 0.5 is below 0 for every tap: mip 0, half the frame's size. R3D_UE_AO_HZB=0: the full frame's depth
+function post_ao_hzb_on(render3d_st: mut Render3dState) -> bool { return not (r3d_env_has(render3d_st, "R3D_UE_AO_HZB") and r3d_env(render3d_st, "R3D_UE_AO_HZB") == "0") }
+
+# Unreal's AO shader quality from its post process volume's AmbientOcclusionQuality (Scene.cpp: 50 by default), as FSSAOHelper::
+# GetAmbientOcclusionShaderLevel counts it and PostProcessAmbientOcclusion.usf's SHADER_QUALITY reads it: the directions, the steps and
+# the quad blur (post_ssao_pass). 50 is level 2, medium: 3 directions of 2 steps, blurred over the quad. R3D_UE_AO_QUALITY=0..100 another
+function post_ao_level(render3d_st: mut Render3dState) -> int {
+  var q = 50.0
+  if r3d_env_has(render3d_st, "R3D_UE_AO_QUALITY") { q = Text.to_float(r3d_env(render3d_st, "R3D_UE_AO_QUALITY")) }
+  var level = 0
+  if q > 75.0 { level += 1 }
+  if q > 55.0 { level += 1 }
+  if q > 25.0 { level += 1 }
+  if q > 5.0 { level += 1 }
+  return level
+}
+
 function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
+  let hzb = post_ao_hzb_on(render3d_st)
+  if hzb {
+    target_bind(render3d_st, render3d_st.post_ao_hzb)
+    gpu_use_program(render3d_st, render3d_st.post_p_ao_hzb)
+    r3d_bind_2d(render3d_st, render3d_st.post_p_ao_hzb, "u_depth", 0, render3d_st.post_hdr.depth)
+    u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao_hzb, "u_inv_proj"), render3d_st.cam_inv_proj)
+    mesh_draw(render3d_st, render3d_st.post_fs)
+  }
+  prof_split(render3d_st, "SSAO/GI: taps")
   target_bind(render3d_st, render3d_st.post_ao)
   gpu_use_program(render3d_st, render3d_st.post_p_ao)
   r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_depth", 0, render3d_st.post_hdr.depth)
@@ -247,6 +275,22 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   var prev_col = render3d_st.post_prev.color
   if taa_ran(render3d_st) { prev_col = taa_color(render3d_st) }
   r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_prev_color", 1, prev_col)
+  r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_hzb", 2, render3d_st.post_ao_hzb.color)
+  var use_hzb = 0.0
+  if hzb { use_hzb = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_use_hzb"), use_hzb)
+  let pm = render3d_st.cam_proj
+  u_f4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_pk"), 1.0 / pm[0], 1.0 / pm[5], pm[8], pm[9])
+  u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_full"), float(render3d_st.post_w), float(render3d_st.post_h))
+  # SHADER_QUALITY 0..4: USE_SAMPLESET 1 (3 directions) but at 4 (6), SAMPLE_STEPS 1, 1, 2, 3, 3, QUAD_MESSAGE_PASSING_BLUR at 1 and 2
+  let level = post_ao_level(render3d_st)
+  var dirs = 3.0
+  if level >= 4 { dirs = 6.0 }
+  var steps = 3.0
+  if level <= 1 { steps = 1.0 } else if level == 2 { steps = 2.0 }
+  var quad = 0.0
+  if level == 1 or level == 2 { quad = 1.0 }
+  u_f3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_ao_q"), dirs, steps, quad)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_frame"), float(render3d_st.post_frame % 64))
   u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_inv_proj"), render3d_st.cam_inv_proj)
   u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_proj"), render3d_st.cam_proj)
@@ -265,6 +309,7 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_NOCONTACT") { contact = 0.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_contact"), contact)
   mesh_draw(render3d_st, render3d_st.post_fs)
+  prof_split(render3d_st, "SSAO/GI: blur")
   target_bind(render3d_st, render3d_st.post_ao_blur)
   gpu_use_program(render3d_st, render3d_st.post_p_ao_blur)
   r3d_bind_2d(render3d_st, render3d_st.post_p_ao_blur, "u_ao", 0, render3d_st.post_ao.color)

@@ -3,6 +3,7 @@
 # (Vulkan: SPIR-V is built ahead) must cover all of them. Regenerate by running the game and
 # its self-tests with R3D_PROGRAMS_LOG=<file> and sorting the result.
 fullscreen.vert|adapt.frag|
+fullscreen.vert|ao_hzb.frag|
 fullscreen.vert|bloom_down.frag|
 fullscreen.vert|bloom_up.frag|
 fullscreen.vert|combine_luts.frag|

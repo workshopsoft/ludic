@@ -13,6 +13,11 @@ uniform float u_intensity;
 uniform float u_contact;    // the tight contact pass; 0 switches it off entirely
 uniform float u_frame;
 uniform float u_gi;         // the bounce (post.ludic: Unreal 5.8 has deprecated SSGI and leaves it off; R3D_UE_SSGI=1 turns it on)
+uniform sampler2D u_hzb;    // the furthest depth at half size (ao_hzb.frag), as the view's distance
+uniform float u_use_hzb;    // the taps read it, as Unreal's (R3D_UE_AO_HZB=0: the full frame's depth)
+uniform vec4 u_pk;          // 1 / proj[0][0], 1 / proj[1][1], proj[2][0], proj[2][1]: a position from a distance
+uniform vec2 u_full;        // the frame's size, in pixels
+uniform vec3 u_ao_q;        // Unreal's AO shader quality (post.ludic post_ao_quality): x the directions (3 or 6), y the steps, z its quad blur
 // A sample must be behind the surface by more than this much of its sideways distance from the pixel (the tangent of the
 // angle, 0.4 about 22 degrees) before it counts as occluded. The pixel's normal is its triangle's, so a ground of 1 m
 // triangles, curved by a few degrees from one to the next, has the neighbouring triangle rise over a sample taken across
@@ -24,10 +29,21 @@ vec3 viewPos(vec2 uv) {
   vec4 p = u_inv_proj * vec4(uv * 2.0 - 1.0, depthClip(d), 1.0);
   return p.xyz / p.w;
 }
+// an occlusion tap: Unreal's WedgeNoNormal reads the furthest HZB (GetHZBDepth, PostProcessAmbientOcclusionCommon.ush) at
+// ComputeMipLevel's log2(r.AmbientOcclusionMipLevelFactor 0.5 x step x sample), below 0 for every tap: its mip 0, half the frame
+vec3 tapPos(vec2 uv) {
+  if (u_use_hzb < 0.5) return viewPos(uv);
+  ivec2 hi = textureSize(u_hzb, 0) - 1;
+  ivec2 q = clamp(ivec2(uv * u_full) / 2, ivec2(0), hi);
+  float d = texelFetch(u_hzb, q, 0).r;
+  vec2 ndc = uv * 2.0 - 1.0;
+  return vec3(d * (ndc.x + u_pk.z) * u_pk.x, d * (ndc.y + u_pk.w) * u_pk.y, -d);
+}
 void main() {
   vec3 P = viewPos(v_uv);
   // past 900 m, or where a fog wall has already hidden everything (u_ao_far, post.ludic)
-  if (-P.z > (u_ao_far > 0.0 ? u_ao_far : 900.0)) { o_color = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  // (no return before the quad blur below: it takes its neighbours' values by derivatives, which a quad must reach together)
+  bool past = -P.z > (u_ao_far > 0.0 ? u_ao_far : 900.0);
   vec3 Pr = viewPos(v_uv + vec2(u_texel.x, 0.0)), Pl = viewPos(v_uv - vec2(u_texel.x, 0.0));
   vec3 Pu = viewPos(v_uv + vec2(0.0, u_texel.y)), Pd = viewPos(v_uv - vec2(0.0, u_texel.y));
   vec3 dx = (abs(Pr.z - P.z) < abs(P.z - Pl.z)) ? Pr - P : P - Pl;
@@ -38,15 +54,17 @@ void main() {
   // then averages the frames - and this pass runs after the temporal resolve (it is applied in
   // the tonemap), so nothing does: it would be noise that changes every frame.
   float noise = ign(gl_FragCoord.xy);
-  // ---- the occlusion: Unreal's screen-space AO as forward shading has it (PostProcessAmbientOcclusion.usf, USE_NORMALS 0): six
-  // directions on the disc (OcclusionSamplesOffsets, SAMPLESET_ARRAY_SIZE 6), each a symmetric pair of depth samples at three steps
-  // (SAMPLE_STEPS 3, WedgeNoNormal), the horizon angle between the pair; a pair with a side far behind the pixel is no occlusion (its
+  // ---- the occlusion: Unreal's screen-space AO as forward shading has it (PostProcessAmbientOcclusion.usf, USE_NORMALS 0): its
+  // quality's directions on the disc (OcclusionSamplesOffsets: USE_SAMPLESET 1's three, or 3's six), each a symmetric pair of depth
+  // samples at its SAMPLE_STEPS (WedgeNoNormal), the horizon angle between the pair; a pair with a side far behind the pixel is no occlusion (its
   // "fix concave case": a silhouette is not shadowed by what lies past it) and one with a side nearer than AmbientOcclusionDistance
   // (0.8 m) in front counts for less (its "avoid halos around objects"); the radius in the world (RadiusInWS), turned per pixel
-  float ao;
-  {
-    const vec2 OFS[6] = vec2[6](vec2(0.000, 0.200), vec2(0.325, 0.101), vec2(0.272, -0.396), vec2(-0.385, -0.488), vec2(-0.711, 0.274), vec2(0.060, 0.900));
-    const int STEPS = 3;
+  float ao = 1.0;
+  if (!past) {
+    const vec2 OFS3[3] = vec2[3](vec2(0.0, -0.43), vec2(0.406, 0.5698), vec2(-0.58, 0.814));
+    const vec2 OFS6[6] = vec2[6](vec2(0.000, 0.200), vec2(0.325, 0.101), vec2(0.272, -0.396), vec2(-0.385, -0.488), vec2(-0.711, 0.274), vec2(0.060, 0.900));
+    int DIRS = int(u_ao_q.x + 0.5);
+    int STEPS = int(u_ao_q.y + 0.5);
     const float INV_DIST = 1.0 / 0.8;           // AmbientOcclusionDistance 80 cm
     const float FLAT_BIAS = 0.05;               // FlatSurfaceBias 5 cm
     const float AO_RADIUS = 2.0;                // AmbientOcclusionRadius 200 cm
@@ -57,12 +75,13 @@ void main() {
     vec2 fov = vec2(u_proj[0][0], u_proj[1][1]) * 0.5 / z;
     vec4 base = vec4(rv, -rv.y, rv.x) * vec4(fov, fov);
     vec2 acc = vec2(0.0001);
-    for (int i = 0; i < 6; i++) {
-      vec2 lr = OFS[i].x * base.xy + OFS[i].y * base.zw;
+    for (int i = 0; i < DIRS; i++) {
+      vec2 of = DIRS == 6 ? OFS6[i] : OFS3[min(i, 2)];
+      vec2 lr = of.x * base.xy + of.y * base.zw;
       vec2 la = vec2(0.0);
       for (int st = 0; st < STEPS; st++) {
         vec2 o = lr * (float(st + 1) / float(STEPS));
-        vec3 SL = viewPos(v_uv + o), SR = viewPos(v_uv - o);
+        vec3 SL = tapPos(v_uv + o), SR = tapPos(v_uv - o);
         vec3 dL = SL - P, dR = SR - P;
         float nAng = clamp((1.0 - dot(dL, dR) * inversesqrt(max(dot(dL, dL) * dot(dR, dR), 1e-12))) * 0.5, 0.0, 1.0);
         // left / right: the samples' depth in front of the pixel (Unreal's view z grows away from the eye)
@@ -78,6 +97,18 @@ void main() {
     // AmbientOcclusionPower 2, then the intensity
     ao = 1.0 - (1.0 - pow(clamp(acc.x / acc.y, 0.0, 1.0), 2.0)) * u_intensity;
   }
+  // its quad message passing blur (QUAD_MESSAGE_PASSING_BLUR 2, at the medium and low qualities): each pixel of a 2 x 2 quad takes
+  // in its row's and its column's neighbour, by derivatives, each weighted by how alike their normals are (NormalTweak 4)
+  if (u_ao_q.z > 0.5) {
+    vec4 c = vec4(ao, past ? vec3(0.0) : N);          // a pixel past the AO's reach has no say (its weight 0)
+    vec4 ddX = dFdxFine(c), ddY = dFdyFine(c);
+    vec2 sgn = vec2(ivec2(gl_FragCoord.xy) % 2) * 2.0 - 1.0;
+    vec4 pb = c - ddX * sgn.x, pc = c - ddY * sgn.y;
+    float wb = clamp(pow(clamp(dot(N, pb.yzw) * inversesqrt(max(dot(pb.yzw, pb.yzw), 1e-8)), 0.0, 1.0), 4.0), 0.0, 1.0);
+    float wc = clamp(pow(clamp(dot(N, pc.yzw) * inversesqrt(max(dot(pc.yzw, pc.yzw), 1e-8)), 0.0, 1.0), 4.0), 0.0, 1.0);
+    ao = (ao + wb * pb.x + wc * pc.x) / (1.0 + wb + wc);
+  }
+  if (past) { o_color = vec4(0.0, 0.0, 0.0, 1.0); return; }
   // ---- the bounce: the lit colour of what rises over the pixel's hemisphere
   vec3 gi = vec3(0.0);
   float giW = 0.0;
