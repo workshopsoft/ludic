@@ -1,0 +1,83 @@
+// hzb_test.comp - the actors' HZB occlusion test (occlusion.ludic), Unreal's FHZBOcclusionTester (SceneOcclusion.cpp) and its
+// HZBTestPS (HZBOcclusion.usf), one thread a candidate where Unreal shades one texel: BoxCullFrustumPerspective's screen rect and
+// nearest depth (Nanite/NaniteHZBCull.ush), a box the near plane cuts is visible, GetScreenRect at a 4-texel footprint picks the
+// mip (MipLevelForRect), and IsVisibleHZB's 4 x 4 samples give the furthest depth under it: visible when the box's nearest point
+// is no further (reversed depth). The result is tagged with the frame that wrote it, (tag << 1) | visible, so a read before the
+// GPU got there (or a stale slot) is told apart and taken as visible.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform Params {
+  mat4 vp;              // the frame's view-projection (the scene's own, jitter and all)
+  ivec4 view;           // the frame's width, height; the candidates; the tag
+  ivec4 hzb;            // mip 0's width, height; the mips
+  ivec4 lv[16];         // a mip's width, height, first float in Hzb
+} pr;
+layout(set = 0, binding = 1) readonly buffer Bounds { vec4 bounds[]; };    // 2 vec4 a candidate: the box's middle, its half extents
+layout(set = 0, binding = 2) readonly buffer Hzb { float hzb[]; };
+layout(set = 0, binding = 3) buffer Res { uint res[]; };
+
+float hzbAt(int lvl, int x, int y) {
+  ivec4 l = pr.lv[lvl];
+  return hzb[l.z + min(y, l.y - 1) * l.x + min(x, l.x - 1)];
+}
+
+// NaniteHZBCull.ush MipLevelForRect: the lowest mip whose DesiredFootprintPixels texels cover the rect (inclusive texels)
+int mipLevelForRect(ivec4 r, int footprint) {
+  int maxOffset = footprint - 1;
+  int mipOffset = int(log2(float(footprint))) - 1;
+  ivec2 mxy = findMSB(r.zw - r.xy);
+  int lvl = max(max(mxy.x, mxy.y) - mipOffset, 0);
+  ivec2 span = (r.zw >> lvl) - (r.xy >> lvl);
+  if (span.x > maxOffset || span.y > maxOffset) lvl += 1;
+  return lvl;
+}
+
+void main() {
+  uint i = gl_GlobalInvocationID.x;
+  if (i >= uint(pr.view.z)) return;
+  uint tag = uint(pr.view.w) << 1;
+  vec3 c = bounds[i * 2u].xyz;
+  vec3 e = bounds[i * 2u + 1u].xyz;
+  // BoxCullFrustumPerspective: the eight corners in clip space
+  vec4 dx = (2.0 * e.x) * pr.vp[0];
+  vec4 dy = (2.0 * e.y) * pr.vp[1];
+  vec4 dz = (2.0 * e.z) * pr.vp[2];
+  vec4 p0 = pr.vp * vec4(c - e, 1.0);
+  vec4 pc[8];
+  pc[0] = p0;  pc[1] = p0 + dz;  pc[2] = p0 + dx;  pc[3] = p0 + dx + dz;
+  pc[4] = p0 + dx + dy;  pc[5] = p0 + dx + dy + dz;  pc[6] = p0 + dy;  pc[7] = p0 + dy + dz;
+  float minW = 1e30;
+  vec4 planesMin = vec4(1.0);
+  vec2 rmin = vec2(1.0);
+  vec2 rmax = vec2(-1.0);
+  float maxZ = -1e30;
+  bool nearCut = false;
+  for (int k = 0; k < 8; k++) {
+    vec4 p = pc[k];
+    minW = min(minW, p.w);
+    planesMin = min(planesMin, vec4(p.xy, -p.xy) - p.w);
+    // the near plane is depth 1 (reversed): a corner at or before it, or behind the eye
+    if (p.w <= 0.0 || p.z >= p.w) nearCut = true;
+    vec2 s = p.xy / p.w;
+    rmin = min(rmin, s);
+    rmax = max(rmax, s);
+    maxZ = max(maxZ, p.z / p.w);         // the nearest corner's depth: depth over w falls with w, so it is Unreal's MaxZ / MinW
+  }
+  if (nearCut) { res[i] = tag | 1u; return; }
+  if (any(greaterThan(planesMin, vec4(0.0)))) { res[i] = tag; return; }   // wholly past one side
+  // GetScreenRect: the pixels whose centres the rect covers (rows as the depth's: no flip, as the AO's HZB reads it)
+  ivec2 vs = pr.view.xy;
+  vec4 uv = clamp(vec4(rmin, rmax) * 0.5 + 0.5, 0.0, 1.0);
+  ivec4 px = ivec4(uv * vec4(vs, vs) + vec4(0.5, 0.5, -0.5, -0.5));
+  px.xy = max(px.xy, ivec2(0));
+  px.zw = min(px.zw, vs - 1);
+  ivec4 t = ivec4(px.xy, max(px.xy, px.zw)) >> 1;
+  int lvl = min(mipLevelForRect(t, 4), pr.hzb.z - 1);
+  t >>= lvl;
+  // GetMinDepthFromHZB, 4 x 4
+  float d = 1.0;
+  for (int y = 0; y < 4; y++) {
+    int yy = min(t.y + y, t.w);
+    for (int x = 0; x < 4; x++) d = min(d, hzbAt(lvl, min(t.x + x, t.z), yy));
+  }
+  res[i] = tag | (maxZ >= d ? 1u : 0u);
+}
