@@ -80,7 +80,7 @@ property Actor {
   occ_hidden: bool = false,
   occ_hx:     float = 0.0,
   occ_hy:     float = 0.0,
-  ai_stamp:   int = 0            # the pass that drew it in its model's instanced group (actor_inst.ludic),
+  ai_stamp:   int = 0,           # the pass that drew it in its model's instanced group (actor_inst.ludic)
   # Unreal's Static mobility: it never moves, so the sun's cached cascades draw it once (shadow_cache.ludic). Moved, added or removed,
   # it puts them due a rebuild; the stamp and place are what the last static draw saw.
   still:      bool = false,
@@ -89,7 +89,12 @@ property Actor {
   sc_y:       float = 0.0,
   sc_z:       float = 0.0,
   sc_yaw:     float = 0.0,
-  sc_vis:     bool = false
+  sc_vis:     bool = false,
+  # its levels of detail, finest first, and the distance each but the last reaches (actor_shadow_lods: lent by the game, which picks
+  # the one the view draws as `model`); a sun cascade may cast a coarser one (ac_shadow_lod). sh_keep: the view's while it does
+  sh_lods:    []Model,
+  sh_lod_d:   floats,
+  sh_keep:    Model
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
@@ -769,6 +774,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }
     if ac_proxy_figure(render3d_st, a) { actor_draw_proxy(render3d_st, a) } else { actor_draw_one(render3d_st, a, ap, true) }
   }
+  ac_shadow_lod_restore(render3d_st)
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at {
     print(`actor census, cascade {render3d_st.sh_cascade}: {render3d_st.ac_cc_actors} actors cast {render3d_st.ac_cc_draws} draws ({render3d_st.ac_cc_skinned} of them skinned, {render3d_st.ac_cc_cut} cutout)`)
     render3d_st.ac_cc_actors = 0;  render3d_st.ac_cc_draws = 0;  render3d_st.ac_cc_skinned = 0;  render3d_st.ac_cc_cut = 0
@@ -803,7 +809,64 @@ function ac_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) ->
   let ra = a.radius * a.scale
   if not cast_band_reaches(render3d_st, Math.max(da - ra, 0.0), da + ra, a.model.height * a.scale) { return false }
   if ac_caster_small(render3d_st, a) { return false }
+  ac_shadow_lod(render3d_st, a, da)
   return true
+}
+
+# Unreal's shadow LOD (ShadowSetup.cpp CalcAndUpdateLODToRender): a caster is drawn at the level the view would choose for it with
+# its LOD scale times FProjectedShadowInfo::GetLODDistanceFactor: r.Shadow.LODDistanceFactor, plus r.Shadow.LODDistanceFactor.CascadeScale
+# for each cascade past the first (ShadowDepthRendering.cpp). A scale k makes a screen size k times larger, the same as standing k times
+# farther off, so an actor `d` metres away casts the level its chain gives d x k, never a finer one than the view draws. Only an actor
+# given a chain (actor_shadow_lods: a traffic car's parts) has levels to choose from. Off by default: R3D_UE_SHADOW_LOD=1 turns it on;
+# R3D_SHADOW_LOD_DISTANCE_FACTOR and R3D_SHADOW_LOD_CASCADE_SCALE set the two (Unreal's defaults are 1 and 0; the cascade scale here is 1).
+function ac_shadow_lod_factor(render3d_st: mut Render3dState) -> float {
+  if sh_lod_distance_factor(render3d_st) <= 0.0 or render3d_st.sh_local { return 0.0 }
+  var f = render3d_st.sh_lod_f
+  if render3d_st.sh_cascade > 0 { f += float(render3d_st.sh_cascade) * render3d_st.sh_lod_cs }
+  return f
+}
+# r.Shadow.LODDistanceFactor alone (every cascade's), 0 when the shadow LOD is off
+function sh_lod_distance_factor(render3d_st: mut Render3dState) -> float {
+  if render3d_st.sh_lod_on < 0 {
+    render3d_st.sh_lod_on = 0
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_LOD") and r3d_env(render3d_st, "R3D_UE_SHADOW_LOD") == "1" { render3d_st.sh_lod_on = 1 }
+    if r3d_env_has(render3d_st, "R3D_SHADOW_LOD_DISTANCE_FACTOR") { render3d_st.sh_lod_f = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_LOD_DISTANCE_FACTOR")), 0.01) }
+    if r3d_env_has(render3d_st, "R3D_SHADOW_LOD_CASCADE_SCALE") { render3d_st.sh_lod_cs = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_LOD_CASCADE_SCALE")), 0.0) }
+  }
+  if render3d_st.sh_lod_on == 0 { return 0.0 }
+  return render3d_st.sh_lod_f
+}
+# the actor's caster model for this cascade into a.model (the view's kept in sh_keep until ac_shadow_lod_restore); d its distance (m)
+function ac_shadow_lod(render3d_st: mut Render3dState, a: Actor, d: float) -> void {
+  if a.sh_lods == null or a.sh_lod_d == null or a.skin != null or a.leader != null { return }
+  let f = ac_shadow_lod_factor(render3d_st)
+  if f <= 0.0 { return }
+  var view = a.model
+  if a.sh_keep != null { view = a.sh_keep }
+  let n = len(a.sh_lods)
+  var cur = -1
+  for k in 0 .. n { if a.sh_lods[k] == view { cur = k } }
+  if cur < 0 { return }                        # drawn from something not in its chain: left as it is
+  var j = 0
+  while j < n - 1 and j < len(a.sh_lod_d) and d * f > a.sh_lod_d[j] { j += 1 }
+  if j < cur { j = cur }
+  if a.sh_lods[j] == a.model { return }
+  if a.sh_keep == null { a.sh_keep = a.model }
+  a.model = a.sh_lods[j]
+}
+# every caster back on the model the view draws, after a cascade's actors
+function ac_shadow_lod_restore(render3d_st: mut Render3dState) -> void {
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.sh_keep != null { a.model = a.sh_keep;  a.sh_keep = null }
+  }
+}
+# Give actor a its levels of detail, finest first (`models`), and the outer distance of each but the last (`dists`, metres), as the game
+# picks them for the view: a sun cascade casts the level Unreal's shadow LOD scale picks from them (ac_shadow_lod). Lent: both stay the
+# game's, shared by every actor drawing them. null, null takes them away.
+function actor_shadow_lods(a: Actor, models: []Model, dists: floats) -> void {
+  a.sh_lods = models
+  a.sh_lod_d = dists
 }
 function ac_caster_count(render3d_st: mut Render3dState, a: Actor) -> void {
   var shown = 0
@@ -867,6 +930,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
   a.prev_seen = -1;  a.prev_n = 0
   a.still = false;  a.sc_seen = 0
+  a.sh_lods = null;  a.sh_lod_d = null;  a.sh_keep = null
   return a
 }
 

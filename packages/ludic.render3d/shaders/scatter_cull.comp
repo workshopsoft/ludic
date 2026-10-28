@@ -2,7 +2,7 @@
 //
 // Every instance of the layer (8 floats: x, y, z, scale, sin yaw, cos yaw, seed, wind) is tested
 // against the view frustum and sorted into the layer's LOD buckets by distance - the same rule as
-// layer_partition_lods on the CPU. Bucket k's instances are packed from out[k * cap], and the
+// layer_partition_lods on the CPU, Unreal's screen-size cull included. Bucket k's instances are packed from out[k * cap], and the
 // instanceCount of each indirect draw command for that bucket is written here, so the draws that
 // follow read exactly what survived. Bucket n_lods is the impostor bucket.
 //
@@ -22,6 +22,8 @@ layout(set = 0, binding = 0) uniform Params {
   uint has_imp;       // 1 when the layer has an impostor bucket
   float pad;          // sphere radius per unit of instance scale (the model's bound)
   float pad_abs;      // added to every radius (m)
+  float ss_reach;     // Unreal's screen-size cull (scatter.ludic layer_ss_reach): past this times its scale an instance is too small; 0 none
+  float ss_hh;        // its bounds' centre over its foot, per unit of scale
 } pr;
 
 layout(set = 0, binding = 1) readonly buffer Src { float src[]; };
@@ -55,6 +57,11 @@ void main() {
       if (dot(pr.planes[k].xyz, p) + pr.planes[k].w < -r) { inside = false; break; }
     }
     if (!inside) { continue; }
+    if (pr.ss_reach > 0.0) {
+      vec3 c = vec3(dx, p.y + pr.ss_hh * src[o + 3u] - pr.cam.y, dz);
+      float lim = pr.ss_reach * src[o + 3u];
+      if (dot(c, c) > lim * lim) { continue; }
+    }
     float d = sqrt(d2);
     uint lv = n;
     for (uint k = 0u; k < n; k++) {
