@@ -8,8 +8,8 @@
 #   ludic-dev release [level] --dry-run   render the changelog section to stdout and
 #                          stop: nothing is written, committed, tagged or pushed.
 #   ludic-dev release [level] --publish   ...then push main + the tag and create a
-#                          Forgejo release with source + toolchain tarballs.
-#                          Needs FORGEJO_TOKEN in the environment.
+#                          GitHub release with source + toolchain tarballs.
+#                          Needs GH_TOKEN in the environment (and the gh CLI).
 #
 # The scheme is SemVer. VERSION is the single source of truth (ludicc --version
 # reads it at runtime), so a bump touches one file and never reseeds the
@@ -48,7 +48,6 @@ function compute_next(cur: pointer, level: pointer) -> pointer {
   let p2 = capture_line(`expr {pat} + 1`)
   return `{maj}.{min}.{p2}`
 }
-
 
 # ---- changelog rendering ----------------------------------------------------
 #
@@ -306,7 +305,7 @@ function sha256_cmd() -> pointer {
 #
 # The checksums are per-artifact rather than a single SHA256SUMS on purpose. A
 # release is assembled from more than one host (a Linux runner cannot build the
-# macOS toolchain), and `forgejo_upload_assets` skips an asset whose name is
+# macOS toolchain), and `github_upload_assets` skips an asset whose name is
 # already attached — so a shared SHA256SUMS would be written by whichever host
 # published first and would then never cover anything added later. One file per
 # artifact has a unique name, so each host's contribution stands on its own.
@@ -354,18 +353,18 @@ function build_artifacts(ver: pointer) -> bool {
 }
 
 # ludic-dev publish [vX.Y.Z] — publish an already-tagged release: build the artifacts,
-# take the notes from that version's CHANGELOG section, and create the Forgejo
+# take the notes from that version's CHANGELOG section, and create the GitHub
 # release. Defaults to the version in VERSION. This is what CI runs on a tag
 # push, and what `ludic-dev release --publish` calls once it has tagged.
 function publish_tag(ver: pointer) -> int {
-  if getenv_or("FORGEJO_TOKEN", "") == "" { err("publish: set FORGEJO_TOKEN (a Forgejo access token)\n");  return 1 }
+  if getenv_or("GH_TOKEN", "") == "" { err("publish: set GH_TOKEN (a GitHub token that can write releases)\n");  return 1 }
   let body = tmp_path("rel_notes.md")
   let sec = changelog_section(ver)
   if slen(sec) == 0 { err(`publish: no CHANGELOG section for v{ver}\n`);  return 1 }
   write_file(body, sec)
   if not build_artifacts(ver) { return 1 }
-  if forgejo_publish(`v{ver}`, body, "dist") != 0 {
-    err("publish: creating the Forgejo release failed\n")
+  if github_publish(`v{ver}`, body, "dist") != 0 {
+    err("publish: creating the GitHub release failed\n")
     return 1
   }
   return 0
@@ -382,9 +381,9 @@ function cmd_publish() -> int {
   return publish_tag(ver)
 }
 
-# push main + the tag and create the Forgejo release with build artifacts.
+# push main + the tag and create the GitHub release with build artifacts.
 function publish_release(ver: pointer) -> int {
-  if getenv_or("FORGEJO_TOKEN", "") == "" { err("release --publish: set FORGEJO_TOKEN (a Forgejo access token)\n"); return 1 }
+  if getenv_or("GH_TOKEN", "") == "" { err("release --publish: set GH_TOKEN (a GitHub token that can write releases)\n"); return 1 }
   if not shq("git push origin HEAD") { err("release: git push (main) failed\n"); return 1 }
   if not shq(`git push origin v{ver}`) { err("release: git push (tag) failed\n"); return 1 }
   return publish_tag(ver)
@@ -439,7 +438,7 @@ function cmd_release() -> int {
   print(`  committed + tagged v{ver}`)
 
   if publish { return publish_release(ver) }
-  print(`  local release ready. publish with: FORGEJO_TOKEN=… ludic-dev release {level} --publish`)
+  print(`  local release ready. publish with: GH_TOKEN=… ludic-dev release {level} --publish`)
   print(`  (or push:  git push origin HEAD && git push origin v{ver})`)
   return 0
 }
