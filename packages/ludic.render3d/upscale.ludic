@@ -1,0 +1,237 @@
+# ============================================================================
+# upscale.ludic — the render resolution: Unreal's primary screen percentage, the temporal upscaler that brings it back to
+# the display, and its dynamic resolution.
+#
+# The scene, its shadows' screen-space parts, the fog, the water and the light shafts draw at the render size (post_w x
+# post_h); the temporal upscaler - DLSS (streamline.ludic) or MetalFX (mfx.ludic), in the slot Unreal's ITemporalUpscaler
+# fills - resolves the lit HDR frame to the display's size, and bloom, the tonemap, the sharpen and the HUD read or write
+# at that size by UV. Without an upscaler (TAA alone, or none) the tonemap's bilinear read is the spatial upscale Unreal
+# does after its tonemapper. This is Unreal's split between the primary (render) and secondary (display) resolutions
+# (SceneView.cpp / PostProcessing.cpp: everything before the temporal upscale at the view rect, everything after at the
+# output's).
+#
+#   R3D_UE_SCREEN_PERCENTAGE=<n>   r.ScreenPercentage: the render size in percent of the display; without it, the upscaler's
+#                                  own mode decides (DLSS's optimal settings, MetalFX's mode), and 100 with neither.
+#
+# Dynamic resolution (r.DynamicRes, DynamicResolution.cpp FDynamicResolutionHeuristicProxy): each frame's GPU time, from a
+# pair of timestamps around the whole frame (first GPU work to the end of post), goes into a history of 16; every frame the
+# screen percentage that would have held the target is estimated from each entry - sqrt(target / time) x its fraction, the
+# Quadratic model - weighted 0.9 per frame back, and it is taken when it moves more than 2% and 8 frames have passed since
+# the last change, or at once when the last frames all ran over the budget. An increase is amortised (lerp 0.9).
+#
+#   R3D_UE_DYNAMIC_RES=1                   r.DynamicRes.OperationMode: on
+#   R3D_UE_DYNAMIC_RES_BUDGET=<ms>         r.DynamicRes.FrameTimeBudget (16.7 here, for 60 fps; Unreal's default is 33.3)
+#   R3D_UE_DYNAMIC_RES_MIN / _MAX=<pct>    r.DynamicRes.MinScreenPercentage / MaxScreenPercentage (50 / 100)
+#   R3D_UE_DYNAMIC_RES_HEADROOM=<pct>      r.DynamicRes.TargetedGPUHeadRoomPercentage (10)
+#   R3D_UE_DYNAMIC_RES_PERIOD=<frames>     r.DynamicRes.MinResolutionChangePeriod (8)
+#   R3D_UE_DYNAMIC_RES_STEPS=<n>           FHeuristicSettings::FractionQuantization (10 here, 0 in Unreal)
+#   R3D_UE_DYNAMIC_RES_LOG=1               the fraction and the GPU time, once a second
+#
+# One difference from Unreal, said plainly: Unreal keeps its targets at the maximum screen percentage and moves the view
+# rect inside them, so a change costs nothing. Every pass here samples its screen targets over [0, 1], so a new render size
+# is a new set of targets (post_rescale) and a fresh temporal history: the fraction is therefore quantised to STEPS levels
+# between the minimum and the maximum (Unreal's own FractionQuantization, which its primary budget leaves at 0), so there
+# are a handful of sizes and a change happens only when the estimate crosses a level.
+# ============================================================================
+
+const UPS_HIST: int = 16                   # r.DynamicRes.HistorySize
+const UPS_RING: int = 4                    # frames of latency before a timestamp pair is read (prof.ludic's)
+
+# read the switches once
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function ups_init(render3d_st: mut Render3dState) -> void {
+  render3d_st.ups_sp = -1.0
+  if r3d_env_has(render3d_st, "R3D_UE_SCREEN_PERCENTAGE") { render3d_st.ups_sp = float(Text.to_int(r3d_env(render3d_st, "R3D_UE_SCREEN_PERCENTAGE"))) / 100.0 }
+  render3d_st.ups_dr = r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES") and r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES") != "0"
+  render3d_st.ups_budget = 16.7
+  if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_BUDGET") { render3d_st.ups_budget = Text.to_float(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_BUDGET")) }
+  render3d_st.ups_min = 0.5
+  if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_MIN") { render3d_st.ups_min = float(Text.to_int(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_MIN"))) / 100.0 }
+  render3d_st.ups_max = 1.0
+  if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_MAX") { render3d_st.ups_max = float(Text.to_int(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_MAX"))) / 100.0 }
+  render3d_st.ups_headroom = 0.1
+  if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_HEADROOM") { render3d_st.ups_headroom = float(Text.to_int(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_HEADROOM"))) / 100.0 }
+  render3d_st.ups_period = 8
+  if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_PERIOD") { render3d_st.ups_period = Text.to_int(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_PERIOD")) }
+  render3d_st.ups_steps = 10
+  if r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_STEPS") { render3d_st.ups_steps = Text.to_int(r3d_env(render3d_st, "R3D_UE_DYNAMIC_RES_STEPS")) }
+  render3d_st.ups_log = r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_RES_LOG")
+  render3d_st.ups_cur = render3d_st.ups_max
+  render3d_st.ups_h_frac = floats(UPS_HIST)
+  render3d_st.ups_h_ms = floats(UPS_HIST)
+  render3d_st.ups_q_frac = floats(UPS_RING)
+  render3d_st.ups_q_used = words(UPS_RING)
+  render3d_st.ups_q_ids = words(UPS_RING)
+  render3d_st.ups_scratch = words(4)
+  if render3d_st.ups_dr { gpu_query_new(render3d_st, UPS_RING, render3d_st.ups_q_ids) }
+}
+
+# the temporal upscaler resolving this frame: 1 DLSS, 2 MetalFX, 0 none
+function ups_temporal(render3d_st: Render3dState) -> int {
+  if r3d_dlss_live(render3d_st) { return 1 }
+  if mfx_live(render3d_st) { return 2 }
+  return 0
+}
+
+# the screen percentage without dynamic resolution, as a fraction of the display
+function ups_fixed_fraction(render3d_st: mut Render3dState) -> float {
+  if render3d_st.ups_sp > 0.0 { return render3d_st.ups_sp }
+  let t = ups_temporal(render3d_st)
+  if t == 1 and gfx_width() > 0 { return float(r3d_dlss_render_w(render3d_st)) / float(gfx_width()) }
+  if t == 2 { return mfx_fraction(render3d_st) }
+  return 1.0
+}
+# the least and the most the upscaler takes (Unreal's TemporalUpscalerMin/MaxResolutionFraction)
+function ups_lo(render3d_st: Render3dState) -> float {
+  let t = ups_temporal(render3d_st)
+  if t == 1 { return 0.33 }                 # DLSS's ultra performance
+  if t == 2 { return mfx_min_fraction(render3d_st) }
+  return 0.25
+}
+
+# r3d_frame, before the camera: this frame's render size, the targets remade when it moved
+function ups_frame(render3d_st: mut Render3dState) -> void {
+  if render3d_st.post_hdr == null or gfx_width() <= 0 or gfx_height() <= 0 { return }
+  var f = ups_fixed_fraction(render3d_st)
+  if render3d_st.ups_dr {
+    ups_collect(render3d_st)
+    ups_refresh(render3d_st)
+    f = render3d_st.ups_cur
+  }
+  f = Math.min(Math.max(f, ups_lo(render3d_st)), 1.0)
+  render3d_st.ups_frac = f
+  # an even size, so the half- and quarter-size chains (bloom, the AO's HZB, the shafts) stay aligned
+  var w = int(float(gfx_width()) * f + 0.5) & (0 - 2)
+  var h = int(float(gfx_height()) * f + 0.5) & (0 - 2)
+  if f >= 0.999 { w = gfx_width();  h = gfx_height() }
+  w = max(w, 16);  h = max(h, 16)
+  if w == render3d_st.post_w and h == render3d_st.post_h { return }
+  # the frame in flight reads the targets that go
+  gvk_frame_wait(render3d_st)
+  post_rescale(render3d_st, w, h)
+  render3d_st.gsl_reset = true
+  render3d_st.mfx_reset = true
+  render3d_st.ups_changes += 1
+  if render3d_st.ups_log { ups_say_size(render3d_st, w, h) }
+}
+
+# the texture mip bias for the render size, while a temporal upscaler fills in the detail: Unreal's automatic view mip bias
+# (SceneVisibility.cpp: log2(fraction) + r.ViewTextureMipBias.Offset -0.3, no lower than r.ViewTextureMipBias.Min -2),
+# quantised as its sampler states are (r.ViewTextureMipBias.Quantization, 1024 steps over [-4, 4])
+function ups_mip_bias(render3d_st: Render3dState) -> float {
+  if ups_temporal(render3d_st) == 0 or render3d_st.post_w <= 0 or render3d_st.post_w >= gfx_width() { return 0.0 }
+  var b = Math.log(float(render3d_st.post_w) / float(gfx_width())) * 1.4426950408889634 - 0.3
+  b = Math.min(Math.max(b, -2.0), 4.0)
+  let step = 8.0 / 1024.0
+  return Math.ceil(b / step) * step
+}
+
+# ---- the GPU time of each frame ------------------------------------------------------------
+# A pair of timestamps of its own around the frame (prof_frame_begin / prof_frame_end call these), read UPS_RING frames
+# later, with the fraction that frame drew at.
+function ups_stamp_begin(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.ups_dr or render3d_st.ups_q_ids == null { return }
+  let qi = render3d_st.ups_q_frame % UPS_RING
+  render3d_st.ups_q_used[qi] = 1
+  render3d_st.ups_q_frac[qi] = render3d_st.ups_frac
+  gvk_stamp(render3d_st, render3d_st.ups_q_ids[qi], false)
+}
+function ups_stamp_end(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.ups_dr or render3d_st.ups_q_ids == null { return }
+  gvk_stamp(render3d_st, render3d_st.ups_q_ids[render3d_st.ups_q_frame % UPS_RING], true)
+  render3d_st.ups_q_frame += 1
+}
+# CreateNewPreviousFrameTimings: the oldest pair into the history
+function ups_collect(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ups_q_frame < UPS_RING { return }
+  let qi = render3d_st.ups_q_frame % UPS_RING            # the slot the next frame writes: written UPS_RING frames ago
+  if render3d_st.ups_q_used[qi] == 0 { return }
+  render3d_st.ups_q_used[qi] = 0
+  if not gpu_query_result(render3d_st, render3d_st.ups_q_ids[qi], render3d_st.ups_scratch) { return }
+  # the first frames after a reset or a new size carry the old size's cost (IgnoreFrameRemainingCount)
+  if render3d_st.ups_ignore > 0 { render3d_st.ups_ignore -= 1;  return }
+  let ms = float(render3d_st.ups_scratch[0]) / 1000000.0
+  let at = (render3d_st.ups_h_at + 1) % UPS_HIST
+  render3d_st.ups_h_at = at
+  render3d_st.ups_h_frac[at] = render3d_st.ups_q_frac[qi]
+  render3d_st.ups_h_ms[at] = ms
+  render3d_st.ups_h_n = min(render3d_st.ups_h_n + 1, UPS_HIST)
+  render3d_st.ups_last_ms = ms
+}
+
+# RefreshCurrentFrameResolutionFraction_RenderThread, for the primary budget alone
+function ups_refresh(render3d_st: mut Render3dState) -> void {
+  let can_change = render3d_st.ups_since >= render3d_st.ups_period
+  let budget = render3d_st.ups_budget
+  let target = budget * (1.0 - render3d_st.ups_headroom)            # FHeuristicSettings::GetTargetedMs
+  var nf = render3d_st.ups_cur
+  var panic = false
+  if render3d_st.ups_h_n > 0 {
+    var sum = 0.0
+    var total = 0.0
+    var weight = 1.0
+    var over = 0
+    var count = 0
+    var k = 0
+    var browse = true
+    while k < render3d_st.ups_h_n and browse {
+      let at = (render3d_st.ups_h_at - k + UPS_HIST) % UPS_HIST
+      let ms = render3d_st.ups_h_ms[at]
+      if ms > budget {
+        over += 1
+        if over == 2 { browse = false }                              # r.DynamicRes.MaxConsecutiveOverBudgetGPUFrameCount
+      } else { over = 0 }
+      # EstimateResolutionFactor, Quadratic: the cost is taken as fraction^2
+      let suggested = Math.sqrt(target / Math.max(ms, 0.01)) * render3d_st.ups_h_frac[at]
+      sum = sum + suggested * weight
+      total = total + weight
+      count += 1
+      weight = weight * 0.9                                         # r.DynamicRes.FrameWeightExponent
+      k += 1
+    }
+    nf = sum / total
+    panic = count > 0 and over == count
+    if panic {
+      render3d_st.ups_h_n = 0
+    } else {
+      # DoesResolutionChangeEnough (r.DynamicRes.ChangePercentageThreshold 2%), then the amortised increase
+      let cur = render3d_st.ups_cur
+      let enough = can_change and (nf > cur * 1.02 or nf < cur * 0.98 or (nf != cur and (nf <= render3d_st.ups_min or nf >= render3d_st.ups_max)))
+      if not enough { nf = cur }
+      if nf > cur { nf = cur + (nf - cur) * 0.9 }                   # r.DynamicRes.IncreaseAmortizationBlendFactor
+    }
+  }
+  nf = Math.min(Math.max(nf, render3d_st.ups_min), render3d_st.ups_max)
+  nf = Math.min(Math.max(nf, ups_lo(render3d_st)), 1.0)
+  nf = ups_quantise(render3d_st, nf)
+  if (nf != render3d_st.ups_cur and can_change) or (panic and nf != render3d_st.ups_cur) {
+    render3d_st.ups_cur = nf
+    render3d_st.ups_since = 0
+    render3d_st.ups_ignore = 1
+  } else {
+    render3d_st.ups_since += 1
+  }
+  if render3d_st.ups_log {
+    render3d_st.ups_log_n += 1
+    if render3d_st.ups_log_n % 60 == 0 { ups_say(render3d_st) }
+  }
+}
+
+# FHeuristicSettings::CorrectNewResolutionFraction's quantisation: rounded toward zero onto STEPS levels between min and max
+function ups_quantise(render3d_st: Render3dState, f: float) -> float {
+  let n = render3d_st.ups_steps
+  let lo = render3d_st.ups_min;  let hi = render3d_st.ups_max
+  if n <= 0 or hi <= lo { return f }
+  let t = Math.min(Math.max((f - lo) / (hi - lo), 0.0), 1.0)
+  let q = float(int(t * float(n) + 0.0001)) / float(n)
+  return lo + (hi - lo) * q
+}
+
+# the fraction a game can show (a settings line, a debug overlay)
+export function r3d_render_fraction(render3d_st: Render3dState) -> float { return render3d_st.ups_frac }
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function ups_say(render3d_st: Render3dState) -> void { print(`r3d: dynamic res: {int(render3d_st.ups_cur * 100.0)}% ({render3d_st.post_w}x{render3d_st.post_h}), GPU {int(render3d_st.ups_last_ms * 100.0)} cms, budget {render3d_st.ups_budget} ms, {render3d_st.ups_changes} changes`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function ups_say_size(render3d_st: Render3dState, w: int, h: int) -> void { print(`r3d: render size {w}x{h} ({int(render3d_st.ups_frac * 100.0)}% of {gfx_width()}x{gfx_height()}, upscaler {ups_temporal(render3d_st)})`) }

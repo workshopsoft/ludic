@@ -79,6 +79,13 @@ function ue_vf_array(render3d_st: mut Render3dState, w: int, h: int, layers: int
   return t
 }
 
+# the grid's three arrays and their layers' framebuffers
+function ue_vf_free(render3d_st: mut Render3dState) -> void {
+  for l in 0 .. render3d_st.ue_vf_gz { gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_a[l]);  gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_b[l]);  gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_i[l]) }
+  gpu_tex_free(render3d_st, render3d_st.ue_vf_a);  gpu_tex_free(render3d_st, render3d_st.ue_vf_b);  gpu_tex_free(render3d_st, render3d_st.ue_vf_i)
+  free(render3d_st.ue_vf_fb_a);  free(render3d_st.ue_vf_fb_b);  free(render3d_st.ue_vf_fb_i)
+}
+
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function ue_vf_init(render3d_st: mut Render3dState) -> void {
   let vf = r3d_volumetric_fog(render3d_st)
@@ -87,7 +94,9 @@ function ue_vf_init(render3d_st: mut Render3dState) -> void {
   let gh = (render3d_st.post_h + px - 1) / px
   let gz = max(min(vf.grid_size_z, 128), 8)
   if render3d_st.ue_vf_gw == gw and render3d_st.ue_vf_gh == gh and render3d_st.ue_vf_gz == gz { return }
-  # (a new size makes a new set; the old one is left to the device's teardown, as a resize is rare)
+  # a new size makes a new set and gives the old one back: the render size moves with the screen percentage and dynamic
+  # resolution (upscale.ludic), as Unreal's grid follows the view rect, and a set left to the teardown was 50 MB a size
+  if render3d_st.ue_vf_gw > 0 { ue_vf_free(render3d_st) }
   render3d_st.ue_vf_gw = gw;  render3d_st.ue_vf_gh = gh;  render3d_st.ue_vf_gz = gz
   render3d_st.ue_vf_fb_a = words(gz);  render3d_st.ue_vf_fb_b = words(gz);  render3d_st.ue_vf_fb_i = words(gz)
   render3d_st.ue_vf_a = ue_vf_array(render3d_st, gw, gh, gz, render3d_st.ue_vf_fb_a)

@@ -493,3 +493,215 @@ read:
   %v = load atomic i64, ptr %sp seq_cst, align 8
   ret i64 %v
 }
+
+; ---- MetalFX temporal upscaling (render3d's mfx.ludic) ---------------------------------------
+; The renderer is Vulkan over MoltenVK; VK_EXT_metal_objects hands back the MTLDevice, the
+; MTLCommandQueue and each image's MTLTexture, and these few calls drive MTLFXTemporalScaler
+; (macOS 13) through the Objective-C runtime's C ABI, as cocoa.ll drives AppKit. MetalFX is opened
+; at run time (dlopen), so a Mac without it starts and draws as before: lmfx_open answers 0.
+; Floats arrive as float bits in an i32, as every Ludic extern passes them.
+declare ptr @objc_getClass(ptr)
+declare ptr @sel_registerName(ptr)
+declare ptr @objc_msgSend(ptr, ptr, ...)
+
+@.mfx_lib = private unnamed_addr constant [53 x i8] c"/System/Library/Frameworks/MetalFX.framework/MetalFX\00"
+@.mfx_cls = private unnamed_addr constant [30 x i8] c"MTLFXTemporalScalerDescriptor\00"
+@.mfx_s_alloc = private unnamed_addr constant [6 x i8] c"alloc\00"
+@.mfx_s_init = private unnamed_addr constant [5 x i8] c"init\00"
+@.mfx_s_release = private unnamed_addr constant [8 x i8] c"release\00"
+@.mfx_s_supports = private unnamed_addr constant [16 x i8] c"supportsDevice:\00"
+@.mfx_s_maxscale = private unnamed_addr constant [40 x i8] c"supportedInputContentMaxScaleForDevice:\00"
+@.mfx_s_cfmt = private unnamed_addr constant [23 x i8] c"setColorTextureFormat:\00"
+@.mfx_s_dfmt = private unnamed_addr constant [23 x i8] c"setDepthTextureFormat:\00"
+@.mfx_s_mfmt = private unnamed_addr constant [24 x i8] c"setMotionTextureFormat:\00"
+@.mfx_s_ofmt = private unnamed_addr constant [24 x i8] c"setOutputTextureFormat:\00"
+@.mfx_s_iw = private unnamed_addr constant [15 x i8] c"setInputWidth:\00"
+@.mfx_s_ih = private unnamed_addr constant [16 x i8] c"setInputHeight:\00"
+@.mfx_s_ow = private unnamed_addr constant [16 x i8] c"setOutputWidth:\00"
+@.mfx_s_oh = private unnamed_addr constant [17 x i8] c"setOutputHeight:\00"
+@.mfx_s_autoexp = private unnamed_addr constant [24 x i8] c"setAutoExposureEnabled:\00"
+@.mfx_s_new = private unnamed_addr constant [29 x i8] c"newTemporalScalerWithDevice:\00"
+@.mfx_s_color = private unnamed_addr constant [17 x i8] c"setColorTexture:\00"
+@.mfx_s_depth = private unnamed_addr constant [17 x i8] c"setDepthTexture:\00"
+@.mfx_s_motion = private unnamed_addr constant [18 x i8] c"setMotionTexture:\00"
+@.mfx_s_output = private unnamed_addr constant [18 x i8] c"setOutputTexture:\00"
+@.mfx_s_jx = private unnamed_addr constant [18 x i8] c"setJitterOffsetX:\00"
+@.mfx_s_jy = private unnamed_addr constant [18 x i8] c"setJitterOffsetY:\00"
+@.mfx_s_mx = private unnamed_addr constant [23 x i8] c"setMotionVectorScaleX:\00"
+@.mfx_s_my = private unnamed_addr constant [23 x i8] c"setMotionVectorScaleY:\00"
+@.mfx_s_reset = private unnamed_addr constant [10 x i8] c"setReset:\00"
+@.mfx_s_rev = private unnamed_addr constant [18 x i8] c"setDepthReversed:\00"
+@.mfx_s_preexp = private unnamed_addr constant [16 x i8] c"setPreExposure:\00"
+@.mfx_s_cb = private unnamed_addr constant [14 x i8] c"commandBuffer\00"
+@.mfx_s_encode = private unnamed_addr constant [23 x i8] c"encodeToCommandBuffer:\00"
+@.mfx_s_commit = private unnamed_addr constant [7 x i8] c"commit\00"
+@.mfx_s_cusage = private unnamed_addr constant [18 x i8] c"colorTextureUsage\00"
+@.mfx_s_dusage = private unnamed_addr constant [18 x i8] c"depthTextureUsage\00"
+@.mfx_s_musage = private unnamed_addr constant [19 x i8] c"motionTextureUsage\00"
+@.mfx_s_ousage = private unnamed_addr constant [19 x i8] c"outputTextureUsage\00"
+@.mfx_s_usage = private unnamed_addr constant [6 x i8] c"usage\00"
+@.mfx_s_smode = private unnamed_addr constant [12 x i8] c"storageMode\00"
+@lmfx_class = internal global ptr null
+
+; 1 when MetalFX's temporal scaler is there to use
+define i32 @lmfx_open() {
+entry:
+  %have = load ptr, ptr @lmfx_class
+  %ok0 = icmp ne ptr %have, null
+  br i1 %ok0, label %yes, label %load
+load:
+  %h = call ptr @dlopen(ptr @.mfx_lib, i32 6)
+  %hok = icmp ne ptr %h, null
+  br i1 %hok, label %find, label %no
+find:
+  %c = call ptr @objc_getClass(ptr @.mfx_cls)
+  store ptr %c, ptr @lmfx_class
+  %cok = icmp ne ptr %c, null
+  br i1 %cok, label %yes, label %no
+yes:
+  ret i32 1
+no:
+  ret i32 0
+}
+
+define i32 @lmfx_supports(ptr %dev) {
+entry:
+  %c = load ptr, ptr @lmfx_class
+  %s = call ptr @sel_registerName(ptr @.mfx_s_supports)
+  %r = call i8 (ptr, ptr, ptr) @objc_msgSend(ptr %c, ptr %s, ptr %dev)
+  %r32 = zext i8 %r to i32
+  ret i32 %r32
+}
+
+; the largest output / input scale the device takes, float bits (macOS 14)
+define i32 @lmfx_max_scale(ptr %dev) {
+entry:
+  %c = load ptr, ptr @lmfx_class
+  %s = call ptr @sel_registerName(ptr @.mfx_s_maxscale)
+  %r = call float (ptr, ptr, ptr) @objc_msgSend(ptr %c, ptr %s, ptr %dev)
+  %b = bitcast float %r to i32
+  ret i32 %b
+}
+
+define internal void @lmfx_set_u(ptr %o, ptr %name, i32 %v) {
+entry:
+  %s = call ptr @sel_registerName(ptr %name)
+  %v64 = zext i32 %v to i64
+  call void (ptr, ptr, i64) @objc_msgSend(ptr %o, ptr %s, i64 %v64)
+  ret void
+}
+define internal void @lmfx_set_f(ptr %o, ptr %name, i32 %bits) {
+entry:
+  %s = call ptr @sel_registerName(ptr %name)
+  %f = bitcast i32 %bits to float
+  call void (ptr, ptr, float) @objc_msgSend(ptr %o, ptr %s, float %f)
+  ret void
+}
+define internal void @lmfx_set_b(ptr %o, ptr %name, i32 %v) {
+entry:
+  %s = call ptr @sel_registerName(ptr %name)
+  %b = trunc i32 %v to i8
+  call void (ptr, ptr, i8) @objc_msgSend(ptr %o, ptr %s, i8 %b)
+  ret void
+}
+define internal void @lmfx_set_p(ptr %o, ptr %name, ptr %v) {
+entry:
+  %s = call ptr @sel_registerName(ptr %name)
+  call void (ptr, ptr, ptr) @objc_msgSend(ptr %o, ptr %s, ptr %v)
+  ret void
+}
+
+; a scaler from input w x h to output w x h with these MTLPixelFormats, or null
+define ptr @lmfx_new(ptr %dev, i32 %iw, i32 %ih, i32 %ow, i32 %oh, i32 %cfmt, i32 %dfmt, i32 %mfmt, i32 %ofmt, i32 %autoexp) {
+entry:
+  %c = load ptr, ptr @lmfx_class
+  %sa = call ptr @sel_registerName(ptr @.mfx_s_alloc)
+  %a = call ptr (ptr, ptr) @objc_msgSend(ptr %c, ptr %sa)
+  %si = call ptr @sel_registerName(ptr @.mfx_s_init)
+  %d = call ptr (ptr, ptr) @objc_msgSend(ptr %a, ptr %si)
+  call void @lmfx_set_u(ptr %d, ptr @.mfx_s_cfmt, i32 %cfmt)
+  call void @lmfx_set_u(ptr %d, ptr @.mfx_s_dfmt, i32 %dfmt)
+  call void @lmfx_set_u(ptr %d, ptr @.mfx_s_mfmt, i32 %mfmt)
+  call void @lmfx_set_u(ptr %d, ptr @.mfx_s_ofmt, i32 %ofmt)
+  call void @lmfx_set_u(ptr %d, ptr @.mfx_s_iw, i32 %iw)
+  call void @lmfx_set_u(ptr %d, ptr @.mfx_s_ih, i32 %ih)
+  call void @lmfx_set_u(ptr %d, ptr @.mfx_s_ow, i32 %ow)
+  call void @lmfx_set_u(ptr %d, ptr @.mfx_s_oh, i32 %oh)
+  call void @lmfx_set_b(ptr %d, ptr @.mfx_s_autoexp, i32 %autoexp)
+  %sn = call ptr @sel_registerName(ptr @.mfx_s_new)
+  %sc = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %d, ptr %sn, ptr %dev)
+  call void @lmfx_release(ptr %d)
+  ret ptr %sc
+}
+
+define void @lmfx_release(ptr %o) {
+entry:
+  %ok = icmp ne ptr %o, null
+  br i1 %ok, label %rel, label %done
+rel:
+  %s = call ptr @sel_registerName(ptr @.mfx_s_release)
+  call void (ptr, ptr) @objc_msgSend(ptr %o, ptr %s)
+  br label %done
+done:
+  ret void
+}
+
+; what the scaler wants of its textures (0 colour, 1 depth, 2 motion, 3 output), MTLTextureUsage
+define i32 @lmfx_usage(ptr %sc, i32 %which) {
+entry:
+  switch i32 %which, label %out [ i32 0, label %col
+                                  i32 1, label %dep
+                                  i32 2, label %mot ]
+col:
+  br label %ask
+dep:
+  br label %ask
+mot:
+  br label %ask
+out:
+  br label %ask
+ask:
+  %name = phi ptr [ @.mfx_s_cusage, %col ], [ @.mfx_s_dusage, %dep ], [ @.mfx_s_musage, %mot ], [ @.mfx_s_ousage, %out ]
+  %s = call ptr @sel_registerName(ptr %name)
+  %u = call i64 (ptr, ptr) @objc_msgSend(ptr %sc, ptr %s)
+  %u32 = trunc i64 %u to i32
+  ret i32 %u32
+}
+; a texture's MTLTextureUsage (which = 0) or MTLStorageMode (1)
+define i32 @lmfx_tex_info(ptr %t, i32 %which) {
+entry:
+  %is_mode = icmp eq i32 %which, 1
+  %name = select i1 %is_mode, ptr @.mfx_s_smode, ptr @.mfx_s_usage
+  %s = call ptr @sel_registerName(ptr %name)
+  %u = call i64 (ptr, ptr) @objc_msgSend(ptr %t, ptr %s)
+  %u32 = trunc i64 %u to i32
+  ret i32 %u32
+}
+
+; one frame: the textures, jitter (pixels), motion scale and reset, encoded into a command buffer of
+; the renderer's own queue and committed - after the Vulkan work before it, before the work after it
+define i32 @lmfx_encode(ptr %sc, ptr %queue, ptr %color, ptr %depth, ptr %motion, ptr %output, i32 %jx, i32 %jy, i32 %mx, i32 %my, i32 %reset, i32 %reversed) {
+entry:
+  call void @lmfx_set_p(ptr %sc, ptr @.mfx_s_color, ptr %color)
+  call void @lmfx_set_p(ptr %sc, ptr @.mfx_s_depth, ptr %depth)
+  call void @lmfx_set_p(ptr %sc, ptr @.mfx_s_motion, ptr %motion)
+  call void @lmfx_set_p(ptr %sc, ptr @.mfx_s_output, ptr %output)
+  call void @lmfx_set_f(ptr %sc, ptr @.mfx_s_jx, i32 %jx)
+  call void @lmfx_set_f(ptr %sc, ptr @.mfx_s_jy, i32 %jy)
+  call void @lmfx_set_f(ptr %sc, ptr @.mfx_s_mx, i32 %mx)
+  call void @lmfx_set_f(ptr %sc, ptr @.mfx_s_my, i32 %my)
+  call void @lmfx_set_b(ptr %sc, ptr @.mfx_s_reset, i32 %reset)
+  call void @lmfx_set_b(ptr %sc, ptr @.mfx_s_rev, i32 %reversed)
+  %scb = call ptr @sel_registerName(ptr @.mfx_s_cb)
+  %cb = call ptr (ptr, ptr) @objc_msgSend(ptr %queue, ptr %scb)
+  %ok = icmp ne ptr %cb, null
+  br i1 %ok, label %go, label %fail
+go:
+  %se = call ptr @sel_registerName(ptr @.mfx_s_encode)
+  call void (ptr, ptr, ptr) @objc_msgSend(ptr %sc, ptr %se, ptr %cb)
+  %sm = call ptr @sel_registerName(ptr @.mfx_s_commit)
+  call void (ptr, ptr) @objc_msgSend(ptr %cb, ptr %sm)
+  ret i32 1
+fail:
+  ret i32 0
+}

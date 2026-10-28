@@ -83,12 +83,14 @@ export function prof_split(render3d_st: mut Render3dState, name: pointer) -> voi
 # The whole frame on the GPU, from its first work to the end of its post: a pair of timestamps of its own, outside the passes' slots so
 # it may span them (they do not nest). The passes' TOTAL is their means added up; this is what the frame took, gaps and all.
 function prof_frame_begin(render3d_st: mut Render3dState) -> void {
+  ups_stamp_begin(render3d_st)              # dynamic resolution's own pair (upscale.ludic)
   if not render3d_st.prof_on { return }
   let qi = PROF_SLOTS * PROF_RING + (render3d_st.prof_frame % PROF_RING)
   render3d_st.prof_used[qi] = 1
   gvk_stamp(render3d_st, render3d_st.prof_ids[qi], false)
 }
 function prof_frame_end(render3d_st: mut Render3dState) -> void {
+  ups_stamp_end(render3d_st)
   if not render3d_st.prof_on { return }
   gvk_stamp(render3d_st, render3d_st.prof_ids[PROF_SLOTS * PROF_RING + (render3d_st.prof_frame % PROF_RING)], true)
 }

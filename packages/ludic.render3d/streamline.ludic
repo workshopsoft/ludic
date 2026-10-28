@@ -28,6 +28,7 @@ const GSL_SUBMIT_END: int = 3
 const GSL_PRESENT_START: int = 4
 const GSL_PRESENT_END: int = 5
 
+const GSL_DLSS_DEFAULT: int = 2       # quality: r3d_dlss's modes (gsl_sl_mode)
 const GSL_LAYOUT_READ: int = 5        # VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 
 # ---- structure headers ------------------------------------------------------------------
@@ -127,6 +128,12 @@ function gsl_probe_device(render3d_st: mut Render3dState, pd: pointer) -> void {
   render3d_st.gsl_fg_ok = Vk.sl_is_feature_supported(GSL_DLSS_G, ai) == 0
   render3d_st.gsl_reflex_ok = Vk.sl_is_feature_supported(GSL_REFLEX, ai) == 0
   render3d_st.gsl_pcl_ok = Vk.sl_is_feature_supported(GSL_PCL, ai) == 0
+  # DLSS super resolution by default where the adapter runs it (an NVIDIA RTX GPU): Quality, until a game's setting says
+  # otherwise (r3d_dlss); R3D_DLSS=0..4 wins over both
+  if render3d_st.gsl_dlss_mode < 0 {
+    render3d_st.gsl_dlss_mode = GSL_DLSS_DEFAULT
+    if r3d_env_has(render3d_st, "R3D_DLSS") { render3d_st.gsl_dlss_mode = Text.to_int(r3d_env(render3d_st, "R3D_DLSS")) }
+  }
   print(`r3d: streamline: DLSS {render3d_st.gsl_dlss_ok}, ray reconstruction {render3d_st.gsl_rr_ok}, frame generation {render3d_st.gsl_fg_ok}, Reflex {render3d_st.gsl_reflex_ok}`)
 }
 

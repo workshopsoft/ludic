@@ -1,0 +1,196 @@
+# ============================================================================
+# mfx.ludic — Apple MetalFX temporal upscaling on the Vulkan renderer (macOS, MoltenVK).
+#
+# The third-party temporal upscaler on a Mac, in the slot DLSS takes on Windows (streamline.ludic) and Unreal's
+# ITemporalUpscaler gives its own: the lit HDR frame (after the water, the blended actors and the light shafts, before
+# bloom and the tonemap) is drawn at the render size (upscale.ludic) and resolved to the display's by
+# MTLFXTemporalScaler, from the same inputs DLSS takes - the jitter (a Halton (2, 3) cycle), the motion target
+# (taa.ludic: prev uv - this uv), the scene's reversed depth - and a reset on a cut or a new size.
+#
+# MoltenVK draws Vulkan on Metal, and VK_EXT_metal_objects hands back what MetalFX needs: the MTLDevice, the queue's
+# MTLCommandQueue and each image's MTLTexture. MetalFX encodes into a Metal command buffer of its own, so the frame is
+# submitted up to the upscale (gvk_frame_split), the scaler's command buffer is committed to the same queue, and the rest
+# of the frame follows in a new Vulkan command buffer: Metal runs a queue's command buffers in commit order, and every
+# texture MoltenVK makes is hazard-tracked, so the scaler reads the finished frame and the passes after it read its result.
+#
+# R3D_METALFX=0..4: off, native AA (100%), quality (67%), balanced (58%), performance (50%) - DLSS's modes and their
+# screen percentages. Quality is the default where the device has MetalFX (mfx_default_mode). R3D_METALFX_JX / _JY /
+# _MVY = -1 flip a sign of the jitter or the vertical motion, to check the conventions against the picture.
+# ============================================================================
+
+const MFX_PHASES: int = 32                # as DLSS's (streamline.ludic): at least 8 x (display / render)^2 phases
+const MTL_PIXEL_RG16F: int = 105          # MTLPixelFormatRG16Float
+const MTL_PIXEL_RGBA16F: int = 115        # MTLPixelFormatRGBA16Float
+const MTL_PIXEL_DEPTH32F: int = 252       # MTLPixelFormatDepth32Float
+const MFX_MODE_DEFAULT: int = 2           # quality, where the device has MetalFX
+# VK_EXT_metal_objects' structure types (vulkan_core.h; vk_api.ludic was generated without them)
+const MFX_ST_OBJECTS: int = 1000311001     # VkExportMetalObjectsInfoEXT
+const MFX_ST_DEVICE: int = 1000311002      # VkExportMetalDeviceInfoEXT
+const MFX_ST_QUEUE: int = 1000311003       # VkExportMetalCommandQueueInfoEXT
+const MFX_ST_TEXTURE: int = 1000311006     # VkExportMetalTextureInfoEXT
+
+# the mode when the game says none: quality on a Mac whose device has MetalFX, off elsewhere
+function mfx_default_mode(render3d_st: Render3dState) -> int {
+  if Os.platform() != "macos" { return 0 }
+  return MFX_MODE_DEFAULT
+}
+
+# the setting, a game's; R3D_METALFX=0..4 wins over it
+export function r3d_metalfx(render3d_st: mut Render3dState, mode: int) -> void {
+  var m = mode
+  if r3d_env_has(render3d_st, "R3D_METALFX") { m = Text.to_int(r3d_env(render3d_st, "R3D_METALFX")) }
+  if m != render3d_st.mfx_mode { render3d_st.mfx_reset = true }
+  render3d_st.mfx_mode = m
+}
+
+# After vkCreateDevice: the Metal objects, and whether this device has MetalFX's temporal scaler. The export structs are
+# made here once; a frame only fills them.
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function mfx_init(render3d_st: mut Render3dState) -> void {
+  if render3d_st.mfx_mode < 0 {
+    render3d_st.mfx_mode = mfx_default_mode(render3d_st)
+    if r3d_env_has(render3d_st, "R3D_METALFX") { render3d_st.mfx_mode = Text.to_int(r3d_env(render3d_st, "R3D_METALFX")) }
+  }
+  if Os.platform() != "macos" or not render3d_st.gvk_has_metal_objects or Vk.mfx_open() == 0 { return }
+  render3d_st.mfx_export = Vk.get_device_proc_addr(render3d_st.gvk_dev, "vkExportMetalObjectsEXT")
+  if render3d_st.mfx_export == null { return }
+  render3d_st.mfx_info = bytes(16)                         # VkExportMetalObjectsInfoEXT
+  render3d_st.mfx_obj = bytes(56)                          # the export asked for, one at a time
+  # VkExportMetalDeviceInfoEXT { sType, pNext, mtlDevice }
+  mfx_ask(render3d_st, MFX_ST_DEVICE)
+  render3d_st.mfx_dev = Vk.get_ptr(render3d_st.mfx_obj, 16)
+  # VkExportMetalCommandQueueInfoEXT { sType, pNext, queue, mtlCommandQueue }
+  Vk.zero(render3d_st.mfx_obj, 56)
+  Vk.put_i32(render3d_st.mfx_obj, 0, MFX_ST_QUEUE)
+  Vk.put_ptr(render3d_st.mfx_obj, 16, render3d_st.gvk_queue)
+  mfx_call_export(render3d_st)
+  render3d_st.mfx_queue = Vk.get_ptr(render3d_st.mfx_obj, 24)
+  if render3d_st.mfx_dev == null or render3d_st.mfx_queue == null { return }
+  render3d_st.mfx_ok = Vk.mfx_supports(render3d_st.mfx_dev) == 1
+  if render3d_st.mfx_ok { render3d_st.mfx_max_scale = float_from_bits(Vk.mfx_max_scale(render3d_st.mfx_dev)) }
+  mfx_say_probe(render3d_st)
+}
+function mfx_ask(render3d_st: mut Render3dState, stype: int) -> void {
+  Vk.zero(render3d_st.mfx_obj, 56)
+  Vk.put_i32(render3d_st.mfx_obj, 0, stype)
+  mfx_call_export(render3d_st)
+}
+function mfx_call_export(render3d_st: mut Render3dState) -> void {
+  Vk.zero(render3d_st.mfx_info, 16)
+  Vk.put_i32(render3d_st.mfx_info, 0, MFX_ST_OBJECTS)
+  Vk.put_ptr(render3d_st.mfx_info, 8, render3d_st.mfx_obj)
+  Vk.sl_call_pp(render3d_st.mfx_export, render3d_st.gvk_dev, render3d_st.mfx_info)
+}
+# a renderer texture's MTLTexture: VkExportMetalTextureInfoEXT { sType, pNext, image, imageView, bufferView, plane, mtlTexture }
+function mfx_texture(render3d_st: mut Render3dState, tex: int) -> pointer {
+  Vk.zero(render3d_st.mfx_obj, 56)
+  Vk.put_i32(render3d_st.mfx_obj, 0, MFX_ST_TEXTURE)
+  Vk.put_i64(render3d_st.mfx_obj, 16, render3d_st.gvk_tex_image[tex])
+  Vk.put_i32(render3d_st.mfx_obj, 40, VK_IMAGE_ASPECT_PLANE_0_BIT)
+  mfx_call_export(render3d_st)
+  return Vk.get_ptr(render3d_st.mfx_obj, 48)
+}
+
+# MetalFX resolves this frame: a mode is set, the device has it, and DLSS is not resolving
+function mfx_live(render3d_st: Render3dState) -> bool { return render3d_st.mfx_ok and render3d_st.mfx_mode > 0 and render3d_st.gpu_kind == GPU_VK and not r3d_dlss_live(render3d_st) }
+
+# the mode's screen percentage as a fraction of the display (DLSS's modes: sl::DLSSMode's scales)
+function mfx_fraction(render3d_st: Render3dState) -> float {
+  let m = render3d_st.mfx_mode
+  if m == 1 { return 1.0 }
+  if m == 3 { return 0.58 }
+  if m == 4 { return 0.5 }
+  return 0.6667
+}
+# the least fraction the scaler takes (supportedInputContentMaxScaleForDevice: is display / render)
+function mfx_min_fraction(render3d_st: Render3dState) -> float {
+  if render3d_st.mfx_max_scale > 1.0 { return 1.0 / render3d_st.mfx_max_scale }
+  return 0.5
+}
+
+# cam_begin_frame, after gsl_jitter_frame: this frame's sub-pixel offset while MetalFX resolves
+function mfx_jitter_frame(render3d_st: mut Render3dState) -> void {
+  if not mfx_live(render3d_st) or not render3d_st.mfx_eval_ok or render3d_st.post_w <= 0 or render3d_st.post_h <= 0 { return }
+  render3d_st.mfx_frame += 1
+  let i = (render3d_st.mfx_frame % MFX_PHASES) + 1
+  render3d_st.gsl_jpx = gsl_halton(i, 2) - 0.5
+  render3d_st.gsl_jpy = gsl_halton(i, 3) - 0.5
+  render3d_st.gsl_jitter_x = 2.0 * render3d_st.gsl_jpx / float(render3d_st.post_w)
+  render3d_st.gsl_jitter_y = 2.0 * render3d_st.gsl_jpy / float(render3d_st.post_h)
+}
+
+# the scaler and its output at this frame's sizes; a new size is a new scaler (its input size is fixed when it is made)
+function mfx_targets(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.mfx_out == null or render3d_st.mfx_out.w != gfx_width() or render3d_st.mfx_out.h != gfx_height() {
+    if render3d_st.mfx_out != null { target_free(render3d_st, render3d_st.mfx_out) }
+    render3d_st.gvk_storage_next = true
+    render3d_st.mfx_out = target_new(render3d_st, gfx_width(), gfx_height(), GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    render3d_st.gvk_storage_next = false
+    render3d_st.mfx_reset = true
+  }
+  if render3d_st.mfx_scaler == null or render3d_st.mfx_iw != render3d_st.post_w or render3d_st.mfx_ih != render3d_st.post_h or render3d_st.mfx_ow != gfx_width() or render3d_st.mfx_oh != gfx_height() {
+    # the frame before still reads the old scaler: it goes once the queue has finished with it
+    if render3d_st.mfx_scaler != null { gvk_frame_wait(render3d_st);  Vk.queue_wait_idle(render3d_st.gvk_queue);  Vk.mfx_release(render3d_st.mfx_scaler) }
+    render3d_st.mfx_iw = render3d_st.post_w;  render3d_st.mfx_ih = render3d_st.post_h;  render3d_st.mfx_ow = gfx_width();  render3d_st.mfx_oh = gfx_height()
+    # no exposure texture: the colour is the scene's own linear HDR, before the eye's adaptation, and MetalFX meters it
+    render3d_st.mfx_scaler = Vk.mfx_new(render3d_st.mfx_dev, render3d_st.mfx_iw, render3d_st.mfx_ih, render3d_st.mfx_ow, render3d_st.mfx_oh, MTL_PIXEL_RGBA16F, MTL_PIXEL_DEPTH32F, MTL_PIXEL_RG16F, MTL_PIXEL_RGBA16F, 1)
+    render3d_st.mfx_reset = true
+    if render3d_st.mfx_scaler == null { mfx_say_failed("newTemporalScalerWithDevice");  render3d_st.mfx_ok = false;  return false }
+    if not render3d_st.mfx_said_usage { render3d_st.mfx_said_usage = true;  mfx_say_usage(render3d_st) }
+  }
+  return true
+}
+
+# Upscale post_hdr into mfx_out; the colour the rest of post reads (post_hdr's own if it could not).
+function mfx_eval(render3d_st: mut Render3dState) -> int {
+  render3d_st.post_color_w = render3d_st.post_w;  render3d_st.post_color_h = render3d_st.post_h
+  if not mfx_targets(render3d_st) { render3d_st.mfx_eval_ok = false;  return render3d_st.post_hdr.color }
+  if not render3d_st.taa_vel_ok or render3d_st.taa_vel == null or render3d_st.taa_vel.w != render3d_st.post_w or render3d_st.taa_vel.h != render3d_st.post_h {
+    # without this frame's motion there is nothing to reproject the history by: drop it
+    render3d_st.mfx_reset = true
+  }
+  if not gvk_frame_split(render3d_st) { render3d_st.mfx_eval_ok = false;  return render3d_st.post_hdr.color }
+  let color = mfx_texture(render3d_st, render3d_st.post_hdr.color)
+  let depth = mfx_texture(render3d_st, render3d_st.post_hdr.depth)
+  let motion = mfx_texture(render3d_st, render3d_st.taa_vel.color)
+  let out = mfx_texture(render3d_st, render3d_st.mfx_out.color)
+  if color == null or depth == null or motion == null or out == null { mfx_say_failed("vkExportMetalObjectsEXT");  render3d_st.mfx_ok = false;  return render3d_st.post_hdr.color }
+  # The jitter in render pixels, MetalFX's x right and y down: (jpx, -jpy), the projection's offset (camera.ludic) with its
+  # vertical sign turned. Chosen against the picture, island downtown at 67%: a still camera 60 frames in and a slow rising pan,
+  # all four sign pairs (R3D_METALFX_JX / _JY) and the vertical motion's (R3D_METALFX_MVY): this pair alone resolved the sign's
+  # letters, the shadows' edges and the window mullions in the pan as the 100% TAA frame does; the others stair-stepped or tore.
+  # The motion is prev uv - this uv: in pixels, times the render size; Metal's rows run down as the image's do.
+  var jx = render3d_st.gsl_jpx
+  var jy = -render3d_st.gsl_jpy
+  if r3d_env_has(render3d_st, "R3D_METALFX_JX") and Text.to_int(r3d_env(render3d_st, "R3D_METALFX_JX")) < 0 { jx = -jx }
+  if r3d_env_has(render3d_st, "R3D_METALFX_JY") and Text.to_int(r3d_env(render3d_st, "R3D_METALFX_JY")) < 0 { jy = -jy }
+  let mx = float(render3d_st.post_w)
+  var my = float(render3d_st.post_h)
+  if r3d_env_has(render3d_st, "R3D_METALFX_MVY") and Text.to_int(r3d_env(render3d_st, "R3D_METALFX_MVY")) < 0 { my = -my }
+  # a cut (taa_motion_pass sets gsl_reset with taa_reset; taa_reset alone is also set on every frame TAA did not resolve)
+  var reset = 0
+  if render3d_st.mfx_reset or render3d_st.gsl_reset { reset = 1 }
+  let ok = Vk.mfx_encode(render3d_st.mfx_scaler, render3d_st.mfx_queue, color, depth, motion, out, float_bits(jx), float_bits(jy), float_bits(mx), float_bits(my), reset, 1)
+  render3d_st.mfx_reset = false
+  render3d_st.gsl_reset = false
+  render3d_st.mfx_eval_ok = ok == 1
+  if ok != 1 { mfx_say_failed("commandBuffer");  return render3d_st.post_hdr.color }
+  render3d_st.post_color_w = gfx_width();  render3d_st.post_color_h = gfx_height()
+  return render3d_st.mfx_out.color
+}
+
+function mfx_free(render3d_st: mut Render3dState) -> void {
+  if render3d_st.mfx_scaler != null { Vk.mfx_release(render3d_st.mfx_scaler);  render3d_st.mfx_scaler = null }
+}
+
+# messages, each built in a function of its own so the path that says it holds no allocation
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function mfx_say_probe(render3d_st: Render3dState) -> void { print(`r3d: metalfx: temporal scaler {render3d_st.mfx_ok}, max scale {render3d_st.mfx_max_scale}, mode {render3d_st.mfx_mode}`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function mfx_say_failed(what: string) -> void { print(`r3d: metalfx: {what} failed; drawing without it`) }
+@alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
+function mfx_say_usage(render3d_st: mut Render3dState) -> void {
+  let out = mfx_texture(render3d_st, render3d_st.mfx_out.color)
+  let col = mfx_texture(render3d_st, render3d_st.post_hdr.color)
+  print(`r3d: metalfx: {render3d_st.mfx_iw}x{render3d_st.mfx_ih} -> {render3d_st.mfx_ow}x{render3d_st.mfx_oh}; usage wanted colour {Vk.mfx_usage(render3d_st.mfx_scaler, 0)} depth {Vk.mfx_usage(render3d_st.mfx_scaler, 1)} motion {Vk.mfx_usage(render3d_st.mfx_scaler, 2)} output {Vk.mfx_usage(render3d_st.mfx_scaler, 3)}; output has {Vk.mfx_tex_info(out, 0)} storage {Vk.mfx_tex_info(out, 1)}, colour has {Vk.mfx_tex_info(col, 0)}`)
+}

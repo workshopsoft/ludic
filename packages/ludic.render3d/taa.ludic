@@ -48,7 +48,7 @@ export function r3d_taa_cut(render3d_st: mut Render3dState) -> void { render3d_s
 # cam_begin_frame, after gsl_jitter_frame: this frame's offset, in the same fields DLSS's goes in
 function taa_jitter_frame(render3d_st: mut Render3dState) -> void {
   let was = render3d_st.taa_live
-  render3d_st.taa_live = taa_wanted(render3d_st) and not gsl_dlss_live(render3d_st) and render3d_st.post_hdr != null and render3d_st.post_w > 0 and render3d_st.post_h > 0
+  render3d_st.taa_live = taa_wanted(render3d_st) and not gsl_dlss_live(render3d_st) and not mfx_live(render3d_st) and render3d_st.post_hdr != null and render3d_st.post_w > 0 and render3d_st.post_h > 0
   if not render3d_st.taa_live { return }
   if not was { render3d_st.taa_reset = true }
   let i = (render3d_st.taa_frame % TAA_PHASES) + 1
@@ -92,7 +92,7 @@ function taa_free(render3d_st: mut Render3dState) -> void {
 function taa_motion_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.taa_vel_ok = false
   if render3d_st.taa_vel == null or render3d_st.taa_prev_vp == null { return }
-  if not render3d_st.taa_live and not gsl_dlss_live(render3d_st) { return }
+  if not render3d_st.taa_live and not gsl_dlss_live(render3d_st) and not mfx_live(render3d_st) { return }
   prof_begin(render3d_st, "TAA motion")
   # the first frame, or straight after a cut: last frame's matrix is this frame's
   let dx = render3d_st.cam_pos[0] - render3d_st.taa_cam_prev[0];  let dy = render3d_st.cam_pos[1] - render3d_st.taa_cam_prev[1];  let dz = render3d_st.cam_pos[2] - render3d_st.taa_cam_prev[2]
