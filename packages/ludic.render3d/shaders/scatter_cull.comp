@@ -9,6 +9,10 @@
 // One invocation walks the list in order: packing needs a running count per bucket, and a walk of
 // tens of thousands of instances is a few hundred microseconds of GPU time - far below the CPU
 // partition and upload it replaces. A parallel prefix-sum version can come later.
+//
+// The main view's occlusion (Unreal's r.InstanceCulling.OcclusionCull, R3D_SCATTER_OCCLUSION) is not tested in this walk: its
+// sixteen HZB reads an instance would run serially here, and the walk only runs when the view moves. scatter_occl.comp tests what
+// this packed, in parallel and every frame, into the main view's records 29 .. 45; the buckets and records 0 .. 28 stay whole.
 layout(local_size_x = 1) in;
 
 layout(set = 0, binding = 0) uniform Params {

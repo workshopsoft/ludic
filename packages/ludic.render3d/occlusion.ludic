@@ -281,7 +281,13 @@ function occ_hzb_batch(render3d_st: mut Render3dState) -> int {
 
 # After the resolve: the candidates' boxes, the furthest HZB from the depth copy, and one dispatch testing every box against it
 function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
-  if not render3d_st.occ_live or render3d_st.ac_actors == null or render3d_st.post_depth_copy == null { return }
+  if render3d_st.post_depth_copy == null { return }
+  # the instance culls test the next frame against this frame's HZB (occ_inst_*): it is built even with no actor to test
+  let inst = occ_inst_wanted(render3d_st)
+  if not render3d_st.occ_live or render3d_st.ac_actors == null {
+    if inst { occ_hzb_make(render3d_st) }
+    return
+  }
   let b = render3d_st.occ_b
   let box = render3d_st.occ_hzb_box
   render3d_st.occ_live = false                               # the actors' own view test, not last frame's result
@@ -321,7 +327,34 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
   }
   render3d_st.occ_live = true
   render3d_st.occ_n = n
-  if n == 0 { return }
+  if n == 0 {
+    if inst { occ_hzb_make(render3d_st) }
+    return
+  }
+  occ_hzb_make(render3d_st)
+  let w = render3d_st.post_w
+  let h = render3d_st.post_h
+  let mips = render3d_st.occ_hzb_mips
+  let pr = render3d_st.occ_hzb_pr
+  let bufs = render3d_st.occ_hzb_bufs
+  # the tests, into this frame's result slot under its tag (never 0: a zeroed slot is no result)
+  let slot = render3d_st.gvk_frame_no & 1
+  let tag = render3d_st.gvk_frame_no % 0x3FFFFFFF + 1
+  render3d_st.occ_hzb_slot = slot
+  render3d_st.occ_hzb_tag = tag
+  let bounds = render3d_st.occ_hzb_bounds[slot]
+  gpu_buffer_upload(render3d_st, bounds, n * 32, data_of(box), GPU_DYNAMIC)
+  let vp = render3d_st.cam_vp
+  for i in 0 .. 16 { pr[i] = float_bits(vp[i]) }
+  pr[16] = w;  pr[17] = h;  pr[18] = n;  pr[19] = tag
+  pr[20] = mips[0];  pr[21] = mips[1];  pr[22] = render3d_st.occ_hzb_n_mips;  pr[23] = 0
+  for i in 0 .. OCC_HZB_MIPS * 4 { pr[24 + i] = mips[i] }
+  bufs[0] = bounds;  bufs[1] = render3d_st.occ_hzb_buf;  bufs[2] = render3d_st.occ_hzb_res[slot]
+  gpu_dispatch(render3d_st, render3d_st.occ_hzb_test, data_of(pr), (24 + OCC_HZB_MIPS * 4) * 4, bufs, (n + 63) / 64)
+}
+
+# The furthest HZB from this frame's depth copy (occ_hzb_buf), and the view it was built under kept for the next frame's instance culls
+function occ_hzb_make(render3d_st: mut Render3dState) -> void {
   let w = render3d_st.post_w
   let h = render3d_st.post_h
   occ_hzb_size(render3d_st, w, h)
@@ -346,20 +379,94 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
     gpu_dispatch_tex(render3d_st, render3d_st.occ_hzb_build, data_of(pr), 96, bufs, texs, (mips[m * 4] + 7) / 8, (mips[m * 4 + 1] + 7) / 8)
     m += k
   }
-  # the tests, into this frame's result slot under its tag (never 0: a zeroed slot is no result)
-  let slot = render3d_st.gvk_frame_no & 1
-  let tag = render3d_st.gvk_frame_no % 0x3FFFFFFF + 1
-  render3d_st.occ_hzb_slot = slot
-  render3d_st.occ_hzb_tag = tag
-  let bounds = render3d_st.occ_hzb_bounds[slot]
-  gpu_buffer_upload(render3d_st, bounds, n * 32, data_of(box), GPU_DYNAMIC)
-  let vp = render3d_st.cam_vp
-  for i in 0 .. 16 { pr[i] = float_bits(vp[i]) }
-  pr[16] = w;  pr[17] = h;  pr[18] = n;  pr[19] = tag
-  pr[20] = mips[0];  pr[21] = mips[1];  pr[22] = render3d_st.occ_hzb_n_mips;  pr[23] = 0
-  for i in 0 .. OCC_HZB_MIPS * 4 { pr[24 + i] = mips[i] }
-  bufs[0] = bounds;  bufs[1] = render3d_st.occ_hzb_buf;  bufs[2] = render3d_st.occ_hzb_res[slot]
-  gpu_dispatch(render3d_st, render3d_st.occ_hzb_test, data_of(pr), (24 + OCC_HZB_MIPS * 4) * 4, bufs, (n + 63) / 64)
+  # DeferredShadingRenderer.cpp: the furthest HZB is extracted into ViewState->PrevFrameViewInfo.HZB when instance occlusion culling is on,
+  # and the next frame's instance culling tests against it with that frame's PrevTranslatedWorldToClip (BuildInstanceDrawCommands.usf)
+  if not occ_inst_wanted(render3d_st) { render3d_st.occ_hzb_fresh = false;  return }
+  m4_copy(render3d_st.occ_hzb_prev_vp, render3d_st.cam_vp)
+  for i in 0 .. OCC_HZB_MIPS * 4 { render3d_st.occ_hzb_prev_mips[i] = mips[i] }
+  render3d_st.occ_hzb_prev_w = w;  render3d_st.occ_hzb_prev_h = h;  render3d_st.occ_hzb_prev_n = render3d_st.occ_hzb_n_mips
+  v3_copy(render3d_st.occ_hzb_prev_cam, render3d_st.cam_pos)
+  v3_copy(render3d_st.occ_hzb_prev_fwd, render3d_st.cam_fwd)
+  v3_copy(render3d_st.occ_hzb_prev_right, render3d_st.cam_right)
+  render3d_st.occ_hzb_prev_serial = render3d_st.sc_serial_now
+  render3d_st.occ_hzb_fresh = true
+}
+
+# ---- the GPU instance culls' occlusion (Unreal 5.8 r.InstanceCulling.OcclusionCull) -----------------------------------------------------------------------------
+# Unreal's instance culling (InstanceCulling/InstanceCullingContext.cpp, BuildInstanceDrawCommands.usf under OCCLUSION_CULL_INSTANCES) tests each
+# instance that survived the frustum against the PREVIOUS frame's furthest HZB (View.PrevViewInfo.HZB): its bounds projected with the previous
+# view (BoxCullFrustum with PrevTranslatedWorldToClip), a box that crosses the near plane kept, GetScreenRect at a 4-texel footprint and
+# IsVisibleHZB's 4 x 4 samples (Nanite/NaniteHZBCull.ush). The HZB exists only when the frame before built one, and a camera reset drops it:
+# SceneVisibility.cpp bResetCamera (the first frame, View.bCameraCut, IsLargeCameraMovement at 75 degrees or r.CameraCutTranslationThreshold
+# 10000 cm) gives the view a fresh PrevViewInfo with no HZB, so nothing is occlusion culled that frame. A floating-origin rebase is a reset here
+# too (render space moved under the previous matrix). The main view only: the shadow and local light lists are never occlusion culled.
+# R3D_KINST_OCCLUSION=0 (buildings and kits, kinst_cull.comp), R3D_SCATTER_OCCLUSION=0 (GPU scatter layers, scatter_occl.comp) and
+# R3D_GRASS_OCCLUSION=0 (grass, grass_cull.comp) switch each off; all ride on the HZB path (R3D_UE_OCCLUSION, R3D_UE_HZB_OCCLUSION not 0).
+const OCC_INST_KINST: int = 1
+const OCC_INST_SCATTER: int = 2
+const OCC_INST_GRASS: int = 4
+const OCC_CUT_DEG: float = 75.0       # IsLargeCameraMovement's rotation threshold in bResetCamera (SceneVisibility.cpp)
+const OCC_CUT_M: float = 100.0        # r.CameraCutTranslationThreshold (GCameraCutTranslationThreshold, 10000 cm)
+
+function occ_inst_flags(render3d_st: mut Render3dState) -> int {
+  if render3d_st.occ_inst_flags < 0 {
+    var f = 0
+    if not (r3d_env_has(render3d_st, "R3D_KINST_OCCLUSION") and r3d_env(render3d_st, "R3D_KINST_OCCLUSION") == "0") { f = f | OCC_INST_KINST }
+    if not (r3d_env_has(render3d_st, "R3D_SCATTER_OCCLUSION") and r3d_env(render3d_st, "R3D_SCATTER_OCCLUSION") == "0") { f = f | OCC_INST_SCATTER }
+    if not (r3d_env_has(render3d_st, "R3D_GRASS_OCCLUSION") and r3d_env(render3d_st, "R3D_GRASS_OCCLUSION") == "0") { f = f | OCC_INST_GRASS }
+    render3d_st.occ_inst_flags = f
+  }
+  return render3d_st.occ_inst_flags
+}
+
+# whether this frame's HZB is kept for the next frame's instance culls: any of them on, and the HZB path live
+function occ_inst_wanted(render3d_st: mut Render3dState) -> bool {
+  return occ_inst_flags(render3d_st) != 0 and occ_on(render3d_st) and render3d_st.occ_hzb
+}
+
+# Once a frame, before any instance cull (render.ludic): whether this frame's main view tests against the HZB the frame before built
+# (Unreal's PrevViewInfo.HZB valid, no camera reset). The HZB is taken once: a frame that builds none leaves the next one with none.
+function occ_inst_begin(render3d_st: mut Render3dState) -> void {
+  render3d_st.occ_inst_ok = false
+  let fresh = render3d_st.occ_hzb_fresh
+  render3d_st.occ_hzb_fresh = false
+  # decided (and the HZB path made) here as well, so the pyramid is built even before an actor asks for occlusion
+  if not occ_inst_wanted(render3d_st) { return }
+  if not fresh or render3d_st.cam_right == null or render3d_st.cam_fwd == null { return }
+  # IsLargeCameraMovement: the view's right, up and forward each within 75 degrees of the last frame's, its origin within the threshold
+  let lim = Math.cos(Math.deg_to_rad(OCC_CUT_DEG))
+  let f = render3d_st.cam_fwd
+  let r = render3d_st.cam_right
+  let pf = render3d_st.occ_hzb_prev_fwd
+  let pr = render3d_st.occ_hzb_prev_right
+  if v3_dot(f, pf) < lim or v3_dot(r, pr) < lim { return }
+  # up = right x forward, for both
+  let ux = r[1] * f[2] - r[2] * f[1];  let uy = r[2] * f[0] - r[0] * f[2];  let uz = r[0] * f[1] - r[1] * f[0]
+  let px = pr[1] * pf[2] - pr[2] * pf[1];  let py = pr[2] * pf[0] - pr[0] * pf[2];  let pz = pr[0] * pf[1] - pr[1] * pf[0]
+  if ux * px + uy * py + uz * pz < lim { return }
+  if v3_dist(render3d_st.cam_pos, render3d_st.occ_hzb_prev_cam) > OCC_CUT_M { return }
+  if render3d_st.sc_serial_now != render3d_st.occ_hzb_prev_serial { return }
+  render3d_st.occ_inst_ok = true
+}
+
+# whether cull `which` (OCC_INST_*) tests this frame's main view against last frame's HZB
+function occ_inst_live(render3d_st: mut Render3dState, which: int) -> bool {
+  return render3d_st.occ_inst_ok and (occ_inst_flags(render3d_st) & which) != 0
+}
+
+# The culls' shared tail of parameters at pr[at .. at + 84) (the shaders' hvp, hview, hlv[16], std140): the view-projection the HZB was
+# built under, its frame's width and height, its mip count and whether to test (0: every instance visible), then each mip's w, h, first float
+function occ_inst_params(render3d_st: Render3dState, pr: words, at: int, on: bool) -> void {
+  for i in 0 .. 16 { pr[at + i] = float_bits(render3d_st.occ_hzb_prev_vp[i]) }
+  pr[at + 16] = render3d_st.occ_hzb_prev_w;  pr[at + 17] = render3d_st.occ_hzb_prev_h;  pr[at + 18] = render3d_st.occ_hzb_prev_n
+  if on { pr[at + 19] = 1 } else { pr[at + 19] = 0 }
+  for i in 0 .. OCC_HZB_MIPS * 4 { pr[at + 20 + i] = render3d_st.occ_hzb_prev_mips[i] }
+}
+
+# the HZB's buffer for a cull's binding, or `other` (bound, never read: the test is off) before there is one
+function occ_inst_buf(render3d_st: Render3dState, other: int) -> int {
+  if render3d_st.occ_hzb_buf > 0 { return render3d_st.occ_hzb_buf }
+  return other
 }
 
 # last frame's n results: hidden where its own tag says not visible; a slot the GPU has not reached yet is visible
