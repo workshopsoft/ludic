@@ -1,0 +1,43 @@
+// ue_histogram.comp - Unreal's exposure histogram by atomics (Histogram.usf MainAtomicCS, r.Histogram.UseAtomic 1, UE 5.8): a group of
+// 64 threads a row of the half-resolution scene (u_lod 1); each texel's luminance (CalculateEyeAdaptationLuminance) splits bilinearly
+// between the two of HISTOGRAM_SIZE (64) buckets around its log2 position (CalculateBucketsAndWeights, bucket 0 x
+// BlackHistogramBucketInfluence), added in 1/2^19 fixed point (PackFloatToUINT32) to the group's shared histogram, which then adds
+// into the frame's (InterlockedAddToTexture, the 32-bit path: a low word and a carry word a bucket). The meter mask is Unreal's
+// default (white, weight 1).
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform Params {
+  vec4 hist;            // HistogramScale, HistogramBias, LuminanceMin, the mip read
+  vec4 misc;            // BlackHistogramBucketInfluence, the mip's width, height
+} pr;
+layout(set = 0, binding = 1) buffer Scatter { uint scatter[]; };    // bucket b: [2b] low word, [2b + 1] carries
+layout(set = 0, binding = 2) uniform sampler2D u_scene;
+const uint HISTOGRAM_SIZE = 64u;
+const vec3 LUMA = vec3(0.2126390059, 0.7151686788, 0.0721923154);
+shared uint sh[HISTOGRAM_SIZE];
+uint packFloat(float v) { return uint(v * float(1 << 19)); }
+void addToScatter(uint i, uint v) {
+  uint old = atomicAdd(scatter[i * 2u], v);
+  if (0xffffffffu - v < old) atomicAdd(scatter[i * 2u + 1u], 1u);
+}
+void main() {
+  uint t = gl_LocalInvocationID.x;
+  sh[t] = 0u;
+  barrier();
+  int lod = int(pr.hist.w);
+  int w = int(pr.misc.y);
+  int y = int(gl_WorkGroupID.x);
+  for (int x = int(t); x < w; x += 64) {
+    vec3 c = texelFetch(u_scene, ivec2(x, y), lod).rgb;
+    float l = max(dot(c, LUMA), pr.hist.z);
+    float f = clamp(log2(l) * pr.hist.x + pr.hist.y, 0.0, 1.0) * float(HISTOGRAM_SIZE - 1u);
+    uint b0 = min(uint(f), HISTOGRAM_SIZE - 1u);
+    uint b1 = min(b0 + 1u, HISTOGRAM_SIZE - 1u);
+    float w1 = fract(f);
+    float w0 = 1.0 - w1;
+    if (b0 == 0u) w0 *= pr.misc.x;
+    atomicAdd(sh[b0], packFloat(w0));
+    atomicAdd(sh[b1], packFloat(w1));
+  }
+  barrier();
+  addToScatter(t, sh[t]);
+}

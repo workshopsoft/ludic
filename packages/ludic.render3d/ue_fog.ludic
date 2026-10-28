@@ -170,6 +170,7 @@ function ue_fog_pass(render3d_st: mut Render3dState) -> void {
   if render3d_st.ue_fog_t == null { render3d_st.ue_fog_t = ue_fog_target(render3d_st, w, h) }
   if render3d_st.ue_fog_p == 0 {
     render3d_st.ue_fog_p = r3d_program(render3d_st, "fullscreen.vert", "ue_fog.frag", "")
+    render3d_st.ue_fog_pa = r3d_program(render3d_st, "fullscreen.vert", "ue_fog.frag", "#define VF_ATLAS\n")
     render3d_st.ue_fog_ap = r3d_program(render3d_st, "fullscreen.vert", "ue_fog_apply.frag", "")
   }
   let s = r3d_sky_atmosphere(render3d_st)
@@ -177,7 +178,8 @@ function ue_fog_pass(render3d_st: mut Render3dState) -> void {
   gpu_depth_test(render3d_st, false)
   gpu_depth_write(render3d_st, false)
   gpu_blend(render3d_st, false)
-  let p = render3d_st.ue_fog_p
+  var p = render3d_st.ue_fog_p
+  if ue_volfog_atlas(render3d_st) { p = render3d_st.ue_fog_pa }
   target_bind(render3d_st, render3d_st.ue_fog_t)
   gpu_use_program(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_depth", 0, render3d_st.post_hdr.depth)

@@ -4,13 +4,19 @@
 # UeVolFog holds UExponentialHeightFogComponent's volumetric settings (bEnableVolumetricFog, VolumetricFogScatteringDistribution 0.2,
 # albedo white, emissive black, extinction scale 1, VolumetricFogDistance 6000 cm = 60 m) and the r.VolumetricFog.* defaults
 # (GridPixelSize 16, GridSizeZ 64, DepthDistributionScale 32, TemporalReprojection 1, Jitter 1, HistoryWeight 0.9,
-# GridCenterOffsetFromDepthBuffer 0.5, OffsetThresholdToAcceptDepthBufferOffset 1). Unreal's component leaves bEnableVolumetricFog
+# GridCenterOffsetFromDepthBuffer 0.5, OffsetThresholdToAcceptDepthBufferOffset 1, ConservativeDepth 1). Unreal's component leaves bEnableVolumetricFog
 # off; it is on here because the game wants its shafts. Lights take part by their VolumetricScatteringIntensity (1): the sun with
 # its cascades, height-field and cloud shadows, and the sky light (SkyLightVolumetricScatteringIntensity 1) through its SH.
 #
 # Each frame (after the opaque scene, the water and the blended actors): ue_volfog.frag VF_SCATTER per slice into this frame's grid
 # (last frame's as history), VF_INTEGRATE per slice into the integrated grid; ue_fog.frag combines it (CombineVolumetricFog) and
-# keeps the analytic fog to beyond its range. While it runs the old shafts (volumetric.frag) are off.
+# keeps the analytic fog to beyond its range. While it runs the old shafts (volumetric.frag) are off. With ConservativeDepth a tile's
+# furthest depth (VF_CDEPTH, before the scatter) lets the scatter skip cells wholly behind the scene and the history read avoid them
+# (R3D_UE_VOLFOG_CONSERVATIVE_DEPTH=0 turns it off). The integration is FinalIntegrationCS's front-to-back march, a slice a pass
+# with the sum so far carried in a second target (R3D_UE_VOLFOG_MARCH=0: each slice integrates every slice before it again).
+# The grid is a 2D atlas, a tile a slice (ue_volfog.frag VF_ATLAS): one pass scatters every cell and one integrates them, where the
+# array grid (R3D_UE_VOLFOG_ATLAS=0) took a pass a slice for each. Unreal writes a 3D texture from compute; this GPU layer has no
+# 3D or storage-image targets, and a pass a slice was a render pass a slice.
 # R3D_UE_VOLFOG=0 (or r3d_ue_volfog(st, false)) turns it off; needs Unreal's fog.
 # ============================================================================
 
@@ -35,7 +41,10 @@ property UeVolFog {
   jitter: bool = true,                                 # r.VolumetricFog.Jitter
   history_weight: float = 0.9,                         # r.VolumetricFog.HistoryWeight
   grid_center_offset_from_depth_buffer: float = 0.5,   # r.VolumetricFog.GridCenterOffsetFromDepthBuffer
-  offset_threshold_to_accept_depth_buffer_offset: float = 1.0
+  offset_threshold_to_accept_depth_buffer_offset: float = 1.0,
+  conservative_depth: bool = true,                     # r.VolumetricFog.ConservativeDepth
+  march: bool = true,                                  # the integration carried slice to slice (R3D_UE_VOLFOG_MARCH), array grid only
+  atlas: bool = true                                   # the grid as one 2D atlas (R3D_UE_VOLFOG_ATLAS)
 }
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
@@ -44,6 +53,10 @@ export function r3d_volumetric_fog(render3d_st: mut Render3dState) -> UeVolFog {
     render3d_st.ue_vf_s = new UeVolFog
     # R3D_UE_VOLFOG_G=<g>: VolumetricFogScatteringDistribution for shots and tuning (Unreal's default 0.2)
     if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_G") { render3d_st.ue_vf_s.scattering_distribution = ue_parse_float(r3d_env(render3d_st, "R3D_UE_VOLFOG_G")) }
+    # R3D_UE_VOLFOG_CONSERVATIVE_DEPTH=0: r.VolumetricFog.ConservativeDepth 0, every cell lit
+    if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_CONSERVATIVE_DEPTH") and r3d_env(render3d_st, "R3D_UE_VOLFOG_CONSERVATIVE_DEPTH") == "0" { render3d_st.ue_vf_s.conservative_depth = false }
+    if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_ATLAS") and r3d_env(render3d_st, "R3D_UE_VOLFOG_ATLAS") == "0" { render3d_st.ue_vf_s.atlas = false }
+    if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_MARCH") and r3d_env(render3d_st, "R3D_UE_VOLFOG_MARCH") == "0" { render3d_st.ue_vf_s.march = false }
   }
   return render3d_st.ue_vf_s
 }
@@ -89,15 +102,52 @@ function ue_vf_init(render3d_st: mut Render3dState) -> void {
   if render3d_st.ue_vf_gw == gw and render3d_st.ue_vf_gh == gh and render3d_st.ue_vf_gz == gz { return }
   # (a new size makes a new set; the old one is left to the device's teardown, as a resize is rare)
   render3d_st.ue_vf_gw = gw;  render3d_st.ue_vf_gh = gh;  render3d_st.ue_vf_gz = gz
+  render3d_st.ue_vf_cd_a = target_new(render3d_st, gw, gh, GPU_R32F, GPU_RED, GPU_FLOAT, false, GPU_NEAREST)
+  render3d_st.ue_vf_cd_b = target_new(render3d_st, gw, gh, GPU_R32F, GPU_RED, GPU_FLOAT, false, GPU_NEAREST)
+  render3d_st.ue_vf_cdq = target_new(render3d_st, (render3d_st.post_w + 3) / 4, (render3d_st.post_h + 3) / 4, GPU_R32F, GPU_RED, GPU_FLOAT, false, GPU_NEAREST)
+  render3d_st.ue_vf_hist_ok = false
+  render3d_st.ue_vf_cd_ok = false
+  if vf.atlas {
+    # tiles as near square as the slices allow
+    var tx = 1
+    while tx * tx < gz { tx += 1 }
+    render3d_st.ue_vf_tx = tx;  render3d_st.ue_vf_ty = (gz + tx - 1) / tx
+    let aw = gw * tx
+    let ah = gh * render3d_st.ue_vf_ty
+    render3d_st.ue_vf_ta = target_new(render3d_st, aw, ah, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    render3d_st.ue_vf_tb = target_new(render3d_st, aw, ah, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    render3d_st.ue_vf_ti = target_new(render3d_st, aw, ah, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    return
+  }
   render3d_st.ue_vf_fb_a = words(gz);  render3d_st.ue_vf_fb_b = words(gz);  render3d_st.ue_vf_fb_i = words(gz)
   render3d_st.ue_vf_a = ue_vf_array(render3d_st, gw, gh, gz, render3d_st.ue_vf_fb_a)
   render3d_st.ue_vf_b = ue_vf_array(render3d_st, gw, gh, gz, render3d_st.ue_vf_fb_b)
   render3d_st.ue_vf_i = ue_vf_array(render3d_st, gw, gh, gz, render3d_st.ue_vf_fb_i)
-  render3d_st.ue_vf_hist_ok = false
+  render3d_st.ue_vf_carry_a = target_new(render3d_st, gw, gh, GPU_RGBA32F, GPU_RGBA, GPU_FLOAT, false, GPU_NEAREST)
+  render3d_st.ue_vf_carry_b = target_new(render3d_st, gw, gh, GPU_RGBA32F, GPU_RGBA, GPU_FLOAT, false, GPU_NEAREST)
+  render3d_st.ue_vf_fb_m = words(gz)
+  for l in 0 .. gz {
+    let fb = gpu_fb_new(render3d_st)
+    gpu_fb_bind(render3d_st, fb)
+    gpu_fb_color_layer(render3d_st, 0, render3d_st.ue_vf_i, l)
+    if l % 2 == 0 { gpu_fb_color(render3d_st, 1, render3d_st.ue_vf_carry_a.color) } else { gpu_fb_color(render3d_st, 1, render3d_st.ue_vf_carry_b.color) }
+    gpu_fb_draw_buffers(render3d_st, 2)
+    render3d_st.ue_vf_fb_m[l] = fb
+  }
+  gpu_fb_bind(render3d_st, 0)
+}
+# the programs and the reprojection's matrix, once
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_vf_programs(render3d_st: mut Render3dState) -> void {
   if render3d_st.ue_vf_prev_vp == null { render3d_st.ue_vf_prev_vp = m4_new() }
   if render3d_st.ue_vf_ps == 0 {
+    render3d_st.ue_vf_psa = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_SCATTER\n#define VF_ATLAS\n")
+    render3d_st.ue_vf_pia = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_INTEGRATE\n#define VF_ATLAS\n")
+    render3d_st.ue_vf_pcd = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_CDEPTH_DOWN\n")
     render3d_st.ue_vf_ps = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_SCATTER\n")
     render3d_st.ue_vf_pi = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_INTEGRATE\n")
+    render3d_st.ue_vf_pc = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_CDEPTH\n")
+    render3d_st.ue_vf_pm = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_INTEGRATE\n#define VF_CARRY\n")
   }
 }
 
@@ -121,12 +171,14 @@ function ue_vf_common(render3d_st: mut Render3dState, p: int) -> void {
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "vf_fwd"), render3d_st.cam_fwd)
   u_f2(render3d_st, gpu_uniform(render3d_st, p, "vf_screen"), float(render3d_st.post_w), float(render3d_st.post_h))
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_pixel"), float(max(r3d_volumetric_fog(render3d_st).grid_pixel_size, 4)))
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "vf_tiles"), float(render3d_st.ue_vf_tx), float(render3d_st.ue_vf_ty))
 }
 
 # After the opaque scene, the water and the blended actors, before ue_fog_pass
 function ue_volfog_pass(render3d_st: mut Render3dState) -> void {
   if not ue_volfog_on(render3d_st) or render3d_st.ue_ap == null { return }
   ue_vf_init(render3d_st)
+  ue_vf_programs(render3d_st)
   let vf = r3d_volumetric_fog(render3d_st)
   if render3d_st.ue_vf_zp == null { render3d_st.ue_vf_zp = v3_new(0.0, 0.0, 0.0) }
   ue_vf_zparams(render3d_st, render3d_st.ue_vf_zp)
@@ -138,16 +190,43 @@ function ue_volfog_pass(render3d_st: mut Render3dState) -> void {
   var cur = render3d_st.ue_vf_a
   var cur_fb = render3d_st.ue_vf_fb_a
   var hist = render3d_st.ue_vf_b
-  if render3d_st.ue_vf_flip { cur = render3d_st.ue_vf_b;  cur_fb = render3d_st.ue_vf_fb_b;  hist = render3d_st.ue_vf_a }
+  var cd = render3d_st.ue_vf_cd_a
+  var cd_prev = render3d_st.ue_vf_cd_b
+  var cur_t = render3d_st.ue_vf_ta
+  var hist_t = render3d_st.ue_vf_tb
+  if render3d_st.ue_vf_flip { cur = render3d_st.ue_vf_b;  cur_fb = render3d_st.ue_vf_fb_b;  hist = render3d_st.ue_vf_a;  cd = render3d_st.ue_vf_cd_b;  cd_prev = render3d_st.ue_vf_cd_a;  cur_t = render3d_st.ue_vf_tb;  hist_t = render3d_st.ue_vf_ta }
   let fg = r3d_height_fog(render3d_st)
   let sl = r3d_sky_light(render3d_st)
-  var p = render3d_st.ue_vf_ps
+  # GenerateConservativeDepthBuffer: the tiles' furthest depth, from the depth's 4 x 4 furthest (as Unreal's reads an HZB level)
+  var p = render3d_st.ue_vf_pcd
+  if vf.conservative_depth {
+    target_bind(render3d_st, render3d_st.ue_vf_cdq)
+    gpu_use_program(render3d_st, p)
+    r3d_bind_2d(render3d_st, p, "u_depth", 0, render3d_st.post_hdr.depth)
+    mesh_draw(render3d_st, render3d_st.post_fs)
+    p = render3d_st.ue_vf_pc
+    target_bind(render3d_st, cd)
+    gpu_use_program(render3d_st, p)
+    ue_vf_common(render3d_st, p)
+    r3d_bind_2d(render3d_st, p, "u_depth", 0, render3d_st.ue_vf_cdq.color)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_cd_down"), 4.0)
+    mesh_draw(render3d_st, render3d_st.post_fs)
+    prof_split(render3d_st, "UE volumetric fog scatter")
+  }
+  var cd_on = 0.0
+  var cd_prev_on = 0.0
+  if vf.conservative_depth { cd_on = 1.0;  if render3d_st.ue_vf_cd_ok { cd_prev_on = 1.0 } }
+  p = render3d_st.ue_vf_ps
+  if vf.atlas { p = render3d_st.ue_vf_psa }
   gpu_use_program(render3d_st, p)
   shadow_bind(render3d_st, p)
   sky_bind_lighting(render3d_st, p)
   ue_vf_common(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "u_depth", 0, render3d_st.post_hdr.depth)
-  r3d_bind_tex(render3d_st, p, "vf_hist", 1, GPU_TEX2D_ARRAY, hist)
+  if vf.atlas { r3d_bind_2d(render3d_st, p, "vf_hist", 1, hist_t.color) } else { r3d_bind_tex(render3d_st, p, "vf_hist", 1, GPU_TEX2D_ARRAY, hist) }
+  r3d_bind_2d(render3d_st, p, "vf_cdepth", 2, cd.color)
+  r3d_bind_2d(render3d_st, p, "vf_prev_cdepth", 3, cd_prev.color)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "vf_cd_on"), cd_on, cd_prev_on)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "vf_vp"), render3d_st.cam_vp)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "vf_prev_vp"), render3d_st.ue_vf_prev_vp)
   var hist_on = 0.0
@@ -181,22 +260,42 @@ function ue_volfog_pass(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_center_threshold"), vf.offset_threshold_to_accept_depth_buffer_offset)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_debug"), ue_vf_debug(render3d_st))
   let gz = render3d_st.ue_vf_gz
-  for z in 0 .. gz {
-    gpu_fb_bind(render3d_st, cur_fb[z])
-    gpu_viewport(render3d_st, 0, 0, render3d_st.ue_vf_gw, render3d_st.ue_vf_gh)
-    u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_slice"), float(z))
+  if vf.atlas {
+    target_bind(render3d_st, cur_t)
     mesh_draw(render3d_st, render3d_st.post_fs)
+  } else {
+    for z in 0 .. gz {
+      gpu_fb_bind(render3d_st, cur_fb[z])
+      gpu_viewport(render3d_st, 0, 0, render3d_st.ue_vf_gw, render3d_st.ue_vf_gh)
+      u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_slice"), float(z))
+      mesh_draw(render3d_st, render3d_st.post_fs)
+    }
   }
   # FinalIntegrationCS, a slice at a time
+  prof_split(render3d_st, "UE volumetric fog integrate")
   p = render3d_st.ue_vf_pi
+  if vf.atlas { p = render3d_st.ue_vf_pia } else if vf.march { p = render3d_st.ue_vf_pm }
   gpu_use_program(render3d_st, p)
   ue_vf_common(render3d_st, p)
-  r3d_bind_tex(render3d_st, p, "vf_scatter", 0, GPU_TEX2D_ARRAY, cur)
+  if vf.atlas { r3d_bind_2d(render3d_st, p, "vf_scatter", 0, cur_t.color) } else { r3d_bind_tex(render3d_st, p, "vf_scatter", 0, GPU_TEX2D_ARRAY, cur) }
   var fade_inv = 100000000.0
   if vf.near_fade_in_distance > 0.0 { fade_inv = 1.0 / vf.near_fade_in_distance }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_fade_inv"), fade_inv)
+  if vf.atlas {
+    target_bind(render3d_st, render3d_st.ue_vf_ti)
+    mesh_draw(render3d_st, render3d_st.post_fs)
+  }
   for z in 0 .. gz {
-    gpu_fb_bind(render3d_st, render3d_st.ue_vf_fb_i[z])
+    if vf.atlas { break }
+    if vf.march {
+      # slice z writes the carry z % 2 names and reads the other, the slice before's
+      gpu_fb_bind(render3d_st, render3d_st.ue_vf_fb_m[z])
+      var rd = render3d_st.ue_vf_carry_b
+      if z % 2 == 1 { rd = render3d_st.ue_vf_carry_a }
+      r3d_bind_2d(render3d_st, p, "vf_carry", 1, rd.color)
+    } else {
+      gpu_fb_bind(render3d_st, render3d_st.ue_vf_fb_i[z])
+    }
     gpu_viewport(render3d_st, 0, 0, render3d_st.ue_vf_gw, render3d_st.ue_vf_gh)
     u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_slice"), float(z))
     mesh_draw(render3d_st, render3d_st.post_fs)
@@ -205,6 +304,7 @@ function ue_volfog_pass(render3d_st: mut Render3dState) -> void {
   for i in 0 .. 16 { render3d_st.ue_vf_prev_vp[i] = render3d_st.cam_vp[i] }
   render3d_st.ue_vf_flip = not render3d_st.ue_vf_flip
   render3d_st.ue_vf_hist_ok = true
+  render3d_st.ue_vf_cd_ok = vf.conservative_depth
   render3d_st.ue_vf_ready = true
   prof_end(render3d_st)
 }
@@ -219,9 +319,16 @@ function ue_volfog_bind(render3d_st: mut Render3dState, p: int) -> void {
   let zp = render3d_st.ue_vf_zp
   let px = float(max(vf.grid_pixel_size, 4))
   # the debug view shows this frame's scattering grid (the shadow factor) rather than the integrated one
-  var vol = render3d_st.ue_vf_i
-  if ue_vf_debug(render3d_st) > 0.5 { vol = render3d_st.ue_vf_a;  if not render3d_st.ue_vf_flip { vol = render3d_st.ue_vf_b } }
-  r3d_bind_tex(render3d_st, p, "uf_vol", 3, GPU_TEX2D_ARRAY, vol)
+  if vf.atlas {
+    var volt = render3d_st.ue_vf_ti
+    if ue_vf_debug(render3d_st) > 0.5 { volt = render3d_st.ue_vf_ta;  if not render3d_st.ue_vf_flip { volt = render3d_st.ue_vf_tb } }
+    r3d_bind_2d(render3d_st, p, "uf_vol", 3, volt.color)
+    u_f2(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_tiles"), float(render3d_st.ue_vf_tx), float(render3d_st.ue_vf_ty))
+  } else {
+    var vol = render3d_st.ue_vf_i
+    if ue_vf_debug(render3d_st) > 0.5 { vol = render3d_st.ue_vf_a;  if not render3d_st.ue_vf_flip { vol = render3d_st.ue_vf_b } }
+    r3d_bind_tex(render3d_st, p, "uf_vol", 3, GPU_TEX2D_ARRAY, vol)
+  }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_debug"), ue_vf_debug(render3d_st))
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_grid"), float(render3d_st.ue_vf_gw), float(render3d_st.ue_vf_gh), float(render3d_st.ue_vf_gz))
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_zp"), zp[0], zp[1], zp[2])
@@ -229,6 +336,9 @@ function ue_volfog_bind(render3d_st: mut Render3dState, p: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "uf_vol_dist"), vf.distance)
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "uf_fwd"), render3d_st.cam_fwd)
 }
+
+# the fog pass's program reads the grid as an atlas (ue_fog.frag VF_ATLAS)
+function ue_volfog_atlas(render3d_st: mut Render3dState) -> bool { return r3d_volumetric_fog(render3d_st).atlas }
 
 # R3D_UE_VOLFOG_DEBUG=1: the grid's sun shadow factor alone, shown at each pixel's depth in place of the scene (ue_fog.frag)
 function ue_vf_debug(render3d_st: mut Render3dState) -> float {

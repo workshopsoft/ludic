@@ -12,3 +12,5 @@ kinst_cull_lights|kinst_cull_lights.comp
 ue_le_grid|ue_le_grid.comp
 hzb_build|hzb_build.comp
 hzb_test|hzb_test.comp
+ue_histogram|ue_histogram.comp
+ue_histogram_convert|ue_histogram_convert.comp

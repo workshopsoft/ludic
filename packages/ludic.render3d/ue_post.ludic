@@ -177,7 +177,7 @@ function ue_lut_pass(render3d_st: mut Render3dState) -> void {
   if render3d_st.ue_lut != null and render3d_st.ue_lut.h != n { target_free(render3d_st, render3d_st.ue_lut);  render3d_st.ue_lut = null }
   if render3d_st.ue_lut == null { render3d_st.ue_lut = target_new(render3d_st, n * n, n, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR) }
   if render3d_st.ue_lut_p == 0 { render3d_st.ue_lut_p = r3d_program(render3d_st, "fullscreen.vert", "combine_luts.frag", "") }
-  prof_begin(render3d_st, "combine LUTs")
+  prof_split(render3d_st, "combine LUTs")
   let p = render3d_st.ue_lut_p
   target_bind(render3d_st, render3d_st.ue_lut)
   gpu_depth_test(render3d_st, false)
@@ -196,7 +196,6 @@ function ue_lut_pass(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_film_white_clip"), pp.film_white_clip)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lut_inv_max"), 1.0 / UE_LUT_MAX)
   mesh_draw(render3d_st, render3d_st.post_fs)
-  prof_end(render3d_st)
 }
 
 # The tonemap program's Unreal uniforms (u_ue 0 when off). Call with the tonemap program in use; binds the LUT at unit 5.
@@ -245,12 +244,57 @@ function ue_exposure_on(render3d_st: mut Render3dState) -> bool {
   return render3d_st.ue_exposure == 1
 }
 
-# post_hdr's mips are built (post_measure) before this runs
+# Unreal's histogram by atomics (r.Histogram.UseAtomic, its default 1): ue_histogram.comp a row of the scene's mip at a time into
+# fixed-point buckets, ue_histogram_convert.comp to floats, read by ue_eye_adapt.frag HIST_ATOMIC. Each texel is read once, where
+# ue_histogram.frag (the texture histogram, R3D_UE_HISTOGRAM_ATOMIC=0) reads it once for each of its 16 texels.
+function ue_hist_atomic_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_hist_atomic < 0 {
+    render3d_st.ue_hist_atomic = 1
+    if r3d_env_has(render3d_st, "R3D_UE_HISTOGRAM_ATOMIC") and r3d_env(render3d_st, "R3D_UE_HISTOGRAM_ATOMIC") == "0" { render3d_st.ue_hist_atomic = 0 }
+  }
+  return render3d_st.ue_hist_atomic == 1
+}
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function ue_ha_alloc(render3d_st: mut Render3dState) -> void {
+  render3d_st.ue_ha_c = gpu_compute_tex(render3d_st, "ue_histogram", 1, 1)
+  render3d_st.ue_ha_cc = gpu_compute(render3d_st, "ue_histogram_convert", 2)
+  render3d_st.ue_ha_scatter = gpu_buffer_new(render3d_st)
+  render3d_st.ue_ha_hist = gpu_buffer_new(render3d_st)
+  # zeroed once; the convert clears the scatter words after each frame's read
+  let zeros = words(128)
+  gpu_buffer_upload(render3d_st, render3d_st.ue_ha_scatter, 512, data_of(zeros), GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, render3d_st.ue_ha_scatter)
+  gpu_buffer_upload(render3d_st, render3d_st.ue_ha_hist, 256, data_of(zeros), GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, render3d_st.ue_ha_hist)
+  render3d_st.ue_ha_pr = words(8)
+  render3d_st.ue_ha_bufs = words(1)
+  render3d_st.ue_ha_bufs2 = words(2)
+  render3d_st.ue_ha_texs = words(1)
+  render3d_st.ue_adapt_pa = r3d_program(render3d_st, "fullscreen.vert", "ue_eye_adapt.frag", "#define HIST_ATOMIC\n")
+}
+
+# What the exposure meters: Unreal's histogram and local exposure read HalfResSceneColor, the first stage of the scene downsample
+# chain the bloom reads too (PostProcessing.cpp: QuarterRes / EighthRes with r.PostProcessing.QuarterResolutionDownsample), made
+# from the frame after its temporal resolve. Here that is ue_bloom_pass's chain, stage histogram_lod - 1, read at its mip 0; without
+# it this frame (R3D_UE_EXPOSURE_DOWNSAMPLE=0, or no bloom), post_hdr's own mip histogram_lod (post_measure builds the chain).
+function ue_meter_downsample(render3d_st: mut Render3dState, lod: int) -> Target {
+  if render3d_st.ue_meter_ds < 0 {
+    render3d_st.ue_meter_ds = 1
+    if r3d_env_has(render3d_st, "R3D_UE_EXPOSURE_DOWNSAMPLE") and r3d_env(render3d_st, "R3D_UE_EXPOSURE_DOWNSAMPLE") == "0" { render3d_st.ue_meter_ds = 0 }
+  }
+  if render3d_st.ue_meter_ds != 1 or not render3d_st.ue_bl_down_ok or lod < 1 or lod > UE_BLOOM_STAGES { return null }
+  return render3d_st.ue_bl_down[lod - 1]
+}
+
+# post_hdr's mips are built (post_measure) before this runs, unless the downsample chain stands in for them
 function ue_exposure_pass(render3d_st: mut Render3dState) -> void {
   let pp = ue_pp_now(render3d_st)
-  let lod = max(min(pp.histogram_lod, 3), 0)
-  let hw = max(render3d_st.post_hdr.w >> lod, 1)
-  let hh = max(render3d_st.post_hdr.h >> lod, 1)
+  var lod = max(min(pp.histogram_lod, 3), 0)
+  var hw = max(render3d_st.post_hdr.w >> lod, 1)
+  var hh = max(render3d_st.post_hdr.h >> lod, 1)
+  var src = render3d_st.post_hdr.color
+  let ds = ue_meter_downsample(render3d_st, lod)
+  if ds != null { src = ds.color;  hw = ds.w;  hh = ds.h;  lod = 0 }
   let bands = (hh + UE_HIST_ROWS - 1) / UE_HIST_ROWS
   if render3d_st.ue_hist != null and render3d_st.ue_hist.h != bands { target_free(render3d_st, render3d_st.ue_hist);  render3d_st.ue_hist = null }
   if render3d_st.ue_hist == null { render3d_st.ue_hist = target_new(render3d_st, 16, bands, GPU_RGBA32F, GPU_RGBA, GPU_FLOAT, false, GPU_NEAREST) }
@@ -284,27 +328,44 @@ function ue_exposure_pass(render3d_st: mut Render3dState) -> void {
   let start_down = pp.exponential_transition_distance / Math.max(pp.auto_exposure_speed_down, 0.001)
   let m_up = eps / ((1.0 - Math.pow(2.0, -eps * pp.auto_exposure_speed_up)) * start_up)
   let m_down = eps / ((1.0 - Math.pow(2.0, -eps * pp.auto_exposure_speed_down)) * start_down)
-  prof_begin(render3d_st, "UE histogram")
+  let atomic = ue_hist_atomic_on(render3d_st)
+  if atomic and render3d_st.ue_ha_c == 0 { ue_ha_alloc(render3d_st) }
+  prof_split(render3d_st, "UE histogram")
   var p = render3d_st.ue_hist_p
-  target_bind(render3d_st, render3d_st.ue_hist)
+  if atomic {
+    let pr = render3d_st.ue_ha_pr
+    pr[0] = float_bits(hist_scale);  pr[1] = float_bits(hist_bias);  pr[2] = float_bits(Math.pow(2.0, log_min));  pr[3] = float_bits(float(lod))
+    pr[4] = float_bits(pp.black_histogram_bucket_influence);  pr[5] = float_bits(float(hw));  pr[6] = float_bits(float(hh));  pr[7] = 0
+    render3d_st.ue_ha_bufs[0] = render3d_st.ue_ha_scatter
+    render3d_st.ue_ha_texs[0] = src
+    gpu_dispatch_tex(render3d_st, render3d_st.ue_ha_c, data_of(pr), 32, render3d_st.ue_ha_bufs, render3d_st.ue_ha_texs, hh, 1)
+    pr[0] = float_bits(1.0 / (float(hw) * float(hh)))
+    render3d_st.ue_ha_bufs2[0] = render3d_st.ue_ha_scatter
+    render3d_st.ue_ha_bufs2[1] = render3d_st.ue_ha_hist
+    gpu_dispatch(render3d_st, render3d_st.ue_ha_cc, data_of(pr), 16, render3d_st.ue_ha_bufs2, 1)
+  } else {
+    target_bind(render3d_st, render3d_st.ue_hist)
+    gpu_depth_test(render3d_st, false)
+    gpu_blend(render3d_st, false)
+    gpu_use_program(render3d_st, p)
+    r3d_bind_2d(render3d_st, p, "u_scene", 0, src)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lod"), float(lod))
+    u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_size"), float(hw), float(hh))
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rows"), float(UE_HIST_ROWS))
+    u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_scale_bias"), hist_scale, hist_bias)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lum_min"), Math.pow(2.0, log_min))
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_black"), pp.black_histogram_bucket_influence)
+    mesh_draw(render3d_st, render3d_st.post_fs)
+  }
+  prof_split(render3d_st, "UE eye adaptation")
+  let next = 1 - render3d_st.post_adapt_i
+  p = render3d_st.ue_adapt_p
+  if atomic { p = render3d_st.ue_adapt_pa }
+  target_bind(render3d_st, render3d_st.post_adapt_t[next])
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
   gpu_use_program(render3d_st, p)
-  r3d_bind_2d(render3d_st, p, "u_scene", 0, render3d_st.post_hdr.color)
-  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lod"), float(lod))
-  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_size"), float(hw), float(hh))
-  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rows"), float(UE_HIST_ROWS))
-  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_scale_bias"), hist_scale, hist_bias)
-  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_lum_min"), Math.pow(2.0, log_min))
-  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_black"), pp.black_histogram_bucket_influence)
-  mesh_draw(render3d_st, render3d_st.post_fs)
-  prof_end(render3d_st)
-  prof_begin(render3d_st, "UE eye adaptation")
-  let next = 1 - render3d_st.post_adapt_i
-  p = render3d_st.ue_adapt_p
-  target_bind(render3d_st, render3d_st.post_adapt_t[next])
-  gpu_use_program(render3d_st, p)
-  r3d_bind_2d(render3d_st, p, "u_hist", 0, render3d_st.ue_hist.color)
+  if atomic { gpu_bind_buffer(render3d_st, p, "u_hist_buf", render3d_st.ue_ha_hist) } else { r3d_bind_2d(render3d_st, p, "u_hist", 0, render3d_st.ue_hist.color) }
   r3d_bind_2d(render3d_st, p, "u_prev", 1, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_bands"), float(bands))
   u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_percent"), low, high)
@@ -320,7 +381,6 @@ function ue_exposure_pass(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_force"), force)
   mesh_draw(render3d_st, render3d_st.post_fs)
   render3d_st.post_adapt_i = next
-  prof_end(render3d_st)
 }
 
 # ---- Unreal's Gaussian bloom (BM_SOG) ----------------------------------------------------------------------------------------------
@@ -442,7 +502,7 @@ function ue_bloom_pass(render3d_st: mut Render3dState) -> int {
   ue_bloom_targets(render3d_st, render3d_st.post_color_w, render3d_st.post_color_h)
   if render3d_st.ue_down_p == 0 { render3d_st.ue_down_p = r3d_program(render3d_st, "fullscreen.vert", "ue_downsample.frag", "") }
   if render3d_st.ue_blur_p == 0 { render3d_st.ue_blur_p = r3d_program(render3d_st, "fullscreen.vert", "ue_blur.frag", "") }
-  prof_begin(render3d_st, "UE bloom")
+  prof_split(render3d_st, "UE bloom")
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
   # the scene downsample chain
@@ -459,6 +519,7 @@ function ue_bloom_pass(render3d_st: mut Render3dState) -> int {
     mesh_draw(render3d_st, render3d_st.post_fs)
     src = t.color;  sw = t.w;  sh = t.h
   }
+  render3d_st.ue_bl_down_ok = true
   # BloomQualityToSceneDownsampleStage, and the stages from the largest kernel (Bloom6 on the smallest texture) down
   let count = ue_bloom_stage_count(q)
   let tint_scale = (1.0 / float(UE_BLOOM_STAGES)) * pp.bloom_intensity * pp.bloom_gaussian_intensity
@@ -485,7 +546,6 @@ function ue_bloom_pass(render3d_st: mut Render3dState) -> int {
       last = src_i
     }
   }
-  prof_end(render3d_st)
   if out != 0 and last >= 0 { ue_lens_flare_pass(render3d_st, pp, render3d_st.ue_bl_out[last]) }
   return out
 }
@@ -503,14 +563,17 @@ function ue_local_exposure_pass(render3d_st: mut Render3dState) -> void {
   let pp = ue_pp_now(render3d_st)
   render3d_st.ue_le_built = false
   if not ue_local_exposure_on(pp) { return }
-  let lod = max(min(pp.histogram_lod, 3), 0)
-  let hw = max(render3d_st.post_hdr.w >> lod, 1)
-  let hh = max(render3d_st.post_hdr.h >> lod, 1)
+  var lod = max(min(pp.histogram_lod, 3), 0)
+  var hw = max(render3d_st.post_hdr.w >> lod, 1)
+  var hh = max(render3d_st.post_hdr.h >> lod, 1)
+  var src = render3d_st.post_hdr.color
+  let ds = ue_meter_downsample(render3d_st, lod)
+  if ds != null { src = ds.color;  hw = ds.w;  hh = ds.h;  lod = 0 }
   let tx = (hw + 63) / 64
   let ty = (hh + 63) / 64
   if render3d_st.ue_le_c == 0 { ue_le_alloc(render3d_st) }
   if render3d_st.ue_le_c == 0 { return }
-  prof_begin(render3d_st, "UE local exposure")
+  prof_split(render3d_st, "UE local exposure")
   # the bilateral grid
   gpu_buffer_upload(render3d_st, render3d_st.ue_le_grid, tx * ty * 32 * 8, null, GPU_DYNAMIC)
   gpu_buffer_gpu_owned(render3d_st, render3d_st.ue_le_grid)
@@ -518,7 +581,7 @@ function ue_local_exposure_pass(render3d_st: mut Render3dState) -> void {
   pr[0] = float_bits(render3d_st.ue_hist_scale);  pr[1] = float_bits(render3d_st.ue_hist_bias);  pr[2] = float_bits(render3d_st.ue_lum_min);  pr[3] = float_bits(float(lod))
   pr[4] = hw;  pr[5] = hh;  pr[6] = tx;  pr[7] = ty
   render3d_st.ue_le_bufs[0] = render3d_st.ue_le_grid
-  render3d_st.ue_le_texs[0] = render3d_st.post_hdr.color
+  render3d_st.ue_le_texs[0] = src
   gpu_dispatch_tex(render3d_st, render3d_st.ue_le_c, data_of(pr), 32, render3d_st.ue_le_bufs, render3d_st.ue_le_texs, tx, ty)
   # the blurred log luminance
   if render3d_st.ue_le_lum != null and (render3d_st.ue_le_lum.w != hw or render3d_st.ue_le_lum.h != hh) {
@@ -538,7 +601,7 @@ function ue_local_exposure_pass(render3d_st: mut Render3dState) -> void {
   let lp = render3d_st.ue_le_lum_p
   target_bind(render3d_st, render3d_st.ue_le_lum)
   gpu_use_program(render3d_st, lp)
-  r3d_bind_2d(render3d_st, lp, "u_scene", 0, render3d_st.post_hdr.color)
+  r3d_bind_2d(render3d_st, lp, "u_scene", 0, src)
   u_f(render3d_st, gpu_uniform(render3d_st, lp, "u_lod"), float(lod))
   u_f(render3d_st, gpu_uniform(render3d_st, lp, "u_lum_min"), render3d_st.ue_lum_min)
   mesh_draw(render3d_st, render3d_st.post_fs)
@@ -553,7 +616,6 @@ function ue_local_exposure_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_le_tx = tx;  render3d_st.ue_le_ty = ty
   render3d_st.ue_le_uvx = float(hw) / 64.0 / float(tx);  render3d_st.ue_le_uvy = float(hh) / 64.0 / float(ty)
   render3d_st.ue_le_built = true
-  prof_end(render3d_st)
 }
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function ue_le_alloc(render3d_st: mut Render3dState) -> void {
@@ -602,7 +664,7 @@ function ue_lens_flare_pass(render3d_st: mut Render3dState, pp: UePost, out: Tar
   if render3d_st.ue_lf_p == 0 { render3d_st.ue_lf_p = r3d_program(render3d_st, "ue_flare.vert", "ue_flare.frag", "") }
   if render3d_st.ue_lf_quad == null { ue_lf_make_quad(render3d_st) }
   if render3d_st.ue_lf_bokeh == 0 and not render3d_st.ue_lf_bokeh_tried { ue_lf_load_bokeh(render3d_st) }
-  prof_begin(render3d_st, "UE lens flares")
+  prof_split(render3d_st, "UE lens flares")
   let p = render3d_st.ue_lf_p
   gpu_depth_test(render3d_st, false)
   # the blur: one quad an input pixel, added up
@@ -638,7 +700,6 @@ function ue_lens_flare_pass(render3d_st: mut Render3dState, pp: UePost, out: Tar
     mesh_draw(render3d_st, render3d_st.ue_lf_quad)
   }
   gpu_blend(render3d_st, false)
-  prof_end(render3d_st)
 }
 
 # the lens flares' bokeh shape (LensFlareBokehShape / GEngine->DefaultBokehTexture): a texture the game loads; 0 is the white fallback

@@ -3,9 +3,17 @@
 // FinalIntegrationCS (front-to-back, energy conserving). The grid is the view's tiles of GridPixelSize by GridSizeZ slices over
 // VolumetricFogDistance, sliced as CalculateGridZParams (slice = log2(depth * B + O) * S). The GPU layer has no 3D render targets,
 // so the grid is a 2D array with a layer a slice, drawn one slice at a time; VF_SCATTER does setup and scattering in one pass,
-// VF_INTEGRATE writes slice z by integrating slices 0..z. Metres; Unreal's z up is our y.
-// Not ported: local lights' shadows (ue_lights.ludic lights are unshadowed so far), light functions, the conservative depth test and its history
-// fix-up (FixupHistoryUV), super-sampling on a history miss (HistoryMissSuperSampleCount), local fog volumes, Lumen GI.
+// VF_INTEGRATE writes slice z by integrating slices 0..z; with VF_CARRY it is FinalIntegrationCS's march itself, the running sum
+// carried from slice to slice in a second target (vf_carry, last slice's) rather than in a thread's registers.
+// VF_ATLAS lays the grid out as one 2D texture instead, the slices as tiles of vf_tiles.x across (slice z at tile (z % x, z / x)), so
+// the scatter and the integration are a pass each over the whole grid, as Unreal's compute dispatches are, rather than a pass a
+// slice (a render pass each on a tiled GPU, which the per-slice draws spent most of their time on); reads clamp to the tile's edge. Metres; Unreal's z up is our y.
+// VF_CDEPTH is GenerateConservativeDepthBufferCS (GenerateConservativeDepth.usf): a texel a tile, the furthest depth under the tile
+// widened by half a tile (ComputeFroxelCullRect's FootprintMargin 0.5), read from the depth buffer itself rather than the HZB; kept as
+// view depth (m). With it (r.VolumetricFog.ConservativeDepth 1) VF_SCATTER skips a cell wholly behind it and FixupHistoryUV steers the
+// history read off cells last frame's skipped.
+// Not ported: local lights' shadows (ue_lights.ludic lights are unshadowed so far), light functions, super-sampling on a history miss
+// (HistoryMissSuperSampleCount), local fog volumes, Lumen GI.
 in vec2 v_uv;
 out vec4 o_color;
 uniform vec3 vf_grid;              // ViewGridSize: tiles across, down, slices
@@ -16,6 +24,7 @@ uniform vec3 vf_cam;               // the camera
 uniform vec3 vf_fwd;               // its forward
 uniform vec2 vf_screen;            // the view's size in pixels
 uniform float vf_pixel;            // GridPixelSize
+uniform vec2 vf_tiles;             // VF_ATLAS: the tiles across and down
 const float VF_PI = 3.14159265358979;
 
 float vfDepthFromSlice(float z) { return (exp2(z / vf_zp.z) - vf_zp.y) / vf_zp.x; }
@@ -30,10 +39,35 @@ vec3 vfCellPos(vec3 coord, vec3 offset, out float sceneDepth) {
   return vf_cam + dir * (sceneDepth / max(dot(dir, vf_fwd), 0.0001));
 }
 
+#ifdef VF_CDEPTH
+uniform sampler2D u_depth;          // the scene's depth, or (vf_cd_down 4) its 4 x 4 furthest (VF_CDEPTH_DOWN)
+uniform float vf_cd_down;           // u_depth's texels to a pixel's: 1 or 4
+#endif
+#ifdef VF_CDEPTH_DOWN
+uniform sampler2D u_depth;          // the scene's depth
+#endif
+
+#ifdef VF_ATLAS
+vec2 vfAtlasTile(float z) { z = floor(z + 0.5);  return vec2(mod(z, vf_tiles.x), floor(z / vf_tiles.x)); }
+// a bilinear read of slice z at the grid's uv, clamped to the tile's edge as an array layer's read is to its own
+vec4 vfAtlasRead(sampler2D t, vec2 guv, float z) {
+  vec2 cell = clamp(guv * vf_grid.xy, vec2(0.5), vf_grid.xy - 0.5);
+  return texture(t, (vfAtlasTile(z) * vf_grid.xy + cell) / (vf_tiles * vf_grid.xy));
+}
+ivec2 vfAtlasTexel(ivec2 cell, int z) { return ivec2(z % int(vf_tiles.x), z / int(vf_tiles.x)) * ivec2(vf_grid.xy) + cell; }
+#endif
+
 #ifdef VF_SCATTER
 uniform sampler2D u_depth;          // the scene's depth (ApplyDepthConstraintsToOffset)
+uniform sampler2D vf_cdepth;        // this frame's conservative depth (VF_CDEPTH), view depth
+uniform sampler2D vf_prev_cdepth;   // last frame's
+uniform vec2 vf_cd_on;              // x: r.VolumetricFog.ConservativeDepth, y: last frame's is there too
 uniform mat4 vf_vp;                 // the clean view-projection
+#ifdef VF_ATLAS
+uniform sampler2D vf_hist;          // last frame's scattering and extinction grid
+#else
 uniform sampler2DArray vf_hist;     // last frame's scattering and extinction grid
+#endif
 uniform mat4 vf_prev_vp;            // last frame's clean view-projection
 uniform float vf_hist_on;           // a history worth reading (and r.VolumetricFog.TemporalReprojection)
 uniform float vf_hist_weight;       // r.VolumetricFog.HistoryWeight
@@ -90,15 +124,97 @@ vec3 vfSkySHSimple(vec3 nOurs) {
 }
 #endif
 
+#ifdef VF_SCATTER
+// FixupHistoryUV: of the four history texels a bilinear read would mix, keep those last frame computed (their conservative depth
+// beyond the cell), else the read is no history at all
+vec2 vfFixupHistoryUV(vec2 uv, vec2 size, float prevCellDepth, out bool valid) {
+  vec2 full = uv * size;
+  vec2 sc = floor(full - 0.5);
+  vec2 gatherUV = (sc + 1.0) / size;
+  vec2 off = full - sc;
+  bvec4 ok = greaterThan(textureGather(vf_prev_cdepth, gatherUV, 0), vec4(prevCellDepth));
+  valid = true;
+  if (all(ok)) return uv;
+  // the gather's order: w z on the row of the lower v, x y on the higher
+  if (ok.w && ok.z) return (sc + vec2(off.x, 0.5)) / size;
+  if (ok.x && ok.y) return (sc + vec2(off.x, 1.5)) / size;
+  if (ok.w && ok.x) return (sc + vec2(0.5, off.y)) / size;
+  if (ok.z && ok.y) return (sc + vec2(1.5, off.y)) / size;
+  if (ok.x) return (sc + vec2(0.5, 1.5)) / size;
+  if (ok.y) return (sc + vec2(1.5, 1.5)) / size;
+  if (ok.w) return (sc + vec2(0.5, 0.5)) / size;
+  if (ok.z) return (sc + vec2(1.5, 0.5)) / size;
+  valid = false;
+  return uv;
+}
+#endif
+
 #ifdef VF_INTEGRATE
+#ifdef VF_ATLAS
+uniform sampler2D vf_scatter;       // this frame's scattering and extinction grid
+#else
 uniform sampler2DArray vf_scatter;  // this frame's scattering and extinction grid
+#endif
 uniform float vf_fade_inv;          // VolumetricFogNearFadeInDistanceInv
+#ifdef VF_CARRY
+uniform sampler2D vf_carry;         // the integration through the slice before (VF_CARRY): in-scattering, transmittance
+layout(location = 1) out vec4 o_carry;
+#endif
 #endif
 
 void main() {
+#ifdef VF_CDEPTH_DOWN
+  // the furthest (reversed z: the least) of the 4 x 4 pixels under this texel, an HZB level of 4 for VF_CDEPTH
+  ivec2 dhi = textureSize(u_depth, 0) - 1;
+  ivec2 d0 = ivec2(gl_FragCoord.xy) * 4;
+  float dm = 1.0;
+  for (int y = 0; y < 4; y++)
+    for (int x = 0; x < 4; x++) dm = min(dm, texelFetch(u_depth, min(d0 + ivec2(x, y), dhi), 0).r);
+  o_color = vec4(dm, 0.0, 0.0, 1.0);
+  return;
+#endif
+#ifdef VF_CDEPTH
+  // the tile's pixels widened by half a tile, the furthest depth among them (reversed z: the least), as view depth
+  ivec2 hi = textureSize(u_depth, 0) - 1;
+  ivec2 t = ivec2(gl_FragCoord.xy);
+  int px = int(vf_pixel);
+  int dn = int(vf_cd_down);
+  ivec2 lo = clamp((t * px - px / 2) / dn, ivec2(0), hi);
+  ivec2 up = clamp(((t + 1) * px + px / 2 - 1) / dn, ivec2(0), hi);
+  float dmin = 1.0;
+  for (int y = lo.y; y <= up.y; y++)
+    for (int x = lo.x; x <= up.x; x++) dmin = min(dmin, texelFetch(u_depth, ivec2(x, y), 0).r);
+  float far = 1.0e7;
+  if (dmin > DEPTH_SKY) {
+    vec2 suv = (vec2(t) + 0.5) * vf_pixel / vf_screen;
+    vec4 h4 = vf_inv_vp * vec4(suv * 2.0 - 1.0, depthClip(dmin), 1.0);
+    far = dot(h4.xyz / h4.w - vf_cam, vf_fwd);
+  }
+  o_color = vec4(far, 0.0, 0.0, 1.0);
+  return;
+#endif
+#ifdef VF_ATLAS
+  // the cell: this texel's tile is its slice, its place in the tile its tile of the view (v_uv spans the atlas; a fragment stage
+  // that reads no input fails MoltenVK's pipeline build)
+  ivec2 fc = ivec2(floor(v_uv * vf_tiles * vf_grid.xy));
+  ivec2 gi = ivec2(vf_grid.xy);
+  ivec2 tl = fc / gi;
+  int zi = tl.y * int(vf_tiles.x) + tl.x;
+  if (zi >= int(vf_grid.z)) { o_color = vec4(0.0);  return; }
+  ivec2 cellI = fc - tl * gi;
+  vec3 coord = vec3(vec2(cellI), float(zi));
+#else
   // the cell: v_uv spans the grid target, the same uv the fog pass samples it with
   vec3 coord = vec3(floor(v_uv * vf_grid.xy), vf_slice);
+  ivec2 cellI = ivec2(gl_FragCoord.xy);
+#endif
+  float slice = coord.z;
 #ifdef VF_SCATTER
+  // the cell wholly behind the tile's furthest depth (its near face, FarDepthOffset z -0.5): no light, no media
+  if (vf_cd_on.x > 0.5 && texelFetch(vf_cdepth, ivec2(coord.xy), 0).r < vfDepthFromSlice(max(coord.z - 0.5, 0.0))) {
+    o_color = vec4(0.0);
+    return;
+  }
   // MaterialSetupCS at the cell's centre
   vec3 mOff = vec3(0.5);
   vfDepthConstraint(coord, mOff);
@@ -151,11 +267,17 @@ void main() {
     vec2 puv = pc.xy / pc.w * 0.5 + 0.5;
     vec2 guv = puv * vf_screen / (vf_grid.xy * vf_pixel);
     float pz = vfSliceFromDepth(max(pc.w, 0.0001)) / vf_grid.z;
-    if (pc.w > 0.0 && all(greaterThanEqual(vec3(guv, pz), vec3(0.0))) && all(lessThan(vec3(guv, pz), vec3(1.0)))) {
+    bool valid = true;
+    if (vf_cd_on.y > 0.5) guv = vfFixupHistoryUV(guv, vf_grid.xy, pc.w, valid);
+    if (valid && pc.w > 0.0 && all(greaterThanEqual(vec3(guv, pz), vec3(0.0))) && all(lessThan(vec3(guv, pz), vec3(1.0)))) {
       float zz = clamp(pz * vf_grid.z - 0.5, 0.0, vf_grid.z - 1.0);
       float z0 = floor(zz);
       float z1 = min(z0 + 1.0, vf_grid.z - 1.0);
+#ifdef VF_ATLAS
+      hist = mix(vfAtlasRead(vf_hist, guv, z0), vfAtlasRead(vf_hist, guv, z1), zz - z0);
+#else
       hist = mix(texture(vf_hist, vec3(guv, z0)), texture(vf_hist, vec3(guv, z1)), zz - z0);
+#endif
       histAlpha = vf_hist_weight;
     }
   }
@@ -165,20 +287,42 @@ void main() {
   vec3 acc = vec3(0.0);
   float trans = 1.0;
   float unused3;
-  vec3 prevPos = vfCellPos(vec3(coord.xy, 0.0), vec3(0.5, 0.5, 0.0), unused3);
+  // the cells' centres lie on the one ray from the camera, so a step's length is its depth step over the ray's cosine
+  vec3 p0 = vfCellPos(vec3(coord.xy, 0.0), vec3(0.5, 0.5, 0.0), unused3);
+  float invCos = 1.0 / max(dot(normalize(p0 - vf_cam), vf_fwd), 0.0001);
+  float prevDepth = vfDepthFromSlice(0.0);
   float accDepth = 0.0;
+#ifdef VF_CARRY
+  // one step of the march: the slice before's sum (none before slice 0), this slice's cell added
+  vec4 prev = vec4(0.0, 0.0, 0.0, 1.0);
+  float d0 = prevDepth;
+  if (slice > 0.5) { prev = texelFetch(vf_carry, cellI, 0);  prevDepth = vfDepthFromSlice(slice - 0.5); }
+  vec4 se = texelFetch(vf_scatter, ivec3(cellI, int(slice)), 0);
+  float d = vfDepthFromSlice(slice + 0.5);
+  float stepLen = (d - prevDepth) * invCos;
+  float t = exp(-se.w * stepLen);
+  float fade = clamp((d - d0) * invCos * vf_fade_inv, 0.0, 1.0);
+  acc = prev.rgb + fade * (se.rgb - se.rgb * t) / max(se.w, 0.00001) * prev.a;   // ENERGY_CONSERVING_INTEGRATION
+  trans = prev.a * mix(1.0, t, fade);
+  o_carry = vec4(acc, trans);
+#else
   for (int k = 0; k < 128; k++) {
-    if (float(k) > vf_slice) break;
-    vec4 se = texelFetch(vf_scatter, ivec3(ivec2(gl_FragCoord.xy), k), 0);    // this fragment's own texel in slice k
-    vec3 lp = vfCellPos(vec3(coord.xy, float(k)), vec3(0.5), unused3);
-    float stepLen = length(lp - prevPos);
-    prevPos = lp;
+    if (float(k) > slice) break;
+#ifdef VF_ATLAS
+    vec4 se = texelFetch(vf_scatter, vfAtlasTexel(cellI, k), 0);              // this cell in slice k
+#else
+    vec4 se = texelFetch(vf_scatter, ivec3(cellI, k), 0);                     // this fragment's own texel in slice k
+#endif
+    float d = vfDepthFromSlice(float(k) + 0.5);
+    float stepLen = (d - prevDepth) * invCos;
+    prevDepth = d;
     float t = exp(-se.w * stepLen);
     accDepth += stepLen;
     float fade = clamp(accDepth * vf_fade_inv, 0.0, 1.0);
     acc += fade * (se.rgb - se.rgb * t) / max(se.w, 0.00001) * trans;   // ENERGY_CONSERVING_INTEGRATION
     trans *= mix(1.0, t, fade);
   }
+#endif
   o_color = vec4(acc, trans);
 #endif
 }
