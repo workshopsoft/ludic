@@ -1112,7 +1112,8 @@ function emit_fence_report() -> void {
   emith("}\n")
   emith("define internal void @lp_fcrash_go(ptr %text) {\n")
   emith("entry:\n")
-  emith("  %rtld = inttoptr i64 -2 to ptr\n")
+  emith("  %darwin = icmp ne ptr @malloc_size, null\n")          # RTLD_DEFAULT: -2 on Darwin, 0 on glibc
+  emith("  %rtld = select i1 %darwin, ptr inttoptr (i64 -2 to ptr), ptr null\n")
   emith("  %f = call ptr @dlsym(ptr %rtld, ptr @.lpf_crashfn)\n")
   emith("  %none = icmp eq ptr %f, null\n")
   emith("  br i1 %none, label %out, label %call\n")
@@ -1286,7 +1287,8 @@ function emit_fence_frame() -> void {
   emith("; lvk_ac_*): 0 when the program does not carry it, and nothing is declared that the package declares\n")
   emith("define internal i64 @lp_fnat(ptr %name) {\n")
   emith("entry:\n")
-  emith("  %rtld_default = inttoptr i64 -2 to ptr\n")
+  emith("  %darwin = icmp ne ptr @malloc_size, null\n")          # RTLD_DEFAULT: -2 on Darwin, 0 on glibc
+  emith("  %rtld_default = select i1 %darwin, ptr inttoptr (i64 -2 to ptr), ptr null\n")
   emith("  %f = call ptr @dlsym(ptr %rtld_default, ptr %name)\n")
   emith("  %none = icmp eq ptr %f, null\n")
   emith("  br i1 %none, label %zero, label %call\n")
@@ -1398,7 +1400,10 @@ function emit_fence_frame() -> void {
   emith("arena:\n")
   emith("  %wp = inttoptr i64 %w to ptr\n")
   emith("  %inar = call i1 @lp_in_arena(ptr %wp)\n")
-  emith("  br i1 %inar, label %out, label %size\n")
+  emith("  br i1 %inar, label %out, label %hasms\n")
+  emith("hasms:\n")                                       # no malloc_size (glibc): nothing is followed
+  emith("  %has = icmp ne ptr @malloc_size, null\n")
+  emith("  br i1 %has, label %size, label %out\n")
   emith("size:\n")
   emith("  %p = inttoptr i64 %w to ptr\n")
   emith("  %sz = call i64 @malloc_size(ptr %p)\n")
