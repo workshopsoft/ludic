@@ -189,6 +189,8 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_strand_t_i = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define INST\n#define TRANSMITTANCE\n")
   render3d_st.ac_strand_l_i = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define INST\n")
   render3d_st.ac_strand_dom_i = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define INST\n#define DOM\n")
+  render3d_st.ac_strand_v_i = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define INST\n#define VIS\n")
+  render3d_st.ac_strand_shade = ac_prog_new(render3d_st, "fullscreen.vert", "strands.frag", "#define STRANDS\n#define SHADE\n")
   render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
   render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
   render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
