@@ -1,0 +1,18 @@
+// ue_histogram_convert.comp - Unreal's HistogramConvertCS (Histogram.usf, UE 5.8): the frame's fixed-point histogram (ue_histogram.comp)
+// as floats, x 0.5 (it stands in for PostProcessHistogramReduce's bilinear read) x the texel count's inverse, 4 buckets a vec4 as the
+// legacy texture held them; then the scatter words are cleared for the next frame.
+layout(local_size_x = 64) in;
+layout(set = 0, binding = 0) uniform Params {
+  vec4 inv;             // 1 / (width x height) of the mip read
+} pr;
+layout(set = 0, binding = 1) buffer Scatter { uint scatter[]; };
+layout(set = 0, binding = 2) buffer Hist { vec4 hist[]; };
+float unpack2(uint hi, uint lo) { return float(lo) * (1.0 / float(1 << 19)) + float(hi) * float(1 << (32 - 19)); }
+void main() {
+  uint t = gl_LocalInvocationID.x;
+  // a thread a bucket: its words read, then cleared
+  float v = unpack2(scatter[t * 2u + 1u], scatter[t * 2u]);
+  scatter[t * 2u] = 0u;
+  scatter[t * 2u + 1u] = 0u;
+  hist[t / 4u][t % 4u] = v * 0.5 * pr.inv.x;
+}

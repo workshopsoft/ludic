@@ -1,12 +1,17 @@
 // Unreal's eye adaptation, ported from UE 5.8 PostProcessEyeAdaptation.usf (EyeAdaptationCS, EyeAdaptationCommon) and
 // PostProcessHistogramCommon.ush (ComputeHistogramSum, ComputeAverageLuminanceWithoutOutlier, ComputeEyeAdaptation, ExponentialAdaption,
 // LinearAdaption). The histogram (ue_histogram.frag) is u_bands rows of 16 texels, 4 buckets each; they are summed here (Unreal's
-// PostProcessHistogramReduce). Output, 1x1: x the exposure scale the tonemapper multiplies by (EyeAdaptation.x), y the target's scale,
+// PostProcessHistogramReduce). With HIST_ATOMIC the histogram is instead ue_histogram_convert.comp's buffer, 16 vec4s already summed
+// (r.Histogram.UseAtomic). Output, 1x1: x the exposure scale the tonemapper multiplies by (EyeAdaptation.x), y the target's scale,
 // z the average scene luminance, w MiddleGreyExposureCompensation (the 1x1 R32F target keeps x). The previous frame's x is u_prev;
 // with none yet (0 or NaN) the target is taken at once, as ForceTarget does.
 in vec2 v_uv;
 out vec4 o_color;
+#ifdef HIST_ATOMIC
+readonly buffer u_hist_buf { vec4 hist_buf[]; };
+#else
 uniform sampler2D u_hist;
+#endif
 uniform sampler2D u_prev;
 uniform float u_bands;
 uniform vec2 u_percent;           // ExposureLowPercent, ExposureHighPercent (0..1)
@@ -20,6 +25,9 @@ uniform float u_dt;               // DeltaWorldTime
 uniform float u_force;            // ForceTarget: 1 on a camera cut or the first frame
 const int HISTOGRAM_SIZE = 64;
 float bucket(int i) {
+#ifdef HIST_ATOMIC
+  return hist_buf[i / 4][i % 4];
+#else
   int tx = i / 4;
   float s = 0.0;
   for (int b = 0; b < 512; b++) {
@@ -29,6 +37,7 @@ float bucket(int i) {
     s += c == 0 ? t.r : (c == 1 ? t.g : (c == 2 ? t.b : t.a));
   }
   return s;
+#endif
 }
 float logLumFromPosition(float p) { return (p - u_scale_bias.y) / u_scale_bias.x; }
 float exponentialAdaption(float cur, float tgt, float ft, float speed, float m) {

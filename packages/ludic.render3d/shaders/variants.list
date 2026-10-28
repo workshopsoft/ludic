@@ -31,7 +31,9 @@ ue_flare.vert|ue_flare.frag|
 fullscreen.vert|ue_downsample.frag|
 fullscreen.vert|ue_le_lum.frag|
 fullscreen.vert|ue_eye_adapt.frag|
+fullscreen.vert|ue_eye_adapt.frag|#define HIST_ATOMIC;
 fullscreen.vert|ue_fog.frag|
+fullscreen.vert|ue_fog.frag|#define VF_ATLAS;
 fullscreen.vert|ue_fog_apply.frag|
 fullscreen.vert|ue_histogram.frag|
 fullscreen.vert|ue_skylight.frag|#define SL_CAPTURE;
@@ -40,6 +42,11 @@ fullscreen.vert|ue_skylight.frag|#define SL_FILTER;
 fullscreen.vert|ue_skylight.frag|#define SL_SH;
 fullscreen.vert|ue_volfog.frag|#define VF_INTEGRATE;
 fullscreen.vert|ue_volfog.frag|#define VF_SCATTER;
+fullscreen.vert|ue_volfog.frag|#define VF_CDEPTH;
+fullscreen.vert|ue_volfog.frag|#define VF_INTEGRATE;#define VF_CARRY;
+fullscreen.vert|ue_volfog.frag|#define VF_SCATTER;#define VF_ATLAS;
+fullscreen.vert|ue_volfog.frag|#define VF_INTEGRATE;#define VF_ATLAS;
+fullscreen.vert|ue_volfog.frag|#define VF_CDEPTH_DOWN;
 fullscreen.vert|taa_mv.frag|
 fullscreen.vert|ternormal.frag|
 fullscreen.vert|tershadow.frag|#define NOISE_ONLY;

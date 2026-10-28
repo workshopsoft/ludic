@@ -22,7 +22,12 @@ uniform sampler2D uf_ap;           // the AP volume, unwrapped (32 x 16 slices) 
 uniform vec4 uf_ap_params;         // DepthResolution, StartDepthKm, DepthSliceLengthKm, width of a slice in texels
 uniform float uf_sky_dist;         // the distance a sky pixel is fogged at (reverse-Z depth 0: Unreal's far depth)
 uniform float uf_vol_on;           // the volumetric fog (ue_volfog.frag) is applied (FogStruct.ApplyVolumetricFog)
+#ifdef VF_ATLAS
+uniform sampler2D uf_vol;          // its integrated grid, the slices as tiles (ue_volfog.frag VF_ATLAS)
+uniform vec2 uf_vol_tiles;         // the tiles across and down
+#else
 uniform sampler2DArray uf_vol;     // its integrated grid, a layer a slice
+#endif
 uniform vec3 uf_vol_grid;          // ViewGridSize
 uniform vec3 uf_vol_zp;            // GridZParams
 uniform vec2 uf_vol_uv;            // the view's uv to the grid's (VolumetricFogSVPosToVolumeUV over the view)
@@ -112,6 +117,17 @@ vec4 ufAerialPerspective(vec2 screenUv, float distKm) {
   return ap;
 }
 
+// slice z of the volumetric grid at the grid's uv: an array layer's bilinear read, or the atlas tile's clamped to its edge
+vec4 ufVolRead(vec2 guv, float z) {
+#ifdef VF_ATLAS
+  z = floor(z + 0.5);
+  vec2 tile = vec2(mod(z, uf_vol_tiles.x), floor(z / uf_vol_tiles.x));
+  vec2 cell = clamp(guv * uf_vol_grid.xy, vec2(0.5), uf_vol_grid.xy - 0.5);
+  return texture(uf_vol, (tile * uf_vol_grid.xy + cell) / (uf_vol_tiles * uf_vol_grid.xy));
+#else
+  return texture(uf_vol, vec3(guv, z));
+#endif
+}
 void main() {
   float d = texture(u_depth, v_uv).r;
   vec4 far4 = u_inv_vp * vec4(v_uv * 2.0 - 1.0, DEPTH_FAR_POINT, 1.0);
@@ -143,11 +159,11 @@ void main() {
     float zz = clamp(zs * uf_vol_grid.z - 0.5, 0.0, uf_vol_grid.z - 1.0);
     float z0 = floor(zz);
     float z1 = min(z0 + 1.0, uf_vol_grid.z - 1.0);
-    vec4 vol = mix(texture(uf_vol, vec3(guv, z0)), texture(uf_vol, vec3(guv, z1)), zz - z0);
+    vec4 vol = mix(ufVolRead(guv, z0), ufVolRead(guv, z1), zz - z0);
     if (uf_vol_debug > 0.5) {
       // the cell just in front of the surface (Unreal's samples are pulled onto it), the scene replaced
       float zd = clamp(floor(zs * uf_vol_grid.z) - 0.5, 0.0, uf_vol_grid.z - 1.0);
-      o_color = vec4(texture(uf_vol, vec3(guv, zd)).rgb, 0.0);
+      o_color = vec4(ufVolRead(guv, zd).rgb, 0.0);
       return;
     }
     fog = vec4(vol.rgb + fog.rgb * vol.a, vol.a * fog.a);
