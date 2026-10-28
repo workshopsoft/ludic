@@ -466,6 +466,23 @@ function ac_bind_headmap(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -
   if t == 0 { t = strands_shadow_black(render3d_st);  on = 0.0 }
   r3d_bind_2d(render3d_st, ap.prog, "u_headmap", 20, t)          # (17 and 18: the local lights' shadow atlases)
   u_f(render3d_st, lp, on)
+  ac_bind_follicle(render3d_st, ap, pr)
+}
+# a head's follicle mask (model_set_follicle) for the same programs, or its switch off (a black texel). Its adjustments are
+# MF_skin_hairFollicleAdjustments' own defaults, which MetaHuman's head instances keep (MI_Skin_Head_UI_LOD0 through
+# MI_skin_unified_MH_preset): Basecolor Hair Mask Hair Multiply (0.864, 0.871547, 0.9), Eyebrows Multiply 0.766, Mustache Beard
+# Multiply 0.558333, each channel's Saturation 0.5
+function ac_bind_follicle(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -> void {
+  let lp = gpu_uniform(render3d_st, ap.prog, "u_fol_h")
+  if lp < 0 { return }
+  var t = pr.fol
+  var on = 1.0
+  if t == 0 { t = strands_shadow_black(render3d_st);  on = 0.0 }
+  r3d_bind_2d(render3d_st, ap.prog, "u_follicle", 23, t)
+  u_f4(render3d_st, lp, 0.864, 0.871547, 0.9, 0.5)
+  u_f4(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_fol_b"), 0.766, 0.766, 0.766, 0.5)
+  u_f4(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_fol_m"), 0.558333, 0.558333, 0.558333, 0.5)
+  u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_fol_on"), on)
 }
 # a skin's micro detail (model_set_micro) on units 21 and 19, its parameters and the camera's horizontal cot(fov / 2) (MF_ruler's
 # 1 / TanHalfFieldOfView.x); a primitive without it has the tiling 0 (off)

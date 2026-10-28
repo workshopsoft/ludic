@@ -25,6 +25,7 @@ property Prim {
   mtex: words,          # its two maps: the tile (RG the micro normal, B the cavity) and the mask (over the mesh's own uvs)
   btex: int = 0,        # a MetaHuman head's bent normal and occlusion (model_set_bent: T_MH_BentNormal_AO over the head's uvs), or 0
   bent_pow: float = 1.0,  # its Material AO Power
+  fol: int = 0,         # a MetaHuman head's follicle mask (model_set_follicle: MF_skin_hairFollicleAdjustments' R hair, G brows, B beard), or 0
   skin4: bool = false,  # no second four influences that weigh anything (skin_attribs): drawn with the four-influence programs (skin.vert SKIN4)
   inst_buf: int = 0,    # a head of hair's strand points (model_set_strand_points): its mesh is a segment's quad, drawn per point
   inst_n: int = 0,      # the segments drawn (one a point; a strand's last draws nothing)
