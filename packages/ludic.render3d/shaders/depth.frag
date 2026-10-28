@@ -10,6 +10,17 @@
 // The test must match model.frag's ALPHA_TEST exactly - a texel this pass keeps and that
 // one would have cut is drawn solid - so it is the same formula, taken at coverage 0.5
 // because without MSAA a fragment is either there or not.
+//
+// OPAQUE_DEPTH: the static bucket's opaque depth (static_chunks.ludic static_chunks_prepass, R3D_STATIC_PREPASS), as Unreal's depth
+// prepass for opaque static meshes (r.EarlyZPass, DepthRendering.cpp FDepthPassMeshProcessor): only the lit pass's own discards (the
+// clip plane, the fog wall's dissolve), so it never lays depth where model.frag would cut the pixel.
+#ifdef OPAQUE_DEPTH
+in vec3 v_wpos;
+void main() {
+  if (v_wpos.y < u_clip_y) discard;
+  if (fogCut(v_wpos)) discard;
+}
+#else
 in vec3 v_wpos;
 in vec2 v_uv;
 in float v_near;
@@ -32,3 +43,4 @@ void main() {
   float cov = (a - 0.4) / max(fwidth(a), 1e-4) + 0.5;
   if (cov < 0.5) discard;
 }
+#endif
