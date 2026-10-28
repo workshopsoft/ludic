@@ -62,7 +62,8 @@ property Layer {
   atlas:    Impostor,
   streamed: bool = false,      # fed by a Stream: already frustum-culled per chunk, no split needed
   cast_b:   words,             # a streamed layer's casters this frame (layer_casters_make): each instance's distance bucket,
-  cast_end: words,             # the casters in sh_buf up to the end of each bucket
+  cast_end: words,             # the casters in sh_buf up to the end of each bucket (a level's buckets after the one before's)
+  cast_nl:  int = 1,           # the levels the casters were sorted by (layer_casters_make: Unreal's shadow LOD), 1 for its first only
   grounded: bool = false,      # the vertex shader stands each instance on the drawn terrain
   view_gen: int = -1,          # sc_view_gen this layer's partition was built for
   # static layers with many instances are sorted into a cell grid once, and only the
@@ -102,7 +103,8 @@ property Layer {
   lod_card: words,
   lod_buf:  words,
   n_lod:    words,
-  lvl:      words              # scratch: the level chosen per gathered instance
+  lvl:      words,             # scratch: the level chosen per gathered instance
+  lod_ss:   floats             # each level's screen size (layer_lod_screen_sizes), or null: the levels are chosen by lod_dist
 }
 
 # the procedural models' one layout: position, normal, uv, interleaved at 32 bytes
@@ -438,6 +440,52 @@ function layer_set_lods(render3d_st: mut Render3dState, l: Layer, models: []Mode
 # mark level k as the layer's crossed card (drawn with the card program and its atlas)
 function layer_lod_card(l: Layer, k: int) -> void { l.lod_card[k] = 1 }
 
+# Unreal's automatic LOD screen sizes (StaticMesh.cpp FStaticMeshRenderData::ResolveSectionInfo): level 0 is 2.0 (LOD0ScreenSize); a
+# level below it whose reduction strayed `dev` metres at most from the source (its MaxDeviation) is drawn once that error is under
+# PixelError (8) pixels: from ViewDistance = dev x 960 / 8 (CalculateViewDistance: a 90 degree view 1920 across), at the bounds'
+# screen size there, ComputeBoundsScreenSize(R at ViewDistance + R) of that reference view; with no deviation, 0.75^k
+# (AutoComputeLODPowerBase); never larger than the level before (half of it, then). `dev` holds a deviation for each level past the
+# first. The view then draws, per instance, the last level whose screen size is above the instance's own (layer_partition_lods: as
+# ComputeStaticMeshLOD walks them), and the levels' distances go unused.
+const SC_UE_PIXEL_ERROR: float = 8.0       # FMeshReductionSettings' PixelError (R3D_UE_LOD_PIXEL_ERROR sets another, per run)
+const SC_UE_REF_MULT: float = 0.8888889    # max(P[0][0], P[1][1]) / 2 of that reference view (FPerspectiveMatrix(pi / 4, 1920, 1080))
+@alloc_ok("start-up: a layer's level table, made once when its levels are given")
+function layer_lod_screen_sizes(render3d_st: mut Render3dState, l: Layer, dev: []float) -> void {
+  let n = l.n_lods
+  if n < 2 { return }
+  if l.lod_ss == null { l.lod_ss = floats(n) }
+  let r = layer_bound_r(l)
+  var pe = SC_UE_PIXEL_ERROR
+  if r3d_env_has(render3d_st, "R3D_UE_LOD_PIXEL_ERROR") { pe = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_LOD_PIXEL_ERROR")), 0.01) }
+  l.lod_ss[0] = 2.0
+  for k in 1 .. n {
+    var ss = Math.pow(0.75, float(k))
+    if k - 1 < len(dev) and dev[k - 1] > 0.0 {
+      let vd = dev[k - 1] * 960.0 / pe
+      ss = 2.0 * SC_UE_REF_MULT * r / Math.max(1.0, vd + r)
+    }
+    if ss > l.lod_ss[k - 1] { ss = l.lod_ss[k - 1] * 0.5 }
+    l.lod_ss[k] = ss
+  }
+}
+# levels by screen size are on (R3D_UE_LOD_SCREEN_SIZE=0: a layer given screen sizes draws its first level only, as before it had more)
+function sc_lod_ss_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.sc_lod_ss_on < 0 {
+    render3d_st.sc_lod_ss_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_LOD_SCREEN_SIZE") and r3d_env(render3d_st, "R3D_UE_LOD_SCREEN_SIZE") == "0" { render3d_st.sc_lod_ss_on = 0 }
+  }
+  return render3d_st.sc_lod_ss_on == 1
+}
+# the level a screen-size layer draws an instance at, `d` metres from its bounds' centre at scale `s`, with its LOD scale times
+# `factor` (1 for the view; a sun cascade's r.Shadow.LODDistanceFactor): the last whose screen size is above 2 x M x R x s / d x factor
+function layer_ss_level(render3d_st: Render3dState, l: Layer, d: float, s: float, factor: float) -> int {
+  let m = Math.max(0.5 * Math.abs(render3d_st.cam_proj[0]), 0.5 * Math.abs(render3d_st.cam_proj[5]))
+  let size = 2.0 * m * layer_bound_r(l) * s * factor
+  var lv = 0
+  while lv < l.n_lods - 1 and l.lod_ss[lv + 1] * Math.max(d, 1.0) > size { lv += 1 }
+  return lv
+}
+
 function layer_set_impostor(render3d_st: mut Render3dState, l: Layer, im: Impostor) -> void {
   l.imp = im
   scatter_attach(render3d_st, render3d_st.sc_card, l.imp_buf)
@@ -632,6 +680,8 @@ function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
   pr[28] = l.count;  pr[29] = l.count;  pr[30] = l.n_lods;  pr[31] = 1
   # as layer_grid_gather pads a cell: the tallest instance, plus a margin
   pr[32] = float_bits(l.lods[0].height * 2.0);  pr[33] = float_bits(4.0)
+  # the screen-size cull (layer_ss_reach: metres per unit of scale, 0 none) and the bounds' centre height per unit of scale
+  pr[34] = float_bits(layer_ss_reach(render3d_st, l));  pr[35] = float_bits(l.model.height * 0.5)
   let bufs = render3d_st.sc_gpu_bufs
   bufs[0] = l.g_src;  bufs[1] = l.g_dst;  bufs[2] = l.g_cmds;  bufs[3] = l.g_counts
   gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 144, bufs, 1)
@@ -723,18 +773,26 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
   let lc = r3d_reach(render3d_st, l.cull)
   let cull2 = lc * lc
   let open = l.lod_dist[n - 1] == 0.0      # the last level runs out to the cull distance
+  let ssk = layer_ss_reach(render3d_st, l)
+  # by screen size (1), its first level only (0: the switch off), or by the levels' distances (-1)
+  var ss_lod = -1
+  if l.lod_ss != null and l.imp == null and render3d_st.cam_proj != null { ss_lod = 0;  if sc_lod_ss_on(render3d_st) { ss_lod = 1 } }
   for i in 0 .. total {
     let o = i * INST_FLOATS
     let dx = src[o] - render3d_st.cam_pos[0];  let dz = src[o + 2] - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz
     var lv = n + 1                           # n + 1 = dropped
-    if lc == 0.0 or not (d2 > cull2) {
+    if (lc == 0.0 or not (d2 > cull2)) and not layer_ss_small(render3d_st, l, src, o, ssk) {
       let d = Math.sqrt(d2)
       lv = n                                 # n = the impostor bucket
-      var k = 0
-      while k < n { if l.lod_dist[k] != 0.0 and d < l.lod_dist[k] { lv = k;  k = n } else { k += 1 } }
-      if lv == n and open { lv = n - 1 }
-      if lv == n and l.imp == null { lv = n + 1 }
+      if ss_lod == 1 { lv = layer_ss_level(render3d_st, l, layer_ss_dist(render3d_st, l, src, o), src[o + 3], 1.0) }
+      else if ss_lod == 0 { lv = 0 }
+      else {
+        var k = 0
+        while k < n { if l.lod_dist[k] != 0.0 and d < l.lod_dist[k] { lv = k;  k = n } else { k += 1 } }
+        if lv == n and open { lv = n - 1 }
+        if lv == n and l.imp == null { lv = n + 1 }
+      }
     }
     l.lvl[i] = lv
     counts[lv] += 1
@@ -766,11 +824,55 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
   if l.n_far > 0 {
     gpu_buffer_upload(render3d_st, l.imp_buf, l.n_far * INST_FLOATS * 4, mem_off(tmp, start [n] * INST_FLOATS * 4), GPU_DYNAMIC)
   }
-  # casters: the whole (gathered) set from the shadow buffer, unless the impostor casts
-  if l.gcell == 0.0 {
+  # casters: the whole (gathered) set from the shadow buffer, unless the impostor casts or they are banded (layer_casters_make)
+  if l.gcell == 0.0 and not (l.streamed and l.imp == null and sc_cast_cull_on(render3d_st)) {
     l.n_sh = total
     if total > 0 { gpu_buffer_upload(render3d_st, l.sh_buf, total * INST_FLOATS * 4, data_of(src), GPU_DYNAMIC) }
   }
+}
+
+# ---- Unreal's screen-size cull ----------------------------------------------------------------
+# ComputeBoundsScreenSize (SceneManagement.cpp): a bounds sphere of radius R at distance D covers 2 x M x R / max(1, D) of the screen,
+# M = max(P[0][0], P[1][1]) / 2 of the view's projection. A CullDistanceVolume gives a primitive the cull distance of its size, the
+# bounds' diameter (CullDistanceVolume.cpp): pairs whose distance grows with the size in proportion are one screen size S, and the cull
+# distance is ComputeBoundsDrawDistance(S, R, P) = M x R / (S / 2). So each instance of a layer is measured by its own bounds (the
+# model's sphere times its scale), the same rule in every layer, and an instance under S is not drawn. What the game set (its reach,
+# the layer's cull) stays the outer limit, as a level designer's MaxDrawDistance does: the shorter of the two (GetPrimitiveMaxDrawDistances).
+# It runs where the levels are chosen: layer_update's streamed and plain splits, layer_partition_lods and scatter_cull.comp.
+# R3D_UE_CULL_SCREEN_SIZE=<S> sets S, 0 turns it off.
+const SC_SS_DEFAULT: float = 0.006
+function sc_ss_min(render3d_st: mut Render3dState) -> float {
+  if render3d_st.sc_ss_min < 0.0 {
+    render3d_st.sc_ss_min = SC_SS_DEFAULT
+    if r3d_env_has(render3d_st, "R3D_UE_CULL_SCREEN_SIZE") { render3d_st.sc_ss_min = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_CULL_SCREEN_SIZE")), 0.0) }
+  }
+  return render3d_st.sc_ss_min
+}
+# the bounds sphere of a layer's model at scale 1: half its height and its horizontal reach (as its casters measure it)
+function layer_bound_r(l: Layer) -> float {
+  let hh = l.model.height * 0.5
+  return Math.sqrt(l.model.radius * l.model.radius + hh * hh)
+}
+# metres per unit of instance scale past which an instance of l covers less than S of the screen (0: no screen-size cull)
+function layer_ss_reach(render3d_st: mut Render3dState, l: Layer) -> float {
+  let s = sc_ss_min(render3d_st)
+  if s <= 0.0 or render3d_st.cam_proj == null or l.model == null { return 0.0 }
+  let m = Math.max(0.5 * Math.abs(render3d_st.cam_proj[0]), 0.5 * Math.abs(render3d_st.cam_proj[5]))
+  return m * layer_bound_r(l) / (s * 0.5)
+}
+# instance o of src is under the screen size: its bounds' centre (half the model's height up, times its scale) farther than k x scale
+function layer_ss_small(render3d_st: Render3dState, l: Layer, src: floats, o: int, k: float) -> bool {
+  if k <= 0.0 { return false }
+  let s = src[o + 3]
+  let dx = src[o] - render3d_st.cam_pos[0];  let dy = src[o + 1] + l.model.height * 0.5 * s - render3d_st.cam_pos[1];  let dz = src[o + 2] - render3d_st.cam_pos[2]
+  let c = k * s
+  return dx * dx + dy * dy + dz * dz > c * c
+}
+
+# instance o of src's distance from the camera to its bounds' centre (m)
+function layer_ss_dist(render3d_st: Render3dState, l: Layer, src: floats, o: int) -> float {
+  let dx = src[o] - render3d_st.cam_pos[0];  let dy = src[o + 1] + l.model.height * 0.5 * src[o + 3] - render3d_st.cam_pos[1];  let dz = src[o + 2] - render3d_st.cam_pos[2]
+  return Math.sqrt(dx * dx + dy * dy + dz * dz)
 }
 
 # split the instances by distance to the camera (only when the view changed)
@@ -784,7 +886,23 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
   # A streamed layer's instances were already gathered per visible chunk: no split, no
   # per-instance loop — one upload, and the same buffer casts its shadows.
   if l.streamed and l.imp == null and l.near == 0.0 and l.n_lods <= 1 {
-    l.n_near = l.count;  l.n_far = 0;  l.n_sh = l.count
+    l.n_far = 0;  l.n_sh = l.count
+    let ssk = layer_ss_reach(render3d_st, l)
+    if ssk > 0.0 {
+      # the screen-size cull: the instances big enough on screen, packed into the scratch (the casters read l.inst: layer_casters_make)
+      var nk = 0
+      for i in 0 .. l.count {
+        let o = i * INST_FLOATS
+        if layer_ss_small(render3d_st, l, l.inst, o, ssk) { continue }
+        for k in 0 .. INST_FLOATS { l.scratch[nk * INST_FLOATS + k] = l.inst[o + k] }
+        nk += 1
+      }
+      l.n_near = nk
+      if nk > 0 { gpu_buffer_upload(render3d_st, l.buf, nk * INST_FLOATS * 4, data_of(l.scratch), GPU_DYNAMIC) }
+      prof_layer_add(render3d_st, clock_now_us() - t_lu, nk * INST_FLOATS * 4)
+      return
+    }
+    l.n_near = l.count
     gpu_buffer_upload(render3d_st, l.buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_DYNAMIC)
     prof_layer_add(render3d_st, clock_now_us() - t_lu, l.count * INST_FLOATS * 4)
     return
@@ -800,6 +918,7 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
   var nf = 0
   let far_off = l.cap * INST_FLOATS    # far instances fill the scratch from its end backwards
   let tmp = l.scratch
+  let ssk = layer_ss_reach(render3d_st, l)
   if l.n_lods > 1 {
     layer_partition_lods(render3d_st, l, src, total)
     prof_layer_add(render3d_st, clock_now_us() - t_lu, total * INST_FLOATS * 4)
@@ -812,6 +931,7 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
     let dz = src[o + 2] - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz
     if lc != 0.0 and d2 > cull2 { i += 1;  continue }
+    if layer_ss_small(render3d_st, l, src, o, ssk) { i += 1;  continue }
     if l.near == 0.0 or d2 < near2 {
       let q = nn * INST_FLOATS
       for k in 0 .. INST_FLOATS { tmp[q + k] = src[o + k] }
@@ -1162,7 +1282,7 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
     }
     else if l.streamed and sc_cast_cull_on(render3d_st) {
       if render3d_st.sh_cascade == 0 { layer_casters_make(render3d_st, l) }
-      layer_draw_model(render3d_st, l, l.model, l.sh_buf, layer_casters_in(render3d_st, l), l.card, true, light_vp)
+      layer_draw_casters_in(render3d_st, l, light_vp)
     }
     else { layer_draw_near(render3d_st, l, true, light_vp, true) }
   }
@@ -1184,10 +1304,22 @@ function sc_cast_cull_on(render3d_st: mut Render3dState) -> bool {
   }
   return render3d_st.sc_cast_cull == 1
 }
+#
+# A layer with levels chosen by screen size casts each caster at the level the view would choose for it with its LOD scale times
+# r.Shadow.LODDistanceFactor (Unreal's shadow LOD, ShadowSetup.cpp CalcAndUpdateLODToRender; actor.ludic sh_lod_distance_factor): the
+# casters are sorted by level, then by distance bucket, and a cascade draws each level's prefix. One sort serves every cascade, so the
+# factor's per-cascade scale is the actors' alone. R3D_UE_SHADOW_LOD=0 casts every caster at the first level again.
 @alloc_ok("a layer's caster buckets, made once at its first shadow")
 function layer_casters_make(render3d_st: mut Render3dState, l: Layer) -> void {
-  if l.cast_b == null { l.cast_b = words(max(l.cap, 1));  l.cast_end = words(SC_CAST_BUCKETS) }
-  for b in 0 .. SC_CAST_BUCKETS { l.cast_end[b] = 0 }
+  if l.cast_b == null { l.cast_b = words(max(l.cap, 1));  l.cast_end = words(SC_CAST_BUCKETS * max(l.n_lods, 1)) }
+  var nl = 1
+  var f = 0.0
+  if l.lod_ss != null and l.imp == null and render3d_st.cam_proj != null {
+    f = sh_lod_distance_factor(render3d_st)
+    if f > 0.0 { nl = l.n_lods }
+  }
+  l.cast_nl = nl
+  for b in 0 .. SC_CAST_BUCKETS * nl { l.cast_end[b] = 0 }
   # the same threshold the actors read (actor.ludic ac_caster_small: Unreal's 0.01, R3D_SHADOW_RADIUS_THRESHOLD)
   if render3d_st.ac_sh_rt < 0.0 {
     render3d_st.ac_sh_rt = 0.01
@@ -1204,13 +1336,14 @@ function layer_casters_make(render3d_st: mut Render3dState, l: Layer) -> void {
     let d = Math.sqrt(dx * dx + dy * dy + dz * dz)
     let r = r0 * s
     if t > 0.0 and r <= t * d { l.cast_b[i] = -1;  continue }
-    let b = min(int(Math.max(d - r, 0.0) / SC_CAST_M), SC_CAST_BUCKETS - 1)
+    var b = min(int(Math.max(d - r, 0.0) / SC_CAST_M), SC_CAST_BUCKETS - 1)
+    if nl > 1 { b += layer_ss_level(render3d_st, l, d, s, f) * SC_CAST_BUCKETS }
     l.cast_b[i] = b
     l.cast_end[b] += 1
   }
   # each bucket's first place, then the casters into the scratch in bucket order; the ends left as the running counts
   var acc = 0
-  for b in 0 .. SC_CAST_BUCKETS { let n = l.cast_end[b];  l.cast_end[b] = acc;  acc += n }
+  for b in 0 .. SC_CAST_BUCKETS * nl { let n = l.cast_end[b];  l.cast_end[b] = acc;  acc += n }
   let tmp = l.scratch
   for i in 0 .. l.count {
     let b = l.cast_b[i]
@@ -1221,16 +1354,33 @@ function layer_casters_make(render3d_st: mut Render3dState, l: Layer) -> void {
   }
   if acc > 0 { gpu_buffer_upload(render3d_st, l.sh_buf, acc * INST_FLOATS * 4, data_of(tmp), GPU_DYNAMIC) }
 }
-# the casters cascade sh_cascade draws: the buckets that begin inside its reach (cast_band_reaches: dmin - reach past far x k casts nothing)
+# the last bucket cascade sh_cascade draws: the buckets that begin inside its reach (cast_band_reaches: dmin - reach past far x k casts
+# nothing), -1 for none
 function layer_casters_in(render3d_st: mut Render3dState, l: Layer) -> int {
-  if l.cast_end == null { return 0 }
+  if l.cast_end == null { return -1 }
   # (cast_band_reaches keeps sc_cast_k, the frustum's corner factor, for this view)
-  if not cast_band_reaches(render3d_st, 0.0, 0.0, l.model.height) { return 0 }
-  if render3d_st.sc_cast_all == 1 or render3d_st.sh_split == null or render3d_st.sh_local { return l.cast_end[SC_CAST_BUCKETS - 1] }
+  if not cast_band_reaches(render3d_st, 0.0, 0.0, l.model.height) { return -1 }
+  if render3d_st.sc_cast_all == 1 or render3d_st.sh_split == null or render3d_st.sh_local { return SC_CAST_BUCKETS - 1 }
   let reach = Math.max(Math.min(l.model.height * 6.0, 40.0), 8.0)
   let far = render3d_st.sh_split[render3d_st.sh_cascade] * render3d_st.sc_cast_k + reach
-  let b = min(int(far / SC_CAST_M), SC_CAST_BUCKETS - 1)
-  return l.cast_end[b]
+  return min(int(far / SC_CAST_M), SC_CAST_BUCKETS - 1)
+}
+# the casters of a banded layer this cascade draws: each level's buckets up to layer_casters_in's, from where that level begins in sh_buf
+function layer_draw_casters_in(render3d_st: mut Render3dState, l: Layer, light_vp: floats) -> void {
+  let last = layer_casters_in(render3d_st, l)
+  if last < 0 { return }
+  var start = 0
+  for j in 0 .. l.cast_nl {
+    let end = l.cast_end[j * SC_CAST_BUCKETS + last]
+    if end > start {
+      var m = l.model
+      if l.cast_nl > 1 { m = l.lods[j] }
+      render3d_st.gvk_first_inst = start
+      layer_draw_model(render3d_st, l, m, l.sh_buf, end - start, l.card, true, light_vp)
+      render3d_st.gvk_first_inst = 0
+    }
+    start = l.cast_end[j * SC_CAST_BUCKETS + SC_CAST_BUCKETS - 1]
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -1370,6 +1520,7 @@ function scatter_clear_all(render3d_st: mut Render3dState) -> void {
     if l.gymax != null { free(l.gymax) }
     if l.vis != null { free(l.vis) }
     if l.lod_dist != null { free(l.lod_dist);  free(l.lod_card);  free(l.lod_buf);  free(l.n_lod) }
+    if l.lod_ss != null { free(l.lod_ss);  l.lod_ss = null }
     if l.lvl != null { free(l.lvl) }
     sc_free_gpu_cull(render3d_st, l)
     if l.imp != null {
