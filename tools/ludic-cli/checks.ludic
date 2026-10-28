@@ -39,6 +39,7 @@ function classify_fence(body: pointer) -> pointer {
       while e < tn and t[e] != '(' and not is_ws(t[e]) { e += 1 }
       let head = sslice(t, 0, e)
       if head == "program" { return "whole" }
+      if head == "import" and s_contains(body, "\nprogram ") { return "whole" }   # imports, then the program
       if is_decl_head(head) { return "decls" }
       return "stmts"
     }
@@ -577,7 +578,6 @@ function cmd_check_vocab() -> int {
   }
   return 0
 }
-
 
 # ============================================================================
 # json/xml asset validation — replaces the python3 json.load / xml.dom checks
