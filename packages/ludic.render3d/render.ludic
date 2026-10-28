@@ -30,9 +30,18 @@ function r3d_ground_albedo(render3d_st: mut Render3dState, r: float, g: float, b
 }
 # the sky's HDR image, when it is not the default photograph under r3d_assets
 
-# R3D_NOPREPASS=1: light the foliage the old way, every card behind the front one included
+# The foliage depth prepass is off by default: as Unreal's mobile renderer (r.Mobile.EarlyZPass 0,
+# FScene::GetEarlyZPassMode's DDM_None) and its deferred default (r.EarlyZPass 3: DDM_NonMaskedOnly,
+# masked materials kept out). On Apple's tiled GPU its hidden-surface removal already rejects most
+# of the cards behind the front one, and the second geometry pass cost more than it saved: the whole
+# frame on the island measured 34.7 - 35.1 ms without it, 34.8 - 36.3 ms with it.
+# R3D_PREPASS=1 turns it on (R3D_PREPASS_LODS limits it to the nearest levels); R3D_NOPREPASS=1 keeps it off.
 function r3d_prepass_off(render3d_st: mut Render3dState) -> bool {
-  if render3d_st.r3d_prepass_env < 0 { render3d_st.r3d_prepass_env = 0;  if r3d_env_has(render3d_st, "R3D_NOPREPASS") { render3d_st.r3d_prepass_env = 1 } }
+  if render3d_st.r3d_prepass_env < 0 {
+    render3d_st.r3d_prepass_env = 1
+    if r3d_env_has(render3d_st, "R3D_PREPASS") and r3d_env(render3d_st, "R3D_PREPASS") != "0" { render3d_st.r3d_prepass_env = 0 }
+    if r3d_env_has(render3d_st, "R3D_NOPREPASS") { render3d_st.r3d_prepass_env = 1 }
+  }
   return render3d_st.r3d_prepass_env == 1
 }
 function fog_bind(render3d_st: mut Render3dState, prog: int) -> void {

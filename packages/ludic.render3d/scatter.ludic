@@ -911,7 +911,21 @@ function cast_band_reaches(render3d_st: mut Render3dState, dmin: float, dmax: fl
 # distance — which is the crown shadow that appeared as you walked up to a tree.
 function layer_draw_near(render3d_st: mut Render3dState, l: Layer, shadow: bool, light_vp: floats, full: bool) -> void {
   if l.n_lods > 1 and l.g_on and not shadow {
-    # one draw per material covering all of its levels (the merged meshes)
+    # one draw per material covering all of its levels (the merged meshes); over the prepass,
+    # the levels it drew with the equal test and the ones past it alpha-tested as before
+    let m = sc_prepass_levels(render3d_st, l)
+    if render3d_st.sc_prepass and m < l.n_lods {
+      if m > 0 {
+        render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = m
+        layer_draw_model(render3d_st, l, l.g_model, l.g_dst, 1, false, shadow, light_vp)
+      }
+      render3d_st.sc_prepass = false
+      render3d_st.sc_ind_base = m;  render3d_st.sc_ind_n = l.n_lods - m
+      layer_draw_model(render3d_st, l, l.g_model, l.g_dst, 1, false, shadow, light_vp)
+      render3d_st.sc_prepass = true
+      render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1
+      return
+    }
     render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = l.n_lods
     layer_draw_model(render3d_st, l, l.g_model, l.g_dst, 1, false, shadow, light_vp)
     render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1
@@ -920,10 +934,14 @@ function layer_draw_near(render3d_st: mut Render3dState, l: Layer, shadow: bool,
   if l.n_lods > 1 {
     # a LOD chain: every level from its own bucket (casters are what is drawn), and a caster level
     # only into the cascades it can put a shadow in
+    let pre = render3d_st.sc_prepass
+    let m = sc_prepass_levels(render3d_st, l)
     for k in 0 .. l.n_lods {
       if shadow and not layer_level_casts_here(render3d_st, l, k) { continue }
+      render3d_st.sc_prepass = pre and k < m
       render3d_st.sc_dbg_level = k;  layer_draw_model(render3d_st, l, l.lods[k], l.lod_buf[k], l.n_lod[k], l.lod_card[k] == 1, shadow, light_vp)
     }
+    render3d_st.sc_prepass = pre
     render3d_st.sc_dbg_level = -1
     return
   }
@@ -1099,18 +1117,34 @@ function scatter_draw_depth(render3d_st: mut Render3dState) -> void {
     if l.grass and sc_grass_replaced(render3d_st) { continue }
     if render3d_st.r3d_no_trees and l.imp != null { continue }
     layer_update(render3d_st, l)
+    let m = sc_prepass_levels(render3d_st, l)
     if l.n_lods > 1 and l.g_on {
-      render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = l.n_lods
-      layer_draw_depth(render3d_st, l, l.g_model, l.g_dst, 1)
-      render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1
+      if m > 0 {
+        render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = m
+        layer_draw_depth(render3d_st, l, l.g_model, l.g_dst, 1)
+        render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1
+      }
     } else if l.n_lods > 1 {
       # (a tree layer is flagged `card` for its distant level; its mesh levels still count)
-      for k in 0 .. l.n_lods { if l.lod_card[k] != 1 { layer_draw_depth(render3d_st, l, l.lods[k], l.lod_buf[k], l.n_lod[k]) } }
+      for k in 0 .. m { if l.lod_card[k] != 1 { layer_draw_depth(render3d_st, l, l.lods[k], l.lod_buf[k], l.n_lod[k]) } }
     } else if not l.card {
       layer_draw_depth(render3d_st, l, l.model, l.buf, l.n_near)
     }
   }
   gpu_cull(render3d_st, true)
+}
+# How many of a LOD chain's levels, nearest first, the prepass draws (and the lit pass then draws
+# with the equal test). Unreal keeps a primitive out of its depth prepass when it is small on
+# screen (r.MinScreenRadiusForDepthPrepass, DepthRendering.cpp): far levels cover few pixels and
+# have little overdraw behind them to save, so the prepass costs them a second geometry pass for
+# nothing. R3D_PREPASS_LODS=n prepasses the first n levels; unset, every level.
+function sc_prepass_levels(render3d_st: mut Render3dState, l: Layer) -> int {
+  if render3d_st.sc_prepass_lods == -2 {
+    render3d_st.sc_prepass_lods = -1
+    if r3d_env_has(render3d_st, "R3D_PREPASS_LODS") { render3d_st.sc_prepass_lods = max(int(ue_parse_float(r3d_env(render3d_st, "R3D_PREPASS_LODS"))), 0) }
+  }
+  if render3d_st.sc_prepass_lods < 0 { return l.n_lods }
+  return min(render3d_st.sc_prepass_lods, l.n_lods)
 }
 # a layer the game flagged `grass` is ground cover the GPU blades stand in for: off while they draw
 function sc_grass_replaced(render3d_st: Render3dState) -> bool { return render3d_st.sc_skip_grass or ((render3d_st.grass_on or render3d_st.grass_force) and not render3d_st.grass_env_off and render3d_st.grass_prog != 0) }
