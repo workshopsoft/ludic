@@ -1,8 +1,0 @@
-bump: minor
-type: feat
-**Open-world mechanics: `ludic.roads`, `ludic.wanted`, `ludic.respawn`, `ludic.procgen`.** Four packages on `ludic.base` alone, each with data registries carrying editor attributes, verbs, facts, a save section, tests and a README.
-
-- **`ludic.roads`** - a road network as per-map `@PerMap` tables (nodes, roads as Catmull-Rom splines with lanes, a limit and a priority, turn rules), shortest and fastest routes over edges (forbidden turns, dead ends, one way roads), and traffic: cars following lanes with the Intelligent Driver Model, one car at a time through a junction by priority, stop, yield and signal, through ports for their bodies (`RoadsBody.place`, `.probe`) and the world (`RoadsWorld`).
-- **`ludic.wanted`** - a heat level against a subject: crimes as weighted rows (witness, repeat, cap), decay out of sight, levels and responses per level as data, the phases (Clear, Wanted, Searching) as a `@Machine` whose graph is `steps.lres`, and facts for the game's AI.
-- **`ludic.respawn`** - death to respawn: per-map respawn points (`@PerMap`), a rule per cause (nearest, checkpoint, home or start; flat and proportional cost, free deaths, wait, untouchable window), checkpoints by passing, locked points, and facts.
-- **`ludic.procgen`** - deterministic seeded generators in integer math: room-and-corridor dungeons, tile maps from edge-socket rules (wave function collapse), scatter within regions. The algorithms are written out precisely in its README, `tests/procgen_golden.json` holds inputs and outputs for 19 cases, and `tests/reference/procgen.py` is a second implementation that agrees with it number for number, so an editor's preview can match bit for bit. The save is only the seeds.

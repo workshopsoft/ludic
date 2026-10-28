@@ -1,3 +1,0 @@
-bump: minor
-type: feat
-**`ludic.render3d` loads binary glTF.** `gltf_load` and `gltf_cached` read a `.glb` (the header, the JSON chunk and the BIN chunk) through the same path as a `.gltf` with its `.bin`: the two are told apart by the file's first bytes, the accessors read only the byte ranges a node needs from the BIN chunk, and a damaged file (another version, a chunk past the end, no BIN chunk) is refused with a line saying so. `gltf_open` and `gltf_bin_reopen` are the document and binary for a reader that comes after a load, and `ludic.anim` reads clips through them, so a `.glb` animates too. The studio's Blender generators export `.glb`; a row's `@Asset("gltf")` names either.
