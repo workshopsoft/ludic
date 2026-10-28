@@ -66,6 +66,12 @@ export property KGpu {
   p_card: int = 0,
   p_bake: int = 0,
   p_bake_fac: int = 0,      # kit.frag FACADE BAKE: a box kit's card baked with its window grid
+  p_depth: int = 0,         # kit.frag DEPTH_ONLY: the kits' depth prepass (R3D_KIT_PREPASS, kgpu_draw_depth)
+  p_depth_fac: int = 0,     # kit.frag FACADE DEPTH_ONLY: a box kit's, with its party walls' discard
+  pre_on: bool = true,      # R3D_KIT_PREPASS (on unless 0)
+  opt_mesh: float = 1.0,    # kit.frag u_kit_opt (kgpu_bind_opt): R3D_KIT_SKIP_MESHMAPS, R3D_KIT_GLASS_SKIP, R3D_KIT_FAR_SIMPLE (1 on unless 0)
+  opt_glass: float = 1.0,
+  opt_far: float = 1.0,
   b_src: int = 0,
   b_kits: int = 0,
   b_cells: int = 0,
@@ -181,6 +187,13 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   g.p_card = r3d_program(render3d_st, "oimp.vert", "oimp.frag", "")
   g.p_bake = r3d_program(render3d_st, "kit.vert", "bake.frag", "")
   g.p_bake_fac = r3d_program(render3d_st, "kit.vert", "kit.frag", "#define INTERIOR_MAP\n#define FACADE\n#define BAKE\n")
+  kgpu_read_opts(render3d_st, g)
+  if g.pre_on {
+    # (the same kit.vert as the lit programs: the defines change no position arithmetic)
+    g.p_depth = r3d_program(render3d_st, "kit.vert", "kit.frag", "#define DEPTH_ONLY\n")
+    g.p_depth_fac = r3d_program(render3d_st, "kit.vert", "kit.frag", "#define INTERIOR_MAP\n#define FACADE\n#define DEPTH_ONLY\n")
+    if g.p_depth == 0 or g.p_depth_fac == 0 { g.pre_on = false }
+  }
   if (not cpu_only and (g.c_reset == 0 or g.c_cull == 0 or g.c_args == 0)) or g.p_mesh == 0 or g.p_int == 0 or g.p_fac == 0 or g.p_shadow == 0 or g.p_card == 0 or g.p_bake == 0 or g.p_bake_fac == 0 { return g }
   if cpu_only {
     g.b_ident = gpu_buffer_new(render3d_st)
@@ -267,6 +280,28 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   g.ready = true
   print("r3d: big world: instances are culled and binned on the GPU")
   return g
+}
+
+# the kits' shading-cost switches, each on unless its variable is 0, read once (start-up)
+function kgpu_read_opts(render3d_st: mut Render3dState, g: KGpu) -> void {
+  g.pre_on = not kgpu_env_off(render3d_st, "R3D_KIT_PREPASS")
+  g.opt_mesh = 1.0
+  g.opt_glass = 1.0
+  g.opt_far = 1.0
+  if kgpu_env_off(render3d_st, "R3D_KIT_SKIP_MESHMAPS") { g.opt_mesh = 0.0 }
+  if kgpu_env_off(render3d_st, "R3D_KIT_GLASS_SKIP") { g.opt_glass = 0.0 }
+  if kgpu_env_off(render3d_st, "R3D_KIT_FAR_SIMPLE") { g.opt_far = 0.0 }
+}
+function kgpu_env_off(render3d_st: mut Render3dState, name: string) -> bool {
+  return r3d_env_has(render3d_st, name) and r3d_env(render3d_st, name) == "0"
+}
+
+# kit.frag's u_kit_opt on a lit program: x R3D_KIT_SKIP_MESHMAPS (a surface's kit reads none of its mesh's own maps: they are replaced
+# whole), y R3D_KIT_GLASS_SKIP (a FACADE's fully drawn glass reads nothing of the wall behind it), z R3D_KIT_FAR_SIMPLE (no normal map
+# past 120 m, where the shader lays the geometric normal anyway; the streaks' sub-pixel noise at its mean there). The first two and the
+# normal map's skip change no pixel; the noise's mean is the one documented far-distance change. The card bake never sets it (all off).
+function kgpu_bind_opt(render3d_st: mut Render3dState, g: KGpu, p: int) -> void {
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_kit_opt"), g.opt_mesh, g.opt_glass, g.opt_far, 0.0)
 }
 
 # an identity instance for the impostor bake, in this file's layout
@@ -778,6 +813,7 @@ export function kgpu_draw(render3d_st: mut Render3dState, g: KGpu) -> void {
     sky_bind_lighting(render3d_st, p)
     shadow_bind(render3d_st, p)
     fog_bind(render3d_st, p)
+    kgpu_bind_opt(render3d_st, g, p)
     u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_storey"), k.storey_h, k.storey_line)
     if k.fac != null { kgpu_bind_facade(render3d_st, p, k) } else if k.rooms != 0 { imi_bind(render3d_st, p, k.ia, k.rooms, k.win_w, k.win_h) }
     for i in 0 .. k.prims {
@@ -791,6 +827,58 @@ export function kgpu_draw(render3d_st: mut Render3dState, g: KGpu) -> void {
   }
   kgpu_draw_cards(render3d_st, g, cmds)
   gpu_cull(render3d_st, true)
+}
+
+# ---- the depth prepass (R3D_KIT_PREPASS) -----------------------------------------------------------------------------------------------
+
+# Unreal draws every opaque mesh's depth before the base pass (r.EarlyZPass, DDM_AllOpaque for the deferred renderer: DepthRendering.cpp
+# FDepthPassMeshProcessor::AddMeshBatch / TryAddMeshBatch, the depth state TStaticDepthStencilState<true, CF_DepthNearOrEqual>; a masked
+# material keeps its clip in that pass), so the base pass shades each pixel once: a facade behind a nearer building, drawn in any order, is
+# rejected by depth before kit.frag's whole wall-and-window shading runs. Here the kits' meshes lay their depth first, from the same
+# indirect records the lit pass draws (the main view's, occlusion-culled: kgpu_view_cmds), with no colour and only kit.frag's own discards
+# (DEPTH_ONLY: the clip plane, a box kit's party-wall sides, the fog wall's dissolve), both faces as the lit pass draws them.
+# Unreal's base pass then tests CF_Equal with depth writes off (BasePassRendering.cpp SetDepthStencilStateForBasePass), which needs the two
+# passes' positions bit for bit equal (its vertex factories' INVARIANT positions). This engine's static prepass instead biases the prepass's
+# depth a little away from the camera (static_chunks.ludic STC_PRE_BIAS_*) and leaves the lit pass's own test and depth writes as they
+# were: every pixel the prepass lays is laid again, nearer, by the same surface's lit fragment, so whatever won the pixel before wins it now
+# and the depth buffer ends exactly as it did; only fragments that lose anyway (behind a kit by more than the bias) are cut before shading.
+# The same is done here (nothing that can z-fight, no invariance needed between the depth and the lit programs). Main view only: a water
+# reflection (its clip plane and mirror) draws as before. R3D_KIT_PREPASS=0 turns it off.
+const KG_PRE_BIAS_F: fixed = -1.0     # slope factor, reversed depth: toward 0 (away from the camera), as static_chunks.ludic's
+const KG_PRE_BIAS_U: fixed = -2.0
+
+# the kits' depth before anything of the scene is shaded (the scene callback, first: the game's ot_draw_scene); the plain kits, then the
+# FACADE ones, each under one program
+export function kgpu_draw_depth(render3d_st: mut Render3dState, g: KGpu) -> void {
+  if not g.ready or g.cpu_only or g.arena.high == 0 or not g.pre_on or render3d_st.ter_reflect { return }
+  let cmds = kgpu_view_cmds(render3d_st, g)
+  gpu_color_write(render3d_st, false)
+  gpu_depth_bias(render3d_st, KG_PRE_BIAS_F, KG_PRE_BIAS_U)
+  gpu_cull(render3d_st, false)              # both faces, as kgpu_draw
+  for pass in 0 .. 2 {
+    var p = g.p_depth
+    if pass == 1 { p = g.p_depth_fac }
+    var bound = false
+    for id in 0 .. g.n_kits {
+      let k = g.kits[id]
+      if k.model == null { continue }
+      if (k.fac != null) != (pass == 1) { continue }
+      if not bound {
+        bound = true
+        gpu_use_program(render3d_st, p)
+        u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
+        u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+        u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+        fog_bind(render3d_st, p)            # u_clip_y and the dissolve's u_fog_cut
+      }
+      for i in 0 .. k.prims {
+        gpu_draw_mesh_indirect(render3d_st, k.model.prims[i].mesh, cmds, (id * KG_REC + i) * 20, 1, 0, 0)
+      }
+    }
+  }
+  gpu_cull(render3d_st, true)
+  gpu_depth_bias(render3d_st, 0.0, 0.0)
+  gpu_color_write(render3d_st, true)
 }
 
 # the records the view being drawn takes: the main view's occlusion-culled ones when this frame's cull made them, else the whole list
@@ -943,6 +1031,7 @@ export function kgpu_draw_lists(render3d_st: mut Render3dState, g: KGpu, k: KCul
     sky_bind_lighting(render3d_st, p)
     shadow_bind(render3d_st, p)
     fog_bind(render3d_st, p)
+    kgpu_bind_opt(render3d_st, g, p)
     u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_storey"), kit.storey_h, kit.storey_line)
     if kit.fac != null { kgpu_bind_facade(render3d_st, p, kit) } else if kit.rooms != 0 { imi_bind(render3d_st, p, kit.ia, kit.rooms, kit.win_w, kit.win_h) }
     for i in 0 .. kit.prims {
