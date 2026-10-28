@@ -106,6 +106,7 @@ export property CrowdSetting {
   @Unit("s") @Range(0.01, 1) react_dt: float = 0.1
   @Unit("s") @Range(0.01, 1) mid_dt: float = 0.25       # mid tier steers this often
   @Unit("s") @Range(0.1, 10) far_dt: float = 1.0        # far tier this often
+  @Range(1, 16) far_slices: int = 4                     # the far tier looked at a slice a frame, over this many frames (tick.ludic); 1 every frame
   @Unit("s") @Range(0, 3600) respawn_s: float = 120.0   # a killed person's place stays empty this long
   @Range(0, 2) fear_decay: float = 0.12                 # fear shed a second
   @Unit("m") @Range(0, 500) sync_r: float = 140.0      # what a client is sent, around its player

@@ -103,7 +103,9 @@ property Actor {
   # the one the view draws as `model`); a sun cascade may cast a coarser one (ac_shadow_lod). sh_keep: the view's while it does
   sh_lods:    []Model,
   sh_lod_d:   floats,
-  sh_keep:    Model
+  sh_keep:    Model,
+  # placeholder of the velocity agent's field (perf/peds only references it): writes no motion vectors
+  no_velocity: bool = false
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it

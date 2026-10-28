@@ -102,6 +102,15 @@ export property AnimPlayer {
   l_layers: int = 8
   l_events: bool = true
   posed: bool = false
+  # the skipped ticks' pose (set_tick.ludic, Unreal's URO interpolation): the pose the last evaluation made (the target) and the one
+  # shown when it began, per node rotation (4) and offset (3) in the skin's model frame; made once with the skin
+  ip_r: floats = null
+  ip_t: floats = null
+  ip_cr: floats = null
+  ip_ct: floats = null
+  ip_n: int = 0
+  ip_on: bool = false       # a target is there to move toward
+  t_every: int = 1          # the rate it ticks at this frame: its lod row's, slowed by the budget (anim_budget_frame)
   bi: words = words(3)      # a blend state's weights while they are made
   bwt: floats = floats(3)
   rm: floats = floats(4)    # root motion since the game last took it: x, y, z, yaw (radians)

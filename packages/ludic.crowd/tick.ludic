@@ -28,5 +28,41 @@ export function crowd_tick(crowd_st: mut CrowdState, crowd_steps_m: mut CrowdSte
     crowd_st.cw_traffic_t = 0.0
     cw_traffic_pass(crowd_st)
   }
-  cw_move_all(crowd_st, t.dt)
+  cw_move_sliced(crowd_st, t.dt)
+}
+
+# Every ped that is due, the far tier time-sliced: a far ped is looked at only on the frames of its slice ((uid + frame) mod
+# far_slices, crowd_settings; CROWD_FAR_SLICE overrides, 0 turns it off) and steps there once its far_dt is due, by all the time it
+# gathered, so the far tier's work is spread evenly over the frames instead of falling in clumps (a group made together, a ring of
+# peds dropping to the far tier on the same frame). The near and mid tiers are as before. Unreal Mass's variable tick does the same:
+# MassSimulationLOD.cpp FMassSimulationVariableTickSharedFragment / LODTickRateController (TickRates High 0, Medium 0.5, Low 1,
+# Off 1.5 s; bSpreadFirstSimulationUpdate spreads the chunks' first ticks; a chunk ticks when MassLODFragments.h
+# ShouldTickThisFrame, by its accumulated DeltaTime).
+function cw_move_sliced(crowd_st: mut CrowdState, dt: float) -> void {
+  let k = crowd_st.cw_cfg.far_slices
+  if k <= 1 {
+    cw_move_all(crowd_st, dt)
+    return
+  }
+  let n = tb_len(crowd_st.cw_tab)
+  let mid = crowd_st.cw_cfg.mid_dt
+  let far = crowd_st.cw_cfg.far_dt
+  let f = crowd_st.cw_frame
+  for i in 0 .. n {
+    let p = crowd_st.cw_tab.rec[i]
+    if p.lod == CROWD_PUPPET { continue }
+    p.acc += dt
+    var period = 0.0
+    if p.lod == CROWD_MID { period = mid }
+    if p.lod == CROWD_FAR {
+      period = far
+      var sl = (p.uid + f) % k
+      if sl < 0 { sl += k }
+      if sl != 0 { continue }
+    }
+    if p.acc < period { continue }
+    let step = p.acc
+    p.acc = 0.0
+    cw_step(crowd_st, p, i, step)
+  }
 }

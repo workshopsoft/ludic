@@ -72,6 +72,17 @@ export state AnimState {
   lk_src: words = null
   lk_seen: words = null      # per source: 1 when a row listens to it as a fact source, else -1
   lk_sf: SigFact = sig_fact_new()
+  # set_tick.ludic: the skipped ticks interpolated (R3D_ANIM_INTERP) and the budget (R3D_ANIM_BUDGET); -1 not read yet
+  ip_flag: int = -1
+  bud_flag: int = -1
+  bud_ms: float = 1.0        # the budget, ms a frame (R3D_ANIM_BUDGET_MS)
+  bud_us: long = 0           # this frame's: time the evaluations took, how many, and the evaluations the lod rows alone ask for
+  bud_n: int = 0
+  bud_ideal: float = 0.0     # ... of the players that may be throttled
+  bud_fixed: float = 0.0     # ... of those that may not (within the first lod row: Unreal's always-ticked)
+  bud_unit: float = 0.05     # ms an evaluation takes, smoothed
+  bud_press: float = 0.0     # how far over the budget the rows' ask is, smoothed
+  bud_scale: float = 1.0     # what the throttled players' rates are times
 }
 # Keyed translations are off unless asked for: baking keys location on every bone, and a skeleton
 # does not translate its joints, so applying them turns rounding into a pose.
