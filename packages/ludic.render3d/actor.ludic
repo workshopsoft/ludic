@@ -1155,8 +1155,28 @@ function ac_same_m4(a: floats, b: floats) -> bool {
 # An actor smaller on screen than this many pixels across is left to the camera's motion: the history
 # clip covers so few pixels, and a crowd's far figures (five parts each, two palettes) were most of the pass.
 const AC_VEL_MIN_PX: float = 12.0
+# Unreal's FOpaqueVelocityMeshProcessor::PrimitiveHasVelocityForFrame (VelocityRendering.cpp) leaves a primitive whose LocalToWorld
+# Equals the previous within 0.0001 to the camera's motion ("treat as background"). A skinned mesh is AlwaysHasVelocity there
+# (SkeletalMeshSceneProxy.cpp), but its velocity is this frame's skin against PreviousReferenceToLocal (SkeletalRenderGPUSkin.cpp):
+# with the palette unchanged too that is the camera's motion alone, which taa_mv.frag already wrote from the depth at every pixel.
+# So by default (R3D_VEL_SKIP=0: every seen skinned actor drawn, the rigid ones compared exactly) an actor whose matrix and
+# palette are within the same 0.0001 of last frame's is not drawn: a still pedestrian, a parked figure, a held pose.
+const AC_VEL_EQ: float = 0.0001
+function ac_vel_skip_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ac_vel_skip < 0 {
+    render3d_st.ac_vel_skip = 1
+    if r3d_env_has(render3d_st, "R3D_VEL_SKIP") and r3d_env(render3d_st, "R3D_VEL_SKIP") == "0" { render3d_st.ac_vel_skip = 0 }
+  }
+  return render3d_st.ac_vel_skip == 1
+}
+# FMatrix::Equals: every float within AC_VEL_EQ; out at the first that is not (a posed figure differs in its first joints)
+function ac_near(a: floats, b: floats, n: int) -> bool {
+  for i in 0 .. n { if Math.abs(a[i] - b[i]) > AC_VEL_EQ { return false } }
+  return true
+}
 function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, frame: int) -> void {
   if render3d_st.ac_actors == null or render3d_st.ac_vel == null { return }
+  let skip = ac_vel_skip_on(render3d_st)
   # pixels per metre at one metre's distance
   let ppm = float(render3d_st.post_h) * 0.5 / Math.tan(render3d_st.cam_fov * 0.5)
   for i in 0 .. len(render3d_st.ac_actors) {
@@ -1182,7 +1202,11 @@ function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, fr
       let dist = Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 0.1)
       if size * ppm / dist < AC_VEL_MIN_PX { seen = false }
     }
-    if seen and (n > 0 or not ac_same_m4(a.mat, a.prev_mat)) { ac_draw_velocity_one(render3d_st, a, bones, n, prev_vp);  render3d_st.taa_vel_draws += 1 }
+    if seen {
+      var moved = n > 0 or not ac_same_m4(a.mat, a.prev_mat)
+      if skip { moved = not ac_near(a.mat, a.prev_mat, 16) or (n > 0 and not ac_near(bones, a.prev_bones, n * 16)) }
+      if moved { ac_draw_velocity_one(render3d_st, a, bones, n, prev_vp);  render3d_st.taa_vel_draws += 1 } else if n > 0 { render3d_st.taa_vel_skips += 1 }
+    }
     m4_copy(a.prev_mat, a.mat)
     if n > 0 { for k in 0 .. n * 16 { a.prev_bones[k] = bones[k] } }
     a.prev_n = n
