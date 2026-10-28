@@ -194,6 +194,7 @@ function prof_report(render3d_st: Render3dState) -> void {
     print(`  {Text.pad_right("WHOLE FRAME", 22)} {Text.pad_left(string(render3d_st.prof_whole_ns / render3d_st.prof_whole_hits / 1000), 7)} us   least {string(render3d_st.prof_whole_min / 1000)} us   (first GPU work to the end of post: gaps included, the HUD and present not)`)
   }
   if render3d_st.prof_wall_hits > 0 { print(`  {Text.pad_right("WALL", 22)} {Text.pad_left(string(render3d_st.prof_wall_us / render3d_st.prof_wall_hits), 7)} us   (one frame to the next on the clock: the CPU and the GPU together)`) }
+  print(`  {Text.pad_right("IMPOSTOR BAKES", 22)} {Text.pad_left(string(render3d_st.prof_imp_play), 7)} in play   {string(render3d_st.prof_imp_frames)} frames   {string(render3d_st.prof_imp_total)} total   (atlases baked past the first eight frames: 0 when no steady frame bakes)`)
   shadow_cache_say(render3d_st)
 }
 
@@ -250,6 +251,12 @@ function prof_layer_add(render3d_st: mut Render3dState, us: long, bytes: long) -
   render3d_st.prof_up_cur = render3d_st.prof_up_cur + bytes
 }
 function prof_bake_add(render3d_st: mut Render3dState, us: long) -> void { if render3d_st.prof_on { render3d_st.prof_bake_us_cur = render3d_st.prof_bake_us_cur + us } }
+# an impostor atlas baked (oimp_gpu.ludic oimp_bake, scatter.ludic impostor_bake): counted whether or not R3D_PROF is on, so the
+# set-up's bakes before the profiler starts are in the total
+function prof_imp_add(render3d_st: mut Render3dState) -> void {
+  render3d_st.prof_imp_cur += 1
+  render3d_st.prof_imp_total += 1
+}
 
 @alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_chunk(render3d_st: mut Render3dState, kind: int, band: int, count: int, us: long) -> void {
@@ -327,6 +334,8 @@ function prof_gen_frame(render3d_st: mut Render3dState) -> void {
     render3d_st.prof_mark_us = new []long;  render3d_st.prof_mark_who = new []pointer
   }
   push(render3d_st.prof_gen, render3d_st.prof_gen_cur)
+  if len(render3d_st.prof_gen) > 8 and render3d_st.prof_imp_cur > 0 { render3d_st.prof_imp_play += render3d_st.prof_imp_cur;  render3d_st.prof_imp_frames += 1 }
+  render3d_st.prof_imp_cur = 0
   render3d_st.prof_gen_cur = 0
   let now = clock_now_us()
   var dtf: long = 0
