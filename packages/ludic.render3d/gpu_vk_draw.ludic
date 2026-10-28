@@ -1458,6 +1458,36 @@ function gvk_set_view(render3d_st: mut Render3dState, cb: pointer) -> void {
   Vk.cmd_set_scissor(cb, 0, 1, sc)
 }
 
+# R3D_VK_SKIP_REBIND (on unless 0): what is already bound is not bound again - a texture on its unit (gpu_tex_bind), a draw's
+# descriptor set (gvk_bind_set)
+function gvk_skip_rebind(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_dsb_on < 0 {
+    render3d_st.gvk_dsb_on = 1
+    if r3d_env_has(render3d_st, "R3D_VK_SKIP_REBIND") and r3d_env(render3d_st, "R3D_VK_SKIP_REBIND") == "0" { render3d_st.gvk_dsb_on = 0 }
+  }
+  return render3d_st.gvk_dsb_on == 1
+}
+# A draw's set into the command buffer, unless the same set with the same layout and dynamic offsets is what the last draw in it bound
+# (a pipeline of the same layout leaves set 0 bound: Vulkan's pipeline layout compatibility). A new command buffer starts with none
+# (gvk_once_begin).
+function gvk_bind_set(render3d_st: mut Render3dState, cb: pointer, p: int, set: long) -> void {
+  let layout = render3d_st.gvk_prog_layout[p]
+  let nd = render3d_st.gvk_set_ndyn
+  var o0 = 0
+  var o1 = 0
+  if nd > 0 { o0 = Vk.get_i32(render3d_st.gvk_set_offs, 0) }
+  if nd > 1 { o1 = Vk.get_i32(render3d_st.gvk_set_offs, 4) }
+  if gvk_skip_rebind(render3d_st) and render3d_st.gvk_dsb_set == set and render3d_st.gvk_dsb_layout == layout and render3d_st.gvk_dsb_n == nd and render3d_st.gvk_dsb_o0 == o0 and render3d_st.gvk_dsb_o1 == o1 {
+    ds_set_saved(render3d_st)
+    return
+  }
+  let sets = gvk_tmp(render3d_st, 8)
+  Vk.put_i64(sets, 0, set)
+  Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 0, 1, sets, nd, render3d_st.gvk_set_offs)
+  render3d_st.gvk_dsb_set = set;  render3d_st.gvk_dsb_layout = layout;  render3d_st.gvk_dsb_n = nd
+  render3d_st.gvk_dsb_o0 = o0;  render3d_st.gvk_dsb_o1 = o1
+}
+
 # A draw of mesh m with program p and state st: the pipeline, the view, the set, the buffers.
 # first / count select vertices or indices; count 0 means the mesh's own count. instances >= 1.
 function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState, first: int, count: int, instances: int, tx: words, tx_w: int, tx_cap: int, rec: words, rec_o: int) -> void {
@@ -1491,9 +1521,7 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
   let set = gvk_draw_set(render3d_st, p, tx, tx_w, tx_cap)
   if set == 0 { return }
   if prof { render3d_st.gvk_us_set = render3d_st.gvk_us_set + (clock_now_us() - t1) }
-  let sets = gvk_tmp(render3d_st, 8)
-  Vk.put_i64(sets, 0, set)
-  Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, render3d_st.gvk_prog_layout[p], 0, 1, sets, render3d_st.gvk_set_ndyn, render3d_st.gvk_set_offs)
+  gvk_bind_set(render3d_st, cb, p, set)
   let v = render3d_st.gvk_prog_var[p]
   if m != null and m.attrs != null {
     # the same bindings, in the same order, as gvk_pipeline gave the layout

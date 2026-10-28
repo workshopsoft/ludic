@@ -542,7 +542,14 @@ function gpu_tex_ok(render3d_st: Render3dState, tex: int) -> bool {
 }
 # the texture unit later binds act on
 function gpu_tex_unit(render3d_st: mut Render3dState, unit: int) -> void { render3d_st.gpu_unit_cur = unit }
+# A texture already on its unit is not bound again (counted as saved: drawstats); it still becomes the one gpu_tex_param acts on.
+# R3D_VK_SKIP_REBIND=0 binds every one.
 function gpu_tex_bind(render3d_st: mut Render3dState, kind: int, tex: int) -> void {
+  if kind != GPU_TEX2D_ARRAY and render3d_st.gpu_unit_cur < 32 and render3d_st.gpu_unit_2d[render3d_st.gpu_unit_cur] == tex and gvk_skip_rebind(render3d_st) {
+    render3d_st.gpu_bound_2d = tex
+    ds_tex_saved(render3d_st)
+    return
+  }
   ds_tex_bind(render3d_st)
   if kind == GPU_TEX2D_ARRAY { render3d_st.gpu_bound_array = tex } else { render3d_st.gpu_bound_2d = tex }
   if kind != GPU_TEX2D_ARRAY and render3d_st.gpu_unit_cur < 32 {
