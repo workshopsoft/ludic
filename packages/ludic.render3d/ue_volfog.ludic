@@ -93,10 +93,29 @@ function ue_vf_array(render3d_st: mut Render3dState, w: int, h: int, layers: int
 }
 
 # the grid's three arrays and their layers' framebuffers
+# what the last size made, either set (VF_ATLAS's tiled targets, or the per-slice arrays and their framebuffers) and the conservative
+# depths both make: a set never made is null (the atlas makes no per-slice framebuffers; freeing their lists crashed a resize)
 function ue_vf_free(render3d_st: mut Render3dState) -> void {
-  for l in 0 .. render3d_st.ue_vf_gz { gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_a[l]);  gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_b[l]);  gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_i[l]) }
-  gpu_tex_free(render3d_st, render3d_st.ue_vf_a);  gpu_tex_free(render3d_st, render3d_st.ue_vf_b);  gpu_tex_free(render3d_st, render3d_st.ue_vf_i)
-  free(render3d_st.ue_vf_fb_a);  free(render3d_st.ue_vf_fb_b);  free(render3d_st.ue_vf_fb_i)
+  if render3d_st.ue_vf_fb_a != null {
+    for l in 0 .. render3d_st.ue_vf_gz {
+      gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_a[l]);  gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_b[l]);  gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_i[l])
+      if render3d_st.ue_vf_fb_m != null { gpu_fb_free(render3d_st, render3d_st.ue_vf_fb_m[l]) }
+    }
+    free(render3d_st.ue_vf_fb_a);  free(render3d_st.ue_vf_fb_b);  free(render3d_st.ue_vf_fb_i)
+    render3d_st.ue_vf_fb_a = null;  render3d_st.ue_vf_fb_b = null;  render3d_st.ue_vf_fb_i = null
+    if render3d_st.ue_vf_fb_m != null { free(render3d_st.ue_vf_fb_m);  render3d_st.ue_vf_fb_m = null }
+  }
+  if render3d_st.ue_vf_a != 0 { gpu_tex_free(render3d_st, render3d_st.ue_vf_a);  render3d_st.ue_vf_a = 0 }
+  if render3d_st.ue_vf_b != 0 { gpu_tex_free(render3d_st, render3d_st.ue_vf_b);  render3d_st.ue_vf_b = 0 }
+  if render3d_st.ue_vf_i != 0 { gpu_tex_free(render3d_st, render3d_st.ue_vf_i);  render3d_st.ue_vf_i = 0 }
+  if render3d_st.ue_vf_carry_a != null { target_free(render3d_st, render3d_st.ue_vf_carry_a);  render3d_st.ue_vf_carry_a = null }
+  if render3d_st.ue_vf_carry_b != null { target_free(render3d_st, render3d_st.ue_vf_carry_b);  render3d_st.ue_vf_carry_b = null }
+  if render3d_st.ue_vf_ta != null { target_free(render3d_st, render3d_st.ue_vf_ta);  render3d_st.ue_vf_ta = null }
+  if render3d_st.ue_vf_tb != null { target_free(render3d_st, render3d_st.ue_vf_tb);  render3d_st.ue_vf_tb = null }
+  if render3d_st.ue_vf_ti != null { target_free(render3d_st, render3d_st.ue_vf_ti);  render3d_st.ue_vf_ti = null }
+  if render3d_st.ue_vf_cd_a != null { target_free(render3d_st, render3d_st.ue_vf_cd_a);  render3d_st.ue_vf_cd_a = null }
+  if render3d_st.ue_vf_cd_b != null { target_free(render3d_st, render3d_st.ue_vf_cd_b);  render3d_st.ue_vf_cd_b = null }
+  if render3d_st.ue_vf_cdq != null { target_free(render3d_st, render3d_st.ue_vf_cdq);  render3d_st.ue_vf_cdq = null }
 }
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
