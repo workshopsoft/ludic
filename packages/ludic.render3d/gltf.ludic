@@ -41,6 +41,8 @@ property Prim {
   st_lod_n: int = 0,     # this frame's: the segments drawn and the coverage scale (strands_lod)
   st_lod_cov: float = 1.0,
   st_lod_frame: int = -1,
+  st_ncl: int = 0,       # its clusters (GroomBuilder.cpp BuildClusterData's ClusterCount: the Auto LOD's least curves)
+  st_lod_gbias: float = 0.0,  # the groom's AutoLODBias, its asset's and group's (UGroomAsset::GetAutoLODBias: model_set_strand_lod_bias)
   st_rmax: float = 0.0,  # and their radii fractions of this (Unreal's HairStrandsVF.Radius)
   surf: floats,         # a surface laid over it (surface.ludic: surf_apply): model.frag's and kit.frag's u_surf .. u_surf_e, 20 floats; null for none
   surf2: floats,        # a second, blended in by the vertex colour (the ground's paving under its grass: surf_apply_ground), or null

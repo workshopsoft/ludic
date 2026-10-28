@@ -58,6 +58,9 @@ layout(location = 15) in vec4 i_an;
 layout(location = 4) in vec4 i_b;
 layout(location = 14) in vec4 i_bs;
 layout(location = 12) in vec4 i_n;
+#ifdef VIS
+out vec2 v_sid;                              // the segment (strands.frag VIS): gl_InstanceIndex, its low and high 12 bits (exact through any interpolation)
+#endif
 uniform vec3 u_strand_c;
 uniform float u_strand_rmax;
 vec3 stPos(vec4 v) { uvec4 q = uvec4(v + 0.5); return vec3(unpackHalf2x16(q.x).x, unpackHalf2x16(q.y).x, unpackHalf2x16(q.z).x) + u_strand_c; }
@@ -184,6 +187,9 @@ void main() {
   vec3 sN = stOct(i_an.xy);
   float sSeed = i_an.z;
   vec4 sSky = atB ? stSky(i_bs) : stSky(i_as);
+#ifdef VIS
+  v_sid = vec2(float(gl_InstanceIndex & 4095), float(gl_InstanceIndex >> 12));
+#endif
 #else
   vec3 tw = mat3(m) * a_nrm;
   float sSide = a_uv.y;

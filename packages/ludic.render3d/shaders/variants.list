@@ -126,3 +126,7 @@ skin.vert|strands.frag|#define STRANDS;#define DOM;
 skin.vert|strands.frag|#define STRANDS;#define INST;
 skin.vert|strands.frag|#define STRANDS;#define INST;#define TRANSMITTANCE;
 skin.vert|strands.frag|#define STRANDS;#define INST;#define DOM;
+skin.vert|strands.frag|#define STRANDS;#define INST;#define VIS;
+fullscreen.vert|strands.frag|#define STRANDS;#define SHADE;
+fullscreen.vert|strands_resolve.frag|#define FILL_DEPTH;
+fullscreen.vert|strands_resolve.frag|#define WRITE_DEPTH;
