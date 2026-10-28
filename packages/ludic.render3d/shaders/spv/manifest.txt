@@ -1476,7 +1476,7 @@ T 3e4b62f9 u_ue_lph 21
 S 3e4b62f9 u_ue_ls 22
 T 3e4b62f9 u_ue_lsh 23
 P 676965ab fullscreen.vert ssgi.frag 
-B 676965ab frag 1 2552
+B 676965ab frag 1 2556
 U 676965ab frag u_cascade_vp 0 mat4 5 64
 U 676965ab frag u_cascade_split 320 float 5 16
 U 676965ab frag u_cascade_range 400 float 5 16
@@ -1562,6 +1562,7 @@ U 676965ab frag u_radius 2536 float 1 0
 U 676965ab frag u_intensity 2540 float 1 0
 U 676965ab frag u_contact 2544 float 1 0
 U 676965ab frag u_frame 2548 float 1 0
+U 676965ab frag u_gi 2552 float 1 0
 T 676965ab u_brdf 2
 T 676965ab u_depth 3
 T 676965ab u_hairsh 4
@@ -13003,7 +13004,7 @@ I fcc1042e a_nrm 1 vec3
 I fcc1042e a_uv 2 vec2
 I fcc1042e a_col 7 vec4
 I fcc1042e a_sky 9 vec4
-B fcc1042e frag 1 2840
+B fcc1042e frag 1 2844
 U fcc1042e frag u_cascade_vp 0 mat4 5 64
 U fcc1042e frag u_cascade_split 320 float 5 16
 U fcc1042e frag u_cascade_range 400 float 5 16
@@ -13089,6 +13090,7 @@ U fcc1042e frag u_strand_minr 2544 float 1 0
 U fcc1042e frag u_fp 2560 vec4 17 16
 U fcc1042e frag u_frame 2832 float 1 0
 U fcc1042e frag u_st_terms 2836 float 1 0
+U fcc1042e frag u_st_cov 2840 float 1 0
 T fcc1042e u_brdf 2
 T fcc1042e u_hair_lut 3
 T fcc1042e u_hairsh 4
@@ -13129,7 +13131,7 @@ I fcf235c8 a_nrm 1 vec3
 I fcf235c8 a_uv 2 vec2
 I fcf235c8 a_col 7 vec4
 I fcf235c8 a_sky 9 vec4
-B fcf235c8 frag 1 2680
+B fcf235c8 frag 1 2684
 U fcf235c8 frag u_cascade_vp 0 mat4 5 64
 U fcf235c8 frag u_cascade_split 320 float 5 16
 U fcf235c8 frag u_cascade_range 400 float 5 16
@@ -13211,6 +13213,7 @@ U fcf235c8 frag u_strand_minr 2384 float 1 0
 U fcf235c8 frag u_fp 2400 vec4 17 16
 U fcf235c8 frag u_frame 2672 float 1 0
 U fcf235c8 frag u_st_terms 2676 float 1 0
+U fcf235c8 frag u_st_cov 2680 float 1 0
 T fcf235c8 u_brdf 2
 T fcf235c8 u_hair_lut 3
 T fcf235c8 u_hairsh 4
@@ -13534,6 +13537,7 @@ U 339fddc9 frag u_strand_minr 2384 float 1 0
 U 339fddc9 frag u_fp 2400 vec4 17 16
 U 339fddc9 frag u_frame 2672 float 1 0
 U 339fddc9 frag u_st_terms 2676 float 1 0
+U 339fddc9 frag u_st_cov 2680 float 1 0
 U 339fddc9 frag u_hs_layers 2688 vec4 1 0
 T 339fddc9 u_brdf 2
 T 339fddc9 u_hair_lut 3
@@ -13584,7 +13588,7 @@ I c0548d95 i_an 15 vec4
 I c0548d95 i_bs 14 vec4
 I c0548d95 i_as 13 vec4
 I c0548d95 a_sky 9 vec4
-B c0548d95 frag 1 2840
+B c0548d95 frag 1 2844
 U c0548d95 frag u_cascade_vp 0 mat4 5 64
 U c0548d95 frag u_cascade_split 320 float 5 16
 U c0548d95 frag u_cascade_range 400 float 5 16
@@ -13670,6 +13674,7 @@ U c0548d95 frag u_strand_minr 2544 float 1 0
 U c0548d95 frag u_fp 2560 vec4 17 16
 U c0548d95 frag u_frame 2832 float 1 0
 U c0548d95 frag u_st_terms 2836 float 1 0
+U c0548d95 frag u_st_cov 2840 float 1 0
 T c0548d95 u_brdf 2
 T c0548d95 u_hair_lut 3
 T c0548d95 u_hairsh 4
@@ -13719,7 +13724,7 @@ I e635df33 i_an 15 vec4
 I e635df33 i_bs 14 vec4
 I e635df33 i_as 13 vec4
 I e635df33 a_sky 9 vec4
-B e635df33 frag 1 2680
+B e635df33 frag 1 2684
 U e635df33 frag u_cascade_vp 0 mat4 5 64
 U e635df33 frag u_cascade_split 320 float 5 16
 U e635df33 frag u_cascade_range 400 float 5 16
@@ -13801,6 +13806,7 @@ U e635df33 frag u_strand_minr 2384 float 1 0
 U e635df33 frag u_fp 2400 vec4 17 16
 U e635df33 frag u_frame 2672 float 1 0
 U e635df33 frag u_st_terms 2676 float 1 0
+U e635df33 frag u_st_cov 2680 float 1 0
 T e635df33 u_brdf 2
 T e635df33 u_hair_lut 3
 T e635df33 u_hairsh 4
@@ -13932,6 +13938,7 @@ U 7b87e0f2 frag u_strand_minr 2384 float 1 0
 U 7b87e0f2 frag u_fp 2400 vec4 17 16
 U 7b87e0f2 frag u_frame 2672 float 1 0
 U 7b87e0f2 frag u_st_terms 2676 float 1 0
+U 7b87e0f2 frag u_st_cov 2680 float 1 0
 U 7b87e0f2 frag u_hs_layers 2688 vec4 1 0
 T 7b87e0f2 u_brdf 2
 T 7b87e0f2 u_hair_lut 3

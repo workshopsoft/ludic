@@ -28,6 +28,11 @@ property GpuVariant {
   u_type:   []string,
   u_count:  []int,
   u_stride: []int,
+  # made once at a program's first use (gpu_vk_draw.ludic gvk_var_index): a name's place, and for each uniform the first and the next
+  # of the same name (one name in the vertex and the fragment block), so a draw never compares names
+  look:   Dict,
+  u_first:  []int,
+  u_next:   []int,
   t_name: []string,
   t_bind: []int,
   s_name: []string,        # storage buffers a stage reads (S rows), bound by name with gpu_bind_buffer

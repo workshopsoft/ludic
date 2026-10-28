@@ -126,12 +126,62 @@ function strands_draw(render3d_st: mut Render3dState, ap: AcProg, api: AcProg, m
         gvk_u_set(render3d_st, use.l_fp, data_of(t), 16, AC_FAB_FLOATS / 4)
       }
       if pr.inst_n > 0 {
+        strands_lod(render3d_st, a, pr)
         u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_strand_c"), pr.st_cx, pr.st_cy, pr.st_cz)
         u_f(render3d_st, gpu_uniform(render3d_st, p, "u_strand_rmax"), pr.st_rmax)
-        mesh_draw_instanced(render3d_st, pr.mesh, pr.inst_n)
-      } else { mesh_draw(render3d_st, pr.mesh) }
+        u_f(render3d_st, gpu_uniform(render3d_st, p, "u_st_cov"), pr.st_lod_cov)
+        mesh_draw_instanced(render3d_st, pr.mesh, pr.st_lod_n)
+      } else {
+        u_f(render3d_st, gpu_uniform(render3d_st, p, "u_st_cov"), 1.0)
+        mesh_draw(render3d_st, pr.mesh)
+      }
       render3d_st.st_draws += 1
     }
+  }
+}
+
+# Unreal's hair Auto LOD (GroomManager.cpp ComputeHairLODIndex, ComputeActiveCurveCount; r.HairStrands.LODMode 1, its default): a groom
+# draws the first N of its curves, N = curves x clamp(ScreenSize + bias, 0, 1), the screen size ComputeBoundsScreenSize's of the bounds'
+# centre and largest half extent in the main view, the bias the asset's AutoLODBias (0) and r.HairStrands.AutoLOD.Bias (0.1). The build
+# shuffled the curves, so the first N are an even thinning, and what the thinning takes is given back in the strands' coverage by the
+# groom's scale at N / curves (FHairStrandsBulkData::GetCoverageScale; HairStrandsVisibilityPS's HairCoverageScale: strands.frag
+# u_st_cov). Chosen once a frame from the camera, so every pass (the transmittance, the visibility, the depth, the deep shadow) draws the
+# same curves. R3D_HAIR_AUTOLOD_BIAS=<b> sets the global bias.
+# OFF unless R3D_HAIR_AUTOLOD=1 (2026-10-28): on, it cut the hair from 93 to 24 ms a frame over the shoulder on the island, but the thinned
+# beard went patchy and the scalp showed through the back of the head at 1.3 to 2.6 m (hero_shots.py, bruce). Unreal's own look at those
+# distances, and the MetaHuman grooms' LODMode / AutoLODBias, are to be read from the editor before it is on by default.
+function strands_lod(render3d_st: mut Render3dState, a: Actor, pr: Prim) -> void {
+  if pr.st_lod_frame == render3d_st.ac_frame { return }
+  pr.st_lod_frame = render3d_st.ac_frame
+  if render3d_st.st_lod_on < 0 {
+    render3d_st.st_lod_on = 0
+    if r3d_env_has(render3d_st, "R3D_HAIR_AUTOLOD") and r3d_env(render3d_st, "R3D_HAIR_AUTOLOD") == "1" { render3d_st.st_lod_on = 1 }
+    if r3d_env_has(render3d_st, "R3D_HAIR_AUTOLOD_BIAS") { render3d_st.st_lod_bias = ue_parse_float(r3d_env(render3d_st, "R3D_HAIR_AUTOLOD_BIAS")) }
+  }
+  pr.st_lod_n = pr.inst_n
+  pr.st_lod_cov = 1.0
+  if render3d_st.st_lod_on == 0 or pr.st_nc < 2 or pr.st_ends == null { return }
+  let c = render3d_st.st_lod_c
+  let px = pr.st_cx + pr.st_bx;  let py = pr.st_cy + pr.st_by;  let pz = pr.st_cz + pr.st_bz
+  if a.model.skin != null { strands_world(render3d_st, a, px, py, pz, c) }
+  else {
+    let m = a.mat
+    c[0] = m[0] * px + m[4] * py + m[8] * pz + m[12];  c[1] = m[1] * px + m[5] * py + m[9] * pz + m[13];  c[2] = m[2] * px + m[6] * py + m[10] * pz + m[14]
+  }
+  let dx = c[0] - render3d_st.cam_pos[0];  let dy = c[1] - render3d_st.cam_pos[1];  let dz = c[2] - render3d_st.cam_pos[2]
+  # ComputeBoundsScreenSize: the projected diameter over the screen, the distance held to a centimetre at least
+  let mult = Math.max(0.5 * render3d_st.cam_proj[0], 0.5 * render3d_st.cam_proj[5])
+  let size = Math.clamp(2.0 * mult * pr.st_ext * a.scale / Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 0.01), 0.0, 1.0)
+  let bias = Math.clamp(render3d_st.st_lod_bias, -1.0, 1.0)
+  let n = min(max(int(float(pr.st_nc) * Math.clamp(size + bias, 0.0, 1.0)), 1), pr.st_nc)
+  pr.st_lod_n = pr.st_ends[n - 1]
+  if pr.st_cov != null {
+    # GetCoverageScale: between the two buckets either side of the share kept
+    let cn = len(pr.st_cov)
+    let f = Math.clamp(float(n) / float(pr.st_nc) * float(cn), 0.0, float(cn - 1))
+    let i0 = int(Math.floor(f))
+    let i1 = min(i0 + 1, cn - 1)
+    pr.st_lod_cov = pr.st_cov[i0] + (pr.st_cov[i1] - pr.st_cov[i0]) * (f - float(i0))
   }
 }
 

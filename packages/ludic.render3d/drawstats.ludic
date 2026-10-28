@@ -13,6 +13,8 @@
 #
 # The report prints when the window closes, so any run long enough to reach
 # f + n frames produces it - a headless shot, a bench, a windowed walk.
+# With R3D_PROF=1 as well, the GPU time per pass is measured over the same
+# frames and printed with it (a game has no lab to call prof_report).
 #
 # An indirect draw is one API call carrying n command records; its "instances"
 # column is the record count, and whether the GPU's culling emptied a record is
@@ -25,7 +27,6 @@ const DS_PATCH: int = 2
 const DS_RANGE: int = 3
 const DS_INDIRECT: int = 4
 const DS_KINDS: int = 5
-
 
 # passes, in the order the frame first opens them
 
@@ -71,10 +72,12 @@ function ds_frame(render3d_st: mut Render3dState) -> void {
   if render3d_st.ds_frame_no == render3d_st.ds_from {
     render3d_st.ds_counting = true
     print(`r3d: drawstats counting frames {render3d_st.ds_from}..{render3d_st.ds_from + render3d_st.ds_frames - 1}`)
+    prof_reset(render3d_st)
   }
   if render3d_st.ds_frame_no == render3d_st.ds_from + render3d_st.ds_frames {
     render3d_st.ds_counting = false
     ds_report(render3d_st)
+    prof_report(render3d_st)
   }
 }
 

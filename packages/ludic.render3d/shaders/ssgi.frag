@@ -12,6 +12,7 @@ uniform float u_radius;
 uniform float u_intensity;
 uniform float u_contact;    // the tight contact pass; 0 switches it off entirely
 uniform float u_frame;
+uniform float u_gi;         // the bounce (post.ludic: Unreal 5.8 has deprecated SSGI and leaves it off; R3D_UE_SSGI=1 turns it on)
 // A sample must be behind the surface by more than this much of its sideways distance from the pixel (the tangent of the
 // angle, 0.4 about 22 degrees) before it counts as occluded. The pixel's normal is its triangle's, so a ground of 1 m
 // triangles, curved by a few degrees from one to the next, has the neighbouring triangle rise over a sample taken across
@@ -84,7 +85,7 @@ void main() {
   float radius = u_radius * (1.0 + 0.01 * -P.z);
   vec3 up = abs(N.z) < 0.999 ? vec3(0, 0, 1) : vec3(1, 0, 0);
   vec3 t = normalize(cross(up, N)), b = cross(N, t);
-  for (int i = 0; i < S; i++) {
+  for (int i = 0; i < (u_gi > 0.5 ? S : 0); i++) {
     float a = (float(i) + noise) * 2.3999632;
     float r = sqrt((float(i) + 0.5 + noise) / float(S));
     vec3 dir = vec3(cos(a) * r, sin(a) * r, sqrt(max(0.0, 1.0 - r * r)));

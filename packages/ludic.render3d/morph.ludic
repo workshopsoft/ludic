@@ -219,9 +219,32 @@ export function model_set_strand_points(render3d_st: mut Render3dState, model: M
     hi0 = Math.max(hi0, px);  hi1 = Math.max(hi1, py);  hi2 = Math.max(hi2, pz)
   }
   let ex = (hi0 - lo0) * 0.5;  let ey = (hi1 - lo1) * 0.5;  let ez = (hi2 - lo2) * 0.5
+  # the curves: each begins at a root (type 1, the top two bits of the point's u16 at 6); ends[k] the points before curve k + 1
+  var nc = 0
+  for i in 0 .. n { if (mem_get_u16(data_of(b), 32 + (i + 1) * ST_REC + 6) >> 14) == 1 { nc += 1 } }
+  let ends = words(max(nc, 1))
+  var k = -1
+  for i in 0 .. n {
+    if (mem_get_u16(data_of(b), 32 + (i + 1) * ST_REC + 6) >> 14) == 1 { if k >= 0 { ends[k] = i };  k += 1 }
+  }
+  if k >= 0 { ends[k] = n }
   let buf = gpu_buffer_new(render3d_st)
   gpu_buffer_upload(render3d_st, buf, (n + 3) * ST_REC, mem_off(data_of(b), 32), GPU_STATIC)
   free(b)
+  # its coverage scales beside it (<stem>.cov, strands_cov.py: "SCV1", the count, the scales), when baked
+  var cov: floats = null
+  let cpath = `{Text.slice(path, 0, Text.length(path) - 4)}.cov`
+  if Text.ends_with(path, ".bin") and Fs.exists(cpath) {
+    let cb = Fs.read_bytes(cpath)
+    if cb != null and len(cb) >= 8 and mem_get_i32(data_of(cb), 0) == 0x31564353 {
+      let cn = mem_get_i32(data_of(cb), 4)
+      if cn > 0 and 8 + cn * 4 <= len(cb) {
+        cov = floats(cn)
+        for j in 0 .. cn { cov[j] = float_from_bits(mem_get_f32_bits(data_of(cb), 2 + j)) }
+      }
+    }
+    if cb != null { free(cb) }
+  }
   for pi in 0 .. len(model.prims) {
     let pr = model.prims[pi]
     let m = pr.mesh
@@ -239,6 +262,9 @@ export function model_set_strand_points(render3d_st: mut Render3dState, model: M
     pr.st_cx = cx;  pr.st_cy = cy;  pr.st_cz = cz;  pr.st_rmax = rmax
     pr.st_bx = (hi0 + lo0) * 0.5;  pr.st_by = (hi1 + lo1) * 0.5;  pr.st_bz = (hi2 + lo2) * 0.5
     pr.st_br = Math.sqrt(ex * ex + ey * ey + ez * ez)
+    pr.st_ext = Math.max(ex, Math.max(ey, ez))
+    pr.st_nc = nc;  pr.st_ends = ends;  pr.st_cov = cov
+    pr.st_lod_n = n;  pr.st_lod_cov = 1.0;  pr.st_lod_frame = -1
   }
   return true
 }

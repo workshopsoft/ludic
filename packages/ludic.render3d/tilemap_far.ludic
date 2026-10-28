@@ -257,6 +257,10 @@ function tmf_fill(render3d_st: mut Render3dState, f: TileFar, q: TmFar, nv: int,
   let pr = q.model.prims[0]
   pr.verts = nv
   pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
+  # the ground's surfaces again, as the near draw does (tmd_fill): the plain maps above took the grass's off while the primitive still
+  # said it had surfaces, so lighting.glsl surfaceGround read the grass from a white texture and every far lawn drew as snow
+  let td = f.td
+  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved) }
   q.model.tris = ni / 3
   q.held = true
 }

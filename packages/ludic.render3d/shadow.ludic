@@ -7,6 +7,37 @@
 # the size of each cascade's depth layer; shadow_set_res changes it at run time
 const SHADOW_CASCADES: int = 5
 
+# Unreal 5.8's directional light (DirectionalLightComponent.cpp: DynamicShadowCascades 4, DynamicShadowDistanceMovableLight 40000 cm,
+# CascadeDistributionExponent 3, FarShadowCascadeCount 0): four cascades out to 400 m, split by GetSplitDistance - the near plane plus
+# ComputeAccumulatedScale's share (1, 3, 9, 27 of 40) of the rest - so about 10, 40, 130 and 400 m, and nothing cast past them (the
+# terrain's height-field shadow still holds). The fifth layer is fitted to nothing (shadow_cascade_none: its lookups read lit), and
+# sunShadow's blend into it over the last 15 % of the fourth is the fade (Unreal's ShadowDistanceFadeoutFraction 0.1). Our old split,
+# five cascades to 6 km, drew 22 ms of the island's frame. R3D_UE_CSM=0 puts it back.
+const UE_CSM_CASCADES: int = 4
+const UE_CSM_DISTANCE: float = 400.0
+const UE_CSM_EXPONENT: float = 3.0
+function shadow_ue_splits(render3d_st: mut Render3dState, near: float) -> void {
+  if render3d_st.sh_ue < 0 {
+    render3d_st.sh_ue = 1
+    if r3d_env_has(render3d_st, "R3D_UE_CSM") and r3d_env(render3d_st, "R3D_UE_CSM") == "0" { render3d_st.sh_ue = 0 }
+  }
+  if render3d_st.sh_ue == 0 { return }
+  var total = 0.0
+  var w = 1.0
+  for i in 0 .. UE_CSM_CASCADES { total += w;  w *= UE_CSM_EXPONENT }
+  var acc = 0.0
+  w = 1.0
+  for i in 0 .. UE_CSM_CASCADES {
+    acc += w;  w *= UE_CSM_EXPONENT
+    render3d_st.sh_split[i] = near + acc / total * (UE_CSM_DISTANCE - near)
+  }
+  for i in UE_CSM_CASCADES .. SHADOW_CASCADES { render3d_st.sh_split[i] = 1000000.0 }
+}
+function shadow_ue_count(render3d_st: Render3dState) -> int {
+  if render3d_st.sh_ue == 1 { return UE_CSM_CASCADES }
+  return SHADOW_CASCADES
+}
+
 # the GPU memory it makes is counted as VKM_SHADOW (R3D_VKMEM)
 function shadow_init(render3d_st: mut Render3dState) -> void {
   let was = render3d_st.gvk_tag
@@ -153,8 +184,11 @@ function shadow_pass(render3d_st: mut Render3dState) -> void {
   gpu_cull(render3d_st, false)
   # a fog wall: a cascade reaches no further than it, and one that begins past it is only cleared
   let wall = r3d_reach(render3d_st, 0.0)
+  shadow_ue_splits(render3d_st, near)
   for c in 0 .. SHADOW_CASCADES {
     render3d_st.sh_cascade = c
+    # past Unreal's cascades: fitted to nothing, never drawn (its lookups read lit)
+    if c >= shadow_ue_count(render3d_st) { shadow_cascade_none(render3d_st, c);  continue }
     var far = render3d_st.sh_split[c]
     if wall > 0.0 and far > wall { far = Math.max(wall, near + 1.0) }
     shadow_fit(render3d_st, c, near, far)

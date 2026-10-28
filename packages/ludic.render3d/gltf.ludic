@@ -34,6 +34,13 @@ property Prim {
   st_by: float = 0.0,   # sphere, which its deep shadow is fitted to: HairStrandsUtils.cpp ComputeTranslatedWorldToLightClip)
   st_bz: float = 0.0,
   st_br: float = 0.0,
+  st_ext: float = 0.0,   # the box's largest half extent (GroomManager.cpp ComputeHairLODIndex: BoundRadius, the Auto LOD's screen size)
+  st_nc: int = 0,        # the curves, in the build's shuffled order (strands.ludic strands_lod: Unreal's hair Auto LOD draws the first N)
+  st_ends: words,        # the points before curve k + 1, each k (the first N curves' segments: the first st_ends[N - 1] instances)
+  st_cov: floats,        # the groom's coverage scales (strands_cov.py: GroomBuilder's ComputeHairCoverageScale), or null
+  st_lod_n: int = 0,     # this frame's: the segments drawn and the coverage scale (strands_lod)
+  st_lod_cov: float = 1.0,
+  st_lod_frame: int = -1,
   st_rmax: float = 0.0,  # and their radii fractions of this (Unreal's HairStrandsVF.Radius)
   surf: floats,         # a surface laid over it (surface.ludic: surf_apply): model.frag's and kit.frag's u_surf .. u_surf_e, 20 floats; null for none
   surf2: floats,        # a second, blended in by the vertex colour (the ground's paving under its grass: surf_apply_ground), or null
@@ -252,6 +259,29 @@ function gltf_colour_floats(f: floats, n: int, comps: int) -> pointer { unsafe {
 function gltf_bytes_free(p: pointer) -> void { free(p) }
 function gltf_byte_at(p: pointer, i: int) -> int { return int(p[i]) }
 
+# Vertex colours swapped as the next models load (null, null: none): a colour 8-bit equal to from[i] (r | g << 8 | b << 16) becomes
+# to[i], its alpha kept. A caller sets it around its own loads and clears it after (a road's far levels: their flat greybox colours
+# for what the surfaces draw near, surface.ludic surf_mean).
+export function r3d_gltf_recolour(render3d_st: mut Render3dState, from: words, to: words) -> void {
+  render3d_st.gltf_rc_from = from
+  render3d_st.gltf_rc_to = to
+}
+function gltf_recolour_apply(render3d_st: Render3dState, out: pointer, n: int) -> void {
+  let from = render3d_st.gltf_rc_from
+  let to = render3d_st.gltf_rc_to
+  if from == null or to == null { return }
+  for i in 0 .. n {
+    let c = int(out[i * 4]) + (int(out[i * 4 + 1]) << 8) + (int(out[i * 4 + 2]) << 16)
+    var k = 0
+    while k < len(from) {
+      if from[k] == c {
+        out[i * 4] = to[k] & 255;  out[i * 4 + 1] = (to[k] >> 8) & 255;  out[i * 4 + 2] = (to[k] >> 16) & 255
+        k = len(from)
+      } else { k += 1 }
+    }
+  }
+}
+
 # COLOR_0 (vec3 or vec4; float, or normalized unsigned byte / short) onto attribute 7 as RGBA8 normalized: the shaders
 # multiply it into the base colour (kit.vert, model.vert). A mesh without it records nothing there and the shaders read
 # the unfed input as white. Linear values, as the spec has them; 8 bits are what a building's flat colours need.
@@ -262,6 +292,7 @@ function gltf_colour(render3d_st: mut Render3dState, m: Mesh, attrs: Val) -> boo
   let n = render3d_st.gltf_count
   let out = gltf_colour_rgba8(data, n, render3d_st.gltf_comps, render3d_st.gltf_ctype)
   free(data)
+  gltf_recolour_apply(render3d_st, out, n)
   gpu_mesh_vertices(render3d_st, m, out, n * 4, GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, 7, 4, GPU_U8, 0, 0, true)
   free(out)

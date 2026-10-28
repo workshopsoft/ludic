@@ -696,15 +696,38 @@ function gvk_uniform_blocks(render3d_st: mut Render3dState, p: int) -> void {
   render3d_st.gvk_set_tex[p] = st
 }
 
+# A program's parameters resolved once, as Unreal binds a shader's parameters when it is compiled (FShaderParameterMap): a hash of
+# every name's place (the uniform's first, else the sampler's at 2048 +), and each uniform's first and next of the same name. A draw
+# asked for its uniforms by name and set each by walking every name of the program, comparing text: 14 ms a frame on the island.
+@alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
+function gvk_var_index(v: GpuVariant) -> void {
+  if v.look != null { return }
+  let d = Dict.new()
+  v.u_first = new []int
+  v.u_next = new []int
+  for i in 0 .. len(v.u_name) {
+    let f = Dict.get_or(d, v.u_name[i], -1)
+    if f < 0 { Dict.set(d, v.u_name[i], i);  push(v.u_first, i) } else { push(v.u_first, f) }
+    push(v.u_next, -1)
+  }
+  for i in 0 .. len(v.u_name) {
+    var j = i + 1
+    while j < len(v.u_name) and v.u_next[i] < 0 { if v.u_first[j] == v.u_first[i] { v.u_next[i] = j };  j += 1 }
+  }
+  # a sampler: OpenGL code points it at a texture unit once with u_i and then only binds units
+  # (the actors do), so its location is kept apart and u_i on it records the unit
+  for i in 0 .. len(v.t_name) { if Dict.get_or(d, v.t_name[i], -1) < 0 { Dict.set(d, v.t_name[i], 2048 + i) } }
+  v.look = d
+}
+
 function gvk_uniform(render3d_st: Render3dState, p: int, name: string) -> int {
   if render3d_st.gvk_prog_var == null or p <= 0 or p >= len(render3d_st.gvk_prog_var) { return -1 }
   let v = render3d_st.gvk_prog_var[p]
   if v == null { return -1 }
-  for i in 0 .. len(v.u_name) { if v.u_name[i] == name { return p * 4096 + i } }
-  # a sampler: OpenGL code points it at a texture unit once with u_i and then only binds units
-  # (the actors do), so its location is kept apart and u_i on it records the unit
-  for i in 0 .. len(v.t_name) { if v.t_name[i] == name { return p * 4096 + 2048 + i } }
-  return -1
+  gvk_var_index(v)
+  let i = Dict.get_or(v.look, name, -1)
+  if i < 0 { return -1 }
+  return p * 4096 + i
 }
 
 # n elements of `size` bytes each from src into every block that declares the uniform at loc
@@ -719,19 +742,22 @@ function gvk_u_set(render3d_st: mut Render3dState, loc: int, src: pointer, size:
     if si < len(v.t_name) and render3d_st.gvk_prog_unit[p][si] != Vk.get_i32(src, 0) + 1 { render3d_st.gvk_prog_unit[p][si] = Vk.get_i32(src, 0) + 1;  render3d_st.gvk_prog_dirty[p] = 1 }
     return
   }
-  let name = v.u_name[loc % 4096]
-  for j in 0 .. len(v.u_name) {
-    if v.u_name[j] != name { continue }
+  gvk_var_index(v)
+  # every declaration of the name (the vertex and the fragment block): the first, then each next
+  var j = v.u_first[loc % 4096]
+  while j >= 0 {
+    let at_j = j
+    j = v.u_next[j]
     var blk = render3d_st.gvk_ublk_v[p]
     var cap = v.vblock
-    if v.u_stage[j] == 1 { blk = render3d_st.gvk_ublk_f[p];  cap = v.fblock }
+    if v.u_stage[at_j] == 1 { blk = render3d_st.gvk_ublk_f[p];  cap = v.fblock }
     if blk == null { continue }
-    var stride = v.u_stride[j]
+    var stride = v.u_stride[at_j]
     if stride == 0 { stride = size }
     var count = n
-    if count > v.u_count[j] { count = v.u_count[j] }
+    if count > v.u_count[at_j] { count = v.u_count[at_j] }
     for k in 0 .. count {
-      let at = v.u_off[j] + k * stride
+      let at = v.u_off[at_j] + k * stride
       # the same value again (most per-draw uniforms repeat) leaves the program's set reusable
       if at + size <= cap and not gvk_same(mem_off(blk, at), mem_off(src, k * size), size) {
         mem_copy(mem_off(blk, at), mem_off(src, k * size), size)

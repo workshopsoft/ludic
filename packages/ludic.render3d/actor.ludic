@@ -685,6 +685,27 @@ function ac_in_light(render3d_st: mut Render3dState, vp: floats, x: float, y: fl
 }
 function ac_abs(v: float) -> float { return Math.max(v, -v) }
 
+# Unreal's small-caster cull for whole-scene (cascaded) shadows, ShadowSetup.cpp: a primitive whose bounds sphere is smaller than
+# r.Shadow.RadiusThreshold (0.01) of its distance from the view casts nothing, `R^2 > T^2 * D^2 * LODDistanceFactor^2` (the factor is
+# FOV / DefaultFOV, LocalPlayer.cpp: 1 here). Each actor is its own primitive, as each component is in Unreal: a car's wheel is measured by
+# its own model, not by the car it follows. The sphere is the model's box's: half its height and its horizontal reach.
+# R3D_SHADOW_RADIUS_THRESHOLD=<t> sets T, 0 turns the cull off.
+function ac_caster_small(render3d_st: mut Render3dState, a: Actor) -> bool {
+  if render3d_st.ac_sh_rt < 0.0 {
+    render3d_st.ac_sh_rt = 0.01
+    if r3d_env_has(render3d_st, "R3D_SHADOW_RADIUS_THRESHOLD") { render3d_st.ac_sh_rt = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_RADIUS_THRESHOLD")), 0.0) }
+  }
+  let t = render3d_st.ac_sh_rt
+  if t <= 0.0 { return false }
+  let s = a.scale
+  let hh = a.model.height * 0.5 * s
+  let r2 = a.model.radius * a.model.radius * s * s + hh * hh
+  let dx = a.x - render3d_st.cam_pos[0]
+  let dy = a.y + a.model.ymin * s + hh - render3d_st.cam_pos[1]
+  let dz = a.z - render3d_st.cam_pos[2]
+  return r2 <= t * t * (dx * dx + dy * dy + dz * dz)
+}
+
 function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
   if render3d_st.ac_actors == null { return }
   gpu_use_program(render3d_st, render3d_st.ac_sh.prog);  u_mat4(render3d_st, render3d_st.ac_sh.l_lvp, light_vp)
@@ -709,6 +730,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     let da = Math.sqrt(dxa * dxa + dza * dza)
     let ra = a.radius * a.scale
     if not cast_band_reaches(render3d_st, Math.max(da - ra, 0.0), da + ra, a.model.height * a.scale) { continue }
+    if ac_caster_small(render3d_st, a) { continue }
     var ap = render3d_st.ac_sh
     if a.cutout or a.blend != 0 { ap = render3d_st.ac_sh_cut }
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }

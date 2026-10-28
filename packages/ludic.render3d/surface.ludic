@@ -92,6 +92,23 @@ export function surf_key(lib: SurfaceLib, key: string) -> SurfLoaded {
   return null
 }
 
+# The colour a surface lays over material `name` comes out as on average (lighting.glsl surfaceAtP, its texture at its mean): the
+# scan's mean (tone 0) or the material's `base` (tone 1), its saturation round its luminance, then its gain; into out[0 .. 2]. A
+# model drawn without the surfaces (a road's far levels, coloured by vertex in the material's flat colours) takes it so it reads as
+# the same ground near and far. False when no surface is laid over that name.
+export function surf_mean(lib: SurfaceLib, name: string, base: floats, out: floats) -> bool {
+  let it = surf_for(lib, name)
+  if it == null { return false }
+  let r = it.row
+  var c0 = r.mean_r;  var c1 = r.mean_g;  var c2 = r.mean_b
+  if r.tone == 1 and base != null { c0 = base[0];  c1 = base[1];  c2 = base[2] }
+  let l = 0.2126 * c0 + 0.7152 * c1 + 0.0722 * c2
+  out[0] = Math.max(l + (c0 - l) * r.sat, 0.0) * r.gain
+  out[1] = Math.max(l + (c1 - l) * r.sat, 0.0) * r.gain
+  out[2] = Math.max(l + (c2 - l) * r.sat, 0.0) * r.gain
+  return true
+}
+
 # lay the library's surfaces over the model's primitives whose material names one; the primitives drawn by the old maps keep
 # theirs. The count laid.
 @alloc_ok("a model being loaded: its surfaces' numbers, once a primitive")

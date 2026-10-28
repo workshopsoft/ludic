@@ -20,6 +20,7 @@ uniform sampler2D u_scene_depth; // the opaque scene's depth (the visibility pas
 uniform sampler2D u_hair_lut;  // hair_lut.frag
 uniform float u_frame;
 uniform float u_st_terms;     // R3D_STRAND_TERMS (strands.ludic): 1 the sun alone, 2 the sky alone, 0 both
+uniform float u_st_cov;       // the Auto LOD's coverage scale (strands.ludic strands_lod: HairStrandsVisibilityPS HairCoverageScale)
 #ifdef DOM
 uniform sampler2D u_hs_front;  // the deep shadow's front depth (strands.ludic)
 uniform vec4 u_hs_layers;      // its layers' depths (ComputeDeepShadowLayerDepths)
@@ -78,7 +79,8 @@ vec3 strandShade(vec3 base, float rough, float spec, float backlit, vec3 T, vec3
 void main() {
   float c = clamp(v_srad / max(v_srad, u_strand_minr * v_sdep), 0.0, 1.0);
 #ifdef TRANSMITTANCE
-  o_color = vec4(1.0 - c);
+  // the curves the Auto LOD left out given back in coverage: saturate(r / max(r, PixelRadius) x HairCoverageScale)
+  o_color = vec4(1.0 - clamp(c * u_st_cov, 0.0, 1.0));
 #elif defined(DOM)
   // the deep shadow's layers (strands.ludic, HairStrandsDeepShadowPS.usf MainDom): the strand's coverage into each layer its distance
   // behind the front depth lies within (reversed depth: the front is the greater; ComputeDOMWeights), added up

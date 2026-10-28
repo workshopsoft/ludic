@@ -11,7 +11,8 @@
 # never introduces the very stall it is trying to measure.
 # ============================================================================
 
-const PROF_SLOTS: int = 24          # the frame has 19 named passes with TAA (taa.ludic adds three)
+const PROF_SLOTS: int = 64          # the frame opens some 35 named passes with Unreal's post on; at 24 the later ones (SSAO, bloom, the
+                                    # tonemapper) were never timed
 const PROF_RING:  int = 4            # frames of latency before a result is read
 
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
@@ -23,6 +24,7 @@ function prof_init(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_hits = new []long
   render3d_st.prof_min = new []long
   render3d_st.prof_ids = words(PROF_SLOTS * PROF_RING)
+  render3d_st.prof_used = words(PROF_SLOTS * PROF_RING)
   render3d_st.prof_scratch = words(4)
   gpu_query_new(render3d_st, PROF_SLOTS * PROF_RING, render3d_st.prof_ids)
   render3d_st.prof_n = 0
@@ -55,7 +57,9 @@ function prof_begin(render3d_st: mut Render3dState, name: pointer) -> void {
   let s = prof_slot(render3d_st, name)
   if s < 0 { return }
   render3d_st.prof_active = s
-  gpu_query_begin(render3d_st, render3d_st.prof_ids[s * PROF_RING + (render3d_st.prof_frame % PROF_RING)])
+  let qi = s * PROF_RING + (render3d_st.prof_frame % PROF_RING)
+  render3d_st.prof_used[qi] = 1
+  gpu_query_begin(render3d_st, render3d_st.prof_ids[qi])
 }
 
 function prof_end(render3d_st: mut Render3dState) -> void {
@@ -78,8 +82,12 @@ function prof_collect(render3d_st: mut Render3dState) -> void {
   if stale { render3d_st.prof_skip -= 1 }
   var s = 0
   while s < render3d_st.prof_n {
-    let q = render3d_st.prof_ids[s * PROF_RING + slot_frame]
-    if gpu_query_result(render3d_st, q, render3d_st.prof_scratch) and not stale {
+    # a query holds its last result until it is written again: one whose pass did not run that frame (the hair, once nobody with strands
+    # is in view) read the frame it last ran, every frame after, and a pass that ran once at start-up was counted all run long
+    let qi = s * PROF_RING + slot_frame
+    let used = render3d_st.prof_used[qi] == 1
+    render3d_st.prof_used[qi] = 0
+    if used and gpu_query_result(render3d_st, render3d_st.prof_ids[qi], render3d_st.prof_scratch) and not stale {
       # the low 32 bits are ample: a pass is far below 4 seconds
       let ns = render3d_st.prof_scratch[0]
       render3d_st.prof_ns[s] = render3d_st.prof_ns[s] + ns
