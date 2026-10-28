@@ -2,7 +2,7 @@
 // blended on the GPU, then one model matrix. Writes the same varyings as model.vert so
 // model.frag (lit) and shadow.frag (casters) shade it unchanged.
 // SKIN4: a mesh with no second set (skin.ludic skin_attribs: JOINTS_1 / WEIGHTS_1 absent or all zero) blends four, as Unreal's GPU
-// skin vertex factory is compiled for its section's influence count (GpuSkinVertexFactory.h: MAX_INFLUENCES_PER_STREAM 4, the
+// skin vertex factory is compiled for its section's influence count (GPUSkinPublicDefs.h: MAX_INFLUENCES_PER_STREAM 4, the
 // second stream only for a mesh whose LOD uses more; a MetaHuman's LOD 3 on is four)
 layout(location = 0) in vec3 a_pos;
 layout(location = 1) in vec3 a_nrm;
@@ -47,7 +47,7 @@ mat4 aiSkin(int base) {
 // the motion pass's instances (actor_inst.ludic ai_build, the motion slot): last frame's model matrix as three rows, and (i_bo.y) the
 // first row of last frame's palette in last frame's bone buffer, kept whole for this frame to read (ai_palette's two buffers). Unreal's
 // per-instance PrevTransform (MassRepresentationTypes.h, FMassInstancedStaticMeshInfo::AddBatchedTransform's PrevTransform) and the
-// skin's PreviousReferenceToLocal (SkeletalRenderGPUSkin.cpp: last frame's bone buffer kept beside this frame's)
+// skin's PreviousReferenceToLocal (GPUSkinVertexFactory.cpp: PreviousBoneMatrices beside BoneMatrices)
 layout(location = 13) in vec4 i_p0;
 layout(location = 14) in vec4 i_p1;
 layout(location = 15) in vec4 i_p2;

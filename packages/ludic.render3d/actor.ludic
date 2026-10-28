@@ -173,7 +173,7 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   return a
 }
 # R3D_SKIN4 (on unless 0): a mesh whose vertices carry four influences is drawn by programs that blend four (skin.vert SKIN4), as
-# Unreal compiles its GPU skin vertex factory for the influences a LOD has (GPUSkinVertexFactory.h MAX_INFLUENCES_PER_STREAM, the
+# Unreal compiles its GPU skin vertex factory for the influences a LOD has (GPUSkinPublicDefs.h MAX_INFLUENCES_PER_STREAM, the
 # second stream of four only for a section with more; MetaHuman LODs 3 on are four)
 function ac_skin4_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.ac_skin4 < 0 {

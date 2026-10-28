@@ -16,8 +16,9 @@
 # The motion pass too (R3D_VEL_INST=0 turns it off; actor_draw_velocity, ai_draw_vel): the moving plain actors grouped the same way, each
 # instance carrying last frame's model matrix beside this frame's, as Mass's instanced meshes carry a PrevTransform per instance
 # (MassRepresentationTypes.h FMassInstancedStaticMeshInfo::AddBatchedTransform(Transform, PrevTransform, ...)), and a skinned one last
-# frame's palette as Unreal's GPU skin keeps the previous frame's bone buffer for PreviousReferenceToLocal (SkeletalRenderGPUSkin.cpp
-# FVertexFactoryData / FGPUBaseSkinVertexFactory::FShaderDataType::GetBoneBufferForReading(bPrevious)): the bone buffer is two, swapped at
+# frame's palette as Unreal's GPU skin keeps the previous frame's bone buffer (GPUSkinVertexFactory.h FGPUBaseSkinVertexFactory::
+# FShaderDataType::GetBoneBufferForReading(bPrevious), GPUSkinVertexFactory.cpp: PreviousBoneMatrices beside BoneMatrices, filled from
+# SkeletalRenderGPUSkin.cpp's PreviousReferenceToLocal): the bone buffer is two, swapped at
 # a frame's first palette, so the one last frame wrote is still whole and its rows are where last frame put them (Actor.ai_pboff).
 const AI_MAX: int = 2048              # instances a pass; past it, actors are drawn on their own
 # three rows of the model matrix, the tint and the glow, the palette's first row (skinned) and last frame's (the motion pass), then last
