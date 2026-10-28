@@ -79,7 +79,8 @@ property Actor {
   # middle (half extents: occ_hx across, occ_hy up), for what its model's bounds fit badly (the ground's patches); 0: the model's
   occ_hidden: bool = false,
   occ_hx:     float = 0.0,
-  occ_hy:     float = 0.0
+  occ_hy:     float = 0.0,
+  ai_stamp:   int = 0            # the pass that drew it in its model's instanced group (actor_inst.ludic)
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
@@ -536,10 +537,22 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_census_at == -2 { render3d_st.ac_census_at = -1;  if r3d_env_has(render3d_st, "R3D_ACTOR_CENSUS") { render3d_st.ac_census_at = Text.to_int(r3d_env(render3d_st, "R3D_ACTOR_CENSUS")) } }
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { actor_census(render3d_st) }
   occ_read(render3d_st)                                     # last frame's occlusion tests (occlusion.ludic)
+  # the plain rigid actors that share a model, instanced (actor_inst.ludic); not in the water's reflection, which would refill the buffer
+  var grouped = false
+  if not render3d_st.ter_reflect and ai_on(render3d_st) {
+    ai_begin(render3d_st)
+    for i in 0 .. len(render3d_st.ac_actors) {
+      let a = render3d_st.ac_actors[i]
+      if ai_plain(a) and ac_visible(render3d_st, a, false) { ai_gather(render3d_st, a) }
+    }
+    grouped = ai_build(render3d_st, 0)
+    if grouped { ai_draw(render3d_st, render3d_st.ac_lit_inst, false) }
+  }
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
     if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
     if a.shell or a.strands { continue }                 # (actor_draw_shells, actor_draw_strands: after the opaque scene)
+    if grouped and ai_grouped(render3d_st, a) { continue }
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }
     var ap = render3d_st.ac_lit
@@ -717,27 +730,25 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
   if render3d_st.ac_actors == null { return }
   gpu_use_program(render3d_st, render3d_st.ac_sh.prog);  u_mat4(render3d_st, render3d_st.ac_sh.l_lvp, light_vp)
   gpu_use_program(render3d_st, render3d_st.ac_sh_cut.prog);  u_mat4(render3d_st, render3d_st.ac_sh_cut.l_lvp, light_vp)
+  # the plain rigid casters that share a model, instanced (actor_inst.ludic): the sun's cascades only, each its own buffer (a local
+  # light's shadow maps draw every caster on its own)
+  var grouped = false
+  if not render3d_st.sh_local and render3d_st.sh_cascade + 1 < AI_PASSES and ai_on(render3d_st) {
+    ai_begin(render3d_st)
+    for i in 0 .. len(render3d_st.ac_actors) {
+      let a = render3d_st.ac_actors[i]
+      if ai_plain(a) and ac_casts(render3d_st, a, light_vp) { ai_gather(render3d_st, a) }
+    }
+    grouped = ai_build(render3d_st, 1 + render3d_st.sh_cascade)
+    if grouped {
+      gpu_use_program(render3d_st, render3d_st.ac_sh_inst.prog);  u_mat4(render3d_st, render3d_st.ac_sh_inst.l_lvp, light_vp)
+      ai_draw(render3d_st, render3d_st.ac_sh_inst, true)
+    }
+  }
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if a.blend != 0 and not a.blend_casts and a.leader == null { continue }   # smoke and glow cast nothing
-    if not ac_visible(render3d_st, a, true) { continue }
-    if a.blend != 0 and not a.blend_casts { continue }
-    if a.radius != 0.0 {
-      # the radius is the horizontal extent: a person is far taller than wide, so the sphere is
-      # centred at half the model's height and reaches the larger of the two, with a margin for
-      # the pose (a first version centred it at the radius and dropped a head at a cascade's edge)
-      let hh = a.model.height * 0.5 * a.scale
-      let r = Math.max(a.radius * a.scale, hh)
-      if not ac_in_light(render3d_st, light_vp, a.x, a.y + hh, a.z, r * 1.5) { continue }
-    }
-    # Inside the light box is not the same as able to shade anything this cascade covers: every actor
-    # within 300 m sits inside the far cascades' boxes, whose receivers start 250 and 1100 m out - at
-    # the camp 160 actors cast 300 draws into each of those, against 41 into the nearest.
-    let dxa = a.x - render3d_st.cam_pos[0];  let dza = a.z - render3d_st.cam_pos[2]
-    let da = Math.sqrt(dxa * dxa + dza * dza)
-    let ra = a.radius * a.scale
-    if not cast_band_reaches(render3d_st, Math.max(da - ra, 0.0), da + ra, a.model.height * a.scale) { continue }
-    if ac_caster_small(render3d_st, a) { continue }
+    if grouped and ai_grouped(render3d_st, a) { continue }
+    if not ac_casts(render3d_st, a, light_vp) { continue }
     var ap = render3d_st.ac_sh
     if a.cutout or a.blend != 0 { ap = render3d_st.ac_sh_cut }
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }
@@ -748,6 +759,29 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     render3d_st.ac_cc_actors = 0;  render3d_st.ac_cc_draws = 0;  render3d_st.ac_cc_skinned = 0;  render3d_st.ac_cc_cut = 0
   }
   prof_cpu_mark(render3d_st, "shadow actors")
+}
+# whether actor a casts into the light light_vp is drawing now
+function ac_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) -> bool {
+  if a.blend != 0 and not a.blend_casts and a.leader == null { return false }   # smoke and glow cast nothing
+  if not ac_visible(render3d_st, a, true) { return false }
+  if a.blend != 0 and not a.blend_casts { return false }
+  if a.radius != 0.0 {
+    # the radius is the horizontal extent: a person is far taller than wide, so the sphere is
+      # centred at half the model's height and reaches the larger of the two, with a margin for
+      # the pose (a first version centred it at the radius and dropped a head at a cascade's edge)
+    let hh = a.model.height * 0.5 * a.scale
+    let r = Math.max(a.radius * a.scale, hh)
+    if not ac_in_light(render3d_st, light_vp, a.x, a.y + hh, a.z, r * 1.5) { return false }
+  }
+  # Inside the light box is not the same as able to shade anything this cascade covers: every actor
+    # within 300 m sits inside the far cascades' boxes, whose receivers start 250 and 1100 m out - at
+    # the camp 160 actors cast 300 draws into each of those, against 41 into the nearest.
+  let dxa = a.x - render3d_st.cam_pos[0];  let dza = a.z - render3d_st.cam_pos[2]
+  let da = Math.sqrt(dxa * dxa + dza * dza)
+  let ra = a.radius * a.scale
+  if not cast_band_reaches(render3d_st, Math.max(da - ra, 0.0), da + ra, a.model.height * a.scale) { return false }
+  if ac_caster_small(render3d_st, a) { return false }
+  return true
 }
 function ac_caster_count(render3d_st: mut Render3dState, a: Actor) -> void {
   var shown = 0

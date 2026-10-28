@@ -58,6 +58,12 @@ property Model {
   ymin:   float = 0.0,
   tris:   int = 0,
   sss:    float = 0.0,       # skin for the subsurface pass (sss.ludic): its texels below this u; 0 none
+  # this pass's instanced group of its actors (actor_inst.ludic): the pass it was gathered in, how many, the first (its key), where in the buffer
+  ai_stamp: int = 0,
+  ai_count: int = 0,
+  ai_first: Actor = null,
+  ai_at:    int = 0,
+  ai_fill:  int = 0,
   @owns(Skin) skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
 }
 

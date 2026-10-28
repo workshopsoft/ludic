@@ -35,9 +35,17 @@ uniform float u_head_on;
 #endif
 uniform sampler2D u_arm;
 uniform mat4 u_view;
+#ifdef ACTOR_INST
+in vec4 v_te;                 // an instanced actor's own tint and glow (skin.vert, actor_inst.ludic)
+#define u_tint v_te.rgb
+#define u_emissive v_te.w
+#else
 uniform vec3 u_tint;
+#endif
 uniform float u_rough_scale;
+#ifndef ACTOR_INST
 uniform float u_emissive;     // self-lit (a flame): albedo added back after shading
+#endif
 #ifdef FABRIC
 // A MetaHuman garment as Epic's M_fabric_simpler builds it (its graph read from the editor, MaterialEditingLibrary): the colours
 // from the garment's masks, two materials' tiled variation, fuzz and the trims' material C. u_fp (actor_fabric, prim.fab):

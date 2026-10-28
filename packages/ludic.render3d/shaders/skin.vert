@@ -10,6 +10,14 @@ layout(location = 7) in vec4 a_col;
 layout(location = 10) in vec4 a_joints1;     // the second four influences; unfed (zero weights) on a mesh with four
 layout(location = 11) in vec4 a_weights1;         // COLOR_0 as RGBA8 (gltf_colour); a mesh without it leaves it unfed (zero)
 uniform mat4 u_model;
+#ifdef ACTOR_INST
+// an instanced draw of one model's actors (actor_inst.ludic): each instance's model matrix as three rows, then its tint and glow
+layout(location = 3) in vec4 i_m0;
+layout(location = 4) in vec4 i_m1;
+layout(location = 8) in vec4 i_m2;
+layout(location = 9) in vec4 i_te;
+out vec4 v_te;
+#endif
 uniform mat4 u_bones[160];                  // skin.ludic SKIN_MAX_JOINTS
 uniform float u_skinned;                    // 0: a rigid model on the same path
 uniform mat4 u_view;
@@ -75,7 +83,12 @@ out vec4 v_col;          // COLOR_0, or white when the mesh has none (model.frag
 out float v_near;         // model.frag declares it; 1 = no near fade
 out float v_lh;           // model.frag declares it; 1 = no low-plant occlusion
 void main() {
+#ifdef ACTOR_INST
+  mat4 m = transpose(mat4(i_m0, i_m1, i_m2, vec4(0.0, 0.0, 0.0, 1.0)));
+  v_te = i_te;
+#else
   mat4 m = u_model;
+#endif
   if (u_skinned > 0.5) {
     mat4 sk = a_weights.x * u_bones[int(a_joints.x + 0.5)]
             + a_weights.y * u_bones[int(a_joints.y + 0.5)]

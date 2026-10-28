@@ -1538,7 +1538,7 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
       # an occlusion test (occlusion.ludic) brackets its one box draw here, inside the pass and the command buffer the draw lands in
       let oq = render3d_st.gvk_occ_q
       if oq >= 0 { Vk.cmd_begin_query(cb, render3d_st.gvk_occ_pool, oq, 0) }
-      Vk.cmd_draw_indexed(cb, n, instances, first, 0, 0)
+      Vk.cmd_draw_indexed(cb, n, instances, first, 0, render3d_st.gvk_first_inst)
       if oq >= 0 { Vk.cmd_end_query(cb, render3d_st.gvk_occ_pool, oq) }
     }
   } else {

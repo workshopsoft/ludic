@@ -74,6 +74,7 @@ model.vert|shadow.frag|#define SHADOW_PASS;#define WIND;#define ALPHA_TEST;
 overlay.vert|overlay.frag|
 overlay.vert|overlay.frag|#define HDR10;
 skin.vert|model.frag|
+skin.vert|model.frag|#define ACTOR_INST;
 skin.vert|model.frag|#define ALPHA_TEST;
 skin.vert|model.frag|#define TRANSLUCENT;
 skin.vert|model.frag|#define FABRIC;
@@ -85,6 +86,7 @@ skin.vert|outline.frag|#define OUTLINE;
 skin.vert|outline.frag|#define OUTLINE;#define ALPHA_TEST;
 skin.vert|shadow.frag|#define SHADOW_PASS;
 skin.vert|shadow.frag|#define SHADOW_PASS;#define ALPHA_TEST;
+skin.vert|shadow.frag|#define SHADOW_PASS;#define ACTOR_INST;
 terrain.vert|terrain.frag|
 terrain.vert|terrain.frag|#define FAR_ONLY;
 terrain.vert|terrain.frag|#define NEAR_ONLY;
