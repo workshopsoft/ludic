@@ -66,7 +66,6 @@ uniform sampler2D u_fkit;     // material A's tiled maps: R detail variation, G 
 uniform sampler2D u_fdn;      // material A's tiled normals: RG detail, BA wrinkles (x, y in glTF's frame)
 uniform sampler2D u_fkitb;    // material B's tiled maps, as u_fkit
 uniform sampler2D u_fdnb;     // material B's detail normal in RG, the pilling normal in BA
-uniform float u_dither_frame; // the frame's index (0..63): a hair card's dithered opacity moves each frame, for the temporal resolve
 #endif
 #ifdef GBLADE
 in vec3 v_tint;               // grass.vert's colour field (the mesh-shader and scatter blades work it out here)
@@ -481,6 +480,16 @@ void main() {
   if (meshAlpha < 0.002) discard;
 #endif
 #ifdef ALPHA_TEST
+#if !defined(FOLIAGE) && !defined(EYE) && !defined(FABRIC)
+  // R3D_CARD_DITHER (u_card_cut.x): an actor's cut-out atlas (a crowd figure's hair cards) cut as M_hair_v4 cuts the player's cards: its
+  // alpha through DitherTemporalAA at 0.33 (lighting.glsl cardDitherKeep). Its alpha scaled by the level as below unless its mips keep
+  // their coverage already (u_card_cut.y: tex_cov_mips)
+  if (u_card_cut.x > 0.5) {
+    float ca = d.a;
+    if (u_card_cut.y < 0.5) ca = min(ca * (1.0 + 0.45 * max(textureQueryLod(u_diff, v_uv).x, 0.0)), 1.0);
+    if (!cardDitherKeep(ca, u_dither_frame)) discard;
+  } else {
+#endif
 #ifdef FABRIC
   // (a hair card's coverage is its groom's atlas, tested in its own mode below: the colour texture's alpha is not its cut)
   if (u_fp[16].w < 2.5) {
@@ -495,6 +504,9 @@ void main() {
   if (cov < 0.02) discard;
   meshAlpha = clamp(cov, 0.0, 1.0);
 #ifdef FABRIC
+  }
+#endif
+#if !defined(FOLIAGE) && !defined(EYE) && !defined(FABRIC)
   }
 #endif
 #endif
@@ -538,6 +550,7 @@ void main() {
 #ifdef FABRIC
   vec3 hT = vec3(0.0);
   float hRough = 0.5, hSpec = 0.5, hAO = 1.0, hTT = 1.0;
+  bool cardDom = false;
   if (u_fp[16].w > 2.5) {
     // a hair card (u_fp: 0 the dye (linear), 1 melanin variation fine and rough, the roughness, its variation, 2 Spec0, Spec1, SpecEdge,
     // SpecFront, 3 scraggle, opacity scale and power, 4 the cards' tile in the atlas: u, v, size). The groom's atlases: u_fmask R
@@ -546,15 +559,17 @@ void main() {
     vec4 at = texture(u_fmask, auv);
     vec4 tg = texture(u_fkit, auv);
     float seed = at.b;
-    // the sky a strand sees: a strand deep in its clump (the atlas's depth) sees little of it. Unreal shades a groom's sky through its
-    // voxelised density (the strands' own occlusion); a card has its clump's depth instead
-    hAO = mix(1.0, 0.15, clamp(at.g, 0.0, 1.0));
-    hTT = mix(1.0, 0.05, clamp(at.g * 2.0, 0.0, 1.0));
-    // the opacity mask: DitherTemporalAA (the mask plus a sixth of a per-pixel noise, a new pattern each frame) of pow(coverage x scale,
-    // power), clipped at M_hair_v4's 0.33
-    float op = pow(max(at.r * u_fp[3].y, 0.0), u_fp[3].z);
-    float dth = fract(ign(gl_FragCoord.xy) + u_dither_frame * 0.6180340);
-    if (op + 0.1666 * dth < 0.33) discard;
+    // R3D_CARDS_DOM (strands.ludic: the cards in the hair's deep shadow, as Unreal's CardsOrMeshesShadowView): inside the map the card
+    // takes Unreal's deep shadow below (HairStrandsDeepShadowMask.usf: a card is an opaque pixel to it) and no stand-in
+    cardDom = u_hs_p.x > 0.5 && hsLight(v_wpos).w > 0.5;
+    if (!cardDom) {
+      // (without it) the sky a strand sees: a strand deep in its clump (the atlas's depth) sees little of it. Unreal shades a groom's sky
+      // through its voxelised density (the strands' own occlusion); a card has its clump's depth instead
+      hAO = mix(1.0, 0.15, clamp(at.g, 0.0, 1.0));
+      hTT = mix(1.0, 0.05, clamp(at.g * 2.0, 0.0, 1.0));
+    }
+    // the opacity mask: DitherTemporalAA of pow(coverage x scale, power), clipped at M_hair_v4's 0.33 (lighting.glsl hairCardKeep)
+    if (!hairCardKeep(at.r, u_fp[3], u_dither_frame)) discard;
     alb = mhHairColour(u_fp, seed, tg.a);
     hRough = hairVar(u_fp[1].w, u_fp[1].z, seed);
     hSpec = mix(u_fp[2].y, u_fp[2].x, seed) * mix(u_fp[2].z, u_fp[2].w, 0.5);
@@ -798,6 +813,11 @@ void main() {
   float shadow = sunShadow(v_wpos, N, viewDepth);
 #if defined(EYE) || defined(SSS_SPLIT)
   shadow *= hairShadow(v_wpos);                // the brows' and lashes' own shadow (strands.ludic)
+#endif
+#ifdef FABRIC
+  // a hair card in the deep shadow (R3D_CARDS_DOM): Unreal's deep shadow mask on an opaque pixel (HairStrandsDeepShadowMask.usf MainPS,
+  // KERNEL_TYPE_GaussianTransmission8: the face's own lookup), the cards drawn into the map as CardsOrMeshesShadowView
+  if (cardDom) shadow *= hairShadow(v_wpos);
 #endif
 #endif
 #ifdef FOLIAGE

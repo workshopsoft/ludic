@@ -184,6 +184,28 @@ function ac_skin4_on(render3d_st: mut Render3dState) -> bool {
 }
 # a program and, with R3D_SKIN4, its four-influence twin
 @alloc_ok("start-up: the programs are made once, before play")
+# The hair cards' switches, each on unless set to 0, read once: R3D_CARD_SHADOW_CUT a card's shadow cut by its groom's coverage as its lit
+# pass cuts it (shadow.frag HAIR_CARD), R3D_CARD_VELOCITY_CUT its motion likewise (velocity.frag HAIR_CARD), R3D_CARDS_DOM the cards
+# drawn into the hair's deep shadow and lit by it (strands.ludic, model.frag), R3D_CARD_DITHER an actor's cut-out atlas (the crowd's hair
+# cards) cut as M_hair_v4 cuts the player's (DitherTemporalAA at 0.33: model.frag, shadow.frag, velocity.frag), R3D_ALPHA_MIP_COVERAGE
+# the cards' coverage kept through their mips (texture.ludic tex_upload_cov)
+@alloc_ok("start-up: the switches read once")
+function ac_card_flags(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ac_card_read { return }
+  render3d_st.ac_card_read = true
+  render3d_st.ac_card_shcut = ac_flag_on(render3d_st, "R3D_CARD_SHADOW_CUT")
+  render3d_st.ac_card_velcut = ac_flag_on(render3d_st, "R3D_CARD_VELOCITY_CUT")
+  render3d_st.ac_cards_dom = ac_flag_on(render3d_st, "R3D_CARDS_DOM")
+  render3d_st.ac_card_dither = ac_flag_on(render3d_st, "R3D_CARD_DITHER")
+  render3d_st.tex_cov_on = ac_flag_on(render3d_st, "R3D_ALPHA_MIP_COVERAGE")
+}
+@alloc_ok("start-up: the switches read once")
+function ac_flag_on(render3d_st: mut Render3dState, name: string) -> bool {
+  return not (r3d_env_has(render3d_st, name) and r3d_env(render3d_st, name) == "0")
+}
+# a hair card actor (fabric mode 3), the one actor_draw cuts by its groom's coverage
+function ac_card_hair(a: Actor) -> bool { return a.cutout and not a.strands and ac_fabric_mode(a.model) == 3 }
+
 function ac_prog_pair(render3d_st: mut Render3dState, vs: string, fs: string, defs: string) -> AcProg {
   let a = ac_prog_new(render3d_st, vs, fs, defs)
   if ac_skin4_on(render3d_st) { a.s4 = ac_prog_new(render3d_st, vs, fs, defs + "#define SKIN4\n") }
@@ -241,6 +263,10 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_out_cut = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
   render3d_st.ac_vel = ac_prog_pair(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n")
   render3d_st.ac_vel_cut = ac_prog_pair(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n#define ALPHA_TEST\n")
+  ac_card_flags(render3d_st)
+  render3d_st.ac_vel_fab = ac_prog_new(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n#define ALPHA_TEST\n#define HAIR_CARD\n")
+  render3d_st.ac_sh_fab = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n#define HAIR_CARD\n")
+  render3d_st.ac_card_dom = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define CARD_DOM\n")
   render3d_st.ac_sss = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define SSS_SPLIT\n")
   actor_blend_init(render3d_st)
   let stage = render3d_st.ac_actors           # made above with its room; a new valley starts empty
@@ -384,7 +410,7 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
     }
     gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
     prim_factors(render3d_st, ap.prog, pr)
-    if not shadow and ap.l_fp >= 0 { ac_bind_fabric(render3d_st, a, ap, pr) }
+    if ap.l_fp >= 0 { ac_bind_fabric(render3d_st, a, ap, pr) }           # (a shadow's too: shadow.frag HAIR_CARD cuts by them)
     if not shadow and ap.l_eye >= 0 and pr.eye != null { ac_bind_eye(render3d_st, ap, pr) }
     if not shadow { ac_bind_headmap(render3d_st, ap, pr);  ac_bind_micro(render3d_st, ap, pr);  ac_bind_bent(render3d_st, ap, pr) }
     if not shadow {
@@ -793,6 +819,11 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
   if render3d_st.ac_actors == null { return }
   ac_lvp(render3d_st, render3d_st.ac_sh, light_vp)
   ac_lvp(render3d_st, render3d_st.ac_sh_cut, light_vp)
+  ac_dither_frame(render3d_st, render3d_st.ac_sh_cut)
+  if render3d_st.ac_sh_fab != null {
+    gpu_use_program(render3d_st, render3d_st.ac_sh_fab.prog);  u_mat4(render3d_st, render3d_st.ac_sh_fab.l_lvp, light_vp)
+    ac_dither_frame(render3d_st, render3d_st.ac_sh_fab)
+  }
   # the plain rigid casters that share a model, instanced (actor_inst.ludic): the sun's cascades only, each its own buffer (a local
   # light's shadow maps draw every caster on its own)
   var grouped = false
@@ -810,6 +841,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     if grouped {
       ac_lvp(render3d_st, render3d_st.ac_sh_inst, light_vp)
       ac_lvp(render3d_st, render3d_st.ac_sh_cut_inst, light_vp)
+      if render3d_st.ac_sh_cut_inst != null { ac_dither_frame(render3d_st, render3d_st.ac_sh_cut_inst) }
       ai_draw(render3d_st, true)
     }
   }
@@ -821,6 +853,8 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     var ap = render3d_st.ac_sh
     if a.cutout or a.blend != 0 { ap = render3d_st.ac_sh_cut }
     ap = ac_s4(ap, a.model)
+    # a hair card's shadow cut by its groom's coverage, as its lit pass (R3D_CARD_SHADOW_CUT)
+    if render3d_st.ac_card_shcut and render3d_st.ac_sh_fab != null and ac_card_hair(a) { ap = render3d_st.ac_sh_fab }
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }
     if ac_proxy_figure(render3d_st, a) { actor_draw_proxy(render3d_st, a) } else { actor_draw_one(render3d_st, a, ap, true) }
   }
@@ -1242,6 +1276,15 @@ function ac_vel_n(a: Actor) -> int {
 # Two walks: the first weighs each actor (seen last frame, big enough, moved, its own motion wanted) and gathers the plain movers into
 # their models' instanced groups (actor_inst.ludic ai_vel_gather, R3D_VEL_INST), which are drawn; the second draws the rest on their own
 # and keeps every weighed actor's matrix and palette as next frame's last.
+# the frame's dither pattern (lighting.glsl cardDitherKeep) on a cut-out program and its four-influence twin, its program in use after
+function ac_dither_frame(render3d_st: mut Render3dState, ap: AcProg) -> void {
+  if ap.s4 != null {
+    gpu_use_program(render3d_st, ap.s4.prog)
+    u_f(render3d_st, gpu_uniform(render3d_st, ap.s4.prog, "u_dither_frame"), float(render3d_st.ac_frame % 64))
+  }
+  gpu_use_program(render3d_st, ap.prog)
+  u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_dither_frame"), float(render3d_st.ac_frame % 64))
+}
 function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, frame: int) -> void {
   if render3d_st.ac_actors == null or render3d_st.ac_vel == null { return }
   let skip = ac_vel_skip_on(render3d_st)
@@ -1301,6 +1344,7 @@ function ac_vel_bind(render3d_st: mut Render3dState, ap: AcProg, prev_vp: floats
   gpu_use_program(render3d_st, ap.prog)
   if ap.scene_frame != render3d_st.ac_frame {
     ap.scene_frame = render3d_st.ac_frame
+    u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_dither_frame"), float(render3d_st.ac_frame % 64))   # the lit pass's pattern
     u_mat4(render3d_st, ap.l_view, render3d_st.cam_view)
     u_mat4(render3d_st, ap.l_proj, render3d_st.cam_proj)
     u_mat4(render3d_st, ap.l_vpc, render3d_st.cam_vp_clean)
@@ -1311,6 +1355,8 @@ function ac_draw_velocity_one(render3d_st: mut Render3dState, a: Actor, bones: f
   var ap = render3d_st.ac_vel
   if a.cutout and not ac_has_fabric(a.model) { ap = render3d_st.ac_vel_cut }      # (a garment draws opaque: model.frag FABRIC)
   ap = ac_s4(ap, a.model)
+  # a hair card's motion cut by its groom's coverage, as its lit pass (R3D_CARD_VELOCITY_CUT; the program it took before has no cut)
+  if render3d_st.ac_card_velcut and render3d_st.ac_vel_fab != null and ac_card_hair(a) { ap = render3d_st.ac_vel_fab }
   let p = ap.prog
   ac_vel_bind(render3d_st, ap, prev_vp)
   u_mat4(render3d_st, ap.l_model, a.mat)
@@ -1330,6 +1376,7 @@ function ac_draw_velocity_one(render3d_st: mut Render3dState, a: Actor, bones: f
     if a.cutout {
       gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
       prim_factors(render3d_st, p, pr)
+      if ap.l_fp >= 0 { ac_bind_fabric(render3d_st, a, ap, pr) }
     }
     mesh_draw(render3d_st, pr.mesh)
   }

@@ -178,6 +178,22 @@ vec3 F_SchlickRough(float NoV, vec3 f0, float rough) { return f0 + (max(vec3(1.0
 // interleaved-gradient noise for rotated PCF taps
 float ign(vec2 p) { return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y)); }
 
+// ---- hair cards' opacity mask, the same in every pass that cuts them (the lit pass, the shadow maps, the motion pass) ----------------
+uniform float u_dither_frame; // the frame's index (0..63): a hair card's dithered opacity moves each frame, for the temporal resolve
+uniform vec2 u_card_cut;      // an actor's cut-out atlas (prim_factors): x 1 cut as a hair card (R3D_CARD_DITHER), y 1 its mips keep
+                              // their alpha coverage (R3D_ALPHA_MIP_COVERAGE: tex_cov_mips), so no scaling by the level at sample time
+// M_hair_v4's material function DitherTemporalAA: the mask plus a sixth of a per-pixel noise (a new pattern each frame, resolved by the
+// temporal AA), clipped at the material's Opacity Mask Clip Value 0.33
+bool cardDitherKeep(float mask, float frame) {
+  float dth = fract(ign(gl_FragCoord.xy) + frame * 0.6180340);
+  return mask + 0.1666 * dth >= 0.33;
+}
+// a hair card's mask from its groom's atlas (CardsAtlas_Attribute R, HairCardsAttributeCommon.ush): pow(coverage x scale, power)
+// (fp3: u_fp[3], y the opacity scale, z its power), then DitherTemporalAA
+bool hairCardKeep(float coverage, vec4 fp3, float frame) {
+  return cardDitherKeep(pow(max(coverage * fp3.y, 0.0), fp3.z), frame);
+}
+
 float cascadeRange(int c) { return u_cascade_range[c]; }
 float cascadeTexel(int c) { return u_cascade_texel[c]; }
 
@@ -973,7 +989,7 @@ vec3 mhHairColour(vec4 fp[17], float seed, float coord) {
   }
   return alb;
 }
-#if defined(EYE) || defined(SSS_SPLIT) || (defined(STRANDS) && !defined(DOM) && !defined(TRANSMITTANCE))
+#if defined(EYE) || defined(SSS_SPLIT) || defined(FABRIC) || (defined(STRANDS) && !defined(DOM) && !defined(TRANSMITTANCE))
 // the groom's deep shadow from the sun (strands.ludic: Unreal's front depth and four layers of hair coverage). u_hs_p: x on, y the map's
 // size in texels, z the depth bias (the first layer's depth x DepthBiasScale 0.05), w DensityScale 2
 uniform sampler2D u_hairsh;

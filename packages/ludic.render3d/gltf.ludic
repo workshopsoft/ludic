@@ -174,7 +174,9 @@ function gltf_texture_bv(render3d_st: mut Render3dState, bv: int, srgb: bool) ->
   let buf = gltf_view_bytes(render3d_st, bv)
   var dil = 0
   if render3d_st.gltf_cutout { dil = 24 }
-  let key = `png#{n}#{gltf_bytes_hash(buf, n)}#{srgb}#{dil}`
+  var cv = 0                                      # (a cut-out keeping its coverage down its mips is another texture: tex_cov_begin)
+  if dil > 0 and render3d_st.tex_cov_cutouts and render3d_st.tex_cov_on { cv = 1 }
+  let key = `png#{n}#{gltf_bytes_hash(buf, n)}#{srgb}#{dil}#{cv}`
   var i = 0
   while i < render3d_st.gltf_tex_n {
     if render3d_st.gltf_tex_paths[i] == key {
@@ -455,6 +457,11 @@ function prim_factors(render3d_st: mut Render3dState, p: int, pr: Prim) -> void 
     u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_mr_scale"), e[2], e[3])
   }
   surf_bind(render3d_st, p, pr)
+  # an actor's cut-out atlas cut as a hair card (R3D_CARD_DITHER; a garment cuts by its own mode), and whether its mips keep their alpha
+  # coverage (tex_upload_cov): lighting.glsl u_card_cut
+  var cd = 0.0
+  if render3d_st.ac_card_dither and pr.fab == null { cd = 1.0 }
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_card_cut"), cd, tex_cov_of(render3d_st, pr.diff))
   let f = pr.fac
   if f == null {
     u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_fac_base_inv"), 0.0, 0.0, 0.0, 0.0)

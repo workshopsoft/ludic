@@ -209,19 +209,182 @@ function tex_upload(render3d_st: mut Render3dState, px: pointer, srgb: bool, mip
     gpu_pixel_store(render3d_st, GPU_UNPACK_SWAP_BYTES, 0)
   }
   gpu_pixel_store(render3d_st, GPU_UNPACK_ALIGNMENT, 1)
-  gpu_tex_image2d(render3d_st, ifmt, render3d_st.tex_w, render3d_st.tex_h, fmt, ty, px)
+  if not (mips and tex_cov_want(render3d_st) and render3d_st.tex_channels == 4 and render3d_st.tex_depth == 8) {
+    gpu_tex_image2d(render3d_st, ifmt, render3d_st.tex_w, render3d_st.tex_h, fmt, ty, px)
+  }
   gpu_pixel_store(render3d_st, GPU_UNPACK_SWAP_BYTES, 0)
   gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_REPEAT)
   gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_REPEAT)
   gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
+  # a cut-out's levels made here, each keeping level 0's alpha coverage (R3D_ALPHA_MIP_COVERAGE: tex_upload_cov), else blitted on the GPU
+  var covd = false
+  if mips and tex_cov_want(render3d_st) and render3d_st.tex_channels == 4 and render3d_st.tex_depth == 8 { covd = tex_upload_cov(render3d_st, px, ifmt, srgb) }
+  tex_note_cov(render3d_st, id, covd)
   if mips {
     gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
-    gpu_tex_mips(render3d_st, GPU_TEX2D)
+    if not covd { gpu_tex_mips(render3d_st, GPU_TEX2D) }
     gpu_tex_paramf(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
   } else {
     gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR)
   }
   return id
+}
+
+# ---- coverage-preserving alpha mipmaps (R3D_ALPHA_MIP_COVERAGE, on unless 0) ------------------------------------------------------
+# A cut-out's alpha averages away down its mips: the cards' hair thins and vanishes with distance. Castano's alpha mipmaps (Ignacio
+# Castano, "Computing Alpha Mipmaps", 2010; NVIDIA Texture Tools' Surface::scaleAlphaToCoverage): each level's alpha scaled so the share of
+# its texels at or over the cut is level 0's, the scale found by bisection (NVTT: 10 steps between 0 and 4, here 16), the level filtered
+# from the one above before its scale (2 x 2 boxes; an sRGB texture's colour averaged as light, as the GPU's blit does). Made once when
+# the texture loads, uploaded with its levels (gpu_tex_compressed takes any format's levels as bytes): nothing per frame. Asked for by
+# the load: a groom's coverage atlas (morph.ludic model_set_fabric: its R at the cut its opacity's pow reaches the 0.33 at) or an actor's
+# cut-out atlas loaded while tex_coverage_cutouts is on (its A at the actor cut's: model.frag ALPHA_TEST). An 8-bit RGBA PNG only; it
+# skips a .dds or a baked cut-out (their levels were made at build time) and is marked so the shaders scale no more (u_card_cut.y)
+
+# the crowd's cut-out atlases loaded from now (on) until off keep their alpha coverage down their mips
+export function tex_coverage_cutouts(render3d_st: mut Render3dState, on: bool) -> void { render3d_st.tex_cov_cutouts = on }
+# the cut an actor's cut-out is tested at: DitherTemporalAA's middle (0.33 less half its sixth) with R3D_CARD_DITHER, else 0.4 (model.frag)
+function tex_cut_ref(render3d_st: Render3dState) -> float {
+  if render3d_st.ac_card_dither { return 0.33 - 0.1666 * 0.5 }
+  return 0.4
+}
+# a cut-out atlas being loaded (dilate > 0) while the crowd's are asked for: its alpha's coverage at the actor cut (true: the load set it)
+function tex_cov_begin(render3d_st: mut Render3dState, dilate: int) -> bool {
+  if dilate <= 0 or not render3d_st.tex_cov_cutouts or render3d_st.tex_cov_ch >= 0 { return false }
+  render3d_st.tex_cov_ch = 3
+  render3d_st.tex_cov_ref = tex_cut_ref(render3d_st)
+  return true
+}
+function tex_cov_want(render3d_st: Render3dState) -> bool { return render3d_st.tex_cov_ch >= 0 and render3d_st.tex_cov_on }
+@alloc_ok("a texture's flag, a slot per id (ids are reused)")
+function tex_note_cov(render3d_st: mut Render3dState, id: int, on: bool) -> void {
+  if id <= 0 { return }
+  while len(render3d_st.tex_cov) <= id { push(render3d_st.tex_cov, 0) }
+  render3d_st.tex_cov[id] = 0
+  if on { render3d_st.tex_cov[id] = 1 }
+}
+# 1 when texture id's mips keep its alpha coverage (lighting.glsl u_card_cut.y), else 0
+function tex_cov_of(render3d_st: Render3dState, id: int) -> float {
+  if id <= 0 or id >= len(render3d_st.tex_cov) { return 0.0 }
+  if render3d_st.tex_cov[id] != 0 { return 1.0 }
+  return 0.0
+}
+function tex_lin8(c: int) -> float {
+  let v = float(c) / 255.0
+  if v <= 0.04045 { return v / 12.92 }
+  return Math.pow((v + 0.055) / 1.055, 2.4)
+}
+function tex_srgb8(v: float) -> int {
+  let c = Math.clamp(v, 0.0, 1.0)
+  var s = c * 12.92
+  if c > 0.0031308 { s = 1.055 * Math.pow(c, 1.0 / 2.4) - 0.055 }
+  return int(Math.floor(s * 255.0 + 0.5))
+}
+# the share of a level's coverage channel (floats, 4 a texel) at or over ref once scaled by s
+function tex_cov_share(f: floats, n: int, ch: int, ref: float, s: float) -> float {
+  var k = 0
+  for i in 0 .. n { if f[i * 4 + ch] * s >= ref { k += 1 } }
+  return float(k) / float(max(n, 1))
+}
+# the bound texture's storage and every level from px (tex_w x tex_h RGBA8, ifmt), the coverage channel tex_cov_ch kept at tex_cov_ref
+@alloc_ok("a load: a cut-out texture's levels made once")
+function tex_upload_cov(render3d_st: mut Render3dState, px: pointer, ifmt: int, srgb: bool) -> bool {
+  let w0 = render3d_st.tex_w
+  let h0 = render3d_st.tex_h
+  let ch = render3d_st.tex_cov_ch
+  let ref = render3d_st.tex_cov_ref
+  if ch < 0 or ch > 3 or w0 < 1 or h0 < 1 { return false }
+  let nl = gvk_mip_levels(w0, h0)
+  let offs = words(nl + 1)
+  var total = 0
+  var lw = w0
+  var lh = h0
+  for l in 0 .. nl {
+    offs[l] = total
+    total += lw * lh * 4
+    lw = max(lw / 2, 1)
+    lh = max(lh / 2, 1)
+  }
+  offs[nl] = total
+  let out = bytes(total + 8)
+  mem_copy(out, px, w0 * h0 * 4)
+  # level 0's coverage: the share at or over the cut
+  let n0 = w0 * h0
+  var k0 = 0
+  let ref8 = ref * 255.0
+  for i in 0 .. n0 { if float(px[i * 4 + ch]) >= ref8 { k0 += 1 } }
+  let want = float(k0) / float(n0)
+  # the levels' unscaled texels (light for an sRGB colour), each filtered from the one above
+  let lut = floats(256)
+  for c in 0 .. 256 {
+    lut[c] = float(c) / 255.0
+    if srgb { lut[c] = tex_lin8(c) }
+  }
+  var pw = w0
+  var ph = h0
+  var prev = floats(4)
+  for l in 1 .. nl {
+    let w = max(pw / 2, 1)
+    let h = max(ph / 2, 1)
+    let cur = floats(w * h * 4)
+    for y in 0 .. h {
+      let y0 = min(y * 2, ph - 1)
+      let y1 = min(y * 2 + 1, ph - 1)
+      for x in 0 .. w {
+        let x0 = min(x * 2, pw - 1)
+        let x1 = min(x * 2 + 1, pw - 1)
+        let o = (y * w + x) * 4
+        for c in 0 .. 4 {
+          var s = 0.0
+          if l == 1 {
+            let lin = c < 3 and c != ch
+            let a = px[(y0 * pw + x0) * 4 + c]
+            let b = px[(y0 * pw + x1) * 4 + c]
+            let d = px[(y1 * pw + x0) * 4 + c]
+            let e = px[(y1 * pw + x1) * 4 + c]
+            if lin { s = lut[a] + lut[b] + lut[d] + lut[e] } else { s = float(a + b + d + e) / 255.0 }
+          } else {
+            s = prev[(y0 * pw + x0) * 4 + c] + prev[(y0 * pw + x1) * 4 + c] + prev[(y1 * pw + x0) * 4 + c] + prev[(y1 * pw + x1) * 4 + c]
+          }
+          cur[o + c] = s * 0.25
+        }
+      }
+    }
+    # the scale that brings the level's share at the cut back to level 0's (bisection, as NVTT's)
+    let n = w * h
+    var lo = 0.0
+    var hi = 4.0
+    var sc = 1.0
+    for it in 0 .. 16 {
+      let got = tex_cov_share(cur, n, ch, ref, sc)
+      if got < want { lo = sc } else if got > want { hi = sc } else { break }
+      sc = (lo + hi) * 0.5
+    }
+    let base = offs[l]
+    for i in 0 .. n {
+      for c in 0 .. 4 {
+        var v = cur[i * 4 + c]
+        var b = 0
+        if c == ch {
+          b = int(Math.floor(Math.clamp(v * sc, 0.0, 1.0) * 255.0 + 0.5))
+        } else if srgb and c < 3 {
+          b = tex_srgb8(v)
+        } else {
+          b = int(Math.floor(Math.clamp(v, 0.0, 1.0) * 255.0 + 0.5))
+        }
+        out[base + i * 4 + c] = b
+      }
+    }
+    free(prev)
+    prev = cur
+    pw = w
+    ph = h
+  }
+  free(prev)
+  free(lut)
+  let ok = gpu_tex_compressed(render3d_st, ifmt, w0, h0, nl, out, offs)
+  free(out)
+  free(offs)
+  return ok
 }
 
 # Load a PNG as a mipmapped, anisotropic texture (0 on failure). srgb for albedo.
@@ -232,15 +395,18 @@ function tex_load(render3d_st: mut Render3dState, path: pointer, srgb: bool) -> 
 function tex_load_ex(render3d_st: mut Render3dState, path: pointer, srgb: bool, dilate: int) -> int {
   let was = render3d_st.gvk_tag
   if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+  let cs = tex_cov_begin(render3d_st, dilate)
   let r = tex_load_ex__t(render3d_st, path, srgb, dilate)
+  if cs { render3d_st.tex_cov_ch = -1 }
   render3d_st.gvk_tag = was
   return r
 }
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 function tex_load_ex__t(render3d_st: mut Render3dState, path: pointer, srgb: bool, dilate: int) -> int {
   # a .dds encoded beside the .png at build time goes to the GPU compressed, its mips included
-  # (not for a cut-out atlas: its edge padding is made here, from the .png)
-  if render3d_st.gvk_has_bc and dilate == 0 {
+  # (not for a cut-out atlas: its edge padding is made here, from the .png; nor for one whose mips keep its coverage: tex_upload_cov)
+  let cov = tex_cov_want(render3d_st)
+  if render3d_st.gvk_has_bc and dilate == 0 and not cov {
     let dds = dds_path_of(path)
     var t = 0
     if len(dds) > 0 {
@@ -252,7 +418,7 @@ function tex_load_ex__t(render3d_st: mut Render3dState, path: pointer, srgb: boo
       return t
     }
   }
-  if dilate > 0 {
+  if dilate > 0 and not cov {
     let cut = baked_cutout(render3d_st, path, srgb)   # padded and compressed at build time
     if cut != 0 {
       tex_note_size(render3d_st, cut)
@@ -274,6 +440,7 @@ function tex_load_png_mem(render3d_st: mut Render3dState, buf: pointer, size: in
   let was = render3d_st.gvk_tag
   if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
   var id = 0
+  let cs = tex_cov_begin(render3d_st, dilate)
   let j = png_parse_mem(render3d_st, buf, size, key)
   if j != null {
     j.path = key
@@ -287,6 +454,7 @@ function tex_load_png_mem(render3d_st: mut Render3dState, buf: pointer, size: in
       tex_note_size(render3d_st, id)
     }
   }
+  if cs { render3d_st.tex_cov_ch = -1 }
   render3d_st.gvk_tag = was
   return id
 }
@@ -300,6 +468,7 @@ function tex_note_size(render3d_st: mut Render3dState, id: int) -> void {
 }
 function tex_note_forget(render3d_st: mut Render3dState, id: int) -> void {
   if id > 0 and id < len(render3d_st.tex_size_ws) { render3d_st.tex_size_ws[id] = 0;  render3d_st.tex_size_hs[id] = 0 }
+  if id > 0 and id < len(render3d_st.tex_cov) { render3d_st.tex_cov[id] = 0 }
 }
 function tex_width(render3d_st: Render3dState, id: int) -> int {
   if id <= 0 or id >= len(render3d_st.tex_size_ws) { return 0 }
