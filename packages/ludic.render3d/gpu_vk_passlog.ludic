@@ -1,0 +1,85 @@
+# R3D_VK_PASSLOG=<frame>: one frame's render passes, said one by one - for a tile-based GPU each pass
+# begun loads its attachments into tile memory and stores them back at its end, so this is the frame's
+# attachment traffic: the pass it belongs to (the last profiled region begun), each attachment (texture
+# id, size, Vulkan format, samples) with its load and store, the textures each pass samples, and the
+# copies and resolves between them. A texture stored and never sampled, copied or loaded before it is
+# cleared again is a store nobody needed.
+
+# called as a frame begins: the frame before it (and its present) ends the log of that one
+function gvk_plog_frame_begin(render3d_st: mut Render3dState) -> void {
+  gvk_plog_frame_end(render3d_st)
+  if render3d_st.gvk_plog_at < 0 {
+    render3d_st.gvk_plog_at = 0
+    if r3d_env_has(render3d_st, "R3D_VK_PASSLOG") { render3d_st.gvk_plog_at = Text.to_int(r3d_env(render3d_st, "R3D_VK_PASSLOG")) }
+  }
+  render3d_st.gvk_plog_n = 0
+  render3d_st.gvk_plog = render3d_st.gvk_plog_at > 0 and render3d_st.r3d_test_frame == render3d_st.gvk_plog_at
+  if render3d_st.gvk_plog { gvk_plog_open(render3d_st) }
+}
+function gvk_plog_frame_end(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.gvk_plog { return }
+  gvk_plog_say_end(render3d_st)
+  render3d_st.gvk_plog = false
+}
+@alloc_ok("a debug switch: R3D_VK_PASSLOG, one frame")
+function gvk_plog_open(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gvk_plog_seen == null { render3d_st.gvk_plog_seen = words(64) }
+  print(`passlog: frame {render3d_st.r3d_test_frame}, {gfx_width()}x{gfx_height()}`)
+  # the device's memory types: a lazily allocated one (0x10) is what a memoryless (tile-only) attachment needs
+  for t in 0 .. Vk.get_i32(render3d_st.gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypeCount) {
+    print(`passlog: memory type {t} flags {Vk.get_i32(render3d_st.gvk_mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t * VkMemoryType_sizeof + VkMemoryType_propertyFlags)}`)
+  }
+}
+@alloc_ok("a debug switch: R3D_VK_PASSLOG, one frame")
+function gvk_plog_say_end(render3d_st: Render3dState) -> void { print(`passlog: {render3d_st.gvk_plog_n} render passes begun`) }
+
+function gvk_plog_load_name(op: int) -> string {
+  if op == VK_ATTACHMENT_LOAD_OP_CLEAR { return "clear" }
+  if op == VK_ATTACHMENT_LOAD_OP_DONT_CARE { return "dontcare" }
+  return "load"
+}
+function gvk_plog_store_name(op: int) -> string {
+  if op == VK_ATTACHMENT_STORE_OP_DONT_CARE { return "dontcare" }
+  return "store"
+}
+# a pass begun: the line for it, then one for each attachment
+@alloc_ok("a debug switch: R3D_VK_PASSLOG, one frame")
+function gvk_plog_pass(render3d_st: mut Render3dState, fb: int) -> void {
+  render3d_st.gvk_plog_nseen = 0
+  print(`P{render3d_st.gvk_plog_n} [{render3d_st.gvk_plog_name}] fb {fb} {render3d_st.gvk_pass_w}x{render3d_st.gvk_pass_h} x{render3d_st.gvk_pass_samples}`)
+}
+@alloc_ok("a debug switch: R3D_VK_PASSLOG, one frame")
+function gvk_plog_att(render3d_st: Render3dState, kind: string, tex: int, layer1: int, load: int, store: int, resolve: int) -> void {
+  var rs = ""
+  if resolve > 0 { rs = ` resolve->t{resolve}` }
+  print(`   {kind} t{tex} layer {layer1 - 1} {gvk_tex_w(render3d_st, tex)}x{gvk_tex_h(render3d_st, tex)} fmt {render3d_st.gvk_tex_vkfmt[tex]} x{gvk_tex_samples_of(render3d_st, tex)} {gvk_plog_load_name(load)}/{gvk_plog_store_name(store)}{rs}`)
+}
+# a texture a draw of this pass samples, said once per pass
+function gvk_plog_read(render3d_st: mut Render3dState, tex: int) -> void {
+  for i in 0 .. render3d_st.gvk_plog_nseen { if render3d_st.gvk_plog_seen[i] == tex { return } }
+  if render3d_st.gvk_plog_nseen < 64 { render3d_st.gvk_plog_seen[render3d_st.gvk_plog_nseen] = tex;  render3d_st.gvk_plog_nseen += 1 }
+  gvk_plog_say_read(render3d_st, "   reads", tex)
+}
+@alloc_ok("a debug switch: R3D_VK_PASSLOG, one frame")
+function gvk_plog_say_read(render3d_st: Render3dState, what: string, tex: int) -> void {
+  print(`{what} t{tex} {gvk_tex_w(render3d_st, tex)}x{gvk_tex_h(render3d_st, tex)}`)
+}
+@alloc_ok("a debug switch: R3D_VK_PASSLOG, one frame")
+function gvk_plog_dispatch(render3d_st: mut Render3dState, texs: words, nt: int) -> void {
+  print(`X [{render3d_st.gvk_plog_name}] dispatch`)
+  for t in 0 .. nt { if texs != null and t < len(texs) and texs[t] > 0 { gvk_plog_say_read(render3d_st, "   reads", texs[t]) } }
+}
+@alloc_ok("a debug switch: R3D_VK_PASSLOG, one frame")
+function gvk_plog_copy(render3d_st: Render3dState, what: string, src: int, dst: int, depth: bool) -> void {
+  print(`{what} [{render3d_st.gvk_plog_name}] t{src} -> t{dst} depth {depth}`)
+}
+# the attachments of the pass about to begin, with the ops gvk_pass_begin gives them
+function gvk_plog_pass_atts(render3d_st: mut Render3dState) -> void {
+  gvk_plog_pass(render3d_st, render3d_st.gvk_fb_cur)
+  for c in 0 .. render3d_st.gvk_pass_ncolor {
+    gvk_plog_att(render3d_st, "C", render3d_st.gvk_pass_col[c * 2], render3d_st.gvk_pass_col[c * 2 + 1], gvk_att_load(render3d_st, false), gvk_att_store(render3d_st, false), 0)
+  }
+  if render3d_st.gvk_pass_dep[0] > 0 { gvk_plog_att(render3d_st, "D", render3d_st.gvk_pass_dep[0], render3d_st.gvk_pass_dep[1], gvk_att_load(render3d_st, true), gvk_att_store(render3d_st, true), 0) }
+}
+@alloc_ok("a debug switch: R3D_VK_PASSLOG, one frame")
+function gvk_plog_say_end_pass(render3d_st: Render3dState) -> void { print(`E ended by {render3d_st.gvk_plog_why}`) }

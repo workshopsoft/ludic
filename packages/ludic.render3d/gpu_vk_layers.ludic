@@ -30,7 +30,7 @@ function gpu_staging_drop(render3d_st: mut Render3dState) -> void {
 
 # the frame's command buffer, outside any pass, for copies recorded before the frame's draws
 function gpu_upload_cb(render3d_st: mut Render3dState) -> pointer {
-  gvk_pass_end(render3d_st)
+  render3d_st.gvk_plog_why = "gpu_upload_cb";  gvk_pass_end(render3d_st)
   return gvk_frame_cb(render3d_st)
 }
 
