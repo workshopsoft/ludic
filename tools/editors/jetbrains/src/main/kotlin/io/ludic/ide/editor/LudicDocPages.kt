@@ -48,7 +48,7 @@ class LudicDocPageDocumentation : AbstractDocumentationProvider() {
     data class Page(val file: File, val meta: Map<String, String>, val body: String)
 
     companion object {
-        const val DOCS_URL = "https://workshopsoft.pages.workshopsoft.io/ludic/"
+        const val DOCS_URL = "https://workshopsoft.github.io/ludic/"
 
         fun pageOf(element: PsiElement?): Page? {
             val file: PsiFile = element?.containingFile ?: (element as? PsiFile) ?: return null

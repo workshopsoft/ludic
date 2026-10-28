@@ -23,7 +23,7 @@ tools/editors/
 
 ## Getting the server
 
-An installed toolchain already has it: `curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh`
+An installed toolchain already has it: `curl -fsSL https://workshopsoft.github.io/ludic/install.sh | sh`
 puts `ludic-lsp` and `ludic-fmt` in `~/.ludic/bin`, on your `PATH`, and
 `ludic lsp` runs the server on stdio — that is what an editor should spawn, since
 it needs no path configuration.

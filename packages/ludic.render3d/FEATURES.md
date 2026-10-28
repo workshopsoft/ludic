@@ -45,8 +45,8 @@ Shadows
 
 Geometry, terrain and world
 22. GPU-generated terrain height field (ridged multifractal, fbm) — `shaders/heightgen.frag`
-23. Real-world terrain from the Copernicus GLO-30 elevation model with slope-scaled fractal detail; a lake bed carved under the surface the model records — the survey window in the Maroon Lake game (git.workshopsoft.io/workshopsoft/maroon-lake), `shaders/heightgen.frag` `DEM`, `terrain.ludic` `terrain_use_dem`, `terrain_lake`
-24. Satellite orthophoto drape (Sentinel-2 true colour) sampled bicubically, blended in past the middle ground, keeping the scanned materials' luminance grain plus three-scale procedural grain — the survey window in the Maroon Lake game (git.workshopsoft.io/workshopsoft/maroon-lake), `shaders/terrain.frag` `u_ortho`
+23. Real-world terrain from the Copernicus GLO-30 elevation model with slope-scaled fractal detail; a lake bed carved under the surface the model records — the survey window in the Maroon Lake game (github.com/workshopsoft/maroon-lake), `shaders/heightgen.frag` `DEM`, `terrain.ludic` `terrain_use_dem`, `terrain_lake`
+24. Satellite orthophoto drape (Sentinel-2 true colour) sampled bicubically, blended in past the middle ground, keeping the scanned materials' luminance grain plus three-scale procedural grain — the survey window in the Maroon Lake game (github.com/workshopsoft/maroon-lake), `shaders/terrain.frag` `u_ortho`
 25. Satellite-classified materials and placement: bare ground (cobble shore near, talus far), snow, meadow, dense conifer stands (tree density and forest-floor duff follow the photograph) — `shaders/terrain.frag`, `terrain.ludic` `terrain_ortho_green/scree/forest`
 26. Terrain material splatting by slope, altitude and a track mask; height-map CPU read-back for placement queries — `shaders/terrain.frag`, `terrain.ludic` `terrain_height`
 27. Snow by altitude and slope, gully snow, forest-floor material under stands — `shaders/terrain.frag`
@@ -58,7 +58,7 @@ Geometry, terrain and world
 33. Procedural grass blades with wind, dryness and base occlusion; distant blades widen, lie flat to the ground normal and sink into the carpet at the ring's edge — `scatter.ludic` `model_blade`, `shaders/model.vert`, `shaders/model.frag` `BLADE`
 34. Wind animation (height-weighted sway, per-instance phase) — `shaders/model.vert` `WIND`
 35. Chunk-streamed ground cover with distance bands (blades in four rings, densest underfoot), deterministic per-chunk generation, nearest-first amortised over frames with an instance budget — `stream.ludic`
-36. Multi-scale noise clustering for natural placement, forest density by elevation/slope/aspect, avalanche chutes, shoreline scrub — the Maroon Lake game (git.workshopsoft.io/workshopsoft/maroon-lake)
+36. Multi-scale noise clustering for natural placement, forest density by elevation/slope/aspect, avalanche chutes, shoreline scrub — the Maroon Lake game (github.com/workshopsoft/maroon-lake)
 37. Level-of-detail by distance: full scan mesh → branch cards → single impostor — `scatter.ludic` `layer_update`
 38. Texture edge dilation for cut-out atlases; 16-bit PNG decoding to RGB16/R16; RGBE HDR decoding — `texture.ludic`
 39. Anisotropic filtering and mipmapping on all scanned maps — `texture.ludic` `tex_upload`
@@ -77,14 +77,14 @@ Anti-aliasing, camera and post-processing
 49. Luma unsharp sharpening — `shaders/sharpen.frag`
 50. Height-based exponential fog / aerial perspective from the prefiltered sky with sun inscatter — `shaders/lighting.glsl` `applyFog`
 51. Specular anti-aliasing (highlight cap) and firefly prevention — `shaders/lighting.glsl`
-52. Fly camera with mouse look — the Maroon Lake game (git.workshopsoft.io/workshopsoft/maroon-lake)
+52. Fly camera with mouse look — the Maroon Lake game (github.com/workshopsoft/maroon-lake)
 53. Profiling switches per stage and a frame benchmark — `render.ludic` `r3d_env_flags`
 
 Characters and moving objects
 54. glTF skins: node hierarchy, joints and inverse bind matrices loaded per model, four-influence GPU skinning, poses set per node in the model's frame — `skin.ludic`, `shaders/skin.vert`, `quat.ludic`
 55. Actors: models placed and moved per frame (skinned or rigid), lit and cast into every cascade — `actor.ludic`
 56. The drawn terrain height on the CPU (cubic B-spline of the texels) for things that stand on it — `terrain.ludic` `terrain_height_smooth`
-57. A third-person character controller with a distance-driven procedural gait (walk / run / idle), slope and water limits, and a settling orbit camera — the Maroon Lake game (git.workshopsoft.io/workshopsoft/maroon-lake)
+57. A third-person character controller with a distance-driven procedural gait (walk / run / idle), slope and water limits, and a settling orbit camera — the Maroon Lake game (github.com/workshopsoft/maroon-lake)
 58. A 2D overlay over the finished frame: batched rectangles, images and proportional text from a baked font atlas (`tools/blender/font_build.py`) — `overlay.ludic`, `shaders/overlay.*`
 59. Time of day over the HDRI: a solar arc drives the sun's direction and colour, the sky's light scales toward a deep-blue starry night, a moon lights the night, the visible sky turns with the sun and its convolutions rebake when far off, the height-field shadow rebakes as the sun moves, auto-exposure is capped at night — `daylight.ludic`, `shaders/sky.frag`, `shaders/lighting.glsl`
 60. One point light (the campfire) in the shading — `shaders/lighting.glsl` `fireLight`

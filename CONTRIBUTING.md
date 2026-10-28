@@ -99,7 +99,7 @@ git push origin main --follow-tags
 
 **Pushing the tag is what publishes.** The `release` workflow builds the
 toolchain from the IR seed, runs `ludic-dev test`, `ludic-dev test-tools` and `ludic-dev bootstrap-cfree`
-against the tagged tree, and only then creates the Forgejo release — with the
+against the tagged tree, and only then creates the GitHub release — with the
 source tarball, a Linux toolchain build, a `.sha256` beside each, and that version's
 `CHANGELOG.md` section as the notes. It refuses to publish if the tag and
 `VERSION` disagree or the changelog has no section for it.
@@ -117,7 +117,7 @@ macOS runner and giving it a job, or running the same command CI runs from a
 Mac. Either way it is `ludic-dev publish`, which only adds assets the release is missing:
 
 ```bash
-FORGEJO_TOKEN=… ludic-dev publish v0.4.0
+GH_TOKEN=… ludic-dev publish v0.4.0
 ```
 
 Checksums are one `.sha256` file per artifact rather than a single `SHA256SUMS`,
@@ -146,7 +146,7 @@ copies it in; `docs-check` fails without it). Change the host in:
 |---|---|
 | `install.sh` | `REPO_API`, `REPO_URL`, `INSTALL_URL` — each `${LUDIC_…:-default}`, so `LUDIC_REPO_URL=… sh install.sh` tests a move without editing anything |
 | `tools/ludic-cli/project.ludic` | `install_url()` (`$LUDIC_INSTALL_URL`), used by `ludic upgrade` and `ludic doctor` |
-| `tools/ludic-cli/forgejo.ludic` | `FORGEJO_API_DEFAULT` (`$LUDIC_FORGEJO_API`), used by `ludic-dev publish` |
+| `tools/ludic-cli/github.ludic` | `GITHUB_REPO_DEFAULT` (`$LUDIC_GITHUB_REPO`), used by `ludic-dev publish` through the `gh` CLI |
 | `docs/site/site.json` | `repo_url`, the `start.terminal` one-liner, and the doc links in `nav_links` |
 | Prose | `README.md`, `COMPILING.md`, `tools/editors/README.md`, and the two editor plugins' "server not found" messages |
 
@@ -192,7 +192,7 @@ half-finished rename fails there rather than in someone's terminal.
   | `docs` | documentation only (`docs/`, README, comments) |
   | `test` | tests only |
   | `build` | the build/bootstrap machinery (seed, `bin/ludic`, linking) |
-  | `ci` | CI workflows under `.forgejo/` |
+  | `ci` | CI workflows under `.github/` |
   | `style` | formatting/whitespace, no behaviour change |
   | `chore` | routine housekeeping with no other bucket |
   | `revert` | reverts a previous commit |
@@ -246,42 +246,9 @@ non-destructive version of "tidy the history" without touching a single commit.
 - Fill in the PR template checklist. Reference the issue you close with
   `Closes #NN` in the description or a commit message.
 
-## CI (self-hosted runners)
-
-Every workflow starts by cloning `${{ github.server_url }}/${{ github.repository }}`.
-On a self-hosted Forgejo runner that URL is usually the instance's *internal*
-address (e.g. `http://forgejo:3000`), so **the job container must be able to
-resolve it**. The runner puts each job on a fresh per-job network by default,
-which the Forgejo container is not attached to — so the clone fails with:
-
-```
-fatal: unable to access 'http://forgejo:3000/…': Could not resolve host: forgejo
-```
-
-Give the runner a config that pins job containers to a network Forgejo is also
-on. A dedicated network is better than the general application network, so a CI
-job cannot reach unrelated services:
-
-```yaml
-# the runner's config.yml, passed with: forgejo-runner daemon --config …
-container:
-  network: forgejo-ci
-```
-
-with `forgejo-ci` attached to the Forgejo container as well. Verify it without
-running a workflow:
-
-```bash
-docker run --rm --network forgejo-ci alpine:3 getent hosts forgejo
-```
-
-This failure mode is intermittent if left unfixed: Docker forwards names it
-cannot resolve to the host's resolver, which may answer for the container name
-often enough that CI looks healthy for a while.
-
 ## Reporting issues
 
-Use the templates under [`.forgejo/issue_template/`](.forgejo/issue_template):
+Use the templates under [`.github/ISSUE_TEMPLATE/`](.github/ISSUE_TEMPLATE):
 a **bug report**, a **proposal** (new stdlib/language surface), or a
 **cleanup/DX** task. Choose the one that fits and fill in the sections.
 

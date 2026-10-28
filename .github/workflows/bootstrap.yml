@@ -11,9 +11,12 @@ on:
   pull_request:
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   cfree-fixpoint:
-    runs-on: docker
+    runs-on: ubuntu-24.04
     container: node:20-bookworm
     steps:
       - name: Install clang-16
@@ -25,14 +28,14 @@ jobs:
           clang-16 --version | head -1
 
       - name: Check out the triggering commit
-        env:
-          # the repository that triggered the run, so a fork or a mirror tests itself
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Point the build at the Linux stdio shim
         run: |
           set -eu
           git config --global --add safe.directory '*'
-          git clone "$REPO_URL" .
-          git checkout "${GITHUB_SHA}" 2>/dev/null || git checkout "${GITHUB_REF_NAME:-main}"
           git log --oneline -1
           # See ci.yml for why the Linux build injects the stdio shim via LUDIC_CC.
           echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll -lm" >> "$GITHUB_ENV"

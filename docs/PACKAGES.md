@@ -2,7 +2,7 @@
 
 Ludic has a package manager built into the task runner (`bin/ludic`). It fetches,
 resolves, stores and links third-party packages with no new infrastructure to
-run — it drives plain `git` and rides on the Forgejo host and its release tags.
+run — it drives plain `git` and rides on the git host and its release tags.
 
 This is the v1 implementation of the direction decided in issue #63.
 

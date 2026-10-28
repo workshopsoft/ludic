@@ -199,7 +199,7 @@ function runtime_home_case() -> void {
 
 # The install layout: bin/ beside runtime/ and packages/, reached through $PATH
 # from an unrelated directory, with nothing in the environment. This is what
-# `curl https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh` lays down and the only shape most
+# `curl https://workshopsoft.github.io/ludic/install.sh | sh` lays down and the only shape most
 # users will ever run, so it is asserted rather than assumed: a staged copy of
 # the toolchain compiles and runs a project created by `ludic new`.
 function install_layout_case() -> void {

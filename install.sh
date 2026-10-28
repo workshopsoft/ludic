@@ -1,7 +1,7 @@
 #!/bin/sh
 # install.sh — install the Ludic toolchain.
 #
-#   curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh
+#   curl -fsSL https://workshopsoft.github.io/ludic/install.sh | sh
 #
 # That URL is the documentation site, which publishes this file alongside the
 # pages it is quoted on (see cmd_docs_gen). Everything host-shaped here is a
@@ -31,9 +31,9 @@
 
 set -eu
 
-REPO_API="${LUDIC_FORGEJO_API:-https://git.workshopsoft.io/api/v1/repos/workshopsoft/ludic}"
-REPO_URL="${LUDIC_REPO_URL:-https://git.workshopsoft.io/workshopsoft/ludic}"
-INSTALL_URL="${LUDIC_INSTALL_URL:-https://workshopsoft.pages.workshopsoft.io/ludic/install.sh}"
+REPO_API="${LUDIC_GITHUB_API:-https://api.github.com/repos/workshopsoft/ludic}"
+REPO_URL="${LUDIC_REPO_URL:-https://github.com/workshopsoft/ludic}"
+INSTALL_URL="${LUDIC_INSTALL_URL:-https://workshopsoft.github.io/ludic/install.sh}"
 INSTALL_DIR="${LUDIC_INSTALL_DIR:-${HOME}/.ludic}"
 VERSION=""
 MODIFY_PATH=1
@@ -124,7 +124,7 @@ fetch() { curl -fsSL "$1" -o "$2"; }
 # newest-first and includes pre-releases.
 latest_version() {
   _v=$(curl -fsSL "${REPO_API}/releases/latest" 2>/dev/null | first_tag)
-  [ -n "$_v" ] || _v=$(curl -fsSL "${REPO_API}/releases?limit=1" 2>/dev/null | first_tag)
+  [ -n "$_v" ] || _v=$(curl -fsSL "${REPO_API}/releases?per_page=1" 2>/dev/null | first_tag)
   printf '%s\n' "$_v"
 }
 

@@ -11,7 +11,7 @@
 #
 # Installing (macOS, Linux):
 #
-#   curl -fsSL https://workshopsoft.pages.workshopsoft.io/ludic/install.sh | sh
+#   curl -fsSL https://workshopsoft.github.io/ludic/install.sh | sh
 #
 # Building from a checkout — the one step Ludic cannot do for itself, since
 # compiling Ludic needs a compiler:

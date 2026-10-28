@@ -1,6 +1,6 @@
 # Ludic documentation generator
 
-Generates the public documentation site (the `pages` branch) from a single
+Generates the public documentation site (GitHub Pages) from a single
 source of truth, so the site can never drift from the language.
 
 ## Source of truth
@@ -78,10 +78,10 @@ built `bin/ludic` (bootstrapped from the IR seed with clang alone).
 
 ## Publish
 
-`.forgejo/workflows/docs.yml` bootstraps the toolchain from the IR seed and runs
+`.github/workflows/docs.yml` bootstraps the toolchain from the IR seed and runs
 `ludic-dev docs-gen` + `ludic-dev docs-check` on every push to `main` that touches `docs/**`,
-`tools/docgen/**` or `tools/ludic-cli/**`, and publishes the result to the `pages` branch
-root. `index.html` + `.nojekyll` always stay at the root.
+`tools/docgen/**` or `tools/ludic-cli/**`, and deploys the result to GitHub Pages as an
+artifact. `index.html` + `.nojekyll` always stay at the root.
 
 ## Colors
 

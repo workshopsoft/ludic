@@ -1,10 +1,9 @@
 name: release
 
 # Cutting a release is `ludic-dev release` + `git push --tags`; everything after that
-# happens here. Before this workflow existed the artifacts were built on whatever
-# machine the maintainer happened to be sitting at, from whatever was in bin/ at
-# the time, with no checksums and nothing proving the tagged tree even passed its
-# tests. Now the tag is the trigger and CI is the only thing that publishes.
+# happens here. The tag is the trigger and CI is the only thing that publishes:
+# the artifacts are built from the tagged tree, with checksums, and only after
+# that tree has passed its tests.
 #
 # The job refuses to publish unless:
 #   * the tag matches the VERSION file in the tagged tree,
@@ -12,7 +11,8 @@ name: release
 #   * the toolchain builds from the IR seed and the whole suite passes,
 #   * the C-free bootstrap still reproduces the seed byte-for-byte.
 #
-# Needs a repository secret FORGEJO_TOKEN with write access to releases.
+# The release is created with the workflow's own GITHUB_TOKEN, so no secret is
+# needed.
 on:
   push:
     tags: ['v*']
@@ -22,31 +22,39 @@ on:
         description: 'Tag to publish (e.g. v0.4.0)'
         required: true
 
+permissions:
+  contents: write
+
 jobs:
   publish:
-    runs-on: docker
+    runs-on: ubuntu-24.04
     container: node:20-bookworm
     steps:
-      - name: Install clang-16
+      - name: Install clang-16 and gh
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
           apt-get update -qq
-          apt-get install -y -qq --no-install-recommends clang-16 git ca-certificates curl
+          apt-get install -y -qq --no-install-recommends clang-16 git ca-certificates curl gh
           clang-16 --version | head -1
+          gh --version | head -1
 
       - name: Check out the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A full clone: `git archive` needs the tag object, and the tarball is
+          # built from the tag rather than from the working tree.
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - name: Point the build at the Linux stdio shim
         env:
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
-          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -eu
           git config --global --add safe.directory '*'
-          # A full clone: `git archive` needs the tag object, and the tarball is
-          # built from the tag rather than from the working tree.
-          git clone "$REPO_URL" .
           TAG="${INPUT_TAG:-${GITHUB_REF_NAME}}"
-          git checkout "$TAG"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           # See ci.yml for why the Linux build injects the stdio shim via LUDIC_CC.
           echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll -lm" >> "$GITHUB_ENV"
@@ -83,14 +91,10 @@ jobs:
 
       - name: Publish the release
         env:
-          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
-          LUDIC_FORGEJO_API: ${{ github.server_url }}/api/v1/repos/${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LUDIC_GITHUB_REPO: ${{ github.repository }}
         run: |
           set -eu
-          if [ -z "${FORGEJO_TOKEN:-}" ]; then
-            echo "::error::No FORGEJO_TOKEN secret; cannot create the release."
-            exit 1
-          fi
           # ludic-dev publish builds dist/ (source tarball from the tag, this host's
           # toolchain, SHA256SUMS), takes the notes from the CHANGELOG section,
           # and creates the release. Re-running it only adds missing assets, so

@@ -457,4 +457,4 @@ capture (#89), and the windowed quit-key change (#88).
 ---
 
 *Questions or a migration snag? Open an issue at
-<https://git.workshopsoft.io/workshopsoft/ludic/issues>.*
+<https://github.com/workshopsoft/ludic/issues>.*
