@@ -159,6 +159,8 @@ function sc_make(render3d_st: mut Render3dState) -> void {
   if not gpu_tex_ok(render3d_st, render3d_st.sc_tex) { render3d_st.sc_mode = 0;  sc_say_no_memory() }
 }
 @alloc_ok("a message, built only when it is said")
+function sc_say_cached(c: int, texel: float) -> void { print(`r3d: shadow cache: cascade {c} cached ({int(texel * 1000.0)} mm texels)`) }
+@alloc_ok("a message, built only when it is said")
 function sc_say_no_memory() -> void { print("r3d: shadow cache: no memory for its layers; every cascade is drawn every frame") }
 
 # every cached cascade drawn again whole, this frame
@@ -298,6 +300,7 @@ function shadow_cache_pass(render3d_st: mut Render3dState) -> void {
     render3d_st.sc_urgent[c] = 0
     render3d_st.sc_stale[c] = 0
     render3d_st.sc_builds += 1
+    if render3d_st.sc_builds <= SC_LAST { sc_say_cached(c, render3d_st.sc_texel[c]) }
   }
   let j = render3d_st.sc_job
   if not any and j >= 0 {

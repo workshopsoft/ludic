@@ -335,6 +335,11 @@ function kgpu_rec_write(render3d_st: mut Render3dState, g: KGpu, at: int, data: 
     let lm = gpu_buffer_map(render3d_st, g.b_l_cmds)
     if lm != null { mem_copy(mem_off(lm, at), data, n) }
   }
+  # the shadow cache's list draws the same meshes: without these its records drew no index at all (no building cast into it)
+  if g.b_s_cmds != 0 {
+    let sm = gpu_buffer_map(render3d_st, g.b_s_cmds)
+    if sm != null { mem_copy(mem_off(sm, at), data, n) }
+  }
 }
 
 # kit `id` is a box kit (kitbox.ludic): its instances carry their own w, d, h, and its card is sized from them by `box`
