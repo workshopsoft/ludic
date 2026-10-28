@@ -795,7 +795,7 @@ function ac_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) ->
 # its LOD scale times FProjectedShadowInfo::GetLODDistanceFactor: r.Shadow.LODDistanceFactor, plus r.Shadow.LODDistanceFactor.CascadeScale
 # for each cascade past the first (ShadowDepthRendering.cpp). A scale k makes a screen size k times larger, the same as standing k times
 # farther off, so an actor `d` metres away casts the level its chain gives d x k, never a finer one than the view draws. Only an actor
-# given a chain (actor_shadow_lods: a traffic car's parts) has levels to choose from. R3D_UE_SHADOW_LOD=0 casts the view's level again;
+# given a chain (actor_shadow_lods: a traffic car's parts) has levels to choose from. Off by default: R3D_UE_SHADOW_LOD=1 turns it on;
 # R3D_SHADOW_LOD_DISTANCE_FACTOR and R3D_SHADOW_LOD_CASCADE_SCALE set the two (Unreal's defaults are 1 and 0; the cascade scale here is 1).
 function ac_shadow_lod_factor(render3d_st: mut Render3dState) -> float {
   if sh_lod_distance_factor(render3d_st) <= 0.0 or render3d_st.sh_local { return 0.0 }
@@ -806,8 +806,8 @@ function ac_shadow_lod_factor(render3d_st: mut Render3dState) -> float {
 # r.Shadow.LODDistanceFactor alone (every cascade's), 0 when the shadow LOD is off
 function sh_lod_distance_factor(render3d_st: mut Render3dState) -> float {
   if render3d_st.sh_lod_on < 0 {
-    render3d_st.sh_lod_on = 1
-    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_LOD") and r3d_env(render3d_st, "R3D_UE_SHADOW_LOD") == "0" { render3d_st.sh_lod_on = 0 }
+    render3d_st.sh_lod_on = 0
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_LOD") and r3d_env(render3d_st, "R3D_UE_SHADOW_LOD") == "1" { render3d_st.sh_lod_on = 1 }
     if r3d_env_has(render3d_st, "R3D_SHADOW_LOD_DISTANCE_FACTOR") { render3d_st.sh_lod_f = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_LOD_DISTANCE_FACTOR")), 0.01) }
     if r3d_env_has(render3d_st, "R3D_SHADOW_LOD_CASCADE_SCALE") { render3d_st.sh_lod_cs = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_LOD_CASCADE_SCALE")), 0.0) }
   }
