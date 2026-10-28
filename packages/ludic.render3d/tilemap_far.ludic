@@ -225,6 +225,7 @@ function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> bool {
   } else { q.actor.model = q.model }
   q.actor.tint[0] = 1.0;  q.actor.tint[1] = 1.0;  q.actor.tint[2] = 1.0
   q.actor.radius = r
+  q.actor.occ_hx = half + 0.5;  q.actor.occ_hy = (y1 - y0) * 0.5 + 0.5     # its occlusion test's box (occlusion.ludic)
   q.cx = cx;  q.cz = cz;  q.lift = lift;  q.radius = r
   actor_place(q.actor, cx - f.ox, lift, cz - f.oz, 0.0)
   f.builds += 1

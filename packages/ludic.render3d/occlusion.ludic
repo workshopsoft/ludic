@@ -1,0 +1,168 @@
+# occlusion.ludic - the actors' occlusion culling, as Unreal 5.8 does it by default (SceneVisibility.cpp r.HZBOcclusion 0: hardware occlusion
+# queries; r.AllowOcclusionQueries 1). After the opaque scene each actor worth testing has its bounds drawn as a box against the scene's
+# depth, writing nothing, inside a query; the next frame reads how many samples passed (r.NumBufferedOcclusionQueries 1: the frame before)
+# and an actor none of whose box showed is not drawn in the main view. Its shadow is untouched (r.Shadow.OcclusionCullCascadedShadowMaps 0).
+# Unreal's rules kept: a box the near plane cuts is visible and not tested (its bAllowBoundsTest, FVector::BoxPushOut), an actor not
+# tested this frame is visible the next, a query not ready is visible. Not kept: its grouped queries for the occluded and its random
+# re-test of the visible (every candidate is tested every frame). R3D_UE_OCCLUSION=0 switches it off; R3D_UE_OCCLUSION_MIN_TRIS (1000)
+# is the smallest model tested, below which a query costs more than it saves.
+const OCC_MAX: int = 4096
+const OCC_MIN_TRIS: int = 1000
+const OCC_SLACK: float = 1.1          # a model's box widened: a skinned figure's pose leaves its bind pose's bounds
+
+function occ_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.occ_state == 0 {
+    render3d_st.occ_state = 2
+    if render3d_st.gpu_kind == GPU_VK and render3d_st.gvk_has_hqr and not (r3d_env_has(render3d_st, "R3D_UE_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_OCCLUSION") == "0") {
+      if occ_init(render3d_st) { render3d_st.occ_state = 1 }
+    }
+    render3d_st.occ_min_tris = OCC_MIN_TRIS
+    if r3d_env_has(render3d_st, "R3D_UE_OCCLUSION_MIN_TRIS") { render3d_st.occ_min_tris = Text.to_int(r3d_env(render3d_st, "R3D_UE_OCCLUSION_MIN_TRIS")) }
+  }
+  return render3d_st.occ_state == 1
+}
+
+function occ_init(render3d_st: mut Render3dState) -> bool {
+  let qci = gvk_tmp(render3d_st, VkQueryPoolCreateInfo_sizeof)
+  Vk.zero(qci, VkQueryPoolCreateInfo_sizeof)
+  Vk.put_i32(qci, VkQueryPoolCreateInfo_sType, VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO)
+  Vk.put_i32(qci, VkQueryPoolCreateInfo_queryType, VK_QUERY_TYPE_OCCLUSION)
+  Vk.put_i32(qci, VkQueryPoolCreateInfo_queryCount, OCC_MAX)
+  let out = gvk_tmp(render3d_st, 8)
+  if Vk.create_query_pool(render3d_st.gvk_dev, qci, render3d_st.gvk_ac, out) != VK_SUCCESS { return false }
+  render3d_st.gvk_occ_pool = gvk_handle(out)
+  Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_occ_pool, 0, OCC_MAX)
+  render3d_st.occ_prog = r3d_program(render3d_st, "occ_box.vert", "occ_box.frag", "")
+  render3d_st.occ_list = new []Actor                       # OCC_MAX slots, filled in order each frame (occ_n of them)
+  for i in 0 .. OCC_MAX { push(render3d_st.occ_list, null) }
+  render3d_st.occ_ids = words(OCC_MAX)
+  render3d_st.occ_b = floats(6)
+  # the unit cube, -1..1
+  let m = gpu_mesh_new(render3d_st)
+  let v = fbuf_floats(24)
+  for i in 0 .. 8 {
+    fbuf_put_bits(v, i * 3, float_bits(float((i & 1) * 2 - 1)))
+    fbuf_put_bits(v, i * 3 + 1, float_bits(float(((i >> 1) & 1) * 2 - 1)))
+    fbuf_put_bits(v, i * 3 + 2, float_bits(float(((i >> 2) & 1) * 2 - 1)))
+  }
+  gpu_mesh_vertices(render3d_st, m, v, fbuf_bytes_of(24), GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, 12, 0, false)
+  free(v)
+  # six faces, two triangles each (both sides drawn: the winding does not matter)
+  let faces = [0, 1, 3, 2,  4, 5, 7, 6,  0, 1, 5, 4,  2, 3, 7, 6,  0, 2, 6, 4,  1, 3, 7, 5]
+  let idx = words(36)
+  for f in 0 .. 6 {
+    let a = faces[f * 4];  let b = faces[f * 4 + 1];  let c = faces[f * 4 + 2];  let d = faces[f * 4 + 3]
+    idx[f * 6] = a;  idx[f * 6 + 1] = b;  idx[f * 6 + 2] = c
+    idx[f * 6 + 3] = a;  idx[f * 6 + 4] = c;  idx[f * 6 + 5] = d
+  }
+  gpu_mesh_indices(render3d_st, m, data_of(idx), 36 * 4, 4)
+  free(idx)
+  m.count = 36
+  gpu_mesh_done(render3d_st, m)
+  render3d_st.occ_box = m
+  return true
+}
+
+# last frame's results, once a frame before its first actor is drawn (the frame before has been waited for: its queries are done)
+function occ_read(render3d_st: mut Render3dState) -> void {
+  if render3d_st.occ_read_no == render3d_st.gvk_frame_no { return }
+  render3d_st.occ_read_no = render3d_st.gvk_frame_no
+  render3d_st.occ_live = false
+  if not occ_on(render3d_st) { return }
+  render3d_st.occ_live = true
+  # an actor untested last frame is visible in this one
+  if render3d_st.ac_actors != null { for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].occ_hidden = false } }
+  let n = render3d_st.occ_n
+  render3d_st.occ_hidden_n = 0
+  if n == 0 { return }
+  let data = gvk_tmp(render3d_st, n * 16)
+  let size: long = n * 16
+  let stride: long = 16
+  # not waited for: a query not yet available reads as visible
+  Vk.get_query_pool_results(render3d_st.gvk_dev, render3d_st.gvk_occ_pool, 0, n, size, data, stride, VK_QUERY_RESULT_64_BIT + VK_QUERY_RESULT_WITH_AVAILABILITY_BIT)
+  for i in 0 .. n {
+    let a = render3d_st.occ_list[i]
+    render3d_st.occ_list[i] = null
+    if a == null or a.id != render3d_st.occ_ids[i] { continue }             # released and taken again since
+    let ready = Vk.get_i64(data, i * 16 + 8) != 0
+    a.occ_hidden = ready and Vk.get_i64(data, i * 16) == 0
+    if a.occ_hidden { render3d_st.occ_hidden_n += 1 }
+  }
+  Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_occ_pool, 0, n)
+  render3d_st.occ_n = 0
+  # R3D_UE_OCCLUSION_STATS=k: every k frames, how many were tested and how many of them hidden
+  if r3d_env_has(render3d_st, "R3D_UE_OCCLUSION_STATS") {
+    let k = Text.to_int(r3d_env(render3d_st, "R3D_UE_OCCLUSION_STATS"))
+    if k > 0 and render3d_st.gvk_frame_no % k == 0 { print(`occlusion: {n} actors tested, {render3d_st.occ_hidden_n} hidden`) }
+  }
+}
+
+# whether the main view skips actor a: hidden behind the scene last frame (a part goes with its leader)
+function occ_hidden(render3d_st: Render3dState, a: Actor) -> bool {
+  if not render3d_st.occ_live or render3d_st.ter_reflect { return false }
+  if a.leader != null { return a.leader.occ_hidden }
+  return a.occ_hidden
+}
+
+# the box actor a is tested with: its cull sphere's middle and the ground's own extents (occ_hx), else its model's bounds
+function occ_bounds(a: Actor, b: floats) -> void {
+  let s = a.scale
+  if a.occ_hx > 0.0 {
+    b[0] = a.x;  b[1] = a.y + a.radius * s;  b[2] = a.z
+    b[3] = a.occ_hx;  b[4] = a.occ_hy;  b[5] = a.occ_hx
+    return
+  }
+  let m = a.model
+  let r = m.radius * s * OCC_SLACK
+  let y0 = a.y + m.ymin * s
+  let hy = m.height * s * 0.5 * OCC_SLACK
+  b[0] = a.x;  b[1] = y0 + m.height * s * 0.5;  b[2] = a.z
+  b[3] = r;  b[4] = hy;  b[5] = r
+}
+
+# The tests, after the opaque scene and in its pass: every actor worth one that is in view, each box drawn into its own query
+function occ_pass(render3d_st: mut Render3dState) -> void {
+  if not render3d_st.occ_live or render3d_st.ac_actors == null { return }
+  let b = render3d_st.occ_b
+  let f = render3d_st.cam_fwd
+  let cp = render3d_st.cam_pos
+  let p = render3d_st.occ_prog
+  gpu_use_program(render3d_st, p)
+  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_vp"), render3d_st.cam_vp)
+  let l_c = gpu_uniform(render3d_st, p, "u_c")
+  let l_e = gpu_uniform(render3d_st, p, "u_e")
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_GEQUAL)
+  gpu_depth_write(render3d_st, false)
+  gpu_color_write(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  gpu_cull(render3d_st, false)
+  render3d_st.occ_live = false                               # the actors' own view test, not last frame's result
+  var n = 0
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.leader != null or a.blend != 0 or a.shell or a.strands or a.model == null { continue }
+    if a.occ_hx <= 0.0 and a.model.tris < render3d_st.occ_min_tris { continue }
+    if n >= OCC_MAX { continue }
+    if not ac_visible(render3d_st, a, false) { continue }
+    occ_bounds(a, b)
+    # the near plane cuts the box: visible, untested (Unreal's NearClippingPlane.PlaneDot against BoxPushOut)
+    let d = (b[0] - cp[0]) * f[0] + (b[1] - cp[1]) * f[1] + (b[2] - cp[2]) * f[2] - render3d_st.cam_near
+    let push = b[3] * Math.abs(f[0]) + b[4] * Math.abs(f[1]) + b[5] * Math.abs(f[2])
+    if d <= push { continue }
+    u_f3(render3d_st, l_c, b[0], b[1], b[2])
+    u_f3(render3d_st, l_e, b[3], b[4], b[5])
+    render3d_st.gvk_occ_q = n
+    mesh_draw(render3d_st, render3d_st.occ_box)
+    render3d_st.gvk_occ_q = -1
+    render3d_st.occ_list[n] = a
+    render3d_st.occ_ids[n] = a.id
+    n += 1
+  }
+  render3d_st.occ_live = true
+  render3d_st.occ_n = n
+  gpu_color_write(render3d_st, true)
+  gpu_depth_write(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_GREATER)
+}

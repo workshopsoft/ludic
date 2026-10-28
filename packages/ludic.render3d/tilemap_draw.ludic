@@ -218,6 +218,7 @@ function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slo
   if coloured { p.actor.tint[0] = 1.0;  p.actor.tint[1] = 1.0;  p.actor.tint[2] = 1.0 }
   else { p.actor.tint[0] = td.color[0];  p.actor.tint[1] = td.color[1];  p.actor.tint[2] = td.color[2] }
   p.actor.radius = r
+  p.actor.occ_hx = half + 0.5;  p.actor.occ_hy = (y1 - y0) * 0.5 + 0.5     # its occlusion test's box (occlusion.ludic)
   p.lod = lod
   actor_place(p.actor, tmap_patch_cx(tm, tx, p.px) - td.ox, lift, tmap_patch_cz(tm, tz, p.pz) - td.oz, 0.0)
   td.builds += 1

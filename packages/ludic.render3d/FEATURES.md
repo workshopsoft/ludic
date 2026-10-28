@@ -118,6 +118,7 @@ Large worlds (cities of hundreds of thousands of buildings on 16 km and more; RE
 82. A map's ground from the studio's 16-bit height tiles, read as they are (layout from the map's row: texel centres, tile edges, height range), a pool of tiles streamed nearest first within a budget, heights and normals anywhere for physics and placement, and heights for a Jolt heightfield shape - `tilemap.ludic` `tmap_new`, `tmap_stream`, `tmap_height`, `tmap_field`
 83. The ground drawn from baked levels of detail: tiles cut into patches and levels offline (quantized heights and normals, one LWT1 file a tile, checked against the row), patches streamed and uploaded nearest first, a skirt hiding the cracks between levels, the renderer's own model pass lighting it - `tilemap_bake.ludic`, `tools/terrain_bake.ludic`, `tilemap_lwt.ludic`, `tilemap_draw.ludic` `tmd_frame`
 84. Placed things baked into instanced kits: one `RenderKits` row a model, node and atlas, the cell files and index the scheduler loads, rows a game reads back, existing ids kept - `kitbake.ludic` (ludic.city's rows: `packages/ludic.city/tools/cells_bake_city.ludic`)
+85. Occlusion culling of the actors as Unreal's default (hardware occlusion queries, r.HZBOcclusion 0): each actor's bounds drawn as a box against the opaque depth in a query, read the next frame; a box the near plane cuts is never culled; shadows untouched; `R3D_UE_OCCLUSION=0` off, `R3D_UE_OCCLUSION_MIN_TRIS`, `R3D_UE_OCCLUSION_STATS` - `occlusion.ludic`, `shaders/occ_box.vert`
 
 ## Against Unreal Engine 5 and RAGE (RDR2), honestly
 

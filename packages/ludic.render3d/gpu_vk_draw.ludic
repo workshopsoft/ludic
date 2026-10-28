@@ -1535,7 +1535,11 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
         Vk.cmd_draw_indexed_indirect(cb, render3d_st.gvk_buf[render3d_st.gvk_ind_buf], ioff, render3d_st.gvk_ind_n, VkDrawIndexedIndirectCommand_sizeof)
       }
     } else {
+      # an occlusion test (occlusion.ludic) brackets its one box draw here, inside the pass and the command buffer the draw lands in
+      let oq = render3d_st.gvk_occ_q
+      if oq >= 0 { Vk.cmd_begin_query(cb, render3d_st.gvk_occ_pool, oq, 0) }
       Vk.cmd_draw_indexed(cb, n, instances, first, 0, 0)
+      if oq >= 0 { Vk.cmd_end_query(cb, render3d_st.gvk_occ_pool, oq) }
     }
   } else {
     Vk.cmd_draw(cb, n, instances, first, 0)

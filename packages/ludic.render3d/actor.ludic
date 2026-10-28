@@ -74,7 +74,12 @@ property Actor {
   prev_mat:   floats,
   prev_bones: floats,
   prev_n:     int = 0,         # joints in prev_bones (0: rigid last frame)
-  prev_seen:  int = -1         # the TAA frame it was last drawn by the motion pass
+  prev_seen:  int = -1,        # the TAA frame it was last drawn by the motion pass
+  # occlusion culling (occlusion.ludic): last frame's test found none of its box showing; and a box of its own about its cull sphere's
+  # middle (half extents: occ_hx across, occ_hy up), for what its model's bounds fit badly (the ground's patches); 0: the model's
+  occ_hidden: bool = false,
+  occ_hx:     float = 0.0,
+  occ_hy:     float = 0.0
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
@@ -281,6 +286,7 @@ function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool 
     if shadow { c = Math.min(c, 300.0) }
     if d2 > c * c { return false }
   }
+  if not shadow and occ_hidden(render3d_st, a) { return false }
   if not shadow and a.radius != 0.0 {
     let r = a.radius * a.scale
     var cy = a.y + r
@@ -529,6 +535,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_frame += 1
   if render3d_st.ac_census_at == -2 { render3d_st.ac_census_at = -1;  if r3d_env_has(render3d_st, "R3D_ACTOR_CENSUS") { render3d_st.ac_census_at = Text.to_int(r3d_env(render3d_st, "R3D_ACTOR_CENSUS")) } }
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { actor_census(render3d_st) }
+  occ_read(render3d_st)                                     # last frame's occlusion tests (occlusion.ludic)
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
     if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
@@ -797,6 +804,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.tint[0] = 1.0;  a.tint[1] = 1.0;  a.tint[2] = 1.0
   m4_identity(a.mat)
   a.visible = true;  a.cast_hidden = false;  a.casts = true;  a.row = -1;  a.one_sided = false
+  a.occ_hidden = false;  a.occ_hx = 0.0;  a.occ_hy = 0.0
   a.cutout = false;  a.emissive = 0.0;  a.radius = 0.0;  a.cull = 0.0;  a.outline = 0.0
   a.blend = 0;  a.alpha = 1.0;  a.soft = 0.0;  a.unlit = false;  a.blend_casts = false;  a.blend_d = 0.0
   a.shell = false;  a.strands = false;  a.own_blend = false;  a.spec = 1.0
