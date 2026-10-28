@@ -297,6 +297,23 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
     let want = tmd_lod_want(render3d_st, td, s, k, bd, cam_x, cam_y, cam_z)
     if not tmd_build(render3d_st, td, p, s, want) { p.lod = want }      # unreadable: no mesh, and not asked for again every frame
   }
+  if r3d_env_has(render3d_st, "R3D_TERRAIN_LODS") and render3d_st.ac_frame == Text.to_int(r3d_env(render3d_st, "R3D_TERRAIN_LODS")) { tmd_lods_say(td) }
+}
+# R3D_TERRAIN_LODS=<frame>: how many patches hold each level at that frame (a check of the level choice)
+@alloc_ok("a dev print, once")
+function tmd_lods_say(td: TileDraw) -> void {
+  let n = new []int
+  let tr = new []int
+  for i in 0 .. 8 { push(n, 0);  push(tr, 0) }
+  var tot = 0
+  for i in 0 .. len(td.patches) {
+    let p = td.patches[i]
+    if p.tile < 0 or p.actor == null or p.lod < 0 or p.lod > 7 { continue }
+    n[p.lod] = n[p.lod] + 1
+    if p.actor.model != null { tr[p.lod] = tr[p.lod] + p.actor.model.tris }
+    tot += 1
+  }
+  print(`r3d: terrain patches {tot}: lod0 {n[0]} lod1 {n[1]} lod2 {n[2]} lod3 {n[3]} lod4 {n[4]}; tris lod0 {tr[0]} lod1 {tr[1]} lod2 {tr[2]} lod3 {tr[3]}, levels {td.tm.lod_max + 1}, quads {td.tm.patch_texels}, patch {tmap_patch_size(td.tm)} m`)
 }
 
 # The level patch k of mesh slot s asks for, `d` metres from the camera (WORLD x and z, render y): by its size on screen as Unreal's
