@@ -732,6 +732,10 @@ function gpu_clear(render3d_st: mut Render3dState, mask: int) -> void {
 function gpu_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> void {
   gvk_blit(render3d_st, w, h, mask)
 }
+# layers of one depth (or colour) array texture into another's of the same size, outside any pass: pairs[2 i] -> pairs[2 i + 1]
+function gpu_tex_copy_layers(render3d_st: mut Render3dState, src: int, dst: int, depth: bool, pairs: words, n: int) -> void {
+  gvk_copy_layers(render3d_st, src, dst, depth, pairs, n)
+}
 # the framebuffer the finished frame is presented from (an offscreen one, headless)
 function gpu_screen_fb(render3d_st: Render3dState) -> int { return 0 }
 function gpu_multisample(render3d_st: mut Render3dState, on: bool) -> void { }

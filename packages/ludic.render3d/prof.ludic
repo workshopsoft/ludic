@@ -170,6 +170,7 @@ function prof_report(render3d_st: Render3dState) -> void {
   if render3d_st.prof_whole_hits > 0 {
     print(`  {Text.pad_right("WHOLE FRAME", 22)} {Text.pad_left(string(render3d_st.prof_whole_ns / render3d_st.prof_whole_hits / 1000), 7)} us   least {string(render3d_st.prof_whole_min / 1000)} us   (first GPU work to the end of post: gaps included, the HUD and present not)`)
   }
+  shadow_cache_say(render3d_st)
 }
 
 # ---- streaming work per frame (R3D_PROF=1) ----------------------------------

@@ -1,0 +1,367 @@
+# ============================================================================
+# shadow_cache.ludic — the sun's far cascades cached: what never moves is drawn into them once, not every frame (R3D_UE_SHADOW_CACHE).
+#
+# Unreal 5.8 keeps a directional light's static depth between frames two ways. Its cascaded shadow maps (ShadowSetup.cpp,
+# r.Shadow.CSMCaching): a cascade whose light and bounds are unchanged draws only its movable casters over the static depth it kept
+# (SDCM_MovablePrimitivesOnly); one that moved draws its static casters again (SDCM_StaticPrimitivesOnly), and any change of the
+# light's direction (WorldToLight) throws the cache away. Its virtual shadow map clipmaps (VirtualShadowMapClipmap.cpp,
+# VirtualShadowMapCacheManager.cpp): each level a window centred on the camera, snapped to the level's own grid in light space, so a
+# camera that moves a little keeps every cached page and only what the window scrolls onto is drawn.
+#
+# Here, the second's window over the first's cascades. Cascade 0 (the nearest ten metres) stays live. Cascades 1 - 3 each keep their
+# static casters - the still actors (Actor.still: Unreal's Static mobility), the instanced layers and the big world's buildings - in a
+# layer of sc_tex, drawn into a window that is centred on the camera, not on the view: square in light space, as wide as every receiver
+# its cascade can be asked about (view depth up to its split, so out to split x the frustum's corner reach) and sc_margin more, its
+# centre snapped to its texels so the grid is the world's. The window recentres only when the camera has used half that margin, so
+# turning on the spot or walking about keeps it. Each frame: the cached layers are copied into the frame's shadow array (outside any
+# pass), then only the moving casters (people, cars, the player) are drawn over them, with the cached windows' own projections.
+#
+# A rebuild is drawn into a spare layer over sc_slices frames (the still actors and layers, then the buildings - as ue_skylight.ludic
+# spreads its capture), and swapped in when done: it starts when the camera has used half a window's margin, when it has turned
+# sc_turn degrees (the streamed layers gather their casters by the view), when the stepped sun moves on, or when a still actor
+# came, went or moved. The first frame, a teleport or a floating-origin rebase, a new shadow resolution, shadows switched back on,
+# or the camera past a window's edge rebuild it whole, at once.
+#
+# The sun: Unreal throws the cache away whenever the light turns, so the shadows' sun is stepped (sh_sun: the sun at most
+# sc_step degrees ago); the daylight's sun moves smoothly for everything else. The live cascade casts along the newest step at once,
+# each cached one from its rebuild on.
+#
+# R3D_UE_SHADOW_CACHE=1 caches; 0 (the default, until proven) draws every cascade every frame as before; 2 draws the camera-centred
+# windows live every frame (to judge their texels against the slice fit). R3D_UE_SHADOW_CACHE_SLICES=1|2|3 (frames a rebuild takes),
+# _MARGIN (0.15), _SUN_STEP (degrees, 1), _TURN (degrees, 10).
+# ============================================================================
+
+export const SH_PHASE_ALL: int = 0           # every caster (the live cascade, or no cache)
+export const SH_PHASE_STATIC: int = 1        # the still casters, into a cached layer
+export const SH_PHASE_DYN: int = 2           # the moving casters, over a cached layer
+export const SH_PART_ACTORS: int = 0         # a casters callback's parts, which a time slice draws a share of
+export const SH_PART_LAYERS: int = 1
+export const SH_PART_BUILDINGS: int = 2
+const SC_FIRST: int = 1                      # cascade 0 stays live
+const SC_LAST: int = 3                       # Unreal's four cascades: 1 .. 3 cached
+const SC_LAYERS: int = 4                     # a layer each, and the spare
+const SC_JUMP: float = 40.0                  # metres the camera moves in a frame that make it a teleport (a rebase moves it 256 or more)
+
+# R3D_UE_SHADOW_CACHE=2: cascade c fitted to its camera-centred window, drawn live (the window's texels, without the cache)
+function sc_live_window(render3d_st: mut Render3dState, c: int) -> void {
+  render3d_st.sc_k = sc_corner(render3d_st)
+  sc_window(render3d_st, c, render3d_st.sun_dir)
+  for i in 0 .. 16 { render3d_st.sh_vp[c * 16 + i] = render3d_st.sc_jvp[i] }
+  render3d_st.sh_range[c] = render3d_st.sc_jrange
+  render3d_st.sh_texel[c] = render3d_st.sc_jtexel
+}
+
+# the casters callback asks, per part, whether this pass draws it
+export function shadow_casts(render3d_st: Render3dState, part: int) -> bool {
+  if render3d_st.sh_phase == SH_PHASE_ALL { return true }
+  if render3d_st.sh_phase == SH_PHASE_DYN { return part == SH_PART_ACTORS }
+  if render3d_st.sh_part < 0 { return true }
+  return sc_slice_of(render3d_st, part) == render3d_st.sh_part
+}
+function sc_slice_of(render3d_st: Render3dState, part: int) -> int { return part * render3d_st.sc_slices / 3 }
+
+# the game's floating origin (forg.ludic serial), once a frame: a rebase moves render space, so the cache is drawn again
+export function shadow_cache_origin(render3d_st: mut Render3dState, serial: int) -> void { render3d_st.sc_serial_now = serial }
+
+function shadow_cache_mode(render3d_st: mut Render3dState) -> int {
+  if render3d_st.sc_mode < 0 {
+    render3d_st.sc_mode = 0
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE") { render3d_st.sc_mode = Text.to_int(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE")) }
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_SLICES") { render3d_st.sc_slices = min(max(Text.to_int(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_SLICES")), 1), 3) }
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_MARGIN") { render3d_st.sc_margin = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_MARGIN")), 0.02, 1.0) }
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_SUN_STEP") { render3d_st.sc_step = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_SUN_STEP")), 0.0) }
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_TURN") { render3d_st.sc_turn = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_TURN")), 0.0) }
+    for c in 0 .. SHADOW_CASCADES { render3d_st.sc_slot[c] = -1;  render3d_st.sc_valid[c] = 0;  render3d_st.sc_stale[c] = 0;  render3d_st.sc_urgent[c] = 0 }
+    v3_copy(render3d_st.sh_sun_target, render3d_st.sun_dir)
+  }
+  return render3d_st.sc_mode
+}
+
+# can the cascades be cached this frame: Unreal's four of them, shadows on, every one with a layer and inside any fog wall
+function sc_usable(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.sh_ue != 1 or not render3d_st.sh_enabled or render3d_st.sh_layers < SC_LAST + 1 or render3d_st.sh_tex == 0 { return false }
+  let wall = r3d_reach(render3d_st, 0.0)
+  return wall <= 0.0 or wall >= render3d_st.sh_split[SC_LAST]
+}
+
+# how far a receiver of view depth z can lie from the camera: z times this (the frustum's corner)
+function sc_corner(render3d_st: Render3dState) -> float {
+  let t = Math.tan(render3d_st.cam_fov * 0.5)
+  let ta = t * render3d_st.cam_aspect
+  return Math.sqrt(1.0 + t * t + ta * ta)
+}
+# what cascade c must cover around the camera, light-space metres
+function sc_need(render3d_st: Render3dState, c: int) -> float { return render3d_st.sh_split[c] * render3d_st.sc_k }
+
+# the light's view along `sun`: from the sun toward the origin, Y up - shadow_fit's own basis. It depends on the sun alone, so a
+# window snapped to its texels in it stays on the world's grid however the camera moves.
+function sc_light_view(render3d_st: mut Render3dState, sun: floats, o: int) -> void {
+  m4_look_at_xyz(render3d_st.sc_view, sun[o], sun[o + 1], sun[o + 2], 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+}
+# a 3-vector at a[o] dotted with b
+function sc_dot(a: floats, o: int, b: floats) -> float { return a[o] * b[0] + a[o + 1] * b[1] + a[o + 2] * b[2] }
+
+# cascade c's window along `sun`, centred on the camera and snapped to its texels: into the job's slots (sc_jvp ...)
+function sc_window(render3d_st: mut Render3dState, c: int, sun: floats) -> void {
+  let h = sc_need(render3d_st, c) * (1.0 + render3d_st.sc_margin)
+  let texel = h * 2.0 / float(render3d_st.shadow_res)
+  sc_light_view(render3d_st, sun, 0)
+  m4_xform_point(render3d_st.sc_q, render3d_st.sc_view, render3d_st.cam_pos[0], render3d_st.cam_pos[1], render3d_st.cam_pos[2])
+  let cx = Math.floor(render3d_st.sc_q[0] / texel + 0.5) * texel
+  let cy = Math.floor(render3d_st.sc_q[1] / texel + 0.5) * texel
+  # depth: casters up to 900 m toward the sun past the window (a mountain across the valley, as shadow_fit), receivers to its far side
+  let d = -render3d_st.sc_q[2]
+  let n = d - h - 900.0
+  let f = d + h + 100.0
+  m4_ortho_rz(render3d_st.sc_proj, cx - h, cx + h, cy - h, cy + h, n, f)
+  m4_mul(render3d_st.sc_jvp, render3d_st.sc_proj, render3d_st.sc_view)
+  render3d_st.sc_jrange = f - n
+  render3d_st.sc_jtexel = texel
+  render3d_st.sc_jcx = cx
+  render3d_st.sc_jcy = cy
+  v3_copy(render3d_st.sc_jsun, sun)
+}
+# the job's window becomes cascade c's
+function sc_take_window(render3d_st: mut Render3dState, c: int) -> void {
+  for i in 0 .. 16 { render3d_st.sc_vp[c * 16 + i] = render3d_st.sc_jvp[i] }
+  render3d_st.sc_range[c] = render3d_st.sc_jrange
+  render3d_st.sc_texel[c] = render3d_st.sc_jtexel
+  render3d_st.sc_cx[c] = render3d_st.sc_jcx
+  render3d_st.sc_cy[c] = render3d_st.sc_jcy
+  for k in 0 .. 3 { render3d_st.sc_sun[c * 3 + k] = render3d_st.sc_jsun[k];  render3d_st.sc_fwd[c * 3 + k] = render3d_st.cam_fwd[k] }
+}
+# how much of cascade c's window is left around the camera: its half width less the camera's offset from its centre and the reach
+# the cascade needs now (negative: something the cascade covers lies outside it)
+function sc_slack(render3d_st: mut Render3dState, c: int) -> float {
+  sc_light_view(render3d_st, render3d_st.sc_sun, c * 3)
+  m4_xform_point(render3d_st.sc_q, render3d_st.sc_view, render3d_st.cam_pos[0], render3d_st.cam_pos[1], render3d_st.cam_pos[2])
+  let off = Math.max(Math.abs(render3d_st.sc_q[0] - render3d_st.sc_cx[c]), Math.abs(render3d_st.sc_q[1] - render3d_st.sc_cy[c]))
+  let h = render3d_st.sc_texel[c] * float(render3d_st.shadow_res) * 0.5
+  return h - off - sc_need(render3d_st, c)
+}
+
+# the cache's layers: SC_LAYERS of the cascades' size and format, made again with the resolution
+@alloc_ok("the cached cascades' layers: made once, and again only when the shadow resolution changes")
+function sc_make(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_SHADOW
+  if render3d_st.sc_tex != 0 { gpu_tex_free(render3d_st, render3d_st.sc_tex) }
+  render3d_st.sc_tex = gpu_tex_new(render3d_st)
+  gpu_tex_bind(render3d_st, GPU_TEX2D_ARRAY, render3d_st.sc_tex)
+  gpu_tex_image3d(render3d_st, GPU_DEPTH_COMPONENT32F, render3d_st.shadow_res, render3d_st.shadow_res, SC_LAYERS, GPU_DEPTH_COMPONENT, GPU_FLOAT, null)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MIN_FILTER, GPU_NEAREST)
+  gpu_tex_param(render3d_st, GPU_TEX2D_ARRAY, GPU_TEXTURE_MAG_FILTER, GPU_NEAREST)
+  render3d_st.gvk_tag = was
+  render3d_st.sc_res = render3d_st.shadow_res
+  if render3d_st.sc_vp_v == null { render3d_st.sc_vp_v = m4_views(render3d_st.sc_vp, SHADOW_CASCADES) }
+  for c in SC_FIRST .. SC_LAST + 1 { render3d_st.sc_slot[c] = c - SC_FIRST }
+  render3d_st.sc_spare = SC_LAST - SC_FIRST + 1
+  if not gpu_tex_ok(render3d_st, render3d_st.sc_tex) { render3d_st.sc_mode = 0;  sc_say_no_memory() }
+}
+@alloc_ok("a message, built only when it is said")
+function sc_say_no_memory() -> void { print("r3d: shadow cache: no memory for its layers; every cascade is drawn every frame") }
+
+# every cached cascade drawn again whole, this frame
+function sc_invalidate(render3d_st: mut Render3dState) -> void {
+  for c in SC_FIRST .. SC_LAST + 1 { render3d_st.sc_valid[c] = 0 }
+  render3d_st.sc_job = -1
+}
+
+# Before the frame's first pass (render.ludic, ahead of the big world's cull, which culls to the window drawn this frame): what the
+# cache draws this frame - the cascades rebuilt at once, else the next slice of a rebuild - and the stepped sun.
+function shadow_cache_plan(render3d_st: mut Render3dState) -> void {
+  render3d_st.sc_cull = false
+  render3d_st.sc_active = false
+  render3d_st.sh_cast_slack = 0.0
+  let mode = shadow_cache_mode(render3d_st)
+  shadow_ue_splits(render3d_st, render3d_st.cam_near)
+  if mode != 1 or not sc_usable(render3d_st) {
+    v3_copy(render3d_st.sh_sun, render3d_st.sun_dir)
+    v3_copy(render3d_st.sh_sun_target, render3d_st.sun_dir)
+    sc_invalidate(render3d_st)
+    v3_copy(render3d_st.sc_cam, render3d_st.cam_pos)
+    return
+  }
+  if render3d_st.sc_tex == 0 or render3d_st.sc_res != render3d_st.shadow_res { sc_make(render3d_st);  sc_invalidate(render3d_st) }
+  if render3d_st.sc_mode != 1 { return }
+  render3d_st.sc_active = true
+  # the sun, stepped: it moves on once the daylight's has gone sc_step degrees from it
+  if v3_dot(render3d_st.sun_dir, render3d_st.sh_sun_target) < Math.cos(Math.deg_to_rad(render3d_st.sc_step)) { v3_copy(render3d_st.sh_sun_target, render3d_st.sun_dir) }
+  v3_copy(render3d_st.sh_sun, render3d_st.sh_sun_target)
+  render3d_st.sc_k = sc_corner(render3d_st)
+  # what throws the whole cache away
+  let jump = v3_dist(render3d_st.cam_pos, render3d_st.sc_cam) > SC_JUMP
+  v3_copy(render3d_st.sc_cam, render3d_st.cam_pos)
+  if jump or render3d_st.sc_serial != render3d_st.sc_serial_now or render3d_st.sc_layers != render3d_st.sh_layers {
+    sc_invalidate(render3d_st)
+  }
+  render3d_st.sc_serial = render3d_st.sc_serial_now;  render3d_st.sc_layers = render3d_st.sh_layers
+  sc_still_check(render3d_st)
+  if render3d_st.sc_dirty {
+    render3d_st.sc_dirty = false
+    for c in SC_FIRST .. SC_LAST + 1 { render3d_st.sc_stale[c] = 1 }
+  }
+  # each cascade: rebuilt at once if it holds nothing or no longer covers what it must; due a rebuild in the background if half its
+  # margin is used, the camera has turned, or the sun has stepped
+  let turn = Math.cos(Math.deg_to_rad(render3d_st.sc_turn))
+  var urgent = -1
+  for c in SC_FIRST .. SC_LAST + 1 {
+    render3d_st.sc_urgent[c] = 0
+    if render3d_st.sc_valid[c] == 0 or sc_slack(render3d_st, c) < 0.0 {
+      render3d_st.sc_urgent[c] = 1
+      urgent = c
+      if render3d_st.sc_job == c { render3d_st.sc_job = -1 }
+      sc_window(render3d_st, c, render3d_st.sh_sun_target)
+      sc_take_window(render3d_st, c)
+      continue
+    }
+    if sc_slack(render3d_st, c) < sc_need(render3d_st, c) * render3d_st.sc_margin * 0.5 { render3d_st.sc_stale[c] = 1 }
+    if sc_dot(render3d_st.sc_fwd, c * 3, render3d_st.cam_fwd) < turn { render3d_st.sc_stale[c] = 1 }
+    if sc_dot(render3d_st.sc_sun, c * 3, render3d_st.sh_sun_target) < 0.9999999 { render3d_st.sc_stale[c] = 1 }
+  }
+  if urgent >= 0 {
+    # this frame's static draws are the whole cascades; the buildings culled to the widest window drawn (it holds the others)
+    for i in 0 .. 16 { render3d_st.sc_cull_vp[i] = render3d_st.sc_vp[urgent * 16 + i] }
+    render3d_st.sc_cull = true
+    return
+  }
+  # a rebuild in the background: the next stale cascade, the nearest first
+  if render3d_st.sc_job < 0 {
+    for c in SC_FIRST .. SC_LAST + 1 {
+      if render3d_st.sc_job < 0 and render3d_st.sc_stale[c] == 1 {
+        render3d_st.sc_stale[c] = 0
+        render3d_st.sc_job = c
+        render3d_st.sc_job_part = 0
+        sc_window(render3d_st, c, render3d_st.sh_sun_target)
+      }
+    }
+  }
+  if render3d_st.sc_job >= 0 and sc_slice_of(render3d_st, SH_PART_BUILDINGS) == render3d_st.sc_job_part {
+    for i in 0 .. 16 { render3d_st.sc_cull_vp[i] = render3d_st.sc_jvp[i] }
+    render3d_st.sc_cull = true
+  }
+}
+
+# the still actors since the last static draw: one that came casting, moved, or began or stopped casting, puts every cached cascade due a rebuild (one that
+# went: actor_remove). Unreal invalidates a static primitive's cached shadow when it is added, moved or removed.
+function sc_still_check(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.ac_actors
+  if l == null { return }
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if not a.still { continue }
+    if a.sc_seen == 0 {
+      if sc_casting(a) { render3d_st.sc_dirty = true }
+      continue
+    }
+    if a.x != a.sc_x or a.y != a.sc_y or a.z != a.sc_z or a.yaw != a.sc_yaw or sc_casting(a) != a.sc_vis { render3d_st.sc_dirty = true }
+  }
+}
+
+# the still actors a static draw saw, as it saw them
+function sc_still_stamp(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.ac_actors
+  if l == null { return }
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if not a.still { continue }
+    a.sc_seen = render3d_st.sc_gen
+    a.sc_x = a.x;  a.sc_y = a.y;  a.sc_z = a.z;  a.sc_yaw = a.yaw;  a.sc_vis = sc_casting(a)
+  }
+}
+# does it cast at all (a chunk shown or hidden by its own distance, a level of detail switched)
+function sc_casting(a: Actor) -> bool { return a.casts and (a.visible or a.cast_hidden) }
+
+# Every cascade, the cache's way (shadow_pass, with the pass's state set): the live one, the static draws this frame owes, the cached
+# layers copied in, the moving casters over them.
+function shadow_cache_pass(render3d_st: mut Render3dState) -> void {
+  let near = render3d_st.cam_near
+  # cascade 0, live: every caster
+  render3d_st.sh_cascade = 0
+  render3d_st.sh_phase = SH_PHASE_ALL
+  shadow_fit(render3d_st, 0, near, render3d_st.sh_split[0])
+  prof_shadow_split(render3d_st, 0)
+  gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, 0)
+  gpu_clear(render3d_st, GPU_DEPTH_BUFFER_BIT)
+  sc_casters(render3d_st, 0, shadow_cascade_vp(render3d_st, 0))
+  # the static draws: the cascades rebuilt whole this frame, else a slice of the background rebuild
+  prof_split(render3d_st, "shadow cache: rebuild")
+  render3d_st.sh_phase = SH_PHASE_STATIC
+  var any = false
+  for c in SC_FIRST .. SC_LAST + 1 {
+    if render3d_st.sc_urgent[c] == 0 { continue }
+    any = true
+    render3d_st.sc_gen += 1
+    sc_still_stamp(render3d_st)
+    sc_static_draw(render3d_st, c, render3d_st.sc_slot[c], -1, true, render3d_st.sc_vp_v[c])
+    render3d_st.sc_valid[c] = 1
+    render3d_st.sc_urgent[c] = 0
+    render3d_st.sc_stale[c] = 0
+    render3d_st.sc_builds += 1
+  }
+  let j = render3d_st.sc_job
+  if not any and j >= 0 {
+    let part = render3d_st.sc_job_part
+    if part == sc_slice_of(render3d_st, SH_PART_ACTORS) { render3d_st.sc_gen += 1;  sc_still_stamp(render3d_st) }
+    sc_static_draw(render3d_st, j, render3d_st.sc_spare, part, part == 0, render3d_st.sc_jvp)
+    render3d_st.sc_job_part = part + 1
+    if render3d_st.sc_job_part >= render3d_st.sc_slices {
+      # done: the spare holds the new window, the old layer is the next spare
+      let was = render3d_st.sc_slot[j]
+      render3d_st.sc_slot[j] = render3d_st.sc_spare
+      render3d_st.sc_spare = was
+      sc_take_window(render3d_st, j)
+      render3d_st.sc_valid[j] = 1
+      render3d_st.sc_job = -1
+      render3d_st.sc_slow += 1
+    }
+  }
+  render3d_st.sh_phase = SH_PHASE_DYN
+  render3d_st.sh_part = -1
+  render3d_st.sh_cast_slack = 0.0
+  # the cached layers into the frame's array, outside any pass
+  prof_split(render3d_st, "shadow cache: copy")
+  var n = 0
+  for c in SC_FIRST .. SC_LAST + 1 {
+    render3d_st.sc_pairs[n * 2] = render3d_st.sc_slot[c]
+    render3d_st.sc_pairs[n * 2 + 1] = c
+    n += 1
+  }
+  gpu_tex_copy_layers(render3d_st, render3d_st.sc_tex, render3d_st.sh_tex, true, render3d_st.sc_pairs, n)
+  # the moving casters over them, through the cached windows
+  for c in SC_FIRST .. SC_LAST + 1 {
+    render3d_st.sh_cascade = c
+    for i in 0 .. 16 { render3d_st.sh_vp[c * 16 + i] = render3d_st.sc_vp[c * 16 + i] }
+    render3d_st.sh_range[c] = render3d_st.sc_range[c]
+    render3d_st.sh_texel[c] = render3d_st.sc_texel[c]
+    prof_shadow_split(render3d_st, 0)
+    gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, c)
+    sc_casters(render3d_st, c, shadow_cascade_vp(render3d_st, c))
+  }
+  render3d_st.sh_phase = SH_PHASE_ALL
+  for c in SC_LAST + 1 .. SHADOW_CASCADES { render3d_st.sh_cascade = c;  shadow_cascade_none(render3d_st, c) }
+}
+
+# cascade c's still casters into layer `layer` of the cache through `vp`: slice `part` of them (-1 all), on a cleared layer if `clear`
+function sc_static_draw(render3d_st: mut Render3dState, c: int, layer: int, part: int, clear: bool, vp: floats) -> void {
+  render3d_st.sh_cascade = c
+  render3d_st.sh_part = part
+  # the camera moves inside the window before it is drawn again: every caster band reaches the margin further
+  render3d_st.sh_cast_slack = sc_need(render3d_st, c) * render3d_st.sc_margin
+  gpu_fb_depth_layer(render3d_st, render3d_st.sc_tex, layer)
+  if clear { gpu_clear(render3d_st, GPU_DEPTH_BUFFER_BIT) }
+  sc_casters(render3d_st, c, vp)
+}
+
+# a cascade's casters, the terrain's (with the static ones) then the scene's
+function sc_casters(render3d_st: mut Render3dState, c: int, vp: floats) -> void {
+  if render3d_st.sh_phase != SH_PHASE_DYN and not render3d_st.sh_skip_terrain { terrain_draw_shadow(vp) }
+  r3d_scene_casters(render3d_st, vp)
+}
+
+# statistics for R3D_PROF: rebuilds made at once and in the background
+@alloc_ok("profiling output, only under R3D_PROF")
+function shadow_cache_say(render3d_st: Render3dState) -> void {
+  if render3d_st.sc_mode != 1 { return }
+  print(`shadow cache: {render3d_st.sc_builds} cascades rebuilt at once, {render3d_st.sc_slow} in the background, {render3d_st.sc_gen} static draws`)
+}
