@@ -28,6 +28,7 @@ function model_from_arrays(render3d_st: mut Render3dState, v: floats, c: floats,
   let pr = new Prim
   pr.mesh = m
   pr.verts = nv
+  pr.skin4 = true
   pr.diff = render3d_st.gltf_pure
   pr.nrm = render3d_st.gltf_flat
   pr.arm = render3d_st.gltf_pure

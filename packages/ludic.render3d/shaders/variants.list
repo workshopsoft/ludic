@@ -96,6 +96,14 @@ skin.vert|shadow.frag|#define SHADOW_PASS;
 skin.vert|shadow.frag|#define SHADOW_PASS;#define ALPHA_TEST;
 skin.vert|shadow.frag|#define SHADOW_PASS;#define ACTOR_INST;
 skin.vert|shadow.frag|#define SHADOW_PASS;#define ACTOR_INST;#define ALPHA_TEST;
+skin.vert|model.frag|#define SKIN4;
+skin.vert|model.frag|#define ALPHA_TEST;#define SKIN4;
+skin.vert|model.frag|#define ACTOR_INST;#define SKIN4;
+skin.vert|model.frag|#define ACTOR_INST;#define ALPHA_TEST;#define SKIN4;
+skin.vert|shadow.frag|#define SHADOW_PASS;#define SKIN4;
+skin.vert|shadow.frag|#define SHADOW_PASS;#define ALPHA_TEST;#define SKIN4;
+skin.vert|shadow.frag|#define SHADOW_PASS;#define ACTOR_INST;#define SKIN4;
+skin.vert|shadow.frag|#define SHADOW_PASS;#define ACTOR_INST;#define ALPHA_TEST;#define SKIN4;
 terrain.vert|terrain.frag|
 terrain.vert|terrain.frag|#define FAR_ONLY;
 terrain.vert|terrain.frag|#define NEAR_ONLY;
@@ -118,6 +126,12 @@ hlod.vert|hlod.frag|
 kit.vert|bake.frag|
 skin.vert|velocity.frag|#define VELOCITY;
 skin.vert|velocity.frag|#define VELOCITY;#define ALPHA_TEST;
+skin.vert|velocity.frag|#define VELOCITY;#define SKIN4;
+skin.vert|velocity.frag|#define VELOCITY;#define ALPHA_TEST;#define SKIN4;
+skin.vert|velocity.frag|#define VELOCITY;#define ACTOR_INST;
+skin.vert|velocity.frag|#define VELOCITY;#define ACTOR_INST;#define ALPHA_TEST;
+skin.vert|velocity.frag|#define VELOCITY;#define ACTOR_INST;#define SKIN4;
+skin.vert|velocity.frag|#define VELOCITY;#define ACTOR_INST;#define ALPHA_TEST;#define SKIN4;
 skin.vert|strands.frag|#define STRANDS;
 skin.vert|strands.frag|#define STRANDS;#define TRANSMITTANCE;
 fullscreen.vert|strands_resolve.frag|

@@ -25,6 +25,7 @@ property Prim {
   mtex: words,          # its two maps: the tile (RG the micro normal, B the cavity) and the mask (over the mesh's own uvs)
   btex: int = 0,        # a MetaHuman head's bent normal and occlusion (model_set_bent: T_MH_BentNormal_AO over the head's uvs), or 0
   bent_pow: float = 1.0,  # its Material AO Power
+  skin4: bool = false,  # no second four influences that weigh anything (skin_attribs): drawn with the four-influence programs (skin.vert SKIN4)
   inst_buf: int = 0,    # a head of hair's strand points (model_set_strand_points): its mesh is a segment's quad, drawn per point
   inst_n: int = 0,      # the segments drawn (one a point; a strand's last draws nothing)
   st_cx: float = 0.0,   # the points' positions are relative to this (Unreal's PositionOffset, the groom's bounds' centre)
@@ -66,6 +67,7 @@ property Model {
   ai_first: Actor = null,
   ai_at:    int = 0,
   ai_fill:  int = 0,
+  s4:       int = 0,         # every primitive skin4 (actor.ludic ac_s4): 0 not yet asked, 1 yes, 2 no
   @owns(Skin) skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
 }
 
@@ -319,7 +321,7 @@ function gltf_prim(render3d_st: mut Render3dState, p: Val) -> Prim {
   gltf_attrib(render3d_st, m, attrs, "_ANCHOR", 8)       # a box kit's anchors (sx, sz, sh, sd) and offset (kitbox.ludic, kit.vert)
   gltf_attrib(render3d_st, m, attrs, "_OFFSET", 9)
   gltf_attrib(render3d_st, m, attrs, "_HAIRSKY", 9)       # a groom's strands' hair toward the sky (strands.ludic, skin.vert STRANDS)
-  skin_attribs(render3d_st, m, attrs)                    # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
+  skin_attribs(render3d_st, m, attrs, pr)                # JOINTS_0 / WEIGHTS_0 onto 5 / 6, when the mesh has them
   let idx = gltf_accessor(render3d_st, value_as_int(value_get(p, "indices")))
   var isz = 4
   if render3d_st.gltf_ctype == 5123 { isz = 2 }
