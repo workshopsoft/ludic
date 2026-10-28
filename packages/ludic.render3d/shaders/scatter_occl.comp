@@ -1,0 +1,132 @@
+// scatter_occl.comp - a GPU scatter layer's main-view occlusion, every frame, after scatter_cull.comp (R3D_SCATTER_OCCLUSION,
+// occlusion.ludic occ_inst_*): Unreal 5.8's r.InstanceCulling.OcclusionCull, the HZB test of BuildInstanceDrawCommands.usf
+// (OCCLUSION_CULL_INSTANCES) against the previous frame's furthest HZB.
+//
+// scatter_cull.comp is one invocation walking the whole layer in order, and runs only when the view has moved (scatter_begin_frame);
+// sixteen HZB reads an instance inside that walk would be serial, and a result kept while the view stands still would hide what a
+// passing car uncovered. So the test runs here instead, in parallel, every frame, over the walk's packed buckets, which it leaves
+// whole (the shadow LOD's records 17 .. 28 cast from them):
+//   mode 0, a thread a bucket slot: a survivor the HZB shows visible is copied into the visible region after the buckets, at its
+//           level's place there (the levels' survivors before it: the region holds them all), its level's counter going up;
+//   mode 1, one thread: the main view's records 29 .. 45 - records 0 .. 16 with those counts and places - and the counters back to 0.
+// The lit pass, the depth prepass and the impostor cards draw 29 .. 45 in the main view (scatter.ludic layer_view_rec).
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) uniform Params {
+  uvec4 info;           // x mode (0 test, 1 records), y the instances a bucket holds (cap), z levels, w 1 when the layer has an impostor bucket
+  uvec4 prims;          // the prims each level draws
+  vec4 shape;           // per unit of an instance's scale: x its bounds' horizontal radius, y their bottom, z their top; w a margin (m)
+  uvec4 pad;
+  // the previous frame's HZB (occlusion.ludic occ_inst_params): the view-projection it was built under; its frame's width, height,
+  // its mips and whether to test at all (w); each mip's width, height and first float in Hzb
+  mat4 hvp;
+  ivec4 hview;
+  ivec4 hlv[16];
+} pr;
+
+layout(set = 0, binding = 1) buffer Dst { float dst[]; };      // the buckets (8 floats an instance), then the visible region (cap)
+layout(set = 0, binding = 2) buffer Cmds { uint cmds[]; };     // VkDrawIndexedIndirectCommand records (scatter_cull.comp's layout, then 29 .. 45)
+layout(set = 0, binding = 3) buffer Counts { uint counts[]; }; // 0 .. 4 each bucket's survivors (scatter_cull.comp), 8 .. 12 the visible ones
+layout(set = 0, binding = 4) readonly buffer Hzb { float hzb[]; };
+
+// ---- the previous frame's HZB test; kept in step with kinst_cull.comp (whose header carries the Unreal references) ----
+// BuildInstanceDrawCommands.usf OCCLUSION_CULL_INSTANCES: BoxCullFrustum with PrevTranslatedWorldToClip, a box crossing the near plane
+// visible, GetScreenRect(HZBTestViewRect, PrevCull, 4), IsVisibleHZB(PrevRect, true); a box reaching past the previous view visible.
+float hzbAt(int lvl, int x, int y) {
+  ivec4 l = pr.hlv[lvl];
+  return hzb[l.z + min(y, l.y - 1) * l.x + min(x, l.x - 1)];
+}
+int hzbMip(ivec4 r) {                   // MipLevelForRect, DesiredFootprintPixels = 4 (MaxPixelOffset 3, MipOffset 1)
+  ivec2 mxy = findMSB(r.zw - r.xy);
+  int lvl = max(max(mxy.x, mxy.y) - 1, 0);
+  ivec2 span = (r.zw >> lvl) - (r.xy >> lvl);
+  if (span.x > 3 || span.y > 3) lvl += 1;
+  return lvl;
+}
+bool hzbVisible(vec3 c, vec3 e) {
+  if (pr.hview.w == 0) return true;
+  vec4 dx = (2.0 * e.x) * pr.hvp[0];
+  vec4 dy = (2.0 * e.y) * pr.hvp[1];
+  vec4 dz = (2.0 * e.z) * pr.hvp[2];
+  vec4 p0 = pr.hvp * vec4(c - e, 1.0);
+  vec2 rmin = vec2(1e30);
+  vec2 rmax = vec2(-1e30);
+  float maxZ = -1e30;
+  for (int k = 0; k < 8; k++) {
+    vec4 p = p0;
+    if ((k & 1) != 0) p += dx;
+    if ((k & 2) != 0) p += dy;
+    if ((k & 4) != 0) p += dz;
+    if (p.w <= 0.0 || p.z >= p.w) return true;        // bCrossesNearPlane (reversed depth: the near plane is z = w)
+    vec2 s = p.xy / p.w;
+    rmin = min(rmin, s);
+    rmax = max(rmax, s);
+    maxZ = max(maxZ, p.z / p.w);                      // the nearest corner's depth (Unreal's RectMax.z)
+  }
+  if (any(lessThan(rmin, vec2(-1.0))) || any(greaterThan(rmax, vec2(1.0)))) return true;
+  ivec2 vs = pr.hview.xy;
+  vec4 uv = clamp(vec4(rmin, rmax) * 0.5 + 0.5, 0.0, 1.0);
+  ivec4 px = ivec4(uv * vec4(vs, vs) + vec4(0.5, 0.5, -0.5, -0.5));
+  px.xy = max(px.xy, ivec2(0));
+  px.zw = min(px.zw, vs - 1);
+  ivec4 t = ivec4(px.xy, max(px.xy, px.zw)) >> 1;    // HZB mip 0 is half resolution
+  int lvl = min(hzbMip(t), pr.hview.z - 1);
+  t >>= lvl;
+  float d = 1.0;                                      // GetMinDepthFromHZB, 4 x 4
+  for (int y = 0; y < 4; y++) {
+    int yy = min(t.y + y, t.w);
+    for (int x = 0; x < 4; x++) d = min(d, hzbAt(lvl, min(t.x + x, t.z), yy));
+  }
+  return maxZ >= d;
+}
+
+// where level lv's visible ones start: after every bucket, past the levels before it (their survivors bound their visible ones)
+uint visBase(uint lv) {
+  uint b = (pr.info.z + 1u) * pr.info.y;
+  for (uint k = 0u; k < lv; k++) b += counts[k];
+  return b;
+}
+
+void main() {
+  uint n = pr.info.z;
+  if (pr.info.x == 1u) {
+    if (gl_GlobalInvocationID.x != 0u) return;
+    for (uint k = 0u; k < 4u; k++) {
+      uint vb = visBase(k);
+      for (uint j = 0u; j < 4u; j++) {
+        uint c = (j * 4u + k) * 5u;
+        uint v = (29u + j * 4u + k) * 5u;
+        cmds[v] = cmds[c];
+        cmds[v + 1u] = (k < n && j < pr.prims[k]) ? counts[8u + k] : 0u;
+        cmds[v + 2u] = cmds[c + 2u];
+        cmds[v + 3u] = cmds[c + 3u];
+        cmds[v + 4u] = vb;
+      }
+    }
+    uint ci = 16u * 5u;
+    uint vi = 45u * 5u;
+    cmds[vi] = cmds[ci];
+    cmds[vi + 1u] = (pr.info.w != 0u) ? counts[8u + n] : 0u;
+    cmds[vi + 2u] = cmds[ci + 2u];
+    cmds[vi + 3u] = cmds[ci + 3u];
+    cmds[vi + 4u] = visBase(n);
+    for (uint k = 0u; k < 5u; k++) counts[8u + k] = 0u;
+    return;
+  }
+  uint cap = pr.info.y;
+  uint g = gl_GlobalInvocationID.x;
+  uint lv = g / cap;
+  uint s = g - lv * cap;
+  if (lv > n || s >= counts[lv]) return;
+  uint o = (lv * cap + s) * 8u;
+  vec3 p = vec3(dst[o], dst[o + 1u], dst[o + 2u]);
+  float sc = dst[o + 3u];
+  // the instance's bounds (its levels' and its impostor's, turned any way: a radius about its axis), scaled, and the margin for the wind
+  float hr = pr.shape.x * sc + pr.shape.w;
+  float y0 = pr.shape.y * sc - pr.shape.w;
+  float y1 = pr.shape.z * sc + pr.shape.w;
+  if (!hzbVisible(p + vec3(0.0, 0.5 * (y0 + y1), 0.0), vec3(hr, 0.5 * (y1 - y0), hr))) return;
+  uint v = atomicAdd(counts[8u + lv], 1u);
+  uint q = (visBase(lv) + v) * 8u;
+  for (uint k = 0u; k < 8u; k++) dst[q + k] = dst[o + k];
+}

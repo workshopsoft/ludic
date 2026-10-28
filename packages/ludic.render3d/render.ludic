@@ -299,6 +299,7 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
     terrain_bake_shadow(render3d_st)
     prof_bake_add(render3d_st, clock_now_us() - t_bk)
   }
+  occ_inst_begin(render3d_st)               # whether this frame's instance culls test against last frame's HZB (occlusion.ludic), before any of them
   scatter_begin_frame(render3d_st)
   prof_cpu_mark(render3d_st, "shadow rebake")
   stream_update_all(render3d_st)

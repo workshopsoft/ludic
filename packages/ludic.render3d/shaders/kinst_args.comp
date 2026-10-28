@@ -3,19 +3,26 @@
 // draw has and where they start. One invocation: a scan of a thousand bins is a few microseconds.
 // A kit has 9 records: 0 .. 7 its mesh's primitives (each draws the same instances of bin kit * 2), 8 the impostor card
 // (bin kit * 2 + 1). The CPU fills indexCount, firstIndex and vertexOffset once; this writes instanceCount and firstInstance.
+// With the main view's occlusion (pr.occ.x = 1, kinst_cull.comp): counts[bins + b] holds bin b's visible ones, clamped here to
+// what the bin keeps, and VCmds (the main view's records) draws just them from the bin's start; Cmds keeps the whole bin.
 layout(local_size_x = 1) in;
 layout(set = 0, binding = 0) uniform Params {
   uvec4 info;           // x bins (2 a kit), y kits, z the end of this list's region (instances), w its start
+  uvec4 occ;            // x 1: the main view's occlusion, VCmds written
 } pr;
 layout(set = 0, binding = 1) buffer Counts { uint counts[]; };
 layout(set = 0, binding = 2) buffer Offsets { uint offs[]; };
 layout(set = 0, binding = 3) readonly buffer Kits { vec4 kits[]; };
 layout(set = 0, binding = 4) buffer Cmds { uint cmds[]; };
+layout(set = 0, binding = 5) buffer VCmds { uint vcmds[]; };
 void main() {
+  uint nb = pr.info.x;
+  bool occ = pr.occ.x != 0u;
   uint running = pr.info.w;                     // the main list from 0, the local lights' casters (kinst_cull_lights.comp) after it
-  for (uint b = 0u; b < pr.info.x; b++) {
+  for (uint b = 0u; b < nb; b++) {
     uint c = min(counts[b], pr.info.z - running);
     counts[b] = c;
+    if (occ) counts[nb + b] = min(counts[nb + b], c);
     offs[b] = running;
     running += c;
   }
@@ -25,9 +32,17 @@ void main() {
       uint r = (k * 9u + j) * 5u;
       cmds[r + 1u] = (j < prims) ? counts[k * 2u] : 0u;
       cmds[r + 4u] = offs[k * 2u];
+      if (occ) {
+        vcmds[r + 1u] = (j < prims) ? counts[nb + k * 2u] : 0u;
+        vcmds[r + 4u] = offs[k * 2u];
+      }
     }
     uint r = (k * 9u + 8u) * 5u;
     cmds[r + 1u] = counts[k * 2u + 1u];
     cmds[r + 4u] = offs[k * 2u + 1u];
+    if (occ) {
+      vcmds[r + 1u] = counts[nb + k * 2u + 1u];
+      vcmds[r + 4u] = offs[k * 2u + 1u];
+    }
   }
 }

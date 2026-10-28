@@ -30,6 +30,11 @@ layout(set = 0, binding = 0) uniform Params {
   vec4 bd;          // the painted density's window (grass_density.ludic): world x/z of its corner, m a texel, texels a side (0: the rules)
   vec4 gk_forb;     // forbs in flower: share, patch size (m), width and height of a blade's
   vec4 clr;         // x the clearings in Clear (grass_clear.ludic), 0: none
+  // the previous frame's HZB (occlusion.ludic occ_inst_params, R3D_GRASS_OCCLUSION): the view-projection it was built under; its frame's
+  // width, height, its mips and whether to test at all (w); each mip's width, height and first float in Hzb
+  mat4 hvp;
+  ivec4 hview;
+  ivec4 hlv[16];
 } pr;
 
 layout(set = 0, binding = 1) readonly buffer Tiles { vec4 tiles[]; };   // corner x/z, indices per cell, cells per side
@@ -37,15 +42,67 @@ layout(set = 0, binding = 2) buffer Out { vec4 outv[]; };               // 4 per
 layout(set = 0, binding = 3) buffer Cmds { uint cmds[]; };              // VkDrawIndexedIndirectCommand per band
 layout(set = 0, binding = 4) readonly buffer Dens { uint dens[]; };      // the density's window, four texels a word
 layout(set = 0, binding = 5) readonly buffer Clear { float clr[]; };     // the clearings, then their points (grass_clear.ludic)
-layout(set = 0, binding = 6) uniform sampler2D u_height;                // the height (terrain's u_ts_height)
-layout(set = 0, binding = 7) uniform sampler2D u_ortho;                 // the photograph
-layout(set = 0, binding = 8) uniform sampler2D u_ter_normal;            // the normal: x and z, y rebuilt
+layout(set = 0, binding = 6) readonly buffer Hzb { float hzb[]; };       // the previous frame's furthest HZB, mip after mip (hzb_build.comp)
+layout(set = 0, binding = 7) uniform sampler2D u_height;                // the height (terrain's u_ts_height)
+layout(set = 0, binding = 8) uniform sampler2D u_ortho;                 // the photograph
+layout(set = 0, binding = 9) uniform sampler2D u_ter_normal;            // the normal: x and z, y rebuilt
 // the page pool (terrain_pages.ludic): while it is on, the three above are the coarse whole-map level
 // and the tiles round the camera are layers of these, addressed through the page table
-layout(set = 0, binding = 9) uniform sampler2D u_tp_page;               // slot + 1 per tile, 0 = coarse
-layout(set = 0, binding = 10) uniform sampler2DArray u_tp_h;            // (T + 2)^2 a layer, a texel of border
-layout(set = 0, binding = 11) uniform sampler2DArray u_tp_nrm;
-layout(set = 0, binding = 12) uniform sampler2DArray u_tp_ortho;        // (S + 2)^2 a layer
+layout(set = 0, binding = 10) uniform sampler2D u_tp_page;              // slot + 1 per tile, 0 = coarse
+layout(set = 0, binding = 11) uniform sampler2DArray u_tp_h;            // (T + 2)^2 a layer, a texel of border
+layout(set = 0, binding = 12) uniform sampler2DArray u_tp_nrm;
+layout(set = 0, binding = 13) uniform sampler2DArray u_tp_ortho;        // (S + 2)^2 a layer
+
+// ---- the previous frame's HZB test; kept in step with kinst_cull.comp (whose header carries the Unreal references) ----
+// BuildInstanceDrawCommands.usf OCCLUSION_CULL_INSTANCES: BoxCullFrustum with PrevTranslatedWorldToClip, a box crossing the near plane
+// visible, GetScreenRect(HZBTestViewRect, PrevCull, 4), IsVisibleHZB(PrevRect, true); a box reaching past the previous view visible.
+float hzbAt(int lvl, int x, int y) {
+  ivec4 l = pr.hlv[lvl];
+  return hzb[l.z + min(y, l.y - 1) * l.x + min(x, l.x - 1)];
+}
+int hzbMip(ivec4 r) {                   // MipLevelForRect, DesiredFootprintPixels = 4 (MaxPixelOffset 3, MipOffset 1)
+  ivec2 mxy = findMSB(r.zw - r.xy);
+  int lvl = max(max(mxy.x, mxy.y) - 1, 0);
+  ivec2 span = (r.zw >> lvl) - (r.xy >> lvl);
+  if (span.x > 3 || span.y > 3) lvl += 1;
+  return lvl;
+}
+bool hzbVisible(vec3 c, vec3 e) {
+  if (pr.hview.w == 0) return true;
+  vec4 dx = (2.0 * e.x) * pr.hvp[0];
+  vec4 dy = (2.0 * e.y) * pr.hvp[1];
+  vec4 dz = (2.0 * e.z) * pr.hvp[2];
+  vec4 p0 = pr.hvp * vec4(c - e, 1.0);
+  vec2 rmin = vec2(1e30);
+  vec2 rmax = vec2(-1e30);
+  float maxZ = -1e30;
+  for (int k = 0; k < 8; k++) {
+    vec4 p = p0;
+    if ((k & 1) != 0) p += dx;
+    if ((k & 2) != 0) p += dy;
+    if ((k & 4) != 0) p += dz;
+    if (p.w <= 0.0 || p.z >= p.w) return true;        // bCrossesNearPlane (reversed depth: the near plane is z = w)
+    vec2 s = p.xy / p.w;
+    rmin = min(rmin, s);
+    rmax = max(rmax, s);
+    maxZ = max(maxZ, p.z / p.w);                      // the nearest corner's depth (Unreal's RectMax.z)
+  }
+  if (any(lessThan(rmin, vec2(-1.0))) || any(greaterThan(rmax, vec2(1.0)))) return true;
+  ivec2 vs = pr.hview.xy;
+  vec4 uv = clamp(vec4(rmin, rmax) * 0.5 + 0.5, 0.0, 1.0);
+  ivec4 px = ivec4(uv * vec4(vs, vs) + vec4(0.5, 0.5, -0.5, -0.5));
+  px.xy = max(px.xy, ivec2(0));
+  px.zw = min(px.zw, vs - 1);
+  ivec4 t = ivec4(px.xy, max(px.xy, px.zw)) >> 1;    // HZB mip 0 is half resolution
+  int lvl = min(hzbMip(t), pr.hview.z - 1);
+  t >>= lvl;
+  float d = 1.0;                                      // GetMinDepthFromHZB, 4 x 4
+  for (int y = 0; y < 4; y++) {
+    int yy = min(t.y + y, t.w);
+    for (int x = 0; x < 4; x++) d = min(d, hzbAt(lvl, min(t.x + x, t.z), yy));
+  }
+  return maxZ >= d;
+}
 
 #define CELL pr.gk_ortho.w   // the kind's cell (m)
 
@@ -257,6 +314,10 @@ void main() {
       arch = 0.08;
     }
   }
+  // hidden behind last frame's depth (the main view's occlusion, R3D_GRASS_OCCLUSION): the blade's box from its root at the drawn
+  // ground (h - 0.02) to its height, as wide as it is tall each way (the wind and the arch bend the tip at most its length off the root)
+  float reach = tall + bw;
+  if (!hzbVisible(vec3(xz.x, h - 0.02 + 0.5 * tall, xz.y), vec3(reach, 0.5 * tall + 0.05, reach))) return;
   uint b = dist < pr.bands.x ? 0u : (dist < pr.bands.y ? 1u : 2u);
   uint slot = atomicAdd(cmds[b * 5u + 1u], 1u);
   if (slot >= pr.cap[b]) { atomicAdd(cmds[b * 5u + 1u], 0xFFFFFFFFu); return; }
