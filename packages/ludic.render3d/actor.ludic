@@ -75,6 +75,11 @@ property Actor {
   prev_bones: floats,
   prev_n:     int = 0,         # joints in prev_bones (0: rigid last frame)
   prev_seen:  int = -1,        # the TAA frame it was last drawn by the motion pass
+  # no object motion of its own (a far figure the game draws coarse): the motion pass leaves it to the camera's motion from depth, as
+  # Unreal leaves a primitive that does not output velocity (FPrimitiveSceneProxy::bAlwaysHasVelocity false, no velocity pass draw)
+  no_velocity: bool = false,
+  vel_mark:   int = -1,        # the TAA frame the motion pass weighed it (actor_draw_velocity), and whether it wanted a draw then
+  vel_want:   bool = false,
   # occlusion culling (occlusion.ludic): last frame's test found none of its box showing; and a box of its own about its cull sphere's
   # middle (half extents: occ_hx across, occ_hy up), for what its model's bounds fit badly (the ground's patches); 0: the model's
   occ_hidden: bool = false,
@@ -83,6 +88,8 @@ property Actor {
   ai_stamp:   int = 0,           # the pass that drew it in its model's instanced group (actor_inst.ludic)
   ai_bframe:  int = 0,           # the gvk frame its palette went into the instances' bone buffer, and its first row there (ai_palette)
   ai_boff:    int = 0,
+  ai_pbframe: int = 0,           # the frame and first row of its palette before that: last frame's, in last frame's buffer (ai_draw_vel)
+  ai_pboff:   int = 0,
   # Unreal's Static mobility: it never moves, so the sun's cached cascades draw it once (shadow_cache.ludic). Moved, added or removed,
   # it puts them due a rebuild; the stamp and place are what the last static draw saw.
   still:      bool = false,
@@ -129,6 +136,7 @@ property AcProg {
   l_pbones: int = -1,
   l_vpc:    int = -1,
   l_vpp:    int = -1,
+  s4:       AcProg = null,     # the same program with four influences (skin.vert SKIN4, R3D_SKIN4), or null
   scene_frame: int = -1    # the frame its scene uniforms were bound
 }
 
@@ -164,6 +172,39 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   }
   return a
 }
+# R3D_SKIN4 (on unless 0): a mesh whose vertices carry four influences is drawn by programs that blend four (skin.vert SKIN4), as
+# Unreal compiles its GPU skin vertex factory for the influences a LOD has (GPUSkinVertexFactory.h MAX_INFLUENCES_PER_STREAM, the
+# second stream of four only for a section with more; MetaHuman LODs 3 on are four)
+function ac_skin4_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ac_skin4 < 0 {
+    render3d_st.ac_skin4 = 1
+    if r3d_env_has(render3d_st, "R3D_SKIN4") and r3d_env(render3d_st, "R3D_SKIN4") == "0" { render3d_st.ac_skin4 = 0 }
+  }
+  return render3d_st.ac_skin4 == 1
+}
+# a program and, with R3D_SKIN4, its four-influence twin
+@alloc_ok("start-up: the programs are made once, before play")
+function ac_prog_pair(render3d_st: mut Render3dState, vs: string, fs: string, defs: string) -> AcProg {
+  let a = ac_prog_new(render3d_st, vs, fs, defs)
+  if ac_skin4_on(render3d_st) { a.s4 = ac_prog_new(render3d_st, vs, fs, defs + "#define SKIN4\n") }
+  return a
+}
+# the program a model is drawn with: the four-influence twin when every primitive of it has four (Prim.skin4, read once a model)
+function ac_s4(ap: AcProg, m: Model) -> AcProg {
+  if ap == null or ap.s4 == null or m == null { return ap }
+  if m.s4 == 0 {
+    m.s4 = 1
+    for i in 0 .. len(m.prims) { if not m.prims[i].skin4 { m.s4 = 2 } }
+  }
+  if m.s4 == 1 { return ap.s4 }
+  return ap
+}
+# a caster program's light, on it and its twin
+function ac_lvp(render3d_st: mut Render3dState, ap: AcProg, light_vp: floats) -> void {
+  if ap == null { return }
+  gpu_use_program(render3d_st, ap.prog);  u_mat4(render3d_st, ap.l_lvp, light_vp)
+  if ap.s4 != null { gpu_use_program(render3d_st, ap.s4.prog);  u_mat4(render3d_st, ap.s4.l_lvp, light_vp) }
+}
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function actor_init(render3d_st: mut Render3dState) -> void {
   # the records play takes, made now: an actor first placed in play (a fish, a sign, a bed) made its
@@ -179,8 +220,8 @@ function actor_init(render3d_st: mut Render3dState) -> void {
     a.mat = m4_new()
     push(sp, a)
   }
-  render3d_st.ac_lit = ac_prog_new(render3d_st, "skin.vert", "model.frag", "")
-  render3d_st.ac_lit_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n")
+  render3d_st.ac_lit = ac_prog_pair(render3d_st, "skin.vert", "model.frag", "")
+  render3d_st.ac_lit_cut = ac_prog_pair(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n")
   render3d_st.ac_fab = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n")
   render3d_st.ac_fab_cut = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define FABRIC\n#define ALPHA_TEST\n")
   render3d_st.ac_eye = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ALPHA_TEST\n#define EYE\n")
@@ -194,12 +235,12 @@ function actor_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ac_strand_v_i = ac_prog_new(render3d_st, "skin.vert", "strands.frag", "#define STRANDS\n#define INST\n#define VIS\n")
   render3d_st.ac_strand_shade = ac_prog_new(render3d_st, "fullscreen.vert", "strands.frag", "#define STRANDS\n#define SHADE\n")
   render3d_st.ac_fab_tmp = floats(AC_FAB_FLOATS)
-  render3d_st.ac_sh = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
-  render3d_st.ac_sh_cut = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
+  render3d_st.ac_sh = ac_prog_pair(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n")
+  render3d_st.ac_sh_cut = ac_prog_pair(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ALPHA_TEST\n")
   render3d_st.ac_out = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n")
   render3d_st.ac_out_cut = ac_prog_new(render3d_st, "skin.vert", "outline.frag", "#define OUTLINE\n#define ALPHA_TEST\n")
-  render3d_st.ac_vel = ac_prog_new(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n")
-  render3d_st.ac_vel_cut = ac_prog_new(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n#define ALPHA_TEST\n")
+  render3d_st.ac_vel = ac_prog_pair(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n")
+  render3d_st.ac_vel_cut = ac_prog_pair(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n#define ALPHA_TEST\n")
   render3d_st.ac_sss = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define SSS_SPLIT\n")
   actor_blend_init(render3d_st)
   let stage = render3d_st.ac_actors           # made above with its room; a new valley starts empty
@@ -584,6 +625,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     # texels kept the depth of what lay behind from being drawn on this GPU: holes to the ground and black against the sky)
     if fab and ac_fabric_mode(a.model) == 3 { ap = render3d_st.ac_fab_cut }
     if not fab and ac_has_eyes(a.model) { ap = render3d_st.ac_eye }       # a MetaHuman face (model_set_eyes)
+    ap = ac_s4(ap, a.model)
     ac_bind_scene(render3d_st, ap)
     # a cut-out's edge (a hair card's, a flame's) resolved by the samples' coverage, as the foliage's is (model.frag ALPHA_TEST)
     let a2c = a.cutout and not fab and render3d_st.sc_a2c
@@ -749,15 +791,15 @@ function ac_caster_small(render3d_st: mut Render3dState, a: Actor) -> bool {
 
 function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
   if render3d_st.ac_actors == null { return }
-  gpu_use_program(render3d_st, render3d_st.ac_sh.prog);  u_mat4(render3d_st, render3d_st.ac_sh.l_lvp, light_vp)
-  gpu_use_program(render3d_st, render3d_st.ac_sh_cut.prog);  u_mat4(render3d_st, render3d_st.ac_sh_cut.l_lvp, light_vp)
+  ac_lvp(render3d_st, render3d_st.ac_sh, light_vp)
+  ac_lvp(render3d_st, render3d_st.ac_sh_cut, light_vp)
   # the plain rigid casters that share a model, instanced (actor_inst.ludic): the sun's cascades only, each its own buffer (a local
   # light's shadow maps draw every caster on its own)
   var grouped = false
   # a cache rebuild draws into a buffer of its own a cascade (the same cascade's moving casters are drawn the same frame)
   var slot = 1 + render3d_st.sh_cascade
   if render3d_st.sh_phase == SH_PHASE_STATIC { slot = AI_CACHE_SLOT + render3d_st.sh_cascade }
-  if not render3d_st.sh_local and slot < AI_PASSES and ai_on(render3d_st) {
+  if not render3d_st.sh_local and slot < AI_VEL_SLOT and ai_on(render3d_st) {      # (the last slot is the motion pass's)
     ai_begin(render3d_st)
     for i in 0 .. len(render3d_st.ac_actors) {
       let a = render3d_st.ac_actors[i]
@@ -766,8 +808,8 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     }
     grouped = ai_build(render3d_st, slot)
     if grouped {
-      gpu_use_program(render3d_st, render3d_st.ac_sh_inst.prog);  u_mat4(render3d_st, render3d_st.ac_sh_inst.l_lvp, light_vp)
-      if render3d_st.ac_sh_cut_inst != null { gpu_use_program(render3d_st, render3d_st.ac_sh_cut_inst.prog);  u_mat4(render3d_st, render3d_st.ac_sh_cut_inst.l_lvp, light_vp) }
+      ac_lvp(render3d_st, render3d_st.ac_sh_inst, light_vp)
+      ac_lvp(render3d_st, render3d_st.ac_sh_cut_inst, light_vp)
       ai_draw(render3d_st, true)
     }
   }
@@ -778,6 +820,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     if not ac_casts(render3d_st, a, light_vp) { continue }
     var ap = render3d_st.ac_sh
     if a.cutout or a.blend != 0 { ap = render3d_st.ac_sh_cut }
+    ap = ac_s4(ap, a.model)
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }
     if ac_proxy_figure(render3d_st, a) { actor_draw_proxy(render3d_st, a) } else { actor_draw_one(render3d_st, a, ap, true) }
   }
@@ -935,8 +978,8 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.blend = 0;  a.alpha = 1.0;  a.soft = 0.0;  a.unlit = false;  a.blend_casts = false;  a.blend_d = 0.0
   a.shell = false;  a.strands = false;  a.own_blend = false;  a.spec = 1.0
   a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
-  a.prev_seen = -1;  a.prev_n = 0
-  a.still = false;  a.sc_seen = 0;  a.ai_bframe = 0
+  a.prev_seen = -1;  a.prev_n = 0;  a.no_velocity = false;  a.vel_mark = -1;  a.vel_want = false
+  a.still = false;  a.sc_seen = 0;  a.ai_bframe = 0;  a.ai_pbframe = 0
   a.sh_lods = null;  a.sh_lod_d = null;  a.sh_keep = null
   return a
 }
@@ -1181,9 +1224,29 @@ function ac_near(a: floats, b: floats, n: int) -> bool {
   for i in 0 .. n { if Math.abs(a[i] - b[i]) > AC_VEL_EQ { return false } }
   return true
 }
+# this frame's palette (a part's from its leader, made by ac_follow_palette; its own clone's; its model's) and its joints, or null and 0
+function ac_vel_bones(a: Actor) -> floats {
+  if a.leader != null and a.fmap != null { return a.fbones }
+  if a.skin != null { return a.skin.bones }
+  if a.model.skin != null { return a.model.skin.bones }
+  return null
+}
+function ac_vel_n(a: Actor) -> int {
+  var n = 0
+  if a.leader != null and a.fmap != null { n = a.model.skin.n_joints }
+  else if a.skin != null { n = a.skin.n_joints }
+  else if a.model.skin != null { n = a.model.skin.n_joints }
+  if n > SKIN_MAX_JOINTS { n = SKIN_MAX_JOINTS }
+  return n
+}
+# Two walks: the first weighs each actor (seen last frame, big enough, moved, its own motion wanted) and gathers the plain movers into
+# their models' instanced groups (actor_inst.ludic ai_vel_gather, R3D_VEL_INST), which are drawn; the second draws the rest on their own
+# and keeps every weighed actor's matrix and palette as next frame's last.
 function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, frame: int) -> void {
   if render3d_st.ac_actors == null or render3d_st.ac_vel == null { return }
   let skip = ac_vel_skip_on(render3d_st)
+  let inst = ai_vel_on(render3d_st)
+  if inst { ai_begin(render3d_st) }
   # pixels per metre at one metre's distance
   let ppm = float(render3d_st.post_h) * 0.5 / Math.tan(render3d_st.cam_fov * 0.5)
   for i in 0 .. len(render3d_st.ac_actors) {
@@ -1191,20 +1254,16 @@ function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, fr
     if a.blend != 0 or a.shell or a.strands { continue }
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }                 # a part that follows a blended leader
-    # this frame's palette: a part's (from its leader), its own clone's, its model's - or none
-    var bones: floats = null
-    var n = 0
-    if a.leader != null and a.fmap != null {
-      ac_follow_palette(a)
-      bones = a.fbones;  n = a.model.skin.n_joints
-    }
-    else if a.skin != null { bones = a.skin.bones;  n = a.skin.n_joints }
-    else if a.model.skin != null { bones = a.model.skin.bones;  n = a.model.skin.n_joints }
-    if n > SKIN_MAX_JOINTS { n = SKIN_MAX_JOINTS }
+    if a.leader != null and a.fmap != null { ac_follow_palette(a) }
+    let bones = ac_vel_bones(a)
+    let n = ac_vel_n(a)
     ac_prev_room(a, n > 0)
-    var seen = a.prev_seen == frame - 1 and a.prev_n == n
+    a.vel_mark = frame
+    a.vel_want = false
+    # no motion of its own (Actor.no_velocity): the camera's from depth covers it; its last frame is still kept
+    var seen = a.prev_seen == frame - 1 and a.prev_n == n and not a.no_velocity
     let size = Math.max(a.model.height, a.model.radius) * a.scale
-    if size > 0.0 {
+    if seen and size > 0.0 {
       let dx = a.x - render3d_st.cam_pos[0];  let dy = a.y - render3d_st.cam_pos[1];  let dz = a.z - render3d_st.cam_pos[2]
       let dist = Math.max(Math.sqrt(dx * dx + dy * dy + dz * dz), 0.1)
       if size * ppm / dist < AC_VEL_MIN_PX { seen = false }
@@ -1212,19 +1271,34 @@ function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, fr
     if seen {
       var moved = n > 0 or not ac_same_m4(a.mat, a.prev_mat)
       if skip { moved = not ac_near(a.mat, a.prev_mat, 16) or (n > 0 and not ac_near(bones, a.prev_bones, n * 16)) }
-      if moved { ac_draw_velocity_one(render3d_st, a, bones, n, prev_vp);  render3d_st.taa_vel_draws += 1 } else if n > 0 { render3d_st.taa_vel_skips += 1 }
+      if moved {
+        a.vel_want = true
+        render3d_st.taa_vel_draws += 1
+        if inst { ai_vel_gather(render3d_st, a) }
+      } else if n > 0 { render3d_st.taa_vel_skips += 1 }
     }
+  }
+  var grouped = false
+  if inst {
+    grouped = ai_build(render3d_st, AI_VEL_SLOT)
+    if grouped { ai_draw_vel(render3d_st, prev_vp) }
+  }
+  for i in 0 .. len(render3d_st.ac_actors) {
+    let a = render3d_st.ac_actors[i]
+    if a.vel_mark != frame { continue }
+    let bones = ac_vel_bones(a)
+    let n = ac_vel_n(a)
+    if a.vel_want and not (grouped and ai_grouped(render3d_st, a)) { ac_draw_velocity_one(render3d_st, a, bones, n, prev_vp) }
+    a.vel_want = false
     m4_copy(a.prev_mat, a.mat)
     if n > 0 { for k in 0 .. n * 16 { a.prev_bones[k] = bones[k] } }
     a.prev_n = n
     a.prev_seen = frame
   }
 }
-function ac_draw_velocity_one(render3d_st: mut Render3dState, a: Actor, bones: floats, n: int, prev_vp: floats) -> void {
-  var ap = render3d_st.ac_vel
-  if a.cutout and not ac_has_fabric(a.model) { ap = render3d_st.ac_vel_cut }      # (a garment draws opaque: model.frag FABRIC)
-  let p = ap.prog
-  gpu_use_program(render3d_st, p)
+# a motion program's views, once a frame (both clean view-projections: this frame's and last frame's)
+function ac_vel_bind(render3d_st: mut Render3dState, ap: AcProg, prev_vp: floats) -> void {
+  gpu_use_program(render3d_st, ap.prog)
   if ap.scene_frame != render3d_st.ac_frame {
     ap.scene_frame = render3d_st.ac_frame
     u_mat4(render3d_st, ap.l_view, render3d_st.cam_view)
@@ -1232,6 +1306,13 @@ function ac_draw_velocity_one(render3d_st: mut Render3dState, a: Actor, bones: f
     u_mat4(render3d_st, ap.l_vpc, render3d_st.cam_vp_clean)
     u_mat4(render3d_st, ap.l_vpp, prev_vp)
   }
+}
+function ac_draw_velocity_one(render3d_st: mut Render3dState, a: Actor, bones: floats, n: int, prev_vp: floats) -> void {
+  var ap = render3d_st.ac_vel
+  if a.cutout and not ac_has_fabric(a.model) { ap = render3d_st.ac_vel_cut }      # (a garment draws opaque: model.frag FABRIC)
+  ap = ac_s4(ap, a.model)
+  let p = ap.prog
+  ac_vel_bind(render3d_st, ap, prev_vp)
   u_mat4(render3d_st, ap.l_model, a.mat)
   u_mat4(render3d_st, ap.l_pmodel, a.prev_mat)
   var skinned = 0.0

@@ -1,14 +1,19 @@
 // a skinned glTF model (skin.ludic / actor.ludic): four joint influences per vertex, or eight (JOINTS_1 / WEIGHTS_1)
 // blended on the GPU, then one model matrix. Writes the same varyings as model.vert so
 // model.frag (lit) and shadow.frag (casters) shade it unchanged.
+// SKIN4: a mesh with no second set (skin.ludic skin_attribs: JOINTS_1 / WEIGHTS_1 absent or all zero) blends four, as Unreal's GPU
+// skin vertex factory is compiled for its section's influence count (GpuSkinVertexFactory.h: MAX_INFLUENCES_PER_STREAM 4, the
+// second stream only for a mesh whose LOD uses more; a MetaHuman's LOD 3 on is four)
 layout(location = 0) in vec3 a_pos;
 layout(location = 1) in vec3 a_nrm;
 layout(location = 2) in vec2 a_uv;
 layout(location = 5) in vec4 a_joints;      // integer indices, read as floats
 layout(location = 6) in vec4 a_weights;
 layout(location = 7) in vec4 a_col;
+#ifndef SKIN4
 layout(location = 10) in vec4 a_joints1;     // the second four influences; unfed (zero weights) on a mesh with four
-layout(location = 11) in vec4 a_weights1;         // COLOR_0 as RGBA8 (gltf_colour); a mesh without it leaves it unfed (zero)
+layout(location = 11) in vec4 a_weights1;
+#endif
 uniform mat4 u_model;
 #ifdef ACTOR_INST
 // an instanced draw of one model's actors (actor_inst.ludic): each instance's model matrix as three rows, then its tint and glow
@@ -21,13 +26,38 @@ layout(location = 9) in vec4 i_te;
 layout(location = 12) in vec4 i_bo;
 readonly buffer u_ai_bones { vec4 ai_bones[]; };
 out vec4 v_te;
-// one influence: weight w of joint j's three rows, added in
-void aiBone(float j, float w, inout vec4 r0, inout vec4 r1, inout vec4 r2) {
-  int o = int(i_bo.x + 0.5) + int(j + 0.5) * 3;
-  r0 += w * ai_bones[o];
-  r1 += w * ai_bones[o + 1];
-  r2 += w * ai_bones[o + 2];
+// one influence: weight w of joint j's three rows (from palette row `base` of BUF), added in
+#define AI_BONE(BUF, base, j, w) { int o_ = (base) + int((j) + 0.5) * 3; r0 += (w) * BUF[o_]; r1 += (w) * BUF[o_ + 1]; r2 += (w) * BUF[o_ + 2]; }
+#ifdef SKIN4
+#define AI_PALETTE(BUF, base) AI_BONE(BUF, base, a_joints.x, a_weights.x) AI_BONE(BUF, base, a_joints.y, a_weights.y) \
+  AI_BONE(BUF, base, a_joints.z, a_weights.z) AI_BONE(BUF, base, a_joints.w, a_weights.w)
+#else
+#define AI_PALETTE(BUF, base) AI_BONE(BUF, base, a_joints.x, a_weights.x) AI_BONE(BUF, base, a_joints.y, a_weights.y) \
+  AI_BONE(BUF, base, a_joints.z, a_weights.z) AI_BONE(BUF, base, a_joints.w, a_weights.w) \
+  AI_BONE(BUF, base, a_joints1.x, a_weights1.x) AI_BONE(BUF, base, a_joints1.y, a_weights1.y) \
+  AI_BONE(BUF, base, a_joints1.z, a_weights1.z) AI_BONE(BUF, base, a_joints1.w, a_weights1.w)
+#endif
+// the instance's skin: its palette's influences blended, as one matrix
+mat4 aiSkin(int base) {
+  vec4 r0 = vec4(0.0), r1 = vec4(0.0), r2 = vec4(0.0);
+  AI_PALETTE(ai_bones, base)
+  return transpose(mat4(r0, r1, r2, vec4(0.0, 0.0, 0.0, 1.0)));
 }
+#ifdef VELOCITY
+// the motion pass's instances (actor_inst.ludic ai_build, the motion slot): last frame's model matrix as three rows, and (i_bo.y) the
+// first row of last frame's palette in last frame's bone buffer, kept whole for this frame to read (ai_palette's two buffers). Unreal's
+// per-instance PrevTransform (MassRepresentationTypes.h, FMassInstancedStaticMeshInfo::AddBatchedTransform's PrevTransform) and the
+// skin's PreviousReferenceToLocal (SkeletalRenderGPUSkin.cpp: last frame's bone buffer kept beside this frame's)
+layout(location = 13) in vec4 i_p0;
+layout(location = 14) in vec4 i_p1;
+layout(location = 15) in vec4 i_p2;
+readonly buffer u_ai_pbones { vec4 ai_pbones[]; };
+mat4 aiPrevSkin(int base) {
+  vec4 r0 = vec4(0.0), r1 = vec4(0.0), r2 = vec4(0.0);
+  AI_PALETTE(ai_pbones, base)
+  return transpose(mat4(r0, r1, r2, vec4(0.0, 0.0, 0.0, 1.0)));
+}
+#endif
 #else
 uniform mat4 u_bones[160];                  // skin.ludic SKIN_MAX_JOINTS
 #endif
@@ -78,10 +108,23 @@ vec3 stOct(vec2 e) {
 }
 #endif
 #endif
+#ifndef ACTOR_INST
+// a palette's influences blended (u_bones or u_prev_bones), four or eight
+#define SKIN_SUM4(B) (a_weights.x * B[int(a_joints.x + 0.5)] + a_weights.y * B[int(a_joints.y + 0.5)] \
+  + a_weights.z * B[int(a_joints.z + 0.5)] + a_weights.w * B[int(a_joints.w + 0.5)])
+#ifdef SKIN4
+#define SKIN_MAT(B) SKIN_SUM4(B)
+#else
+#define SKIN_MAT(B) (SKIN_SUM4(B) + a_weights1.x * B[int(a_joints1.x + 0.5)] + a_weights1.y * B[int(a_joints1.y + 0.5)] \
+  + a_weights1.z * B[int(a_joints1.z + 0.5)] + a_weights1.w * B[int(a_joints1.w + 0.5)])
+#endif
+#endif
 #ifdef VELOCITY
 // the motion pass (taa.ludic): last frame's placement and pose of the same vertex, through clean view-projections
+#ifndef ACTOR_INST
 uniform mat4 u_prev_model;
 uniform mat4 u_prev_bones[160];
+#endif
 uniform mat4 u_vp_cur;
 uniform mat4 u_vp_prev;
 out vec4 v_cur_clip;
@@ -106,43 +149,21 @@ void main() {
 #endif
   if (u_skinned > 0.5) {
 #ifdef ACTOR_INST
-    // the instance's own palette (actor_inst.ludic): the eight influences' rows blended, then its model matrix
-    vec4 r0 = vec4(0.0), r1 = vec4(0.0), r2 = vec4(0.0);
-    aiBone(a_joints.x, a_weights.x, r0, r1, r2);
-    aiBone(a_joints.y, a_weights.y, r0, r1, r2);
-    aiBone(a_joints.z, a_weights.z, r0, r1, r2);
-    aiBone(a_joints.w, a_weights.w, r0, r1, r2);
-    aiBone(a_joints1.x, a_weights1.x, r0, r1, r2);
-    aiBone(a_joints1.y, a_weights1.y, r0, r1, r2);
-    aiBone(a_joints1.z, a_weights1.z, r0, r1, r2);
-    aiBone(a_joints1.w, a_weights1.w, r0, r1, r2);
-    m = m * transpose(mat4(r0, r1, r2, vec4(0.0, 0.0, 0.0, 1.0)));
+    // the instance's own palette (actor_inst.ludic): the influences' rows blended, then its model matrix
+    m = m * aiSkin(int(i_bo.x + 0.5));
 #else
-    mat4 sk = a_weights.x * u_bones[int(a_joints.x + 0.5)]
-            + a_weights.y * u_bones[int(a_joints.y + 0.5)]
-            + a_weights.z * u_bones[int(a_joints.z + 0.5)]
-            + a_weights.w * u_bones[int(a_joints.w + 0.5)]
-            + a_weights1.x * u_bones[int(a_joints1.x + 0.5)]
-            + a_weights1.y * u_bones[int(a_joints1.y + 0.5)]
-            + a_weights1.z * u_bones[int(a_joints1.z + 0.5)]
-            + a_weights1.w * u_bones[int(a_joints1.w + 0.5)];
-    m = u_model * sk;
+    m = u_model * SKIN_MAT(u_bones);
 #endif
   }
   vec4 w = m * vec4(a_pos, 1.0);
 #ifdef VELOCITY
+#ifdef ACTOR_INST
+  mat4 pm = transpose(mat4(i_p0, i_p1, i_p2, vec4(0.0, 0.0, 0.0, 1.0)));
+  if (u_skinned > 0.5) pm = pm * aiPrevSkin(int(i_bo.y + 0.5));
+#else
   mat4 pm = u_prev_model;
-  if (u_skinned > 0.5) {
-    mat4 psk = a_weights.x * u_prev_bones[int(a_joints.x + 0.5)]
-             + a_weights.y * u_prev_bones[int(a_joints.y + 0.5)]
-             + a_weights.z * u_prev_bones[int(a_joints.z + 0.5)]
-             + a_weights.w * u_prev_bones[int(a_joints.w + 0.5)]
-             + a_weights1.x * u_prev_bones[int(a_joints1.x + 0.5)]
-             + a_weights1.y * u_prev_bones[int(a_joints1.y + 0.5)]
-             + a_weights1.z * u_prev_bones[int(a_joints1.z + 0.5)]
-             + a_weights1.w * u_prev_bones[int(a_joints1.w + 0.5)];
-    pm = u_prev_model * psk;
-  }
+  if (u_skinned > 0.5) pm = u_prev_model * SKIN_MAT(u_prev_bones);
+#endif
   v_cur_clip = u_vp_cur * w;
   v_prev_clip = u_vp_prev * (pm * vec4(a_pos, 1.0));
 #endif

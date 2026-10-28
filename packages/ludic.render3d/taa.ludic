@@ -113,7 +113,7 @@ function taa_motion_pass(render3d_st: mut Render3dState) -> void {
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_vp_prev"), render3d_st.taa_prev_vp)
   mesh_draw(render3d_st, render3d_st.post_fs)
   prof_end(render3d_st)
-  render3d_st.taa_vel_draws = 0;  render3d_st.taa_vel_skips = 0
+  render3d_st.taa_vel_draws = 0;  render3d_st.taa_vel_skips = 0;  render3d_st.taa_vel_inst_draws = 0
   prof_begin(render3d_st, "TAA motion actors")
   gpu_depth_test(render3d_st, true)
   gpu_depth_func(render3d_st, GPU_GEQUAL)
@@ -211,4 +211,4 @@ function taa_end_frame(render3d_st: mut Render3dState) -> void {
   render3d_st.taa_opaque = false
 }
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")
-function taa_say(render3d_st: Render3dState) -> void { print(`taa: frame {render3d_st.taa_frame} live {render3d_st.taa_live} motion {render3d_st.taa_vel_ok} actors {render3d_st.taa_vel_draws} still {render3d_st.taa_vel_skips} opaque {render3d_st.taa_opaque} jitter {int(render3d_st.gsl_jpx * 1000.0)} {int(render3d_st.gsl_jpy * 1000.0)}`) }
+function taa_say(render3d_st: Render3dState) -> void { print(`taa: frame {render3d_st.taa_frame} live {render3d_st.taa_live} motion {render3d_st.taa_vel_ok} actors {render3d_st.taa_vel_draws} (instanced draws {render3d_st.taa_vel_inst_draws}) still {render3d_st.taa_vel_skips} opaque {render3d_st.taa_opaque} jitter {int(render3d_st.gsl_jpx * 1000.0)} {int(render3d_st.gsl_jpy * 1000.0)}`) }

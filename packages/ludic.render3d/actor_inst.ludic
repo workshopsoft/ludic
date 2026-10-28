@@ -11,11 +11,20 @@
 # EMassRepresentationType StaticMeshInstance / SkinnedMeshInstance; Components/InstancedSkinnedMeshComponent.h
 # UInstancedSkinnedMeshComponent: one mesh, many instances, each with its own bone data on the GPU): every skinned actor a frame draws
 # instanced writes its palette once into one storage buffer (allocated once, AI_BONE_ROWS rows; three rows a joint), and its instance
-# carries the palette's first row. The cut-out ones (a figure's hair cards) group among themselves with the alpha-tested programs. The
-# motion pass (actor_draw_velocity) still draws each actor on its own, with its own last-frame palette.
+# carries the palette's first row. The cut-out ones (a figure's hair cards) group among themselves with the alpha-tested programs.
+#
+# The motion pass too (R3D_VEL_INST=0 turns it off; actor_draw_velocity, ai_draw_vel): the moving plain actors grouped the same way, each
+# instance carrying last frame's model matrix beside this frame's, as Mass's instanced meshes carry a PrevTransform per instance
+# (MassRepresentationTypes.h FMassInstancedStaticMeshInfo::AddBatchedTransform(Transform, PrevTransform, ...)), and a skinned one last
+# frame's palette as Unreal's GPU skin keeps the previous frame's bone buffer for PreviousReferenceToLocal (SkeletalRenderGPUSkin.cpp
+# FVertexFactoryData / FGPUBaseSkinVertexFactory::FShaderDataType::GetBoneBufferForReading(bPrevious)): the bone buffer is two, swapped at
+# a frame's first palette, so the one last frame wrote is still whole and its rows are where last frame put them (Actor.ai_pboff).
 const AI_MAX: int = 2048              # instances a pass; past it, actors are drawn on their own
-const AI_FLOATS: int = 20             # three rows of the model matrix, the tint and the glow, then the palette's first row (skinned)
-const AI_PASSES: int = 9              # the main view, then a cascade each (shadow.ludic's up to five), then a cached cascade's rebuild each
+# three rows of the model matrix, the tint and the glow, the palette's first row (skinned) and last frame's (the motion pass), then last
+# frame's model matrix as three rows (the motion pass)
+const AI_FLOATS: int = 32
+const AI_PASSES: int = 10             # the main view, then a cascade each (shadow.ludic's up to five), then a cached cascade's rebuild each, then the motion pass
+const AI_VEL_SLOT: int = 9            # the motion pass's buffer
 const AI_CACHE_SLOT: int = 5          # + the cascade (1 .. 3): the still actors drawn into the shadow cache (shadow_cache.ludic)
 const AI_MODELS: int = 512
 const AI_BONE_ROWS: int = 3 * 160 * 640   # the bone buffer: 640 palettes of skin.ludic's SKIN_MAX_JOINTS joints, three vec4 rows each
@@ -25,6 +34,7 @@ function ai_on(render3d_st: mut Render3dState) -> bool {
     render3d_st.ai_state = 2
     if not (r3d_env_has(render3d_st, "R3D_UE_DYNAMIC_INSTANCING") and r3d_env(render3d_st, "R3D_UE_DYNAMIC_INSTANCING") == "0") {
       render3d_st.ai_skin = not (r3d_env_has(render3d_st, "R3D_AI_SKINNED") and r3d_env(render3d_st, "R3D_AI_SKINNED") == "0")
+      render3d_st.ai_vel = not (r3d_env_has(render3d_st, "R3D_VEL_INST") and r3d_env(render3d_st, "R3D_VEL_INST") == "0")
       ai_init(render3d_st)
       render3d_st.ai_state = 1
     }
@@ -34,8 +44,8 @@ function ai_on(render3d_st: mut Render3dState) -> bool {
 
 @alloc_ok("the instance buffers and lists, made once")
 function ai_init(render3d_st: mut Render3dState) -> void {
-  render3d_st.ac_lit_inst = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ACTOR_INST\n")
-  render3d_st.ac_sh_inst = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ACTOR_INST\n")
+  render3d_st.ac_lit_inst = ac_prog_pair(render3d_st, "skin.vert", "model.frag", "#define ACTOR_INST\n")
+  render3d_st.ac_sh_inst = ac_prog_pair(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ACTOR_INST\n")
   render3d_st.ai_bufs = words(AI_PASSES)
   for k in 0 .. AI_PASSES {
     render3d_st.ai_bufs[k] = gpu_buffer_new(render3d_st)
@@ -47,11 +57,20 @@ function ai_init(render3d_st: mut Render3dState) -> void {
   render3d_st.ai_models = new []Model
   for i in 0 .. AI_MODELS { push(render3d_st.ai_models, null) }
   if render3d_st.ai_skin {
-    render3d_st.ac_lit_cut_inst = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define ACTOR_INST\n#define ALPHA_TEST\n")
-    render3d_st.ac_sh_cut_inst = ac_prog_new(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ACTOR_INST\n#define ALPHA_TEST\n")
+    render3d_st.ac_lit_cut_inst = ac_prog_pair(render3d_st, "skin.vert", "model.frag", "#define ACTOR_INST\n#define ALPHA_TEST\n")
+    render3d_st.ac_sh_cut_inst = ac_prog_pair(render3d_st, "skin.vert", "shadow.frag", "#define SHADOW_PASS\n#define ACTOR_INST\n#define ALPHA_TEST\n")
+    render3d_st.ai_bf = floats(SKIN_MAX_JOINTS * 12)
+  }
+  if render3d_st.ai_skin or render3d_st.ai_vel {
     render3d_st.ai_bone_buf = gpu_buffer_new(render3d_st)
     gpu_buffer_upload(render3d_st, render3d_st.ai_bone_buf, AI_BONE_ROWS * 16, null, GPU_DYNAMIC)
-    render3d_st.ai_bf = floats(SKIN_MAX_JOINTS * 12)
+  }
+  if render3d_st.ai_vel {
+    render3d_st.ac_vel_inst = ac_prog_pair(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n#define ACTOR_INST\n")
+    render3d_st.ac_vel_cut_inst = ac_prog_pair(render3d_st, "skin.vert", "velocity.frag", "#define VELOCITY\n#define ACTOR_INST\n#define ALPHA_TEST\n")
+    # last frame's bone buffer (the instanced motion's): the two swap at each frame's first palette
+    render3d_st.ai_bone_pbuf = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, render3d_st.ai_bone_pbuf, AI_BONE_ROWS * 16, null, GPU_DYNAMIC)
   }
 }
 
@@ -70,15 +89,25 @@ function ai_plain(render3d_st: Render3dState, a: Actor) -> bool {
 # A skinned actor's palette into the frame's bone buffer, once a frame (every pass of the frame reads the same rows): each joint's
 # matrix as three rows, as the instance's own. The buffer is taken afresh at the frame's first palette (gvk_buf_reserve: the one of its
 # two no frame on the GPU still reads) and only appended to after, so a draw recorded earlier keeps reading what it was given.
+# With the instanced motion (R3D_VEL_INST) there are two bone buffers, swapped there: the one taken is the one the frame before last
+# wrote, and last frame's stays as it was for this frame's motion pass (ai_pbframe / ai_pboff: where the actor's palette went then).
 # false when the buffer is full (the actor is drawn on its own).
 function ai_palette(render3d_st: mut Render3dState, a: Actor) -> bool {
   let fr = render3d_st.gvk_frame_no
   if render3d_st.ai_bframe != fr {
+    if render3d_st.ai_bone_pbuf != 0 {
+      let t = render3d_st.ai_bone_pbuf
+      render3d_st.ai_bone_pbuf = render3d_st.ai_bone_buf
+      render3d_st.ai_bone_buf = t
+      render3d_st.ai_bprev = render3d_st.ai_bframe
+    }
     render3d_st.ai_bframe = fr
     render3d_st.ai_bn = 0
     gpu_buffer_upload(render3d_st, render3d_st.ai_bone_buf, AI_BONE_ROWS * 16, null, GPU_DYNAMIC)
   }
   if a.ai_bframe == fr { return true }
+  a.ai_pbframe = a.ai_bframe
+  a.ai_pboff = a.ai_boff
   var sk = a.skin
   if sk == null { sk = a.model.skin }
   let bones = sk.bones
@@ -131,7 +160,7 @@ function ai_gather(render3d_st: mut Render3dState, a: Actor) -> void {
   render3d_st.ai_n += 1
 }
 # The gathered actors of each model shared by two or more into the pass's buffer, a model's together (they are marked: the pass's own
-# loop skips them); true when there is any group to draw
+# loop skips them); true when there is any group to draw. The motion pass's (AI_VEL_SLOT) carry last frame's matrix and palette too.
 function ai_build(render3d_st: mut Render3dState, pass: int) -> bool {
   var at = 0
   for j in 0 .. render3d_st.ai_nm {
@@ -158,6 +187,13 @@ function ai_build(render3d_st: mut Render3dState, pass: int) -> bool {
     f[o + 16] = 0.0
     if m.skin != null { f[o + 16] = float(a.ai_boff) }
     f[o + 17] = 0.0;  f[o + 18] = 0.0;  f[o + 19] = 0.0
+    if pass == AI_VEL_SLOT {
+      if m.skin != null { f[o + 17] = float(a.ai_pboff) }
+      let pt = a.prev_mat
+      for r in 0 .. 3 {
+        f[o + 20 + r * 4] = pt[r];  f[o + 21 + r * 4] = pt[4 + r];  f[o + 22 + r * 4] = pt[8 + r];  f[o + 23 + r * 4] = pt[12 + r]
+      }
+    }
   }
   gpu_buffer_upload(render3d_st, render3d_st.ai_bufs[pass], at * AI_FLOATS * 4, data_of(f), GPU_DYNAMIC)
   render3d_st.ai_pass = pass
@@ -180,6 +216,7 @@ function ai_draw(render3d_st: mut Render3dState, shadow: bool) -> void {
     var ap = render3d_st.ac_lit_inst
     if shadow { ap = render3d_st.ac_sh_inst }
     if a.cutout { if shadow { ap = render3d_st.ac_sh_cut_inst } else { ap = render3d_st.ac_lit_cut_inst } }
+    ap = ac_s4(ap, m)
     let p = ap.prog
     if ap != cur {
       cur = ap
@@ -215,7 +252,7 @@ function ai_draw(render3d_st: mut Render3dState, shadow: bool) -> void {
   }
 }
 # a model's primitive fed its instances from buf: attributes 3, 4, 8 the matrix's rows, 9 the tint and glow, 12 the palette's first row
-# (skin.vert ACTOR_INST)
+# and last frame's, 13 to 15 last frame's matrix's rows (skin.vert ACTOR_INST; the last four read only by the motion pass's VELOCITY)
 function ai_attach(render3d_st: Render3dState, m: Mesh, buf: int) -> void {
   gpu_mesh_bind_instances(render3d_st, m, buf)
   gpu_mesh_attr_inst(render3d_st, m, 3, 4, GPU_F32, AI_FLOATS * 4, 0)
@@ -223,5 +260,64 @@ function ai_attach(render3d_st: Render3dState, m: Mesh, buf: int) -> void {
   gpu_mesh_attr_inst(render3d_st, m, 8, 4, GPU_F32, AI_FLOATS * 4, 32)
   gpu_mesh_attr_inst(render3d_st, m, 9, 4, GPU_F32, AI_FLOATS * 4, 48)
   gpu_mesh_attr_inst(render3d_st, m, 12, 4, GPU_F32, AI_FLOATS * 4, 64)
+  gpu_mesh_attr_inst(render3d_st, m, 13, 4, GPU_F32, AI_FLOATS * 4, 80)
+  gpu_mesh_attr_inst(render3d_st, m, 14, 4, GPU_F32, AI_FLOATS * 4, 96)
+  gpu_mesh_attr_inst(render3d_st, m, 15, 4, GPU_F32, AI_FLOATS * 4, 112)
   gpu_mesh_done(render3d_st, m)
+}
+
+# ---- the motion pass (actor_draw_velocity) --------------------------------------------------------------------------------------
+function ai_vel_on(render3d_st: mut Render3dState) -> bool { return ai_on(render3d_st) and render3d_st.ai_vel }
+
+# a moving actor the motion pass can draw in its model's group: plain (ai_plain), and a skinned one with this frame's palette in the
+# buffer and last frame's still whole in last frame's (it was written last frame, and that buffer is the one this frame swapped out);
+# gathered then, as the other passes gather theirs. One that is not (new to the instanced passes, a part, a hidden piece) is drawn on
+# its own with its uniforms.
+function ai_vel_gather(render3d_st: mut Render3dState, a: Actor) -> void {
+  if not ai_plain(render3d_st, a) { return }
+  let m = a.model
+  if m.skin != null {
+    if not ai_palette(render3d_st, a) { return }
+    let fr = render3d_st.gvk_frame_no
+    if a.ai_pbframe <= 0 or a.ai_pbframe != render3d_st.ai_bprev or render3d_st.ai_bprev != fr - 1 { return }
+  }
+  ai_gather(render3d_st, a)
+}
+
+# the motion pass's groups, each primitive one instanced draw (skin.vert VELOCITY ACTOR_INST, velocity.frag), depth-tested as the caller
+# set; the programs' views bound once a frame (ac_vel_bind)
+function ai_draw_vel(render3d_st: mut Render3dState, prev_vp: floats) -> void {
+  let buf = render3d_st.ai_bufs[render3d_st.ai_pass]
+  var cur: AcProg = null
+  for j in 0 .. render3d_st.ai_nm {
+    let m = render3d_st.ai_models[j]
+    render3d_st.ai_models[j] = null
+    let a = m.ai_first
+    m.ai_first = null
+    if m.ai_count < 2 { continue }
+    var ap = render3d_st.ac_vel_inst
+    if a.cutout { ap = render3d_st.ac_vel_cut_inst }
+    ap = ac_s4(ap, m)
+    let p = ap.prog
+    if ap != cur {
+      cur = ap
+      ac_vel_bind(render3d_st, ap, prev_vp)
+      gpu_bind_buffer(render3d_st, p, "u_ai_bones", render3d_st.ai_bone_buf)
+      gpu_bind_buffer(render3d_st, p, "u_ai_pbones", render3d_st.ai_bone_pbuf)
+    }
+    if m.skin != null { u_f(render3d_st, ap.l_skin, 1.0) } else { u_f(render3d_st, ap.l_skin, 0.0) }
+    gpu_cull(render3d_st, a.one_sided)
+    for i in 0 .. len(m.prims) {
+      let pr = m.prims[i]
+      if a.cutout {
+        gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+        prim_factors(render3d_st, p, pr)
+      }
+      ai_attach(render3d_st, pr.mesh, buf)
+      render3d_st.gvk_first_inst = m.ai_at
+      mesh_draw_instanced(render3d_st, pr.mesh, m.ai_count)
+      render3d_st.gvk_first_inst = 0
+      render3d_st.taa_vel_inst_draws += 1
+    }
+  }
 }

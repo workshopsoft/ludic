@@ -52,9 +52,10 @@ function skin_jv3(o: floats, at: int, nd: Val, key: pointer, dx: float, dy: floa
   for i in 0 .. 3 { o[at + i] = jnum(value_at(arr, i)) }
 }
 
-# one set of four influences (JOINTS_n / WEIGHTS_n) onto attributes jloc and wloc of the VAO being built (gltf_prim)
-function skin_attrib_set(render3d_st: mut Render3dState, m: Mesh, attrs: Val, jname: string, wname: string, jloc: int, wloc: int) -> bool {
-  if value_has(attrs, jname) == 0 or value_has(attrs, wname) == 0 { return false }
+# one set of four influences (JOINTS_n / WEIGHTS_n) onto attributes jloc and wloc of the VAO being built (gltf_prim): 0 the mesh has
+# no such set, 1 it has one whose weights are all zero (an exporter's empty second four), 2 a set that weighs something
+function skin_attrib_set(render3d_st: mut Render3dState, m: Mesh, attrs: Val, jname: string, wname: string, jloc: int, wloc: int) -> int {
+  if value_has(attrs, jname) == 0 or value_has(attrs, wname) == 0 { return 0 }
   let jd = gltf_accessor(render3d_st, value_as_int(value_get(attrs, jname)))
   var jsz = 1
   var jtype = GPU_U8
@@ -68,17 +69,23 @@ function skin_attrib_set(render3d_st: mut Render3dState, m: Mesh, attrs: Val, jn
   var norm = false
   if render3d_st.gltf_ctype == 5123 { wsz = 2;  wtype = GPU_U16;  norm = true }
   if render3d_st.gltf_ctype == 5121 { wsz = 1;  wtype = GPU_U8;  norm = true }
-  gpu_mesh_vertices(render3d_st, m, wd, render3d_st.gltf_count * render3d_st.gltf_comps * wsz, GPU_STATIC)
+  let wbytes = render3d_st.gltf_count * render3d_st.gltf_comps * wsz
+  gpu_mesh_vertices(render3d_st, m, wd, wbytes, GPU_STATIC)
   gpu_mesh_attr(render3d_st, m, wloc, render3d_st.gltf_comps, wtype, 0, 0, norm)
+  # any weight above zero (a zero weight is zero bytes in every component type)
+  var weighs = 1
+  for i in 0 .. wbytes { if int(wd[i]) != 0 { weighs = 2;  break } }
   free(wd)
-  return true
+  return weighs
 }
 
 # JOINTS_0 / WEIGHTS_0 onto attributes 5 and 6, and a second four (JOINTS_1 / WEIGHTS_1, eight influences a vertex: a
-# realistic body's twist bones) onto 10 and 11; a mesh without the second set reads zero weights there
-function skin_attribs(render3d_st: mut Render3dState, m: Mesh, attrs: Val) -> bool {
-  if not skin_attrib_set(render3d_st, m, attrs, "JOINTS_0", "WEIGHTS_0", 5, 6) { return false }
-  skin_attrib_set(render3d_st, m, attrs, "JOINTS_1", "WEIGHTS_1", 10, 11)
+# realistic body's twist bones) onto 10 and 11; a mesh without the second set reads zero weights there. pr.skin4: no second set
+# that weighs anything (a rigid mesh too), so the four-influence programs draw it (skin.vert SKIN4, actor.ludic ac_s4)
+function skin_attribs(render3d_st: mut Render3dState, m: Mesh, attrs: Val, pr: Prim) -> bool {
+  pr.skin4 = true
+  if skin_attrib_set(render3d_st, m, attrs, "JOINTS_0", "WEIGHTS_0", 5, 6) == 0 { return false }
+  pr.skin4 = skin_attrib_set(render3d_st, m, attrs, "JOINTS_1", "WEIGHTS_1", 10, 11) != 2
   return true
 }
 
