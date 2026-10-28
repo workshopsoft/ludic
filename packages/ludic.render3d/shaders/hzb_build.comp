@@ -1,24 +1,50 @@
-// hzb_build.comp - one mip of Unreal's furthest HZB (HZB.cpp, EHZBType::FurthestHZB; HZB.usf HZBBuildCS), for the actors' HZB
-// occlusion (occlusion.ludic). Mip 0 is half the frame's power-of-two size (Unreal's HZBMipmap0Size), each texel the furthest
-// (reversed depth: the smallest) of the 2 x 2 under it, the frame's edge clamped as Unreal's build clamps its UVs; mip k + 1 the
-// furthest of mip k's 2 x 2. Kept in one storage buffer, mip after mip, as device depth. Unreal reduces 4 mips a dispatch in
-// group shared memory; here one dispatch a mip.
+// hzb_build.comp - Unreal's furthest HZB (SceneTextureReductions.cpp BuildHZB, EHZBType::FurthestHZB; HZB.usf HZBBuildCS), for the
+// actors' HZB occlusion (occlusion.ludic). Mip 0 is half the frame's power-of-two size (Unreal's HZBMipmap0Size), each texel the
+// furthest (reversed depth: the smallest) of the 2 x 2 under it, the frame's edge clamped as Unreal's build clamps its UVs; mip k + 1
+// the furthest of mip k's 2 x 2 (its edge clamped the same way). Kept in one storage buffer, mip after mip, as device depth.
+// As FHZBBuildCS, one dispatch writes up to 4 mips (HZB.usf MAX_MIP_BATCH_SIZE, kMaxMipBatchSize = 4): an 8 x 8 group writes an
+// 8 x 8 tile of the batch's first mip and reduces it in group shared memory (SharedFurthestDepth) to 4 x 4, 2 x 2 and 1 x 1 of the
+// next mips. pr.info.x = 1 is one mip a dispatch (R3D_HZB_BATCH=0, the old build).
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(set = 0, binding = 0) uniform Params {
-  ivec4 dst;            // this mip's width, height, first float in Hzb; 0 from the depth, 1 from the mip before
-  ivec4 src;            // the source's width, height, first float in Hzb (from the mip before)
+  ivec4 src;            // the source's width, height, first float in Hzb (the mip before the batch); w: 0 from the depth, 1 from Hzb
+  ivec4 info;           // x: the mips this dispatch writes (1..4)
+  ivec4 lv[4];          // each written mip's width, height, first float in Hzb
 } pr;
 layout(set = 0, binding = 1) buffer Hzb { float hzb[]; };
 layout(set = 0, binding = 2) uniform sampler2D u_depth;
+shared float sh[64];    // HZB.usf SharedFurthestDepth: the group's tile of the last mip written, 8 floats a row
 float src(ivec2 q) {
   q = min(q, pr.src.xy - 1);
-  if (pr.dst.w == 0) return texelFetch(u_depth, q, 0).r;
+  if (pr.src.w == 0) return texelFetch(u_depth, q, 0).r;
   return hzb[pr.src.z + q.y * pr.src.x + q.x];
 }
 void main() {
-  ivec2 p = ivec2(gl_GlobalInvocationID.xy);
-  if (p.x >= pr.dst.x || p.y >= pr.dst.y) return;
+  ivec2 l = ivec2(gl_LocalInvocationID.xy);
+  ivec2 g = ivec2(gl_WorkGroupID.xy);
+  // the batch's first mip, a thread a texel; one past the mip's edge takes the edge's own texel, so every thread reaches the barriers
+  ivec4 l0 = pr.lv[0];
+  ivec2 p = min(g * 8 + l, l0.xy - 1);
   ivec2 q = p * 2;
   float d = min(min(src(q), src(q + ivec2(1, 0))), min(src(q + ivec2(0, 1)), src(q + ivec2(1, 1))));
-  hzb[pr.dst.z + p.y * pr.dst.x + p.x] = d;
+  if (all(equal(p, g * 8 + l))) hzb[l0.z + p.y * l0.x + p.x] = d;
+  int n = pr.info.x;
+  int tile = 8;
+  for (int k = 1; k < n; k++) {
+    // mip k - 1's tile into shared memory, then mip k's (half the tile) from its 2 x 2, the mip's edge clamped as the source's is
+    sh[l.y * 8 + l.x] = d;
+    barrier();
+    ivec4 pl = pr.lv[k - 1];
+    ivec4 cl = pr.lv[k];
+    ivec2 base = g * tile;                                 // the tile's first texel in mip k - 1
+    tile = tile / 2;
+    ivec2 lc = min(l, ivec2(tile - 1));
+    ivec2 c = (g * tile + lc) * 2;
+    ivec2 c0 = clamp(min(c, pl.xy - 1) - base, ivec2(0), ivec2(tile * 2 - 1));
+    ivec2 c1 = clamp(min(c + 1, pl.xy - 1) - base, ivec2(0), ivec2(tile * 2 - 1));
+    d = min(min(sh[c0.y * 8 + c0.x], sh[c0.y * 8 + c1.x]), min(sh[c1.y * 8 + c0.x], sh[c1.y * 8 + c1.x]));
+    barrier();
+    ivec2 o = g * tile + l;
+    if (l.x < tile && l.y < tile && o.x < cl.x && o.y < cl.y) hzb[cl.z + o.y * cl.x + o.x] = d;
+  }
 }
