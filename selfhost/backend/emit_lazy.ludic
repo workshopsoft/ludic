@@ -55,6 +55,55 @@ function emit_state_reset() -> void {
   emith("  ret void\n}\n")
 }
 
+# A list constant is made once, by its getter @C_<name>() at its first read, and every read shares it. Substituted at each use as
+# an int constant is, every read made and filled a new list nobody freed: OccuTown's LT_KREACH, read for each prop in reach on each
+# lots refill, kept 1.3 GB a minute of play (2026-10-29). Only the constants read get a getter (emit_const_getters, after the
+# program), so an unread one's initializer is never emitted.
+var g_const_read: []pointer = null
+function is_shared_const(d: Node) -> bool { return d != null and d.kind == N_CONST and d.ty != null and str_prefix(d.ty, "[]") }
+function shared_const_read(s: pointer) -> pointer {
+  if g_const_read == null { g_const_read = new []pointer }
+  var seen = false
+  var i = 0
+  while i < len(g_const_read) { if g_const_read[i] == s { seen = true };  i += 1 }
+  if not seen { push(g_const_read, s) }
+  return emit_bind(`call ptr @C_{s}()`)
+}
+function emit_const_getters() -> void {
+  if g_const_read == null { return }
+  var i = 0
+  while i < len(g_const_read) {                  # a getter's initializer may read another list constant: it joins the list
+    emit_const_getter(find_global(g_const_read[i]))
+    i += 1
+  }
+}
+function emit_const_getter(d: Node) -> void {
+  let name = `C_{d.s}`
+  emith(`@lc_{d.s} = internal global ptr null\n`)
+  fence_enter(name)
+  ll_t = 0;  ll_lbl = 0;  g_term = false;  loc_reset();  nloop = 0;  nself = 0
+  ret_ty = "ptr"
+  let fbody = buf_new()
+  falloc = buf_new()
+  let saved = code
+  code = fbody
+  g_err_file = d.file
+  g_err_line = d.line
+  emit(`  %p0 = load ptr, ptr @lc_{d.s}\n  %z0 = icmp eq ptr %p0, null\n  br i1 %z0, label %make, label %have\nhave:\n  ret ptr %p0\nmake:\n`)
+  emit("  %decl.in = atomicrmw add ptr @lp_fdecl, i32 1 monotonic\n")
+  let v = emit_expr(d.a)
+  let cv = coerce_code(v, d.ty)
+  emit(`  store ptr {cv}, ptr @lc_{d.s}\n`)
+  emit("  %decl.out = atomicrmw sub ptr @lp_fdecl, i32 1 monotonic\n")
+  emit(`  ret ptr {cv}\n`)
+  code = saved
+  emit(`define ptr @{name}() {{\nentry:\n`)
+  emit(buf_str(falloc))
+  emit("  br label %start\nstart:\n")
+  emit(buf_str(fbody))
+  emit("}\n\n")
+}
+
 # a read of a state global: its getter's answer, or null when it is not lazy
 function lazy_state_read(g: Node, s: pointer) -> pointer {
   if not is_lazy_state(g) { return null }

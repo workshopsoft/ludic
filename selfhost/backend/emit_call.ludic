@@ -1103,6 +1103,7 @@ function emit_expr_raw(e: Node) -> Val {
       # the raw Q16.16 bits mislabelled `int`. Every existing const is an int
       # literal, for which this is byte-identical to the old immediate.
       if g.kind == N_CONST {
+        if is_shared_const(g) { return val(shared_const_read(e.s), g.ty) }   # a list: made once (emit_lazy.ludic)
         let cv = emit_expr(g.a)
         if is_fp(g.ty) { return val(to_fp(cv, g.ty, `const {e.s}`), g.ty) }
         return cv
