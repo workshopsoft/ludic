@@ -81,8 +81,12 @@ function occ_read(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_actors != null { for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].occ_hidden = false } }
   if render3d_st.stc_actors != null { for i in 0 .. len(render3d_st.stc_actors) { render3d_st.stc_actors[i].occ_hidden = false } }
   if render3d_st.tpa_actors != null { for i in 0 .. len(render3d_st.tpa_actors) { render3d_st.tpa_actors[i].occ_hidden = false } }
-  let n = render3d_st.occ_n
   render3d_st.occ_hidden_n = 0
+  if render3d_st.occ_hzb and occ_late_on(render3d_st) {
+    if render3d_st.occ_hn != null { occ_hzb_read_late(render3d_st) }
+    return
+  }
+  let n = render3d_st.occ_n
   if n == 0 { return }
   if render3d_st.occ_hzb { occ_hzb_read(render3d_st, n) } else {
     let data = gvk_tmp(render3d_st, n * 16)
@@ -231,6 +235,11 @@ function occ_hzb_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.occ_hzb_buf = gpu_buffer_new(render3d_st)
   render3d_st.occ_hzb_bounds = words(2)
   render3d_st.occ_hzb_res = words(2)
+  render3d_st.occ_hl = new []Actor
+  for i in 0 .. 2 * OCC_MAX { push(render3d_st.occ_hl, null) }
+  render3d_st.occ_hi = words(2 * OCC_MAX)
+  render3d_st.occ_hn = words(2)
+  render3d_st.occ_htg = words(2)
   for k in 0 .. 2 {
     let bb = gpu_buffer_new(render3d_st)
     gpu_buffer_upload(render3d_st, bb, OCC_MAX * 32, null, GPU_DYNAMIC)
@@ -333,6 +342,7 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.occ_live = true
   render3d_st.occ_n = n
   if n == 0 {
+    if occ_late_on(render3d_st) and render3d_st.occ_hn != null { render3d_st.occ_hn[render3d_st.gvk_frame_no & 1] = 0 }
     if inst { occ_hzb_make(render3d_st) }
     return
   }
@@ -356,6 +366,45 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
   for i in 0 .. OCC_HZB_MIPS * 4 { pr[24 + i] = mips[i] }
   bufs[0] = bounds;  bufs[1] = render3d_st.occ_hzb_buf;  bufs[2] = render3d_st.occ_hzb_res[slot]
   gpu_dispatch(render3d_st, render3d_st.occ_hzb_test, data_of(pr), (24 + OCC_HZB_MIPS * 4) * 4, bufs, (n + 63) / 64)
+  if occ_late_on(render3d_st) {
+    let o = slot * OCC_MAX
+    for i in 0 .. n {
+      render3d_st.occ_hl[o + i] = render3d_st.occ_list[i]
+      render3d_st.occ_hi[o + i] = render3d_st.occ_ids[i]
+      render3d_st.occ_list[i] = null
+    }
+    render3d_st.occ_hn[slot] = n
+    render3d_st.occ_htg[slot] = tag
+    render3d_st.occ_n = 0
+  }
+}
+# R3D_HZB_READ_LATE (on): the results read are frame N-2's (this frame's slot, whose fence gvk_frame_cb waited before this frame
+# began), not frame N-1's: with frames in flight the frame before is often still on the GPU, its slot unwritten, every actor read as
+# visible - in motion the terrain and roads were not culled at all (tour on the RTX 3070 Ti: GPU frame 26.7 ms against 19.5 ms with
+# the queries path)
+function occ_late_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.occ_late < 0 {
+    render3d_st.occ_late = 1
+    if r3d_env_has(render3d_st, "R3D_HZB_READ_LATE") and r3d_env(render3d_st, "R3D_HZB_READ_LATE") == "0" { render3d_st.occ_late = 0 }
+  }
+  return render3d_st.occ_late == 1
+}
+# frame N-2's results (the slot this frame will write next): hidden where that frame's tag says not visible
+function occ_hzb_read_late(render3d_st: mut Render3dState) -> void {
+  let s = render3d_st.gvk_frame_no & 1
+  let n = int(render3d_st.occ_hn[s])
+  if n <= 0 { return }
+  let res = gpu_buffer_map(render3d_st, render3d_st.occ_hzb_res[s])
+  let hidden = int(render3d_st.occ_htg[s]) << 1
+  let o = s * OCC_MAX
+  for i in 0 .. n {
+    let a = render3d_st.occ_hl[o + i]
+    render3d_st.occ_hl[o + i] = null
+    if a == null or a.id != render3d_st.occ_hi[o + i] { continue }          # released and taken again since
+    a.occ_hidden = res != null and Vk.get_i32(res, i * 4) == hidden
+    if a.occ_hidden { render3d_st.occ_hidden_n += 1 }
+  }
+  render3d_st.occ_hn[s] = 0
 }
 
 # The furthest HZB from this frame's depth copy (occ_hzb_buf), and the view it was built under kept for the next frame's instance culls
