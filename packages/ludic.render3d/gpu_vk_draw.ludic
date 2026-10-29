@@ -665,6 +665,31 @@ function gvk_same(a: pointer, b: pointer, n: int) -> bool {
   return true
 }
 
+# ---- R3D_DRAW_FASTPATH (on unless 0) ------------------------------------------------------------
+# The per-draw work done once, or by a cheaper road to the same answer, as UE's mesh draw commands carry what was worked out
+# when they were cached (MeshPassProcessor.cpp: FMeshDrawShaderBindings, compared by GetDynamicInstancingHash and
+# MatchesForDynamicInstancing rather than field by field): a uniform's old value compared in place (gvk_same_fast), a
+# program's blocks known to be made (gvk_blocks_made), the kept descriptor sets found by a hash of program and key
+# (gvk_sc_find), the mip bias kept (gvk_mip_bias). The same sets, the same blocks, the same bytes in the ring.
+function gvk_fast(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_fast_on < 0 {
+    render3d_st.gvk_fast_on = 1
+    if r3d_env_has(render3d_st, "R3D_DRAW_FASTPATH") and r3d_env(render3d_st, "R3D_DRAW_FASTPATH") == "0" { render3d_st.gvk_fast_on = 0 }
+  }
+  return render3d_st.gvk_fast_on == 1
+}
+# gvk_same with the words read in place (the runtime's mem_get_i32, a load): Vk.get_i32 is a call into the Vulkan binding's
+# library for every 4 bytes (lvk_get_i32, 1.5 % of the main thread under this compare's 2.9 % in a downtown tour, 2026-10-29)
+function gvk_same_fast(a: pointer, b: pointer, n: int) -> bool {
+  var i = 0
+  while i < n { if mem_get_i32(a, i) != mem_get_i32(b, i) { return false };  i += 4 }
+  return true
+}
+# gvk_uniform_blocks has run for program p (it returns at once then, after three loops that find nothing to add)
+function gvk_blocks_made(render3d_st: Render3dState, p: int) -> bool {
+  return render3d_st.gvk_prog_tex != null and p < len(render3d_st.gvk_prog_tex) and render3d_st.gvk_prog_tex[p] != null
+}
+
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function gvk_uniform_blocks(render3d_st: mut Render3dState, p: int) -> void {
   if render3d_st.gvk_ublk_v == null {
@@ -736,7 +761,8 @@ function gvk_u_set(render3d_st: mut Render3dState, loc: int, src: pointer, size:
   let p = loc / 4096
   let v = render3d_st.gvk_prog_var[p]
   if v == null { return }
-  gvk_uniform_blocks(render3d_st, p)
+  let fast = gvk_fast(render3d_st)
+  if not fast or not gvk_blocks_made(render3d_st, p) { gvk_uniform_blocks(render3d_st, p) }
   if loc % 4096 >= 2048 {
     let si = loc % 4096 - 2048
     if si < len(v.t_name) and render3d_st.gvk_prog_unit[p][si] != Vk.get_i32(src, 0) + 1 { render3d_st.gvk_prog_unit[p][si] = Vk.get_i32(src, 0) + 1;  render3d_st.gvk_prog_dirty[p] = 1 }
@@ -759,7 +785,11 @@ function gvk_u_set(render3d_st: mut Render3dState, loc: int, src: pointer, size:
     for k in 0 .. count {
       let at = v.u_off[at_j] + k * stride
       # the same value again (most per-draw uniforms repeat) leaves the program's set reusable
-      if at + size <= cap and not gvk_same(mem_off(blk, at), mem_off(src, k * size), size) {
+      var same = false
+      if at + size <= cap {
+        if fast { same = gvk_same_fast(mem_off(blk, at), mem_off(src, k * size), size) } else { same = gvk_same(mem_off(blk, at), mem_off(src, k * size), size) }
+      }
+      if at + size <= cap and not same {
         mem_copy(mem_off(blk, at), mem_off(src, k * size), size)
         render3d_st.gvk_prog_dirty[p] = 1
       }
@@ -772,8 +802,28 @@ function gvk_bind_texture(render3d_st: mut Render3dState, p: int, name: string, 
   if render3d_st.gvk_prog_var == null or p <= 0 or p >= len(render3d_st.gvk_prog_var) { return }
   let v = render3d_st.gvk_prog_var[p]
   if v == null { return }
-  gvk_uniform_blocks(render3d_st, p)
+  if not gvk_fast(render3d_st) or not gvk_blocks_made(render3d_st, p) { gvk_uniform_blocks(render3d_st, p) }
   for i in 0 .. len(v.t_name) { if v.t_name[i] == name and render3d_st.gvk_prog_tex[p][i] != tex { render3d_st.gvk_prog_tex[p][i] = tex;  render3d_st.gvk_prog_dirty[p] = 1 } }
+}
+
+# R3D_UNIFORM_CACHE (gpu_ul_bind_tex): the sampler named `name` in program p as one index, resolved once - 1 when the program has
+# none, 2 when it has the name twice (bound by name then, as gvk_bind_texture binds every one), else its index + 3
+function gvk_sampler_index(render3d_st: Render3dState, p: int, name: string) -> int {
+  let v = render3d_st.gvk_prog_var[p]
+  if v == null { return 0 }
+  var found = -1
+  var n = 0
+  for i in 0 .. len(v.t_name) { if v.t_name[i] == name { if found < 0 { found = i };  n += 1 } }
+  if n == 0 { return 1 }
+  if n > 1 { return 2 }
+  return found + 3
+}
+# gvk_bind_texture for the sampler at index i (-1: the program has none of that name, which binds nothing)
+function gvk_bind_texture_at(render3d_st: mut Render3dState, p: int, i: int, tex: int) -> void {
+  if render3d_st.gvk_prog_var == null or p <= 0 or p >= len(render3d_st.gvk_prog_var) { return }
+  if render3d_st.gvk_prog_var[p] == null { return }
+  if not gvk_fast(render3d_st) or not gvk_blocks_made(render3d_st, p) { gvk_uniform_blocks(render3d_st, p) }
+  if i >= 0 and render3d_st.gvk_prog_tex[p][i] != tex { render3d_st.gvk_prog_tex[p][i] = tex;  render3d_st.gvk_prog_dirty[p] = 1 }
 }
 
 # a storage buffer a stage reads: the buffer for the manifest binding with that name
@@ -939,6 +989,27 @@ function gvk_sc_clear(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_sc_dead = 0
   if render3d_st.gvk_sc_head == null { render3d_st.gvk_sc_head = words(4096) }
   for i in 0 .. 4096 { render3d_st.gvk_sc_head[i] = -1 }
+  if render3d_st.gvk_sc_bnext == null { render3d_st.gvk_sc_bnext = new []int }
+  List.clear(render3d_st.gvk_sc_bnext)
+  if render3d_st.gvk_sc_bucket == null { render3d_st.gvk_sc_bucket = words(GVK_SC_BUCKETS) }
+  for i in 0 .. GVK_SC_BUCKETS { render3d_st.gvk_sc_bucket[i] = -1 }
+}
+
+# the bucket of program p's set for the key in gvk_sc_tmp (its first nk words): FNV-1a over the program and every key word's
+# two halves (a texture's handle and generation, a sampler's or buffer's Vulkan handle)
+const GVK_SC_BUCKETS: int = 16384
+function gvk_sc_hash(render3d_st: Render3dState, p: int, nk: int) -> int {
+  # in 32 bits held in a long, so no step overflows (a 32-bit value times the 24-bit prime)
+  let m: long = 4294967295
+  let prime: long = 16777619
+  var h: long = 2166136261
+  h = ((h ^ p) * prime) & m
+  for t in 0 .. nk {
+    let x = render3d_st.gvk_sc_tmp[t]
+    h = ((h ^ (x & m)) * prime) & m
+    h = ((h ^ ((x >> 32) & m)) * prime) & m
+  }
+  return int(h & (GVK_SC_BUCKETS - 1))
 }
 
 # the pool is full: finish the frame recorded so far (it may use sets from it), then start again
@@ -952,7 +1023,8 @@ function gvk_kpool_reset(render3d_st: mut Render3dState) -> void {
 function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: int, tx_cap: int) -> long {
   let zero: long = 0
   let v = render3d_st.gvk_prog_var[p]
-  gvk_uniform_blocks(render3d_st, p)
+  let fast = gvk_fast(render3d_st)
+  if not fast or not gvk_blocks_made(render3d_st, p) { gvk_uniform_blocks(render3d_st, p) }
   @alloc_ok("filled to 4096 programs at start-up (@max 4096)")
   while len(render3d_st.gvk_ub_frame) <= p { push(render3d_st.gvk_ub_frame, 0);  push(render3d_st.gvk_ub_offv, 0);  push(render3d_st.gvk_ub_offf, 0) }
   let nt = len(v.t_name)
@@ -991,7 +1063,22 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
   let nk = nt * 2 + ns
   var set: long = 0
   var e = -1
-  if p < 4096 { e = render3d_st.gvk_sc_head[p] }
+  if fast and render3d_st.gvk_sc_bucket != null {
+    # by a hash of the program and its key: a program drawn with many texture sets (a kit's every material) walked all of
+    # its sets, most recent first, on every draw
+    e = render3d_st.gvk_sc_bucket[gvk_sc_hash(render3d_st, p, nk)]
+    while e >= 0 and set == 0 {
+      if render3d_st.gvk_sc_prog[e] == p {
+        let ko = render3d_st.gvk_sc_koff[e]
+        var same = true
+        var t = 0
+        while same and t < nk { if render3d_st.gvk_sc_keys[ko + t] != render3d_st.gvk_sc_tmp[t] { same = false };  t += 1 }
+        if same { set = render3d_st.gvk_sc_set[e] }
+      }
+      if set == 0 { e = render3d_st.gvk_sc_bnext[e] }
+    }
+    e = -1
+  } else if p < 4096 { e = render3d_st.gvk_sc_head[p] }
   while e >= 0 and set == 0 {
     let ko = render3d_st.gvk_sc_koff[e]
     var same = true
@@ -1113,6 +1200,10 @@ function gvk_sc_make(render3d_st: mut Render3dState, p: int, nt: int) -> long {
   var head = -1
   if p < 4096 { head = render3d_st.gvk_sc_head[p];  render3d_st.gvk_sc_head[p] = e }
   push(render3d_st.gvk_sc_next, head)
+  # and into its hash bucket (R3D_DRAW_FASTPATH's lookup; kept either way, so the two never disagree)
+  let bk = gvk_sc_hash(render3d_st, p, nt * 2 + ns)
+  push(render3d_st.gvk_sc_bnext, render3d_st.gvk_sc_bucket[bk])
+  render3d_st.gvk_sc_bucket[bk] = e
   render3d_st.gvk_sc_made += 1
   return set
 }
@@ -1214,7 +1305,8 @@ function gvk_frame_cb_raw(render3d_st: mut Render3dState) -> pointer {
     # the frame in flight uses the other half of the ring and the other pool, unless it has this slot
     if render3d_st.gvk_frame_pending and (render3d_st.gvk_frame_pending_no & 1) == (render3d_st.gvk_frame_no & 1) { gvk_frame_wait(render3d_st) }
     gvk_frame_reset(render3d_st)
-    gvk_prime_submit(render3d_st)
+    # R3D_VK_NO_ONCE_WAIT: recorded at the end of this frame's own command buffer instead (gvk_prime_in_frame)
+    if not gvk_no_once_wait(render3d_st) { gvk_prime_submit(render3d_st) }
     render3d_st.gvk_cb = gvk_once_begin(render3d_st)
   }
   return render3d_st.gvk_cb
@@ -1597,6 +1689,7 @@ function gvk_flush(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_n_flush += 1
   render3d_st.gvk_plog_why = "gvk_flush";  gvk_pass_end(render3d_st)
   gvk_labels_close(render3d_st)
+  gvk_prime_in_frame(render3d_st, render3d_st.gvk_cb)
   gvk_once_end(render3d_st, render3d_st.gvk_cb)
   render3d_st.gvk_cb = null
   render3d_st.gvk_frame_no += 1
@@ -1618,6 +1711,7 @@ function gvk_present(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_cb == null { return }
   render3d_st.gvk_plog_why = "gvk_present";  gvk_pass_end(render3d_st)
   gvk_labels_close(render3d_st)
+  gvk_prime_in_frame(render3d_st, render3d_st.gvk_cb)
   gvk_once_end(render3d_st, render3d_st.gvk_cb)
   render3d_st.gvk_cb = null
   render3d_st.gvk_frame_no += 1
@@ -2078,6 +2172,7 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
   let cb = gvk_frame_cb(render3d_st)
   render3d_st.gvk_plog_why = "gvk_present_window";  gvk_pass_end(render3d_st)
   gvk_labels_close(render3d_st)
+  gvk_prime_in_frame(render3d_st, cb)
   # a covered window is not drawn to: its layer would hold the frame for a drawable the compositor
   # hands back once a second. The frame still runs, paced at about 60 Hz, so the game keeps time.
   if win_visible() == 0 {

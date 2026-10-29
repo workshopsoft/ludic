@@ -135,6 +135,135 @@ function gpu_scissor_off(render3d_st: mut Render3dState) -> void {
 # that knows which. Arrays are looked up by their first element ("u_bones[0]").
 function gpu_uniform(render3d_st: Render3dState, prog: int, name: string) -> int { return gvk_uniform(render3d_st, prog, name) }
 
+# ---- parameters resolved once per program (R3D_UNIFORM_CACHE, on unless 0) -----------------------
+# The draw paths that run per primitive or per kit asked for their uniforms and samplers by name on every draw: a string-keyed
+# dictionary walk per uniform (dict_find + lp_str_eq, 4 % of the main thread in a downtown tour, 2026-10-29) and a name-by-name
+# compare per sampler. Unreal resolves a shader's parameters once, when it is compiled, and keeps the bindings
+# (Shader.h FShaderParameterBindings, filled by BindForLegacyShaderParameters from the FShaderParameterMap); here a slot names
+# the parameter (UL_*, its name in UL_NAMES) and each program keeps the place it resolved to the first time, in a row of its
+# own (programs are never freed and their handles never reused: gvk_program_new). gpu_ul(p, UL_X) is gpu_uniform(p, "u_x");
+# gpu_ul_bind_2d(p, UL_X, unit, tex) is r3d_bind_2d(p, "u_x", unit, tex). R3D_UNIFORM_CACHE=0 looks each up by name again.
+let UL_NAMES: []string = [
+  "u_fac_coat", "u_mr_scale", "u_card_cut", "u_fac_base_inv", "u_fac_mr_inv", "u_fac_emis",
+  "u_surf_q", "u_surf_q2", "u_surf", "u_surf_b", "u_surf_c", "u_surf_d", "u_surf_e",
+  "u_s2", "u_s2_b", "u_s2_c", "u_s2_d", "u_s2_e", "u_lu_on",
+  "u_s2_diff", "u_s2_nrm", "u_s2_arm", "u_lu", "u_diff", "u_nrm", "u_arm",
+  "u_view", "u_proj", "u_cam_pos", "u_rough_scale", "u_storey", "u_kit_opt",
+  "u_fac_a", "u_fac_b", "u_fac_c", "u_fac_d", "u_fac_e",
+  "u_rooms", "u_im_cell", "u_im_atlas", "u_im_gain", "u_im_lit",
+  "u_dither_frame", "u_shadow_tan_max", "u_head_on", "u_headmap", "u_fol_h", "u_follicle", "u_fol_b", "u_fol_m", "u_fol_on",
+  "u_micro_p", "u_micro", "u_micro_mask", "u_micro_m", "u_micro_r", "u_bent_p", "u_bent", "u_sss_u"
+]
+const UL_FAC_COAT: int = 0
+const UL_MR_SCALE: int = 1
+const UL_CARD_CUT: int = 2
+const UL_FAC_BASE_INV: int = 3
+const UL_FAC_MR_INV: int = 4
+const UL_FAC_EMIS: int = 5
+const UL_SURF_Q: int = 6
+const UL_SURF_Q2: int = 7
+const UL_SURF: int = 8                   # u_surf, then u_surf_b .. u_surf_e at 9 .. 12 (surf_bind_one)
+const UL_S2: int = 13                    # u_s2, then u_s2_b .. u_s2_e at 14 .. 17
+const UL_LU_ON: int = 18
+const UL_S2_DIFF: int = 19
+const UL_S2_NRM: int = 20
+const UL_S2_ARM: int = 21
+const UL_LU: int = 22
+const UL_DIFF: int = 23
+const UL_NRM: int = 24
+const UL_ARM: int = 25
+const UL_VIEW: int = 26
+const UL_PROJ: int = 27
+const UL_CAM_POS: int = 28
+const UL_ROUGH_SCALE: int = 29
+const UL_STOREY: int = 30
+const UL_KIT_OPT: int = 31
+const UL_FAC_A: int = 32
+const UL_FAC_B: int = 33
+const UL_FAC_C: int = 34
+const UL_FAC_D: int = 35
+const UL_FAC_E: int = 36
+const UL_ROOMS: int = 37
+const UL_IM_CELL: int = 38
+const UL_IM_ATLAS: int = 39
+const UL_IM_GAIN: int = 40
+const UL_IM_LIT: int = 41
+const UL_DITHER_FRAME: int = 42
+const UL_SHADOW_TAN_MAX: int = 43
+const UL_HEAD_ON: int = 44
+const UL_HEADMAP: int = 45
+const UL_FOL_H: int = 46
+const UL_FOLLICLE: int = 47
+const UL_FOL_B: int = 48
+const UL_FOL_M: int = 49
+const UL_FOL_ON: int = 50
+const UL_MICRO_P: int = 51
+const UL_MICRO: int = 52
+const UL_MICRO_MASK: int = 53
+const UL_MICRO_M: int = 54
+const UL_MICRO_R: int = 55
+const UL_BENT_P: int = 56
+const UL_BENT: int = 57
+const UL_SSS_U: int = 58
+const UL_N: int = 59
+
+function gpu_ul_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gpu_ul_on < 0 {
+    render3d_st.gpu_ul_on = 1
+    if r3d_env_has(render3d_st, "R3D_UNIFORM_CACHE") and r3d_env(render3d_st, "R3D_UNIFORM_CACHE") == "0" { render3d_st.gpu_ul_on = 0 }
+  }
+  return render3d_st.gpu_ul_on == 1
+}
+# program p's row of resolved places, made the first time p is asked for (null when p is not a program)
+@alloc_ok("made once per program and kept for its life: a row of 2 * UL_N words (@max 4096 programs)")
+function gpu_ul_row(render3d_st: mut Render3dState, p: int) -> words {
+  if p <= 0 or p >= 4096 { return null }
+  if render3d_st.gpu_ul_rows == null { render3d_st.gpu_ul_rows = new []words }
+  while len(render3d_st.gpu_ul_rows) <= p { push(render3d_st.gpu_ul_rows, null) }
+  var row = render3d_st.gpu_ul_rows[p]
+  if row == null {
+    row = words(UL_N * 2)
+    for i in 0 .. UL_N * 2 { row[i] = 0 }
+    render3d_st.gpu_ul_rows[p] = row
+  }
+  return row
+}
+# gpu_uniform(p, UL_NAMES[slot]), resolved once
+function gpu_ul(render3d_st: mut Render3dState, p: int, slot: int) -> int {
+  if not gpu_ul_on(render3d_st) { return gvk_uniform(render3d_st, p, UL_NAMES[slot]) }
+  var row: words = null
+  if render3d_st.gpu_ul_rows != null and p > 0 and p < len(render3d_st.gpu_ul_rows) { row = render3d_st.gpu_ul_rows[p] }
+  if row == null { row = gpu_ul_row(render3d_st, p) }
+  if row == null { return gvk_uniform(render3d_st, p, UL_NAMES[slot]) }
+  let c = row[slot]
+  if c != 0 { return c - 2 }
+  # a program not made (yet) resolves nothing and is not remembered
+  if render3d_st.gvk_prog_var == null or p >= len(render3d_st.gvk_prog_var) or render3d_st.gvk_prog_var[p] == null { return -1 }
+  let loc = gvk_uniform(render3d_st, p, UL_NAMES[slot])
+  row[slot] = loc + 2
+  return loc
+}
+# r3d_bind_2d(p, UL_NAMES[slot], unit, tex): the sampler's index in the program resolved once (gvk_bind_texture_at)
+function gpu_ul_bind_2d(render3d_st: mut Render3dState, p: int, slot: int, unit: int, tex: int) -> void {
+  gpu_ul_bind_tex(render3d_st, p, slot, unit, GPU_TEX2D, tex)
+}
+function gpu_ul_bind_tex(render3d_st: mut Render3dState, p: int, slot: int, unit: int, kind: int, tex: int) -> void {
+  var row: words = null
+  if gpu_ul_on(render3d_st) {
+    if render3d_st.gpu_ul_rows != null and p > 0 and p < len(render3d_st.gpu_ul_rows) { row = render3d_st.gpu_ul_rows[p] }
+    if row == null { row = gpu_ul_row(render3d_st, p) }
+  }
+  var c = 0
+  if row != null and render3d_st.gvk_prog_var != null and p < len(render3d_st.gvk_prog_var) and render3d_st.gvk_prog_var[p] != null {
+    c = row[UL_N + slot]
+    if c == 0 { c = gvk_sampler_index(render3d_st, p, UL_NAMES[slot]);  row[UL_N + slot] = c }
+  }
+  # 0: not resolved (no cache, or no program yet); 2: the name twice in the program: by name, as gpu_bind_sampler
+  if c == 0 or c == 2 { gpu_bind_sampler(render3d_st, p, UL_NAMES[slot], unit, kind, tex);  return }
+  if c >= 3 { gvk_bind_texture_at(render3d_st, p, c - 3, tex) } else { gvk_bind_texture_at(render3d_st, p, -1, tex) }
+  if kind == GPU_TEX2D_ARRAY { render3d_st.gpu_bound_array = tex } else { render3d_st.gpu_bound_2d = tex }
+}
+
 # ---- programs ----------------------------------------------------------------------
 # A program remembers the variant it was built from - vertex file, fragment file and the
 # defines on one line, the key the SPIR-V manifest uses - which is how a backend that cannot

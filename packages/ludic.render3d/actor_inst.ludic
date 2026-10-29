@@ -223,7 +223,7 @@ function ai_draw(render3d_st: mut Render3dState, shadow: bool) -> void {
       cur = ap
       if not shadow { ac_bind_scene(render3d_st, ap) }
       gpu_use_program(render3d_st, p)
-      if not shadow { u_f(render3d_st, gpu_uniform(render3d_st, p, "u_shadow_tan_max"), ACTOR_SHADOW_TAN) }
+      if not shadow { u_f(render3d_st, gpu_ul(render3d_st, p, UL_SHADOW_TAN_MAX), ACTOR_SHADOW_TAN) }
       if render3d_st.ai_skin { gpu_bind_buffer(render3d_st, p, "u_ai_bones", render3d_st.ai_bone_buf) }
     }
     if m.skin != null { u_f(render3d_st, ap.l_skin, 1.0) } else { u_f(render3d_st, ap.l_skin, 0.0) }

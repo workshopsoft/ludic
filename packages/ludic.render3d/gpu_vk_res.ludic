@@ -642,8 +642,25 @@ function gvk_compare_op(f: int) -> int {
 # plain spatial upscale has no temporal accumulation to hide the aliasing a negative bias brings,
 # so biasing there would trade blur for shimmer.
 function gvk_mip_bias(render3d_st: mut Render3dState) -> float {
+  # R3D_DRAW_FASTPATH: every texture of every draw asks (gvk_tex_sampler), and each ask looked its switch up by name and took a
+  # log; the switch is read once and the bias kept until what it is computed from changes (the upscaler in use, the scene's
+  # width, the output's width) - the same number, as UE computes its view's MaterialTextureMipBias once per view
+  if gvk_fast(render3d_st) {
+    if render3d_st.gvk_mb_nobias < 0 { render3d_st.gvk_mb_nobias = 0;  if r3d_env_has(render3d_st, "R3D_NO_MIPBIAS") { render3d_st.gvk_mb_nobias = 1 } }
+    if render3d_st.gvk_mb_nobias == 1 { return 0.0 }
+    var k: long = ups_temporal(render3d_st)
+    k = (k * 1048576 + max(render3d_st.post_w, -1) + 1) * 1048576 + max(gfx_width(), -1) + 1
+    if k != render3d_st.gvk_mb_key {
+      render3d_st.gvk_mb_key = k
+      render3d_st.gvk_mb_val = gvk_mip_bias_of(render3d_st)
+    }
+    return render3d_st.gvk_mb_val
+  }
   # R3D_NO_MIPBIAS=1 puts it back the way it was, so one build can be compared against itself
   if r3d_env_has(render3d_st, "R3D_NO_MIPBIAS") { return 0.0 }
+  return gvk_mip_bias_of(render3d_st)
+}
+function gvk_mip_bias_of(render3d_st: mut Render3dState) -> float {
   # MetalFX (and a screen percentage under any other temporal upscaler): Unreal's automatic view mip bias (upscale.ludic)
   if not r3d_dlss_live(render3d_st) { return ups_mip_bias(render3d_st) }
   # the size the scene draws at (post_w), which the screen percentage or dynamic resolution may set off DLSS's own
@@ -897,6 +914,31 @@ function gvk_prime_submit(render3d_st: mut Render3dState) -> void {
   let cb = gvk_once_begin(render3d_st)
   gvk_prime_flush(render3d_st, cb)
   gvk_once_end(render3d_st, cb)
+}
+# R3D_VK_NO_ONCE_WAIT (on unless 0): the primes are not a submit of their own, waited for at the frame's first command (which
+# also waited for the whole frame in flight first: gvk_once_end_sems -> gvk_frame_wait, the CPU idle until the GPU finished
+# the previous frame, on every frame that made a buffer). They are recorded at the end of the frame's own command buffer
+# instead, just before its submit, as UE records its uploads into a command list that goes with the frame's work and never
+# waits for one in the frame (VulkanContext.cpp FVulkanUploadContext: recorded on the queue, its completion tracked by the
+# frame's sync point, not a CPU wait). Nothing is released between the copy and the submit, and each primed buffer is marked
+# as read by this frame (gvk_buf_used), so a release in the next frame retires it until this frame's fence (gvk_buf_release,
+# gvk_retire_upto) - the hazard the separate submit was there for. The one other effect: such a buffer re-filled in the next
+# frame counts as busy and swaps to its second (gvk_bsp_swap), as one drawn would.
+function gvk_no_once_wait(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_no_once_wait_on < 0 {
+    render3d_st.gvk_no_once_wait_on = 1
+    if r3d_env_has(render3d_st, "R3D_VK_NO_ONCE_WAIT") and r3d_env(render3d_st, "R3D_VK_NO_ONCE_WAIT") == "0" { render3d_st.gvk_no_once_wait_on = 0 }
+  }
+  return render3d_st.gvk_no_once_wait_on == 1
+}
+# the frame's command buffer is about to be ended and submitted, outside any pass: the primes so far into it
+function gvk_prime_in_frame(render3d_st: mut Render3dState, cb: pointer) -> void {
+  if render3d_st.gvk_prime_n == 0 or cb == null or not gvk_no_once_wait(render3d_st) { return }
+  for i in 0 .. render3d_st.gvk_prime_n {
+    let b = render3d_st.gvk_prime_b[i]
+    if b > 0 and b < len(render3d_st.gvk_buf) and render3d_st.gvk_buf[b] == render3d_st.gvk_prime_h[i] { render3d_st.gvk_buf_used[b] = render3d_st.gvk_frame_no }
+  }
+  gvk_prime_flush(render3d_st, cb)
 }
 function gvk_prime_flush(render3d_st: mut Render3dState, cb: pointer) -> void {
   if render3d_st.gvk_prime_n == 0 { return }
