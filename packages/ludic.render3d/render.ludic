@@ -305,12 +305,12 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   stream_update_all(render3d_st)
   prof_cpu_mark(render3d_st, "streaming")
   prof_frame_begin(render3d_st)             # the whole frame's GPU time from here (R3D_PROF: WHOLE FRAME)
-  gg_cull_frame(render3d_st)                # before any pass: a dispatch inside one would split it
+  prof_begin(render3d_st, "grass cull");  gg_cull_frame(render3d_st);  prof_end(render3d_st)   # before any pass: a dispatch inside one would split it
   ue_lights_frame(render3d_st)              # Unreal's visible local lights, packed for the shaders (ue_lights.ludic), before the
                                             # instance cull, which gathers the shadowed ones' casters (kgpu_frame_lights)
-  shadow_cache_plan(render3d_st)            # what the sun's cached cascades draw this frame (shadow_cache.ludic), before the cull that serves it
-  r3d_scene_prepare(render3d_st)            # the game's own (the big world's instance cull, r3d_on_prepare)
-  ue_lightgrid_frame(render3d_st)           # ... culled into the light grid's cells (ue_lightgrid.ludic)
+  prof_begin(render3d_st, "shadow plan");  shadow_cache_plan(render3d_st);  prof_end(render3d_st)            # what the sun's cached cascades draw this frame (shadow_cache.ludic), before the cull that serves it
+  prof_begin(render3d_st, "scene prepare");  r3d_scene_prepare(render3d_st);  prof_end(render3d_st)   # the game's own (the big world's instance cull, r3d_on_prepare)
+  prof_begin(render3d_st, "light grid");  ue_lightgrid_frame(render3d_st);  prof_end(render3d_st)   # ... culled into the light grid's cells (ue_lightgrid.ludic)
   ue_sky_luts(render3d_st)                  # Unreal's Sky Atmosphere LUTs (ue_sky.ludic), before any scene target is bound
   ue_skylight_pass(render3d_st)             # Unreal's real-time sky light capture and convolution (ue_skylight.ludic)
   # the runtime virtual texture's pages (rvt.ludic, R3D_RVT): two frames' old feedback read, this frame's pages drawn and the page

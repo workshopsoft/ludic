@@ -922,12 +922,17 @@ function gvk_query_new(render3d_st: mut Render3dState, n: int, ids: words) -> vo
   let out = gvk_tmp(render3d_st, 8)
   if Vk.create_query_pool(render3d_st.gvk_dev, qci, render3d_st.gvk_ac, out) != VK_SUCCESS { return }
   render3d_st.gvk_qpool = gvk_handle(out)
+  render3d_st.gvk_prof_top = r3d_env_has(render3d_st, "R3D_PROF_TOP")
   Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, 0, n * 2)
 }
 function gvk_query_begin(render3d_st: mut Render3dState, id: int) -> void {
   if render3d_st.gvk_qpool == 0 { return }
   Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, id * 2, 2)
-  Vk.cmd_write_timestamp(gvk_frame_cb_raw(render3d_st), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, render3d_st.gvk_qpool, id * 2)
+  # the start at the end of all work before it (bottom of pipe, as Unreal's Vulkan GPU timing writes both): at the top, a pass's timer
+  # also took in the untimed dispatches recorded before it (the culls showed up as 2 ms of a 192 x 104 sky LUT). R3D_PROF_TOP=1: the top again
+  var st = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
+  if render3d_st.gvk_prof_top { st = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT }
+  Vk.cmd_write_timestamp(gvk_frame_cb_raw(render3d_st), st, render3d_st.gvk_qpool, id * 2)
   render3d_st.gvk_q_active = id
 }
 function gvk_query_end(render3d_st: mut Render3dState) -> void {

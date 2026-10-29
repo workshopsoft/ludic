@@ -11,7 +11,7 @@
 # never introduces the very stall it is trying to measure.
 # ============================================================================
 
-const PROF_SLOTS: int = 64          # the frame opens some 35 named passes with Unreal's post on; at 24 the later ones (SSAO, bloom, the
+const PROF_SLOTS: int = 96          # the frame opens some 35 named passes with Unreal's post on; at 24 the later ones (SSAO, bloom, the
                                     # tonemapper) were never timed
 const PROF_RING:  int = 4            # frames of latency before a result is read
 
