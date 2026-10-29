@@ -46,6 +46,8 @@ fullscreen.vert|ue_volfog.frag|#define VF_CDEPTH;
 fullscreen.vert|ue_volfog.frag|#define VF_INTEGRATE;#define VF_CARRY;
 fullscreen.vert|ue_volfog.frag|#define VF_SCATTER;#define VF_ATLAS;
 fullscreen.vert|ue_volfog.frag|#define VF_INTEGRATE;#define VF_ATLAS;
+fullscreen.vert|ue_volfog.frag|#define VF_INTEGRATE;#define VF_ATLAS;#define VF_GROUP;
+fullscreen.vert|ue_volfog.frag|#define VF_INTEGRATE;#define VF_ATLAS;#define VF_GROUPED;
 fullscreen.vert|ue_volfog.frag|#define VF_CDEPTH_DOWN;
 fullscreen.vert|taa_mv.frag|
 fullscreen.vert|ternormal.frag|

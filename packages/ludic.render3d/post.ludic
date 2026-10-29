@@ -269,6 +269,9 @@ function post_capture_prev(render3d_st: mut Render3dState) -> void {
 # the upscale writes post_hdr's colour (mfx.ludic)
 function post_copy_prev(render3d_st: mut Render3dState) -> void {
   if taa_ran(render3d_st) { return }        # the bounce reads the resolved frame itself (post_ssao_pass)
+  # the copy is the bounce's alone, and the bounce is off (Unreal 5.8's SSGI is deprecated, post_ssao_pass): no copy, as nothing
+  # reads it. R3D_PREV_COPY=1 makes it anyway
+  if not post_ssgi_on(render3d_st) and not r3d_env_has(render3d_st, "R3D_PREV_COPY") { return }
   gpu_fb_bind_read(render3d_st, render3d_st.post_hdr.fbo)
   gpu_fb_bind_draw(render3d_st, render3d_st.post_prev.fbo)
   gpu_blit(render3d_st, render3d_st.post_w, render3d_st.post_h, GPU_COLOR_BUFFER_BIT)
@@ -277,6 +280,8 @@ function post_copy_prev(render3d_st: mut Render3dState) -> void {
 
 # Unreal's AO taps read its furthest HZB (PostProcessAmbientOcclusionCommon.ush GetHZBDepth) at ComputeMipLevel's mip, which at
 # r.AmbientOcclusionMipLevelFactor 0.5 is below 0 for every tap: mip 0, half the frame's size. R3D_UE_AO_HZB=0: the full frame's depth
+# the screen-space bounce (ssgi.frag u_gi): off as Unreal 5.8 leaves its deprecated SSGI, R3D_UE_SSGI=1 on
+function post_ssgi_on(render3d_st: mut Render3dState) -> bool { return r3d_env_has(render3d_st, "R3D_UE_SSGI") and r3d_env(render3d_st, "R3D_UE_SSGI") == "1" }
 function post_ao_hzb_on(render3d_st: mut Render3dState) -> bool { return not (r3d_env_has(render3d_st, "R3D_UE_AO_HZB") and r3d_env(render3d_st, "R3D_UE_AO_HZB") == "0") }
 
 # Unreal's AO shader quality from its post process volume's AmbientOcclusionQuality (Scene.cpp: 50 by default), as FSSAOHelper::
@@ -311,6 +316,7 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   # the bounce's colour: the resolved frame while TAA runs (no copy is made then), else last frame's copy
   var prev_col = render3d_st.post_prev.color
   if taa_ran(render3d_st) { prev_col = taa_color(render3d_st) }
+  else if not post_ssgi_on(render3d_st) and not r3d_env_has(render3d_st, "R3D_PREV_COPY") { prev_col = render3d_st.post_neutral }   # (no copy made: post_copy_prev)
   r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_prev_color", 1, prev_col)
   r3d_bind_2d(render3d_st, render3d_st.post_p_ao, "u_hzb", 2, render3d_st.post_ao_hzb.color)
   var use_hzb = 0.0
@@ -340,7 +346,7 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_ao_far"), ao_far)
   # the one-bounce GI: Unreal 5.8 has deprecated its screen-space GI (ScreenSpaceRayTracing.cpp, r.SSGI.*) and leaves it off
   var gi = 0.0
-  if r3d_env_has(render3d_st, "R3D_UE_SSGI") and r3d_env(render3d_st, "R3D_UE_SSGI") == "1" { gi = 1.0 }
+  if post_ssgi_on(render3d_st) { gi = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_gi"), gi)
   var contact = render3d_st.post_contact
   if r3d_env_has(render3d_st, "R3D_NOCONTACT") { contact = 0.0 }
@@ -459,6 +465,15 @@ function post_bloom_pass(render3d_st: mut Render3dState) -> void {
   gpu_blend(render3d_st, false)
 }
 
+# the tonemap straight to the screen when the after-pass would add only the grain (post_tonemap); R3D_POST_DIRECT=0 turns it off
+function post_direct_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.post_direct < 0 {
+    render3d_st.post_direct = 1
+    if r3d_env_has(render3d_st, "R3D_POST_DIRECT") and r3d_env(render3d_st, "R3D_POST_DIRECT") == "0" { render3d_st.post_direct = 0 }
+  }
+  return render3d_st.post_direct == 1
+}
+
 function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   var prog = render3d_st.post_p_tone
   if gpu_hdr_active(render3d_st) {
@@ -475,9 +490,34 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   render3d_st.ue_bl_down_ok = false          # (the bloom's chain is this frame's only)
   if ue_tonemap_on(render3d_st) and not gpu_hdr_active(render3d_st) { ue_lut_pass(render3d_st) }
   prof_split(render3d_st, "tonemap")
-  target_bind(render3d_st, render3d_st.post_ldr)
+  # what the after-pass (sharpen.frag) would do: no unsharp mask over a temporal upscaler's frame either - DLSS and MetalFX
+  # reconstruct the detail themselves, and Unreal sharpens nothing after them (r.Tonemapper.Sharpen 0); the mask drew a bright and a
+  # dark line round every edge they resolved
+  var sharpen = render3d_st.post_sharpen
+  if ups_temporal(render3d_st) != 0 { sharpen = 0.0 }
+  var fx = render3d_st.post_fxaa
+  # nor FXAA over DLSS's or MetalFX's: the temporal upscaler is the anti-aliasing (Unreal runs no FXAA after TSR or a third-party one)
+  if r3d_env_has(render3d_st, "R3D_NOFXAA") or taa_ran(render3d_st) or ups_temporal(render3d_st) != 0 { fx = 0.0 }
+  # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves
+  var grain = render3d_st.post_grain
+  if r3d_env_has(render3d_st, "R3D_NOGRAIN") { grain = float_bits(0.0) }
+  # With nothing to sharpen or anti-alias (behind DLSS or MetalFX) the after-pass only adds the grain: the tonemap adds it and
+  # writes the screen itself, one output-resolution pass as Unreal's tonemapper is (PostProcessTonemap.usf: grain, dither and the
+  # device encode in the one pass), not two (the second read and wrote every 4K pixel again). The grain is added to the colour
+  # before its 8-bit rounding rather than after it (within a 255th). R3D_POST_DIRECT=0: the after-pass always.
+  let direct = post_direct_on(render3d_st) and not gpu_hdr_active(render3d_st) and sharpen == 0.0 and fx == 0.0 and taa_rcas(render3d_st) == 0.0
+  if direct {
+    gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
+    gpu_viewport(render3d_st, 0, 0, gfx_width(), gfx_height())
+  } else {
+    target_bind(render3d_st, render3d_st.post_ldr)
+  }
   gpu_depth_test(render3d_st, false)
   gpu_use_program(render3d_st, prog)
+  var fold = 0.0
+  if direct { fold = float_from_bits(grain) }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fold_grain"), fold)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_fold_time"), render3d_st.r3d_time)
   r3d_bind_2d(render3d_st, prog, "u_hdr", 0, color_tex)
   r3d_bind_2d(render3d_st, prog, "u_bloom", 1, render3d_st.post_bloom[0].color)
   var ao_tex = render3d_st.post_ao_blur.color
@@ -513,26 +553,17 @@ function post_tonemap(render3d_st: mut Render3dState, color_tex: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hdr_paper"), r3d_hdr_paper_nits(render3d_st))
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_hdr_black"), r3d_hdr_black_nits(render3d_st))
   mesh_draw(render3d_st, render3d_st.post_fs)
+  if direct { return }
   # sharpen + grain onto the screen
   gpu_fb_bind(render3d_st, gpu_screen_fb(render3d_st))
   gpu_viewport(render3d_st, 0, 0, gfx_width(), gfx_height())
   gpu_use_program(render3d_st, render3d_st.post_p_sharp)
   r3d_bind_2d(render3d_st, render3d_st.post_p_sharp, "u_src", 0, render3d_st.post_ldr.color)
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_texel"), 1.0 / float(render3d_st.post_ldr.w), 1.0 / float(render3d_st.post_ldr.h))
-  # no unsharp mask over a temporal upscaler's frame either: DLSS and MetalFX reconstruct the detail themselves, and Unreal
-  # sharpens nothing after them (r.Tonemapper.Sharpen 0); the mask drew a bright and a dark line round every edge they resolved
-  var sharpen = render3d_st.post_sharpen
-  if ups_temporal(render3d_st) != 0 { sharpen = 0.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_amount"), sharpen)
-  var fx = render3d_st.post_fxaa
-  # nor over DLSS's or MetalFX's: the temporal upscaler is the anti-aliasing (Unreal runs no FXAA after TSR or a third-party one)
-  if r3d_env_has(render3d_st, "R3D_NOFXAA") or taa_ran(render3d_st) or ups_temporal(render3d_st) != 0 { fx = 0.0 }
   # after the temporal resolve the frame is sharpened by RCAS instead of FXAA and the unsharp mask (sharpen.frag)
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_rcas"), taa_rcas(render3d_st))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_fxaa"), fx)
-  # R3D_NOGRAIN=1: no film grain, so two frames of a still camera can be compared for what else moves
-  var grain = render3d_st.post_grain
-  if r3d_env_has(render3d_st, "R3D_NOGRAIN") { grain = float_bits(0.0) }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_grain"), float_from_bits(grain))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_sharp, "u_time"), render3d_st.r3d_time)
   mesh_draw(render3d_st, render3d_st.post_fs)

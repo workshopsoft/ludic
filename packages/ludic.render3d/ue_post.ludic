@@ -405,6 +405,18 @@ function ue_bloom_on(render3d_st: mut Render3dState) -> bool {
   }
   return render3d_st.ue_bloom == 1 and ue_tonemap_on(render3d_st) and not gpu_hdr_active(render3d_st)
 }
+# The chain's first stage is Unreal's HalfResSceneColor: PostProcessing.cpp makes it from the full-resolution scene by
+# AddDownsamplePass at r.PostProcessing.DownsampleQuality (0, low: one filtered tap), and FTextureDownsampleChain::Init takes it as its
+# first texture, only the later stages at r.PostProcessing.DownsampleChainQuality (1, high). Behind DLSS the scene is the 4K output,
+# so that first stage read every 4K pixel through four taps where Unreal takes one. The histogram, local exposure and bloom all read
+# it, as Unreal's do. R3D_UE_BLOOM_HALFRES_LOW=0: the first stage at high quality too.
+function ue_bloom_halfres_low(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_bl_low < 0 {
+    render3d_st.ue_bl_low = 1
+    if r3d_env_has(render3d_st, "R3D_UE_BLOOM_HALFRES_LOW") and r3d_env(render3d_st, "R3D_UE_BLOOM_HALFRES_LOW") == "0" { render3d_st.ue_bl_low = 0 }
+  }
+  return render3d_st.ue_bl_low == 1
+}
 
 @alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function ue_bloom_targets(render3d_st: mut Render3dState, w: int, h: int) -> void {
@@ -510,10 +522,14 @@ function ue_bloom_pass(render3d_st: mut Render3dState) -> int {
   var sw = render3d_st.post_color_w;  var sh = render3d_st.post_color_h
   let dp = render3d_st.ue_down_p
   gpu_use_program(render3d_st, dp)
+  let low = ue_bloom_halfres_low(render3d_st)
   for k in 0 .. UE_BLOOM_STAGES {
     let t = render3d_st.ue_bl_down[k]
     target_bind(render3d_st, t)
     r3d_bind_2d(render3d_st, dp, "u_src", 0, src)
+    var lo = 0.0
+    if k == 0 and low { lo = 1.0 }
+    u_f(render3d_st, gpu_uniform(render3d_st, dp, "u_low"), lo)
     u_f2(render3d_st, gpu_uniform(render3d_st, dp, "u_src_inv"), 1.0 / float(sw), 1.0 / float(sh))
     u_f2(render3d_st, gpu_uniform(render3d_st, dp, "u_out_inv"), 1.0 / float(t.w), 1.0 / float(t.h))
     mesh_draw(render3d_st, render3d_st.post_fs)

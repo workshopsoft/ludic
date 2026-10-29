@@ -24,6 +24,18 @@ vec3 aces(vec3 x) {
   return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+// Written straight to the screen (post.ludic post_direct: no sharpen, FXAA or RCAS after a temporal upscaler, so the after-pass would
+// only add its grain): sharpen.frag's film grain here instead, as Unreal's PostProcessTonemap.usf applies its grain in the one
+// output-resolution pass. u_fold_grain 0 when the after-pass runs.
+uniform float u_fold_grain;
+uniform float u_fold_time;
+vec3 foldGrain(vec3 c) {
+  if (u_fold_grain == 0.0) return c;
+  c = clamp(c, 0.0, 1.0);
+  float lc = dot(c, vec3(0.299, 0.587, 0.114));
+  float g = (hash(v_uv * 1731.0 + fract(u_fold_time)) - 0.5) * u_fold_grain;
+  return clamp(c + g * (0.6 + 0.4 * (1.0 - lc)), 0.0, 1.0);
+}
 // The day's filmic contrast, in stops about mid grey: steeper above it (the highlights' punch) and the
 // identity below, eased over the first stop so the curve has no corner. Steepening below mid grey too
 // darkened every shadow: with ACES's toe a 6.5 : 1 sun-to-shade ratio reached the screen as 39 : 1.
@@ -219,7 +231,7 @@ void main() {
   vec3 bloom = texture(u_bloom, v_uv).rgb;
   float exposure = mix(u_exposure, texture(u_adapt, vec2(0.5)).r, u_auto);
 #ifndef HDR10
-  if (u_ue > 0.5) { o_color = vec4(ueTonemap(hdr, bloom, exposure), 1.0); return; }
+  if (u_ue > 0.5) { o_color = vec4(foldGrain(ueTonemap(hdr, bloom, exposure)), 1.0); return; }
 #endif
   vec3 c = (hdr + bloom * u_bloom_strength) * exposure * u_wb;
   c = max(c, vec3(0.0));
@@ -252,6 +264,6 @@ void main() {
 #else
   c = pow(c, vec3(1.0 / 2.2));
   c += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
-  o_color = vec4(c, 1.0);
+  o_color = vec4(foldGrain(c), 1.0);
 #endif
 }
