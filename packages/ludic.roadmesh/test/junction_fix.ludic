@@ -1,4 +1,4 @@
-# junction_test.ludic - junction.ludic, corners.ludic and junctionsurface.ludic against the studio's junction.ts, corners.ts and
+# junction_fix.ludic - junction.ludic, corners.ludic and junctionsurface.ludic against the studio's junction.ts, corners.ts and
 # junctionSurface.ts calls (fix/<scene>/junction.fix, corners.fix, junctionSurface.fix). The exporter writes the calls' networks,
 # edges, arms and callbacks as data (export.test.ts: an edge its key, line, metres, section and profile row; an ArmSide the line
 # it was made from; a callback the answers it gave): they are made native again here and every answer compared to the bit.

@@ -229,7 +229,7 @@ function ac_card_hair(a: Actor) -> bool { return a.cutout and not a.strands and 
 
 function ac_prog_pair(render3d_st: mut Render3dState, vs: string, fs: string, defs: string) -> AcProg {
   let a = ac_prog_new(render3d_st, vs, fs, defs)
-  if ac_skin4_on(render3d_st) { a.s4 = ac_prog_new(render3d_st, vs, fs, defs + "#define SKIN4\n") }
+  if ac_skin4_on(render3d_st) { a.s4 = ac_prog_new(render3d_st, vs, fs, ac_skin4_defs(defs)) }
   return a
 }
 # the program a model is drawn with: the four-influence twin when every primitive of it has four (Prim.skin4, read once a model)

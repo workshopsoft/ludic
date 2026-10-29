@@ -1,4 +1,4 @@
-# meshBuilder_test.ludic - meshbuilder.ludic against the studio's meshBuilder.ts calls (fix/<scene>/meshBuilder.fix). A Builder
+# meshBuilder_fix.ludic - meshbuilder.ludic against the studio's meshBuilder.ts calls (fix/<scene>/meshBuilder.fix). A Builder
 # method's record is [uv, level, ...its arguments] (a yOf as the table of the points it was asked), and its answer what the call
 # appended to each layer (indices from the layer's first new vertex): each is run on a fresh Builder and compared.
 

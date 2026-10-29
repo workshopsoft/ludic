@@ -93,12 +93,12 @@ differ, so the comparison sees a real change.
 The parts were ported against the studio's own calls, recorded during a real bake, and they still run:
 ```
 cd <gpp worktree>
-PATH=<gpp>/bin:$PATH LUDIC_HOME=<gpp> ludic build packages/ludic.roadmesh/roadmesh_test.ludic -o build/tools/roadmesh_test
-./build/tools/roadmesh_test <game-editor worktree>/packages/core/test/fixtures/roadnative/fix/*/*.fix
+PATH=<gpp>/bin:$PATH LUDIC_HOME=<gpp> ludic build packages/ludic.roadmesh/roadmesh_fixtures.ludic -o build/tools/roadmesh_fixtures
+./build/tools/roadmesh_fixtures <game-editor worktree>/packages/core/test/fixtures/roadnative/fix/*/*.fix
 ```
 A record passes when every number is the same to the bit (NaN equals NaN, -0 differs from 0). JsMath is no longer bound to the
 recorded trig (`trig.bin`): jsmath's own answers pass every junction record. The Sidewalk's methods and roadStructures now run on
-the native world, so the chunk bytes check them instead (sidewalk_test keeps the drawing helpers).
+the native world, so the chunk bytes check them instead (sidewalk_fix keeps the drawing helpers).
 
 1. **Scenes.** `roads_bake_chunks` with `scene: <abs path>/<name>.scene.json` writes the bake's inputs (the network, each build's
    options, the meshes' digests) and `<name>.ground.bin` (every ground height read). occutown `tools/roadnative/scenes.mjs` makes

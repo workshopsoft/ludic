@@ -1,4 +1,4 @@
-# throughPath_test.ludic - throughpath.ludic against the studio's throughPath.ts calls (fix/<scene>/throughPath.fix). throughPair's
+# throughPath_fix.ludic - throughpath.ludic against the studio's throughPath.ts calls (fix/<scene>/throughPath.fix). throughPair's
 # record is the ends' headings and what `ok` answered for each end it asked about; throughPath's is the two arms as armToNode
 # reads them (out, the strip end's point and metres, the laid line and its metres).
 

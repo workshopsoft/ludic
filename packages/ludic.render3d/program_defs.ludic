@@ -18,6 +18,8 @@ function ter_prog_defs(debug: string, sun_inline: bool, tier: int) -> string {
   if tier == 2 { d = d + "#define NEAR_ONLY\n" }
   return d
 }
+# an actor program's four-influence twin (actor.ludic ac_prog_pair, R3D_SKIN4): its own defines and SKIN4
+function ac_skin4_defs(defs: string) -> string { return defs + "#define SKIN4\n" }
 # the blades: merged into tiles where the device draws indirect (TILES), else a draw a chunk
 function grass_defs(merge: bool) -> string {
   if merge { return "#define FOLIAGE\n#define BLADE\n#define GBLADE\n#define TILES\n" }

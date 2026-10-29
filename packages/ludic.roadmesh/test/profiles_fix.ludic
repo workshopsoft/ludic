@@ -1,4 +1,4 @@
-# profiles_test.ludic - profiles.ludic against the studio's profiles.ts calls (fix/<scene>/profiles.fix)
+# profiles_fix.ludic - profiles.ludic against the studio's profiles.ts calls (fix/<scene>/profiles.fix)
 
 function check_mats(c: Check, what: string, m: Mats, w: Val) -> void {
   check_str(c, `{what}.road`, m.road, v_get(w, "road"))

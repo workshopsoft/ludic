@@ -94,7 +94,7 @@ program ManifestTest {
   function shipped() -> []GpuVariant { return gpu_manifest_parse(Fs.read_text(`{r3d_package_dir()}/shaders/spv/manifest.txt`)) }
   function known_computed(file: string) -> int {
     if file == "programs.ludic" { return 1 }          # r3d_program itself, handing on to gpu_program
-    if file == "actor.ludic" { return 1 }             # ac_prog_new's own call: its callers are literal
+    if file == "actor.ludic" { return 3 }             # ac_prog_new's own call, ac_prog_pair's two: their callers are literal
     if file == "terrain.ludic" { return 4 }           # heightgen and the ground's three tiers
     if file == "grass.ludic" { return 1 }             # the blades
     return 0
@@ -146,7 +146,7 @@ program ManifestTest {
   function file_requests(vs: []GpuVariant, file: string, missing: []string) -> int {
     let src = Fs.read_text(`{r3d_package_dir()}/{file}`)
     var computed = 0
-    let names = ["r3d_program(", "gpu_program(", "ac_prog_new("]
+    let names = ["r3d_program(", "gpu_program(", "ac_prog_new(", "ac_prog_pair("]
     for n in 0 .. len(names) {
       let parts = Text.split(src, names[n])
       var at = 0
@@ -159,6 +159,9 @@ program ManifestTest {
           let a = args_at(src, at + len(names[n]) - 1)
           if len(a) == 4 and is_lit(a[1]) and is_lit(a[2]) and is_lit(a[3]) {
             if gpu_variant_in(vs, unq(a[1]), unq(a[2]), key_defs(unq(a[3]))) == null { push(missing, `{file}: {a[1]} {a[2]} {a[3]}`) }
+            # a pair's four-influence twin (ac_prog_pair) is asked for as well
+            let twin = key_defs(unq(a[3])) + Text.replace(ac_skin4_defs(""), "\n", ";")
+            if names[n] == "ac_prog_pair(" and gpu_variant_in(vs, unq(a[1]), unq(a[2]), twin) == null { push(missing, `{file}: {a[1]} {a[2]} {a[3]} + SKIN4`) }
           } else {
             computed += 1
           }

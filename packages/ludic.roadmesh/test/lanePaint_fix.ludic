@@ -1,4 +1,4 @@
-# lanePaint_test.ludic - lanepaint.ludic and medianthrough.ludic against the studio's calls (fix/<scene>/lanePaint.fix and
+# lanePaint_fix.ludic - lanepaint.ludic and medianthrough.ludic against the studio's calls (fix/<scene>/lanePaint.fix and
 # medianThrough.fix). paintLanes' and throughBarrier's records hold what they read of the network and the sidewalk (a world:
 # paintview.ludic), the road surface the paint is laid on, the node heights asked (tables by node) and what was appended.
 

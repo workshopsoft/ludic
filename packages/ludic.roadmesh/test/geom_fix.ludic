@@ -1,4 +1,4 @@
-# geom_test.ludic - geom.ludic against the studio's geom.ts calls (fix/<scene>/geom.fix)
+# geom_fix.ludic - geom.ludic against the studio's geom.ts calls (fix/<scene>/geom.fix)
 
 function cmp_obj_nums(c: Check, what: string, got: []double, want: Val, keys: []string) -> void {
   for k in 0 .. len(keys) { check_numv(c, `{what}.{keys[k]}`, got[k], v_get(want, keys[k])) }

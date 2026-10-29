@@ -1,4 +1,4 @@
-# polyMesh_test.ludic - polymesh.ludic against the studio's polyMesh.ts calls (fix/<scene>/polyMesh.fix)
+# polyMesh_fix.ludic - polymesh.ludic against the studio's polyMesh.ts calls (fix/<scene>/polyMesh.fix)
 
 export function test_polyMesh(recs: []Rec) -> int {
   let c = check_new("polyMesh")

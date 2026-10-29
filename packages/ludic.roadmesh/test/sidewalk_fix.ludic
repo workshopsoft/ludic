@@ -1,4 +1,4 @@
-# sidewalk_test.ludic - sidewalk.ludic (its drawing helpers) against the studio's sidewalk.ts calls (fix/<scene>/sidewalk.fix). A Sidewalk method's record
+# sidewalk_fix.ludic - sidewalk.ludic (its drawing helpers) against the studio's sidewalk.ts calls (fix/<scene>/sidewalk.fix). A Sidewalk method's record
 # carries the world it read (edges, strips, nodes) and the other parts' answers (stubs), and is run on a world made from it.
 
 function check_pts_list(c: Check, what: string, got: [][]double, w: Val) -> void {
