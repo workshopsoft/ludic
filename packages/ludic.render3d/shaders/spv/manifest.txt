@@ -706,13 +706,15 @@ U 65858d5d frag u_ue_sl_mips 796 float 1 0
 U 65858d5d frag u_ue_sl_color 800 vec3 1 0
 U 65858d5d frag u_dither_frame 812 float 1 0
 U 65858d5d frag u_card_cut 816 vec2 1 0
-U 65858d5d frag u_ts_origin 824 vec2 1 0
-U 65858d5d frag u_ts_half 832 float 1 0
-U 65858d5d frag u_ts_on 836 float 1 0
-U 65858d5d frag u_force_cascade 840 int 1 0
-U 65858d5d frag u_shadow_tan_max 844 float 1 0
-U 65858d5d frag u_cloud_shadow 848 float 1 0
-U 65858d5d frag u_time 852 float 1 0
+U 65858d5d frag u_sh_gather 824 float 1 0
+U 65858d5d frag u_sh_fade 828 float 1 0
+U 65858d5d frag u_ts_origin 832 vec2 1 0
+U 65858d5d frag u_ts_half 840 float 1 0
+U 65858d5d frag u_ts_on 844 float 1 0
+U 65858d5d frag u_force_cascade 848 int 1 0
+U 65858d5d frag u_shadow_tan_max 852 float 1 0
+U 65858d5d frag u_cloud_shadow 856 float 1 0
+U 65858d5d frag u_time 860 float 1 0
 U 65858d5d frag u_lz 864 vec4 32 16
 U 65858d5d frag u_lz_n 1376 int 1 0
 U 65858d5d frag u_zl 1392 vec4 32 16
@@ -12182,13 +12184,15 @@ U 6a86b069 frag u_ue_sl_mips 796 float 1 0
 U 6a86b069 frag u_ue_sl_color 800 vec3 1 0
 U 6a86b069 frag u_dither_frame 812 float 1 0
 U 6a86b069 frag u_card_cut 816 vec2 1 0
-U 6a86b069 frag u_ts_origin 824 vec2 1 0
-U 6a86b069 frag u_ts_half 832 float 1 0
-U 6a86b069 frag u_ts_on 836 float 1 0
-U 6a86b069 frag u_force_cascade 840 int 1 0
-U 6a86b069 frag u_shadow_tan_max 844 float 1 0
-U 6a86b069 frag u_cloud_shadow 848 float 1 0
-U 6a86b069 frag u_time 852 float 1 0
+U 6a86b069 frag u_sh_gather 824 float 1 0
+U 6a86b069 frag u_sh_fade 828 float 1 0
+U 6a86b069 frag u_ts_origin 832 vec2 1 0
+U 6a86b069 frag u_ts_half 840 float 1 0
+U 6a86b069 frag u_ts_on 844 float 1 0
+U 6a86b069 frag u_force_cascade 848 int 1 0
+U 6a86b069 frag u_shadow_tan_max 852 float 1 0
+U 6a86b069 frag u_cloud_shadow 856 float 1 0
+U 6a86b069 frag u_time 860 float 1 0
 U 6a86b069 frag u_lz 864 vec4 32 16
 U 6a86b069 frag u_lz_n 1376 int 1 0
 U 6a86b069 frag u_zl 1392 vec4 32 16
@@ -20566,4 +20570,4 @@ S 4e2a2d71 u_ue_lp 22
 T 4e2a2d71 u_ue_lph 23
 S 4e2a2d71 u_ue_ls 24
 T 4e2a2d71 u_ue_lsh 25
-E 151
+E 153
