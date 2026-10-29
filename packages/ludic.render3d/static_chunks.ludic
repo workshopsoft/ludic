@@ -107,7 +107,7 @@ function stc_remove(render3d_st: mut Render3dState, a: Actor) -> void {
   if l == null or a == null { return }
   let r = a.row
   if r < 0 or r >= len(l) or l[r].id != a.id { return }
-  if a.sc_seen > 0 { render3d_st.sc_dirty = true }      # its shadow is in the cache (shadow_cache.ludic)
+  sc_drop(render3d_st, a)      # its shadow is in the cascades that hold it (shadow_cache.ludic)
   let last = List.pop(l)
   if last.id != a.id {
     l[r] = last
@@ -134,7 +134,7 @@ function stc_clear_all(render3d_st: mut Render3dState) -> void {
   let l = render3d_st.stc_actors
   if l == null { return }
   for i in 0 .. len(l) {
-    if l[i].sc_seen > 0 { render3d_st.sc_dirty = true }
+    sc_drop(render3d_st, l[i])
     l[i].row = -1
   }
   List.clear(l)
@@ -228,6 +228,7 @@ function stc_in_view(render3d_st: mut Render3dState, a: Actor, occ: bool) -> boo
 # distance, its sphere inside the light's box, and near enough a receiver the cascade covers (scatter.ludic cast_band_reaches)
 function stc_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) -> bool {
   if a.model == null or not a.casts or not (a.visible or a.cast_hidden) { return false }
+  if render3d_st.sh_phase == SH_PHASE_EXTRA and (a.sc_acc & render3d_st.sc_extra_bit) != 0 { return false }   # held already (shadow_cache.ludic)
   let b = render3d_st.stc_b
   stc_bounds(a, b)
   let r = stc_radius(b)
@@ -640,27 +641,31 @@ function static_chunks_draw_casters(render3d_st: mut Render3dState, light_vp: fl
 
 # ---- the sun's cache (shadow_cache.ludic) -----------------------------------------------------------------------------------------------
 
-# one that came casting, moved, or began or stopped casting since the last static draw: the cached cascades are due a rebuild
+# each chunk's record against the cached cascades (sc_track: one that moved goes from the cascades holding it, one new or shown again is
+# an extra subject drawn over them; its matrix's place: what moves a static chunk is the floating origin)
 function stc_still_check(render3d_st: mut Render3dState) -> void {
   let l = render3d_st.stc_actors
   if l == null { return }
   for i in 0 .. len(l) {
     let a = l[i]
-    if a.sc_seen == 0 {
-      if sc_casting(a) { render3d_st.sc_dirty = true }
-      continue
-    }
-    if a.mat[12] != a.sc_x or a.mat[13] != a.sc_y or a.mat[14] != a.sc_z or sc_casting(a) != a.sc_vis { render3d_st.sc_dirty = true }
+    sc_track(render3d_st, a, sc_casting(a), a.mat[12], a.mat[13], a.mat[14], 0.0)
   }
 }
-# what a static draw saw (its matrix's place: what moves a static chunk is the floating origin)
-function stc_still_stamp(render3d_st: mut Render3dState) -> void {
+# what cascade bit `bit`'s static draw through vp saw (every chunk when `all`, else those it had not accounted for: an extra draw)
+function stc_still_stamp(render3d_st: mut Render3dState, bit: int, vp: floats, vp2: floats, all: bool) -> void {
   let l = render3d_st.stc_actors
   if l == null { return }
+  let b = render3d_st.stc_b
   for i in 0 .. len(l) {
     let a = l[i]
-    a.sc_seen = render3d_st.sc_gen
-    a.sc_x = a.mat[12];  a.sc_y = a.mat[13];  a.sc_z = a.mat[14];  a.sc_vis = sc_casting(a)
+    if not all and (not sc_casting(a) or (a.sc_acc & bit) != 0) { continue }
+    var inside = false
+    if sc_casting(a) {
+      stc_bounds(a, b)
+      let r = stc_radius(b)
+      inside = ac_in_light(render3d_st, vp, b[0], b[1], b[2], r) or (vp2 != null and ac_in_light(render3d_st, vp2, b[0], b[1], b[2], r))
+    }
+    sc_stamp(a, bit, sc_casting(a), inside)
   }
 }
 

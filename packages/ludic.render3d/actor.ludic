@@ -99,6 +99,8 @@ property Actor {
   sc_z:       float = 0.0,
   sc_yaw:     float = 0.0,
   sc_vis:     bool = false,
+  sc_mask:    int = 0,          # the cached cascades (bits 1 << c) whose layer holds its depth (shadow_cache.ludic sc_track)
+  sc_acc:     int = 0,          # those that accounted for it: drew it, or held it outside their window when drawn
   # its levels of detail, finest first, and the distance each but the last reaches (actor_shadow_lods: lent by the game, which picks
   # the one the view draws as `model`); a sun cascade may cast a coarser one (ac_shadow_lod). sh_keep: the view's while it does
   sh_lods:    []Model,
@@ -292,7 +294,7 @@ function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
   if l == null or a == null { return }
   let r = a.row
   if r < 0 or r >= len(l) or l[r].id != a.id { return }
-  if a.still and a.sc_seen > 0 { render3d_st.sc_dirty = true }      # its shadow is in the cache (shadow_cache.ludic)
+  if a.still { sc_drop(render3d_st, a) }      # its shadow is in the cascades that hold it (shadow_cache.ludic)
   let last = List.pop(l)
   if last.id != a.id {
     l[r] = last
@@ -865,6 +867,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
   # a cache rebuild draws into a buffer of its own a cascade (the same cascade's moving casters are drawn the same frame)
   var slot = 1 + render3d_st.sh_cascade
   if render3d_st.sh_phase == SH_PHASE_STATIC { slot = AI_CACHE_SLOT + render3d_st.sh_cascade }
+  if render3d_st.sh_phase == SH_PHASE_EXTRA { slot = AI_VEL_SLOT }       # a cache's extra subjects (a few): each drawn on its own
   if not render3d_st.sh_local and slot < AI_VEL_SLOT and ai_on(render3d_st) {      # (the last slot is the motion pass's)
     ai_begin(render3d_st)
     for i in 0 .. len(render3d_st.ac_actors) {
@@ -905,6 +908,7 @@ function ac_phase_skips(render3d_st: Render3dState, a: Actor) -> bool {
   if render3d_st.sh_local { return false }
   if render3d_st.sh_phase == SH_PHASE_STATIC { return not a.still }
   if render3d_st.sh_phase == SH_PHASE_DYN { return a.still }
+  if render3d_st.sh_phase == SH_PHASE_EXTRA { return not a.still or (a.sc_acc & render3d_st.sc_extra_bit) != 0 }   # the ones not held yet
   return false
 }
 # whether actor a casts into the light light_vp is drawing now
@@ -919,6 +923,11 @@ function ac_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) ->
     let hh = a.model.height * 0.5 * a.scale
     let r = Math.max(a.radius * a.scale, hh)
     if not ac_in_light(render3d_st, light_vp, a.x, a.y + hh, a.z, r * 1.5) { return false }
+    # over a cached cascade, the moving casters are culled to the cascade's own slice of the view, not its camera-centred window
+    # (shadow_cache.ludic sc_dyn_cull: Unreal's movable pass is the view-fitted cascade's, ShadowSetup.cpp SDCM_MovablePrimitivesOnly)
+    if render3d_st.sc_dyn_cull and render3d_st.sh_phase == SH_PHASE_DYN and not render3d_st.sh_local {
+      if not ac_in_light(render3d_st, render3d_st.sc_dyn_vp, a.x, a.y + hh, a.z, r * 1.5) { return false }
+    }
   }
   # Inside the light box is not the same as able to shade anything this cascade covers: every actor
     # within 300 m sits inside the far cascades' boxes, whose receivers start 250 and 1100 m out - at
@@ -1052,7 +1061,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.shell = false;  a.strands = false;  a.own_blend = false;  a.spec = 1.0
   a.skin = null;  a.skin_owned = false;  a.ocol = null;  a.held = false
   a.prev_seen = -1;  a.prev_n = 0;  a.no_velocity = false;  a.vel_mark = -1;  a.vel_want = false
-  a.still = false;  a.sc_seen = 0;  a.ai_bframe = 0;  a.ai_pbframe = 0
+  a.still = false;  a.sc_seen = 0;  a.sc_mask = 0;  a.sc_acc = 0;  a.ai_bframe = 0;  a.ai_pbframe = 0
   a.sh_lods = null;  a.sh_lod_d = null;  a.sh_keep = null
   a.tag = "";  a.stc = false;  a.stc_vis = 0;  a.tpa = false
   return a

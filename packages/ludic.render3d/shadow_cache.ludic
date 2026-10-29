@@ -26,14 +26,28 @@
 # sc_step degrees ago); the daylight's sun moves smoothly for everything else. The live cascade casts along the newest step at once,
 # each cached one from its rebuild on.
 #
+# What a still caster's change costs (sc_track), as Unreal's CSM cache: a cascade is drawn again only when a caster its layer holds goes
+# or moves (CSMSceneExtension.cpp FCSMSceneExtension::FUpdater::PreSceneUpdate invalidates the FCachedShadowMapData whose
+# StaticShadowSubjectPersistentPrimitiveIdMap recorded a removed primitive - that cascade alone); a still caster the layer has not
+# accounted for (new, shown again, a terrain patch given another level) is drawn over it as an extra subject (ShadowSetup.cpp, the
+# SDCM_CSMScrolling relevance: a static primitive not in the map is drawn), since depth only ever gains a caster. Being hidden (a distance
+# cull, a level switched) removes nothing, as Unreal's draw distance and LOD selection leave the cache alone. Each actor keeps two cascade
+# masks: sc_mask the layers holding its depth (in their window when drawn), sc_acc the layers that accounted for it.
+#
+# Over a cached layer the moving casters are culled to the cascade's own slice of the view (shadow_fit, as Unreal's movable pass draws
+# the view-fitted cascade), not to the camera-centred window, which is four times its area and holds every car behind the camera.
+#
 # R3D_UE_SHADOW_CACHE=1 caches; 0 (the default, until proven) draws every cascade every frame as before; 2 draws the camera-centred
 # windows live every frame (to judge their texels against the slice fit). R3D_UE_SHADOW_CACHE_SLICES=1|2|3 (frames a rebuild takes),
-# _MARGIN (0.15), _SUN_STEP (degrees, 1), _TURN (degrees, 10).
+# _MARGIN (0.15), _SUN_STEP (degrees, 1), _TURN (degrees, 10). R3D_UE_SHADOW_CACHE_EXTRA=0: a new or shown caster rebuilds the cascades
+# (as before); _HIDE=1: a hidden one does too; _REMESH=1: a terrain patch's new level does too; _DYN_CULL=0: the moving casters culled
+# to the whole window.
 # ============================================================================
 
 export const SH_PHASE_ALL: int = 0           # every caster (the live cascade, or no cache)
 export const SH_PHASE_STATIC: int = 1        # the still casters, into a cached layer
 export const SH_PHASE_DYN: int = 2           # the moving casters, over a cached layer
+export const SH_PHASE_EXTRA: int = 3         # the still casters a cached layer has not accounted for, drawn over it (sc_track)
 export const SH_PART_ACTORS: int = 0         # a casters callback's parts, which a time slice draws a share of
 export const SH_PART_LAYERS: int = 1
 export const SH_PART_BUILDINGS: int = 2
@@ -54,7 +68,7 @@ function sc_live_window(render3d_st: mut Render3dState, c: int) -> void {
 # the casters callback asks, per part, whether this pass draws it
 export function shadow_casts(render3d_st: Render3dState, part: int) -> bool {
   if render3d_st.sh_phase == SH_PHASE_ALL { return true }
-  if render3d_st.sh_phase == SH_PHASE_DYN { return part == SH_PART_ACTORS }
+  if render3d_st.sh_phase == SH_PHASE_DYN or render3d_st.sh_phase == SH_PHASE_EXTRA { return part == SH_PART_ACTORS }
   if render3d_st.sh_part < 0 { return true }
   return sc_slice_of(render3d_st, part) == render3d_st.sh_part
 }
@@ -71,6 +85,12 @@ function shadow_cache_mode(render3d_st: mut Render3dState) -> int {
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_MARGIN") { render3d_st.sc_margin = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_MARGIN")), 0.02, 1.0) }
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_SUN_STEP") { render3d_st.sc_step = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_SUN_STEP")), 0.0) }
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_TURN") { render3d_st.sc_turn = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_TURN")), 0.0) }
+    render3d_st.sc_extra_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_EXTRA") and r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_EXTRA") == "0" { render3d_st.sc_extra_on = 0 }
+    render3d_st.sc_hide_dirty = r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_HIDE") and r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_HIDE") == "1"
+    render3d_st.sc_remesh_dirty = r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_REMESH") and r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_REMESH") == "1"
+    render3d_st.sc_dyn_on = 1
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_DYN_CULL") and r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_DYN_CULL") == "0" { render3d_st.sc_dyn_on = 0 }
     for c in 0 .. SHADOW_CASCADES { render3d_st.sc_slot[c] = -1;  render3d_st.sc_valid[c] = 0;  render3d_st.sc_stale[c] = 0;  render3d_st.sc_urgent[c] = 0 }
     v3_copy(render3d_st.sh_sun_target, render3d_st.sun_dir)
   }
@@ -199,10 +219,11 @@ function shadow_cache_plan(render3d_st: mut Render3dState) -> void {
   }
   render3d_st.sc_serial = render3d_st.sc_serial_now;  render3d_st.sc_shlayers = render3d_st.sh_layers
   sc_still_check(render3d_st)
-  if render3d_st.sc_dirty {
-    render3d_st.sc_dirty = false
-    for c in SC_FIRST .. SC_LAST + 1 { render3d_st.sc_stale[c] = 1 }
+  for c in SC_FIRST .. SC_LAST + 1 {
+    if render3d_st.sc_dirty or (render3d_st.sc_dirty_m & (1 << c)) != 0 { render3d_st.sc_stale[c] = 1 }
   }
+  render3d_st.sc_dirty = false
+  render3d_st.sc_dirty_m = 0
   # each cascade: rebuilt at once if it holds nothing or no longer covers what it must; due a rebuild in the background if half its
   # margin is used, the camera has turned, or the sun has stepped
   let turn = Math.cos(Math.deg_to_rad(render3d_st.sc_turn))
@@ -244,36 +265,89 @@ function shadow_cache_plan(render3d_st: mut Render3dState) -> void {
   }
 }
 
-# the still actors since the last static draw: one that came casting, moved, or began or stopped casting, puts every cached cascade due a rebuild (one that
-# went: actor_remove). Unreal invalidates a static primitive's cached shadow when it is added, moved or removed.
+# Once a frame, before the cascades are planned: every still caster's record (sc_track) - the stage's still actors, the static bucket's
+# (static_chunks.ludic) and the terrain pass's patches (terrain_pass.ludic). One that went is dropped by its remover (sc_drop).
 function sc_still_check(render3d_st: mut Render3dState) -> void {
-  let l = render3d_st.ac_actors
-  if l == null { return }
-  for i in 0 .. len(l) {
-    let a = l[i]
-    if not a.still { continue }
-    if a.sc_seen == 0 {
-      if sc_casting(a) { render3d_st.sc_dirty = true }
-      continue
-    }
-    if a.x != a.sc_x or a.y != a.sc_y or a.z != a.sc_z or a.yaw != a.sc_yaw or sc_casting(a) != a.sc_vis { render3d_st.sc_dirty = true }
+  render3d_st.sc_valid_m = 0
+  for c in SC_FIRST .. SC_LAST + 1 {
+    if render3d_st.sc_valid[c] == 1 { render3d_st.sc_valid_m = render3d_st.sc_valid_m | (1 << c) }
   }
-  stc_still_check(render3d_st)                 # and the static bucket's (static_chunks.ludic)
-  tpa_still_check(render3d_st)                 # and the terrain pass's patches (terrain_pass.ludic)
+  let l = render3d_st.ac_actors
+  if l != null {
+    for i in 0 .. len(l) {
+      let a = l[i]
+      if a.still { sc_track(render3d_st, a, sc_casting(a), a.x, a.y, a.z, a.yaw) }
+    }
+  }
+  stc_still_check(render3d_st)
+  tpa_still_check(render3d_st)
 }
 
-# the still actors a static draw saw, as it saw them
-function sc_still_stamp(render3d_st: mut Render3dState) -> void {
-  let l = render3d_st.ac_actors
-  if l == null { return }
-  for i in 0 .. len(l) {
-    let a = l[i]
-    if not a.still { continue }
-    a.sc_seen = render3d_st.sc_gen
-    a.sc_x = a.x;  a.sc_y = a.y;  a.sc_z = a.z;  a.sc_yaw = a.yaw;  a.sc_vis = sc_casting(a)
+# A still caster as it stands this frame: `cast` whether it casts, (x, y, z, yaw) its place. Moved: the cascades that hold it are due a
+# rebuild and it is new where it is. Re-meshed (sc_seen -1, terrain_patch_changed): new over its old depth. Casting and not accounted
+# for by a valid cascade: that cascade's extra subject this frame (sc_extra_m; R3D_UE_SHADOW_CACHE_EXTRA=0 a rebuild instead).
+function sc_track(render3d_st: mut Render3dState, a: Actor, cast: bool, x: float, y: float, z: float, yaw: float) -> void {
+  if a.sc_seen > 0 and (x != a.sc_x or y != a.sc_y or z != a.sc_z or yaw != a.sc_yaw) {
+    sc_drop(render3d_st, a)
+    a.sc_mask = 0;  a.sc_acc = 0
   }
-  stc_still_stamp(render3d_st)
-  tpa_still_stamp(render3d_st)
+  if a.sc_seen < 0 {
+    if render3d_st.sc_remesh_dirty { sc_drop(render3d_st, a);  a.sc_mask = 0 }
+    a.sc_acc = 0
+  }
+  if a.sc_seen > 0 and a.sc_vis and not cast and render3d_st.sc_hide_dirty {
+    sc_drop(render3d_st, a)
+    a.sc_mask = 0;  a.sc_acc = 0
+  }
+  if cast {
+    let want = render3d_st.sc_valid_m
+    let missing = want - (a.sc_acc & want)
+    if missing != 0 {
+      if render3d_st.sc_extra_on == 1 { render3d_st.sc_extra_m = render3d_st.sc_extra_m | missing }
+      else { render3d_st.sc_dirty_m = render3d_st.sc_dirty_m | missing }
+    }
+  }
+  if a.sc_seen <= 0 { a.sc_seen = 1 }
+  a.sc_x = x;  a.sc_y = y;  a.sc_z = z;  a.sc_yaw = yaw;  a.sc_vis = cast
+}
+# a still caster gone, moved or (by its switch) hidden: the cascades whose layer holds its depth are due a rebuild, no other
+export function sc_drop(render3d_st: mut Render3dState, a: Actor) -> void {
+  if a != null { render3d_st.sc_dirty_m = render3d_st.sc_dirty_m | a.sc_mask }
+}
+# cascade bit `bit`'s draw saw caster a: accounted for when it casts, held when it also lay inside the window
+function sc_stamp(a: Actor, bit: int, cast: bool, inside: bool) -> void {
+  a.sc_acc = a.sc_acc - (a.sc_acc & bit)
+  a.sc_mask = a.sc_mask - (a.sc_mask & bit)
+  if cast { a.sc_acc = a.sc_acc | bit }
+  if cast and inside { a.sc_mask = a.sc_mask | bit }
+}
+
+# what cascade c's static draw through vp (and vp2, when not null) saw: every still caster when `all` (a rebuild), else only those it
+# had not accounted for (an extra draw)
+function sc_still_stamp(render3d_st: mut Render3dState, c: int, vp: floats, vp2: floats, all: bool) -> void {
+  let bit = 1 << c
+  render3d_st.sh_cascade = c
+  let l = render3d_st.ac_actors
+  if l != null {
+    for i in 0 .. len(l) {
+      let a = l[i]
+      if not a.still { continue }
+      let cast = sc_casting(a)
+      if not all and (not cast or (a.sc_acc & bit) != 0) { continue }
+      var inside = false
+      if cast {
+        if a.radius == 0.0 or a.model == null { inside = true }
+        else {
+          let hh = a.model.height * 0.5 * a.scale
+          let r = Math.max(a.radius * a.scale, hh) * 1.5
+          inside = ac_in_light(render3d_st, vp, a.x, a.y + hh, a.z, r) or (vp2 != null and ac_in_light(render3d_st, vp2, a.x, a.y + hh, a.z, r))
+        }
+      }
+      sc_stamp(a, bit, cast, inside)
+    }
+  }
+  stc_still_stamp(render3d_st, bit, vp, vp2, all)
+  tpa_still_stamp(render3d_st, bit, vp, vp2, all)
 }
 # does it cast at all (a chunk shown or hidden by its own distance, a level of detail switched)
 function sc_casting(a: Actor) -> bool { return a.casts and (a.visible or a.cast_hidden) }
@@ -298,7 +372,7 @@ function shadow_cache_pass(render3d_st: mut Render3dState) -> void {
     if render3d_st.sc_urgent[c] == 0 { continue }
     any = true
     render3d_st.sc_gen += 1
-    sc_still_stamp(render3d_st)
+    sc_still_stamp(render3d_st, c, render3d_st.sc_vp_v[c], null, true)
     sc_static_draw(render3d_st, c, render3d_st.sc_slot[c], -1, true, render3d_st.sc_vp_v[c])
     render3d_st.sc_valid[c] = 1
     render3d_st.sc_urgent[c] = 0
@@ -309,7 +383,7 @@ function shadow_cache_pass(render3d_st: mut Render3dState) -> void {
   let j = render3d_st.sc_job
   if not any and j >= 0 {
     let part = render3d_st.sc_job_part
-    if part == sc_slice_of(render3d_st, SH_PART_ACTORS) { render3d_st.sc_gen += 1;  sc_still_stamp(render3d_st) }
+    if part == sc_slice_of(render3d_st, SH_PART_ACTORS) { render3d_st.sc_gen += 1;  sc_still_stamp(render3d_st, j, render3d_st.sc_jvp, null, true) }
     sc_static_draw(render3d_st, j, render3d_st.sc_spare, part, part == 0, render3d_st.sc_jvp)
     render3d_st.sc_job_part = part + 1
     if render3d_st.sc_job_part >= render3d_st.sc_slices {
@@ -323,6 +397,27 @@ function shadow_cache_pass(render3d_st: mut Render3dState) -> void {
       render3d_st.sc_slow += 1
     }
   }
+  # the still casters a valid layer has not accounted for (new, shown again, a patch's new level), drawn over it - and over the
+  # rebuild in the background too once that has drawn its actors, so the swapped-in layer holds them as well
+  if render3d_st.sc_extra_m != 0 {
+    prof_split(render3d_st, "shadow cache: extra")
+    render3d_st.sh_phase = SH_PHASE_EXTRA
+    for c in SC_FIRST .. SC_LAST + 1 {
+      let bit = 1 << c
+      if (render3d_st.sc_extra_m & bit) == 0 or render3d_st.sc_valid[c] == 0 { continue }
+      render3d_st.sc_extra_bit = bit
+      sc_static_draw(render3d_st, c, render3d_st.sc_slot[c], -1, false, render3d_st.sc_vp_v[c])
+      var vp2: floats = null
+      if render3d_st.sc_job == c and render3d_st.sc_job_part > 0 {
+        sc_static_draw(render3d_st, c, render3d_st.sc_spare, -1, false, render3d_st.sc_jvp)
+        vp2 = render3d_st.sc_jvp
+      }
+      sc_still_stamp(render3d_st, c, render3d_st.sc_vp_v[c], vp2, false)
+      render3d_st.sc_extras += 1
+    }
+    render3d_st.sc_extra_m = 0
+    render3d_st.sc_extra_bit = 0
+  }
   render3d_st.sh_phase = SH_PHASE_DYN
   render3d_st.sh_part = -1
   render3d_st.sh_cast_slack = 0.0
@@ -335,9 +430,22 @@ function shadow_cache_pass(render3d_st: mut Render3dState) -> void {
     n += 1
   }
   gpu_tex_copy_layers(render3d_st, render3d_st.sc_tex, render3d_st.sh_tex, true, render3d_st.sc_pairs, n)
-  # the moving casters over them, through the cached windows
+  # the moving casters over them, through the cached windows, each culled to its cascade's own slice of the view (shadow_fit: the
+  # receivers from where the cascade before blends into it, lighting.glsl sunShadowQ, to its split; within the fog wall)
+  let wall = r3d_reach(render3d_st, 0.0)
   for c in SC_FIRST .. SC_LAST + 1 {
     render3d_st.sh_cascade = c
+    render3d_st.sc_dyn_cull = false
+    if render3d_st.sc_dyn_on == 1 {
+      var far = render3d_st.sh_split[c]
+      if wall > 0.0 and far > wall { far = wall }
+      let lo = render3d_st.sh_split[c - 1] * 0.85
+      if far > lo + 1.0 {
+        shadow_fit(render3d_st, c, lo, far)
+        for i in 0 .. 16 { render3d_st.sc_dyn_vp[i] = render3d_st.sh_vp[c * 16 + i] }
+        render3d_st.sc_dyn_cull = true
+      }
+    }
     for i in 0 .. 16 { render3d_st.sh_vp[c * 16 + i] = render3d_st.sc_vp[c * 16 + i] }
     render3d_st.sh_range[c] = render3d_st.sc_range[c]
     render3d_st.sh_texel[c] = render3d_st.sc_texel[c]
@@ -345,6 +453,7 @@ function shadow_cache_pass(render3d_st: mut Render3dState) -> void {
     gpu_fb_depth_layer(render3d_st, render3d_st.sh_tex, c)
     sc_casters(render3d_st, c, shadow_cascade_vp(render3d_st, c))
   }
+  render3d_st.sc_dyn_cull = false
   render3d_st.sh_phase = SH_PHASE_ALL
   for c in SC_LAST + 1 .. SHADOW_CASCADES { render3d_st.sh_cascade = c;  shadow_cascade_none(render3d_st, c) }
 }
@@ -371,5 +480,5 @@ function sc_casters(render3d_st: mut Render3dState, c: int, vp: floats) -> void 
 @alloc_ok("profiling output, only under R3D_PROF")
 function shadow_cache_say(render3d_st: Render3dState) -> void {
   if render3d_st.sc_mode != 1 { return }
-  print(`shadow cache: {render3d_st.sc_builds} cascades rebuilt at once, {render3d_st.sc_slow} in the background, {render3d_st.sc_gen} static draws`)
+  print(`shadow cache: {render3d_st.sc_builds} cascades rebuilt at once, {render3d_st.sc_slow} in the background, {render3d_st.sc_gen} static draws, {render3d_st.sc_extras} extra draws`)
 }
