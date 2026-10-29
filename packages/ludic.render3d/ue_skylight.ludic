@@ -9,9 +9,13 @@
 # cube textures; lighting.glsl reads it with Unreal's GetSkyLightReflection and the SH with GetSkySHDiffuse (u_ue_sl).
 #
 # Unreal time-slices the capture over frames (ReflectionEnvironmentRealTimeCapture.cpp, r.SkyLight.RealTimeReflectionCapture.TimeSlice
-# 1, SkyCloudCubeFacePerFrame 2): here one step a frame of UE_SL_STEPS - the sky's faces two at a time, the mips, the convolution three
-# faces at a time, the SH - so a capture is spread over seven frames (the whole of it every frame was 3 ms of the island's); the first
-# is made at once. R3D_UE_SKYLIGHT_SLICE=0 makes the whole capture every time. UeSkyLight.capture_interval frames apart (1: as often as
+# 1, SkyCloudCubeFacePerFrame 2): here one step a frame - the sky's faces two at a time, the mips, the convolution, the SH - so a
+# capture is spread over frames (the whole of it every frame was 3 ms of the island's); the first is made at once. The convolution is
+# split as FScene::AllocateAndCaptureFrameSkyEnvMap's TimeSliceCount 12 states split it (State 3..5 mip 0 two faces each, 6 mip 1,
+# 7 mip 2, 8 mip 3, 9 mips 4..5, 10 mips 6..last, 11 the diffuse irradiance; no State 1, the clouds, as there are none): 13 steps
+# (UE_SL_STEPS_UE), where the convolution of every mip three faces at a time made 7 (R3D_UE_SKYLIGHT_SLICE12=0, UE_SL_STEPS). The same
+# work over more frames: a frame's share of it about half, the light a capture behind a few frames longer. R3D_UE_SKYLIGHT_SLICE=0
+# makes the whole capture every time. UeSkyLight.capture_interval frames apart (1: as often as
 # it can). Needs the Unreal sky (and its fog for the distant fog).
 # R3D_UE_SKYLIGHT=0 (or r3d_ue_skylight(st, false)) puts the photograph's convolved maps back; on by default with the Unreal sky.
 # ============================================================================
@@ -112,6 +116,16 @@ function ue_sl_face_draw(render3d_st: mut Render3dState, p: int, fbs: words, mip
 
 # After the sky LUTs and the fog's (ue_sky_luts), before the scene: capture, mips, convolution and SH
 const UE_SL_STEPS: int = 7
+const UE_SL_STEPS_UE: int = 13
+# Unreal's 12-state split of the convolution (R3D_UE_SKYLIGHT_SLICE12=0: the 7-step one)
+function ue_sl_steps(render3d_st: mut Render3dState) -> int {
+  if render3d_st.ue_sl_slice12 < 0 {
+    render3d_st.ue_sl_slice12 = 1
+    if r3d_env_has(render3d_st, "R3D_UE_SKYLIGHT_SLICE12") and r3d_env(render3d_st, "R3D_UE_SKYLIGHT_SLICE12") == "0" { render3d_st.ue_sl_slice12 = 0 }
+  }
+  if render3d_st.ue_sl_slice12 == 1 { return UE_SL_STEPS_UE }
+  return UE_SL_STEPS
+}
 function ue_skylight_pass(render3d_st: mut Render3dState) -> void {
   if not ue_skylight_on(render3d_st) or render3d_st.ue_sky_view == null or render3d_st.ue_distant == null { return }
   let sl = r3d_sky_light(render3d_st)
@@ -123,27 +137,34 @@ function ue_skylight_pass(render3d_st: mut Render3dState) -> void {
   # a capture begins only on its interval; once begun its steps run a frame each
   if render3d_st.ue_sl_ready and render3d_st.ue_sl_step == 0 and render3d_st.ue_sl_frame % max(sl.capture_interval, 1) != 0 { return }
   ue_sl_init(render3d_st)
+  let steps = ue_sl_steps(render3d_st)
   prof_begin(render3d_st, "UE sky light capture")
   gpu_depth_test(render3d_st, false)
   gpu_blend(render3d_st, false)
   if not render3d_st.ue_sl_ready or render3d_st.ue_sl_slice == 0 {
-    for s in 0 .. UE_SL_STEPS { ue_sl_step_run(render3d_st, sl, s) }
+    for s in 0 .. steps { ue_sl_step_run(render3d_st, sl, s, steps) }
     render3d_st.ue_sl_step = 0
   } else {
-    ue_sl_step_run(render3d_st, sl, render3d_st.ue_sl_step)
-    render3d_st.ue_sl_step = (render3d_st.ue_sl_step + 1) % UE_SL_STEPS
+    ue_sl_step_run(render3d_st, sl, render3d_st.ue_sl_step % steps, steps)
+    render3d_st.ue_sl_step = (render3d_st.ue_sl_step + 1) % steps
   }
   gpu_fb_bind(render3d_st, 0)
   render3d_st.ue_sl_ready = true
   prof_end(render3d_st)
 }
-# one step of a capture: 0..2 the sky's faces two at a time, 3 the mips, 4..5 the convolution three faces at a time, 6 the SH
-function ue_sl_step_run(render3d_st: mut Render3dState, sl: UeSkyLight, s: int) -> void {
+# one step of a capture: 0..2 the sky's faces two at a time, 3 the mips, then the convolution and last the SH. Of 7 steps: 4..5 the
+# convolution three faces at a time, 6 the SH. Of 13 (Unreal's States 3..11): 4..6 mip 0 two faces each, 7 mip 1, 8 mip 2, 9 mip 3,
+# 10 mips 4..5, 11 mips 6..last, 12 the SH
+function ue_sl_step_run(render3d_st: mut Render3dState, sl: UeSkyLight, s: int, steps: int) -> void {
   let mips = render3d_st.ue_sl_mips
   if s <= 2 { ue_sl_faces(render3d_st, sl, s * 2, s * 2 + 2) }
   else if s == 3 { ue_sl_mips_make(render3d_st, mips) }
-  else if s <= 5 { ue_sl_filter(render3d_st, mips, (s - 4) * 3, (s - 4) * 3 + 3) }
-  else { ue_sl_sh(render3d_st, mips) }
+  else if s == steps - 1 { ue_sl_sh(render3d_st, mips) }
+  else if steps == UE_SL_STEPS { ue_sl_filter(render3d_st, 0, mips, (s - 4) * 3, (s - 4) * 3 + 3) }
+  else if s <= 6 { ue_sl_filter(render3d_st, 0, 1, (s - 4) * 2, (s - 4) * 2 + 2) }
+  else if s <= 9 { ue_sl_filter(render3d_st, s - 6, s - 5, 0, 6) }
+  else if s == 10 { ue_sl_filter(render3d_st, 4, 6, 0, 6) }
+  else { ue_sl_filter(render3d_st, 6, mips, 0, 6) }
 }
 # the faces f0 .. f1 - 1: the sky (sky.frag's uniforms) with the distant fog (ue_fog.frag's) and the lower hemisphere
 function ue_sl_faces(render3d_st: mut Render3dState, sl: UeSkyLight, f0: int, f1: int) -> void {
@@ -173,13 +194,14 @@ function ue_sl_mips_make(render3d_st: mut Render3dState, mips: int) -> void {
     for f in 0 .. 6 { ue_sl_face_draw(render3d_st, p, dst, m, f) }
   }
 }
-# the specular convolution of the faces f0 .. f1 - 1, every mip, from the captured mips
-function ue_sl_filter(render3d_st: mut Render3dState, mips: int, f0: int, f1: int) -> void {
+# the specular convolution of the faces f0 .. f1 - 1 at the mips m0 .. m1 - 1 (RenderCubeFaces_SpecularConvolution), from the
+# captured mips
+function ue_sl_filter(render3d_st: mut Render3dState, m0: int, m1: int, f0: int, f1: int) -> void {
   let p = render3d_st.ue_sl_pf
   gpu_use_program(render3d_st, p)
   r3d_bind_tex(render3d_st, p, "sl_src", 0, GPU_TEX2D_ARRAY, render3d_st.ue_sl_cap)
   r3d_bind_tex(render3d_st, p, "sl_src2", 1, GPU_TEX2D_ARRAY, render3d_st.ue_sl_cap2)
-  for m in 0 .. mips {
+  for m in m0 .. min(m1, render3d_st.ue_sl_mips) {
     ue_sl_common(render3d_st, p, m)
     for f in f0 .. f1 { ue_sl_face_draw(render3d_st, p, render3d_st.ue_sl_flt_fb, m, f) }
   }

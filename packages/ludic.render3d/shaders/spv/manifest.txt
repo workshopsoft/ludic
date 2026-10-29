@@ -2977,7 +2977,7 @@ T 1837ffc4 u_ue_lph 23
 S 1837ffc4 u_ue_ls 24
 T 1837ffc4 u_ue_lsh 25
 P 10f784d6 fullscreen.vert ue_downsample.frag 
-B 10f784d6 frag 1 2464
+B 10f784d6 frag 1 2468
 U 10f784d6 frag u_cascade_vp 0 mat4 5 64
 U 10f784d6 frag u_cascade_split 320 float 5 16
 U 10f784d6 frag u_cascade_range 400 float 5 16
@@ -3062,6 +3062,7 @@ U 10f784d6 frag u_ter_far 2416 vec4 1 0
 U 10f784d6 frag u_lu_on 2432 vec4 1 0
 U 10f784d6 frag u_src_inv 2448 vec2 1 0
 U 10f784d6 frag u_out_inv 2456 vec2 1 0
+U 10f784d6 frag u_low 2464 float 1 0
 T 10f784d6 u_brdf 2
 T 10f784d6 u_hairsh 3
 T 10f784d6 u_hs_front 4
@@ -4478,9 +4479,10 @@ S d39e7116 u_ue_ls 21
 T d39e7116 u_ue_lsh 22
 T d39e7116 vf_carry 23
 T d39e7116 vf_cdepth 24
-T d39e7116 vf_hist 25
-T d39e7116 vf_prev_cdepth 26
-T d39e7116 vf_scatter 27
+T d39e7116 vf_groups 25
+T d39e7116 vf_hist 26
+T d39e7116 vf_prev_cdepth 27
+T d39e7116 vf_scatter 28
 P 1d59230d fullscreen.vert ue_volfog.frag #define VF_SCATTER;
 B 1d59230d frag 1 2888
 U 1d59230d frag u_cascade_vp 0 mat4 5 64
@@ -4615,9 +4617,10 @@ S 1d59230d u_ue_ls 21
 T 1d59230d u_ue_lsh 22
 T 1d59230d vf_carry 23
 T 1d59230d vf_cdepth 24
-T 1d59230d vf_hist 25
-T 1d59230d vf_prev_cdepth 26
-T 1d59230d vf_scatter 27
+T 1d59230d vf_groups 25
+T 1d59230d vf_hist 26
+T 1d59230d vf_prev_cdepth 27
+T 1d59230d vf_scatter 28
 P d85d5f09 fullscreen.vert ue_volfog.frag #define VF_CDEPTH;
 B d85d5f09 frag 1 2604
 U d85d5f09 frag u_cascade_vp 0 mat4 5 64
@@ -4735,9 +4738,10 @@ S d85d5f09 u_ue_ls 21
 T d85d5f09 u_ue_lsh 22
 T d85d5f09 vf_carry 23
 T d85d5f09 vf_cdepth 24
-T d85d5f09 vf_hist 25
-T d85d5f09 vf_prev_cdepth 26
-T d85d5f09 vf_scatter 27
+T d85d5f09 vf_groups 25
+T d85d5f09 vf_hist 26
+T d85d5f09 vf_prev_cdepth 27
+T d85d5f09 vf_scatter 28
 P 10c62079 fullscreen.vert ue_volfog.frag #define VF_INTEGRATE;#define VF_CARRY;
 B 10c62079 frag 1 2604
 U 10c62079 frag u_cascade_vp 0 mat4 5 64
@@ -4855,9 +4859,10 @@ S 10c62079 u_ue_ls 21
 T 10c62079 u_ue_lsh 22
 T 10c62079 vf_carry 23
 T 10c62079 vf_cdepth 24
-T 10c62079 vf_hist 25
-T 10c62079 vf_prev_cdepth 26
-T 10c62079 vf_scatter 27
+T 10c62079 vf_groups 25
+T 10c62079 vf_hist 26
+T 10c62079 vf_prev_cdepth 27
+T 10c62079 vf_scatter 28
 P 85cabfdc fullscreen.vert ue_volfog.frag #define VF_SCATTER;#define VF_ATLAS;
 B 85cabfdc frag 1 2888
 U 85cabfdc frag u_cascade_vp 0 mat4 5 64
@@ -4992,9 +4997,10 @@ S 85cabfdc u_ue_ls 21
 T 85cabfdc u_ue_lsh 22
 T 85cabfdc vf_carry 23
 T 85cabfdc vf_cdepth 24
-T 85cabfdc vf_hist 25
-T 85cabfdc vf_prev_cdepth 26
-T 85cabfdc vf_scatter 27
+T 85cabfdc vf_groups 25
+T 85cabfdc vf_hist 26
+T 85cabfdc vf_prev_cdepth 27
+T 85cabfdc vf_scatter 28
 P dd28137d fullscreen.vert ue_volfog.frag #define VF_INTEGRATE;#define VF_ATLAS;
 B dd28137d frag 1 2604
 U dd28137d frag u_cascade_vp 0 mat4 5 64
@@ -5112,9 +5118,254 @@ S dd28137d u_ue_ls 21
 T dd28137d u_ue_lsh 22
 T dd28137d vf_carry 23
 T dd28137d vf_cdepth 24
-T dd28137d vf_hist 25
-T dd28137d vf_prev_cdepth 26
-T dd28137d vf_scatter 27
+T dd28137d vf_groups 25
+T dd28137d vf_hist 26
+T dd28137d vf_prev_cdepth 27
+T dd28137d vf_scatter 28
+P c9092d50 fullscreen.vert ue_volfog.frag #define VF_INTEGRATE;#define VF_ATLAS;#define VF_GROUP;
+B c9092d50 frag 1 2616
+U c9092d50 frag u_cascade_vp 0 mat4 5 64
+U c9092d50 frag u_cascade_split 320 float 5 16
+U c9092d50 frag u_cascade_range 400 float 5 16
+U c9092d50 frag u_cascade_texel 480 float 5 16
+U c9092d50 frag u_sun_dir 560 vec3 1 0
+U c9092d50 frag u_sun_color 576 vec3 1 0
+U c9092d50 frag u_cam_pos 592 vec3 1 0
+U c9092d50 frag u_prefilter_levels 604 float 1 0
+U c9092d50 frag u_fog_density 608 float 1 0
+U c9092d50 frag u_fog_height_falloff 612 float 1 0
+U c9092d50 frag u_fog_base 616 float 1 0
+U c9092d50 frag u_clip_y 620 float 1 0
+U c9092d50 frag u_spec_scale 624 float 1 0
+U c9092d50 frag u_sky_rot 632 vec2 1 0
+U c9092d50 frag u_ground_alb 640 vec3 1 0
+U c9092d50 frag u_ground_alb_hi 656 vec3 1 0
+U c9092d50 frag u_ground_hi_y 668 float 1 0
+U c9092d50 frag u_ground_hi_w 672 float 1 0
+U c9092d50 frag u_ibl_scale 688 vec3 1 0
+U c9092d50 frag u_daylight 700 float 1 0
+U c9092d50 frag u_fire_pos 704 vec3 1 0
+U c9092d50 frag u_fire_color 720 vec3 1 0
+U c9092d50 frag u_hand_pos 736 vec3 1 0
+U c9092d50 frag u_hand_color 752 vec3 1 0
+U c9092d50 frag u_hand_dir 768 vec3 1 0
+U c9092d50 frag u_hand_cone 780 float 1 0
+U c9092d50 frag u_hand_reach 784 float 1 0
+U c9092d50 frag u_ue_sl 788 float 1 0
+U c9092d50 frag u_ue_sl_size 792 float 1 0
+U c9092d50 frag u_ue_sl_mips 796 float 1 0
+U c9092d50 frag u_ue_sl_color 800 vec3 1 0
+U c9092d50 frag u_dither_frame 812 float 1 0
+U c9092d50 frag u_card_cut 816 vec2 1 0
+U c9092d50 frag u_ts_origin 824 vec2 1 0
+U c9092d50 frag u_ts_half 832 float 1 0
+U c9092d50 frag u_ts_on 836 float 1 0
+U c9092d50 frag u_force_cascade 840 int 1 0
+U c9092d50 frag u_shadow_tan_max 844 float 1 0
+U c9092d50 frag u_cloud_shadow 848 float 1 0
+U c9092d50 frag u_time 852 float 1 0
+U c9092d50 frag u_lz 864 vec4 32 16
+U c9092d50 frag u_lz_n 1376 int 1 0
+U c9092d50 frag u_zl 1392 vec4 32 16
+U c9092d50 frag u_zl_n 1904 int 1 0
+U c9092d50 frag u_zl_color 1920 vec3 1 0
+U c9092d50 frag u_zl_reach 1932 float 1 0
+U c9092d50 frag u_char_lit 1936 float 1 0
+U c9092d50 frag u_cl_dir0 1952 vec3 1 0
+U c9092d50 frag u_cl_dir1 1968 vec3 1 0
+U c9092d50 frag u_cl_dir2 1984 vec3 1 0
+U c9092d50 frag u_cl_col0 2000 vec3 1 0
+U c9092d50 frag u_cl_col1 2016 vec3 1 0
+U c9092d50 frag u_cl_col2 2032 vec3 1 0
+U c9092d50 frag u_ll_n 2044 int 1 0
+U c9092d50 frag u_lg_on 2048 float 1 0
+U c9092d50 frag u_lg_vp 2064 mat4 1 0
+U c9092d50 frag u_lg_zp 2128 vec4 1 0
+U c9092d50 frag u_lg_grid 2144 vec4 1 0
+U c9092d50 frag u_lg_view 2160 vec2 1 0
+U c9092d50 frag u_ue_ls_n 2168 int 1 0
+U c9092d50 frag u_ue_ls_size 2172 float 1 0
+U c9092d50 frag u_ue_lp_n 2176 int 1 0
+U c9092d50 frag u_fog_inscatter 2180 float 1 0
+U c9092d50 frag u_fog_desat 2184 float 1 0
+U c9092d50 frag u_fog_wall 2188 float 1 0
+U c9092d50 frag u_fog_haze 2192 float 1 0
+U c9092d50 frag u_fog_cut 2200 vec2 1 0
+U c9092d50 frag u_sky_relight 2208 float 1 0
+U c9092d50 frag u_surf 2224 vec4 1 0
+U c9092d50 frag u_surf_b 2240 vec4 1 0
+U c9092d50 frag u_surf_c 2256 vec4 1 0
+U c9092d50 frag u_surf_d 2272 vec4 1 0
+U c9092d50 frag u_surf_e 2288 vec4 1 0
+U c9092d50 frag u_s2 2304 vec4 1 0
+U c9092d50 frag u_s2_b 2320 vec4 1 0
+U c9092d50 frag u_s2_c 2336 vec4 1 0
+U c9092d50 frag u_s2_d 2352 vec4 1 0
+U c9092d50 frag u_s2_e 2368 vec4 1 0
+U c9092d50 frag u_surf_q 2384 vec4 1 0
+U c9092d50 frag u_surf_q2 2400 vec4 1 0
+U c9092d50 frag u_ter_far 2416 vec4 1 0
+U c9092d50 frag u_lu_on 2432 vec4 1 0
+U c9092d50 frag vf_grid 2448 vec3 1 0
+U c9092d50 frag vf_zp 2464 vec3 1 0
+U c9092d50 frag vf_slice 2476 float 1 0
+U c9092d50 frag vf_inv_vp 2480 mat4 1 0
+U c9092d50 frag vf_cam 2544 vec3 1 0
+U c9092d50 frag vf_fwd 2560 vec3 1 0
+U c9092d50 frag vf_screen 2576 vec2 1 0
+U c9092d50 frag vf_pixel 2584 float 1 0
+U c9092d50 frag vf_tiles 2592 vec2 1 0
+U c9092d50 frag vf_fade_inv 2600 float 1 0
+U c9092d50 frag vf_group 2608 vec2 1 0
+T c9092d50 u_brdf 2
+T c9092d50 u_depth 3
+T c9092d50 u_hairsh 4
+T c9092d50 u_hs_front 5
+T c9092d50 u_irradiance 6
+T c9092d50 u_lu 7
+T c9092d50 u_prefilter 8
+T c9092d50 u_s2_arm 9
+T c9092d50 u_s2_diff 10
+T c9092d50 u_s2_nrm 11
+T c9092d50 u_shadow 12
+T c9092d50 u_tershadow 13
+T c9092d50 u_tershadow_aux 14
+T c9092d50 u_ts_height 15
+S c9092d50 u_ue_lg_data 16
+S c9092d50 u_ue_lg_num 17
+S c9092d50 u_ue_lights 18
+S c9092d50 u_ue_lp 19
+T c9092d50 u_ue_lph 20
+S c9092d50 u_ue_ls 21
+T c9092d50 u_ue_lsh 22
+T c9092d50 vf_carry 23
+T c9092d50 vf_cdepth 24
+T c9092d50 vf_groups 25
+T c9092d50 vf_hist 26
+T c9092d50 vf_prev_cdepth 27
+T c9092d50 vf_scatter 28
+P 3a53d463 fullscreen.vert ue_volfog.frag #define VF_INTEGRATE;#define VF_ATLAS;#define VF_GROUPED;
+B 3a53d463 frag 1 2616
+U 3a53d463 frag u_cascade_vp 0 mat4 5 64
+U 3a53d463 frag u_cascade_split 320 float 5 16
+U 3a53d463 frag u_cascade_range 400 float 5 16
+U 3a53d463 frag u_cascade_texel 480 float 5 16
+U 3a53d463 frag u_sun_dir 560 vec3 1 0
+U 3a53d463 frag u_sun_color 576 vec3 1 0
+U 3a53d463 frag u_cam_pos 592 vec3 1 0
+U 3a53d463 frag u_prefilter_levels 604 float 1 0
+U 3a53d463 frag u_fog_density 608 float 1 0
+U 3a53d463 frag u_fog_height_falloff 612 float 1 0
+U 3a53d463 frag u_fog_base 616 float 1 0
+U 3a53d463 frag u_clip_y 620 float 1 0
+U 3a53d463 frag u_spec_scale 624 float 1 0
+U 3a53d463 frag u_sky_rot 632 vec2 1 0
+U 3a53d463 frag u_ground_alb 640 vec3 1 0
+U 3a53d463 frag u_ground_alb_hi 656 vec3 1 0
+U 3a53d463 frag u_ground_hi_y 668 float 1 0
+U 3a53d463 frag u_ground_hi_w 672 float 1 0
+U 3a53d463 frag u_ibl_scale 688 vec3 1 0
+U 3a53d463 frag u_daylight 700 float 1 0
+U 3a53d463 frag u_fire_pos 704 vec3 1 0
+U 3a53d463 frag u_fire_color 720 vec3 1 0
+U 3a53d463 frag u_hand_pos 736 vec3 1 0
+U 3a53d463 frag u_hand_color 752 vec3 1 0
+U 3a53d463 frag u_hand_dir 768 vec3 1 0
+U 3a53d463 frag u_hand_cone 780 float 1 0
+U 3a53d463 frag u_hand_reach 784 float 1 0
+U 3a53d463 frag u_ue_sl 788 float 1 0
+U 3a53d463 frag u_ue_sl_size 792 float 1 0
+U 3a53d463 frag u_ue_sl_mips 796 float 1 0
+U 3a53d463 frag u_ue_sl_color 800 vec3 1 0
+U 3a53d463 frag u_dither_frame 812 float 1 0
+U 3a53d463 frag u_card_cut 816 vec2 1 0
+U 3a53d463 frag u_ts_origin 824 vec2 1 0
+U 3a53d463 frag u_ts_half 832 float 1 0
+U 3a53d463 frag u_ts_on 836 float 1 0
+U 3a53d463 frag u_force_cascade 840 int 1 0
+U 3a53d463 frag u_shadow_tan_max 844 float 1 0
+U 3a53d463 frag u_cloud_shadow 848 float 1 0
+U 3a53d463 frag u_time 852 float 1 0
+U 3a53d463 frag u_lz 864 vec4 32 16
+U 3a53d463 frag u_lz_n 1376 int 1 0
+U 3a53d463 frag u_zl 1392 vec4 32 16
+U 3a53d463 frag u_zl_n 1904 int 1 0
+U 3a53d463 frag u_zl_color 1920 vec3 1 0
+U 3a53d463 frag u_zl_reach 1932 float 1 0
+U 3a53d463 frag u_char_lit 1936 float 1 0
+U 3a53d463 frag u_cl_dir0 1952 vec3 1 0
+U 3a53d463 frag u_cl_dir1 1968 vec3 1 0
+U 3a53d463 frag u_cl_dir2 1984 vec3 1 0
+U 3a53d463 frag u_cl_col0 2000 vec3 1 0
+U 3a53d463 frag u_cl_col1 2016 vec3 1 0
+U 3a53d463 frag u_cl_col2 2032 vec3 1 0
+U 3a53d463 frag u_ll_n 2044 int 1 0
+U 3a53d463 frag u_lg_on 2048 float 1 0
+U 3a53d463 frag u_lg_vp 2064 mat4 1 0
+U 3a53d463 frag u_lg_zp 2128 vec4 1 0
+U 3a53d463 frag u_lg_grid 2144 vec4 1 0
+U 3a53d463 frag u_lg_view 2160 vec2 1 0
+U 3a53d463 frag u_ue_ls_n 2168 int 1 0
+U 3a53d463 frag u_ue_ls_size 2172 float 1 0
+U 3a53d463 frag u_ue_lp_n 2176 int 1 0
+U 3a53d463 frag u_fog_inscatter 2180 float 1 0
+U 3a53d463 frag u_fog_desat 2184 float 1 0
+U 3a53d463 frag u_fog_wall 2188 float 1 0
+U 3a53d463 frag u_fog_haze 2192 float 1 0
+U 3a53d463 frag u_fog_cut 2200 vec2 1 0
+U 3a53d463 frag u_sky_relight 2208 float 1 0
+U 3a53d463 frag u_surf 2224 vec4 1 0
+U 3a53d463 frag u_surf_b 2240 vec4 1 0
+U 3a53d463 frag u_surf_c 2256 vec4 1 0
+U 3a53d463 frag u_surf_d 2272 vec4 1 0
+U 3a53d463 frag u_surf_e 2288 vec4 1 0
+U 3a53d463 frag u_s2 2304 vec4 1 0
+U 3a53d463 frag u_s2_b 2320 vec4 1 0
+U 3a53d463 frag u_s2_c 2336 vec4 1 0
+U 3a53d463 frag u_s2_d 2352 vec4 1 0
+U 3a53d463 frag u_s2_e 2368 vec4 1 0
+U 3a53d463 frag u_surf_q 2384 vec4 1 0
+U 3a53d463 frag u_surf_q2 2400 vec4 1 0
+U 3a53d463 frag u_ter_far 2416 vec4 1 0
+U 3a53d463 frag u_lu_on 2432 vec4 1 0
+U 3a53d463 frag vf_grid 2448 vec3 1 0
+U 3a53d463 frag vf_zp 2464 vec3 1 0
+U 3a53d463 frag vf_slice 2476 float 1 0
+U 3a53d463 frag vf_inv_vp 2480 mat4 1 0
+U 3a53d463 frag vf_cam 2544 vec3 1 0
+U 3a53d463 frag vf_fwd 2560 vec3 1 0
+U 3a53d463 frag vf_screen 2576 vec2 1 0
+U 3a53d463 frag vf_pixel 2584 float 1 0
+U 3a53d463 frag vf_tiles 2592 vec2 1 0
+U 3a53d463 frag vf_fade_inv 2600 float 1 0
+U 3a53d463 frag vf_group 2608 vec2 1 0
+T 3a53d463 u_brdf 2
+T 3a53d463 u_depth 3
+T 3a53d463 u_hairsh 4
+T 3a53d463 u_hs_front 5
+T 3a53d463 u_irradiance 6
+T 3a53d463 u_lu 7
+T 3a53d463 u_prefilter 8
+T 3a53d463 u_s2_arm 9
+T 3a53d463 u_s2_diff 10
+T 3a53d463 u_s2_nrm 11
+T 3a53d463 u_shadow 12
+T 3a53d463 u_tershadow 13
+T 3a53d463 u_tershadow_aux 14
+T 3a53d463 u_ts_height 15
+S 3a53d463 u_ue_lg_data 16
+S 3a53d463 u_ue_lg_num 17
+S 3a53d463 u_ue_lights 18
+S 3a53d463 u_ue_lp 19
+T 3a53d463 u_ue_lph 20
+S 3a53d463 u_ue_ls 21
+T 3a53d463 u_ue_lsh 22
+T 3a53d463 vf_carry 23
+T 3a53d463 vf_cdepth 24
+T 3a53d463 vf_groups 25
+T 3a53d463 vf_hist 26
+T 3a53d463 vf_prev_cdepth 27
+T 3a53d463 vf_scatter 28
 P f25c1efa fullscreen.vert ue_volfog.frag #define VF_CDEPTH_DOWN;
 B f25c1efa frag 1 2600
 U f25c1efa frag u_cascade_vp 0 mat4 5 64
@@ -5231,9 +5482,10 @@ S f25c1efa u_ue_ls 21
 T f25c1efa u_ue_lsh 22
 T f25c1efa vf_carry 23
 T f25c1efa vf_cdepth 24
-T f25c1efa vf_hist 25
-T f25c1efa vf_prev_cdepth 26
-T f25c1efa vf_scatter 27
+T f25c1efa vf_groups 25
+T f25c1efa vf_hist 26
+T f25c1efa vf_prev_cdepth 27
+T f25c1efa vf_scatter 28
 P 57d4c705 fullscreen.vert taa_mv.frag 
 B 57d4c705 frag 1 2640
 U 57d4c705 frag u_cascade_vp 0 mat4 5 64
@@ -5663,7 +5915,7 @@ T 3a1797ab u_ue_lph 20
 S 3a1797ab u_ue_ls 21
 T 3a1797ab u_ue_lsh 22
 P 725523d9 fullscreen.vert tonemap.frag 
-B 725523d9 frag 1 2656
+B 725523d9 frag 1 2672
 U 725523d9 frag u_cascade_vp 0 mat4 5 64
 U 725523d9 frag u_cascade_split 320 float 5 16
 U 725523d9 frag u_cascade_range 400 float 5 16
@@ -5759,18 +6011,20 @@ U 725523d9 frag u_bloom_strength 2516 float 1 0
 U 725523d9 frag u_vignette 2520 float 1 0
 U 725523d9 frag u_saturation 2524 float 1 0
 U 725523d9 frag u_contrast 2528 float 1 0
-U 725523d9 frag u_ue 2532 float 1 0
-U 725523d9 frag u_lut_size 2536 float 1 0
-U 725523d9 frag u_lut_max 2540 float 1 0
-U 725523d9 frag u_scene_tint 2544 vec3 1 0
-U 725523d9 frag u_vignette_ue 2560 vec4 1 0
-U 725523d9 frag u_grain_rand 2576 vec2 1 0
-U 725523d9 frag u_dither 2584 float 1 0
-U 725523d9 frag u_le_on 2588 float 1 0
-U 725523d9 frag u_le_a 2592 vec4 1 0
-U 725523d9 frag u_le_b 2608 vec4 1 0
-U 725523d9 frag u_le_c 2624 vec4 1 0
-U 725523d9 frag u_le_d 2640 vec4 1 0
+U 725523d9 frag u_fold_grain 2532 float 1 0
+U 725523d9 frag u_fold_time 2536 float 1 0
+U 725523d9 frag u_ue 2540 float 1 0
+U 725523d9 frag u_lut_size 2544 float 1 0
+U 725523d9 frag u_lut_max 2548 float 1 0
+U 725523d9 frag u_scene_tint 2560 vec3 1 0
+U 725523d9 frag u_vignette_ue 2576 vec4 1 0
+U 725523d9 frag u_grain_rand 2592 vec2 1 0
+U 725523d9 frag u_dither 2600 float 1 0
+U 725523d9 frag u_le_on 2604 float 1 0
+U 725523d9 frag u_le_a 2608 vec4 1 0
+U 725523d9 frag u_le_b 2624 vec4 1 0
+U 725523d9 frag u_le_c 2640 vec4 1 0
+U 725523d9 frag u_le_d 2656 vec4 1 0
 T 725523d9 u_adapt 2
 T 725523d9 u_ao 3
 T 725523d9 u_bloom 4
@@ -5800,7 +6054,7 @@ T 725523d9 u_ue_lph 27
 S 725523d9 u_ue_ls 28
 T 725523d9 u_ue_lsh 29
 P a4683767 fullscreen.vert tonemap.frag #define HDR10;
-B a4683767 frag 1 2668
+B a4683767 frag 1 2684
 U a4683767 frag u_cascade_vp 0 mat4 5 64
 U a4683767 frag u_cascade_split 320 float 5 16
 U a4683767 frag u_cascade_range 400 float 5 16
@@ -5896,21 +6150,23 @@ U a4683767 frag u_bloom_strength 2516 float 1 0
 U a4683767 frag u_vignette 2520 float 1 0
 U a4683767 frag u_saturation 2524 float 1 0
 U a4683767 frag u_contrast 2528 float 1 0
-U a4683767 frag u_ue 2532 float 1 0
-U a4683767 frag u_lut_size 2536 float 1 0
-U a4683767 frag u_lut_max 2540 float 1 0
-U a4683767 frag u_scene_tint 2544 vec3 1 0
-U a4683767 frag u_vignette_ue 2560 vec4 1 0
-U a4683767 frag u_grain_rand 2576 vec2 1 0
-U a4683767 frag u_dither 2584 float 1 0
-U a4683767 frag u_le_on 2588 float 1 0
-U a4683767 frag u_le_a 2592 vec4 1 0
-U a4683767 frag u_le_b 2608 vec4 1 0
-U a4683767 frag u_le_c 2624 vec4 1 0
-U a4683767 frag u_le_d 2640 vec4 1 0
-U a4683767 frag u_hdr_paper 2656 float 1 0
-U a4683767 frag u_hdr_peak 2660 float 1 0
-U a4683767 frag u_hdr_black 2664 float 1 0
+U a4683767 frag u_fold_grain 2532 float 1 0
+U a4683767 frag u_fold_time 2536 float 1 0
+U a4683767 frag u_ue 2540 float 1 0
+U a4683767 frag u_lut_size 2544 float 1 0
+U a4683767 frag u_lut_max 2548 float 1 0
+U a4683767 frag u_scene_tint 2560 vec3 1 0
+U a4683767 frag u_vignette_ue 2576 vec4 1 0
+U a4683767 frag u_grain_rand 2592 vec2 1 0
+U a4683767 frag u_dither 2600 float 1 0
+U a4683767 frag u_le_on 2604 float 1 0
+U a4683767 frag u_le_a 2608 vec4 1 0
+U a4683767 frag u_le_b 2624 vec4 1 0
+U a4683767 frag u_le_c 2640 vec4 1 0
+U a4683767 frag u_le_d 2656 vec4 1 0
+U a4683767 frag u_hdr_paper 2672 float 1 0
+U a4683767 frag u_hdr_peak 2676 float 1 0
+U a4683767 frag u_hdr_black 2680 float 1 0
 T a4683767 u_adapt 2
 T a4683767 u_ao 3
 T a4683767 u_bloom 4
@@ -19582,4 +19838,4 @@ S 4e2a2d71 u_ue_lp 22
 T 4e2a2d71 u_ue_lph 23
 S 4e2a2d71 u_ue_ls 24
 T 4e2a2d71 u_ue_lsh 25
-E 149
+E 151

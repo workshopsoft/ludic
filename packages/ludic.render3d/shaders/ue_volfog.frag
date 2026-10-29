@@ -160,9 +160,57 @@ uniform float vf_fade_inv;          // VolumetricFogNearFadeInDistanceInv
 uniform sampler2D vf_carry;         // the integration through the slice before (VF_CARRY): in-scattering, transmittance
 layout(location = 1) out vec4 o_carry;
 #endif
+// VF_GROUP / VF_GROUPED (with VF_ATLAS): FinalIntegrationCS's march is a thread's loop over the column's slices, once; a fragment
+// can write only its own cell, and VF_INTEGRATE alone has each integrate every slice before it again (GridSizeZ^2 / 2 steps a
+// column). Instead the slices go in groups of vf_group.x: VF_GROUP writes each group's own sum (a texel a column a group, the
+// groups side by side, vf_group.y of them), and VF_GROUPED a cell from the sums of the groups before its own and the slices of its
+// own up to it. The march's steps are associative (a group is in-scattering S and transmittance T: S0 + T0 S1, T0 T1), so it is
+// the same sum in about 2 sqrt(GridSizeZ) steps.
+#if defined(VF_GROUP) || defined(VF_GROUPED)
+uniform vec2 vf_group;              // x: slices a group, y: the groups
+#endif
+#ifdef VF_GROUPED
+uniform sampler2D vf_groups;        // VF_GROUP's sums: in-scattering, transmittance
+#endif
+// one step of the march: slice k's cell into the sum so far (ENERGY_CONSERVING_INTEGRATION), its length its depth step over the
+// ray's cosine, faded in over VolumetricFogNearFadeInDistance from the first slice's near face
+void vfIntegrateStep(vec4 se, float k, float invCos, inout vec3 acc, inout float trans) {
+  float d0 = vfDepthFromSlice(0.0);
+  float pd = k < 0.5 ? d0 : vfDepthFromSlice(k - 0.5);
+  float d = vfDepthFromSlice(k + 0.5);
+  float stepLen = (d - pd) * invCos;
+  float t = exp(-se.w * stepLen);
+  float fade = clamp((d - d0) * invCos * vf_fade_inv, 0.0, 1.0);
+  acc += fade * (se.rgb - se.rgb * t) / max(se.w, 0.00001) * trans;
+  trans *= mix(1.0, t, fade);
+}
+// 1 / the cosine of the column's ray to the view's forward (the cells' centres lie on it)
+float vfInvCos(vec2 cell) {
+  float unusedC;
+  vec3 p0 = vfCellPos(vec3(cell, 0.0), vec3(0.5, 0.5, 0.0), unusedC);
+  return 1.0 / max(dot(normalize(p0 - vf_cam), vf_fwd), 0.0001);
+}
 #endif
 
 void main() {
+#ifdef VF_GROUP
+  // the texel: its group across, its cell's column within the group's block (v_uv spans the target)
+  {
+    ivec2 gsz = ivec2(vf_grid.xy);
+    ivec2 fcg = ivec2(floor(v_uv * vec2(vf_grid.x * vf_group.y, vf_grid.y)));
+    int g = fcg.x / gsz.x;
+    ivec2 cellG = ivec2(fcg.x - g * gsz.x, fcg.y);
+    int gn = int(vf_group.x + 0.5);
+    int k0 = g * gn;
+    int k1 = min(k0 + gn, int(vf_grid.z));
+    float invCosG = vfInvCos(vec2(cellG));
+    vec3 accG = vec3(0.0);
+    float transG = 1.0;
+    for (int k = k0; k < k1; k++) vfIntegrateStep(texelFetch(vf_scatter, vfAtlasTexel(cellG, k), 0), float(k), invCosG, accG, transG);
+    o_color = vec4(accG, transG);
+    return;
+  }
+#endif
 #ifdef VF_CDEPTH_DOWN
   // the furthest (reversed z: the least) of the 4 x 4 pixels under this texel, an HZB level of 4 for VF_CDEPTH
   ivec2 dhi = textureSize(u_depth, 0) - 1;
@@ -305,6 +353,18 @@ void main() {
   acc = prev.rgb + fade * (se.rgb - se.rgb * t) / max(se.w, 0.00001) * prev.a;   // ENERGY_CONSERVING_INTEGRATION
   trans = prev.a * mix(1.0, t, fade);
   o_carry = vec4(acc, trans);
+#elif defined(VF_GROUPED)
+  // the groups wholly before this cell's, then its own group's slices up to it
+  int gnS = int(vf_group.x + 0.5);
+  int zS = int(slice + 0.5);
+  int gEnd = zS / gnS;
+  for (int g = 0; g < 128; g++) {
+    if (g >= gEnd) break;
+    vec4 pg = texelFetch(vf_groups, ivec2(g * int(vf_grid.x) + cellI.x, cellI.y), 0);
+    acc += trans * pg.rgb;
+    trans *= pg.a;
+  }
+  for (int k = gEnd * gnS; k <= zS; k++) vfIntegrateStep(texelFetch(vf_scatter, vfAtlasTexel(cellI, k), 0), float(k), invCos, acc, trans);
 #else
   for (int k = 0; k < 128; k++) {
     if (float(k) > slice) break;

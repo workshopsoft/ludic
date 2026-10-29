@@ -269,11 +269,14 @@ function occ_hzb_size(render3d_st: mut Render3dState, w: int, h: int) -> void {
   gpu_buffer_gpu_owned(render3d_st, render3d_st.occ_hzb_buf)
 }
 
-# mips a build dispatch writes: one by default; R3D_HZB_BATCH=1 four as Unreal's FHZBBuildCS (HZB.usf MAX_MIP_BATCH_SIZE). Off since
-# 2026-10-28: on the RTX 3070 Ti at 4K the batched build took 2.18 ms against 1.68 ms a mip a dispatch (island downtown, crowd x3)
+# mips a build dispatch writes: by default two, the pair build (hzb_build.comp pr.info.y 2: each thread a 2 x 2 of the first mip and
+# the next mip's texel, no shared memory, no barrier); R3D_HZB_PAIR=0 one a dispatch; R3D_HZB_BATCH=1 four as Unreal's FHZBBuildCS
+# (HZB.usf MAX_MIP_BATCH_SIZE), off since 2026-10-28: on the RTX 3070 Ti at 4K the batched build took 2.18 ms against 1.68 ms a mip
+# a dispatch (island downtown, crowd x3)
 function occ_hzb_batch(render3d_st: mut Render3dState) -> int {
   if render3d_st.occ_hzb_batch == 0 {
-    render3d_st.occ_hzb_batch = 1
+    render3d_st.occ_hzb_batch = 2
+    if r3d_env_has(render3d_st, "R3D_HZB_PAIR") and r3d_env(render3d_st, "R3D_HZB_PAIR") == "0" { render3d_st.occ_hzb_batch = 1 }
     if r3d_env_has(render3d_st, "R3D_HZB_BATCH") and r3d_env(render3d_st, "R3D_HZB_BATCH") == "1" { render3d_st.occ_hzb_batch = 4 }
   }
   return render3d_st.occ_hzb_batch
@@ -371,12 +374,18 @@ function occ_hzb_make(render3d_st: mut Render3dState) -> void {
   while m < render3d_st.occ_hzb_n_mips {
     let k = min(batch, render3d_st.occ_hzb_n_mips - m)
     if m == 0 { pr[0] = w;  pr[1] = h;  pr[2] = 0;  pr[3] = 0 } else { pr[0] = mips[m * 4 - 4];  pr[1] = mips[m * 4 - 3];  pr[2] = mips[m * 4 - 2];  pr[3] = 1 }
-    pr[4] = k;  pr[5] = 0;  pr[6] = 0;  pr[7] = 0
+    var pair = 0
+    if batch == 2 { pair = 2 }
+    pr[4] = k;  pr[5] = pair;  pr[6] = 0;  pr[7] = 0
     for j in 0 .. 4 {
       let s = min(m + j, m + k - 1) * 4
       pr[8 + j * 4] = mips[s];  pr[9 + j * 4] = mips[s + 1];  pr[10 + j * 4] = mips[s + 2];  pr[11 + j * 4] = 0
     }
-    gpu_dispatch_tex(render3d_st, render3d_st.occ_hzb_build, data_of(pr), 96, bufs, texs, (mips[m * 4] + 7) / 8, (mips[m * 4 + 1] + 7) / 8)
+    # the pair build's thread makes a 2 x 2 of the first mip: its groups cover half the first mip's size
+    var gx = (mips[m * 4] + 7) / 8
+    var gy = (mips[m * 4 + 1] + 7) / 8
+    if pair == 2 { gx = ((mips[m * 4] + 1) / 2 + 7) / 8;  gy = ((mips[m * 4 + 1] + 1) / 2 + 7) / 8 }
+    gpu_dispatch_tex(render3d_st, render3d_st.occ_hzb_build, data_of(pr), 96, bufs, texs, gx, gy)
     m += k
   }
   # DeferredShadingRenderer.cpp: the furthest HZB is extracted into ViewState->PrevFrameViewInfo.HZB when instance occlusion culling is on,

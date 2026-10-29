@@ -17,6 +17,11 @@
 # The grid is a 2D atlas, a tile a slice (ue_volfog.frag VF_ATLAS): one pass scatters every cell and one integrates them, where the
 # array grid (R3D_UE_VOLFOG_ATLAS=0) took a pass a slice for each. Unreal writes a 3D texture from compute; this GPU layer has no
 # 3D or storage-image targets, and a pass a slice was a render pass a slice.
+# FinalIntegrationCS marches each column once; an atlas fragment writes only its own cell, so it integrated every slice before it again
+# (GridSizeZ^2 / 2 steps a column, 0.17 ms at 1080p on the RTX 3070 Ti). With grouped (the default) the slices go in groups of
+# UE_VF_GROUP: one pass sums each group alone (ue_volfog.frag VF_GROUP, a small target), the next a cell from the sums of the groups
+# before it and its own group's slices (VF_GROUPED): the same march, associative, in about 2 sqrt(GridSizeZ) steps a cell
+# (R3D_UE_VOLFOG_GROUPED=0: the whole march a cell).
 # R3D_UE_VOLFOG=0 (or r3d_ue_volfog(st, false)) turns it off; needs Unreal's fog.
 # ============================================================================
 
@@ -44,7 +49,8 @@ property UeVolFog {
   offset_threshold_to_accept_depth_buffer_offset: float = 1.0,
   conservative_depth: bool = true,                     # r.VolumetricFog.ConservativeDepth
   march: bool = true,                                  # the integration carried slice to slice (R3D_UE_VOLFOG_MARCH), array grid only
-  atlas: bool = true                                   # the grid as one 2D atlas (R3D_UE_VOLFOG_ATLAS)
+  atlas: bool = true,                                  # the grid as one 2D atlas (R3D_UE_VOLFOG_ATLAS)
+  grouped: bool = true                                 # the atlas integrated through slice groups' sums (R3D_UE_VOLFOG_GROUPED)
 }
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
@@ -57,6 +63,7 @@ export function r3d_volumetric_fog(render3d_st: mut Render3dState) -> UeVolFog {
     if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_CONSERVATIVE_DEPTH") and r3d_env(render3d_st, "R3D_UE_VOLFOG_CONSERVATIVE_DEPTH") == "0" { render3d_st.ue_vf_s.conservative_depth = false }
     if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_ATLAS") and r3d_env(render3d_st, "R3D_UE_VOLFOG_ATLAS") == "0" { render3d_st.ue_vf_s.atlas = false }
     if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_MARCH") and r3d_env(render3d_st, "R3D_UE_VOLFOG_MARCH") == "0" { render3d_st.ue_vf_s.march = false }
+    if r3d_env_has(render3d_st, "R3D_UE_VOLFOG_GROUPED") and r3d_env(render3d_st, "R3D_UE_VOLFOG_GROUPED") == "0" { render3d_st.ue_vf_s.grouped = false }
   }
   return render3d_st.ue_vf_s
 }
@@ -113,6 +120,7 @@ function ue_vf_free(render3d_st: mut Render3dState) -> void {
   if render3d_st.ue_vf_ta != null { target_free(render3d_st, render3d_st.ue_vf_ta);  render3d_st.ue_vf_ta = null }
   if render3d_st.ue_vf_tb != null { target_free(render3d_st, render3d_st.ue_vf_tb);  render3d_st.ue_vf_tb = null }
   if render3d_st.ue_vf_ti != null { target_free(render3d_st, render3d_st.ue_vf_ti);  render3d_st.ue_vf_ti = null }
+  if render3d_st.ue_vf_tg != null { target_free(render3d_st, render3d_st.ue_vf_tg);  render3d_st.ue_vf_tg = null }
   if render3d_st.ue_vf_cd_a != null { target_free(render3d_st, render3d_st.ue_vf_cd_a);  render3d_st.ue_vf_cd_a = null }
   if render3d_st.ue_vf_cd_b != null { target_free(render3d_st, render3d_st.ue_vf_cd_b);  render3d_st.ue_vf_cd_b = null }
   if render3d_st.ue_vf_cdq != null { target_free(render3d_st, render3d_st.ue_vf_cdq);  render3d_st.ue_vf_cdq = null }
@@ -145,6 +153,8 @@ function ue_vf_init(render3d_st: mut Render3dState) -> void {
     render3d_st.ue_vf_ta = target_new(render3d_st, aw, ah, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
     render3d_st.ue_vf_tb = target_new(render3d_st, aw, ah, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
     render3d_st.ue_vf_ti = target_new(render3d_st, aw, ah, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+    # the slice groups' sums, the groups side by side (full floats: a group's transmittance is a product of its slices')
+    render3d_st.ue_vf_tg = target_new(render3d_st, gw * ue_vf_groups(gz), gh, GPU_RGBA32F, GPU_RGBA, GPU_FLOAT, false, GPU_NEAREST)
     return
   }
   render3d_st.ue_vf_fb_a = words(gz);  render3d_st.ue_vf_fb_b = words(gz);  render3d_st.ue_vf_fb_i = words(gz)
@@ -176,8 +186,15 @@ function ue_vf_programs(render3d_st: mut Render3dState) -> void {
     render3d_st.ue_vf_pi = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_INTEGRATE\n")
     render3d_st.ue_vf_pc = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_CDEPTH\n")
     render3d_st.ue_vf_pm = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_INTEGRATE\n#define VF_CARRY\n")
+    render3d_st.ue_vf_pga = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_INTEGRATE\n#define VF_ATLAS\n#define VF_GROUP\n")
+    render3d_st.ue_vf_pia2 = r3d_program(render3d_st, "fullscreen.vert", "ue_volfog.frag", "#define VF_INTEGRATE\n#define VF_ATLAS\n#define VF_GROUPED\n")
   }
 }
+
+# the integration's slices a group (about sqrt(GridSizeZ): the steps before a cell are its groups plus its own group's slices) and
+# the groups of gz slices
+const UE_VF_GROUP: int = 8
+function ue_vf_groups(gz: int) -> int { return (gz + UE_VF_GROUP - 1) / UE_VF_GROUP }
 
 # GetVolumetricFogGridZParams / CalculateGridZParams (NearOffset 0.095 m), into o (B, O, S)
 function ue_vf_zparams(render3d_st: mut Render3dState, o: floats) -> void {
@@ -309,7 +326,27 @@ function ue_volfog_pass(render3d_st: mut Render3dState) -> void {
   var fade_inv = 100000000.0
   if vf.near_fade_in_distance > 0.0 { fade_inv = 1.0 / vf.near_fade_in_distance }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_fade_inv"), fade_inv)
-  if vf.atlas {
+  if vf.atlas and vf.grouped and render3d_st.ue_vf_tg != null {
+    # the groups' sums, then the cells from them (VF_GROUP, VF_GROUPED)
+    let ng = ue_vf_groups(gz)
+    p = render3d_st.ue_vf_pga
+    gpu_use_program(render3d_st, p)
+    ue_vf_common(render3d_st, p)
+    r3d_bind_2d(render3d_st, p, "vf_scatter", 0, cur_t.color)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_fade_inv"), fade_inv)
+    u_f2(render3d_st, gpu_uniform(render3d_st, p, "vf_group"), float(UE_VF_GROUP), float(ng))
+    target_bind(render3d_st, render3d_st.ue_vf_tg)
+    mesh_draw(render3d_st, render3d_st.post_fs)
+    p = render3d_st.ue_vf_pia2
+    gpu_use_program(render3d_st, p)
+    ue_vf_common(render3d_st, p)
+    r3d_bind_2d(render3d_st, p, "vf_scatter", 0, cur_t.color)
+    r3d_bind_2d(render3d_st, p, "vf_groups", 1, render3d_st.ue_vf_tg.color)
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "vf_fade_inv"), fade_inv)
+    u_f2(render3d_st, gpu_uniform(render3d_st, p, "vf_group"), float(UE_VF_GROUP), float(ng))
+    target_bind(render3d_st, render3d_st.ue_vf_ti)
+    mesh_draw(render3d_st, render3d_st.post_fs)
+  } else if vf.atlas {
     target_bind(render3d_st, render3d_st.ue_vf_ti)
     mesh_draw(render3d_st, render3d_st.post_fs)
   }

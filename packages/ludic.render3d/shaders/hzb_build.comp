@@ -4,11 +4,16 @@
 // the furthest of mip k's 2 x 2 (its edge clamped the same way). Kept in one storage buffer, mip after mip, as device depth.
 // As FHZBBuildCS, one dispatch writes up to 4 mips (HZB.usf MAX_MIP_BATCH_SIZE, kMaxMipBatchSize = 4): an 8 x 8 group writes an
 // 8 x 8 tile of the batch's first mip and reduces it in group shared memory (SharedFurthestDepth) to 4 x 4, 2 x 2 and 1 x 1 of the
-// next mips. pr.info.x = 1 is one mip a dispatch (R3D_HZB_BATCH=0, the old build).
+// next mips. pr.info.x = 1 is one mip a dispatch (R3D_HZB_PAIR=0, the old build).
+// pr.info.y = 2 is the pair build (occlusion.ludic's default): the same pyramid two mips a dispatch with no shared memory and no
+// barrier - an 8 x 8 group covers 16 x 16 of the first mip, each thread its 2 x 2 (from the 4 x 4 of the source under them) and the
+// one texel of the next mip they make. Unreal's batch of four kept 3/4, 15/16 and 63/64 of each group idle at its barriers while
+// the dispatch's first mip waited on them (measured slower on the RTX 3070 Ti); this halves the dispatches and their barriers and
+// keeps every thread busy.
 layout(local_size_x = 8, local_size_y = 8) in;
 layout(set = 0, binding = 0) uniform Params {
   ivec4 src;            // the source's width, height, first float in Hzb (the mip before the batch); w: 0 from the depth, 1 from Hzb
-  ivec4 info;           // x: the mips this dispatch writes (1..4)
+  ivec4 info;           // x: the mips this dispatch writes (1..4; the pair build 1..2), y: 2 the pair build
   ivec4 lv[4];          // each written mip's width, height, first float in Hzb
 } pr;
 layout(set = 0, binding = 1) buffer Hzb { float hzb[]; };
@@ -22,6 +27,24 @@ float src(ivec2 q) {
 void main() {
   ivec2 l = ivec2(gl_LocalInvocationID.xy);
   ivec2 g = ivec2(gl_WorkGroupID.xy);
+  if (pr.info.y == 2) {
+    // the pair build: o the thread's texel of the second mip, its 2 x 2 of the first; a first-mip texel past the edge takes the
+    // edge's own value (as the second mip's clamped read of it would) and is not written
+    ivec4 a = pr.lv[0];
+    ivec2 o = g * 8 + l;
+    float m = 1.0;
+    for (int j = 0; j < 4; j++) {
+      ivec2 pp = o * 2 + ivec2(j & 1, j >> 1);
+      ivec2 pc = min(pp, a.xy - 1);
+      ivec2 qq = pc * 2;
+      float dd = min(min(src(qq), src(qq + ivec2(1, 0))), min(src(qq + ivec2(0, 1)), src(qq + ivec2(1, 1))));
+      if (all(equal(pp, pc))) hzb[a.z + pp.y * a.x + pp.x] = dd;
+      m = min(m, dd);
+    }
+    ivec4 b = pr.lv[1];
+    if (pr.info.x >= 2 && o.x < b.x && o.y < b.y) hzb[b.z + o.y * b.x + o.x] = m;
+    return;
+  }
   // the batch's first mip, a thread a texel; one past the mip's edge takes the edge's own texel, so every thread reaches the barriers
   ivec4 l0 = pr.lv[0];
   ivec2 p = min(g * 8 + l, l0.xy - 1);
