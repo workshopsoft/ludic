@@ -114,7 +114,15 @@ property Actor {
   stc_vis:    int = 0,
   stc_d:      float = 0.0,             # that pass's distance from the camera to its box's centre (the front-to-back order)
   # in the terrain pass's bucket (terrain_pass.ludic: actor_new_terrain), not on the stage; row is its place there
-  tpa:        bool = false
+  tpa:        bool = false,
+  # drawn into the runtime virtual texture and reading it (rvt.ludic actor_rvt: a ground patch, a road's near chunk); rvt_in: the world
+  # rect (metres) it was last drawn into the pages over, for the streaming watch's invalidation
+  rvt:        bool = false,
+  rvt_in:     bool = false,
+  rvt_x0:     float = 0.0,
+  rvt_z0:     float = 0.0,
+  rvt_x1:     float = 0.0,
+  rvt_z1:     float = 0.0
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
@@ -288,6 +296,7 @@ function actor_init(render3d_st: mut Render3dState) -> void {
 # off the stage: the last actor takes its row, so the list stays dense and nothing is rebuilt
 # (it was a new list of every other actor per removal, never freed)
 function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
+  if a != null and a.rvt_in { rvt_actor_gone(render3d_st, a) }   # what it drew into the RVT's pages is drawn again (rvt.ludic)
   if a != null and a.stc { stc_remove(render3d_st, a);  return }   # the static bucket's (static_chunks.ludic)
   if a != null and a.tpa { tpa_remove(render3d_st, a);  return }   # the terrain pass's (terrain_pass.ludic)
   let l = render3d_st.ac_actors
@@ -1064,6 +1073,7 @@ function actor_fresh(render3d_st: mut Render3dState) -> Actor {
   a.still = false;  a.sc_seen = 0;  a.sc_mask = 0;  a.sc_acc = 0;  a.ai_bframe = 0;  a.ai_pbframe = 0
   a.sh_lods = null;  a.sh_lod_d = null;  a.sh_keep = null
   a.tag = "";  a.stc = false;  a.stc_vis = 0;  a.tpa = false
+  a.rvt = false;  a.rvt_in = false
   return a
 }
 

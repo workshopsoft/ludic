@@ -52,6 +52,7 @@ function vkmem_report(render3d_st: Render3dState) -> void {
   vkmem_big_bufs(render3d_st)
   vkmem_say_ring(render3d_st.gvk_ring_peak, gvk_ring_bytes(render3d_st))
   tp_report(render3d_st)
+  rvt_report(render3d_st)
 }
 
 # the largest images, with their owner, size and format

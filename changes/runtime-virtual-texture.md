@@ -1,6 +1,7 @@
 # Runtime virtual texture for the ground and the roads (planned, on hold)
 
-Status: planned 2026-10-29, not started. Held until the bigger frame-time items are done.
+Status: implemented 2026-10-29 behind `R3D_RVT=1` / `r3d_rvt_set` (OccuTown: `OCCUTOWN_RVT=1`), off by default until shot and profiled
+(packages/ludic.render3d/rvt.ludic, shaders/rvt_feedback.comp, model.frag RVT_WRITE / rvtFetch). Not yet run: steps 6 (verify) open.
 
 ## Why
 

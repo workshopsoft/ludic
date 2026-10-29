@@ -18,8 +18,74 @@ uniform float u_model_h;
 layout(location = 0) out vec4 o_color;
 layout(location = 1) out vec4 o_sss_alb;
 uniform float u_sss_u;
+#elif defined(RVT_WRITE)
+// A runtime virtual texture page (rvt.ludic): the surface's shading inputs, before any light, top-down into the page's rect of the two
+// atlases - base colour (sRGB) and AO; normal x, z, metal (sRGB-coded) and roughness - as Unreal's Runtime Virtual Texture Output
+// node writes BaseColor, Normal, Roughness, Specular into its page (RuntimeVirtualTextureRender.cpp RenderPage, the material's
+// virtual texture output path). The page's depth is the surface's height (the shading tests a pixel against it).
+layout(location = 0) out vec4 o_color;
+layout(location = 1) out vec4 o_rvt_b;
 #else
 out vec4 o_color;
+#endif
+// R3D_RVT (rvt.ludic): the ground's patches and the roads' near chunks read their surfaces from the runtime virtual texture instead of
+// the layer stack below, where it holds them; only the actors' lit programs that reach the surfaces read it
+#if !defined(FABRIC) && !defined(EYE) && !defined(SSS_SPLIT) && !defined(TRANSLUCENT) && !defined(RVT_WRITE) && !defined(FOLIAGE) && !defined(CARD) && !defined(BLADE) && !defined(FLOWER) && !defined(SHADOW_PASS) && !defined(EQ_PASS)
+#define RVT_READ
+#define RVT_MIPS 9
+uniform float u_rvt_on;          // this draw's actor is drawn into the RVT (rvt.ludic actor_rvt), and the pool is live
+uniform vec4 u_rvt_p;            // the near band's metres (the full surfaces inside it), the far end, level 0's texel (m), the mip bias
+uniform vec4 u_rvt_q;            // levels, window pages a side, atlas tiles a side, the atlas's texels a side
+uniform vec4 u_rvt_y;            // the page depth's lowest height, its range (m)
+uniform vec4 u_rvt_win[RVT_MIPS];   // each level's window: its corner in render space (x, z), its first page modulo the window (x, z)
+uniform sampler2D u_rvt_a;       // base colour (sRGB), AO
+uniform sampler2D u_rvt_b;       // normal x, z, metal (sRGB-coded), roughness
+uniform sampler2D u_rvt_h;       // the pages' depth: the height of the surface each texel caught (nearest)
+readonly buffer u_rvt_pt { uint rvt_pt[]; };   // the page table: a level's window entries, (slot + 1) | (the resident level << 16), 0 none
+// Unreal's virtual texture sample (VirtualTextureCommon.ush TextureComputeVirtualMipLevel, MipLevelAniso2D, GetStochasticMipNoise;
+// TextureLoadVirtualPageTable): the level from the place's screen derivatives in level 0's texels (the minor axis, raised where the
+// major outruns an 8-tap anisotropy), the mip bias and a per-pixel noise (InterleavedGradientNoise over the frame's index mod 8: the
+// temporal resolve blends the two levels), the page table's entry for that level's page (its nearest resident parent where the page is
+// not in), then the page's texels by its physical rect with the derivatives scaled to it (anisotropic within the page's 4-texel border).
+// False where nothing is resident or the page caught another surface at this place (a bridge's deck over the ground, a tunnel's roof).
+bool rvtFetch(vec3 wp, vec3 dpx, vec3 dpy, out vec3 alb, out vec3 n, out vec3 arm) {
+  alb = vec3(0.0);  n = vec3(0.0, 1.0, 0.0);  arm = vec3(1.0, 0.5, 0.0);
+  float t0 = u_rvt_p.z;
+  vec2 gx = dpx.xz, gy = dpy.xz;
+  float px = dot(gx, gx) / (t0 * t0), py = dot(gy, gy) / (t0 * t0);
+  float lmin = 0.5 * log2(max(min(px, py), 1e-12)), lmax = 0.5 * log2(max(max(px, py), 1e-12));
+  float lod = lmax - min(lmax - lmin, 3.0) + u_rvt_p.w;
+  float rnd = ign(gl_FragCoord.xy + 5.588238 * mod(u_dither_frame, 8.0));
+  int W = int(u_rvt_q.y);
+  int m = clamp(int(floor(lod + rnd)), 0, RVT_MIPS - 1);
+  uint e = 0u;
+  for (; m < RVT_MIPS; m++) {
+    float S = exp2(float(m)) * t0 * 128.0;
+    vec2 l = (wp.xz - u_rvt_win[m].xy) / S;
+    if (l.x < 0.0 || l.y < 0.0 || l.x >= float(W) || l.y >= float(W)) continue;
+    ivec2 ix = (ivec2(u_rvt_win[m].zw) + ivec2(floor(l))) % W;
+    e = rvt_pt[(m * W + ix.y) * W + ix.x];
+    break;
+  }
+  if (e == 0u) return false;
+  int slot = int(e & 0xFFFFu) - 1;
+  int md = min(int(e >> 16), RVT_MIPS - 1);
+  float Sd = exp2(float(md)) * t0 * 128.0;
+  vec2 f = fract((wp.xz - u_rvt_win[md].xy) / Sd);
+  int ts = int(u_rvt_q.z);
+  float inv = 1.0 / u_rvt_q.w;
+  vec2 uv = (vec2(float(slot % ts), float(slot / ts)) * 136.0 + 4.0 + f * 128.0) * inv;
+  float hd = textureLod(u_rvt_h, uv, 0.0).r;
+  if (hd <= 0.0 || abs(u_rvt_y.x + hd * u_rvt_y.y - wp.y) > 0.3 + 4.0 * Sd / 128.0) return false;
+  float k = 128.0 * inv / Sd;
+  vec4 a = textureGrad(u_rvt_a, uv, gx * k, gy * k);
+  vec4 b = textureGrad(u_rvt_b, uv, gx * k, gy * k);
+  alb = a.rgb;
+  vec2 nxz = b.rg * 2.0 - 1.0;
+  n = normalize(vec3(nxz.x, sqrt(max(1.0 - dot(nxz, nxz), 0.0)), nxz.y));
+  arm = vec3(a.a, b.a, b.b);
+  return true;
+}
 #endif
 uniform sampler2D u_diff;
 // a glTF material's factors, as 1 - factor (a program never given them reads 1) and its emission
@@ -342,10 +408,10 @@ void main() {
 #ifdef SSS_SPLIT
   if (v_uv.x >= u_sss_u) discard;
 #endif
-#ifndef EQ_PASS
+#if !defined(EQ_PASS) && !defined(RVT_WRITE)
   // (the EQ_PASS variant draws over the foliage prepass: any discard at all would switch
   //  early depth rejection off and bring the overdraw back, and the prepass has already
-  //  cut both the clip plane and the alpha)
+  //  cut both the clip plane and the alpha; a virtual texture page keeps every surface it covers)
   if (v_wpos.y < u_clip_y) discard;
 #ifndef SHADOW_PASS
   if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
@@ -356,7 +422,12 @@ void main() {
 #endif
 #endif
   vec3 N = normalize(v_nrm);
+#ifdef RVT_WRITE
+  // the page is seen from straight above, whatever its projection's winding: the surface it keeps is the one facing up
+  if (N.y < 0.0) N = -N;
+#else
   if (!gl_FrontFacing && v_hull >= 0.0) N = -N;
+#endif
 #ifdef BLADE
   // A blade is thin and two-sided: the sun lights whichever face it reaches (the other glows
   // through, below). Faced away from the sun, half the meadow was lit by the sky alone.
@@ -709,19 +780,49 @@ void main() {
   if (u_surf.x > 0.0) {
     vec3 base = (vec3(1.0) - u_fac_base_inv.rgb) * v_col.rgb;
     vec3 sa, sn, sr;
+    bool fromRvt = false;
+#ifdef RVT_READ
+    // R3D_RVT: the page's base colour, normal and AO/roughness/metal where the RVT holds this place (a level-ish pixel past the near
+    // band - dithered over a metre - and short of the far end). The choice is made for the whole 2 x 2 quad (any pixel of it that
+    // cannot read the RVT sends all four to the layer stack: dFdxFine/dFdyFine of the flag), so the stack's derivatives below are
+    // never taken across a quad half of which skipped it.
+    if (u_rvt_on > 0.5) {
+      vec3 rdx = dFdx(v_wpos), rdy = dFdy(v_wpos);
+      float bad = 1.0;
+      float band = u_rvt_p.x + ign(gl_FragCoord.yx + 7.31 * mod(u_dither_frame, 8.0));
+      if (N.y > 0.7 && dist > band && dist < u_rvt_p.y && rvtFetch(v_wpos, rdx, rdy, sa, sn, sr)) bad = 0.0;
+      bad += abs(dFdxFine(bad));
+      bad += abs(dFdyFine(bad));
+      fromRvt = bad < 0.5;
+    }
+#endif
+    if (fromRvt) {
+      d.rgb = sa;
+      n = sn;
+      arm = sr;
+    } else {
     // two surfaces: the ground's (its second's share 0), or a world-laid mesh's alternative in patches (a kit's alternative,
     // by instance, is kit.frag's: a model in a kit's material keeps the first alone)
     bool ground = u_s2.x > 0.0 && u_s2_e.y == 0.0;
+#ifndef RVT_WRITE
     // R3D_STATIC_FAR_SIMPLE (u_surf_q.w 0): the normal below is the geometric one from 120 m on (smoothstep(30, 120, dist)), so the
-    // surfaces' normal maps are not read there
+    // surfaces' normal maps are not read there (a virtual texture page keeps its normals at every distance)
     if (u_surf_q.w < 0.5) g_surf_flat_at = 120.0;
+#endif
     if (ground || (u_s2.x > 0.0 && u_surf.y < 0.5)) surfaceGround(u_diff, u_nrm, u_arm, v_wpos, N, base, v_uv, sa, sn, sr);
     else surfaceAtP(u_diff, u_nrm, u_arm, surfMain(), surfPlace(surfMain(), v_wpos, v_uv, v_wpos), N, N, v_wpos, base, sa, sn, sr);
     d.rgb = (u_surf_b.x > 0.5 || ground) ? sa : sa * v_col.rgb;
     n = sn;
     arm = vec3(sr.r, sr.g * (1.0 - u_fac_mr_inv.x), sr.b * (1.0 - u_fac_mr_inv.y));
     if (u_surf_e.z > 0.0 || u_surf_e.w > 0.0) surfKerb(v_uv, v_wpos, N, d.rgb, n, arm);
+    }
   }
+#endif
+#ifdef RVT_WRITE
+  // the page's texel: the shading inputs as the lit pass would take them here (before the actor's tint and the distance's flattening)
+  o_color = vec4(clamp(d.rgb, 0.0, 1.0), clamp(arm.r, 0.0, 1.0));
+  o_rvt_b = vec4(clamp(n.x * 0.5 + 0.5, 0.0, 1.0), clamp(n.z * 0.5 + 0.5, 0.0, 1.0), clamp(arm.b, 0.0, 1.0), clamp(arm.g, 0.0, 1.0));
+  return;
 #endif
   n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
   alb = d.rgb;

@@ -437,6 +437,7 @@ function static_chunks_draw(render3d_st: mut Render3dState) -> void {
       if want != ap {
         ap = want
         ac_bind_scene(render3d_st, ap)
+        rvt_bind(render3d_st, ap.prog)        # the runtime virtual texture (rvt.ludic): the roads' near chunks read it
         gpu_use_program(render3d_st, ap.prog)
         u_f(render3d_st, ap.l_skin, 0.0)
         u_f(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_shadow_tan_max"), ACTOR_SHADOW_TAN)
@@ -451,6 +452,7 @@ function static_chunks_draw(render3d_st: mut Render3dState) -> void {
         u_f(render3d_st, ap.l_clit, a.char_lit)
         gpu_cull(render3d_st, a.one_sided)
         u_v3(render3d_st, ap.l_tint, a.tint)
+        rvt_actor(render3d_st, ap.prog, a)
       }
       if a.ptint != null {
         if a.ptint[p * 4] != 0 { u_f3(render3d_st, ap.l_tint, float_from_bits(a.ptint[p * 4 + 1]), float_from_bits(a.ptint[p * 4 + 2]), float_from_bits(a.ptint[p * 4 + 3])) }
@@ -470,6 +472,9 @@ function static_chunks_draw(render3d_st: mut Render3dState) -> void {
       tris += pr.mesh.count / 3
     }
     gpu_cull(render3d_st, true)
+    # the flag off again: the actors' pass shares the programs and reads no RVT
+    rvt_unbind(render3d_st, render3d_st.ac_lit.prog)
+    if render3d_st.ac_lit_cut != null { rvt_unbind(render3d_st, render3d_st.ac_lit_cut.prog) }
   }
   if main {
     render3d_st.stc_drawn = shown

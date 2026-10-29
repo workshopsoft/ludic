@@ -671,6 +671,110 @@ S 5161e6ba u_ue_lp 20
 T 5161e6ba u_ue_lph 21
 S 5161e6ba u_ue_ls 22
 T 5161e6ba u_ue_lsh 23
+P 65858d5d fullscreen.vert rvt_clear.frag 
+B 65858d5d frag 0 2448
+U 65858d5d frag u_cascade_vp 0 mat4 5 64
+U 65858d5d frag u_cascade_split 320 float 5 16
+U 65858d5d frag u_cascade_range 400 float 5 16
+U 65858d5d frag u_cascade_texel 480 float 5 16
+U 65858d5d frag u_sun_dir 560 vec3 1 0
+U 65858d5d frag u_sun_color 576 vec3 1 0
+U 65858d5d frag u_cam_pos 592 vec3 1 0
+U 65858d5d frag u_prefilter_levels 604 float 1 0
+U 65858d5d frag u_fog_density 608 float 1 0
+U 65858d5d frag u_fog_height_falloff 612 float 1 0
+U 65858d5d frag u_fog_base 616 float 1 0
+U 65858d5d frag u_clip_y 620 float 1 0
+U 65858d5d frag u_spec_scale 624 float 1 0
+U 65858d5d frag u_sky_rot 632 vec2 1 0
+U 65858d5d frag u_ground_alb 640 vec3 1 0
+U 65858d5d frag u_ground_alb_hi 656 vec3 1 0
+U 65858d5d frag u_ground_hi_y 668 float 1 0
+U 65858d5d frag u_ground_hi_w 672 float 1 0
+U 65858d5d frag u_ibl_scale 688 vec3 1 0
+U 65858d5d frag u_daylight 700 float 1 0
+U 65858d5d frag u_fire_pos 704 vec3 1 0
+U 65858d5d frag u_fire_color 720 vec3 1 0
+U 65858d5d frag u_hand_pos 736 vec3 1 0
+U 65858d5d frag u_hand_color 752 vec3 1 0
+U 65858d5d frag u_hand_dir 768 vec3 1 0
+U 65858d5d frag u_hand_cone 780 float 1 0
+U 65858d5d frag u_hand_reach 784 float 1 0
+U 65858d5d frag u_ue_sl 788 float 1 0
+U 65858d5d frag u_ue_sl_size 792 float 1 0
+U 65858d5d frag u_ue_sl_mips 796 float 1 0
+U 65858d5d frag u_ue_sl_color 800 vec3 1 0
+U 65858d5d frag u_dither_frame 812 float 1 0
+U 65858d5d frag u_card_cut 816 vec2 1 0
+U 65858d5d frag u_ts_origin 824 vec2 1 0
+U 65858d5d frag u_ts_half 832 float 1 0
+U 65858d5d frag u_ts_on 836 float 1 0
+U 65858d5d frag u_force_cascade 840 int 1 0
+U 65858d5d frag u_shadow_tan_max 844 float 1 0
+U 65858d5d frag u_cloud_shadow 848 float 1 0
+U 65858d5d frag u_time 852 float 1 0
+U 65858d5d frag u_lz 864 vec4 32 16
+U 65858d5d frag u_lz_n 1376 int 1 0
+U 65858d5d frag u_zl 1392 vec4 32 16
+U 65858d5d frag u_zl_n 1904 int 1 0
+U 65858d5d frag u_zl_color 1920 vec3 1 0
+U 65858d5d frag u_zl_reach 1932 float 1 0
+U 65858d5d frag u_char_lit 1936 float 1 0
+U 65858d5d frag u_cl_dir0 1952 vec3 1 0
+U 65858d5d frag u_cl_dir1 1968 vec3 1 0
+U 65858d5d frag u_cl_dir2 1984 vec3 1 0
+U 65858d5d frag u_cl_col0 2000 vec3 1 0
+U 65858d5d frag u_cl_col1 2016 vec3 1 0
+U 65858d5d frag u_cl_col2 2032 vec3 1 0
+U 65858d5d frag u_ll_n 2044 int 1 0
+U 65858d5d frag u_lg_on 2048 float 1 0
+U 65858d5d frag u_lg_vp 2064 mat4 1 0
+U 65858d5d frag u_lg_zp 2128 vec4 1 0
+U 65858d5d frag u_lg_grid 2144 vec4 1 0
+U 65858d5d frag u_lg_view 2160 vec2 1 0
+U 65858d5d frag u_ue_ls_n 2168 int 1 0
+U 65858d5d frag u_ue_ls_size 2172 float 1 0
+U 65858d5d frag u_ue_lp_n 2176 int 1 0
+U 65858d5d frag u_fog_inscatter 2180 float 1 0
+U 65858d5d frag u_fog_desat 2184 float 1 0
+U 65858d5d frag u_fog_wall 2188 float 1 0
+U 65858d5d frag u_fog_haze 2192 float 1 0
+U 65858d5d frag u_fog_cut 2200 vec2 1 0
+U 65858d5d frag u_sky_relight 2208 float 1 0
+U 65858d5d frag u_surf 2224 vec4 1 0
+U 65858d5d frag u_surf_b 2240 vec4 1 0
+U 65858d5d frag u_surf_c 2256 vec4 1 0
+U 65858d5d frag u_surf_d 2272 vec4 1 0
+U 65858d5d frag u_surf_e 2288 vec4 1 0
+U 65858d5d frag u_s2 2304 vec4 1 0
+U 65858d5d frag u_s2_b 2320 vec4 1 0
+U 65858d5d frag u_s2_c 2336 vec4 1 0
+U 65858d5d frag u_s2_d 2352 vec4 1 0
+U 65858d5d frag u_s2_e 2368 vec4 1 0
+U 65858d5d frag u_surf_q 2384 vec4 1 0
+U 65858d5d frag u_surf_q2 2400 vec4 1 0
+U 65858d5d frag u_ter_far 2416 vec4 1 0
+U 65858d5d frag u_lu_on 2432 vec4 1 0
+T 65858d5d u_brdf 2
+T 65858d5d u_hairsh 3
+T 65858d5d u_hs_front 4
+T 65858d5d u_irradiance 5
+T 65858d5d u_lu 6
+T 65858d5d u_prefilter 7
+T 65858d5d u_s2_arm 8
+T 65858d5d u_s2_diff 9
+T 65858d5d u_s2_nrm 10
+T 65858d5d u_shadow 11
+T 65858d5d u_tershadow 12
+T 65858d5d u_tershadow_aux 13
+T 65858d5d u_ts_height 14
+S 65858d5d u_ue_lg_data 15
+S 65858d5d u_ue_lg_num 16
+S 65858d5d u_ue_lights 17
+S 65858d5d u_ue_lp 18
+T 65858d5d u_ue_lph 19
+S 65858d5d u_ue_ls 20
+T 65858d5d u_ue_lsh 21
 P 5b8c3ae8 fullscreen.vert heightgen.frag 
 B 5b8c3ae8 frag 1 2452
 U 5b8c3ae8 frag u_cascade_vp 0 mat4 5 64
@@ -6577,25 +6681,29 @@ T d48d6a48 u_micro_mask 25
 T d48d6a48 u_nrm 26
 T d48d6a48 u_ortho 27
 T d48d6a48 u_prefilter 28
-T d48d6a48 u_s2_arm 29
-T d48d6a48 u_s2_diff 30
-T d48d6a48 u_s2_nrm 31
-T d48d6a48 u_scene_depth 32
-T d48d6a48 u_shadow 33
-T d48d6a48 u_ter_normal 34
-T d48d6a48 u_tershadow 35
-T d48d6a48 u_tershadow_aux 36
-T d48d6a48 u_tp_h 37
-T d48d6a48 u_tp_nrm 38
-T d48d6a48 u_tp_page 39
-T d48d6a48 u_ts_height 40
-S d48d6a48 u_ue_lg_data 41
-S d48d6a48 u_ue_lg_num 42
-S d48d6a48 u_ue_lights 43
-S d48d6a48 u_ue_lp 44
-T d48d6a48 u_ue_lph 45
-S d48d6a48 u_ue_ls 46
-T d48d6a48 u_ue_lsh 47
+T d48d6a48 u_rvt_a 29
+T d48d6a48 u_rvt_b 30
+T d48d6a48 u_rvt_h 31
+S d48d6a48 u_rvt_pt 32
+T d48d6a48 u_s2_arm 33
+T d48d6a48 u_s2_diff 34
+T d48d6a48 u_s2_nrm 35
+T d48d6a48 u_scene_depth 36
+T d48d6a48 u_shadow 37
+T d48d6a48 u_ter_normal 38
+T d48d6a48 u_tershadow 39
+T d48d6a48 u_tershadow_aux 40
+T d48d6a48 u_tp_h 41
+T d48d6a48 u_tp_nrm 42
+T d48d6a48 u_tp_page 43
+T d48d6a48 u_ts_height 44
+S d48d6a48 u_ue_lg_data 45
+S d48d6a48 u_ue_lg_num 46
+S d48d6a48 u_ue_lights 47
+S d48d6a48 u_ue_lp 48
+T d48d6a48 u_ue_lph 49
+S d48d6a48 u_ue_ls 50
+T d48d6a48 u_ue_lsh 51
 P cb13f3c6 grass.vert model.frag #define FOLIAGE;#define BLADE;#define GBLADE;
 B cb13f3c6 vert 0 448
 U cb13f3c6 vert u_view 0 mat4 1 0
@@ -6765,25 +6873,29 @@ T cb13f3c6 u_micro_mask 25
 T cb13f3c6 u_nrm 26
 T cb13f3c6 u_ortho 27
 T cb13f3c6 u_prefilter 28
-T cb13f3c6 u_s2_arm 29
-T cb13f3c6 u_s2_diff 30
-T cb13f3c6 u_s2_nrm 31
-T cb13f3c6 u_scene_depth 32
-T cb13f3c6 u_shadow 33
-T cb13f3c6 u_ter_normal 34
-T cb13f3c6 u_tershadow 35
-T cb13f3c6 u_tershadow_aux 36
-T cb13f3c6 u_tp_h 37
-T cb13f3c6 u_tp_nrm 38
-T cb13f3c6 u_tp_page 39
-T cb13f3c6 u_ts_height 40
-S cb13f3c6 u_ue_lg_data 41
-S cb13f3c6 u_ue_lg_num 42
-S cb13f3c6 u_ue_lights 43
-S cb13f3c6 u_ue_lp 44
-T cb13f3c6 u_ue_lph 45
-S cb13f3c6 u_ue_ls 46
-T cb13f3c6 u_ue_lsh 47
+T cb13f3c6 u_rvt_a 29
+T cb13f3c6 u_rvt_b 30
+T cb13f3c6 u_rvt_h 31
+S cb13f3c6 u_rvt_pt 32
+T cb13f3c6 u_s2_arm 33
+T cb13f3c6 u_s2_diff 34
+T cb13f3c6 u_s2_nrm 35
+T cb13f3c6 u_scene_depth 36
+T cb13f3c6 u_shadow 37
+T cb13f3c6 u_ter_normal 38
+T cb13f3c6 u_tershadow 39
+T cb13f3c6 u_tershadow_aux 40
+T cb13f3c6 u_tp_h 41
+T cb13f3c6 u_tp_nrm 42
+T cb13f3c6 u_tp_page 43
+T cb13f3c6 u_ts_height 44
+S cb13f3c6 u_ue_lg_data 45
+S cb13f3c6 u_ue_lg_num 46
+S cb13f3c6 u_ue_lights 47
+S cb13f3c6 u_ue_lp 48
+T cb13f3c6 u_ue_lph 49
+S cb13f3c6 u_ue_ls 50
+T cb13f3c6 u_ue_lsh 51
 P b8cff226 grass.vert model.frag #define FOLIAGE;#define BLADE;#define GBLADE;#define TILES;
 B b8cff226 vert 0 4544
 U b8cff226 vert u_view 0 mat4 1 0
@@ -6954,25 +7066,29 @@ T b8cff226 u_micro_mask 25
 T b8cff226 u_nrm 26
 T b8cff226 u_ortho 27
 T b8cff226 u_prefilter 28
-T b8cff226 u_s2_arm 29
-T b8cff226 u_s2_diff 30
-T b8cff226 u_s2_nrm 31
-T b8cff226 u_scene_depth 32
-T b8cff226 u_shadow 33
-T b8cff226 u_ter_normal 34
-T b8cff226 u_tershadow 35
-T b8cff226 u_tershadow_aux 36
-T b8cff226 u_tp_h 37
-T b8cff226 u_tp_nrm 38
-T b8cff226 u_tp_page 39
-T b8cff226 u_ts_height 40
-S b8cff226 u_ue_lg_data 41
-S b8cff226 u_ue_lg_num 42
-S b8cff226 u_ue_lights 43
-S b8cff226 u_ue_lp 44
-T b8cff226 u_ue_lph 45
-S b8cff226 u_ue_ls 46
-T b8cff226 u_ue_lsh 47
+T b8cff226 u_rvt_a 29
+T b8cff226 u_rvt_b 30
+T b8cff226 u_rvt_h 31
+S b8cff226 u_rvt_pt 32
+T b8cff226 u_s2_arm 33
+T b8cff226 u_s2_diff 34
+T b8cff226 u_s2_nrm 35
+T b8cff226 u_scene_depth 36
+T b8cff226 u_shadow 37
+T b8cff226 u_ter_normal 38
+T b8cff226 u_tershadow 39
+T b8cff226 u_tershadow_aux 40
+T b8cff226 u_tp_h 41
+T b8cff226 u_tp_nrm 42
+T b8cff226 u_tp_page 43
+T b8cff226 u_ts_height 44
+S b8cff226 u_ue_lg_data 45
+S b8cff226 u_ue_lg_num 46
+S b8cff226 u_ue_lights 47
+S b8cff226 u_ue_lp 48
+T b8cff226 u_ue_lph 49
+S b8cff226 u_ue_ls 50
+T b8cff226 u_ue_lsh 51
 P 3733fc38 impostor.vert impostor.frag 
 B 3733fc38 vert 0 232
 U 3733fc38 vert u_view 0 mat4 1 0
@@ -7901,7 +8017,7 @@ I 01089da8 i_pos 3 vec4
 I 01089da8 a_nrm 1 vec3
 I 01089da8 a_uv 2 vec2
 I 01089da8 a_col 7 vec4
-B 01089da8 frag 1 2688
+B 01089da8 frag 1 2880
 U 01089da8 frag u_cascade_vp 0 mat4 5 64
 U 01089da8 frag u_cascade_split 320 float 5 16
 U 01089da8 frag u_cascade_range 400 float 5 16
@@ -7987,19 +8103,24 @@ U 01089da8 frag u_surf_q2 2400 vec4 1 0
 U 01089da8 frag u_ter_far 2416 vec4 1 0
 U 01089da8 frag u_lu_on 2432 vec4 1 0
 U 01089da8 frag u_model_h 2448 float 1 0
-U 01089da8 frag u_fac_base_inv 2464 vec4 1 0
-U 01089da8 frag u_fac_mr_inv 2480 vec2 1 0
-U 01089da8 frag u_mr_scale 2488 vec2 1 0
-U 01089da8 frag u_fac_coat 2496 vec2 1 0
-U 01089da8 frag u_fac_emis 2512 vec3 1 0
-U 01089da8 frag u_view 2528 mat4 1 0
-U 01089da8 frag u_tint 2592 vec3 1 0
-U 01089da8 frag u_rough_scale 2604 float 1 0
-U 01089da8 frag u_emissive 2608 float 1 0
-U 01089da8 frag u_micro_p 2624 vec4 1 0
-U 01089da8 frag u_bent_p 2640 vec4 1 0
-U 01089da8 frag u_micro_m 2656 vec4 1 0
-U 01089da8 frag u_micro_r 2672 vec4 1 0
+U 01089da8 frag u_rvt_on 2452 float 1 0
+U 01089da8 frag u_rvt_p 2464 vec4 1 0
+U 01089da8 frag u_rvt_q 2480 vec4 1 0
+U 01089da8 frag u_rvt_y 2496 vec4 1 0
+U 01089da8 frag u_rvt_win 2512 vec4 9 16
+U 01089da8 frag u_fac_base_inv 2656 vec4 1 0
+U 01089da8 frag u_fac_mr_inv 2672 vec2 1 0
+U 01089da8 frag u_mr_scale 2680 vec2 1 0
+U 01089da8 frag u_fac_coat 2688 vec2 1 0
+U 01089da8 frag u_fac_emis 2704 vec3 1 0
+U 01089da8 frag u_view 2720 mat4 1 0
+U 01089da8 frag u_tint 2784 vec3 1 0
+U 01089da8 frag u_rough_scale 2796 float 1 0
+U 01089da8 frag u_emissive 2800 float 1 0
+U 01089da8 frag u_micro_p 2816 vec4 1 0
+U 01089da8 frag u_bent_p 2832 vec4 1 0
+U 01089da8 frag u_micro_m 2848 vec4 1 0
+U 01089da8 frag u_micro_r 2864 vec4 1 0
 T 01089da8 u_arm 2
 T 01089da8 u_bent 3
 T 01089da8 u_blade_tex 4
@@ -8026,23 +8147,27 @@ T 01089da8 u_micro 24
 T 01089da8 u_micro_mask 25
 T 01089da8 u_nrm 26
 T 01089da8 u_prefilter 27
-T 01089da8 u_s2_arm 28
-T 01089da8 u_s2_diff 29
-T 01089da8 u_s2_nrm 30
-T 01089da8 u_scene_depth 31
-T 01089da8 u_shadow 32
-T 01089da8 u_tershadow 33
-T 01089da8 u_tershadow_aux 34
-T 01089da8 u_tp_h 35
-T 01089da8 u_tp_page 36
-T 01089da8 u_ts_height 37
-S 01089da8 u_ue_lg_data 38
-S 01089da8 u_ue_lg_num 39
-S 01089da8 u_ue_lights 40
-S 01089da8 u_ue_lp 41
-T 01089da8 u_ue_lph 42
-S 01089da8 u_ue_ls 43
-T 01089da8 u_ue_lsh 44
+T 01089da8 u_rvt_a 28
+T 01089da8 u_rvt_b 29
+T 01089da8 u_rvt_h 30
+S 01089da8 u_rvt_pt 31
+T 01089da8 u_s2_arm 32
+T 01089da8 u_s2_diff 33
+T 01089da8 u_s2_nrm 34
+T 01089da8 u_scene_depth 35
+T 01089da8 u_shadow 36
+T 01089da8 u_tershadow 37
+T 01089da8 u_tershadow_aux 38
+T 01089da8 u_tp_h 39
+T 01089da8 u_tp_page 40
+T 01089da8 u_ts_height 41
+S 01089da8 u_ue_lg_data 42
+S 01089da8 u_ue_lg_num 43
+S 01089da8 u_ue_lights 44
+S 01089da8 u_ue_lp 45
+T 01089da8 u_ue_lph 46
+S 01089da8 u_ue_ls 47
+T 01089da8 u_ue_lsh 48
 P 254e7887 model.vert model.frag #define CARD;#define CHEAP;
 B 254e7887 vert 0 264
 U 254e7887 vert u_view 0 mat4 1 0
@@ -8191,23 +8316,27 @@ T 254e7887 u_micro 24
 T 254e7887 u_micro_mask 25
 T 254e7887 u_nrm 26
 T 254e7887 u_prefilter 27
-T 254e7887 u_s2_arm 28
-T 254e7887 u_s2_diff 29
-T 254e7887 u_s2_nrm 30
-T 254e7887 u_scene_depth 31
-T 254e7887 u_shadow 32
-T 254e7887 u_tershadow 33
-T 254e7887 u_tershadow_aux 34
-T 254e7887 u_tp_h 35
-T 254e7887 u_tp_page 36
-T 254e7887 u_ts_height 37
-S 254e7887 u_ue_lg_data 38
-S 254e7887 u_ue_lg_num 39
-S 254e7887 u_ue_lights 40
-S 254e7887 u_ue_lp 41
-T 254e7887 u_ue_lph 42
-S 254e7887 u_ue_ls 43
-T 254e7887 u_ue_lsh 44
+T 254e7887 u_rvt_a 28
+T 254e7887 u_rvt_b 29
+T 254e7887 u_rvt_h 30
+S 254e7887 u_rvt_pt 31
+T 254e7887 u_s2_arm 32
+T 254e7887 u_s2_diff 33
+T 254e7887 u_s2_nrm 34
+T 254e7887 u_scene_depth 35
+T 254e7887 u_shadow 36
+T 254e7887 u_tershadow 37
+T 254e7887 u_tershadow_aux 38
+T 254e7887 u_tp_h 39
+T 254e7887 u_tp_page 40
+T 254e7887 u_ts_height 41
+S 254e7887 u_ue_lg_data 42
+S 254e7887 u_ue_lg_num 43
+S 254e7887 u_ue_lights 44
+S 254e7887 u_ue_lp 45
+T 254e7887 u_ue_lph 46
+S 254e7887 u_ue_ls 47
+T 254e7887 u_ue_lsh 48
 P 1ce5c5d1 model.vert model.frag #define FOLIAGE;#define WIND;#define ALPHA_TEST;
 B 1ce5c5d1 vert 0 264
 U 1ce5c5d1 vert u_view 0 mat4 1 0
@@ -8355,23 +8484,27 @@ T 1ce5c5d1 u_micro 24
 T 1ce5c5d1 u_micro_mask 25
 T 1ce5c5d1 u_nrm 26
 T 1ce5c5d1 u_prefilter 27
-T 1ce5c5d1 u_s2_arm 28
-T 1ce5c5d1 u_s2_diff 29
-T 1ce5c5d1 u_s2_nrm 30
-T 1ce5c5d1 u_scene_depth 31
-T 1ce5c5d1 u_shadow 32
-T 1ce5c5d1 u_tershadow 33
-T 1ce5c5d1 u_tershadow_aux 34
-T 1ce5c5d1 u_tp_h 35
-T 1ce5c5d1 u_tp_page 36
-T 1ce5c5d1 u_ts_height 37
-S 1ce5c5d1 u_ue_lg_data 38
-S 1ce5c5d1 u_ue_lg_num 39
-S 1ce5c5d1 u_ue_lights 40
-S 1ce5c5d1 u_ue_lp 41
-T 1ce5c5d1 u_ue_lph 42
-S 1ce5c5d1 u_ue_ls 43
-T 1ce5c5d1 u_ue_lsh 44
+T 1ce5c5d1 u_rvt_a 28
+T 1ce5c5d1 u_rvt_b 29
+T 1ce5c5d1 u_rvt_h 30
+S 1ce5c5d1 u_rvt_pt 31
+T 1ce5c5d1 u_s2_arm 32
+T 1ce5c5d1 u_s2_diff 33
+T 1ce5c5d1 u_s2_nrm 34
+T 1ce5c5d1 u_scene_depth 35
+T 1ce5c5d1 u_shadow 36
+T 1ce5c5d1 u_tershadow 37
+T 1ce5c5d1 u_tershadow_aux 38
+T 1ce5c5d1 u_tp_h 39
+T 1ce5c5d1 u_tp_page 40
+T 1ce5c5d1 u_ts_height 41
+S 1ce5c5d1 u_ue_lg_data 42
+S 1ce5c5d1 u_ue_lg_num 43
+S 1ce5c5d1 u_ue_lights 44
+S 1ce5c5d1 u_ue_lp 45
+T 1ce5c5d1 u_ue_lph 46
+S 1ce5c5d1 u_ue_ls 47
+T 1ce5c5d1 u_ue_lsh 48
 P 5e70d731 model.vert model.frag #define FOLIAGE;#define WIND;#define ALPHA_TEST;#define NEAR_FADE;
 B 5e70d731 vert 0 264
 U 5e70d731 vert u_view 0 mat4 1 0
@@ -8519,23 +8652,27 @@ T 5e70d731 u_micro 24
 T 5e70d731 u_micro_mask 25
 T 5e70d731 u_nrm 26
 T 5e70d731 u_prefilter 27
-T 5e70d731 u_s2_arm 28
-T 5e70d731 u_s2_diff 29
-T 5e70d731 u_s2_nrm 30
-T 5e70d731 u_scene_depth 31
-T 5e70d731 u_shadow 32
-T 5e70d731 u_tershadow 33
-T 5e70d731 u_tershadow_aux 34
-T 5e70d731 u_tp_h 35
-T 5e70d731 u_tp_page 36
-T 5e70d731 u_ts_height 37
-S 5e70d731 u_ue_lg_data 38
-S 5e70d731 u_ue_lg_num 39
-S 5e70d731 u_ue_lights 40
-S 5e70d731 u_ue_lp 41
-T 5e70d731 u_ue_lph 42
-S 5e70d731 u_ue_ls 43
-T 5e70d731 u_ue_lsh 44
+T 5e70d731 u_rvt_a 28
+T 5e70d731 u_rvt_b 29
+T 5e70d731 u_rvt_h 30
+S 5e70d731 u_rvt_pt 31
+T 5e70d731 u_s2_arm 32
+T 5e70d731 u_s2_diff 33
+T 5e70d731 u_s2_nrm 34
+T 5e70d731 u_scene_depth 35
+T 5e70d731 u_shadow 36
+T 5e70d731 u_tershadow 37
+T 5e70d731 u_tershadow_aux 38
+T 5e70d731 u_tp_h 39
+T 5e70d731 u_tp_page 40
+T 5e70d731 u_ts_height 41
+S 5e70d731 u_ue_lg_data 42
+S 5e70d731 u_ue_lg_num 43
+S 5e70d731 u_ue_lights 44
+S 5e70d731 u_ue_lp 45
+T 5e70d731 u_ue_lph 46
+S 5e70d731 u_ue_ls 47
+T 5e70d731 u_ue_lsh 48
 P f4a2b586 model.vert model.frag #define FOLIAGE;#define WIND;#define BLADE;
 B f4a2b586 vert 0 280
 U f4a2b586 vert u_view 0 mat4 1 0
@@ -8695,23 +8832,27 @@ T f4a2b586 u_micro 24
 T f4a2b586 u_micro_mask 25
 T f4a2b586 u_nrm 26
 T f4a2b586 u_prefilter 27
-T f4a2b586 u_s2_arm 28
-T f4a2b586 u_s2_diff 29
-T f4a2b586 u_s2_nrm 30
-T f4a2b586 u_scene_depth 31
-T f4a2b586 u_shadow 32
-T f4a2b586 u_tershadow 33
-T f4a2b586 u_tershadow_aux 34
-T f4a2b586 u_tp_h 35
-T f4a2b586 u_tp_page 36
-T f4a2b586 u_ts_height 37
-S f4a2b586 u_ue_lg_data 38
-S f4a2b586 u_ue_lg_num 39
-S f4a2b586 u_ue_lights 40
-S f4a2b586 u_ue_lp 41
-T f4a2b586 u_ue_lph 42
-S f4a2b586 u_ue_ls 43
-T f4a2b586 u_ue_lsh 44
+T f4a2b586 u_rvt_a 28
+T f4a2b586 u_rvt_b 29
+T f4a2b586 u_rvt_h 30
+S f4a2b586 u_rvt_pt 31
+T f4a2b586 u_s2_arm 32
+T f4a2b586 u_s2_diff 33
+T f4a2b586 u_s2_nrm 34
+T f4a2b586 u_scene_depth 35
+T f4a2b586 u_shadow 36
+T f4a2b586 u_tershadow 37
+T f4a2b586 u_tershadow_aux 38
+T f4a2b586 u_tp_h 39
+T f4a2b586 u_tp_page 40
+T f4a2b586 u_ts_height 41
+S f4a2b586 u_ue_lg_data 42
+S f4a2b586 u_ue_lg_num 43
+S f4a2b586 u_ue_lights 44
+S f4a2b586 u_ue_lp 45
+T f4a2b586 u_ue_lph 46
+S f4a2b586 u_ue_ls 47
+T f4a2b586 u_ue_lsh 48
 P b4587cd4 model.vert model.frag #define FOLIAGE;#define WIND;#define CARD;
 B b4587cd4 vert 0 264
 U b4587cd4 vert u_view 0 mat4 1 0
@@ -8860,23 +9001,27 @@ T b4587cd4 u_micro 24
 T b4587cd4 u_micro_mask 25
 T b4587cd4 u_nrm 26
 T b4587cd4 u_prefilter 27
-T b4587cd4 u_s2_arm 28
-T b4587cd4 u_s2_diff 29
-T b4587cd4 u_s2_nrm 30
-T b4587cd4 u_scene_depth 31
-T b4587cd4 u_shadow 32
-T b4587cd4 u_tershadow 33
-T b4587cd4 u_tershadow_aux 34
-T b4587cd4 u_tp_h 35
-T b4587cd4 u_tp_page 36
-T b4587cd4 u_ts_height 37
-S b4587cd4 u_ue_lg_data 38
-S b4587cd4 u_ue_lg_num 39
-S b4587cd4 u_ue_lights 40
-S b4587cd4 u_ue_lp 41
-T b4587cd4 u_ue_lph 42
-S b4587cd4 u_ue_ls 43
-T b4587cd4 u_ue_lsh 44
+T b4587cd4 u_rvt_a 28
+T b4587cd4 u_rvt_b 29
+T b4587cd4 u_rvt_h 30
+S b4587cd4 u_rvt_pt 31
+T b4587cd4 u_s2_arm 32
+T b4587cd4 u_s2_diff 33
+T b4587cd4 u_s2_nrm 34
+T b4587cd4 u_scene_depth 35
+T b4587cd4 u_shadow 36
+T b4587cd4 u_tershadow 37
+T b4587cd4 u_tershadow_aux 38
+T b4587cd4 u_tp_h 39
+T b4587cd4 u_tp_page 40
+T b4587cd4 u_ts_height 41
+S b4587cd4 u_ue_lg_data 42
+S b4587cd4 u_ue_lg_num 43
+S b4587cd4 u_ue_lights 44
+S b4587cd4 u_ue_lp 45
+T b4587cd4 u_ue_lph 46
+S b4587cd4 u_ue_ls 47
+T b4587cd4 u_ue_lsh 48
 P 4dda406a model.vert model.frag #define FOLIAGE;#define WIND;#define EQ_PASS;
 B 4dda406a vert 0 264
 U 4dda406a vert u_view 0 mat4 1 0
@@ -9024,23 +9169,27 @@ T 4dda406a u_micro 24
 T 4dda406a u_micro_mask 25
 T 4dda406a u_nrm 26
 T 4dda406a u_prefilter 27
-T 4dda406a u_s2_arm 28
-T 4dda406a u_s2_diff 29
-T 4dda406a u_s2_nrm 30
-T 4dda406a u_scene_depth 31
-T 4dda406a u_shadow 32
-T 4dda406a u_tershadow 33
-T 4dda406a u_tershadow_aux 34
-T 4dda406a u_tp_h 35
-T 4dda406a u_tp_page 36
-T 4dda406a u_ts_height 37
-S 4dda406a u_ue_lg_data 38
-S 4dda406a u_ue_lg_num 39
-S 4dda406a u_ue_lights 40
-S 4dda406a u_ue_lp 41
-T 4dda406a u_ue_lph 42
-S 4dda406a u_ue_ls 43
-T 4dda406a u_ue_lsh 44
+T 4dda406a u_rvt_a 28
+T 4dda406a u_rvt_b 29
+T 4dda406a u_rvt_h 30
+S 4dda406a u_rvt_pt 31
+T 4dda406a u_s2_arm 32
+T 4dda406a u_s2_diff 33
+T 4dda406a u_s2_nrm 34
+T 4dda406a u_scene_depth 35
+T 4dda406a u_shadow 36
+T 4dda406a u_tershadow 37
+T 4dda406a u_tershadow_aux 38
+T 4dda406a u_tp_h 39
+T 4dda406a u_tp_page 40
+T 4dda406a u_ts_height 41
+S 4dda406a u_ue_lg_data 42
+S 4dda406a u_ue_lg_num 43
+S 4dda406a u_ue_lights 44
+S 4dda406a u_ue_lp 45
+T 4dda406a u_ue_lph 46
+S 4dda406a u_ue_ls 47
+T 4dda406a u_ue_lsh 48
 P b603a056 model.vert model.frag #define FOLIAGE;#define WIND;#define EQ_PASS;#define NEAR_FADE;
 B b603a056 vert 0 264
 U b603a056 vert u_view 0 mat4 1 0
@@ -9188,23 +9337,27 @@ T b603a056 u_micro 24
 T b603a056 u_micro_mask 25
 T b603a056 u_nrm 26
 T b603a056 u_prefilter 27
-T b603a056 u_s2_arm 28
-T b603a056 u_s2_diff 29
-T b603a056 u_s2_nrm 30
-T b603a056 u_scene_depth 31
-T b603a056 u_shadow 32
-T b603a056 u_tershadow 33
-T b603a056 u_tershadow_aux 34
-T b603a056 u_tp_h 35
-T b603a056 u_tp_page 36
-T b603a056 u_ts_height 37
-S b603a056 u_ue_lg_data 38
-S b603a056 u_ue_lg_num 39
-S b603a056 u_ue_lights 40
-S b603a056 u_ue_lp 41
-T b603a056 u_ue_lph 42
-S b603a056 u_ue_ls 43
-T b603a056 u_ue_lsh 44
+T b603a056 u_rvt_a 28
+T b603a056 u_rvt_b 29
+T b603a056 u_rvt_h 30
+S b603a056 u_rvt_pt 31
+T b603a056 u_s2_arm 32
+T b603a056 u_s2_diff 33
+T b603a056 u_s2_nrm 34
+T b603a056 u_scene_depth 35
+T b603a056 u_shadow 36
+T b603a056 u_tershadow 37
+T b603a056 u_tershadow_aux 38
+T b603a056 u_tp_h 39
+T b603a056 u_tp_page 40
+T b603a056 u_ts_height 41
+S b603a056 u_ue_lg_data 42
+S b603a056 u_ue_lg_num 43
+S b603a056 u_ue_lights 44
+S b603a056 u_ue_lp 45
+T b603a056 u_ue_lph 46
+S b603a056 u_ue_ls 47
+T b603a056 u_ue_lsh 48
 P 3b183d8f model.vert model.frag #define FOLIAGE;#define WIND;#define FLOWER;
 B 3b183d8f vert 0 264
 U 3b183d8f vert u_view 0 mat4 1 0
@@ -9352,23 +9505,27 @@ T 3b183d8f u_micro 24
 T 3b183d8f u_micro_mask 25
 T 3b183d8f u_nrm 26
 T 3b183d8f u_prefilter 27
-T 3b183d8f u_s2_arm 28
-T 3b183d8f u_s2_diff 29
-T 3b183d8f u_s2_nrm 30
-T 3b183d8f u_scene_depth 31
-T 3b183d8f u_shadow 32
-T 3b183d8f u_tershadow 33
-T 3b183d8f u_tershadow_aux 34
-T 3b183d8f u_tp_h 35
-T 3b183d8f u_tp_page 36
-T 3b183d8f u_ts_height 37
-S 3b183d8f u_ue_lg_data 38
-S 3b183d8f u_ue_lg_num 39
-S 3b183d8f u_ue_lights 40
-S 3b183d8f u_ue_lp 41
-T 3b183d8f u_ue_lph 42
-S 3b183d8f u_ue_ls 43
-T 3b183d8f u_ue_lsh 44
+T 3b183d8f u_rvt_a 28
+T 3b183d8f u_rvt_b 29
+T 3b183d8f u_rvt_h 30
+S 3b183d8f u_rvt_pt 31
+T 3b183d8f u_s2_arm 32
+T 3b183d8f u_s2_diff 33
+T 3b183d8f u_s2_nrm 34
+T 3b183d8f u_scene_depth 35
+T 3b183d8f u_shadow 36
+T 3b183d8f u_tershadow 37
+T 3b183d8f u_tershadow_aux 38
+T 3b183d8f u_tp_h 39
+T 3b183d8f u_tp_page 40
+T 3b183d8f u_ts_height 41
+S 3b183d8f u_ue_lg_data 42
+S 3b183d8f u_ue_lg_num 43
+S 3b183d8f u_ue_lights 44
+S 3b183d8f u_ue_lp 45
+T 3b183d8f u_ue_lph 46
+S 3b183d8f u_ue_ls 47
+T 3b183d8f u_ue_lsh 48
 P 79b77ed9 model.vert model.frag #define SHADOW_PASS;#define WIND;#define CARD;
 B 79b77ed9 vert 0 264
 U 79b77ed9 vert u_view 0 mat4 1 0
@@ -9517,23 +9674,27 @@ T 79b77ed9 u_micro 24
 T 79b77ed9 u_micro_mask 25
 T 79b77ed9 u_nrm 26
 T 79b77ed9 u_prefilter 27
-T 79b77ed9 u_s2_arm 28
-T 79b77ed9 u_s2_diff 29
-T 79b77ed9 u_s2_nrm 30
-T 79b77ed9 u_scene_depth 31
-T 79b77ed9 u_shadow 32
-T 79b77ed9 u_tershadow 33
-T 79b77ed9 u_tershadow_aux 34
-T 79b77ed9 u_tp_h 35
-T 79b77ed9 u_tp_page 36
-T 79b77ed9 u_ts_height 37
-S 79b77ed9 u_ue_lg_data 38
-S 79b77ed9 u_ue_lg_num 39
-S 79b77ed9 u_ue_lights 40
-S 79b77ed9 u_ue_lp 41
-T 79b77ed9 u_ue_lph 42
-S 79b77ed9 u_ue_ls 43
-T 79b77ed9 u_ue_lsh 44
+T 79b77ed9 u_rvt_a 28
+T 79b77ed9 u_rvt_b 29
+T 79b77ed9 u_rvt_h 30
+S 79b77ed9 u_rvt_pt 31
+T 79b77ed9 u_s2_arm 32
+T 79b77ed9 u_s2_diff 33
+T 79b77ed9 u_s2_nrm 34
+T 79b77ed9 u_scene_depth 35
+T 79b77ed9 u_shadow 36
+T 79b77ed9 u_tershadow 37
+T 79b77ed9 u_tershadow_aux 38
+T 79b77ed9 u_tp_h 39
+T 79b77ed9 u_tp_page 40
+T 79b77ed9 u_ts_height 41
+S 79b77ed9 u_ue_lg_data 42
+S 79b77ed9 u_ue_lg_num 43
+S 79b77ed9 u_ue_lights 44
+S 79b77ed9 u_ue_lp 45
+T 79b77ed9 u_ue_lph 46
+S 79b77ed9 u_ue_ls 47
+T 79b77ed9 u_ue_lsh 48
 P b9fc2041 model.vert model.frag #define WIND;
 B b9fc2041 vert 0 264
 U b9fc2041 vert u_view 0 mat4 1 0
@@ -9556,7 +9717,7 @@ I b9fc2041 i_pos 3 vec4
 I b9fc2041 a_nrm 1 vec3
 I b9fc2041 a_uv 2 vec2
 I b9fc2041 a_col 7 vec4
-B b9fc2041 frag 1 2688
+B b9fc2041 frag 1 2880
 U b9fc2041 frag u_cascade_vp 0 mat4 5 64
 U b9fc2041 frag u_cascade_split 320 float 5 16
 U b9fc2041 frag u_cascade_range 400 float 5 16
@@ -9642,19 +9803,24 @@ U b9fc2041 frag u_surf_q2 2400 vec4 1 0
 U b9fc2041 frag u_ter_far 2416 vec4 1 0
 U b9fc2041 frag u_lu_on 2432 vec4 1 0
 U b9fc2041 frag u_model_h 2448 float 1 0
-U b9fc2041 frag u_fac_base_inv 2464 vec4 1 0
-U b9fc2041 frag u_fac_mr_inv 2480 vec2 1 0
-U b9fc2041 frag u_mr_scale 2488 vec2 1 0
-U b9fc2041 frag u_fac_coat 2496 vec2 1 0
-U b9fc2041 frag u_fac_emis 2512 vec3 1 0
-U b9fc2041 frag u_view 2528 mat4 1 0
-U b9fc2041 frag u_tint 2592 vec3 1 0
-U b9fc2041 frag u_rough_scale 2604 float 1 0
-U b9fc2041 frag u_emissive 2608 float 1 0
-U b9fc2041 frag u_micro_p 2624 vec4 1 0
-U b9fc2041 frag u_bent_p 2640 vec4 1 0
-U b9fc2041 frag u_micro_m 2656 vec4 1 0
-U b9fc2041 frag u_micro_r 2672 vec4 1 0
+U b9fc2041 frag u_rvt_on 2452 float 1 0
+U b9fc2041 frag u_rvt_p 2464 vec4 1 0
+U b9fc2041 frag u_rvt_q 2480 vec4 1 0
+U b9fc2041 frag u_rvt_y 2496 vec4 1 0
+U b9fc2041 frag u_rvt_win 2512 vec4 9 16
+U b9fc2041 frag u_fac_base_inv 2656 vec4 1 0
+U b9fc2041 frag u_fac_mr_inv 2672 vec2 1 0
+U b9fc2041 frag u_mr_scale 2680 vec2 1 0
+U b9fc2041 frag u_fac_coat 2688 vec2 1 0
+U b9fc2041 frag u_fac_emis 2704 vec3 1 0
+U b9fc2041 frag u_view 2720 mat4 1 0
+U b9fc2041 frag u_tint 2784 vec3 1 0
+U b9fc2041 frag u_rough_scale 2796 float 1 0
+U b9fc2041 frag u_emissive 2800 float 1 0
+U b9fc2041 frag u_micro_p 2816 vec4 1 0
+U b9fc2041 frag u_bent_p 2832 vec4 1 0
+U b9fc2041 frag u_micro_m 2848 vec4 1 0
+U b9fc2041 frag u_micro_r 2864 vec4 1 0
 T b9fc2041 u_arm 2
 T b9fc2041 u_bent 3
 T b9fc2041 u_blade_tex 4
@@ -9681,23 +9847,27 @@ T b9fc2041 u_micro 24
 T b9fc2041 u_micro_mask 25
 T b9fc2041 u_nrm 26
 T b9fc2041 u_prefilter 27
-T b9fc2041 u_s2_arm 28
-T b9fc2041 u_s2_diff 29
-T b9fc2041 u_s2_nrm 30
-T b9fc2041 u_scene_depth 31
-T b9fc2041 u_shadow 32
-T b9fc2041 u_tershadow 33
-T b9fc2041 u_tershadow_aux 34
-T b9fc2041 u_tp_h 35
-T b9fc2041 u_tp_page 36
-T b9fc2041 u_ts_height 37
-S b9fc2041 u_ue_lg_data 38
-S b9fc2041 u_ue_lg_num 39
-S b9fc2041 u_ue_lights 40
-S b9fc2041 u_ue_lp 41
-T b9fc2041 u_ue_lph 42
-S b9fc2041 u_ue_ls 43
-T b9fc2041 u_ue_lsh 44
+T b9fc2041 u_rvt_a 28
+T b9fc2041 u_rvt_b 29
+T b9fc2041 u_rvt_h 30
+S b9fc2041 u_rvt_pt 31
+T b9fc2041 u_s2_arm 32
+T b9fc2041 u_s2_diff 33
+T b9fc2041 u_s2_nrm 34
+T b9fc2041 u_scene_depth 35
+T b9fc2041 u_shadow 36
+T b9fc2041 u_tershadow 37
+T b9fc2041 u_tershadow_aux 38
+T b9fc2041 u_tp_h 39
+T b9fc2041 u_tp_page 40
+T b9fc2041 u_ts_height 41
+S b9fc2041 u_ue_lg_data 42
+S b9fc2041 u_ue_lg_num 43
+S b9fc2041 u_ue_lights 44
+S b9fc2041 u_ue_lp 45
+T b9fc2041 u_ue_lph 46
+S b9fc2041 u_ue_ls 47
+T b9fc2041 u_ue_lsh 48
 P f34dce08 model.vert shadow.frag #define SHADOW_PASS;
 B f34dce08 vert 0 264
 U f34dce08 vert u_view 0 mat4 1 0
@@ -10335,7 +10505,7 @@ I 1fde9cd2 a_pos 0 vec3
 I 1fde9cd2 a_nrm 1 vec3
 I 1fde9cd2 a_uv 2 vec2
 I 1fde9cd2 a_col 7 vec4
-B 1fde9cd2 frag 1 2688
+B 1fde9cd2 frag 1 2880
 U 1fde9cd2 frag u_cascade_vp 0 mat4 5 64
 U 1fde9cd2 frag u_cascade_split 320 float 5 16
 U 1fde9cd2 frag u_cascade_range 400 float 5 16
@@ -10421,19 +10591,24 @@ U 1fde9cd2 frag u_surf_q2 2400 vec4 1 0
 U 1fde9cd2 frag u_ter_far 2416 vec4 1 0
 U 1fde9cd2 frag u_lu_on 2432 vec4 1 0
 U 1fde9cd2 frag u_model_h 2448 float 1 0
-U 1fde9cd2 frag u_fac_base_inv 2464 vec4 1 0
-U 1fde9cd2 frag u_fac_mr_inv 2480 vec2 1 0
-U 1fde9cd2 frag u_mr_scale 2488 vec2 1 0
-U 1fde9cd2 frag u_fac_coat 2496 vec2 1 0
-U 1fde9cd2 frag u_fac_emis 2512 vec3 1 0
-U 1fde9cd2 frag u_view 2528 mat4 1 0
-U 1fde9cd2 frag u_tint 2592 vec3 1 0
-U 1fde9cd2 frag u_rough_scale 2604 float 1 0
-U 1fde9cd2 frag u_emissive 2608 float 1 0
-U 1fde9cd2 frag u_micro_p 2624 vec4 1 0
-U 1fde9cd2 frag u_bent_p 2640 vec4 1 0
-U 1fde9cd2 frag u_micro_m 2656 vec4 1 0
-U 1fde9cd2 frag u_micro_r 2672 vec4 1 0
+U 1fde9cd2 frag u_rvt_on 2452 float 1 0
+U 1fde9cd2 frag u_rvt_p 2464 vec4 1 0
+U 1fde9cd2 frag u_rvt_q 2480 vec4 1 0
+U 1fde9cd2 frag u_rvt_y 2496 vec4 1 0
+U 1fde9cd2 frag u_rvt_win 2512 vec4 9 16
+U 1fde9cd2 frag u_fac_base_inv 2656 vec4 1 0
+U 1fde9cd2 frag u_fac_mr_inv 2672 vec2 1 0
+U 1fde9cd2 frag u_mr_scale 2680 vec2 1 0
+U 1fde9cd2 frag u_fac_coat 2688 vec2 1 0
+U 1fde9cd2 frag u_fac_emis 2704 vec3 1 0
+U 1fde9cd2 frag u_view 2720 mat4 1 0
+U 1fde9cd2 frag u_tint 2784 vec3 1 0
+U 1fde9cd2 frag u_rough_scale 2796 float 1 0
+U 1fde9cd2 frag u_emissive 2800 float 1 0
+U 1fde9cd2 frag u_micro_p 2816 vec4 1 0
+U 1fde9cd2 frag u_bent_p 2832 vec4 1 0
+U 1fde9cd2 frag u_micro_m 2848 vec4 1 0
+U 1fde9cd2 frag u_micro_r 2864 vec4 1 0
 S 1fde9cd2 u_ai_bones 2
 S 1fde9cd2 u_ai_pbones 3
 T 1fde9cd2 u_arm 4
@@ -10462,21 +10637,25 @@ T 1fde9cd2 u_micro 26
 T 1fde9cd2 u_micro_mask 27
 T 1fde9cd2 u_nrm 28
 T 1fde9cd2 u_prefilter 29
-T 1fde9cd2 u_s2_arm 30
-T 1fde9cd2 u_s2_diff 31
-T 1fde9cd2 u_s2_nrm 32
-T 1fde9cd2 u_scene_depth 33
-T 1fde9cd2 u_shadow 34
-T 1fde9cd2 u_tershadow 35
-T 1fde9cd2 u_tershadow_aux 36
-T 1fde9cd2 u_ts_height 37
-S 1fde9cd2 u_ue_lg_data 38
-S 1fde9cd2 u_ue_lg_num 39
-S 1fde9cd2 u_ue_lights 40
-S 1fde9cd2 u_ue_lp 41
-T 1fde9cd2 u_ue_lph 42
-S 1fde9cd2 u_ue_ls 43
-T 1fde9cd2 u_ue_lsh 44
+T 1fde9cd2 u_rvt_a 30
+T 1fde9cd2 u_rvt_b 31
+T 1fde9cd2 u_rvt_h 32
+S 1fde9cd2 u_rvt_pt 33
+T 1fde9cd2 u_s2_arm 34
+T 1fde9cd2 u_s2_diff 35
+T 1fde9cd2 u_s2_nrm 36
+T 1fde9cd2 u_scene_depth 37
+T 1fde9cd2 u_shadow 38
+T 1fde9cd2 u_tershadow 39
+T 1fde9cd2 u_tershadow_aux 40
+T 1fde9cd2 u_ts_height 41
+S 1fde9cd2 u_ue_lg_data 42
+S 1fde9cd2 u_ue_lg_num 43
+S 1fde9cd2 u_ue_lights 44
+S 1fde9cd2 u_ue_lp 45
+T 1fde9cd2 u_ue_lph 46
+S 1fde9cd2 u_ue_ls 47
+T 1fde9cd2 u_ue_lsh 48
 P 62a3b8e3 skin.vert model.frag #define ACTOR_INST;
 B 62a3b8e3 vert 0 272
 U 62a3b8e3 vert u_model 0 mat4 1 0
@@ -10497,7 +10676,7 @@ I 62a3b8e3 a_pos 0 vec3
 I 62a3b8e3 a_nrm 1 vec3
 I 62a3b8e3 a_uv 2 vec2
 I 62a3b8e3 a_col 7 vec4
-B 62a3b8e3 frag 1 2672
+B 62a3b8e3 frag 1 2864
 U 62a3b8e3 frag u_cascade_vp 0 mat4 5 64
 U 62a3b8e3 frag u_cascade_split 320 float 5 16
 U 62a3b8e3 frag u_cascade_range 400 float 5 16
@@ -10583,17 +10762,22 @@ U 62a3b8e3 frag u_surf_q2 2400 vec4 1 0
 U 62a3b8e3 frag u_ter_far 2416 vec4 1 0
 U 62a3b8e3 frag u_lu_on 2432 vec4 1 0
 U 62a3b8e3 frag u_model_h 2448 float 1 0
-U 62a3b8e3 frag u_fac_base_inv 2464 vec4 1 0
-U 62a3b8e3 frag u_fac_mr_inv 2480 vec2 1 0
-U 62a3b8e3 frag u_mr_scale 2488 vec2 1 0
-U 62a3b8e3 frag u_fac_coat 2496 vec2 1 0
-U 62a3b8e3 frag u_fac_emis 2512 vec3 1 0
-U 62a3b8e3 frag u_view 2528 mat4 1 0
-U 62a3b8e3 frag u_rough_scale 2592 float 1 0
-U 62a3b8e3 frag u_micro_p 2608 vec4 1 0
-U 62a3b8e3 frag u_bent_p 2624 vec4 1 0
-U 62a3b8e3 frag u_micro_m 2640 vec4 1 0
-U 62a3b8e3 frag u_micro_r 2656 vec4 1 0
+U 62a3b8e3 frag u_rvt_on 2452 float 1 0
+U 62a3b8e3 frag u_rvt_p 2464 vec4 1 0
+U 62a3b8e3 frag u_rvt_q 2480 vec4 1 0
+U 62a3b8e3 frag u_rvt_y 2496 vec4 1 0
+U 62a3b8e3 frag u_rvt_win 2512 vec4 9 16
+U 62a3b8e3 frag u_fac_base_inv 2656 vec4 1 0
+U 62a3b8e3 frag u_fac_mr_inv 2672 vec2 1 0
+U 62a3b8e3 frag u_mr_scale 2680 vec2 1 0
+U 62a3b8e3 frag u_fac_coat 2688 vec2 1 0
+U 62a3b8e3 frag u_fac_emis 2704 vec3 1 0
+U 62a3b8e3 frag u_view 2720 mat4 1 0
+U 62a3b8e3 frag u_rough_scale 2784 float 1 0
+U 62a3b8e3 frag u_micro_p 2800 vec4 1 0
+U 62a3b8e3 frag u_bent_p 2816 vec4 1 0
+U 62a3b8e3 frag u_micro_m 2832 vec4 1 0
+U 62a3b8e3 frag u_micro_r 2848 vec4 1 0
 S 62a3b8e3 u_ai_bones 2
 S 62a3b8e3 u_ai_pbones 3
 T 62a3b8e3 u_arm 4
@@ -10622,21 +10806,25 @@ T 62a3b8e3 u_micro 26
 T 62a3b8e3 u_micro_mask 27
 T 62a3b8e3 u_nrm 28
 T 62a3b8e3 u_prefilter 29
-T 62a3b8e3 u_s2_arm 30
-T 62a3b8e3 u_s2_diff 31
-T 62a3b8e3 u_s2_nrm 32
-T 62a3b8e3 u_scene_depth 33
-T 62a3b8e3 u_shadow 34
-T 62a3b8e3 u_tershadow 35
-T 62a3b8e3 u_tershadow_aux 36
-T 62a3b8e3 u_ts_height 37
-S 62a3b8e3 u_ue_lg_data 38
-S 62a3b8e3 u_ue_lg_num 39
-S 62a3b8e3 u_ue_lights 40
-S 62a3b8e3 u_ue_lp 41
-T 62a3b8e3 u_ue_lph 42
-S 62a3b8e3 u_ue_ls 43
-T 62a3b8e3 u_ue_lsh 44
+T 62a3b8e3 u_rvt_a 30
+T 62a3b8e3 u_rvt_b 31
+T 62a3b8e3 u_rvt_h 32
+S 62a3b8e3 u_rvt_pt 33
+T 62a3b8e3 u_s2_arm 34
+T 62a3b8e3 u_s2_diff 35
+T 62a3b8e3 u_s2_nrm 36
+T 62a3b8e3 u_scene_depth 37
+T 62a3b8e3 u_shadow 38
+T 62a3b8e3 u_tershadow 39
+T 62a3b8e3 u_tershadow_aux 40
+T 62a3b8e3 u_ts_height 41
+S 62a3b8e3 u_ue_lg_data 42
+S 62a3b8e3 u_ue_lg_num 43
+S 62a3b8e3 u_ue_lights 44
+S 62a3b8e3 u_ue_lp 45
+T 62a3b8e3 u_ue_lph 46
+S 62a3b8e3 u_ue_ls 47
+T 62a3b8e3 u_ue_lsh 48
 P 375ca855 skin.vert model.frag #define ACTOR_INST;#define ALPHA_TEST;
 B 375ca855 vert 0 272
 U 375ca855 vert u_model 0 mat4 1 0
@@ -10657,7 +10845,7 @@ I 375ca855 a_pos 0 vec3
 I 375ca855 a_nrm 1 vec3
 I 375ca855 a_uv 2 vec2
 I 375ca855 a_col 7 vec4
-B 375ca855 frag 1 2672
+B 375ca855 frag 1 2864
 U 375ca855 frag u_cascade_vp 0 mat4 5 64
 U 375ca855 frag u_cascade_split 320 float 5 16
 U 375ca855 frag u_cascade_range 400 float 5 16
@@ -10743,17 +10931,22 @@ U 375ca855 frag u_surf_q2 2400 vec4 1 0
 U 375ca855 frag u_ter_far 2416 vec4 1 0
 U 375ca855 frag u_lu_on 2432 vec4 1 0
 U 375ca855 frag u_model_h 2448 float 1 0
-U 375ca855 frag u_fac_base_inv 2464 vec4 1 0
-U 375ca855 frag u_fac_mr_inv 2480 vec2 1 0
-U 375ca855 frag u_mr_scale 2488 vec2 1 0
-U 375ca855 frag u_fac_coat 2496 vec2 1 0
-U 375ca855 frag u_fac_emis 2512 vec3 1 0
-U 375ca855 frag u_view 2528 mat4 1 0
-U 375ca855 frag u_rough_scale 2592 float 1 0
-U 375ca855 frag u_micro_p 2608 vec4 1 0
-U 375ca855 frag u_bent_p 2624 vec4 1 0
-U 375ca855 frag u_micro_m 2640 vec4 1 0
-U 375ca855 frag u_micro_r 2656 vec4 1 0
+U 375ca855 frag u_rvt_on 2452 float 1 0
+U 375ca855 frag u_rvt_p 2464 vec4 1 0
+U 375ca855 frag u_rvt_q 2480 vec4 1 0
+U 375ca855 frag u_rvt_y 2496 vec4 1 0
+U 375ca855 frag u_rvt_win 2512 vec4 9 16
+U 375ca855 frag u_fac_base_inv 2656 vec4 1 0
+U 375ca855 frag u_fac_mr_inv 2672 vec2 1 0
+U 375ca855 frag u_mr_scale 2680 vec2 1 0
+U 375ca855 frag u_fac_coat 2688 vec2 1 0
+U 375ca855 frag u_fac_emis 2704 vec3 1 0
+U 375ca855 frag u_view 2720 mat4 1 0
+U 375ca855 frag u_rough_scale 2784 float 1 0
+U 375ca855 frag u_micro_p 2800 vec4 1 0
+U 375ca855 frag u_bent_p 2816 vec4 1 0
+U 375ca855 frag u_micro_m 2832 vec4 1 0
+U 375ca855 frag u_micro_r 2848 vec4 1 0
 S 375ca855 u_ai_bones 2
 S 375ca855 u_ai_pbones 3
 T 375ca855 u_arm 4
@@ -10782,21 +10975,25 @@ T 375ca855 u_micro 26
 T 375ca855 u_micro_mask 27
 T 375ca855 u_nrm 28
 T 375ca855 u_prefilter 29
-T 375ca855 u_s2_arm 30
-T 375ca855 u_s2_diff 31
-T 375ca855 u_s2_nrm 32
-T 375ca855 u_scene_depth 33
-T 375ca855 u_shadow 34
-T 375ca855 u_tershadow 35
-T 375ca855 u_tershadow_aux 36
-T 375ca855 u_ts_height 37
-S 375ca855 u_ue_lg_data 38
-S 375ca855 u_ue_lg_num 39
-S 375ca855 u_ue_lights 40
-S 375ca855 u_ue_lp 41
-T 375ca855 u_ue_lph 42
-S 375ca855 u_ue_ls 43
-T 375ca855 u_ue_lsh 44
+T 375ca855 u_rvt_a 30
+T 375ca855 u_rvt_b 31
+T 375ca855 u_rvt_h 32
+S 375ca855 u_rvt_pt 33
+T 375ca855 u_s2_arm 34
+T 375ca855 u_s2_diff 35
+T 375ca855 u_s2_nrm 36
+T 375ca855 u_scene_depth 37
+T 375ca855 u_shadow 38
+T 375ca855 u_tershadow 39
+T 375ca855 u_tershadow_aux 40
+T 375ca855 u_ts_height 41
+S 375ca855 u_ue_lg_data 42
+S 375ca855 u_ue_lg_num 43
+S 375ca855 u_ue_lights 44
+S 375ca855 u_ue_lp 45
+T 375ca855 u_ue_lph 46
+S 375ca855 u_ue_ls 47
+T 375ca855 u_ue_lsh 48
 P a5ad521e skin.vert model.frag #define ALPHA_TEST;
 B a5ad521e vert 0 10512
 U a5ad521e vert u_model 0 mat4 1 0
@@ -10813,7 +11010,7 @@ I a5ad521e a_pos 0 vec3
 I a5ad521e a_nrm 1 vec3
 I a5ad521e a_uv 2 vec2
 I a5ad521e a_col 7 vec4
-B a5ad521e frag 1 2688
+B a5ad521e frag 1 2880
 U a5ad521e frag u_cascade_vp 0 mat4 5 64
 U a5ad521e frag u_cascade_split 320 float 5 16
 U a5ad521e frag u_cascade_range 400 float 5 16
@@ -10899,19 +11096,24 @@ U a5ad521e frag u_surf_q2 2400 vec4 1 0
 U a5ad521e frag u_ter_far 2416 vec4 1 0
 U a5ad521e frag u_lu_on 2432 vec4 1 0
 U a5ad521e frag u_model_h 2448 float 1 0
-U a5ad521e frag u_fac_base_inv 2464 vec4 1 0
-U a5ad521e frag u_fac_mr_inv 2480 vec2 1 0
-U a5ad521e frag u_mr_scale 2488 vec2 1 0
-U a5ad521e frag u_fac_coat 2496 vec2 1 0
-U a5ad521e frag u_fac_emis 2512 vec3 1 0
-U a5ad521e frag u_view 2528 mat4 1 0
-U a5ad521e frag u_tint 2592 vec3 1 0
-U a5ad521e frag u_rough_scale 2604 float 1 0
-U a5ad521e frag u_emissive 2608 float 1 0
-U a5ad521e frag u_micro_p 2624 vec4 1 0
-U a5ad521e frag u_bent_p 2640 vec4 1 0
-U a5ad521e frag u_micro_m 2656 vec4 1 0
-U a5ad521e frag u_micro_r 2672 vec4 1 0
+U a5ad521e frag u_rvt_on 2452 float 1 0
+U a5ad521e frag u_rvt_p 2464 vec4 1 0
+U a5ad521e frag u_rvt_q 2480 vec4 1 0
+U a5ad521e frag u_rvt_y 2496 vec4 1 0
+U a5ad521e frag u_rvt_win 2512 vec4 9 16
+U a5ad521e frag u_fac_base_inv 2656 vec4 1 0
+U a5ad521e frag u_fac_mr_inv 2672 vec2 1 0
+U a5ad521e frag u_mr_scale 2680 vec2 1 0
+U a5ad521e frag u_fac_coat 2688 vec2 1 0
+U a5ad521e frag u_fac_emis 2704 vec3 1 0
+U a5ad521e frag u_view 2720 mat4 1 0
+U a5ad521e frag u_tint 2784 vec3 1 0
+U a5ad521e frag u_rough_scale 2796 float 1 0
+U a5ad521e frag u_emissive 2800 float 1 0
+U a5ad521e frag u_micro_p 2816 vec4 1 0
+U a5ad521e frag u_bent_p 2832 vec4 1 0
+U a5ad521e frag u_micro_m 2848 vec4 1 0
+U a5ad521e frag u_micro_r 2864 vec4 1 0
 S a5ad521e u_ai_bones 2
 S a5ad521e u_ai_pbones 3
 T a5ad521e u_arm 4
@@ -10940,21 +11142,25 @@ T a5ad521e u_micro 26
 T a5ad521e u_micro_mask 27
 T a5ad521e u_nrm 28
 T a5ad521e u_prefilter 29
-T a5ad521e u_s2_arm 30
-T a5ad521e u_s2_diff 31
-T a5ad521e u_s2_nrm 32
-T a5ad521e u_scene_depth 33
-T a5ad521e u_shadow 34
-T a5ad521e u_tershadow 35
-T a5ad521e u_tershadow_aux 36
-T a5ad521e u_ts_height 37
-S a5ad521e u_ue_lg_data 38
-S a5ad521e u_ue_lg_num 39
-S a5ad521e u_ue_lights 40
-S a5ad521e u_ue_lp 41
-T a5ad521e u_ue_lph 42
-S a5ad521e u_ue_ls 43
-T a5ad521e u_ue_lsh 44
+T a5ad521e u_rvt_a 30
+T a5ad521e u_rvt_b 31
+T a5ad521e u_rvt_h 32
+S a5ad521e u_rvt_pt 33
+T a5ad521e u_s2_arm 34
+T a5ad521e u_s2_diff 35
+T a5ad521e u_s2_nrm 36
+T a5ad521e u_scene_depth 37
+T a5ad521e u_shadow 38
+T a5ad521e u_tershadow 39
+T a5ad521e u_tershadow_aux 40
+T a5ad521e u_ts_height 41
+S a5ad521e u_ue_lg_data 42
+S a5ad521e u_ue_lg_num 43
+S a5ad521e u_ue_lights 44
+S a5ad521e u_ue_lp 45
+T a5ad521e u_ue_lph 46
+S a5ad521e u_ue_ls 47
+T a5ad521e u_ue_lsh 48
 P c01c40c4 skin.vert model.frag #define TRANSLUCENT;
 B c01c40c4 vert 0 10512
 U c01c40c4 vert u_model 0 mat4 1 0
@@ -11101,21 +11307,25 @@ T c01c40c4 u_micro 26
 T c01c40c4 u_micro_mask 27
 T c01c40c4 u_nrm 28
 T c01c40c4 u_prefilter 29
-T c01c40c4 u_s2_arm 30
-T c01c40c4 u_s2_diff 31
-T c01c40c4 u_s2_nrm 32
-T c01c40c4 u_scene_depth 33
-T c01c40c4 u_shadow 34
-T c01c40c4 u_tershadow 35
-T c01c40c4 u_tershadow_aux 36
-T c01c40c4 u_ts_height 37
-S c01c40c4 u_ue_lg_data 38
-S c01c40c4 u_ue_lg_num 39
-S c01c40c4 u_ue_lights 40
-S c01c40c4 u_ue_lp 41
-T c01c40c4 u_ue_lph 42
-S c01c40c4 u_ue_ls 43
-T c01c40c4 u_ue_lsh 44
+T c01c40c4 u_rvt_a 30
+T c01c40c4 u_rvt_b 31
+T c01c40c4 u_rvt_h 32
+S c01c40c4 u_rvt_pt 33
+T c01c40c4 u_s2_arm 34
+T c01c40c4 u_s2_diff 35
+T c01c40c4 u_s2_nrm 36
+T c01c40c4 u_scene_depth 37
+T c01c40c4 u_shadow 38
+T c01c40c4 u_tershadow 39
+T c01c40c4 u_tershadow_aux 40
+T c01c40c4 u_ts_height 41
+S c01c40c4 u_ue_lg_data 42
+S c01c40c4 u_ue_lg_num 43
+S c01c40c4 u_ue_lights 44
+S c01c40c4 u_ue_lp 45
+T c01c40c4 u_ue_lph 46
+S c01c40c4 u_ue_ls 47
+T c01c40c4 u_ue_lsh 48
 P 6d5ca03e skin.vert model.frag #define FABRIC;
 B 6d5ca03e vert 0 10512
 U 6d5ca03e vert u_model 0 mat4 1 0
@@ -11264,21 +11474,25 @@ T 6d5ca03e u_micro 26
 T 6d5ca03e u_micro_mask 27
 T 6d5ca03e u_nrm 28
 T 6d5ca03e u_prefilter 29
-T 6d5ca03e u_s2_arm 30
-T 6d5ca03e u_s2_diff 31
-T 6d5ca03e u_s2_nrm 32
-T 6d5ca03e u_scene_depth 33
-T 6d5ca03e u_shadow 34
-T 6d5ca03e u_tershadow 35
-T 6d5ca03e u_tershadow_aux 36
-T 6d5ca03e u_ts_height 37
-S 6d5ca03e u_ue_lg_data 38
-S 6d5ca03e u_ue_lg_num 39
-S 6d5ca03e u_ue_lights 40
-S 6d5ca03e u_ue_lp 41
-T 6d5ca03e u_ue_lph 42
-S 6d5ca03e u_ue_ls 43
-T 6d5ca03e u_ue_lsh 44
+T 6d5ca03e u_rvt_a 30
+T 6d5ca03e u_rvt_b 31
+T 6d5ca03e u_rvt_h 32
+S 6d5ca03e u_rvt_pt 33
+T 6d5ca03e u_s2_arm 34
+T 6d5ca03e u_s2_diff 35
+T 6d5ca03e u_s2_nrm 36
+T 6d5ca03e u_scene_depth 37
+T 6d5ca03e u_shadow 38
+T 6d5ca03e u_tershadow 39
+T 6d5ca03e u_tershadow_aux 40
+T 6d5ca03e u_ts_height 41
+S 6d5ca03e u_ue_lg_data 42
+S 6d5ca03e u_ue_lg_num 43
+S 6d5ca03e u_ue_lights 44
+S 6d5ca03e u_ue_lp 45
+T 6d5ca03e u_ue_lph 46
+S 6d5ca03e u_ue_ls 47
+T 6d5ca03e u_ue_lsh 48
 P 30b20cc2 skin.vert model.frag #define FABRIC;#define ALPHA_TEST;
 B 30b20cc2 vert 0 10512
 U 30b20cc2 vert u_model 0 mat4 1 0
@@ -11427,21 +11641,25 @@ T 30b20cc2 u_micro 26
 T 30b20cc2 u_micro_mask 27
 T 30b20cc2 u_nrm 28
 T 30b20cc2 u_prefilter 29
-T 30b20cc2 u_s2_arm 30
-T 30b20cc2 u_s2_diff 31
-T 30b20cc2 u_s2_nrm 32
-T 30b20cc2 u_scene_depth 33
-T 30b20cc2 u_shadow 34
-T 30b20cc2 u_tershadow 35
-T 30b20cc2 u_tershadow_aux 36
-T 30b20cc2 u_ts_height 37
-S 30b20cc2 u_ue_lg_data 38
-S 30b20cc2 u_ue_lg_num 39
-S 30b20cc2 u_ue_lights 40
-S 30b20cc2 u_ue_lp 41
-T 30b20cc2 u_ue_lph 42
-S 30b20cc2 u_ue_ls 43
-T 30b20cc2 u_ue_lsh 44
+T 30b20cc2 u_rvt_a 30
+T 30b20cc2 u_rvt_b 31
+T 30b20cc2 u_rvt_h 32
+S 30b20cc2 u_rvt_pt 33
+T 30b20cc2 u_s2_arm 34
+T 30b20cc2 u_s2_diff 35
+T 30b20cc2 u_s2_nrm 36
+T 30b20cc2 u_scene_depth 37
+T 30b20cc2 u_shadow 38
+T 30b20cc2 u_tershadow 39
+T 30b20cc2 u_tershadow_aux 40
+T 30b20cc2 u_ts_height 41
+S 30b20cc2 u_ue_lg_data 42
+S 30b20cc2 u_ue_lg_num 43
+S 30b20cc2 u_ue_lights 44
+S 30b20cc2 u_ue_lp 45
+T 30b20cc2 u_ue_lph 46
+S 30b20cc2 u_ue_ls 47
+T 30b20cc2 u_ue_lsh 48
 P 6ff28bc6 skin.vert model.frag #define ALPHA_TEST;#define EYE;
 B 6ff28bc6 vert 0 10512
 U 6ff28bc6 vert u_model 0 mat4 1 0
@@ -11596,21 +11814,25 @@ T 6ff28bc6 u_micro 26
 T 6ff28bc6 u_micro_mask 27
 T 6ff28bc6 u_nrm 28
 T 6ff28bc6 u_prefilter 29
-T 6ff28bc6 u_s2_arm 30
-T 6ff28bc6 u_s2_diff 31
-T 6ff28bc6 u_s2_nrm 32
-T 6ff28bc6 u_scene_depth 33
-T 6ff28bc6 u_shadow 34
-T 6ff28bc6 u_tershadow 35
-T 6ff28bc6 u_tershadow_aux 36
-T 6ff28bc6 u_ts_height 37
-S 6ff28bc6 u_ue_lg_data 38
-S 6ff28bc6 u_ue_lg_num 39
-S 6ff28bc6 u_ue_lights 40
-S 6ff28bc6 u_ue_lp 41
-T 6ff28bc6 u_ue_lph 42
-S 6ff28bc6 u_ue_ls 43
-T 6ff28bc6 u_ue_lsh 44
+T 6ff28bc6 u_rvt_a 30
+T 6ff28bc6 u_rvt_b 31
+T 6ff28bc6 u_rvt_h 32
+S 6ff28bc6 u_rvt_pt 33
+T 6ff28bc6 u_s2_arm 34
+T 6ff28bc6 u_s2_diff 35
+T 6ff28bc6 u_s2_nrm 36
+T 6ff28bc6 u_scene_depth 37
+T 6ff28bc6 u_shadow 38
+T 6ff28bc6 u_tershadow 39
+T 6ff28bc6 u_tershadow_aux 40
+T 6ff28bc6 u_ts_height 41
+S 6ff28bc6 u_ue_lg_data 42
+S 6ff28bc6 u_ue_lg_num 43
+S 6ff28bc6 u_ue_lights 44
+S 6ff28bc6 u_ue_lp 45
+T 6ff28bc6 u_ue_lph 46
+S 6ff28bc6 u_ue_ls 47
+T 6ff28bc6 u_ue_lsh 48
 P 1df3d080 skin.vert eyeshell.frag 
 B 1df3d080 vert 0 10512
 U 1df3d080 vert u_model 0 mat4 1 0
@@ -11891,21 +12113,185 @@ T 93e7e791 u_micro 26
 T 93e7e791 u_micro_mask 27
 T 93e7e791 u_nrm 28
 T 93e7e791 u_prefilter 29
-T 93e7e791 u_s2_arm 30
-T 93e7e791 u_s2_diff 31
-T 93e7e791 u_s2_nrm 32
-T 93e7e791 u_scene_depth 33
-T 93e7e791 u_shadow 34
-T 93e7e791 u_tershadow 35
-T 93e7e791 u_tershadow_aux 36
-T 93e7e791 u_ts_height 37
-S 93e7e791 u_ue_lg_data 38
-S 93e7e791 u_ue_lg_num 39
-S 93e7e791 u_ue_lights 40
-S 93e7e791 u_ue_lp 41
-T 93e7e791 u_ue_lph 42
-S 93e7e791 u_ue_ls 43
-T 93e7e791 u_ue_lsh 44
+T 93e7e791 u_rvt_a 30
+T 93e7e791 u_rvt_b 31
+T 93e7e791 u_rvt_h 32
+S 93e7e791 u_rvt_pt 33
+T 93e7e791 u_s2_arm 34
+T 93e7e791 u_s2_diff 35
+T 93e7e791 u_s2_nrm 36
+T 93e7e791 u_scene_depth 37
+T 93e7e791 u_shadow 38
+T 93e7e791 u_tershadow 39
+T 93e7e791 u_tershadow_aux 40
+T 93e7e791 u_ts_height 41
+S 93e7e791 u_ue_lg_data 42
+S 93e7e791 u_ue_lg_num 43
+S 93e7e791 u_ue_lights 44
+S 93e7e791 u_ue_lp 45
+T 93e7e791 u_ue_lph 46
+S 93e7e791 u_ue_ls 47
+T 93e7e791 u_ue_lsh 48
+P 6a86b069 skin.vert model.frag #define RVT_WRITE;
+B 6a86b069 vert 0 10512
+U 6a86b069 vert u_model 0 mat4 1 0
+U 6a86b069 vert u_bones 64 mat4 160 64
+U 6a86b069 vert u_skinned 10304 float 1 0
+U 6a86b069 vert u_view 10320 mat4 1 0
+U 6a86b069 vert u_proj 10384 mat4 1 0
+U 6a86b069 vert u_light_vp 10448 mat4 1 0
+I 6a86b069 a_weights 6 vec4
+I 6a86b069 a_joints 5 vec4
+I 6a86b069 a_weights1 11 vec4
+I 6a86b069 a_joints1 10 vec4
+I 6a86b069 a_pos 0 vec3
+I 6a86b069 a_nrm 1 vec3
+I 6a86b069 a_uv 2 vec2
+I 6a86b069 a_col 7 vec4
+B 6a86b069 frag 1 2688
+U 6a86b069 frag u_cascade_vp 0 mat4 5 64
+U 6a86b069 frag u_cascade_split 320 float 5 16
+U 6a86b069 frag u_cascade_range 400 float 5 16
+U 6a86b069 frag u_cascade_texel 480 float 5 16
+U 6a86b069 frag u_sun_dir 560 vec3 1 0
+U 6a86b069 frag u_sun_color 576 vec3 1 0
+U 6a86b069 frag u_cam_pos 592 vec3 1 0
+U 6a86b069 frag u_prefilter_levels 604 float 1 0
+U 6a86b069 frag u_fog_density 608 float 1 0
+U 6a86b069 frag u_fog_height_falloff 612 float 1 0
+U 6a86b069 frag u_fog_base 616 float 1 0
+U 6a86b069 frag u_clip_y 620 float 1 0
+U 6a86b069 frag u_spec_scale 624 float 1 0
+U 6a86b069 frag u_sky_rot 632 vec2 1 0
+U 6a86b069 frag u_ground_alb 640 vec3 1 0
+U 6a86b069 frag u_ground_alb_hi 656 vec3 1 0
+U 6a86b069 frag u_ground_hi_y 668 float 1 0
+U 6a86b069 frag u_ground_hi_w 672 float 1 0
+U 6a86b069 frag u_ibl_scale 688 vec3 1 0
+U 6a86b069 frag u_daylight 700 float 1 0
+U 6a86b069 frag u_fire_pos 704 vec3 1 0
+U 6a86b069 frag u_fire_color 720 vec3 1 0
+U 6a86b069 frag u_hand_pos 736 vec3 1 0
+U 6a86b069 frag u_hand_color 752 vec3 1 0
+U 6a86b069 frag u_hand_dir 768 vec3 1 0
+U 6a86b069 frag u_hand_cone 780 float 1 0
+U 6a86b069 frag u_hand_reach 784 float 1 0
+U 6a86b069 frag u_ue_sl 788 float 1 0
+U 6a86b069 frag u_ue_sl_size 792 float 1 0
+U 6a86b069 frag u_ue_sl_mips 796 float 1 0
+U 6a86b069 frag u_ue_sl_color 800 vec3 1 0
+U 6a86b069 frag u_dither_frame 812 float 1 0
+U 6a86b069 frag u_card_cut 816 vec2 1 0
+U 6a86b069 frag u_ts_origin 824 vec2 1 0
+U 6a86b069 frag u_ts_half 832 float 1 0
+U 6a86b069 frag u_ts_on 836 float 1 0
+U 6a86b069 frag u_force_cascade 840 int 1 0
+U 6a86b069 frag u_shadow_tan_max 844 float 1 0
+U 6a86b069 frag u_cloud_shadow 848 float 1 0
+U 6a86b069 frag u_time 852 float 1 0
+U 6a86b069 frag u_lz 864 vec4 32 16
+U 6a86b069 frag u_lz_n 1376 int 1 0
+U 6a86b069 frag u_zl 1392 vec4 32 16
+U 6a86b069 frag u_zl_n 1904 int 1 0
+U 6a86b069 frag u_zl_color 1920 vec3 1 0
+U 6a86b069 frag u_zl_reach 1932 float 1 0
+U 6a86b069 frag u_char_lit 1936 float 1 0
+U 6a86b069 frag u_cl_dir0 1952 vec3 1 0
+U 6a86b069 frag u_cl_dir1 1968 vec3 1 0
+U 6a86b069 frag u_cl_dir2 1984 vec3 1 0
+U 6a86b069 frag u_cl_col0 2000 vec3 1 0
+U 6a86b069 frag u_cl_col1 2016 vec3 1 0
+U 6a86b069 frag u_cl_col2 2032 vec3 1 0
+U 6a86b069 frag u_ll_n 2044 int 1 0
+U 6a86b069 frag u_lg_on 2048 float 1 0
+U 6a86b069 frag u_lg_vp 2064 mat4 1 0
+U 6a86b069 frag u_lg_zp 2128 vec4 1 0
+U 6a86b069 frag u_lg_grid 2144 vec4 1 0
+U 6a86b069 frag u_lg_view 2160 vec2 1 0
+U 6a86b069 frag u_ue_ls_n 2168 int 1 0
+U 6a86b069 frag u_ue_ls_size 2172 float 1 0
+U 6a86b069 frag u_ue_lp_n 2176 int 1 0
+U 6a86b069 frag u_fog_inscatter 2180 float 1 0
+U 6a86b069 frag u_fog_desat 2184 float 1 0
+U 6a86b069 frag u_fog_wall 2188 float 1 0
+U 6a86b069 frag u_fog_haze 2192 float 1 0
+U 6a86b069 frag u_fog_cut 2200 vec2 1 0
+U 6a86b069 frag u_sky_relight 2208 float 1 0
+U 6a86b069 frag u_surf 2224 vec4 1 0
+U 6a86b069 frag u_surf_b 2240 vec4 1 0
+U 6a86b069 frag u_surf_c 2256 vec4 1 0
+U 6a86b069 frag u_surf_d 2272 vec4 1 0
+U 6a86b069 frag u_surf_e 2288 vec4 1 0
+U 6a86b069 frag u_s2 2304 vec4 1 0
+U 6a86b069 frag u_s2_b 2320 vec4 1 0
+U 6a86b069 frag u_s2_c 2336 vec4 1 0
+U 6a86b069 frag u_s2_d 2352 vec4 1 0
+U 6a86b069 frag u_s2_e 2368 vec4 1 0
+U 6a86b069 frag u_surf_q 2384 vec4 1 0
+U 6a86b069 frag u_surf_q2 2400 vec4 1 0
+U 6a86b069 frag u_ter_far 2416 vec4 1 0
+U 6a86b069 frag u_lu_on 2432 vec4 1 0
+U 6a86b069 frag u_model_h 2448 float 1 0
+U 6a86b069 frag u_fac_base_inv 2464 vec4 1 0
+U 6a86b069 frag u_fac_mr_inv 2480 vec2 1 0
+U 6a86b069 frag u_mr_scale 2488 vec2 1 0
+U 6a86b069 frag u_fac_coat 2496 vec2 1 0
+U 6a86b069 frag u_fac_emis 2512 vec3 1 0
+U 6a86b069 frag u_view 2528 mat4 1 0
+U 6a86b069 frag u_tint 2592 vec3 1 0
+U 6a86b069 frag u_rough_scale 2604 float 1 0
+U 6a86b069 frag u_emissive 2608 float 1 0
+U 6a86b069 frag u_micro_p 2624 vec4 1 0
+U 6a86b069 frag u_bent_p 2640 vec4 1 0
+U 6a86b069 frag u_micro_m 2656 vec4 1 0
+U 6a86b069 frag u_micro_r 2672 vec4 1 0
+S 6a86b069 u_ai_bones 2
+S 6a86b069 u_ai_pbones 3
+T 6a86b069 u_arm 4
+T 6a86b069 u_bent 5
+T 6a86b069 u_blade_tex 6
+T 6a86b069 u_brdf 7
+T 6a86b069 u_diff 8
+T 6a86b069 u_eye_disp 9
+T 6a86b069 u_eye_iris 10
+T 6a86b069 u_eye_irisn 11
+T 6a86b069 u_eye_n 12
+T 6a86b069 u_eye_sclera 13
+T 6a86b069 u_eye_vis 14
+T 6a86b069 u_fdn 15
+T 6a86b069 u_fdnb 16
+T 6a86b069 u_fkit 17
+T 6a86b069 u_fkitb 18
+T 6a86b069 u_fmask 19
+T 6a86b069 u_follicle 20
+T 6a86b069 u_hairsh 21
+T 6a86b069 u_headmap 22
+T 6a86b069 u_hs_front 23
+T 6a86b069 u_irradiance 24
+T 6a86b069 u_lu 25
+T 6a86b069 u_micro 26
+T 6a86b069 u_micro_mask 27
+T 6a86b069 u_nrm 28
+T 6a86b069 u_prefilter 29
+T 6a86b069 u_rvt_a 30
+T 6a86b069 u_rvt_b 31
+T 6a86b069 u_rvt_h 32
+S 6a86b069 u_rvt_pt 33
+T 6a86b069 u_s2_arm 34
+T 6a86b069 u_s2_diff 35
+T 6a86b069 u_s2_nrm 36
+T 6a86b069 u_scene_depth 37
+T 6a86b069 u_shadow 38
+T 6a86b069 u_tershadow 39
+T 6a86b069 u_tershadow_aux 40
+T 6a86b069 u_ts_height 41
+S 6a86b069 u_ue_lg_data 42
+S 6a86b069 u_ue_lg_num 43
+S 6a86b069 u_ue_lights 44
+S 6a86b069 u_ue_lp 45
+T 6a86b069 u_ue_lph 46
+S 6a86b069 u_ue_ls 47
+T 6a86b069 u_ue_lsh 48
 P c852b292 skin.vert depth.frag #define OPAQUE_DEPTH;
 B c852b292 vert 0 10512
 U c852b292 vert u_model 0 mat4 1 0
@@ -13180,7 +13566,7 @@ I ad79dbcc a_pos 0 vec3
 I ad79dbcc a_nrm 1 vec3
 I ad79dbcc a_uv 2 vec2
 I ad79dbcc a_col 7 vec4
-B ad79dbcc frag 1 2688
+B ad79dbcc frag 1 2880
 U ad79dbcc frag u_cascade_vp 0 mat4 5 64
 U ad79dbcc frag u_cascade_split 320 float 5 16
 U ad79dbcc frag u_cascade_range 400 float 5 16
@@ -13266,19 +13652,24 @@ U ad79dbcc frag u_surf_q2 2400 vec4 1 0
 U ad79dbcc frag u_ter_far 2416 vec4 1 0
 U ad79dbcc frag u_lu_on 2432 vec4 1 0
 U ad79dbcc frag u_model_h 2448 float 1 0
-U ad79dbcc frag u_fac_base_inv 2464 vec4 1 0
-U ad79dbcc frag u_fac_mr_inv 2480 vec2 1 0
-U ad79dbcc frag u_mr_scale 2488 vec2 1 0
-U ad79dbcc frag u_fac_coat 2496 vec2 1 0
-U ad79dbcc frag u_fac_emis 2512 vec3 1 0
-U ad79dbcc frag u_view 2528 mat4 1 0
-U ad79dbcc frag u_tint 2592 vec3 1 0
-U ad79dbcc frag u_rough_scale 2604 float 1 0
-U ad79dbcc frag u_emissive 2608 float 1 0
-U ad79dbcc frag u_micro_p 2624 vec4 1 0
-U ad79dbcc frag u_bent_p 2640 vec4 1 0
-U ad79dbcc frag u_micro_m 2656 vec4 1 0
-U ad79dbcc frag u_micro_r 2672 vec4 1 0
+U ad79dbcc frag u_rvt_on 2452 float 1 0
+U ad79dbcc frag u_rvt_p 2464 vec4 1 0
+U ad79dbcc frag u_rvt_q 2480 vec4 1 0
+U ad79dbcc frag u_rvt_y 2496 vec4 1 0
+U ad79dbcc frag u_rvt_win 2512 vec4 9 16
+U ad79dbcc frag u_fac_base_inv 2656 vec4 1 0
+U ad79dbcc frag u_fac_mr_inv 2672 vec2 1 0
+U ad79dbcc frag u_mr_scale 2680 vec2 1 0
+U ad79dbcc frag u_fac_coat 2688 vec2 1 0
+U ad79dbcc frag u_fac_emis 2704 vec3 1 0
+U ad79dbcc frag u_view 2720 mat4 1 0
+U ad79dbcc frag u_tint 2784 vec3 1 0
+U ad79dbcc frag u_rough_scale 2796 float 1 0
+U ad79dbcc frag u_emissive 2800 float 1 0
+U ad79dbcc frag u_micro_p 2816 vec4 1 0
+U ad79dbcc frag u_bent_p 2832 vec4 1 0
+U ad79dbcc frag u_micro_m 2848 vec4 1 0
+U ad79dbcc frag u_micro_r 2864 vec4 1 0
 S ad79dbcc u_ai_bones 2
 S ad79dbcc u_ai_pbones 3
 T ad79dbcc u_arm 4
@@ -13307,21 +13698,25 @@ T ad79dbcc u_micro 26
 T ad79dbcc u_micro_mask 27
 T ad79dbcc u_nrm 28
 T ad79dbcc u_prefilter 29
-T ad79dbcc u_s2_arm 30
-T ad79dbcc u_s2_diff 31
-T ad79dbcc u_s2_nrm 32
-T ad79dbcc u_scene_depth 33
-T ad79dbcc u_shadow 34
-T ad79dbcc u_tershadow 35
-T ad79dbcc u_tershadow_aux 36
-T ad79dbcc u_ts_height 37
-S ad79dbcc u_ue_lg_data 38
-S ad79dbcc u_ue_lg_num 39
-S ad79dbcc u_ue_lights 40
-S ad79dbcc u_ue_lp 41
-T ad79dbcc u_ue_lph 42
-S ad79dbcc u_ue_ls 43
-T ad79dbcc u_ue_lsh 44
+T ad79dbcc u_rvt_a 30
+T ad79dbcc u_rvt_b 31
+T ad79dbcc u_rvt_h 32
+S ad79dbcc u_rvt_pt 33
+T ad79dbcc u_s2_arm 34
+T ad79dbcc u_s2_diff 35
+T ad79dbcc u_s2_nrm 36
+T ad79dbcc u_scene_depth 37
+T ad79dbcc u_shadow 38
+T ad79dbcc u_tershadow 39
+T ad79dbcc u_tershadow_aux 40
+T ad79dbcc u_ts_height 41
+S ad79dbcc u_ue_lg_data 42
+S ad79dbcc u_ue_lg_num 43
+S ad79dbcc u_ue_lights 44
+S ad79dbcc u_ue_lp 45
+T ad79dbcc u_ue_lph 46
+S ad79dbcc u_ue_ls 47
+T ad79dbcc u_ue_lsh 48
 P 199f24e0 skin.vert model.frag #define ALPHA_TEST;#define SKIN4;
 B 199f24e0 vert 0 10512
 U 199f24e0 vert u_model 0 mat4 1 0
@@ -13336,7 +13731,7 @@ I 199f24e0 a_pos 0 vec3
 I 199f24e0 a_nrm 1 vec3
 I 199f24e0 a_uv 2 vec2
 I 199f24e0 a_col 7 vec4
-B 199f24e0 frag 1 2688
+B 199f24e0 frag 1 2880
 U 199f24e0 frag u_cascade_vp 0 mat4 5 64
 U 199f24e0 frag u_cascade_split 320 float 5 16
 U 199f24e0 frag u_cascade_range 400 float 5 16
@@ -13422,19 +13817,24 @@ U 199f24e0 frag u_surf_q2 2400 vec4 1 0
 U 199f24e0 frag u_ter_far 2416 vec4 1 0
 U 199f24e0 frag u_lu_on 2432 vec4 1 0
 U 199f24e0 frag u_model_h 2448 float 1 0
-U 199f24e0 frag u_fac_base_inv 2464 vec4 1 0
-U 199f24e0 frag u_fac_mr_inv 2480 vec2 1 0
-U 199f24e0 frag u_mr_scale 2488 vec2 1 0
-U 199f24e0 frag u_fac_coat 2496 vec2 1 0
-U 199f24e0 frag u_fac_emis 2512 vec3 1 0
-U 199f24e0 frag u_view 2528 mat4 1 0
-U 199f24e0 frag u_tint 2592 vec3 1 0
-U 199f24e0 frag u_rough_scale 2604 float 1 0
-U 199f24e0 frag u_emissive 2608 float 1 0
-U 199f24e0 frag u_micro_p 2624 vec4 1 0
-U 199f24e0 frag u_bent_p 2640 vec4 1 0
-U 199f24e0 frag u_micro_m 2656 vec4 1 0
-U 199f24e0 frag u_micro_r 2672 vec4 1 0
+U 199f24e0 frag u_rvt_on 2452 float 1 0
+U 199f24e0 frag u_rvt_p 2464 vec4 1 0
+U 199f24e0 frag u_rvt_q 2480 vec4 1 0
+U 199f24e0 frag u_rvt_y 2496 vec4 1 0
+U 199f24e0 frag u_rvt_win 2512 vec4 9 16
+U 199f24e0 frag u_fac_base_inv 2656 vec4 1 0
+U 199f24e0 frag u_fac_mr_inv 2672 vec2 1 0
+U 199f24e0 frag u_mr_scale 2680 vec2 1 0
+U 199f24e0 frag u_fac_coat 2688 vec2 1 0
+U 199f24e0 frag u_fac_emis 2704 vec3 1 0
+U 199f24e0 frag u_view 2720 mat4 1 0
+U 199f24e0 frag u_tint 2784 vec3 1 0
+U 199f24e0 frag u_rough_scale 2796 float 1 0
+U 199f24e0 frag u_emissive 2800 float 1 0
+U 199f24e0 frag u_micro_p 2816 vec4 1 0
+U 199f24e0 frag u_bent_p 2832 vec4 1 0
+U 199f24e0 frag u_micro_m 2848 vec4 1 0
+U 199f24e0 frag u_micro_r 2864 vec4 1 0
 S 199f24e0 u_ai_bones 2
 S 199f24e0 u_ai_pbones 3
 T 199f24e0 u_arm 4
@@ -13463,21 +13863,25 @@ T 199f24e0 u_micro 26
 T 199f24e0 u_micro_mask 27
 T 199f24e0 u_nrm 28
 T 199f24e0 u_prefilter 29
-T 199f24e0 u_s2_arm 30
-T 199f24e0 u_s2_diff 31
-T 199f24e0 u_s2_nrm 32
-T 199f24e0 u_scene_depth 33
-T 199f24e0 u_shadow 34
-T 199f24e0 u_tershadow 35
-T 199f24e0 u_tershadow_aux 36
-T 199f24e0 u_ts_height 37
-S 199f24e0 u_ue_lg_data 38
-S 199f24e0 u_ue_lg_num 39
-S 199f24e0 u_ue_lights 40
-S 199f24e0 u_ue_lp 41
-T 199f24e0 u_ue_lph 42
-S 199f24e0 u_ue_ls 43
-T 199f24e0 u_ue_lsh 44
+T 199f24e0 u_rvt_a 30
+T 199f24e0 u_rvt_b 31
+T 199f24e0 u_rvt_h 32
+S 199f24e0 u_rvt_pt 33
+T 199f24e0 u_s2_arm 34
+T 199f24e0 u_s2_diff 35
+T 199f24e0 u_s2_nrm 36
+T 199f24e0 u_scene_depth 37
+T 199f24e0 u_shadow 38
+T 199f24e0 u_tershadow 39
+T 199f24e0 u_tershadow_aux 40
+T 199f24e0 u_ts_height 41
+S 199f24e0 u_ue_lg_data 42
+S 199f24e0 u_ue_lg_num 43
+S 199f24e0 u_ue_lights 44
+S 199f24e0 u_ue_lp 45
+T 199f24e0 u_ue_lph 46
+S 199f24e0 u_ue_ls 47
+T 199f24e0 u_ue_lsh 48
 P d11bf269 skin.vert model.frag #define ACTOR_INST;#define SKIN4;
 B d11bf269 vert 0 272
 U d11bf269 vert u_model 0 mat4 1 0
@@ -13496,7 +13900,7 @@ I d11bf269 a_pos 0 vec3
 I d11bf269 a_nrm 1 vec3
 I d11bf269 a_uv 2 vec2
 I d11bf269 a_col 7 vec4
-B d11bf269 frag 1 2672
+B d11bf269 frag 1 2864
 U d11bf269 frag u_cascade_vp 0 mat4 5 64
 U d11bf269 frag u_cascade_split 320 float 5 16
 U d11bf269 frag u_cascade_range 400 float 5 16
@@ -13582,17 +13986,22 @@ U d11bf269 frag u_surf_q2 2400 vec4 1 0
 U d11bf269 frag u_ter_far 2416 vec4 1 0
 U d11bf269 frag u_lu_on 2432 vec4 1 0
 U d11bf269 frag u_model_h 2448 float 1 0
-U d11bf269 frag u_fac_base_inv 2464 vec4 1 0
-U d11bf269 frag u_fac_mr_inv 2480 vec2 1 0
-U d11bf269 frag u_mr_scale 2488 vec2 1 0
-U d11bf269 frag u_fac_coat 2496 vec2 1 0
-U d11bf269 frag u_fac_emis 2512 vec3 1 0
-U d11bf269 frag u_view 2528 mat4 1 0
-U d11bf269 frag u_rough_scale 2592 float 1 0
-U d11bf269 frag u_micro_p 2608 vec4 1 0
-U d11bf269 frag u_bent_p 2624 vec4 1 0
-U d11bf269 frag u_micro_m 2640 vec4 1 0
-U d11bf269 frag u_micro_r 2656 vec4 1 0
+U d11bf269 frag u_rvt_on 2452 float 1 0
+U d11bf269 frag u_rvt_p 2464 vec4 1 0
+U d11bf269 frag u_rvt_q 2480 vec4 1 0
+U d11bf269 frag u_rvt_y 2496 vec4 1 0
+U d11bf269 frag u_rvt_win 2512 vec4 9 16
+U d11bf269 frag u_fac_base_inv 2656 vec4 1 0
+U d11bf269 frag u_fac_mr_inv 2672 vec2 1 0
+U d11bf269 frag u_mr_scale 2680 vec2 1 0
+U d11bf269 frag u_fac_coat 2688 vec2 1 0
+U d11bf269 frag u_fac_emis 2704 vec3 1 0
+U d11bf269 frag u_view 2720 mat4 1 0
+U d11bf269 frag u_rough_scale 2784 float 1 0
+U d11bf269 frag u_micro_p 2800 vec4 1 0
+U d11bf269 frag u_bent_p 2816 vec4 1 0
+U d11bf269 frag u_micro_m 2832 vec4 1 0
+U d11bf269 frag u_micro_r 2848 vec4 1 0
 S d11bf269 u_ai_bones 2
 S d11bf269 u_ai_pbones 3
 T d11bf269 u_arm 4
@@ -13621,21 +14030,25 @@ T d11bf269 u_micro 26
 T d11bf269 u_micro_mask 27
 T d11bf269 u_nrm 28
 T d11bf269 u_prefilter 29
-T d11bf269 u_s2_arm 30
-T d11bf269 u_s2_diff 31
-T d11bf269 u_s2_nrm 32
-T d11bf269 u_scene_depth 33
-T d11bf269 u_shadow 34
-T d11bf269 u_tershadow 35
-T d11bf269 u_tershadow_aux 36
-T d11bf269 u_ts_height 37
-S d11bf269 u_ue_lg_data 38
-S d11bf269 u_ue_lg_num 39
-S d11bf269 u_ue_lights 40
-S d11bf269 u_ue_lp 41
-T d11bf269 u_ue_lph 42
-S d11bf269 u_ue_ls 43
-T d11bf269 u_ue_lsh 44
+T d11bf269 u_rvt_a 30
+T d11bf269 u_rvt_b 31
+T d11bf269 u_rvt_h 32
+S d11bf269 u_rvt_pt 33
+T d11bf269 u_s2_arm 34
+T d11bf269 u_s2_diff 35
+T d11bf269 u_s2_nrm 36
+T d11bf269 u_scene_depth 37
+T d11bf269 u_shadow 38
+T d11bf269 u_tershadow 39
+T d11bf269 u_tershadow_aux 40
+T d11bf269 u_ts_height 41
+S d11bf269 u_ue_lg_data 42
+S d11bf269 u_ue_lg_num 43
+S d11bf269 u_ue_lights 44
+S d11bf269 u_ue_lp 45
+T d11bf269 u_ue_lph 46
+S d11bf269 u_ue_ls 47
+T d11bf269 u_ue_lsh 48
 P 85a6512f skin.vert model.frag #define ACTOR_INST;#define ALPHA_TEST;#define SKIN4;
 B 85a6512f vert 0 272
 U 85a6512f vert u_model 0 mat4 1 0
@@ -13654,7 +14067,7 @@ I 85a6512f a_pos 0 vec3
 I 85a6512f a_nrm 1 vec3
 I 85a6512f a_uv 2 vec2
 I 85a6512f a_col 7 vec4
-B 85a6512f frag 1 2672
+B 85a6512f frag 1 2864
 U 85a6512f frag u_cascade_vp 0 mat4 5 64
 U 85a6512f frag u_cascade_split 320 float 5 16
 U 85a6512f frag u_cascade_range 400 float 5 16
@@ -13740,17 +14153,22 @@ U 85a6512f frag u_surf_q2 2400 vec4 1 0
 U 85a6512f frag u_ter_far 2416 vec4 1 0
 U 85a6512f frag u_lu_on 2432 vec4 1 0
 U 85a6512f frag u_model_h 2448 float 1 0
-U 85a6512f frag u_fac_base_inv 2464 vec4 1 0
-U 85a6512f frag u_fac_mr_inv 2480 vec2 1 0
-U 85a6512f frag u_mr_scale 2488 vec2 1 0
-U 85a6512f frag u_fac_coat 2496 vec2 1 0
-U 85a6512f frag u_fac_emis 2512 vec3 1 0
-U 85a6512f frag u_view 2528 mat4 1 0
-U 85a6512f frag u_rough_scale 2592 float 1 0
-U 85a6512f frag u_micro_p 2608 vec4 1 0
-U 85a6512f frag u_bent_p 2624 vec4 1 0
-U 85a6512f frag u_micro_m 2640 vec4 1 0
-U 85a6512f frag u_micro_r 2656 vec4 1 0
+U 85a6512f frag u_rvt_on 2452 float 1 0
+U 85a6512f frag u_rvt_p 2464 vec4 1 0
+U 85a6512f frag u_rvt_q 2480 vec4 1 0
+U 85a6512f frag u_rvt_y 2496 vec4 1 0
+U 85a6512f frag u_rvt_win 2512 vec4 9 16
+U 85a6512f frag u_fac_base_inv 2656 vec4 1 0
+U 85a6512f frag u_fac_mr_inv 2672 vec2 1 0
+U 85a6512f frag u_mr_scale 2680 vec2 1 0
+U 85a6512f frag u_fac_coat 2688 vec2 1 0
+U 85a6512f frag u_fac_emis 2704 vec3 1 0
+U 85a6512f frag u_view 2720 mat4 1 0
+U 85a6512f frag u_rough_scale 2784 float 1 0
+U 85a6512f frag u_micro_p 2800 vec4 1 0
+U 85a6512f frag u_bent_p 2816 vec4 1 0
+U 85a6512f frag u_micro_m 2832 vec4 1 0
+U 85a6512f frag u_micro_r 2848 vec4 1 0
 S 85a6512f u_ai_bones 2
 S 85a6512f u_ai_pbones 3
 T 85a6512f u_arm 4
@@ -13779,21 +14197,25 @@ T 85a6512f u_micro 26
 T 85a6512f u_micro_mask 27
 T 85a6512f u_nrm 28
 T 85a6512f u_prefilter 29
-T 85a6512f u_s2_arm 30
-T 85a6512f u_s2_diff 31
-T 85a6512f u_s2_nrm 32
-T 85a6512f u_scene_depth 33
-T 85a6512f u_shadow 34
-T 85a6512f u_tershadow 35
-T 85a6512f u_tershadow_aux 36
-T 85a6512f u_ts_height 37
-S 85a6512f u_ue_lg_data 38
-S 85a6512f u_ue_lg_num 39
-S 85a6512f u_ue_lights 40
-S 85a6512f u_ue_lp 41
-T 85a6512f u_ue_lph 42
-S 85a6512f u_ue_ls 43
-T 85a6512f u_ue_lsh 44
+T 85a6512f u_rvt_a 30
+T 85a6512f u_rvt_b 31
+T 85a6512f u_rvt_h 32
+S 85a6512f u_rvt_pt 33
+T 85a6512f u_s2_arm 34
+T 85a6512f u_s2_diff 35
+T 85a6512f u_s2_nrm 36
+T 85a6512f u_scene_depth 37
+T 85a6512f u_shadow 38
+T 85a6512f u_tershadow 39
+T 85a6512f u_tershadow_aux 40
+T 85a6512f u_ts_height 41
+S 85a6512f u_ue_lg_data 42
+S 85a6512f u_ue_lg_num 43
+S 85a6512f u_ue_lights 44
+S 85a6512f u_ue_lp 45
+T 85a6512f u_ue_lph 46
+S 85a6512f u_ue_ls 47
+T 85a6512f u_ue_lsh 48
 P 766773b0 skin.vert shadow.frag #define SHADOW_PASS;#define SKIN4;
 B 766773b0 vert 0 10512
 U 766773b0 vert u_model 0 mat4 1 0
@@ -16043,21 +16465,25 @@ T b20fdcb5 u_micro 24
 T b20fdcb5 u_micro_mask 25
 T b20fdcb5 u_nrm 26
 T b20fdcb5 u_prefilter 27
-T b20fdcb5 u_s2_arm 28
-T b20fdcb5 u_s2_diff 29
-T b20fdcb5 u_s2_nrm 30
-T b20fdcb5 u_scene_depth 31
-T b20fdcb5 u_shadow 32
-T b20fdcb5 u_tershadow 33
-T b20fdcb5 u_tershadow_aux 34
-T b20fdcb5 u_ts_height 35
-S b20fdcb5 u_ue_lg_data 36
-S b20fdcb5 u_ue_lg_num 37
-S b20fdcb5 u_ue_lights 38
-S b20fdcb5 u_ue_lp 39
-T b20fdcb5 u_ue_lph 40
-S b20fdcb5 u_ue_ls 41
-T b20fdcb5 u_ue_lsh 42
+T b20fdcb5 u_rvt_a 28
+T b20fdcb5 u_rvt_b 29
+T b20fdcb5 u_rvt_h 30
+S b20fdcb5 u_rvt_pt 31
+T b20fdcb5 u_s2_arm 32
+T b20fdcb5 u_s2_diff 33
+T b20fdcb5 u_s2_nrm 34
+T b20fdcb5 u_scene_depth 35
+T b20fdcb5 u_shadow 36
+T b20fdcb5 u_tershadow 37
+T b20fdcb5 u_tershadow_aux 38
+T b20fdcb5 u_ts_height 39
+S b20fdcb5 u_ue_lg_data 40
+S b20fdcb5 u_ue_lg_num 41
+S b20fdcb5 u_ue_lights 42
+S b20fdcb5 u_ue_lp 43
+T b20fdcb5 u_ue_lph 44
+S b20fdcb5 u_ue_ls 45
+T b20fdcb5 u_ue_lsh 46
 P 7a775c12 kit.vert kit.frag 
 B 7a775c12 vert 0 204
 U 7a775c12 vert u_view 0 mat4 1 0

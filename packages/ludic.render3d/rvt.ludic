@@ -1,0 +1,682 @@
+# ============================================================================
+# rvt.ludic — Runtime Virtual Texturing for the ground and the roads (R3D_RVT, off by default: r3d_rvt_set or R3D_RVT=1).
+#
+# Unreal 5.8's mechanism (Engine/Source/Runtime/Renderer/Private/VT/: VirtualTextureSystem.cpp, TexturePagePool.cpp,
+# VirtualTextureFeedback.cpp, RuntimeVirtualTextureRender.cpp; Engine/Shaders/Private/VirtualTextureCommon.ush): the landscape's and the
+# roads' material layers are drawn once, top-down, into pages of a virtual texture round the camera; the ground's and the road's pixel
+# then reads its page (a page table lookup and two atlas taps) instead of running the layer stack (lighting.glsl surfaceGround,
+# surfaceAtP, surfKerb: two scanned surfaces with anti-tiling, the kerb's detail, the markings, the macro variation). Here:
+#   - the virtual texture: RVT_MIPS levels, level 0 a page of RVT_TILE texels over 1 m (7.8 mm a texel), each level twice the last;
+#     the world's x, z from a fixed origin (RVT_VORG metres west and north of the world's 0), so a rebase of the floating origin moves
+#     no page. Each level keeps a window of RVT_W x RVT_W pages round the camera, addressed toroidally (a page's entry is its page
+#     coordinates modulo the window), Unreal's page table per level (FVirtualTextureSpace's page table, a texel a page per mip).
+#   - the physical pool (FTexturePagePool): rvt.ts x rvt.ts slots in two RGBA8 sRGB atlases (base colour + AO; normal x, z + metal +
+#     roughness: one format, as a pass here takes one colour format for every attachment) and a D32F atlas (the page's depth: the
+#     height of the surface each texel caught), a slot RVT_TILE + 2 x RVT_BORDER texels a side (FVirtualTextureSystem: PhysicalTileSize
+#     = TileSize + TileBorderSize * 2), all made once (the alloc fence). Slots are given back least recently used first
+#     (TexturePagePool.cpp: FreeHeap keyed by the frame a page was last asked for).
+#   - the page table (rvt_pt: a storage buffer the shading reads): each level's window entries, (slot + 1) | (level << 16) of the page
+#     or, where the page is not in, of its nearest resident parent (Unreal's page table update writes a parent's address into the
+#     entries of its missing children: the fallback to the coarsest resident mip). Rebuilt on the CPU when the pool or a window
+#     changed, never otherwise.
+#   - the feedback (rvt_feedback.comp, VirtualTextureFeedback.cpp): a 4 x 4 block's one jittered pixel (r.vt.FeedbackFactor 16) asks for
+#     the page it would read, as a bit in a request bitmap; read back two frames late (the frame that wrote it is done), deduplicated by
+#     the bitmap itself, each page asked for marked used (its slot's LRU frame) and each one missing (or invalidated) a candidate.
+#   - the page render (RuntimeVirtualTextureRender.cpp RenderPage: an orthographic reversed-Z view over the page's world rect, the
+#     primitives that draw into the RVT drawn with their material's virtual texture output): the terrain pass's patches and the
+#     static bucket's road chunks flagged actor_rvt whose box meets the page, drawn by model.frag RVT_WRITE (the same layer stack, its
+#     inputs written before any light), at most rvt.budget pages a frame (r.VT.MaxUploadsPerFrame: 2 in the source; more here, pages
+#     being cheap and a cold start needing them), coarser levels first.
+#   - invalidation (FVirtualTextureSystem::FlushCache over a region, URuntimeVirtualTextureComponent's invalidation): a patch or a
+#     chunk that came, went, moved or was shown or hidden (streaming), r3d_rvt_invalidate (a road edit, a terrain conform) and
+#     r3d_rvt_invalidate_all; the pages it overlaps are drawn again when next asked for. Never per frame.
+# The shading (model.frag rvtFetch): the actor's flag (u_rvt_on), a level-ish pixel (geometric normal y > 0.7), past the near band
+# (rvt.near, dithered over a metre: the full stack inside it keeps the parallax relief and the full scans at the feet) and short of
+# rvt.far; the stochastic level and the anisotropic page taps of VirtualTextureCommon.ush; a pixel whose height is not the page's
+# (a road under a bridge deck, the ground in a tunnel's mouth) and every pixel of its quad falls back to the layer stack.
+#
+# Switches: R3D_RVT=1 on (r3d_rvt_set from the game), R3D_RVT_POOL=<slots a side, 8 .. 32> (16), R3D_RVT_PAGES=<pages a frame> (8),
+# R3D_RVT_NEAR=<m> (5), R3D_RVT_FAR=<m> (400), R3D_RVT_MIP_BIAS=<levels> (the display's own density under an upscaler: log2(render
+# width / display width), at most 0).
+# ============================================================================
+numbers float
+
+const RVT_MIPS: int = 9               # level 0 .. 8: pages of 1 m .. 256 m
+const RVT_W: int = 32                 # pages a side of each level's window
+const RVT_TILE: int = 128             # texels a page side
+const RVT_BORDER: int = 4             # texels of border each side (an 8-tap anisotropic footprint stays inside the page)
+const RVT_SIDE: int = 136             # a slot's side: RVT_TILE + 2 x RVT_BORDER
+const RVT_VORG: int = 16384           # metres from the virtual texture's corner to the world's 0, each way
+const RVT_T0: float = 0.0078125       # level 0's texel: 1 m / RVT_TILE
+const RVT_Y0: float = -200.0          # the page depth's lowest height and its range (m): D32F, a tenth of a millimetre a step
+const RVT_YR: float = 1400.0
+const RVT_CAND: int = 4096            # candidates a frame's feedback may give
+const RVT_FB_WORDS: int = 288         # RVT_MIPS x RVT_W x RVT_W bits
+const RVT_PT_N: int = 9216            # RVT_MIPS x RVT_W x RVT_W entries
+const RVT_PR_WORDS: int = 100         # the feedback's parameters (rvt_feedback.comp Params, std140)
+const RVT_KEEP: int = 8               # frames a page asked for is kept from eviction
+
+export property RvtState {
+  ready: bool = false                 # the pool was made
+  live: bool = false                  # the page table is on the GPU: the shading may read it
+  ts: int = 16                        # slots a side of the atlases
+  slots: int = 256
+  atlas: int = 2176                   # the atlases' texels a side
+  tex_a: int = 0                      # base colour + AO
+  tex_b: int = 0                      # normal x, z, metal, roughness
+  tex_h: int = 0                      # the pages' depth
+  fb: int = 0
+  prog: AcProg = null                 # model.frag RVT_WRITE
+  prog_clear: int = 0                 # rvt_clear.frag
+  comp: int = 0                       # rvt_feedback.comp
+  budget: int = 8
+  near: float = 5.0
+  far: float = 400.0
+  bias: float = 0.0
+  bias_set: bool = false
+  frame: int = 0
+  # the page table and the residency
+  pt: words = null                    # RVT_PT_N entries, as uploaded
+  pt_buf: int = 0
+  pt_dirty: bool = true
+  res: words = null                   # RVT_PT_N: the slot holding the page at each level's toroidal entry, -1 none
+  win: words = null                   # per level: the window's first page x, z
+  winr: floats = null                 # per level: its corner in render space x, z, its first page modulo the window x, z (u_rvt_win)
+  s_mip: words = null                 # per slot: the page it holds (level -1: none), the frame it was last asked for, stale
+  s_gx: words = null
+  s_gz: words = null
+  s_used: words = null
+  s_dirty: words = null
+  free_l: words = null
+  nfree: int = 0
+  # the feedback: two request bitmaps, the windows and frame each was asked under
+  fbk: words = null
+  fbk_win: words = null               # 2 x RVT_MIPS x 2
+  fbk_at: words = null                # the frame number (gvk) each slot's dispatch ran in, -1 none
+  pr: words = null
+  bufs: words = null
+  texs: words = null
+  # this frame's candidates
+  c_m: words = null
+  c_x: words = null
+  c_z: words = null
+  nc: int = 0
+  # the page render
+  proj: floats = null
+  ident: floats = null
+  b: floats = null
+  ox: float = 0.0                     # the floating origin the watch last saw (a rebase re-reads the boxes without invalidating)
+  oz: float = 0.0
+  quiet: int = 2
+  drawn: int = 0                      # pages drawn this frame, and over the run
+  drawn_all: int = 0
+  bytes: int = 0
+}
+
+# ---- switches -------------------------------------------------------------------------------------------------------------------------
+
+# on: R3D_RVT=1 or the game's r3d_rvt_set (read once)
+export function rvt_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.rvt_mode < 0 {
+    render3d_st.rvt_mode = 0
+    if r3d_env_has(render3d_st, "R3D_RVT") and r3d_env(render3d_st, "R3D_RVT") == "1" { render3d_st.rvt_mode = 1 }
+  }
+  return render3d_st.rvt_mode == 1
+}
+# the game's switch (before the first frame is drawn; off later, the pool stays made and unread)
+export function r3d_rvt_set(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.rvt_mode = 0
+  if on { render3d_st.rvt_mode = 1 }
+}
+# an actor drawn into the RVT and reading it (a ground patch, a road's near chunk); its surfaces must be level-ish to gain
+export function actor_rvt(a: Actor, on: bool) -> void {
+  if a != null { a.rvt = on }
+}
+
+@alloc_ok("start-up: the switches read once")
+function rvt_numbers(render3d_st: mut Render3dState, r: RvtState) -> void {
+  if r3d_env_has(render3d_st, "R3D_RVT_POOL") { r.ts = min(max(int(ue_parse_float(r3d_env(render3d_st, "R3D_RVT_POOL"))), 8), 32) }
+  if r3d_env_has(render3d_st, "R3D_RVT_PAGES") { r.budget = min(max(int(ue_parse_float(r3d_env(render3d_st, "R3D_RVT_PAGES"))), 1), 64) }
+  if r3d_env_has(render3d_st, "R3D_RVT_NEAR") { r.near = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_RVT_NEAR")), 0.0) }
+  if r3d_env_has(render3d_st, "R3D_RVT_FAR") { r.far = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_RVT_FAR")), r.near + 1.0) }
+  if r3d_env_has(render3d_st, "R3D_RVT_MIP_BIAS") { r.bias = ue_parse_float(r3d_env(render3d_st, "R3D_RVT_MIP_BIAS"));  r.bias_set = true }
+  r.slots = r.ts * r.ts
+  r.atlas = r.ts * RVT_SIDE
+}
+
+# ---- the pool, once ----------------------------------------------------------------------------------------------------------------
+
+@alloc_ok("made once, the first frame the RVT is on: the page pool, its atlases, the page table and the feedback buffers")
+function rvt_init(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.rvt != null { return render3d_st.rvt.ready }
+  let r = new RvtState
+  render3d_st.rvt = r
+  rvt_numbers(render3d_st, r)
+  if render3d_st.post_fs == null or render3d_st.ac_lit == null { return false }
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_TERRAIN
+  let n = r.atlas
+  r.tex_a = tex_target(render3d_st, n, n, GPU_SRGB8_ALPHA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
+  r.tex_b = tex_target(render3d_st, n, n, GPU_SRGB8_ALPHA8, GPU_RGBA, GPU_UNSIGNED_BYTE, GPU_LINEAR)
+  # anisotropic within a page (its border holds the footprint): a sampler that takes it is a mipmapped one; the atlases have one level
+  rvt_aniso(render3d_st, r.tex_a)
+  rvt_aniso(render3d_st, r.tex_b)
+  r.tex_h = tex_target(render3d_st, n, n, GPU_DEPTH_COMPONENT32F, GPU_DEPTH_COMPONENT, GPU_FLOAT, GPU_NEAREST)
+  r.fb = gpu_fb_new(render3d_st)
+  gpu_fb_bind(render3d_st, r.fb)
+  gpu_fb_color(render3d_st, 0, r.tex_a)
+  gpu_fb_color(render3d_st, 1, r.tex_b)
+  gpu_fb_depth(render3d_st, r.tex_h)
+  gpu_fb_draw_buffers(render3d_st, 2)
+  # every texel empty and every depth the far plane (0): the clear is the pass's load op as the target is let go
+  gpu_viewport(render3d_st, 0, 0, n, n)
+  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 1.0)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT | GPU_DEPTH_BUFFER_BIT)
+  gpu_fb_bind(render3d_st, 0)
+  render3d_st.gvk_tag = was
+  r.prog = ac_prog_new(render3d_st, "skin.vert", "model.frag", "#define RVT_WRITE\n")
+  r.prog_clear = r3d_program(render3d_st, "fullscreen.vert", "rvt_clear.frag", "")
+  r.comp = gpu_compute_tex(render3d_st, "rvt_feedback", 2, 2)
+  r.pt = words(RVT_PT_N)
+  r.res = words(RVT_PT_N)
+  for i in 0 .. RVT_PT_N { r.pt[i] = 0;  r.res[i] = -1 }
+  r.pt_buf = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, r.pt_buf, RVT_PT_N * 4, data_of(r.pt), GPU_DYNAMIC)
+  r.win = words(RVT_MIPS * 2)
+  for i in 0 .. RVT_MIPS * 2 { r.win[i] = -1000000 }
+  r.winr = floats(RVT_MIPS * 4)
+  for i in 0 .. RVT_MIPS * 4 { r.winr[i] = 0.0 }
+  let s = r.slots
+  r.s_mip = words(s);  r.s_gx = words(s);  r.s_gz = words(s);  r.s_used = words(s);  r.s_dirty = words(s);  r.free_l = words(s)
+  for i in 0 .. s { r.s_mip[i] = -1;  r.s_gx[i] = 0;  r.s_gz[i] = 0;  r.s_used[i] = 0;  r.s_dirty[i] = 0;  r.free_l[i] = s - 1 - i }
+  r.nfree = s
+  r.fbk = words(2)
+  r.fbk_win = words(2 * RVT_MIPS * 2)
+  r.fbk_at = words(2)
+  for k in 0 .. 2 {
+    let bb = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, bb, RVT_FB_WORDS * 4, null, GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, bb)
+    let p = gpu_buffer_map(render3d_st, bb)
+    if p != null { Vk.zero(p, RVT_FB_WORDS * 4) }
+    r.fbk[k] = bb
+    r.fbk_at[k] = -1
+  }
+  for i in 0 .. 2 * RVT_MIPS * 2 { r.fbk_win[i] = 0 }
+  r.pr = words(RVT_PR_WORDS)
+  for i in 0 .. RVT_PR_WORDS { r.pr[i] = 0 }
+  r.bufs = words(2)
+  r.texs = words(2)
+  r.c_m = words(RVT_CAND);  r.c_x = words(RVT_CAND);  r.c_z = words(RVT_CAND)
+  r.proj = floats(16);  r.ident = m4_new();  r.b = floats(6)
+  for i in 0 .. 16 { r.proj[i] = 0.0 }
+  r.bytes = n * n * 12 + RVT_PT_N * 4 * 2 + RVT_FB_WORDS * 4 * 2
+  r.ready = r.prog != null and r.prog.prog != 0 and r.prog_clear != 0 and r.comp != 0 and gpu_tex_ok(render3d_st, r.tex_a) and gpu_tex_ok(render3d_st, r.tex_b) and gpu_tex_ok(render3d_st, r.tex_h)
+  rvt_say_pool(r.slots, r.atlas, r.bytes, r.budget, r.ready)
+  return r.ready
+}
+function rvt_aniso(render3d_st: mut Render3dState, tex: int) -> void {
+  gpu_tex_bind(render3d_st, GPU_TEX2D, tex)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_NEAREST)
+  gpu_tex_paramf(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAX_ANISOTROPY_EXT, fixed(8.0))
+}
+@alloc_ok("a message, said once when the pool is made")
+function rvt_say_pool(slots: int, side: int, bytes: int, budget: int, ok: bool) -> void {
+  print(`r3d: rvt: {slots} page slots in {side} x {side} atlases ({bytes / 1024} KB on the GPU), {budget} pages a frame, live {ok}`)
+}
+
+# ---- the frame ---------------------------------------------------------------------------------------------------------------------
+
+# Once a frame, before the scene's passes (render.ludic, ahead of the shadows and the water's mirror): the windows follow the camera, the
+# streaming is watched, the feedback of two frames ago is read, this frame's pages are drawn, and the page table goes up if it changed
+export function rvt_frame(render3d_st: mut Render3dState) -> void {
+  if not rvt_on(render3d_st) or render3d_st.cam_pos == null { return }
+  if not rvt_init(render3d_st) { return }
+  let r = render3d_st.rvt
+  r.frame += 1
+  r.drawn = 0
+  if not r.bias_set { r.bias = Math.min(Math.max(gvk_mip_bias(render3d_st) + 1.0, -1.0), 0.0) }
+  rvt_windows(render3d_st, r)
+  rvt_watch(render3d_st, r)
+  r.nc = 0
+  rvt_read_feedback(render3d_st, r)
+  # the coarsest level under the camera always wanted: every pixel the windows cover has a parent to fall back to
+  let S = 1 << (RVT_MIPS - 1)
+  let cx = rvt_floor_div(int(Math.floor(render3d_st.cam_pos[0] + render3d_st.surf_ox)) + RVT_VORG, S)
+  let cz = rvt_floor_div(int(Math.floor(render3d_st.cam_pos[2] + render3d_st.surf_oz)) + RVT_VORG, S)
+  for dz in 0 .. 3 { for dx in 0 .. 3 { rvt_want(r, RVT_MIPS - 1, cx + dx - 1, cz + dz - 1) } }
+  rvt_render(render3d_st, r)
+  rvt_table(render3d_st, r)
+}
+
+function rvt_floor_div(a: int, b: int) -> int {
+  if a >= 0 { return a / b }
+  return -((-a + b - 1) / b)
+}
+function rvt_mod(a: int, b: int) -> int {
+  let m = a % b
+  if m < 0 { return m + b }
+  return m
+}
+# level m's toroidal entry of page (gx, gz)
+function rvt_idx(m: int, gx: int, gz: int) -> int { return (m * RVT_W + rvt_mod(gz, RVT_W)) * RVT_W + rvt_mod(gx, RVT_W) }
+function rvt_in_win(r: RvtState, m: int, gx: int, gz: int) -> bool {
+  let wx = r.win[m * 2];  let wz = r.win[m * 2 + 1]
+  return gx >= wx and gx < wx + RVT_W and gz >= wz and gz < wz + RVT_W
+}
+
+# each level's window round the camera (its centre page less half the window); a resident page left outside is given back
+function rvt_windows(render3d_st: mut Render3dState, r: RvtState) -> void {
+  let ax = render3d_st.cam_pos[0] + render3d_st.surf_ox + float(RVT_VORG)
+  let az = render3d_st.cam_pos[2] + render3d_st.surf_oz + float(RVT_VORG)
+  for m in 0 .. RVT_MIPS {
+    let S = 1 << m
+    let wx = int(Math.floor(ax / float(S))) - RVT_W / 2
+    let wz = int(Math.floor(az / float(S))) - RVT_W / 2
+    if wx != r.win[m * 2] or wz != r.win[m * 2 + 1] {
+      r.win[m * 2] = wx;  r.win[m * 2 + 1] = wz
+      for s in 0 .. r.slots {
+        if r.s_mip[s] == m and not rvt_in_win(r, m, r.s_gx[s], r.s_gz[s]) { rvt_drop(r, s) }
+      }
+      r.pt_dirty = true
+    }
+    # its corner in render space (whole metres less the origin: exact but for the origin's own rounding)
+    r.winr[m * 4] = float(wx * S - RVT_VORG) - render3d_st.surf_ox
+    r.winr[m * 4 + 1] = float(wz * S - RVT_VORG) - render3d_st.surf_oz
+    r.winr[m * 4 + 2] = float(rvt_mod(wx, RVT_W))
+    r.winr[m * 4 + 3] = float(rvt_mod(wz, RVT_W))
+  }
+}
+
+# slot s given back: its entry emptied, the slot free
+function rvt_drop(r: RvtState, s: int) -> void {
+  let m = r.s_mip[s]
+  if m < 0 { return }
+  let i = rvt_idx(m, r.s_gx[s], r.s_gz[s])
+  if r.res[i] == s { r.res[i] = -1 }
+  r.s_mip[s] = -1
+  r.s_dirty[s] = 0
+  r.free_l[r.nfree] = s
+  r.nfree += 1
+  r.pt_dirty = true
+}
+
+# a page asked for: its slot marked used (and, when stale, drawn again), or a candidate when it is not in
+function rvt_want(r: RvtState, m: int, gx: int, gz: int) -> void {
+  if not rvt_in_win(r, m, gx, gz) { return }
+  let s = r.res[rvt_idx(m, gx, gz)]
+  if s >= 0 and r.s_mip[s] == m and r.s_gx[s] == gx and r.s_gz[s] == gz {
+    if r.s_used[s] == r.frame { return }          # asked for already this frame
+    r.s_used[s] = r.frame
+    if r.s_dirty[s] == 0 { return }
+  }
+  if r.nc >= RVT_CAND { return }
+  r.c_m[r.nc] = m;  r.c_x[r.nc] = gx;  r.c_z[r.nc] = gz
+  r.nc += 1
+}
+
+# The request bitmap of two frames ago (this frame's slot: the frame that wrote it is done; the frame in flight wrote the other), each
+# bit a page of the window that dispatch was made under, and then emptied for this frame's dispatch
+function rvt_read_feedback(render3d_st: mut Render3dState, r: RvtState) -> void {
+  let k = render3d_st.gvk_frame_no & 1
+  if r.fbk_at[k] < 0 { return }
+  if render3d_st.gvk_frame_pending and render3d_st.gvk_frame_pending_no == r.fbk_at[k] { return }
+  let p = gpu_buffer_map(render3d_st, r.fbk[k])
+  if p == null { return }
+  let wo = k * RVT_MIPS * 2
+  for w in 0 .. RVT_FB_WORDS {
+    let v = Vk.get_i32(p, w * 4)
+    if v == 0 { continue }
+    for bit in 0 .. 32 {
+      if ((v >> bit) & 1) == 0 { continue }
+      let e = w * 32 + bit
+      let m = e / (RVT_W * RVT_W)
+      let rr = e % (RVT_W * RVT_W)
+      let fx = r.fbk_win[wo + m * 2];  let fz = r.fbk_win[wo + m * 2 + 1]
+      let gx = fx + rvt_mod(rr % RVT_W - fx, RVT_W)
+      let gz = fz + rvt_mod(rr / RVT_W - fz, RVT_W)
+      rvt_want(r, m, gx, gz)
+    }
+  }
+  Vk.zero(p, RVT_FB_WORDS * 4)
+  r.fbk_at[k] = -1
+}
+
+# a slot for a new page: a free one, or the least recently asked for that was not asked for in the last RVT_KEEP frames (TexturePagePool.cpp's
+# FreeHeap, keyed by the frame: a page a few pixels wide is not sampled by every frame's 1/16 feedback); -1 when every slot is in use
+function rvt_take(r: RvtState) -> int {
+  if r.nfree > 0 {
+    r.nfree -= 1
+    return r.free_l[r.nfree]
+  }
+  var best = -1
+  var bu = r.frame - RVT_KEEP
+  for s in 0 .. r.slots {
+    if r.s_mip[s] >= 0 and r.s_used[s] < bu { bu = r.s_used[s];  best = s }
+  }
+  if best < 0 { return -1 }
+  rvt_drop(r, best)
+  r.nfree -= 1
+  return r.free_l[r.nfree]
+}
+
+# This frame's pages, coarser levels first (a parent is every missing child's fallback), at most the budget: each into its slot (a stale
+# page into its own), drawn in one pass over the atlases
+function rvt_render(render3d_st: mut Render3dState, r: RvtState) -> void {
+  if r.nc == 0 { return }
+  var began = false
+  var m = RVT_MIPS - 1
+  while m >= 0 and r.drawn < r.budget {
+    for c in 0 .. r.nc {
+      if r.drawn >= r.budget { break }
+      if r.c_m[c] != m { continue }
+      let gx = r.c_x[c];  let gz = r.c_z[c]
+      let i = rvt_idx(m, gx, gz)
+      var s = r.res[i]
+      if s >= 0 and r.s_mip[s] == m and r.s_gx[s] == gx and r.s_gz[s] == gz {
+        if r.s_dirty[s] == 0 { continue }         # in and current (a page asked for twice, drawn already)
+      } else {
+        s = rvt_take(r)
+        if s < 0 { m = -1;  break }
+        r.s_mip[s] = m;  r.s_gx[s] = gx;  r.s_gz[s] = gz
+        r.res[i] = s
+      }
+      r.s_used[s] = r.frame
+      r.s_dirty[s] = 0
+      if not began { rvt_pass_begin(render3d_st, r);  began = true }
+      rvt_page(render3d_st, r, s, m, gx, gz)
+      r.drawn += 1
+      r.pt_dirty = true
+    }
+    m -= 1
+  }
+  if began { rvt_pass_end(render3d_st) }
+  r.drawn_all += r.drawn
+}
+
+function rvt_pass_begin(render3d_st: mut Render3dState, r: RvtState) -> void {
+  gpu_fb_bind(render3d_st, r.fb)
+  gpu_blend(render3d_st, false)
+  gpu_color_write(render3d_st, true)
+  gpu_depth_test(render3d_st, true)
+  gpu_depth_write(render3d_st, true)
+  gpu_cull(render3d_st, false)              # seen from above whatever its winding (model.frag RVT_WRITE faces the normal up)
+}
+function rvt_pass_end(render3d_st: mut Render3dState) -> void {
+  gvk_scissor_off(render3d_st)
+  render3d_st.gpu_s_scissor = 0
+  gpu_cull(render3d_st, true)
+  gpu_depth_func(render3d_st, GPU_GREATER)
+  gpu_fb_bind(render3d_st, 0)
+}
+
+# Page (m, gx, gz) into slot s (RuntimeVirtualTextureRender.cpp RenderPage): its rect emptied (rvt_clear.frag), then every flagged patch
+# and chunk whose box meets the page and its border drawn top-down through a reversed-Z orthographic view (FReversedZOrthoMatrix: here
+# the height RVT_Y0 .. RVT_Y0 + RVT_YR to depth 0 .. 1, the higher surface kept), the viewport the slot's rect
+function rvt_page(render3d_st: mut Render3dState, r: RvtState, s: int, m: int, gx: int, gz: int) -> void {
+  let S = 1 << m
+  let t = float(S) / float(RVT_TILE)
+  let side = t * float(RVT_SIDE)
+  let x0 = float(gx * S - RVT_VORG) - render3d_st.surf_ox - t * float(RVT_BORDER)
+  let z0 = float(gz * S - RVT_VORG) - render3d_st.surf_oz - t * float(RVT_BORDER)
+  let hw = side * 0.5
+  let cx = x0 + hw
+  let cz = z0 + hw
+  # clip x from x, clip y from z (row 0 of the slot at the page's low z, as rvtFetch reads it), depth from the height
+  let pm = r.proj
+  for i in 0 .. 16 { pm[i] = 0.0 }
+  pm[0] = 1.0 / hw;  pm[12] = -cx / hw
+  pm[9] = 1.0 / hw;  pm[13] = -cz / hw
+  pm[6] = 1.0 / RVT_YR;  pm[14] = -RVT_Y0 / RVT_YR
+  pm[15] = 1.0
+  let vx = (s % r.ts) * RVT_SIDE
+  let vy = (s / r.ts) * RVT_SIDE
+  gpu_viewport(render3d_st, vx, vy, RVT_SIDE, RVT_SIDE)
+  gvk_scissor(render3d_st, vx, vy, RVT_SIDE, RVT_SIDE)
+  render3d_st.gpu_s_scissor = 1
+  # the rect emptied: colour nothing, depth the far plane
+  gpu_use_program(render3d_st, r.prog_clear)
+  gpu_depth_func(render3d_st, GPU_ALWAYS)
+  mesh_draw(render3d_st, render3d_st.post_fs)
+  gpu_depth_func(render3d_st, GPU_GREATER)
+  let ap = r.prog
+  # the lit program's scene bindings (its samplers bound to textures of their own kinds, though the page reads none of the light),
+  # once a frame; the view and projection set after them are the page's
+  ac_bind_scene(render3d_st, ap)
+  gpu_use_program(render3d_st, ap.prog)
+  u_mat4(render3d_st, ap.l_view, r.ident)
+  u_mat4(render3d_st, ap.l_proj, pm)
+  u_f(render3d_st, ap.l_skin, 0.0)
+  u_f(render3d_st, ap.l_mh, 0.0)
+  # the camera far above the page: no parallax (it fades out past 25 m) and nothing of the distance's (the page is every distance's)
+  u_f3(render3d_st, gpu_uniform(render3d_st, ap.prog, "u_cam_pos"), cx, RVT_Y0 + RVT_YR + 1000.0, cz)
+  let px0 = x0;  let px1 = x0 + side;  let pz0 = z0;  let pz1 = z0 + side
+  let b = r.b
+  let tl = render3d_st.tpa_actors
+  if tl != null {
+    for i in 0 .. len(tl) {
+      let a = tl[i]
+      if not a.rvt or not a.visible or a.model == null { continue }
+      tpa_bounds(a, b)
+      if b[0] + b[3] < px0 or b[0] - b[3] > px1 or b[2] + b[5] < pz0 or b[2] - b[5] > pz1 { continue }
+      rvt_draw_actor(render3d_st, ap, a)
+    }
+  }
+  let sl = render3d_st.stc_actors
+  if sl != null {
+    for i in 0 .. len(sl) {
+      let a = sl[i]
+      if not a.rvt or not a.visible or a.model == null or a.cutout { continue }   # (a cut-out's holes are its lit pass's)
+      stc_bounds(a, b)
+      if b[0] + b[3] < px0 or b[0] - b[3] > px1 or b[2] + b[5] < pz0 or b[2] - b[5] > pz1 { continue }
+      rvt_draw_actor(render3d_st, ap, a)
+    }
+  }
+}
+function rvt_draw_actor(render3d_st: mut Render3dState, ap: AcProg, a: Actor) -> void {
+  u_mat4(render3d_st, ap.l_model, a.mat)
+  let m = a.model
+  for p in 0 .. len(m.prims) {
+    if a.hide != null and a.hide[p] != 0 { continue }
+    let pr = m.prims[p]
+    if pr == null or pr.mesh == null { continue }
+    gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+    prim_factors(render3d_st, ap.prog, pr)
+    gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
+    gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
+    mesh_draw(render3d_st, pr.mesh)
+  }
+}
+
+# The page table rebuilt when the pool or a window changed (coarsest level first: a missing page takes its parent's entry, the nearest
+# resident level) and handed to the GPU (a buffer the frame in flight may still read is swapped for its twin: gvk_buf_reserve)
+function rvt_table(render3d_st: mut Render3dState, r: RvtState) -> void {
+  if not r.pt_dirty { return }
+  r.pt_dirty = false
+  var m = RVT_MIPS - 1
+  while m >= 0 {
+    let wx = r.win[m * 2];  let wz = r.win[m * 2 + 1]
+    for j in 0 .. RVT_W {
+      for i in 0 .. RVT_W {
+        let gx = wx + i;  let gz = wz + j
+        let e = rvt_idx(m, gx, gz)
+        let s = r.res[e]
+        var v = 0
+        if s >= 0 and r.s_mip[s] == m and r.s_gx[s] == gx and r.s_gz[s] == gz {
+          v = (s + 1) | (m << 16)
+        } else if m + 1 < RVT_MIPS {
+          let qx = rvt_floor_div(gx, 2);  let qz = rvt_floor_div(gz, 2)
+          if rvt_in_win(r, m + 1, qx, qz) { v = r.pt[rvt_idx(m + 1, qx, qz)] }
+        }
+        r.pt[e] = v
+      }
+    }
+    m -= 1
+  }
+  gpu_buffer_upload(render3d_st, r.pt_buf, RVT_PT_N * 4, data_of(r.pt), GPU_DYNAMIC)
+  r.live = true
+}
+
+# ---- invalidation ----------------------------------------------------------------------------------------------------------------
+
+# every resident page meeting the world rect (x0, z0) .. (x1, z1) (world metres, not render space) and its border is drawn again when
+# next asked for (FVirtualTextureSystem::FlushCache over a region); its old picture serves until then
+export function r3d_rvt_invalidate(render3d_st: mut Render3dState, x0: float, z0: float, x1: float, z1: float) -> void {
+  let r = render3d_st.rvt
+  if r == null or not r.ready { return }
+  for s in 0 .. r.slots {
+    let m = r.s_mip[s]
+    if m < 0 { continue }
+    let S = float(1 << m)
+    let bd = S * float(RVT_BORDER) / float(RVT_TILE)
+    let px0 = float(r.s_gx[s]) * S - float(RVT_VORG) - bd
+    let pz0 = float(r.s_gz[s]) * S - float(RVT_VORG) - bd
+    if x1 < px0 or x0 > px0 + S + 2.0 * bd or z1 < pz0 or z0 > pz0 + S + 2.0 * bd { continue }
+    r.s_dirty[s] = 1
+  }
+}
+# every page drawn again as it is next asked for (a map swapped, the surfaces' table edited)
+export function r3d_rvt_invalidate_all(render3d_st: mut Render3dState) -> void {
+  let r = render3d_st.rvt
+  if r == null or not r.ready { return }
+  for s in 0 .. r.slots { if r.s_mip[s] >= 0 { r.s_dirty[s] = 1 } }
+}
+
+# a box in render space (centre, half extents) as world metres, invalidated
+function rvt_inval_box(render3d_st: mut Render3dState, b: floats) -> void {
+  r3d_rvt_invalidate(render3d_st, b[0] - b[3] + render3d_st.surf_ox, b[2] - b[5] + render3d_st.surf_oz, b[0] + b[3] + render3d_st.surf_ox, b[2] + b[5] + render3d_st.surf_oz)
+}
+# what an actor last put into the RVT, invalidated (it is gone: terrain_pass.ludic tpa_remove, static_chunks.ludic stc_remove)
+function rvt_actor_gone(render3d_st: mut Render3dState, a: Actor) -> void {
+  if a == null or not a.rvt_in { return }
+  a.rvt_in = false
+  r3d_rvt_invalidate(render3d_st, a.rvt_x0, a.rvt_z0, a.rvt_x1, a.rvt_z1)
+}
+
+# The streaming watch: a flagged patch or chunk that came, went, moved or was shown or hidden since the last frame invalidates where it
+# was and where it is (a road's near chunk shown as the camera nears, a patch slot given another tile). A patch given another level
+# (terrain_patch_changed) is not: its levels are within centimetres. A frame whose floating origin moved re-reads the boxes only (the
+# actors are placed again in render space as the origin moves).
+function rvt_watch(render3d_st: mut Render3dState, r: RvtState) -> void {
+  if render3d_st.surf_ox != r.ox or render3d_st.surf_oz != r.oz { r.ox = render3d_st.surf_ox;  r.oz = render3d_st.surf_oz;  r.quiet = 2 }
+  let quiet = r.quiet > 0
+  if r.quiet > 0 { r.quiet -= 1 }
+  let b = r.b
+  let tl = render3d_st.tpa_actors
+  if tl != null {
+    for i in 0 .. len(tl) {
+      let a = tl[i]
+      if not a.rvt { continue }
+      let on = a.visible and a.model != null
+      if on { tpa_bounds(a, b) }
+      rvt_watch_one(render3d_st, a, on, b, quiet)
+    }
+  }
+  let sl = render3d_st.stc_actors
+  if sl != null {
+    for i in 0 .. len(sl) {
+      let a = sl[i]
+      if not a.rvt { continue }
+      let on = a.visible and a.model != null
+      if on { stc_bounds(a, b) }
+      rvt_watch_one(render3d_st, a, on, b, quiet)
+    }
+  }
+}
+function rvt_watch_one(render3d_st: mut Render3dState, a: Actor, on: bool, b: floats, quiet: bool) -> void {
+  if not on {
+    if a.rvt_in and not quiet { rvt_actor_gone(render3d_st, a) }
+    a.rvt_in = false
+    return
+  }
+  let x0 = b[0] - b[3] + render3d_st.surf_ox;  let x1 = b[0] + b[3] + render3d_st.surf_ox
+  let z0 = b[2] - b[5] + render3d_st.surf_oz;  let z1 = b[2] + b[5] + render3d_st.surf_oz
+  if a.rvt_in and Math.abs(x0 - a.rvt_x0) < 0.05 and Math.abs(x1 - a.rvt_x1) < 0.05 and Math.abs(z0 - a.rvt_z0) < 0.05 and Math.abs(z1 - a.rvt_z1) < 0.05 { return }
+  if not quiet {
+    if a.rvt_in { r3d_rvt_invalidate(render3d_st, a.rvt_x0, a.rvt_z0, a.rvt_x1, a.rvt_z1) }
+    r3d_rvt_invalidate(render3d_st, x0, z0, x1, z1)
+  }
+  a.rvt_in = true
+  a.rvt_x0 = x0;  a.rvt_x1 = x1;  a.rvt_z0 = z0;  a.rvt_z1 = z1
+}
+
+# ---- the feedback ----------------------------------------------------------------------------------------------------------------
+
+# This frame's requests from its finished depth (render.ludic, after the resolve, beside the HZB): rvt_feedback.comp into this frame's
+# bitmap, under this frame's windows (kept with it for the read two frames on)
+export function rvt_feedback_pass(render3d_st: mut Render3dState) -> void {
+  let r = render3d_st.rvt
+  if r == null or not r.ready or not rvt_on(render3d_st) or render3d_st.post_depth_copy == null or render3d_st.cam_inv_vp == null { return }
+  let w = render3d_st.post_w
+  let h = render3d_st.post_h
+  if w < 8 or h < 8 { return }
+  let k = render3d_st.gvk_frame_no & 1
+  let pr = r.pr
+  let iv = render3d_st.cam_inv_vp
+  for i in 0 .. 16 { pr[i] = float_bits(iv[i]) }
+  pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2])
+  pr[19] = float_bits(Math.max(r.near - 0.5, 0.0))
+  pr[20] = float_bits(r.far);  pr[21] = float_bits(RVT_T0);  pr[22] = float_bits(r.bias);  pr[23] = float_bits(float(r.frame % 64) * 5.588238)
+  # the block's pixel this frame: the sixteen of a 4 x 4 block in a scrambled order (View.VirtualTextureFeedbackJitterOffset)
+  let j = (r.frame * 7) % 16
+  pr[24] = w;  pr[25] = h;  pr[26] = j % 4;  pr[27] = j / 4
+  pr[28] = RVT_MIPS;  pr[29] = RVT_W;  pr[30] = r.ts;  pr[31] = r.atlas
+  pr[32] = float_bits(RVT_Y0);  pr[33] = float_bits(RVT_YR);  pr[34] = 0;  pr[35] = 0
+  for m in 0 .. RVT_MIPS {
+    for c in 0 .. 4 { pr[36 + m * 4 + c] = float_bits(r.winr[m * 4 + c]) }
+    r.fbk_win[k * RVT_MIPS * 2 + m * 2] = r.win[m * 2]
+    r.fbk_win[k * RVT_MIPS * 2 + m * 2 + 1] = r.win[m * 2 + 1]
+  }
+  r.bufs[0] = r.fbk[k];  r.bufs[1] = r.pt_buf
+  r.texs[0] = render3d_st.post_depth_copy.depth;  r.texs[1] = r.tex_h
+  let gx = (w / 4 + 7) / 8
+  let gy = (h / 4 + 7) / 8
+  gpu_dispatch_tex(render3d_st, r.comp, data_of(pr), (36 + RVT_MIPS * 4) * 4, r.bufs, r.texs, gx, gy)
+  r.fbk_at[k] = render3d_st.gvk_frame_no
+}
+
+# ---- the shading's bindings --------------------------------------------------------------------------------------------------------
+
+# the RVT for lit program p, once a pass that draws flagged actors (the terrain pass, the static bucket): the page table, the atlases,
+# the windows; each actor then says whether it reads it (rvt_actor)
+function rvt_bind(render3d_st: mut Render3dState, p: int) -> void {
+  let r = render3d_st.rvt
+  gpu_use_program(render3d_st, p)
+  if r == null or not r.live or not rvt_on(render3d_st) {
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rvt_on"), 0.0)
+    return
+  }
+  gpu_bind_buffer(render3d_st, p, "u_rvt_pt", r.pt_buf)
+  r3d_bind_2d(render3d_st, p, "u_rvt_a", 33, r.tex_a)
+  r3d_bind_2d(render3d_st, p, "u_rvt_b", 34, r.tex_b)
+  r3d_bind_2d(render3d_st, p, "u_rvt_h", 35, r.tex_h)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_rvt_p"), r.near, r.far, RVT_T0, r.bias)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_rvt_q"), float(RVT_MIPS), float(RVT_W), float(r.ts), float(r.atlas))
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_rvt_y"), RVT_Y0, RVT_YR, 1.0, 0.0)
+  var loc = gpu_uniform(render3d_st, p, "u_rvt_win[0]")
+  if loc < 0 { loc = gpu_uniform(render3d_st, p, "u_rvt_win") }
+  u_f4v(render3d_st, loc, RVT_MIPS, r.winr)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rvt_on"), 0.0)
+}
+# actor a's draws with program p (in use) read the RVT, or not
+function rvt_actor(render3d_st: mut Render3dState, p: int, a: Actor) -> void {
+  let r = render3d_st.rvt
+  var on = 0.0
+  if a.rvt and r != null and r.live and render3d_st.rvt_mode == 1 { on = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rvt_on"), on)
+}
+# the flag off again on program p (the actors' pass shares it and never sets it)
+function rvt_unbind(render3d_st: mut Render3dState, p: int) -> void {
+  if render3d_st.rvt == null or p == 0 { return }
+  gpu_use_program(render3d_st, p)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rvt_on"), 0.0)
+}
+
+# R3D_VKMEM: one line on the pool
+function rvt_report(render3d_st: Render3dState) -> void {
+  let r = render3d_st.rvt
+  if r == null or not r.ready { return }
+  rvt_say_report(r.slots - r.nfree, r.slots, r.drawn, r.drawn_all, r.bytes)
+}
+@alloc_ok("a report printed once, under R3D_VKMEM")
+function rvt_say_report(res: int, slots: int, now: int, all: int, bytes: int) -> void { print(`vkmem: rvt: {res} of {slots} page slots resident, {now} drawn this frame, {all} over the run, {bytes / 1024} KB on the GPU`) }

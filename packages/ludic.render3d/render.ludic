@@ -313,6 +313,9 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   ue_lightgrid_frame(render3d_st)           # ... culled into the light grid's cells (ue_lightgrid.ludic)
   ue_sky_luts(render3d_st)                  # Unreal's Sky Atmosphere LUTs (ue_sky.ludic), before any scene target is bound
   ue_skylight_pass(render3d_st)             # Unreal's real-time sky light capture and convolution (ue_skylight.ludic)
+  # the runtime virtual texture's pages (rvt.ludic, R3D_RVT): two frames' old feedback read, this frame's pages drawn and the page
+  # table updated, before any pass that draws the ground or the roads (the water's mirror among them)
+  if render3d_st.rvt_mode != 0 { prof_begin(render3d_st, "RVT pages");  rvt_frame(render3d_st);  prof_end(render3d_st) }
   if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "shadow");  shadow_pass(render3d_st);  prof_end(render3d_st) }
   if not render3d_st.r3d_no_shadow { prof_begin(render3d_st, "spot shadows");  ue_lightshadows_pass(render3d_st);  prof_end(render3d_st) }   # Unreal's spot light shadow maps (ue_lightshadows.ludic)
   ue_lights_upload(render3d_st)             # the forward light buffer, with each light's shadow map named
@@ -370,6 +373,8 @@ function r3d_frame__t(render3d_st: mut Render3dState, time: float) -> void {
   # or, by default, Unreal's HZB occlusion (R3D_UE_HZB_OCCLUSION=0: the queries): the furthest HZB from the resolved depth and every candidate's box
   # tested against it in one dispatch, read the next frame (occlusion.ludic)
   if render3d_st.occ_hzb { prof_begin(render3d_st, "HZB occlusion");  occ_hzb_pass(render3d_st);  prof_end(render3d_st) }
+  # the runtime virtual texture's page requests from the resolved depth (rvt.ludic: rvt_feedback.comp), read two frames on
+  if render3d_st.rvt != null { prof_begin(render3d_st, "RVT feedback");  rvt_feedback_pass(render3d_st);  prof_end(render3d_st) }
   # the motion target, from the opaque scene's depth and the moving actors (taa.ludic), for TAA or DLSS
   taa_motion_pass(render3d_st)              # its own two timers: "TAA motion" and "TAA motion actors"
   # skin's subsurface scattering (sss.ludic), into the opaque scene before anything is copied from it
