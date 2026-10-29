@@ -304,7 +304,10 @@ program VehiclesTest {
     expect(h.fuel < 100.0)
     expect(h.z < -15.0)
     expect_near(vehicles_test_st.rz, h.z, 0.001)
-    expect_near(vehicles_test_st.ry, 1.35, 0.001)
+    # the rider sits at the seat over the horse; the horse's legs are a physics walker, which settles within its contact
+    # tolerance of the floor (1.2 mm above it here), not on it to the bit as the snapped horse before the legs did
+    expect_near(vehicles_test_st.ry - h.y, 1.35, 0.001)
+    expect_near(h.y, fk_ground(h.x, h.z), 0.005)
     # a trunk half a metre off its line pushes it aside and lets it by; the fence at z = -60 stops it
     let x0 = h.x
     phys_static_add(physics_st, phys_cylinder(physics_st, 3.0, 0.3), x0 + 0.5, 0.0, -35.0, 0.0)
