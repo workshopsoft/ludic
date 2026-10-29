@@ -296,6 +296,12 @@ function gsl_optimal(render3d_st: mut Render3dState) -> void {
     let h = Vk.get_i32(os, 36)
     if w > 0 and h > 0 { render3d_st.gsl_rw = w;  render3d_st.gsl_rh = h }
   }
+  gsl_optimal_say(render3d_st)
+}
+# the render size DLSS asked for, said when it changes (the mode, the output and the input it renders at)
+@alloc_ok("said when the size or mode changes: a resize or a setting, not a frame")
+function gsl_optimal_say(render3d_st: Render3dState) -> void {
+  print(`r3d: dlss mode {render3d_st.gsl_dlss_mode}: {render3d_st.gsl_opt_w}x{render3d_st.gsl_opt_h} from {render3d_st.gsl_rw}x{render3d_st.gsl_rh}`)
 }
 function r3d_dlss_render_w(render3d_st: mut Render3dState) -> int { if not r3d_dlss_live(render3d_st) { return gfx_width() };  gsl_optimal(render3d_st);  return render3d_st.gsl_rw }
 function r3d_dlss_render_h(render3d_st: mut Render3dState) -> int { if not r3d_dlss_live(render3d_st) { return gfx_height() };  gsl_optimal(render3d_st);  return render3d_st.gsl_rh }
