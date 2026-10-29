@@ -15,3 +15,4 @@ hzb_test|hzb_test.comp
 ue_histogram|ue_histogram.comp
 ue_histogram_convert|ue_histogram_convert.comp
 scatter_occl|scatter_occl.comp
+rvt_feedback|rvt_feedback.comp

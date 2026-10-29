@@ -8,6 +8,7 @@ fullscreen.vert|bloom_down.frag|
 fullscreen.vert|bloom_up.frag|
 fullscreen.vert|combine_luts.frag|
 fullscreen.vert|dof.frag|
+fullscreen.vert|rvt_clear.frag|
 fullscreen.vert|heightgen.frag|
 fullscreen.vert|heightgen.frag|#define DEM;
 fullscreen.vert|heightgen.frag|#define SMOOTH;
@@ -90,6 +91,7 @@ skin.vert|model.frag|#define FABRIC;#define ALPHA_TEST;
 skin.vert|model.frag|#define ALPHA_TEST;#define EYE;
 skin.vert|eyeshell.frag|
 skin.vert|model.frag|#define SSS_SPLIT;
+skin.vert|model.frag|#define RVT_WRITE;
 skin.vert|depth.frag|#define OPAQUE_DEPTH;
 skin.vert|depth.frag|#define OPAQUE_DEPTH;#define NO_DISCARD;
 skin.vert|outline.frag|#define OUTLINE;

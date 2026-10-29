@@ -1,0 +1,77 @@
+// rvt_feedback.comp - the runtime virtual texture's page requests (rvt.ludic), Unreal's VT feedback (VirtualTextureCommon.ush:
+// the material writes the page it sampled into the feedback buffer for one pixel in r.vt.FeedbackFactor (16), the pixel picked by
+// View.VirtualTextureFeedbackJitterOffset, read back on the CPU a frame or two late: VirtualTextureFeedback.cpp). A forward renderer's
+// ground draw cannot write a buffer without fragmentStoresAndAtomics (a device feature this renderer does not enable), so the same
+// request is made here from the finished depth: one thread a 4 x 4 block (1/16 of the pixels, the block's pixel moved each frame),
+// the surface's place and its screen derivatives rebuilt from the depth, the level by Unreal's MipLevelAniso2D (VirtualTextureCommon.ush)
+// plus its stochastic noise (GetStochasticMipNoise: a level between two whole ones picked by a per-pixel random number, as the
+// shading picks it), and the page's bit set in this frame's request bitmap (a bit a page of each level's window: rvt.ludic decodes
+// it). Only a level-ish surface is asked for (the RVT is a top-down picture), between the near band and the far end, and not where the
+// resident picture of that place says another surface lies there (a roof, a car top: more than 3 m off the height the page caught).
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(set = 0, binding = 0) uniform Params {
+  mat4 inv_vp;          // the frame's inverse view-projection (render space)
+  vec4 cam;             // the camera (render space), the near band's metres
+  vec4 lim;             // the far end (m), level 0's texel (m), the mip bias, the frame's noise seed
+  ivec4 view;           // the depth's width, height; this frame's pixel in each 4 x 4 block
+  ivec4 info;           // levels, window pages a side, atlas tiles a side, the atlas's texels a side
+  vec4 ypar;            // the page depth's lowest height, its range (m)
+  vec4 win[9];          // each level's window: its corner in render space (x, z), its first page modulo the window (x, z)
+} pr;
+layout(set = 0, binding = 1) buffer Bits { uint bits[]; };
+layout(set = 0, binding = 2) readonly buffer Pt { uint pt[]; };
+layout(set = 0, binding = 3) uniform sampler2D u_depth;
+layout(set = 0, binding = 4) uniform sampler2D u_rvt_h;
+
+vec3 wpos(ivec2 q) {
+  float d = texelFetch(u_depth, q, 0).r;
+  vec2 ndc = (vec2(q) + 0.5) / vec2(pr.view.xy) * 2.0 - 1.0;
+  vec4 h = pr.inv_vp * vec4(ndc, max(d, 1e-9), 1.0);
+  return h.xyz / h.w;
+}
+
+void main() {
+  ivec2 q = ivec2(gl_GlobalInvocationID.xy) * 4 + pr.view.zw;
+  if (q.x < 1 || q.y < 1 || q.x >= pr.view.x - 1 || q.y >= pr.view.y - 1) return;
+  if (texelFetch(u_depth, q, 0).r <= 0.0) return;            // the sky (reversed depth: the far plane is 0)
+  vec3 p = wpos(q);
+  float dist = length(p - pr.cam.xyz);
+  if (dist < pr.cam.w || dist > pr.lim.x) return;
+  // the screen derivatives: each axis's nearer neighbour (a step onto another surface takes the other side)
+  vec3 dx = wpos(q + ivec2(1, 0)) - p, dx2 = p - wpos(q - ivec2(1, 0));
+  vec3 dy = wpos(q + ivec2(0, 1)) - p, dy2 = p - wpos(q - ivec2(0, 1));
+  if (dot(dx2, dx2) < dot(dx, dx)) dx = dx2;
+  if (dot(dy2, dy2) < dot(dy, dy)) dy = dy2;
+  vec3 nrm = cross(dx, dy);
+  float nl = length(nrm);
+  if (nl <= 0.0 || abs(nrm.y) < 0.7 * nl) return;           // a wall, a kerb's face: shaded by the full surfaces
+  // MipLevelAniso2D (MaxAnisoLog2 = log2(8): the page border holds an 8-tap footprint) in level 0's texels, the bias, the noise
+  float t0 = pr.lim.y;
+  float px = dot(dx.xz, dx.xz) / (t0 * t0), py = dot(dy.xz, dy.xz) / (t0 * t0);
+  float lmin = 0.5 * log2(max(min(px, py), 1e-12)), lmax = 0.5 * log2(max(max(px, py), 1e-12));
+  float lod = lmax - min(lmax - lmin, 3.0) + pr.lim.z;
+  float rnd = fract(52.9829189 * fract(dot(vec2(q) + pr.lim.w, vec2(0.06711056, 0.00583715))));
+  int nm = pr.info.x, W = pr.info.y;
+  int m = clamp(int(floor(lod + rnd)), 0, nm - 1);
+  for (; m < nm; m++) {
+    float S = exp2(float(m)) * t0 * 128.0;
+    vec2 l = (p.xz - pr.win[m].xy) / S;
+    if (l.x < 0.0 || l.y < 0.0 || l.x >= float(W) || l.y >= float(W)) continue;
+    ivec2 ix = (ivec2(pr.win[m].zw) + ivec2(floor(l))) % W;
+    int e = (m * W + ix.y) * W + ix.x;
+    // the resident picture of this place (the page or its nearest resident parent): another surface's height there is no request
+    uint pe = pt[e];
+    if (pe != 0u) {
+      int slot = int(pe & 0xFFFFu) - 1;
+      int md = int(pe >> 16);
+      float Sd = exp2(float(md)) * t0 * 128.0;
+      vec2 f = fract((p.xz - pr.win[md].xy) / Sd);
+      int ts = pr.info.z;
+      vec2 t = vec2(float(slot % ts), float(slot / ts)) * 136.0 + 4.0 + f * 128.0;
+      float hd = texelFetch(u_rvt_h, ivec2(t), 0).r;
+      if (hd > 0.0 && abs(pr.ypar.x + hd * pr.ypar.y - p.y) > 3.0 + 4.0 * Sd / 128.0) return;
+    }
+    atomicOr(bits[e >> 5], 1u << uint(e & 31));
+    return;
+  }
+}

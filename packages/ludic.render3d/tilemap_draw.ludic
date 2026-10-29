@@ -31,6 +31,8 @@ export property TmPatch {
   mesh: Mesh = null
   held: bool = false                 # the mesh holds a level's buffers
   coloured: bool = false             # ... with the land use's vertex colours (attribute 7)
+  rvt_lu: int = -1                   # the lawn texture and colouring its RVT pages were drawn with (rvt.ludic)
+  rvt_col: bool = false
 }
 
 export property TileDraw {
@@ -213,8 +215,13 @@ function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slo
   # R3D_TERRAIN_PASS=0 an actor on the stage as before)
   if p.actor == null {
     p.actor = actor_new_terrain(render3d_st, p.model, "terrain/near")
+    actor_rvt(p.actor, true)                # drawn into the runtime virtual texture and reading it (rvt.ludic, R3D_RVT)
     td.shown += 1
   } else { p.actor.model = p.model;  terrain_patch_changed(p.actor) }
+  # the RVT's pages over it drawn again when what it shows changed (its land-use colours or lawn edge came in), not for a new level
+  # alone (its levels are within centimetres)
+  if p.actor.rvt_in and (pr.lu != p.rvt_lu or coloured != p.rvt_col) { rvt_actor_gone(render3d_st, p.actor) }
+  p.rvt_lu = pr.lu;  p.rvt_col = coloured
   # a masked patch's colour is the tones alone (they carry the tint where a class has none); else the tint
   if coloured { p.actor.tint[0] = 1.0;  p.actor.tint[1] = 1.0;  p.actor.tint[2] = 1.0 }
   else { p.actor.tint[0] = td.color[0];  p.actor.tint[1] = td.color[1];  p.actor.tint[2] = td.color[2] }
