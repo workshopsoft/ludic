@@ -301,6 +301,20 @@ function shadow_bind(render3d_st: mut Render3dState, prog: int) -> void {
   if r3d_env_has(render3d_st, "R3D_FORCE") { render3d_st.sh_force = Text.to_int(r3d_env(render3d_st, "R3D_FORCE")) }
   u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_force_cascade"), render3d_st.sh_force)
   u_fv(render3d_st, sh_loc(render3d_st, prog, "u_cascade_texel[0]", "u_cascade_texel"), SHADOW_CASCADES, render3d_st.sh_texel)
+  shadow_filter_read(render3d_st)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_sh_gather"), render3d_st.sh_gather)
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_sh_fade"), render3d_st.sh_fade)
+}
+# The lookup's filter and cascade blend (lighting.glsl u_sh_gather, u_sh_fade), read once. R3D_SHADOW_PCF3_ALL=0: the rotated 8-tap disc
+# again wherever a caller does not ask for the gather (Unreal's Manual3x3PCF: ShadowFilteringCommon.ush, every cascade alike).
+# R3D_UE_CASCADE_FADE=<f>: Unreal's CascadeTransitionFraction (DirectionalLightComponent.cpp, its default 0.1; 0 the old 15 % of the
+# split, twice the double lookups on the near cascades' edges).
+function shadow_filter_read(render3d_st: mut Render3dState) -> void {
+  if render3d_st.sh_gather >= 0.0 { return }
+  render3d_st.sh_gather = 1.0
+  if r3d_env_has(render3d_st, "R3D_SHADOW_PCF3_ALL") and r3d_env(render3d_st, "R3D_SHADOW_PCF3_ALL") == "0" { render3d_st.sh_gather = 0.0 }
+  render3d_st.sh_fade = 0.1
+  if r3d_env_has(render3d_st, "R3D_UE_CASCADE_FADE") { render3d_st.sh_fade = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_UE_CASCADE_FADE")), 0.0, 0.3) }
 }
 
 # R3D_DEBUG / the shadow debug switch: what the passes found, said once each (text made only then)
@@ -376,7 +390,7 @@ function shadow_fog(render3d_st: mut Render3dState) -> void {
 # instanced layers, 3 the buildings. The engine splits before the terrain; a game's casters callback before its own three. A local
 # light's shadow maps stay under their own pass's name.
 export function prof_shadow_split(render3d_st: mut Render3dState, part: int) -> void {
-  if not render3d_st.prof_on or render3d_st.sh_local or render3d_st.sh_phase == SH_PHASE_STATIC { return }   # a cache rebuild: under its own name
+  if not render3d_st.prof_on or render3d_st.sh_local or render3d_st.sh_phase == SH_PHASE_STATIC or render3d_st.sh_phase == SH_PHASE_EXTRA { return }   # a cache rebuild: under its own name
   prof_split(render3d_st, prof_shadow_name(render3d_st.sh_cascade, part))
 }
 function prof_shadow_name(c: int, part: int) -> pointer {

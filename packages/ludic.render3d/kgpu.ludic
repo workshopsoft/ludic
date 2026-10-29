@@ -961,7 +961,7 @@ export function kgpu_draw_casters(render3d_st: mut Render3dState, g: KGpu, light
   var cmds = g.b_cmds
   if render3d_st.sh_local and g.l_ready { cmds = g.b_l_cmds }
   if render3d_st.sh_phase == SH_PHASE_STATIC and g.s_ready { cmds = g.b_s_cmds }   # a cached cascade's (shadow_cache.ludic)
-  if render3d_st.sh_phase == SH_PHASE_DYN { return }                                  # buildings never move
+  if render3d_st.sh_phase == SH_PHASE_DYN or render3d_st.sh_phase == SH_PHASE_EXTRA { return }   # buildings never move (nor come late)
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
   gpu_cull(render3d_st, false)

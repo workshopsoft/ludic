@@ -241,13 +241,21 @@ float shadowGather3(int c, vec3 wpos, float biasWorld) {
   return dot(r, vec4(1.0 - fr.y, 1.0, 1.0, fr.y) * (1.0 / 9.0));
 }
 
+// Every lit shader's sun lookup (shadow.ludic shadow_bind, R3D_SHADOW_PCF3_ALL): 1 Unreal's 3x3 gather PCF in every cascade - its
+// filter is a fixed count of texels whatever the cascade (ShadowFilteringCommon.ush Manual3x3PCF, the projection's SHADOW_QUALITY), four
+// gathers where the rotated disc takes eight comparing taps and a sine and cosine; 0 the disc, the gather only where a caller asks.
+uniform float u_sh_gather;
+// Unreal's CascadeTransitionFraction (DirectionalLightComponent.cpp GetShadowSplitBounds: FadeExtension = (SplitFar - SplitNear) x 0.1,
+// the last cascade's fade plane moved that much closer): the blend into the next cascade a share of this one's own length (shadow.ludic,
+// R3D_UE_CASCADE_FADE); 0 the old 15 % of the split.
+uniform float u_sh_fade;
 // one cascade's lookup, with a normal offset and a slope-scaled depth bias; gather: Unreal's 3x3 gather PCF in the near cascades
-// (its reach, a texel and a half, is the disc's there: the bias is the same), the disc beyond
+// (its reach, a texel and a half, is the disc's there: the bias is the same), the disc beyond (every cascade under u_sh_gather)
 float shadowSlopeQ(int c, vec3 wpos, vec3 n, float tanT, bool gather) {
   float tx = cascadeTexel(c);
   float filt = (c >= 4) ? 2.6 : ((c == 3) ? 2.0 : 1.5);   // matches shadowSample's rad
   vec3 wp = wpos + n * tx * (2.5 + 1.5 * tanT);
-  if (gather && c <= 2) return shadowGather3(c, wp, tx * (1.0 + filt * tanT) + 0.02);
+  if (gather && (c <= 2 || u_sh_gather > 0.5)) return shadowGather3(c, wp, tx * (1.0 + filt * tanT) + 0.02);
   return shadowSample(c, wp, tx * (1.0 + filt * tanT) + 0.02);
 }
 float shadowSlope(int c, vec3 wpos, vec3 n, float tanT) { return shadowSlopeQ(c, wpos, n, tanT, false); }
@@ -309,10 +317,13 @@ float sunShadowQ(vec3 wpos, vec3 n, float viewDepth, bool gather) {
   // (a small caster, a character or a car, takes a lower cap: on a torso's curve the terrain's 10 pushed the lookup a hand's
   // width out of the body at grazing light, where it read lit: rings of light on a shaded back)
   float tanT = min(sqrt(max(1.0 - NoL * NoL, 0.0)) / max(NoL, 0.05), (u_shadow_tan_max > 0.0) ? u_shadow_tan_max : 10.0);
+  gather = gather || u_sh_gather > 0.5;
   float s = shadowSlopeQ(c, wpos, n, tanT, gather);
   // blend across the cascade edge
   float edge = u_cascade_split[c];
-  float f = smoothstep(edge * 0.85, edge, viewDepth);
+  float fadeFrom = edge * 0.85;
+  if (u_sh_fade > 0.0) fadeFrom = edge - u_sh_fade * (edge - ((c > 0) ? u_cascade_split[c - 1] : 0.0));
+  float f = smoothstep(fadeFrom, edge, viewDepth);
   if (f > 0.0 && c < CASCADES - 1) {
     s = mix(s, shadowSlopeQ(c + 1, wpos, n, tanT, gather), f);
   }

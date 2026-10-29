@@ -63,6 +63,19 @@ function tpa_cast_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.tpa_cast < 0 { render3d_st.tpa_cast = tpa_env_on(render3d_st, "R3D_TERRAIN_CASTS") }
   return render3d_st.tpa_cast == 1
 }
+# The sun's cascades the patches cast into (R3D_TERRAIN_CAST_CASCADES, 2: the nearest two; 0 every one). Past them the casting is the
+# baked height-field shadow's twice over: lighting.glsl sunShadowQ takes min(cascade, terrainShadow) for every receiver, and from the
+# third cascade on (40 m and more) the patches are drawn at levels whose cells (2 - 8 m) are no finer than its 4 m texels, so the
+# ground's depth there only costs its draws and its cache rebuilds. With no height-field shadow bound the ground casts into all.
+function tpa_cast_cascades(render3d_st: mut Render3dState) -> int {
+  if render3d_st.tpa_cast_n < 0 {
+    render3d_st.tpa_cast_n = 2
+    if r3d_env_has(render3d_st, "R3D_TERRAIN_CAST_CASCADES") { render3d_st.tpa_cast_n = Text.to_int(r3d_env(render3d_st, "R3D_TERRAIN_CAST_CASCADES")) }
+    if render3d_st.tpa_cast_n <= 0 { render3d_st.tpa_cast_n = SHADOW_CASCADES }
+  }
+  if render3d_st.ter_shadow_tex == 0 or render3d_st.ter_shadow_aux == 0 { return SHADOW_CASCADES }
+  return render3d_st.tpa_cast_n
+}
 # Landscape's screen-size levels (R3D_TERRAIN_LOD), its settings read with it (LandscapeEdit.cpp clamps: the screen size 0.1 .. 10, the
 # distributions 1 .. 10)
 export function terrain_lod_on(render3d_st: mut Render3dState) -> bool {
@@ -173,9 +186,10 @@ export function actor_new_terrain(render3d_st: mut Render3dState, model: Model, 
   tpa_keep(render3d_st, a)
   return a
 }
-# its mesh was given another level (or remade): the cached cascades hold the old one
+# its mesh was given another level (or remade): the cached cascades hold the old one; the new one is drawn over it (sc_track: an extra
+# subject, -1), or, with R3D_UE_SHADOW_CACHE_REMESH=1, the cascades holding it are drawn again
 export function terrain_patch_changed(a: Actor) -> void {
-  if a != null and a.tpa { a.sc_seen = 0 }
+  if a != null and a.tpa and a.sc_seen > 0 { a.sc_seen = -1 }
 }
 
 # into the bucket (actor_keep's, for one of its own)
@@ -193,7 +207,7 @@ function tpa_remove(render3d_st: mut Render3dState, a: Actor) -> void {
   if l == null or a == null { return }
   let r = a.row
   if r < 0 or r >= len(l) or l[r].id != a.id { return }
-  if a.sc_seen > 0 and a.sc_vis and tpa_in_cache(render3d_st, a) { render3d_st.sc_dirty = true }   # its shadow is in the cache
+  sc_drop(render3d_st, a)      # its shadow is in the cascades that hold it (shadow_cache.ludic)
   let last = List.pop(l)
   if last.id != a.id {
     l[r] = last
@@ -219,7 +233,7 @@ function tpa_clear_all(render3d_st: mut Render3dState) -> void {
   let l = render3d_st.tpa_actors
   if l == null { return }
   for i in 0 .. len(l) {
-    if l[i].sc_seen > 0 { render3d_st.sc_dirty = true }
+    sc_drop(render3d_st, l[i])
     l[i].row = -1
   }
   List.clear(l)
@@ -274,6 +288,8 @@ function tpa_occ_candidate(render3d_st: mut Render3dState, a: Actor, b: floats) 
 # near enough a receiver the cascade covers (scatter.ludic cast_band_reaches), as a static chunk (static_chunks.ludic stc_casts)
 function tpa_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) -> bool {
   if a.model == null or not a.casts or not (a.visible or a.cast_hidden) { return false }
+  if not render3d_st.sh_local and render3d_st.sh_cascade >= tpa_cast_cascades(render3d_st) { return false }
+  if render3d_st.sh_phase == SH_PHASE_EXTRA and (a.sc_acc & render3d_st.sc_extra_bit) != 0 { return false }   # held already
   let b = render3d_st.tpa_b
   tpa_bounds(a, b)
   let r = tpa_radius(b)
@@ -395,36 +411,34 @@ function terrain_pass_casters(render3d_st: mut Render3dState, light_vp: floats) 
 
 # ---- the sun's cache (shadow_cache.ludic) -------------------------------------------------------------------------------------------------
 
-# does patch a lie inside the widest cached cascade's window (what a change of it could leave stale there)? Patches far past it come
-# and go and change level as the camera moves, and must not keep the cache rebuilding
-function tpa_in_cache(render3d_st: mut Render3dState, a: Actor) -> bool {
-  if render3d_st.sc_vp_v == null { return true }
-  let b = render3d_st.tpa_b
-  tpa_bounds(a, b)
-  return ac_in_light(render3d_st, render3d_st.sc_vp_v[SC_LAST], b[0], b[1], b[2], tpa_radius(b))
-}
-# one that came casting, moved (a rebase), changed level, or began or stopped casting since the last static draw, inside the window: the
-# cached cascades are due a rebuild
+# each patch's record against the cached cascades (sc_track): one that came or moved (a rebase) is new where it is, one given another
+# level (terrain_patch_changed) an extra subject over its old depth, as Unreal's Landscape switching a level removes no primitive.
+# Patches far past every window are recorded as held by none (sc_stamp), so their coming and going rebuilds nothing.
 function tpa_still_check(render3d_st: mut Render3dState) -> void {
   let l = render3d_st.tpa_actors
   if l == null { return }
   for i in 0 .. len(l) {
     let a = l[i]
-    if a.sc_seen == 0 {
-      if sc_casting(a) and tpa_in_cache(render3d_st, a) { render3d_st.sc_dirty = true }
-      continue
-    }
-    if a.x != a.sc_x or a.y != a.sc_y or a.z != a.sc_z or sc_casting(a) != a.sc_vis { render3d_st.sc_dirty = true }
+    sc_track(render3d_st, a, sc_casting(a), a.x, a.y, a.z, 0.0)
   }
 }
-# what a static draw saw
-function tpa_still_stamp(render3d_st: mut Render3dState) -> void {
+# what cascade bit `bit`'s static draw through vp saw (every patch when `all`, else those it had not accounted for: an extra draw); a
+# cascade the ground casts nothing into (tpa_cast_cascades) holds none
+function tpa_still_stamp(render3d_st: mut Render3dState, bit: int, vp: floats, vp2: floats, all: bool) -> void {
   let l = render3d_st.tpa_actors
   if l == null { return }
+  let b = render3d_st.tpa_b
+  let casts_here = render3d_st.sh_cascade < tpa_cast_cascades(render3d_st)
   for i in 0 .. len(l) {
     let a = l[i]
-    a.sc_seen = render3d_st.sc_gen
-    a.sc_x = a.x;  a.sc_y = a.y;  a.sc_z = a.z;  a.sc_vis = sc_casting(a)
+    if not all and (not sc_casting(a) or (a.sc_acc & bit) != 0) { continue }
+    var inside = false
+    if casts_here and sc_casting(a) {
+      tpa_bounds(a, b)
+      let r = tpa_radius(b)
+      inside = ac_in_light(render3d_st, vp, b[0], b[1], b[2], r) or (vp2 != null and ac_in_light(render3d_st, vp2, b[0], b[1], b[2], r))
+    }
+    sc_stamp(a, bit, sc_casting(a), inside)
   }
 }
 
