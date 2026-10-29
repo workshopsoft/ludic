@@ -492,6 +492,8 @@ function gsl_dlss_eval(render3d_st: mut Render3dState) -> int {
   Vk.sl_set_tag_for_frame(render3d_st.gsl_token, render3d_st.gsl_vp, render3d_st.gsl_tags, 4, cb)
   Vk.put_ptr(render3d_st.gsl_inputs, 0, render3d_st.gsl_vp)
   let r = Vk.sl_evaluate_feature(GSL_DLSS, render3d_st.gsl_token, render3d_st.gsl_inputs, 1, cb)
+  # DLSS's own stages and layouts are not ours to know: what follows is ordered after it by one full barrier (gpu_vk_batch.ludic)
+  gvk_bq_external(render3d_st)
   for i in 0 .. 16 { render3d_st.gsl_prev_vp[i] = render3d_st.cam_vp_clean[i] }
   render3d_st.gsl_reset = false
   # Streamline records its own pipeline and descriptors into the command buffer; nothing needs

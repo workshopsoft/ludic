@@ -1,0 +1,200 @@
+# gpu_vk_batch.ludic — the barriers around every pass: narrowed by their layouts and batched, as UE's are.
+#
+# R3D_VK_NARROW_ATT (on unless =0): an attachment's transition at a pass's begin and end (gvk_att_barrier) waits only on the
+#   stages that can use the image in its old layout and blocks only those that use it in the new one, with the attachment's
+#   read and write access: UE VulkanBarriers.cpp GetVkStageFlagsForLayout (COLOR_ATTACHMENT_OPTIMAL: COLOR_ATTACHMENT_OUTPUT;
+#   DEPTH_ATTACHMENT_OPTIMAL: EARLY | LATE_FRAGMENT_TESTS) and GetVkStageAndAccessFlags (ERHIAccess::RTV: COLOR_ATTACHMENT_READ |
+#   WRITE; DSVWrite: DEPTH_STENCIL_ATTACHMENT_READ | WRITE), used by FVulkanPipelineBarrier::AddImageLayoutTransition. They were
+#   ALL_COMMANDS -> ALL_COMMANDS, which drains NVIDIA's whole pipeline two to four times a pass. A third party's work in the
+#   frame (Streamline's DLSS, MetalFX past a split) is followed by one full barrier instead, so whatever it did is ordered
+#   before what comes after it as before (gvk_bq_external).
+# R3D_VK_BATCH_BARRIERS (on unless =0): barriers that come back to back go out as one vkCmdPipelineBarrier, as UE's RDG batches
+#   a pass's prologue and epilogue barriers (RenderGraphBuilder.cpp FRDGBuilder::Compile: "begin will handle all prologue
+#   barriers for the entire merged interval, and end will handle all epilogue barriers ... batches the transitions more
+#   efficiently") and FVulkanPipelineBarrier::Execute issues all its image, buffer and memory barriers in one call with the
+#   union of their stages. A pass's end barriers wait in a queue (gvk_bq) until the next command needs them: the next pass's
+#   begin barriers join them, and an attachment the next pass draws into again keeps its layout - its pair of transitions
+#   (attachment -> shader read -> attachment) becomes one attachment -> attachment memory dependency, the barrier UE's RDG
+#   leaves between two passes on the same target when they are not merged. A dispatch's write -> read barrier waits in the
+#   same queue. Every other command into the frame's command buffer empties the queue first (gvk_frame_cb, gvk_barrier_from,
+#   gvk_host_read_barrier, gvk_labels_close where the buffer ends), so no command sees an image in a layout it does not expect.
+#   Two transitions of overlapping parts of one image never share a call (their order inside one would be undefined).
+
+const GVK_BQ_MAX: int = 16
+const GVK_BQ_W: int = 4                     # per pending image barrier: texture, layer + 1 (0: every layer), alive, old layout
+
+function gvk_narrow_att_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_narrow_att < 0 {
+    render3d_st.gvk_narrow_att = 1
+    if r3d_env_has(render3d_st, "R3D_VK_NARROW_ATT") { render3d_st.gvk_narrow_att = Text.to_int(r3d_env(render3d_st, "R3D_VK_NARROW_ATT")) }
+  }
+  return render3d_st.gvk_narrow_att == 1
+}
+function gvk_batch_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_batch < 0 {
+    render3d_st.gvk_batch = 1
+    if r3d_env_has(render3d_st, "R3D_VK_BATCH_BARRIERS") { render3d_st.gvk_batch = Text.to_int(r3d_env(render3d_st, "R3D_VK_BATCH_BARRIERS")) }
+  }
+  return render3d_st.gvk_batch == 1 and render3d_st.gvk_bq != null
+}
+
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function gvk_bq_make(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gvk_bq != null { return }
+  render3d_st.gvk_bq = bytes(VkImageMemoryBarrier_sizeof * GVK_BQ_MAX)
+  render3d_st.gvk_bq_img = words(GVK_BQ_MAX * GVK_BQ_W)
+  for i in 0 .. GVK_BQ_MAX * GVK_BQ_W { render3d_st.gvk_bq_img[i] = 0 }
+  render3d_st.gvk_bq_mb = bytes(VkMemoryBarrier_sizeof)
+  gvk_bq_reset(render3d_st)
+}
+function gvk_bq_reset(render3d_st: mut Render3dState) -> void {
+  render3d_st.gvk_bq_n = 0
+  render3d_st.gvk_bq_src = 0;  render3d_st.gvk_bq_dst = 0
+  render3d_st.gvk_bq_mem = false;  render3d_st.gvk_bq_msrc = 0;  render3d_st.gvk_bq_mdst = 0
+}
+
+# an attachment layout's access: its reads too (a LOAD op, blending, the depth test), as UE's RTV / DSVWrite states have them
+function gvk_att_access(render3d_st: mut Render3dState, layout: int) -> int {
+  if gvk_narrow_att_on(render3d_st) {
+    if layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL { return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT }
+    if layout == VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL { return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT }
+  }
+  return gvk_layout_access(layout)
+}
+# the stages on either side of an attachment's transition: those of its layouts, or ALL_COMMANDS both (the flag off, or a layout
+# gvk_layout_stages does not know)
+function gvk_att_src(render3d_st: mut Render3dState, old_layout: int, new_layout: int) -> int {
+  if gvk_narrow_att_on(render3d_st) {
+    let s = gvk_layout_stages(old_layout)
+    if s != 0 and gvk_layout_stages(new_layout) != 0 { return s }
+  }
+  return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+}
+function gvk_att_dst(render3d_st: mut Render3dState, old_layout: int, new_layout: int) -> int {
+  if gvk_narrow_att_on(render3d_st) {
+    let d = gvk_layout_stages(new_layout)
+    if d != 0 and gvk_layout_stages(old_layout) != 0 { return d }
+  }
+  return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+}
+function gvk_att_valid(render3d_st: Render3dState, tex: int) -> bool { return tex > 0 and tex < len(render3d_st.gvk_tex_image) and render3d_st.gvk_tex_image[tex] != 0 }
+
+# one attachment's transition into b: level 0, the whole image unless one layer (layer1 - 1) is drawn
+function gvk_att_fill(render3d_st: mut Render3dState, b: pointer, tex: int, layer1: int, depth: bool, old_layout: int, new_layout: int) -> void {
+  Vk.zero(b, VkImageMemoryBarrier_sizeof)
+  Vk.put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
+  Vk.put_i32(b, VkImageMemoryBarrier_srcAccessMask, gvk_att_access(render3d_st, old_layout))
+  Vk.put_i32(b, VkImageMemoryBarrier_dstAccessMask, gvk_att_access(render3d_st, new_layout))
+  Vk.put_i32(b, VkImageMemoryBarrier_oldLayout, old_layout)
+  Vk.put_i32(b, VkImageMemoryBarrier_newLayout, new_layout)
+  Vk.put_i32(b, VkImageMemoryBarrier_srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
+  Vk.put_i32(b, VkImageMemoryBarrier_dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
+  Vk.put_i64(b, VkImageMemoryBarrier_image, render3d_st.gvk_tex_image[tex])
+  let r = VkImageMemoryBarrier_subresourceRange
+  if depth { Vk.put_i32(b, r + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) } else { Vk.put_i32(b, r + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
+  Vk.put_i32(b, r + VkImageSubresourceRange_levelCount, 1)
+  if layer1 == 0 { Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, render3d_st.gvk_tex_layers[tex]) }
+  else { Vk.put_i32(b, r + VkImageSubresourceRange_baseArrayLayer, layer1 - 1);  Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, 1) }
+}
+
+# the queue, out as one barrier into the frame's command buffer: the image barriers still alive, and the memory barrier if
+# one was asked for (an attachment kept, a dispatch's writes, a third party's work)
+function gvk_bq_flush(render3d_st: mut Render3dState) -> void {
+  if render3d_st.gvk_bq == null { return }
+  if render3d_st.gvk_bq_n == 0 and not render3d_st.gvk_bq_mem { return }
+  if render3d_st.gvk_cb == null { gvk_bq_reset(render3d_st);  return }
+  let sz = VkImageMemoryBarrier_sizeof
+  var w = 0
+  for i in 0 .. render3d_st.gvk_bq_n {
+    if render3d_st.gvk_bq_img[i * GVK_BQ_W + 2] == 1 {
+      if w != i { mem_copy(mem_off(render3d_st.gvk_bq, w * sz), mem_off(render3d_st.gvk_bq, i * sz), sz) }
+      w += 1
+    }
+  }
+  var nm = 0
+  if render3d_st.gvk_bq_mem {
+    let mb = render3d_st.gvk_bq_mb
+    Vk.zero(mb, VkMemoryBarrier_sizeof)
+    Vk.put_i32(mb, VkMemoryBarrier_sType, VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+    Vk.put_i32(mb, VkMemoryBarrier_srcAccessMask, render3d_st.gvk_bq_msrc)
+    Vk.put_i32(mb, VkMemoryBarrier_dstAccessMask, render3d_st.gvk_bq_mdst)
+    nm = 1
+  }
+  var src = render3d_st.gvk_bq_src
+  var dst = render3d_st.gvk_bq_dst
+  if src == 0 { src = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT }
+  if dst == 0 { dst = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT }
+  if w > 0 or nm > 0 { Vk.cmd_pipeline_barrier(render3d_st.gvk_cb, src, dst, 0, nm, render3d_st.gvk_bq_mb, 0, null, w, render3d_st.gvk_bq) }
+  gvk_bq_reset(render3d_st)
+}
+
+# a pending barrier on part of this image that this one's range overlaps: the two may not share a call
+function gvk_bq_overlaps(render3d_st: Render3dState, tex: int, layer1: int) -> bool {
+  for i in 0 .. render3d_st.gvk_bq_n {
+    let o = i * GVK_BQ_W
+    if render3d_st.gvk_bq_img[o + 2] == 1 and render3d_st.gvk_bq_img[o] == tex {
+      let l = render3d_st.gvk_bq_img[o + 1]
+      if l == 0 or layer1 == 0 or l == layer1 { return true }
+    }
+  }
+  return false
+}
+
+# an attachment's transition, queued (R3D_VK_BATCH_BARRIERS) or recorded at once
+function gvk_att_barrier_q(render3d_st: mut Render3dState, cb: pointer, tex: int, layer1: int, depth: bool, old_layout: int, new_layout: int) -> void {
+  if not gvk_batch_on(render3d_st) { gvk_att_barrier(render3d_st, cb, tex, layer1, depth, old_layout, new_layout);  return }
+  if not gvk_att_valid(render3d_st, tex) { return }
+  if render3d_st.gvk_bq_n >= GVK_BQ_MAX or gvk_bq_overlaps(render3d_st, tex, layer1) { gvk_bq_flush(render3d_st) }
+  let i = render3d_st.gvk_bq_n
+  gvk_att_fill(render3d_st, mem_off(render3d_st.gvk_bq, i * VkImageMemoryBarrier_sizeof), tex, layer1, depth, old_layout, new_layout)
+  let o = i * GVK_BQ_W
+  render3d_st.gvk_bq_img[o] = tex;  render3d_st.gvk_bq_img[o + 1] = layer1;  render3d_st.gvk_bq_img[o + 2] = 1;  render3d_st.gvk_bq_img[o + 3] = old_layout
+  render3d_st.gvk_bq_src = render3d_st.gvk_bq_src | gvk_att_src(render3d_st, old_layout, new_layout)
+  render3d_st.gvk_bq_dst = render3d_st.gvk_bq_dst | gvk_att_dst(render3d_st, old_layout, new_layout)
+  render3d_st.gvk_bq_n += 1
+}
+
+# A memory barrier joined to the queue (or recorded at once into the frame's command buffer)
+function gvk_bq_memory(render3d_st: mut Render3dState, src: int, dst: int, src_access: int, dst_access: int) -> void {
+  if render3d_st.gvk_cb == null { return }
+  if not gvk_batch_on(render3d_st) {
+    let mb = gvk_tmp(render3d_st, VkMemoryBarrier_sizeof)
+    Vk.zero(mb, VkMemoryBarrier_sizeof)
+    Vk.put_i32(mb, VkMemoryBarrier_sType, VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+    Vk.put_i32(mb, VkMemoryBarrier_srcAccessMask, src_access)
+    Vk.put_i32(mb, VkMemoryBarrier_dstAccessMask, dst_access)
+    Vk.cmd_pipeline_barrier(render3d_st.gvk_cb, src, dst, 0, 1, mb, 0, null, 0, null)
+    return
+  }
+  render3d_st.gvk_bq_mem = true
+  render3d_st.gvk_bq_msrc = render3d_st.gvk_bq_msrc | src_access
+  render3d_st.gvk_bq_mdst = render3d_st.gvk_bq_mdst | dst_access
+  render3d_st.gvk_bq_src = render3d_st.gvk_bq_src | src
+  render3d_st.gvk_bq_dst = render3d_st.gvk_bq_dst | dst
+}
+
+# The pass before left this attachment for shader reads and that transition is still queued: the pass about to begin draws
+# into it again, so neither transition is made - the image stays in its attachment layout, and one memory dependency orders
+# the earlier pass's attachment writes before this one's reads and writes (two render passes are not ordered by themselves).
+function gvk_bq_keep(render3d_st: mut Render3dState, tex: int, layer1: int, layout: int) -> bool {
+  if not gvk_batch_on(render3d_st) { return false }
+  for i in 0 .. render3d_st.gvk_bq_n {
+    let o = i * GVK_BQ_W
+    if render3d_st.gvk_bq_img[o + 2] == 1 and render3d_st.gvk_bq_img[o] == tex and render3d_st.gvk_bq_img[o + 1] == layer1 and render3d_st.gvk_bq_img[o + 3] == layout {
+      render3d_st.gvk_bq_img[o + 2] = 0
+      let st = gvk_att_src(render3d_st, layout, layout)
+      let acc = gvk_att_access(render3d_st, layout)
+      gvk_bq_memory(render3d_st, st, st, acc, acc)
+      return true
+    }
+  }
+  return false
+}
+
+# Work the queue cannot see into (Streamline's DLSS evaluate, MetalFX between split command buffers) wrote and read the frame's
+# images with stages and accesses of its own: one full barrier after it, joined to the next pass's, so what follows is ordered
+# after all of it - what the ALL_COMMANDS attachment barriers did before R3D_VK_NARROW_ATT.
+function gvk_bq_external(render3d_st: mut Render3dState) -> void {
+  if not gvk_narrow_att_on(render3d_st) { return }
+  gvk_bq_memory(render3d_st, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT)
+}

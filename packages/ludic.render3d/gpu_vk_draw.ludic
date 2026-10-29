@@ -289,13 +289,9 @@ function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
   Vk.cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, render3d_st.gvk_cp_pipe[c])
   Vk.cmd_bind_descriptor_sets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, render3d_st.gvk_cp_layout[c], 0, 1, sets, 0, null)
   Vk.cmd_dispatch(cb, gx, gy, gz)
-  let mb = gvk_tmp(render3d_st, VkMemoryBarrier_sizeof)
-  Vk.zero(mb, VkMemoryBarrier_sizeof)
-  Vk.put_i32(mb, VkMemoryBarrier_sType, VK_STRUCTURE_TYPE_MEMORY_BARRIER)
-  Vk.put_i32(mb, VkMemoryBarrier_srcAccessMask, VK_ACCESS_SHADER_WRITE_BIT)
-  Vk.put_i32(mb, VkMemoryBarrier_dstAccessMask, VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT)
-  # the fragment stage too: lit programs read buffers a dispatch wrote (the light grid)
-  Vk.cmd_pipeline_barrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, mb, 0, null, 0, null)
+  # the fragment stage too: lit programs read buffers a dispatch wrote (the light grid). Queued (R3D_VK_BATCH_BARRIERS): it
+  # goes out with the next pass's begin barriers, or before the next dispatch or copy, whichever comes first
+  gvk_bq_memory(render3d_st, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT)
 }
 
 # the stand-in for a storage buffer nothing was bound to: 256 zeroed bytes, made when first needed
@@ -1206,7 +1202,14 @@ function gvk_screen_make(render3d_st: mut Render3dState, w: int, h: int) -> bool
   return gvk_tex_storage(render3d_st, render3d_st.gvk_screen_depth, false, GPU_DEPTH_COMPONENT32F, w, h, 1, false)
 }
 
+# the frame's command buffer for a command outside any pass: the queued barriers (gpu_vk_batch.ludic) are recorded first
 function gvk_frame_cb(render3d_st: mut Render3dState) -> pointer {
+  let cb = gvk_frame_cb_raw(render3d_st)
+  gvk_bq_flush(render3d_st)
+  return cb
+}
+# ... as it is, the queue left alone: a pass's begin (its barriers join the queue) and a timestamp (it touches no image)
+function gvk_frame_cb_raw(render3d_st: mut Render3dState) -> pointer {
   if render3d_st.gvk_cb == null {
     # the frame in flight uses the other half of the ring and the other pool, unless it has this slot
     if render3d_st.gvk_frame_pending and (render3d_st.gvk_frame_pending_no & 1) == (render3d_st.gvk_frame_no & 1) { gvk_frame_wait(render3d_st) }
@@ -1251,26 +1254,16 @@ function gvk_view_of(render3d_st: mut Render3dState, tex: int, layer1: int) -> l
   push(render3d_st.gvk_layer_view_tex, tex)
   return view
 }
-# the layer range a barrier for an attachment covers: the whole image unless one layer is drawn
+# An attachment's transition, recorded at once: level 0, the whole image unless one layer is drawn. R3D_VK_NARROW_ATT
+# (gpu_vk_batch.ludic) gives it its layouts' stages and accesses, as UE's FVulkanPipelineBarrier::AddImageLayoutTransition
+# does (VulkanBarriers.cpp GetVkStageFlagsForLayout); =0, ALL_COMMANDS -> ALL_COMMANDS as before.
 function gvk_att_barrier(render3d_st: mut Render3dState, cb: pointer, tex: int, layer1: int, depth: bool, old_layout: int, new_layout: int) -> void {
   # an attachment whose image was never made (no memory for it) has nothing to transition
-  if tex <= 0 or tex >= len(render3d_st.gvk_tex_image) or render3d_st.gvk_tex_image[tex] == 0 { return }
+  if not gvk_att_valid(render3d_st, tex) { return }
+  gvk_bq_flush(render3d_st)
   let b = gvk_tmp(render3d_st, VkImageMemoryBarrier_sizeof)
-  Vk.zero(b, VkImageMemoryBarrier_sizeof)
-  Vk.put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
-  Vk.put_i32(b, VkImageMemoryBarrier_srcAccessMask, gvk_layout_access(old_layout))
-  Vk.put_i32(b, VkImageMemoryBarrier_dstAccessMask, gvk_layout_access(new_layout))
-  Vk.put_i32(b, VkImageMemoryBarrier_oldLayout, old_layout)
-  Vk.put_i32(b, VkImageMemoryBarrier_newLayout, new_layout)
-  Vk.put_i32(b, VkImageMemoryBarrier_srcQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
-  Vk.put_i32(b, VkImageMemoryBarrier_dstQueueFamilyIndex, VK_QUEUE_FAMILY_IGNORED)
-  Vk.put_i64(b, VkImageMemoryBarrier_image, render3d_st.gvk_tex_image[tex])
-  let r = VkImageMemoryBarrier_subresourceRange
-  if depth { Vk.put_i32(b, r + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_DEPTH_BIT) } else { Vk.put_i32(b, r + VkImageSubresourceRange_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT) }
-  Vk.put_i32(b, r + VkImageSubresourceRange_levelCount, 1)
-  if layer1 == 0 { Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, render3d_st.gvk_tex_layers[tex]) }
-  else { Vk.put_i32(b, r + VkImageSubresourceRange_baseArrayLayer, layer1 - 1);  Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, 1) }
-  Vk.cmd_pipeline_barrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, null, 0, null, 1, b)
+  gvk_att_fill(render3d_st, b, tex, layer1, depth, old_layout, new_layout)
+  Vk.cmd_pipeline_barrier(cb, gvk_att_src(render3d_st, old_layout, new_layout), gvk_att_dst(render3d_st, old_layout, new_layout), 0, 0, null, 0, null, 1, b)
 }
 
 # fb's attachments from gpu.ludic's record (colour 0, colour 1, depth texture, depth layer + 1,
@@ -1328,7 +1321,7 @@ function gvk_att_load(render3d_st: Render3dState, depth: bool) -> int {
 function gvk_att_store(render3d_st: Render3dState, depth: bool) -> int { return VK_ATTACHMENT_STORE_OP_STORE }
 function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) -> void {
   if render3d_st.gvk_in_pass { return }
-  let cb = gvk_frame_cb(render3d_st)
+  let cb = gvk_frame_cb_raw(render3d_st)
   gvk_pass_collect(render3d_st, render3d_st.gvk_fb_cur, rec, rec_o)
   gvk_pass_no_compressed(render3d_st)
   let aw = VkRenderingAttachmentInfo_sizeof
@@ -1342,7 +1335,8 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
   for c in 0 .. render3d_st.gvk_pass_ncolor {
     let tex = render3d_st.gvk_pass_col[c * 2]
     let layer1 = render3d_st.gvk_pass_col[c * 2 + 1]
-    gvk_att_barrier(render3d_st, cb, tex, layer1, false, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+    # still in its attachment layout from the pass before (R3D_VK_BATCH_BARRIERS), or brought back to it
+    if not gvk_bq_keep(render3d_st, tex, layer1, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) { gvk_att_barrier_q(render3d_st, cb, tex, layer1, false, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) }
     Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
     Vk.put_i64(catt, c * aw + VkRenderingAttachmentInfo_imageView, gvk_view_of(render3d_st, tex, layer1))
     Vk.put_i32(catt, c * aw + VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
@@ -1359,7 +1353,7 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
   Vk.zero(datt, aw)
   let dtex = render3d_st.gvk_pass_dep[0]
   if dtex > 0 {
-    gvk_att_barrier(render3d_st, cb, dtex, render3d_st.gvk_pass_dep[1], true, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
+    if not gvk_bq_keep(render3d_st, dtex, render3d_st.gvk_pass_dep[1], VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) { gvk_att_barrier_q(render3d_st, cb, dtex, render3d_st.gvk_pass_dep[1], true, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL) }
     Vk.put_i32(datt, VkRenderingAttachmentInfo_sType, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO)
     Vk.put_i64(datt, VkRenderingAttachmentInfo_imageView, gvk_view_of(render3d_st, dtex, render3d_st.gvk_pass_dep[1]))
     Vk.put_i32(datt, VkRenderingAttachmentInfo_imageLayout, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL)
@@ -1381,6 +1375,8 @@ function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) 
   Vk.put_i32(ri, VkRenderingInfo_colorAttachmentCount, render3d_st.gvk_pass_ncolor)
   Vk.put_ptr(ri, VkRenderingInfo_pColorAttachments, catt)
   if dtex > 0 { Vk.put_ptr(ri, VkRenderingInfo_pDepthAttachment, datt) }
+  # the pass before's end barriers and this one's begin, one call
+  gvk_bq_flush(render3d_st)
   Vk.cmd_begin_rendering(cb, ri)
   render3d_st.gvk_plog_n += 1
   render3d_st.gvk_in_pass = true
@@ -1392,10 +1388,10 @@ function gvk_pass_end(render3d_st: mut Render3dState) -> void {
   Vk.cmd_end_rendering(cb)
   if render3d_st.gvk_plog { gvk_plog_say_end_pass(render3d_st) }
   for c in 0 .. render3d_st.gvk_pass_ncolor {
-    gvk_att_barrier(render3d_st, cb, render3d_st.gvk_pass_col[c * 2], render3d_st.gvk_pass_col[c * 2 + 1], false, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    gvk_att_barrier_q(render3d_st, cb, render3d_st.gvk_pass_col[c * 2], render3d_st.gvk_pass_col[c * 2 + 1], false, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   }
   if render3d_st.gvk_pass_dep[0] > 0 {
-    gvk_att_barrier(render3d_st, cb, render3d_st.gvk_pass_dep[0], render3d_st.gvk_pass_dep[1], true, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    gvk_att_barrier_q(render3d_st, cb, render3d_st.gvk_pass_dep[0], render3d_st.gvk_pass_dep[1], true, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
   }
   render3d_st.gvk_in_pass = false
 }
@@ -1816,8 +1812,9 @@ function gvk_resolve(render3d_st: mut Render3dState, cb: pointer, src: int, dst:
   var layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
   var mode = VK_RESOLVE_MODE_AVERAGE_BIT
   if depth { layout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;  mode = VK_RESOLVE_MODE_SAMPLE_ZERO_BIT }
-  gvk_att_barrier(render3d_st, cb, src, 0, depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, layout)
-  gvk_att_barrier(render3d_st, cb, dst, 0, depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, layout)
+  if not gvk_bq_keep(render3d_st, src, 0, layout) { gvk_att_barrier_q(render3d_st, cb, src, 0, depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, layout) }
+  if not gvk_bq_keep(render3d_st, dst, 0, layout) { gvk_att_barrier_q(render3d_st, cb, dst, 0, depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, layout) }
+  gvk_bq_flush(render3d_st)
   let aw = VkRenderingAttachmentInfo_sizeof
   let att = gvk_tmp(render3d_st, aw)
   Vk.zero(att, aw)
@@ -1839,15 +1836,14 @@ function gvk_resolve(render3d_st: mut Render3dState, cb: pointer, src: int, dst:
   else { Vk.put_i32(ri, VkRenderingInfo_colorAttachmentCount, 1);  Vk.put_ptr(ri, VkRenderingInfo_pColorAttachments, att) }
   Vk.cmd_begin_rendering(cb, ri)
   Vk.cmd_end_rendering(cb)
-  gvk_att_barrier(render3d_st, cb, src, 0, depth, layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  gvk_att_barrier(render3d_st, cb, dst, 0, depth, layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_att_barrier_q(render3d_st, cb, src, 0, depth, layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_att_barrier_q(render3d_st, cb, dst, 0, depth, layout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
 }
 function gvk_copy(render3d_st: mut Render3dState, cb: pointer, src: int, dst: int, depth: bool, w: int, h: int) -> void {
   if src <= 0 or dst <= 0 or render3d_st.gvk_tex_image[src] == 0 or render3d_st.gvk_tex_image[dst] == 0 { return }
   if render3d_st.gvk_plog { gvk_plog_copy(render3d_st, "K copy", src, dst, depth) }
   if gvk_tex_samples_of(render3d_st, src) > 1 and gvk_tex_samples_of(render3d_st, dst) == 1 { gvk_resolve(render3d_st, cb, src, dst, depth, w, h);  return }
-  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  gvk_barrier_pair(render3d_st, cb, depth, render3d_st.gvk_tex_image[src], render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, render3d_st.gvk_tex_image[dst], render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0)
   let ic = gvk_tmp(render3d_st, VkImageCopy_sizeof)
   Vk.zero(ic, VkImageCopy_sizeof)
   var aspect = VK_IMAGE_ASPECT_COLOR_BIT
@@ -1860,8 +1856,7 @@ function gvk_copy(render3d_st: mut Render3dState, cb: pointer, src: int, dst: in
   Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_height, h)
   Vk.put_i32(ic, VkImageCopy_extent + VkExtent3D_depth, 1)
   Vk.cmd_copy_image(cb, render3d_st.gvk_tex_image[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_tex_image[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, ic)
-  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier_pair(render3d_st, cb, depth, render3d_st.gvk_tex_image[src], render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, render3d_st.gvk_tex_image[dst], render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0)
 }
 # n layers of one array texture into layers of another of the same size and format, outside any pass (a cached shadow cascade
 # into the frame's: shadow.ludic): pairs[2 i] the source layer, pairs[2 i + 1] the destination's. Both rest in shader-read, as
@@ -1872,8 +1867,7 @@ function gvk_copy_layers(render3d_st: mut Render3dState, src: int, dst: int, dep
   let cb = gvk_frame_cb(render3d_st)
   let w = render3d_st.gvk_tex_dims_w[src]
   let h = render3d_st.gvk_tex_dims_h[src]
-  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+  gvk_barrier_pair(render3d_st, cb, depth, render3d_st.gvk_tex_image[src], render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, render3d_st.gvk_tex_image[dst], render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0)
   let sz = VkImageCopy_sizeof
   let ic = gvk_tmp(render3d_st, sz * n)
   Vk.zero(ic, sz * n)
@@ -1892,8 +1886,7 @@ function gvk_copy_layers(render3d_st: mut Render3dState, src: int, dst: int, dep
     Vk.put_i32(ic, o + VkImageCopy_extent + VkExtent3D_depth, 1)
   }
   Vk.cmd_copy_image(cb, render3d_st.gvk_tex_image[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, render3d_st.gvk_tex_image[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, n, ic)
-  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[src], depth, 0, 1, render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  gvk_barrier(render3d_st, cb, render3d_st.gvk_tex_image[dst], depth, 0, 1, render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+  gvk_barrier_pair(render3d_st, cb, depth, render3d_st.gvk_tex_image[src], render3d_st.gvk_tex_layers[src], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, render3d_st.gvk_tex_image[dst], render3d_st.gvk_tex_layers[dst], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0)
 }
 function gvk_blit(render3d_st: mut Render3dState, w: int, h: int, mask: int) -> void {
   render3d_st.gvk_plog_why = "gvk_blit";  gvk_pass_end(render3d_st)
@@ -2118,11 +2111,10 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
   let i = Vk.get_i32(idx, 0)
   let dst = Vk.get_i64(render3d_st.gvk_swap_images, i * 8)
   let src = render3d_st.gvk_tex_image[render3d_st.gvk_screen_color]
-  gvk_barrier(render3d_st, cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
   # the swapchain image's barrier starts at the stages the acquire semaphore is waited at, so the layout change is ordered after
   # the image is free (UE VulkanBarriers.cpp GetVkStageAndAccessFlags: ERHIAccess::Present as the source state is
-  # COLOR_ATTACHMENT_OUTPUT, access 0, "the sema handles access")
-  gvk_barrier_from(render3d_st, cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT)
+  # COLOR_ATTACHMENT_OUTPUT, access 0, "the sema handles access"); one call with the screen's
+  gvk_barrier_pair(render3d_st, cb, false, src, 1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0, dst, 1, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT)
   let blit = gvk_tmp(render3d_st, VkImageBlit_sizeof)
   Vk.zero(blit, VkImageBlit_sizeof)
   Vk.put_i32(blit, VkImageBlit_srcSubresource + VkImageSubresourceLayers_aspectMask, VK_IMAGE_ASPECT_COLOR_BIT)
@@ -2137,8 +2129,7 @@ function gvk_present_window(render3d_st: mut Render3dState) -> void {
   Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_y, render3d_st.gvk_swap_h)
   Vk.put_i32(blit, VkImageBlit_dstOffsets + VkOffset3D_sizeof + VkOffset3D_z, 1)
   Vk.cmd_blit_image(cb, src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, blit, VK_FILTER_LINEAR)
-  gvk_barrier(render3d_st, cb, src, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-  gvk_barrier(render3d_st, cb, dst, false, 0, 1, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+  gvk_barrier_pair(render3d_st, cb, false, src, 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, dst, 1, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0)
   # the frame's last submit waits on the acquire and signals this image's rendering-done semaphore, which the present waits on
   var done = zero
   if sems { done = Vk.get_i64(render3d_st.gvk_done_sems, i * 8) }

@@ -740,6 +740,8 @@ function gvk_frame_split(render3d_st: mut Render3dState) -> bool {
   render3d_st.gvk_split_cbs[render3d_st.gvk_split_n] = cb
   render3d_st.gvk_split_n += 1
   render3d_st.gvk_cb = gvk_once_begin(render3d_st)
+  # what ran outside Vulkan in between (MetalFX) is ordered before the rest by one full barrier
+  if render3d_st.gvk_cb != null { gvk_bq_external(render3d_st) }
   return render3d_st.gvk_cb != null
 }
 # The first n split-off command buffers, once the queue has been waited on past them: all of them after a wait on the whole
@@ -868,14 +870,14 @@ function gvk_query_new(render3d_st: mut Render3dState, n: int, ids: words) -> vo
 function gvk_query_begin(render3d_st: mut Render3dState, id: int) -> void {
   if render3d_st.gvk_qpool == 0 { return }
   Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, id * 2, 2)
-  Vk.cmd_write_timestamp(gvk_frame_cb(render3d_st), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, render3d_st.gvk_qpool, id * 2)
+  Vk.cmd_write_timestamp(gvk_frame_cb_raw(render3d_st), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, render3d_st.gvk_qpool, id * 2)
   render3d_st.gvk_q_active = id
 }
 function gvk_query_end(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_qpool == 0 or render3d_st.gvk_q_active < 0 { return }
   # the end waits for the pass's work to finish (bottom of pipe); written at the top, as the start is, it measured only how long the
   # commands took to be issued and every pass read near nothing
-  Vk.cmd_write_timestamp(gvk_frame_cb(render3d_st), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, render3d_st.gvk_qpool, render3d_st.gvk_q_active * 2 + 1)
+  Vk.cmd_write_timestamp(gvk_frame_cb_raw(render3d_st), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, render3d_st.gvk_qpool, render3d_st.gvk_q_active * 2 + 1)
   render3d_st.gvk_q_active = -1
 }
 # a timestamp of its own into query pair `id`: its first (and the pair reset) or its second, at the end of all work before it; not a pass
@@ -884,10 +886,10 @@ function gvk_stamp(render3d_st: mut Render3dState, id: int, second: bool) -> voi
   if render3d_st.gvk_qpool == 0 { return }
   if not second {
     Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, id * 2, 2)
-    Vk.cmd_write_timestamp(gvk_frame_cb(render3d_st), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, render3d_st.gvk_qpool, id * 2)
+    Vk.cmd_write_timestamp(gvk_frame_cb_raw(render3d_st), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, render3d_st.gvk_qpool, id * 2)
     return
   }
-  Vk.cmd_write_timestamp(gvk_frame_cb(render3d_st), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, render3d_st.gvk_qpool, id * 2 + 1)
+  Vk.cmd_write_timestamp(gvk_frame_cb_raw(render3d_st), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, render3d_st.gvk_qpool, id * 2 + 1)
 }
 function gvk_query_result(render3d_st: mut Render3dState, id: int, out: words) -> bool {
   if render3d_st.gvk_qpool == 0 { return false }
@@ -921,6 +923,7 @@ function gvk_label_end(render3d_st: mut Render3dState) -> void {
 # the frame's command buffer ends with every label it opened closed (called where it ends: a
 # pointer compares by what it points at, so once_end cannot ask which buffer it was handed)
 function gvk_labels_close(render3d_st: mut Render3dState) -> void {
+  gvk_bq_flush(render3d_st)                   # the queued barriers before the buffer ends (gpu_vk_batch.ludic)
   if render3d_st.gvk_cb == null { render3d_st.gvk_label_depth = 0;  return }
   while render3d_st.gvk_label_depth > 0 {
     Vk.cmd_end_debug_utils_label_ext(render3d_st.gvk_cb)
@@ -935,6 +938,7 @@ const GVK_PROGS_MAX: int = 4096
 function gvk_startup_state(render3d_st: mut Render3dState) -> void {
   let zero: long = 0
   render3d_st.gvk_tmp_buf = bytes(GVK_TMP_BYTES)
+  gvk_bq_make(render3d_st)
   render3d_st.gvk_skip_said = words(4096)
   for i in 0 .. 4096 { render3d_st.gvk_skip_said[i] = 0 }
   render3d_st.gvk_seen = words(GPU_MAX_VBUFS)
