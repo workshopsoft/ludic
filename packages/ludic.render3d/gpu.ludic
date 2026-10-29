@@ -589,6 +589,8 @@ function gpu_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
 }
 # a buffer a compute pass writes (never reallocated under a draw that reads it)
 function gpu_buffer_gpu_owned(render3d_st: mut Render3dState, buf: int) -> void { gvk_buf_gpu_owned(render3d_st, buf) }
+# a buffer the CPU reads back (gpu_buffer_map after the GPU wrote it): kept in host-cached system memory; before its first upload
+function gpu_buffer_readback(render3d_st: mut Render3dState, buf: int) -> void { gvk_buf_readback(render3d_st, buf) }
 # the host-visible contents of a buffer, for a readback after gpu_finish
 function gpu_buffer_map(render3d_st: Render3dState, buf: int) -> pointer {
   if buf <= 0 { return null }

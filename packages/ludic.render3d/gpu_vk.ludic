@@ -319,6 +319,33 @@ function gvk_mem_type(render3d_st: Render3dState, allowed: int, want: int) -> in
   }
   return -1
 }
+# Resizable BAR (decided once): the first host-visible coherent type is system memory (a discrete GPU; on Apple's and integrated GPUs it
+# is device-local already and nothing changes), and a device-local host-visible coherent type sits on a heap of 2 GiB or more (all of
+# video memory, not the 256 MB window without ReBAR). R3D_VK_BAR=0: system memory as before.
+function gvk_bar_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_bar >= 0 { return render3d_st.gvk_bar == 1 }
+  render3d_st.gvk_bar = 0
+  if r3d_env_has(render3d_st, "R3D_VK_BAR") and r3d_env(render3d_st, "R3D_VK_BAR") == "0" { return false }
+  let mp = render3d_st.gvk_mp
+  let hvc = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  let all = hvc | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+  let t0 = gvk_mem_type(render3d_st, -1, hvc)
+  if t0 < 0 { return false }
+  let f0 = Vk.get_i32(mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t0 * VkMemoryType_sizeof + VkMemoryType_propertyFlags)
+  if (f0 & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0 { return false }
+  let t = gvk_mem_type(render3d_st, -1, all)
+  if t < 0 { return false }
+  let h = Vk.get_i32(mp, VkPhysicalDeviceMemoryProperties_memoryTypes + t * VkMemoryType_sizeof + VkMemoryType_heapIndex)
+  let size = Vk.get_i64(mp, VkPhysicalDeviceMemoryProperties_memoryHeaps + h * VkMemoryHeap_sizeof + VkMemoryHeap_size)
+  let min_size: long = 2147483648
+  if size < min_size { return false }
+  render3d_st.gvk_bar = 1
+  gvk_say_bar(t, int(size / 1048576))
+  return true
+}
+@alloc_ok("a message, said once")
+function gvk_say_bar(t: int, mb: int) -> void { print(`r3d: vulkan: buffers in video memory the CPU writes (resizable BAR): type {t}, heap {mb} MB`) }
+
 # Memory for one resource, from its requirements (a VkMemoryRequirements). One allocation per
 # resource while the backend comes up; the block allocator with sub-allocation replaces it
 # before the forest and the streams are on this backend, which allocate thousands.
@@ -425,6 +452,9 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
   let allowed = Vk.get_i32(req, VkMemoryRequirements_memoryTypeBits)
   var t = gvk_mem_type(render3d_st, allowed, want)
   if t < 0 and want == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT { t = gvk_mem_type(render3d_st, allowed, 0) }
+  # cached or video memory is a preference for a host-visible buffer; visible and coherent is the need
+  let hvc = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  if t < 0 and (want & hvc) == hvc and want != hvc { t = gvk_mem_type(render3d_st, allowed, hvc) }
   if t < 0 { gvk_note(render3d_st, `r3d: vulkan: no memory type for properties {want}`);  return 0 }
   let host = (want & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0
   let size = int(Vk.get_i64(req, VkMemoryRequirements_size))
@@ -922,14 +952,18 @@ function gvk_query_new(render3d_st: mut Render3dState, n: int, ids: words) -> vo
   let out = gvk_tmp(render3d_st, 8)
   if Vk.create_query_pool(render3d_st.gvk_dev, qci, render3d_st.gvk_ac, out) != VK_SUCCESS { return }
   render3d_st.gvk_qpool = gvk_handle(out)
-  render3d_st.gvk_prof_top = r3d_env_has(render3d_st, "R3D_PROF_TOP")
+  # MoltenVK: Metal samples GPU counters at encoder boundaries only, so a bottom stamp inside a render pass lands at its end and one
+  # pass took the whole scene's time; the top as before there (R3D_PROF_TOP=0 the bottom anyway)
+  render3d_st.gvk_prof_top = r3d_env_has(render3d_st, "R3D_PROF_TOP") or render3d_st.gvk_has_metal_objects
+  if r3d_env_has(render3d_st, "R3D_PROF_TOP") and r3d_env(render3d_st, "R3D_PROF_TOP") == "0" { render3d_st.gvk_prof_top = false }
   Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, 0, n * 2)
 }
 function gvk_query_begin(render3d_st: mut Render3dState, id: int) -> void {
   if render3d_st.gvk_qpool == 0 { return }
   Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_qpool, id * 2, 2)
   # the start at the end of all work before it (bottom of pipe, as Unreal's Vulkan GPU timing writes both): at the top, a pass's timer
-  # also took in the untimed dispatches recorded before it (the culls showed up as 2 ms of a 192 x 104 sky LUT). R3D_PROF_TOP=1: the top again
+  # also took in the untimed dispatches recorded before it (the culls showed up as 2 ms of a 192 x 104 sky LUT). R3D_PROF_TOP=1: the top
+  # again (the default on MoltenVK, gvk_prof_top)
   var st = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
   if render3d_st.gvk_prof_top { st = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT }
   Vk.cmd_write_timestamp(gvk_frame_cb_raw(render3d_st), st, render3d_st.gvk_qpool, id * 2)
@@ -1010,6 +1044,7 @@ function gvk_startup_state(render3d_st: mut Render3dState) -> void {
   if render3d_st.gvk_buf_spare == null { render3d_st.gvk_buf_spare = new []int }
   if render3d_st.gvk_retired_frame == null { render3d_st.gvk_retired_frame = new []int }
   if render3d_st.gvk_buf_gpu == null { render3d_st.gvk_buf_gpu = new []int }
+  if render3d_st.gvk_buf_rb == null { render3d_st.gvk_buf_rb = new []int }
   if render3d_st.gvk_retired_buf == null { render3d_st.gvk_retired_buf = new []long;  render3d_st.gvk_retired_mem = new []long }
   # the prime queue, and the texture and framebuffer tables grown to their working size, now
   gvk_prime_tables(render3d_st)

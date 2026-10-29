@@ -92,6 +92,7 @@ export property KGpu {
   l_ready: bool = false,    # this frame's local light casters are in b_l_cmds
   prm_l: words,
   dbg_n: int = 0,
+  prof_split: bool = false,  # R3D_KGPU_SPLIT: kgpu_frame's steps timed apart (kgpu_split_say)
   b_s_counts: int = 0,      # the sun's cached cascades' casters (shadow_cache.ludic): culled to the window being drawn, not the view,
   b_s_offs: int = 0,        # their instances after everything else in b_dst (from dst_cap, s_cap of them)
   b_s_cursors: int = 0,
@@ -278,6 +279,7 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   g.card_mesh = mesh_card(render3d_st)
   kgpu_attach(render3d_st, g.card_mesh, g.b_dst)
   g.ready = true
+  g.prof_split = r3d_env_has(render3d_st, "R3D_KGPU_SPLIT")
   print("r3d: big world: instances are culled and binned on the GPU")
   return g
 }
@@ -676,6 +678,7 @@ export function kgpu_frame(render3d_st: mut Render3dState, g: KGpu, o: ForgOrigi
   g.bufs[0] = g.b_counts;  g.bufs[1] = g.b_cursors
   gpu_dispatch(render3d_st, g.c_reset, data_of(g.pr), 16, g.bufs, (bins * 2 + 63) / 64)
   # 2. count the survivors of each bin
+  if g.prof_split { prof_split(render3d_st, "kgpu count") }
   kgpu_cull_params(render3d_st, g, 0, occ)
   g.prm[31] = main_cap
   kgpu_bind_cull(render3d_st, g)
@@ -687,15 +690,27 @@ export function kgpu_frame(render3d_st: mut Render3dState, g: KGpu, o: ForgOrigi
   g.bufs[0] = g.b_counts;  g.bufs[1] = g.b_offs;  g.bufs[2] = g.b_kits;  g.bufs[3] = g.b_cmds;  g.bufs[4] = g.b_vcmds
   gpu_dispatch(render3d_st, g.c_args, data_of(g.pa), 32, g.bufs, 1)
   # 4. write the survivors where they belong
+  if g.prof_split { prof_split(render3d_st, "kgpu scatter") }
   kgpu_cull_params(render3d_st, g, 1, occ)
   g.prm[31] = main_cap
   kgpu_bind_cull(render3d_st, g)
   gpu_dispatch(render3d_st, g.c_cull, data_of(g.prm), KG_PRM * 4, g.bufs, (g.arena.high + 63) / 64)
   g.occ = occ
+  if g.prof_split { prof_split(render3d_st, "kgpu lights") }
   if lights { kgpu_frame_lights(render3d_st, g, main_cap) }
   g.s_ready = false
+  if g.prof_split { prof_split(render3d_st, "kgpu cache") }
   if render3d_st.sc_cull and g.s_cap > 0 { kgpu_frame_cache(render3d_st, g) }
+  if g.prof_split { kgpu_split_say(g, lights, main_cap) }
   if r3d_env_has(render3d_st, "R3D_UE_LS_DEBUG") { kgpu_lights_debug(render3d_st, g) }
+}
+
+# R3D_KGPU_SPLIT=1 (with R3D_PROF): the cull's steps timed apart, and every 600 frames the instances it walks
+@alloc_ok("debug output, only under R3D_KGPU_SPLIT")
+function kgpu_split_say(g: KGpu, lights: bool, main_cap: int) -> void {
+  g.dbg_n += 1
+  if g.dbg_n % 600 != 1 { return }
+  print(`kgpu split: {g.arena.high} instance records, {g.n_kits} kits, main cap {main_cap}, lights {lights}, cache cap {g.s_cap}`)
 }
 
 # R3D_UE_LS_DEBUG=1: every 120 frames, the main list's and the local light casters' instance counts, read back (waits for the GPU)

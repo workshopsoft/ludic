@@ -195,6 +195,7 @@ function rvt_init(render3d_st: mut Render3dState) -> bool {
   r.fbk_at = words(2)
   for k in 0 .. 2 {
     let bb = gpu_buffer_new(render3d_st)
+    gpu_buffer_readback(render3d_st, bb)
     gpu_buffer_upload(render3d_st, bb, RVT_FB_WORDS * 4, null, GPU_DYNAMIC)
     gpu_buffer_gpu_owned(render3d_st, bb)
     let p = gpu_buffer_map(render3d_st, bb)

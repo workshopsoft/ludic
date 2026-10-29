@@ -852,6 +852,12 @@ function gvk_buf_gpu_owned(render3d_st: mut Render3dState, b: int) -> void {
   while len(render3d_st.gvk_buf_gpu) <= b { push(render3d_st.gvk_buf_gpu, 0) }
   render3d_st.gvk_buf_gpu[b] = 1
 }
+function gvk_buf_readback(render3d_st: mut Render3dState, b: int) -> void {
+  @alloc_ok("within the room made at start-up (@max 16384 buffers)")
+  while len(render3d_st.gvk_buf_rb) <= b { push(render3d_st.gvk_buf_rb, 0) }
+  render3d_st.gvk_buf_rb[b] = 1
+}
+function gvk_buf_is_rb(render3d_st: Render3dState, b: int) -> bool { return render3d_st.gvk_buf_rb != null and b < len(render3d_st.gvk_buf_rb) and render3d_st.gvk_buf_rb[b] == 1 }
 function gvk_buf_is_gpu(render3d_st: Render3dState, b: int) -> bool { return render3d_st.gvk_buf_gpu != null and b < len(render3d_st.gvk_buf_gpu) and render3d_st.gvk_buf_gpu[b] == 1 }
 
 # Room for at least n bytes behind handle b; a buffer that is already big enough is kept, so a
@@ -885,7 +891,12 @@ function gvk_buf_reserve(render3d_st: mut Render3dState, b: int, n: int) -> bool
   let buf = gvk_handle(out)
   let req = gvk_tmp(render3d_st, VkMemoryRequirements_sizeof)
   Vk.get_buffer_memory_requirements(render3d_st.gvk_dev, buf, req)
-  let ma = gvk_mem_new(render3d_st, req, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, false)
+  # where the buffer lives: on a discrete GPU with resizable BAR in video memory the CPU writes straight into (Unreal's and VMA's
+  # upload-in-VRAM: the draws' vertices, the instance lists and the culls' atomics no longer cross PCIe each frame); one the CPU
+  # reads back in cached system memory, where its reads are fast. Elsewhere the first host-visible coherent type, as before.
+  var want = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  if gvk_buf_is_rb(render3d_st, b) { want = want | VK_MEMORY_PROPERTY_HOST_CACHED_BIT } else if gvk_bar_on(render3d_st) { want = want | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT }
+  let ma = gvk_mem_new(render3d_st, req, want, false)
   let zero: long = 0
   if ma == 0 { Vk.destroy_buffer(render3d_st.gvk_dev, buf, render3d_st.gvk_ac);  return false }
   let mem: long = ma
