@@ -285,6 +285,8 @@ function gvk_init(render3d_st: mut Render3dState) -> bool {
   # two frames' splits at most are in flight (gvk_frame_split); room for a few each
   render3d_st.gvk_split_cbs = new []pointer
   for i in 0 .. 8 { push(render3d_st.gvk_split_cbs, null) }
+  render3d_st.gvk_cb_free = pointers(GVK_CB_KEEP)        # finished command buffers kept to begin again (gvk_cb_give_back)
+  render3d_st.gvk_cb_free_n = 0
   gsl_probe_device(render3d_st, render3d_st.gvk_pd)
   mfx_init(render3d_st)                     # MetalFX through MoltenVK's Metal objects (mfx.ludic), macOS
   if render3d_st.gvk_has_mesh {
@@ -605,17 +607,64 @@ function gvk_tmp(render3d_st: mut Render3dState, n: int) -> pointer {
   return p
 }
 
-function gvk_once_begin(render3d_st: mut Render3dState) -> pointer {
-  let cbai = gvk_tmp(render3d_st, VkCommandBufferAllocateInfo_sizeof)
-  Vk.zero(cbai, VkCommandBufferAllocateInfo_sizeof)
-  Vk.put_i32(cbai, VkCommandBufferAllocateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
-  Vk.put_i64(cbai, VkCommandBufferAllocateInfo_commandPool, render3d_st.gvk_pool)
-  Vk.put_i32(cbai, VkCommandBufferAllocateInfo_level, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
-  Vk.put_i32(cbai, VkCommandBufferAllocateInfo_commandBufferCount, 1)
+# ---- command buffers begun again (R3D_VK_POOL_RESET) -----------------------------------------
+# A command buffer whose submit has been waited for is kept and begun again, not freed and a new one allocated - each frame's
+# and each split's, and the one-off submits' - as UE's FVulkanCommandBufferPool::Create takes a finished buffer from its
+# FreeCmdBuffers before it makes one, and FVulkanCommandBuffer::Begin resets it with vkResetCommandBuffer(...,
+# VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT) (VulkanCommandBuffer.cpp). The pool was made with
+# RESET_COMMAND_BUFFER_BIT, which lets one buffer be reset alone. MoltenVK's command pooling stays off
+# (gvk_no_command_pooling): a reset with pooling off releases the buffer's recorded command objects as the free did, so
+# what a busy frame recorded is still given back and the heap still does not grow with the busiest frame; only the
+# MVKCommandBuffer itself (and its vkAllocate/vkFree round trip, twice a frame) is kept. At most GVK_CB_KEEP are kept:
+# one frame in flight, its splits and the one being recorded. R3D_VK_POOL_RESET=0: freed and allocated as before.
+const GVK_CB_KEEP: int = 8
+
+function gvk_pool_reset(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_pool_reset_on < 0 {
+    render3d_st.gvk_pool_reset_on = 1
+    if r3d_env_has(render3d_st, "R3D_VK_POOL_RESET") and r3d_env(render3d_st, "R3D_VK_POOL_RESET") == "0" { render3d_st.gvk_pool_reset_on = 0 }
+  }
+  return render3d_st.gvk_pool_reset_on == 1
+}
+# a finished command buffer (its submit waited for, or never submitted): kept to begin again, or freed
+function gvk_cb_give_back(render3d_st: mut Render3dState, cb: pointer) -> void {
+  if cb == null { return }
+  if gvk_pool_reset(render3d_st) and render3d_st.gvk_cb_free != null and render3d_st.gvk_cb_free_n < GVK_CB_KEEP {
+    render3d_st.gvk_cb_free[render3d_st.gvk_cb_free_n] = cb
+    render3d_st.gvk_cb_free_n += 1
+    return
+  }
   let cbs = gvk_tmp(render3d_st, 8)
-  render3d_st.gvk_mk_cmd += 1
-  if Vk.allocate_command_buffers(render3d_st.gvk_dev, cbai, cbs) != VK_SUCCESS { return null }
-  let cb = Vk.get_ptr(cbs, 0)
+  Vk.put_ptr(cbs, 0, cb)
+  Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
+}
+
+function gvk_once_begin(render3d_st: mut Render3dState) -> pointer {
+  var cb: pointer = null
+  if render3d_st.gvk_cb_free_n > 0 {
+    render3d_st.gvk_cb_free_n -= 1
+    cb = render3d_st.gvk_cb_free[render3d_st.gvk_cb_free_n]
+    render3d_st.gvk_cb_free[render3d_st.gvk_cb_free_n] = null
+    # FVulkanCommandBuffer::Begin: State == NeedReset -> vkResetCommandBuffer(RELEASE_RESOURCES)
+    if Vk.reset_command_buffer(cb, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT) != VK_SUCCESS {
+      let fcb = gvk_tmp(render3d_st, 8)
+      Vk.put_ptr(fcb, 0, cb)
+      Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, fcb)
+      cb = null
+    }
+  }
+  if cb == null {
+    let cbai = gvk_tmp(render3d_st, VkCommandBufferAllocateInfo_sizeof)
+    Vk.zero(cbai, VkCommandBufferAllocateInfo_sizeof)
+    Vk.put_i32(cbai, VkCommandBufferAllocateInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO)
+    Vk.put_i64(cbai, VkCommandBufferAllocateInfo_commandPool, render3d_st.gvk_pool)
+    Vk.put_i32(cbai, VkCommandBufferAllocateInfo_level, VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+    Vk.put_i32(cbai, VkCommandBufferAllocateInfo_commandBufferCount, 1)
+    let cbs = gvk_tmp(render3d_st, 8)
+    render3d_st.gvk_mk_cmd += 1
+    if Vk.allocate_command_buffers(render3d_st.gvk_dev, cbai, cbs) != VK_SUCCESS { return null }
+    cb = Vk.get_ptr(cbs, 0)
+  }
   let cbbi = gvk_tmp(render3d_st, VkCommandBufferBeginInfo_sizeof)
   Vk.zero(cbbi, VkCommandBufferBeginInfo_sizeof)
   Vk.put_i32(cbbi, VkCommandBufferBeginInfo_sType, VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO)
@@ -667,7 +716,8 @@ function gvk_once_end_sems(render3d_st: mut Render3dState, cb: pointer, wait: lo
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkQueueSubmit", r) }
   let forever: long = -1
   r = Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_fence, 1, forever)
-  Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
+  # kept to begin again only when the wait says it is finished (gvk_cb_give_back)
+  if r == VK_SUCCESS { gvk_cb_give_back(render3d_st, cb) } else { Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs) }
   if r == VK_SUCCESS { gvk_split_free(render3d_st, render3d_st.gvk_split_n) }
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkWaitForFences", r) }
   return true
@@ -755,8 +805,7 @@ function gvk_frame_split(render3d_st: mut Render3dState) -> bool {
 # frame being recorded may already have split its own off, and they stay.
 function gvk_split_free(render3d_st: mut Render3dState, n: int) -> void {
   if n <= 0 { return }
-  let cbs = gvk_tmp(render3d_st, 8)
-  for i in 0 .. n { Vk.put_ptr(cbs, 0, render3d_st.gvk_split_cbs[i]);  Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs) }
+  for i in 0 .. n { gvk_cb_give_back(render3d_st, render3d_st.gvk_split_cbs[i]) }
   for i in n .. render3d_st.gvk_split_n { render3d_st.gvk_split_cbs[i - n] = render3d_st.gvk_split_cbs[i] }
   render3d_st.gvk_split_n -= n
   render3d_st.gvk_split_held = max(render3d_st.gvk_split_held - n, 0)
@@ -765,10 +814,12 @@ function gvk_split_free(render3d_st: mut Render3dState, n: int) -> void {
 function gvk_frame_wait(render3d_st: mut Render3dState) -> void {
   if not render3d_st.gvk_frame_pending { return }
   let forever: long = -1
-  Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_frame_fence, 1, forever)
-  let cbs = gvk_tmp(render3d_st, 8)
-  Vk.put_ptr(cbs, 0, render3d_st.gvk_frame_pending_cb)
-  Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
+  let wr = Vk.wait_for_fences(render3d_st.gvk_dev, 1, render3d_st.gvk_frame_fence, 1, forever)
+  if wr == VK_SUCCESS { gvk_cb_give_back(render3d_st, render3d_st.gvk_frame_pending_cb) } else {
+    let cbs = gvk_tmp(render3d_st, 8)
+    Vk.put_ptr(cbs, 0, render3d_st.gvk_frame_pending_cb)
+    Vk.free_command_buffers(render3d_st.gvk_dev, render3d_st.gvk_pool, 1, cbs)
+  }
   render3d_st.gvk_frame_pending = false
   render3d_st.gvk_frame_pending_cb = null
   gvk_split_free(render3d_st, render3d_st.gvk_split_held)

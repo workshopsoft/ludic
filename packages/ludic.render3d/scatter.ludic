@@ -423,15 +423,15 @@ function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
     v3_set(eye, Math.sin(a) * (r * 4.0), cy + r * 0.5, -(Math.cos(a) * (r * 4.0)))
     m4_look_at(view, eye, at, up)
     m4_ortho_rz(proj, -r, r, -hh, hh, 0.1, r * 9.0)
-    u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_view"), view)
-    u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_proj"), proj)
+    u_mat4(render3d_st, gpu_ul(render3d_st, bake, UL_VIEW), view)
+    u_mat4(render3d_st, gpu_ul(render3d_st, bake, UL_PROJ), proj)
     u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_wind"), 0.0)
     u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_flutter"), 0.0)
     gpu_viewport(render3d_st, t * tw, 0, tw, th)
     for i in 0 .. len(model.prims) {
       let pr = model.prims[i]
-      r3d_bind_2d(render3d_st, bake, "u_diff", 0, pr.diff)
-      r3d_bind_2d(render3d_st, bake, "u_arm", 2, pr.arm)
+      gpu_ul_bind_2d(render3d_st, bake, UL_DIFF, 0, pr.diff)
+      gpu_ul_bind_2d(render3d_st, bake, UL_ARM, 2, pr.arm)
       prim_factors(render3d_st, bake, pr)
       mesh_draw_instanced(render3d_st, pr.mesh, 1)
     }
@@ -1183,14 +1183,14 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
   if not card and l.foliage and not shadow and render3d_st.sc_a2c { gpu_alpha_to_coverage(render3d_st, true) }
   if card {
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_card_w"), l.atlas.radius * 2.0);  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_card_h"), l.atlas.height)
-    r3d_bind_2d(render3d_st, p, "u_diff", 0, l.atlas.albedo)
-    r3d_bind_2d(render3d_st, p, "u_nrm", 1, l.atlas.normal)
+    gpu_ul_bind_2d(render3d_st, p, UL_DIFF, 0, l.atlas.albedo)
+    gpu_ul_bind_2d(render3d_st, p, UL_NRM, 1, l.atlas.normal)
     gpu_alpha_to_coverage(render3d_st, true)
   }
   if shadow { u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp) }
   else {
-    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
-    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+    u_mat4(render3d_st, gpu_ul(render3d_st, p, UL_VIEW), render3d_st.cam_view)
+    u_mat4(render3d_st, gpu_ul(render3d_st, p, UL_PROJ), render3d_st.cam_proj)
     u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), l.tint)
     if render3d_st.sc_dbg_lod and render3d_st.sc_dbg_level >= 0 {
       if render3d_st.sc_dbg_tint == null { render3d_st.sc_dbg_tint = v3_new(1.0, 1.0, 1.0) }
@@ -1200,7 +1200,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
       v3_set(render3d_st.sc_dbg_tint, r, g, b)
       u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), render3d_st.sc_dbg_tint)
     }
-    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_rough_scale"), l.rough)
+    u_f(render3d_st, gpu_ul(render3d_st, p, UL_ROUGH_SCALE), l.rough)
     if l.blade { u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_base"), render3d_st.sc_blade_base);  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_blade_tip"), render3d_st.sc_blade_tip) }
     if l.blade { grass_bind_look(render3d_st, p) }
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_cull"), r3d_reach(render3d_st, l.cull))
@@ -1214,9 +1214,9 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
     let pr = model.prims[i]
     scatter_attach(render3d_st, pr.mesh, vb)
     if not card {
-      r3d_bind_2d(render3d_st, p, "u_diff", 0, pr.diff)
+      gpu_ul_bind_2d(render3d_st, p, UL_DIFF, 0, pr.diff)
       prim_factors(render3d_st, p, pr)
-      if not shadow { r3d_bind_2d(render3d_st, p, "u_nrm", 1, pr.nrm);  r3d_bind_2d(render3d_st, p, "u_arm", 2, pr.arm) }
+      if not shadow { gpu_ul_bind_2d(render3d_st, p, UL_NRM, 1, pr.nrm);  gpu_ul_bind_2d(render3d_st, p, UL_ARM, 2, pr.arm) }
     }
     if render3d_st.sc_ind_base >= 0 { gpu_draw_mesh_indirect(render3d_st, pr.mesh, l.g_cmds, (layer_view_rec(render3d_st, l, shadow) + render3d_st.sc_ind_base + i * render3d_st.sc_ind_stride) * SC_REC_W, render3d_st.sc_ind_n, 0, 0) }
     else { mesh_draw_instanced(render3d_st, pr.mesh, cnt) }
@@ -1239,10 +1239,10 @@ function layer_draw_far(render3d_st: mut Render3dState, l: Layer, shadow: bool, 
     u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
     u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_face_dir"), render3d_st.sun_dir)
     if render3d_st.r3d_debug_shadow and not render3d_st.sc_printed { render3d_st.sc_printed = true;  print(`imp shadow prog {p} face_dir loc {gpu_uniform(render3d_st, p, "u_face_dir")} sun {fixed(render3d_st.sun_dir[0])} {fixed(render3d_st.sun_dir[1])} {fixed(render3d_st.sun_dir[2])} cam {fixed(render3d_st.cam_pos[0])} {fixed(render3d_st.cam_pos[1])} {fixed(render3d_st.cam_pos[2])} n_far {l.n_far}`) }
-    u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+    u_v3(render3d_st, gpu_ul(render3d_st, p, UL_CAM_POS), render3d_st.cam_pos)
   } else {
-    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
-    u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+    u_mat4(render3d_st, gpu_ul(render3d_st, p, UL_VIEW), render3d_st.cam_view)
+    u_mat4(render3d_st, gpu_ul(render3d_st, p, UL_PROJ), render3d_st.cam_proj)
     u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), l.tint)
     if render3d_st.sc_dbg_lod { if render3d_st.sc_dbg_tint == null { render3d_st.sc_dbg_tint = v3_new(1.0, 1.0, 1.0) };  v3_set(render3d_st.sc_dbg_tint, 3.0, 0.0, 3.0);  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_tint"), render3d_st.sc_dbg_tint) }
     r3d_bind_2d(render3d_st, p, "u_atlas_normal", 1, im.normal)
@@ -1278,7 +1278,7 @@ function layer_draw_shadow(render3d_st: mut Render3dState, l: Layer, light_vp: f
   r3d_bind_2d(render3d_st, p, "u_atlas_albedo", 0, im.albedo)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
   u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_face_dir"), render3d_st.sun_dir)
-  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  u_v3(render3d_st, gpu_ul(render3d_st, p, UL_CAM_POS), render3d_st.cam_pos)
   gpu_cull(render3d_st, false)
   let buf = fog_casters(render3d_st, l)
   let n = fog_casters_n(render3d_st, l)
@@ -1302,16 +1302,16 @@ function layer_draw_depth(render3d_st: mut Render3dState, l: Layer, model: Model
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wind"), l.wind)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_flutter"), l.flutter)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), model.height)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_view"), render3d_st.cam_view)
-  u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_proj"), render3d_st.cam_proj)
+  u_mat4(render3d_st, gpu_ul(render3d_st, p, UL_VIEW), render3d_st.cam_view)
+  u_mat4(render3d_st, gpu_ul(render3d_st, p, UL_PROJ), render3d_st.cam_proj)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_y"), render3d_st.r3d_clip_y)
-  u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_cam_pos"), render3d_st.cam_pos)
+  u_v3(render3d_st, gpu_ul(render3d_st, p, UL_CAM_POS), render3d_st.cam_pos)
   fog_land_bind(render3d_st, p)
   gpu_cull(render3d_st, false)
   for i in 0 .. len(model.prims) {
     let pr = model.prims[i]
     scatter_attach(render3d_st, pr.mesh, vb)
-    r3d_bind_2d(render3d_st, p, "u_diff", 0, pr.diff)
+    gpu_ul_bind_2d(render3d_st, p, UL_DIFF, 0, pr.diff)
     prim_factors(render3d_st, p, pr)
     if render3d_st.sc_ind_base >= 0 { gpu_draw_mesh_indirect(render3d_st, pr.mesh, l.g_cmds, (layer_view_rec(render3d_st, l, false) + render3d_st.sc_ind_base + i * render3d_st.sc_ind_stride) * SC_REC_W, render3d_st.sc_ind_n, 0, 0) }
     else { mesh_draw_instanced(render3d_st, pr.mesh, cnt) }
@@ -1582,15 +1582,15 @@ function carpet_bake__t(render3d_st: mut Render3dState, layers: []Layer, count: 
     var bake = render3d_st.sc_bake_prog
     if l.atlas != null and l.atlas.flower { bake = render3d_st.sc_bake_flower_prog }
     gpu_use_program(render3d_st, bake)
-    u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_view"), view)
-    u_mat4(render3d_st, gpu_uniform(render3d_st, bake, "u_proj"), proj)
+    u_mat4(render3d_st, gpu_ul(render3d_st, bake, UL_VIEW), view)
+    u_mat4(render3d_st, gpu_ul(render3d_st, bake, UL_PROJ), proj)
     u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_wind"), 0.0)
     u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_flutter"), 0.0)
     u_f(render3d_st, gpu_uniform(render3d_st, bake, "u_time"), 0.0)
     for i in 0 .. len(src.prims) {
       let pr = src.prims[i]
-      r3d_bind_2d(render3d_st, bake, "u_diff", 0, pr.diff)
-      r3d_bind_2d(render3d_st, bake, "u_arm", 2, pr.arm)
+      gpu_ul_bind_2d(render3d_st, bake, UL_DIFF, 0, pr.diff)
+      gpu_ul_bind_2d(render3d_st, bake, UL_ARM, 2, pr.arm)
       prim_factors(render3d_st, bake, pr)
       scatter_attach(render3d_st, pr.mesh, buf)
       mesh_draw_instanced(render3d_st, pr.mesh, n9)
