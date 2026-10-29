@@ -1354,11 +1354,14 @@ function cmd_dev_test() -> int {
   reject_case("rejected/module_let_alias", "l holds part of LIMITS, which is module-level and immutable all the way down", "a module-level let is immutable through a local that holds it")
   reject_case("rejected/state_component_ro", "look is read-only here (look: Look)", "a component's state is read-only unless its header says mut")
   controller_case("state/component", "", " #10 big 10 1", "component.ludic (0.S: a component's header names its states; its getters, functions and events take them and the template never sees them)")
-  headless_case("rendering/ui_render3d", "ok", "ui_render3d.ludic (ludic.ui's render3d backend builds against the renderer)")
-  headless_line_case("rendering/release", "RELEASE OK", "release.ludic (model_release: meshes go, a shared texture stays until its last user goes)")
-  headless_line_case("rendering/bc", "BC OK", "bc.ludic (a .dds beside a .png arrives BC7-compressed with every mip level)")
-  headless_line_case("rendering/steady", "STEADY OK", "steady.ludic (a buffer made again and a whole frame leave malloc's live bytes where they were)")
-  headless_line_case("rendering/chunks", "CHUNKS OK", "chunks.ludic (the ground's B-spline heights a 64 m chunk at a time, edges shared bit for bit)")
+  # the renderer's headless builds link Cocoa and Metal: macOS only
+  if is_darwin() {
+    headless_case("rendering/ui_render3d", "ok", "ui_render3d.ludic (ludic.ui's render3d backend builds against the renderer)")
+    headless_line_case("rendering/release", "RELEASE OK", "release.ludic (model_release: meshes go, a shared texture stays until its last user goes)")
+    headless_line_case("rendering/bc", "BC OK", "bc.ludic (a .dds beside a .png arrives BC7-compressed with every mip level)")
+    headless_line_case("rendering/steady", "STEADY OK", "steady.ludic (a buffer made again and a whole frame leave malloc's live bytes where they were)")
+    headless_line_case("rendering/chunks", "CHUNKS OK", "chunks.ludic (the ground's B-spline heights a 64 m chunk at a time, edges shared bit for bit)")
+  } else { skip("rendering headless builds: ui_render3d, release, bc, steady, chunks (they link Cocoa and Metal)") }
   migrate_component_case()
   migrate_foreign_case()
   reject_case("rejected/runtime_type_clash", "PadButton is the runtime's enum", "a program's type named like one of the runtime's is refused")
@@ -1389,20 +1392,28 @@ function cmd_dev_test() -> int {
   feat_case("lang/long_literals", "", "4294967295 3988292384 -4294967296 1099511627776 -3750763034362895579 -1 1", "long_literals.ludic (a decimal literal past 2^31 - 1, and a hex literal of more than eight digits, is a long)")
   reject_case("rejected/long_into_int", "4294967295 does not fit one; it is a long", "a long literal given to an int is refused, not wrapped")
   feat_case("lang/runtime_temps", "", "1 2 3 4 5 grew 0 files grew 0", "runtime_temps.ludic (Log, DateTime.format, Path, Mime, Text, Os and Fs keep nothing a call does not hand back)")
-  feat_case("lang/string_temps", "", "1 2 3 4 5 6 7 grew 0", "string_temps.ludic (a concatenation's pieces, a template's holes and a compared side are freed once used; a kept one is not)")
+  # the byte counts below are malloc_size's (macOS rounds a block up to 16); glibc has no
+  # malloc_size, so the fence counts what was asked for and these figures are macOS's
+  if is_darwin() {
+    feat_case("lang/string_temps", "", "1 2 3 4 5 6 7 grew 0", "string_temps.ludic (a concatenation's pieces, a template's holes and a compared side are freed once used; a kept one is not)")
+  } else { skip("string_temps.ludic (its byte counts are macOS malloc_size's)") }
   feat_case("lang/value_list_regrow", "", "bad 0 xs 2", "value_list_regrow.ludic (a model list filled in place that shrinks and grows back keeps its cut-off items as spares: nothing kept, the fence lets it through)")
-  feat_case("lang/json_free_edited", "", "names Sam|Ada grew 32", "json_free_edited.ludic (Json.free_all after a migration put literals in and a loader set a string: only the parser's strings are freed, a kept copy reads on, a thousand loads keep nothing)")
+  if is_darwin() {
+    feat_case("lang/json_free_edited", "", "names Sam|Ada grew 32", "json_free_edited.ludic (Json.free_all after a migration put literals in and a loader set a string: only the parser's strings are freed, a kept copy reads on, a thousand loads keep nothing)")
+  } else { skip("json_free_edited.ludic (its byte counts are macOS malloc_size's)") }
   feat_case("lang/persist_autosaves", "", "coins 999 queued 1 autosaves grew 0", "persist_autosaves.ludic (ludic.persist offline autosaves: the replaced record, the queued body, the copy's texts and keys and the cache writer's pieces are let go, a thousand autosaves keep nothing)")
   feat_case("lang/json_saves", "", "1 2 3 saves grew 0", "json_saves.ludic (Json.write_file saves through a kept buffer: the text Json.encode gives, 1000 saves keep nothing)")
   feat_case("lang/json_unicode", "", "json unicode 8 of 8", "json_unicode.ludic (Json.parse decodes \\uXXXX to UTF-8, a surrogate pair joined, a lone one or bad hex as U+FFFD, and \\t \\r \\b \\f)")
   feat_case("lang/alloc_fence", "", "frames 300 kept 0 bad 0", "alloc_fence.ludic (25.1: a frame that makes only what it frees or reuses keeps nothing, and the fence passes it)")
   feat_case("lang/alloc_fence_declared", "", "bad 0 kept 0", "alloc_fence_declared.ludic (25.1: @alloc_ok on a function, a statement and a generic's statement is declared at run time; the failing fence lets it through)")
-  alloc_fence_leak_case()
+  if is_darwin() { alloc_fence_leak_case() } else { skip("alloc_fence_leak.ludic (its byte counts are macOS malloc_size's)") }
   alloc_fence_unbounded_case()
-  alloc_fence_rewarm_case()
-  alloc_fence_scene_case()
-  alloc_fence_sites_case()
-  alloc_fence_auto_case()
+  if is_darwin() {
+    alloc_fence_rewarm_case()
+    alloc_fence_scene_case()
+    alloc_fence_sites_case()
+    alloc_fence_auto_case()
+  } else { skip("alloc_fence_rewarm / scene / sites / auto (their byte counts are macOS malloc_size's)") }
   arena_pool_case()
   arena_fnval_case()
   arena_alias_case()

@@ -8,7 +8,10 @@ name: release
 # The job refuses to publish unless:
 #   * the tag matches the VERSION file in the tagged tree,
 #   * CHANGELOG.md has a section for that version (it becomes the release notes),
-#   * the toolchain builds from the IR seed and the whole suite passes,
+#   * the toolchain builds from the IR seed,
+#   * the ci workflow passed on the tagged commit - or on its parent, when the tag's
+#     commit is `ludic-dev release`'s own (VERSION, CHANGELOG.md and changes/ only):
+#     the suites are not run a second time here,
 #   * the C-free bootstrap still reproduces the seed byte-for-byte.
 #
 # The release is created with the workflow's own GITHUB_TOKEN, so no secret is
@@ -24,6 +27,7 @@ on:
 
 permissions:
   contents: write
+  actions: read     # the ci runs of the tagged commit
 
 jobs:
   publish:
@@ -82,12 +86,31 @@ jobs:
           bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
           bin/ludic-dev build
 
-      - name: The tagged tree must pass its own suites
+      - name: The tagged tree passed CI
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           set -eu
-          bin/ludic-dev test
-          bin/ludic-dev test-tools
-          bin/ludic-dev bootstrap-cfree
+          SHA="$(git rev-parse "${TAG}^{commit}")"
+          passed() {
+            n="$(gh api "repos/${REPO}/actions/workflows/ci.yml/runs?head_sha=$1&status=success" --jq '.total_count')"
+            [ "${n:-0}" -gt 0 ]
+          }
+          if passed "$SHA"; then echo "ci passed on ${SHA}"; exit 0; fi
+          # the release commit itself: ci on it may still be running, and what it changes
+          # (the version, the changelog, the changesets it consumed) is not what the suites test
+          PARENT="$(git rev-parse "${SHA}^")"
+          OTHER="$(git diff --name-only "$PARENT" "$SHA" | grep -vE '^(VERSION|CHANGELOG\.md|changes/.*)$' || true)"
+          if [ -z "$OTHER" ] && passed "$PARENT"; then
+            echo "ci passed on ${PARENT}; ${TAG}'s commit changes only VERSION, CHANGELOG.md and changes/"
+            exit 0
+          fi
+          echo "::error::no successful ci run for ${SHA}${OTHER:+ (it changes more than the release files: ${OTHER})}; wait for it, or re-run this workflow once it passes"
+          exit 1
+
+      - name: The C-free bootstrap still reproduces the seed
+        run: bin/ludic-dev bootstrap-cfree
 
       - name: Publish the release
         env:

@@ -213,6 +213,7 @@ A package never draws, so a record that stands for something on screen has to sa
 pair of fields, the same in every package:
 
 ```ludic
+# doc-check: skip — two fields of a record
 @Asset("gltf") model: string = ""      # the glTF file, as a path under the game's assets
 @Node(model) node: string = ""         # a node inside it ("" for the file's root); a record with several nodes
                                        # names each by its purpose (`body_node`, `muzzle`, `mount_*`)

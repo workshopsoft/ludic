@@ -113,7 +113,7 @@ program DevlinkFenceTest {
     let heap = Os.heap_bytes()
     fake_link_st.inbox = "3 note"
     devlink_tick(devlink_st, tick_new(0.016, 0, 0.0))
-    expect(Os.heap_bytes() > heap)                   # the request grew the process heap (on macOS)...
+    if heap > long(0) { expect(Os.heap_bytes() > heap) }   # the request grew the process heap (on macOS: glibc's is not read)...
     expect(Mem.kept() >= kept)                       # ...and the fence was not settled again for it
   }
 

@@ -455,8 +455,8 @@ function cmd_run_file() -> int {
 # every test program in the project: tests/*.ludic plus any *_test.ludic under
 # src/ (both conventions are in use, and neither is worth arguing about).
 function test_files() -> []pointer {
-  var files = split_lines(capture("ls tests/*.ludic 2>/dev/null"))
-  let more = split_lines(capture("find src -name '*_test.ludic' 2>/dev/null | sort"))
+  var files = split_lines(capture(`ls tests/*.ludic 2>/dev/null{test_programs_only()}`))
+  let more = split_lines(capture(`find src -name '*_test.ludic' 2>/dev/null | sort{test_programs_only()}`))
   var i = 0
   while i < len(more) { push(files, more[i]);  i += 1 }
   return files
@@ -466,7 +466,13 @@ function test_files() -> []pointer {
 # inside a tests/ directory, anywhere under it
 function test_files_in(dir: pointer) -> []pointer {
   let q = sh_single(dir)
-  return split_lines(capture(`{{ find {q} -name '*_test.ludic' -type f; find {q} -path '*/tests/*.ludic' -type f | grep -v '/tests/.*/'; }} 2>/dev/null | sort -u`))
+  return split_lines(capture(`{{ find {q} -name '*_test.ludic' -type f; find {q} -path '*/tests/*.ludic' -type f | grep -v '/tests/.*/'; }} 2>/dev/null | sort -u{test_programs_only()}`))
+}
+
+# a filter on a list of paths: only the files with a test block. A module named *_test.ludic (one a
+# test program imports) or a checker program run by hand (roadmesh_test) is not a test program
+function test_programs_only() -> pointer {
+  return ` | while IFS= read -r f; do grep -qE '^[[:space:]]*test[[:space:]]+"' "$f" && printf '%s\\n' "$f"; done`
 }
 
 # ludic test [file|dir...] [--verbose] [--test NAME] — compile each test program

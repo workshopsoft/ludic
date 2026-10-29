@@ -7,6 +7,7 @@
 # `ludic bundle` - reads one list, and a program that imports no such package links nothing new.
 var g_native_libs: []pointer = new []pointer
 var g_native_pkgs: []pointer = new []pointer
+var g_native_missing: []pointer = new []pointer   # "<package> <target>": natives named, none for this target
 
 # the target a `native` line names: windows-x64, macos-arm64 or linux-x64.
 # $LUDIC_NATIVE_TARGET names another (an Intel Mac says macos-x64).
@@ -47,6 +48,15 @@ function native_have(xs: []pointer, s: pointer) -> bool {
   return false
 }
 
+# a package root's directory name ("/x/packages/ludic.physics/" -> "ludic.physics")
+function native_pkg_name(root: pointer) -> pointer {
+  var e = len(root)
+  if (e > 0) and (root[e - 1] == '/') { e -= 1 }
+  var s = e
+  while (s > 0) and (root[s - 1] != '/') { s -= 1 }
+  return root[s..e]
+}
+
 # `full` was found as `rel` under a package root (ludic_modules or $LUDIC_HOME/packages):
 # read that package's manifest once and keep its libraries for this target
 function native_note_pkg(full: pointer, rel: pointer) -> void {
@@ -58,6 +68,8 @@ function native_note_pkg(full: pointer, rel: pointer) -> void {
   let txt = read_file(root + "package.ludic")
   if (txt == null) { return }
   let want = native_target()
+  var named = false
+  var found = false
   var i = 0
   let tn = len(txt)
   while i < tn {
@@ -66,19 +78,29 @@ function native_note_pkg(full: pointer, rel: pointer) -> void {
     var le = e
     if (le > i) and (txt[le - 1] == 13) { le -= 1 }
     let ws = native_words(txt[i..le])
-    if (len(ws) == 3) and (ws[0] == "native") and (ws[1] == want) {
-      let lib = root + ws[2]
-      if not native_have(g_native_libs, lib) { push(g_native_libs, lib) }
+    if (len(ws) == 3) and (ws[0] == "native") {
+      named = true
+      if ws[1] == want {
+        found = true
+        let lib = root + ws[2]
+        if not native_have(g_native_libs, lib) { push(g_native_libs, lib) }
+      }
     }
     i = e + 1
   }
+  # a package built over a native library this target has none of: said in the IR, so a link that
+  # fails for it (a Linux host, say) is told apart from a broken program
+  if named and not found { push(g_native_missing, `{native_pkg_name(root)} {want}`) }
 }
 
-# the `; ludic-native:` lines ir_flush puts at the head of the IR
+# the `; ludic-native:` lines ir_flush puts at the head of the IR, and a `; ludic-native-missing:`
+# line for each package with no library for this target
 function native_ir_lines() -> pointer {
   var s = ""
   var i = 0
   while i < len(g_native_libs) { s = s + `; ludic-native: {g_native_libs[i]}\n`;  i += 1 }
+  var j = 0
+  while j < len(g_native_missing) { s = s + `; ludic-native-missing: {g_native_missing[j]}\n`;  j += 1 }
   return s
 }
 

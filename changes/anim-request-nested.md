@@ -1,3 +1,0 @@
-bump: minor
-type: feat
-ludic.anim: a request by name (`anim_request`, a `request` binding row, `crowd.act_key`, `cars.seat_state`) now reaches the states of sub graphs and layers, not only the base graph's. The rule: a plain name searches the base graph, then the sub graphs, then each layer's graph; `layer/state` names a layer by its key, `sub/state` a sub state, segments chain. A request to a sub graph's state also brings the graph above into the sub state that runs it, and the sub graph starts at that state. `anim_link_validate` reads the same rule for `anim.link_unknown_state`. Documented in the README ("A request by name").

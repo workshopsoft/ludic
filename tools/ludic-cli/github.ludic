@@ -14,6 +14,21 @@ const GITHUB_REPO_DEFAULT: string = "workshopsoft/ludic"
 
 function github_repo() -> pointer { return getenv_or("LUDIC_GITHUB_REPO", GITHUB_REPO_DEFAULT) }
 
+# GitHub refuses release notes over 125 000 characters. Notes longer than this are cut before
+# the first top-level entry (`- ` or `### `) that would cross it, and end with a link to the
+# whole section in CHANGELOG.md at the tag; the path of what to send
+const GITHUB_NOTES_MAX: int = 120000
+function github_notes_fit(tag: pointer, body_file: pointer) -> pointer {
+  let size = s_to_int(capture_line(`wc -c < {body_file}`))
+  if size <= GITHUB_NOTES_MAX { return body_file }
+  let cut = `{body_file}.cut`
+  let more = `[CHANGELOG.md](https://github.com/{github_repo()}/blob/{tag}/CHANGELOG.md)`
+  shell(`awk -v max={string(GITHUB_NOTES_MAX)} 'BEGIN {{ n = 0 }} {{ n += length($0) + 1; if (n > max && ($0 ~ /^- / || $0 ~ /^### /)) exit; print }}' {body_file} > {cut}`)
+  shell(`printf '\\n---\\n\\nThe notes go on: the whole {tag} section is in %s.\\n' {sh_single(more)} >> {cut}`)
+  print(`release notes cut to fit GitHub's limit ({string(size)} characters; the rest is in CHANGELOG.md)`)
+  return cut
+}
+
 # create-or-reuse the release for `tag`, with `body_file` as its notes; true on success
 function github_release(tag: pointer, body_file: pointer) -> bool {
   if shq(`gh release view {tag} -R {github_repo()} --json tagName > /dev/null 2>&1`) {
@@ -21,7 +36,7 @@ function github_release(tag: pointer, body_file: pointer) -> bool {
     return true
   }
   var notes = `--notes ''`
-  if shq(`test -f {body_file}`) { notes = `--notes-file {body_file}` }
+  if shq(`test -f {body_file}`) { notes = `--notes-file {github_notes_fit(tag, body_file)}` }
   var prerelease = ""
   if Text.starts_with(tag, "v0.") { prerelease = "--prerelease" }
   if not shq(`gh release create {tag} -R {github_repo()} --verify-tag --title {tag} {notes} {prerelease}`) {

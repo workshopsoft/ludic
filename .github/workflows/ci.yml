@@ -15,7 +15,45 @@ permissions:
   contents: read
 
 jobs:
+  # Whether anything but prose changed: docs/, changes/ and Markdown files. A push of
+  # prose only still runs docs-checks below (the doc fences, coverage, the site), not
+  # the regression and editor suites, which take most of an hour on this runner.
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - name: Check out with history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Did code change?
+        id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          set -eu
+          # the same range commit-lint reads; a new branch, a rewritten before or a
+          # manual run has none, and then everything runs
+          RANGE=""
+          if [ -n "${BASE:-}" ]; then
+            RANGE="origin/${BASE}...HEAD"
+          elif [ -n "${BEFORE:-}" ] && ! printf '%s' "$BEFORE" | grep -qE '^0+$' \
+               && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            RANGE="${BEFORE}..HEAD"
+          fi
+          code=true
+          if [ -n "$RANGE" ] && ! git diff --name-only "$RANGE" | grep -qvE '^(docs/|changes/)|\.md$'; then
+            code=false
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "code changed in ${RANGE:-the whole tree}: $code"
+
   build-and-test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     # Debian bookworm with git + node already present, plus the one thing the
     # toolchain needs: a modern clang (LLVM 16 — the IR uses opaque pointers, so
@@ -80,6 +118,49 @@ jobs:
         # prefixes and exported names are global, so a clash between two
         # packages fails here, naming the pair, not in the first game that has both.
         run: bin/ludic-dev check-packages
+
+  docs-checks:
+    runs-on: ubuntu-24.04
+    container: node:20-bookworm
+    steps:
+      - name: Install clang-16
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends clang-16 git ca-certificates
+          clang-16 --version | head -1
+
+      - name: Check out the triggering commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Point the build at the Linux stdio shim
+        run: |
+          set -eu
+          git config --global --add safe.directory '*'
+          git log --oneline -1
+          # The toolchain is macOS-first; on this Linux runner it links against a
+          # tiny C-free IR shim that supplies the Darwin standard-stream globals
+          # (__stdoutp/__stderrp) over glibc's stdout/stderr. Injected through
+          # LUDIC_CC so every clang invocation — the seed bootstrap, `ludic-dev build`,
+          # and each compiled test program — picks it up. Absolute path so it
+          # still resolves if a step changes directory.
+          echo "LUDIC_CC=clang-16 $(pwd)/tools/ci/linux_stdio_shim.ll -lm" >> "$GITHUB_ENV"
+          echo "LUDIC_HOME=$(pwd)" >> "$GITHUB_ENV"
+
+      - name: Bootstrap the toolchain from the IR seed (clang only)
+        run: |
+          set -eu
+          # clang assembles + links the compiler's own checked-in IR seed (plus
+          # the Linux stdio shim), then that seed builds the whole toolchain into
+          # bin/ — ludicc, ludic, x, ludic-fmt, ludic-lsp. No C compiler, no
+          # pre-built binaries: the language builds itself from source + seed.
+          mkdir -p bin
+          clang-16 tools/ci/linux_stdio_shim.ll selfhost/ludicc.seed.ll -o bin/ludicc
+          bin/ludicc --unsafe --globals tools/ludic-cli/dev.ludic -o bin/ludic-dev
+          bin/ludic-dev build
 
       - name: Docs cover the implementation
         run: |

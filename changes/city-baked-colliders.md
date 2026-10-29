@@ -1,3 +1,0 @@
-bump: minor
-type: feat
-**`ludic.city`: building colliders from the row, baked.** `CityBuilding.footprint` is the building's real plan (a simple polygon in the model's own frame; empty means the rectangle `w` x `d`). `city_colliders_bake` cuts every plan into convex pieces (ear clipping for a concave one) and writes one `collider_<cx>_<cz>.lwk` file a chunk; `city_colliders_in` and `city_colliders_out` load and remove a chunk's pieces through the new `CityPhysics` port, so a game binds two functions and writes no collision code. `city_footprint_problem` says what is wrong with a plan. `ludic.physics` gains `phys_prism`, the convex shape of a piece (a polygon stood up between two heights).

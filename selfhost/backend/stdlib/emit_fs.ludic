@@ -332,13 +332,19 @@ function emit_fs_dir() -> void {
   # list(dir) -> []string of entries (excluding "." and ".."), sorted ascending
   # by byte value for a stable, reproducible order. Each name is copied out of
   # the readdir buffer before the next call. macOS/BSD dirent: d_name at offset
-  # 21 (documented native layout).
+  # 21 (documented native layout); glibc's at 19. Byte 19 tells them apart: on
+  # macOS it is d_namlen's high byte (a name is at most 255 bytes: 0), on glibc
+  # the name's first byte (never 0). Windows' readdir hands the macOS layout.
   emith("define ptr @lp_fs_list(ptr %path) {\n")
   emith("entry:\n  %h = call ptr @lp_malloc(i64 16)\n  %d0 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 0\n  %d1 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 1\n  %d2 = getelementptr inbounds %LSlice, ptr %h, i32 0, i32 2\n")
   emith("  %datap = alloca ptr\n  %cntp = alloca i32\n  %capp = alloca i32\n  %init = call ptr @lp_malloc(i64 128)\n  store ptr %init, ptr %datap\n  store i32 0, ptr %cntp\n  store i32 16, ptr %capp\n")
   emith("  %dir = call ptr @opendir(ptr %path)\n  %dnz = icmp ne ptr %dir, null\n  br i1 %dnz, label %rd, label %empty\n")
   emith("rd:\n  %de = call ptr @readdir(ptr %dir)\n  %denz = icmp ne ptr %de, null\n  br i1 %denz, label %ent, label %closed\n")
-  emith("ent:\n  %namep = getelementptr i8, ptr %de, i32 21\n")
+  if g_target_win { emith("ent:\n  %namep = getelementptr i8, ptr %de, i32 21\n") }
+  else {
+    emith("ent:\n  %b19p = getelementptr i8, ptr %de, i32 19\n  %b19 = load i8, ptr %b19p\n  %bsd = icmp eq i8 %b19, 0\n")
+    emith("  %noff = select i1 %bsd, i32 21, i32 19\n  %namep = getelementptr i8, ptr %de, i32 %noff\n")
+  }
   # skip "." and ".."
   emith("  %n0 = load i8, ptr %namep\n  %n0i = zext i8 %n0 to i32\n  %isdot0 = icmp eq i32 %n0i, 46\n  br i1 %isdot0, label %chkdots, label %keep\n")
   emith("chkdots:\n  %n1p = getelementptr i8, ptr %namep, i32 1\n  %n1 = load i8, ptr %n1p\n  %n1i = zext i8 %n1 to i32\n  %n1z = icmp eq i32 %n1i, 0\n  br i1 %n1z, label %rd, label %chkdd\n")   # "." -> skip

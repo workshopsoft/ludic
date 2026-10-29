@@ -162,7 +162,14 @@ function vk_link_flags(ll: pointer) -> pointer {
   if not shq(`grep -q "@lvk_" {ll}`) { return "" }
   let home = ludic_home()
   # QuartzCore: the CAMetalLayer a window presents through (cocoa.ll finds the class by name)
-  return ` {home}runtime/native/vk_thunks.ll {home}runtime/native/vk_mac.ll -Wl,-needed_framework,QuartzCore`
+  return ` {home}runtime/native/vk_thunks.ll {home}runtime/native/vk_mac.ll{needed_framework("QuartzCore")}`
+}
+
+# a framework the program needs at load time; a Linux host (CI's) links no frameworks, and its
+# ld refuses the flag
+function needed_framework(name: pointer) -> pointer {
+  if not is_darwin() { return "" }
+  return ` -Wl,-needed_framework,{name}`
 }
 
 # A package that carries a native library (phase 15) is written into the IR by the compiler as
@@ -199,7 +206,7 @@ function http_link_flags(ll: pointer) -> pointer {
   # for "@hs_" linked http.ll and Foundation into everything - harmless on macOS, a failed
   # link on Linux. Only the Http runtime a program actually uses calls hs_send.
   if not shq(`grep -q "call void @hs_send" {ll}`) { return "" }
-  return ` {ludic_home()}runtime/native/http.ll -Wl,-needed_framework,Foundation`
+  return ` {ludic_home()}runtime/native/http.ll{needed_framework("Foundation")}`
 }
 
 # A program that uses Udp.* calls the lu_udp_* socket layer; link udp.ll only then, as
