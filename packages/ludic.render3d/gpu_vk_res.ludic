@@ -157,7 +157,30 @@ function gvk_barrier(render3d_st: mut Render3dState, cb: pointer, image: long, d
 function gvk_barrier_from(render3d_st: mut Render3dState, cb: pointer, image: long, depth: bool, base: int, n: int, layers: int, old_layout: int, new_layout: int, src_stages: int) -> void {
   # an image that was never made (its memory could not be had) has nothing to transition
   if image == 0 { return }
+  gvk_bq_flush(render3d_st)                   # the queued attachment barriers go first (gpu_vk_batch.ludic)
   let b = gvk_tmp(render3d_st, VkImageMemoryBarrier_sizeof)
+  gvk_barrier_fill(b, image, depth, base, n, layers, old_layout, new_layout)
+  Vk.cmd_pipeline_barrier(cb, gvk_barrier_src(render3d_st, old_layout, new_layout, src_stages), gvk_barrier_dst(render3d_st, old_layout, new_layout, src_stages), 0, 0, null, 0, null, 1, b)
+}
+# Two images' transitions that come back to back (a copy's source and destination, the present's screen and swapchain image),
+# levels [0, 1): one vkCmdPipelineBarrier with the union of their stages, as FVulkanPipelineBarrier::Execute
+# (VulkanBarriers.cpp) issues every barrier it gathered in one call. R3D_VK_BATCH_BARRIERS=0, or one image twice: two calls.
+function gvk_barrier_pair(render3d_st: mut Render3dState, cb: pointer, depth: bool, image_a: long, layers_a: int, old_a: int, new_a: int, src_a: int, image_b: long, layers_b: int, old_b: int, new_b: int, src_b: int) -> void {
+  if image_a == 0 or image_b == 0 or image_a == image_b or not gvk_batch_on(render3d_st) {
+    gvk_barrier_from(render3d_st, cb, image_a, depth, 0, 1, layers_a, old_a, new_a, src_a)
+    gvk_barrier_from(render3d_st, cb, image_b, depth, 0, 1, layers_b, old_b, new_b, src_b)
+    return
+  }
+  gvk_bq_flush(render3d_st)
+  let sz = VkImageMemoryBarrier_sizeof
+  let b = gvk_tmp(render3d_st, sz * 2)
+  gvk_barrier_fill(b, image_a, depth, 0, 1, layers_a, old_a, new_a)
+  gvk_barrier_fill(mem_off(b, sz), image_b, depth, 0, 1, layers_b, old_b, new_b)
+  let src = gvk_barrier_src(render3d_st, old_a, new_a, src_a) | gvk_barrier_src(render3d_st, old_b, new_b, src_b)
+  let dst = gvk_barrier_dst(render3d_st, old_a, new_a, src_a) | gvk_barrier_dst(render3d_st, old_b, new_b, src_b)
+  Vk.cmd_pipeline_barrier(cb, src, dst, 0, 0, null, 0, null, 2, b)
+}
+function gvk_barrier_fill(b: pointer, image: long, depth: bool, base: int, n: int, layers: int, old_layout: int, new_layout: int) -> void {
   Vk.zero(b, VkImageMemoryBarrier_sizeof)
   Vk.put_i32(b, VkImageMemoryBarrier_sType, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
   Vk.put_i32(b, VkImageMemoryBarrier_srcAccessMask, gvk_layout_access(old_layout))
@@ -175,21 +198,31 @@ function gvk_barrier_from(render3d_st: mut Render3dState, cb: pointer, image: lo
   Vk.put_i32(b, r + VkImageSubresourceRange_levelCount, n)
   Vk.put_i32(b, r + VkImageSubresourceRange_baseArrayLayer, 0)
   Vk.put_i32(b, r + VkImageSubresourceRange_layerCount, layers)
-  var src = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
-  var dst = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+}
+# gvk_barrier's stages: ALL_COMMANDS both, or (R3D_VK_NARROW_BARRIERS) those of its layouts, the source's given or not
+function gvk_barrier_src(render3d_st: mut Render3dState, old_layout: int, new_layout: int, src_stages: int) -> int {
+  if gvk_narrow_on(render3d_st) {
+    var s = src_stages
+    if s == 0 { s = gvk_layout_stages(old_layout) }
+    if s != 0 and gvk_layout_stages(new_layout) != 0 { return s }
+  }
+  return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+}
+function gvk_barrier_dst(render3d_st: mut Render3dState, old_layout: int, new_layout: int, src_stages: int) -> int {
   if gvk_narrow_on(render3d_st) {
     var s = src_stages
     if s == 0 { s = gvk_layout_stages(old_layout) }
     let d = gvk_layout_stages(new_layout)
-    if s != 0 and d != 0 { src = s;  dst = d }
+    if s != 0 and d != 0 { return d }
   }
-  Vk.cmd_pipeline_barrier(cb, src, dst, 0, 0, null, 0, null, 1, b)
+  return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
 }
 
 # A copy into a host-visible buffer that the CPU reads once the fence is waited for: the transfer's writes made visible to the
 # host (the Vulkan spec's host access rule; UE VulkanBarriers.cpp GetVkStageAndAccessFlags, ERHIAccess::CPURead = HOST stage,
 # HOST_READ access): a fence wait alone does not make device writes visible to the host.
 function gvk_host_read_barrier(render3d_st: mut Render3dState, cb: pointer) -> void {
+  gvk_bq_flush(render3d_st)
   let mb = gvk_tmp(render3d_st, VkMemoryBarrier_sizeof)
   Vk.zero(mb, VkMemoryBarrier_sizeof)
   Vk.put_i32(mb, VkMemoryBarrier_sType, VK_STRUCTURE_TYPE_MEMORY_BARRIER)
