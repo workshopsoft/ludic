@@ -139,7 +139,7 @@ function gsl_probe_device(render3d_st: mut Render3dState, pd: pointer) -> void {
   if render3d_st.gsl_dlss_mode < 0 {
     render3d_st.gsl_dlss_want = GSL_DLSS_DEFAULT
     if r3d_env_has(render3d_st, "R3D_DLSS") { render3d_st.gsl_dlss_want = Text.to_int(r3d_env(render3d_st, "R3D_DLSS")) }
-    render3d_st.gsl_dlss_mode = ups_resolve_mode(render3d_st, render3d_st.gsl_dlss_want)
+    render3d_st.gsl_dlss_mode = ups_resolve_mode_dlss(render3d_st, render3d_st.gsl_dlss_want)
   }
   print(`r3d: streamline: DLSS {render3d_st.gsl_dlss_ok}, ray reconstruction {render3d_st.gsl_rr_ok}, frame generation {render3d_st.gsl_fg_ok}, Reflex {render3d_st.gsl_reflex_ok}`)
 }
@@ -227,7 +227,7 @@ function r3d_dlss(render3d_st: mut Render3dState, mode: int) -> void {
   var m = mode
   if r3d_env_has(render3d_st, "R3D_DLSS") { m = Text.to_int(r3d_env(render3d_st, "R3D_DLSS")) }
   render3d_st.gsl_dlss_want = m
-  m = ups_resolve_mode(render3d_st, m)
+  m = ups_resolve_mode_dlss(render3d_st, m)
   if m != render3d_st.gsl_dlss_mode { render3d_st.gsl_reset = true }
   render3d_st.gsl_dlss_mode = m
 }
@@ -240,6 +240,7 @@ function gsl_sl_mode(m: int) -> int {
   if m == 2 { return 3 }              # eMaxQuality
   if m == 3 { return 2 }              # eBalanced
   if m == 4 { return 1 }              # eMaxPerformance
+  if m == 6 { return 4 }              # eUltraPerformance (upscale.ludic ups_auto_mode_dlss: auto at a 4K output)
   return 0
 }
 

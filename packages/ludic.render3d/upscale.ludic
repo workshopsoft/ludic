@@ -96,9 +96,22 @@ function ups_auto_mode(render3d_st: mut Render3dState) -> int {
   if render3d_st.ups_auto == 1 and gfx_width() >= UPS_AUTO_WIDE { return 4 }
   return 2
 }
+# DLSS's auto: ultra performance (33%, Streamline's eUltraPerformance, mode 6) at an output 3840 px wide or more (4K), else the
+# shared auto. Asked for by the user on 2026-10-29 for frame time at 4K; R3D_DLSS_ULTRA_AUTO=0 keeps performance at 4K
+const UPS_AUTO_ULTRA_WIDE: int = 3840
+const UPS_MODE_ULTRA: int = 6
+function ups_auto_mode_dlss(render3d_st: mut Render3dState) -> int {
+  let m = ups_auto_mode(render3d_st)
+  if render3d_st.ups_auto == 1 and gfx_width() >= UPS_AUTO_ULTRA_WIDE and not (r3d_env_has(render3d_st, "R3D_DLSS_ULTRA_AUTO") and r3d_env(render3d_st, "R3D_DLSS_ULTRA_AUTO") == "0") { return UPS_MODE_ULTRA }
+  return m
+}
 # a mode as asked (0..5) to the one that runs (0..4)
 function ups_resolve_mode(render3d_st: mut Render3dState, m: int) -> int {
   if m == UPS_MODE_AUTO { return ups_auto_mode(render3d_st) }
+  return m
+}
+function ups_resolve_mode_dlss(render3d_st: mut Render3dState, m: int) -> int {
+  if m == UPS_MODE_AUTO { return ups_auto_mode_dlss(render3d_st) }
   return m
 }
 # each frame, before the render size: an auto mode follows the output's width (a window dragged to another display, full screen)
@@ -108,7 +121,7 @@ function ups_auto_follow(render3d_st: mut Render3dState) -> void {
     if m != render3d_st.mfx_mode { render3d_st.mfx_mode = m;  render3d_st.mfx_reset = true }
   }
   if render3d_st.gsl_dlss_want == UPS_MODE_AUTO {
-    let m = ups_auto_mode(render3d_st)
+    let m = ups_auto_mode_dlss(render3d_st)
     if m != render3d_st.gsl_dlss_mode { render3d_st.gsl_dlss_mode = m;  render3d_st.gsl_reset = true }
   }
 }
