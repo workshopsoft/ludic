@@ -360,6 +360,9 @@ function prof_gen_frame(render3d_st: mut Render3dState) -> void {
   render3d_st.prof_gen_us_cur = 0;  render3d_st.prof_layer_us_cur = 0;  render3d_st.prof_bake_us_cur = 0;  render3d_st.prof_up_cur = 0;  render3d_st.prof_game_us_cur = 0
 }
 
+# for a game's timed run at its end (R3D_PROF): the frame-time spread, stutter, and the renderer's CPU by phase (prof_ft_report)
+export function r3d_prof_report(render3d_st: Render3dState) -> void { prof_ft_report(render3d_st) }
+
 # the distribution of REAL frame times: stutter lives in the tail, not the mean
 @alloc_ok("profiling and statistics, only under R3D_PROF / R3D_DRAWSTATS")
 function prof_ft_report(render3d_st: Render3dState) -> void {
