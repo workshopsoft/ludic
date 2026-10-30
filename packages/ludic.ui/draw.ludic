@@ -58,6 +58,11 @@ function fr_border(ui_st: UiState, n: UiNode) -> void {
     c = n.rfg
     ca = ui_st.fr_ga * n.rfg_a
   }
+  # an even border round a rounded box follows its corners
+  if n.radius > 0.0 and ui_st.ui_be.ring != null and n.bt == n.br and n.bt == n.bb and n.bt == n.bl {
+    ui_st.ui_be.ring(n.x, n.y, n.cw, n.ch, n.radius, n.bt, c, ca)
+    return
+  }
   if n.bt > 0.0 { ui_st.ui_be.rect(n.x, n.y, n.cw, n.bt, c, ca) }
   if n.bb > 0.0 { ui_st.ui_be.rect(n.x, n.y + n.ch - n.bb, n.cw, n.bb, c, ca) }
   if n.bl > 0.0 { ui_st.ui_be.rect(n.x, n.y + n.bt, n.bl, n.ch - n.bt - n.bb, c, ca) }

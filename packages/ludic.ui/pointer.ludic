@@ -17,9 +17,14 @@ function fr_pointer(ui_st: mut UiState, root: UiNode) -> void {
   if ui_st.sc_drag != "" or ct_key_mouse(ui_st, root) { return }
   let hit = fr_hit(scope, i.x, i.y)
   pe_frame(ui_st, root, scope)
+  ui_st.ui_cursor = fr_cursor_of(hit)
+  # a text field's right-click menu takes a press on it first; a press anywhere else closes it
+  if i.down and not ui_st.in_was_down and ui_st.tx_menu_key != "" and tx_menu_click(ui_st, root, i.x, i.y) { return }
+  if i.down_right and not ui_st.in_last.down_right { tx_right_press(ui_st, hit, i.x, i.y) }
   if i.down and not ui_st.in_was_down { fr_press(ui_st, hit, i.x, i.y) }
   if i.down and ui_st.fr_press_key != "" { ct_drag(ui_st, root, ui_st.fr_press_key, i.x, i.y) }
   if not i.down and ui_st.in_was_down {
+    tx_release(ui_st)
     let was = fr_node(root, ui_st.fr_press_key)
     if was != null { ui_fire(ui_st, was, "up", ui_st.fc_none) }
     if hit != null and hit.key == ui_st.fr_press_key and hit.enabled { ct_activate_at(ui_st, hit, i.x, i.y) }
@@ -43,7 +48,7 @@ function fr_active(ui_st: UiState, n: UiNode) -> bool {
 }
 function fr_under(n: UiNode, px: float, py: float, keys: []string) -> void {
   let out = px < n.x or py < n.y or px >= n.x + n.cw or py >= n.y + n.ch
-  if out and not fr_empty(n) { return }
+  if out and (n.kind == UI_SCROLL or n.hidden) { return }     # what hangs outside a box is under the pointer too, unless it clips
   if not out and n.key != "" { ui_kept(keys, n.key) }
   for i in 0 .. len(n.children) { fr_under(n.children[i], px, py, keys) }
 }
@@ -62,3 +67,15 @@ function fr_node(n: UiNode, key: string) -> UiNode {
   }
   return null
 }
+
+# the pointer's look over what it is on: 2 an I-beam over a text field, 1 a hand over anything that answers a press, 0 the arrow
+export const UI_CURSOR_ARROW: int = 0
+export const UI_CURSOR_HAND: int = 1
+export const UI_CURSOR_TEXT: int = 2
+function fr_cursor_of(hit: UiNode) -> int {
+  if hit == null { return UI_CURSOR_ARROW }
+  if ct_type(hit) == "text" { return UI_CURSOR_TEXT }
+  if hit.enabled { return UI_CURSOR_HAND }
+  return UI_CURSOR_ARROW
+}
+export function ui_cursor(ui_st: UiState) -> int { return ui_st.ui_cursor }

@@ -47,6 +47,9 @@ function ct_build(ui_st: mut UiState, n: UiNode) -> void {
     ui_kept(n.children, track)
   } else if t == "range" {
     ct_build_range(ui_st, n)
+  } else if t == "text" {
+    ui_kept(n.children, ct_build_text(ui_st, n))
+    if ui_st.tx_menu_key == n.key { ui_kept(n.children, ct_build_menu(ui_st, n)) }
   } else {
     let field = ct_part(ui_st, n, "ui-field", "")
     ui_kept(field.children, ct_part(ui_st, n, "ui-value", ct_field_text(ui_st, n)))
@@ -101,4 +104,55 @@ function ct_option_num(nv: Val, opts: []UiNode) -> int {
     if Value.kind(ov) == 4 and el_num(Value.as_str(ov)) == x and len(Value.as_str(ov)) > 0 { return i }
   }
   return -1
+}
+
+# a text field: its value from the first letter (no gap before it), split where the caret and the selection are while it has the focus -
+# .ui-pre, the selected .ui-sel, .ui-post - with the .ui-caret between them (.ui-caret-off while its blink is off); empty, its
+# placeholder="..." as .ui-placeholder after the caret
+function ct_build_text(ui_st: mut UiState, n: UiNode) -> UiNode {
+  let field = ct_part(ui_st, n, "ui-field", "")
+  let s = ui_attr_text(n, "value")
+  let focused = ui_st.fc_key == n.key
+  if s == "" {
+    if focused { ui_kept(field.children, ct_caret(ui_st, n)) }
+    let ph = ui_attr_text(n, "placeholder")
+    if ph != "" { ui_kept(field.children, ct_part(ui_st, n, "ui-placeholder", ph)) }
+    return field
+  }
+  if not focused {
+    ui_kept(field.children, ct_part(ui_st, n, "ui-pre", s))
+    return field
+  }
+  let c = tx_caret(ui_st, n, s)
+  let a = tx_anchor(ui_st, n, s)
+  let lo = Math.min(c, a)
+  let hi = Math.max(c, a)
+  if lo > 0 { ui_kept(field.children, ct_part(ui_st, n, "ui-pre", ct_piece(ui_st, s, 0, lo))) }
+  if c == lo { ui_kept(field.children, ct_caret(ui_st, n)) }
+  if hi > lo { ui_kept(field.children, ct_part(ui_st, n, "ui-sel", ct_piece(ui_st, s, lo, hi))) }
+  if c == hi and hi > lo { ui_kept(field.children, ct_caret(ui_st, n)) }
+  if hi < len(s) { ui_kept(field.children, ct_part(ui_st, n, "ui-post", ct_piece(ui_st, s, hi, len(s)))) }
+  return field
+}
+function ct_caret(ui_st: mut UiState, n: UiNode) -> UiNode {
+  if tx_blink_on(ui_st) { return ct_part(ui_st, n, "ui-caret", "") }
+  return ct_part(ui_st, n, "ui-caret-off", "")
+}
+# a piece of a field's value as the memo keeps it (a node keeps its text: a slice made each frame would be kept each frame)
+@alloc_ok("a memo miss: once per piece of a value as the caret splits it, bounded by MM_CAP")
+function ct_piece(ui_st: mut UiState, s: string, a: int, b: int) -> string { return mm_join(ui_st, s[a..b], "", "") }
+# a text field's right-click menu: .ui-menu at the pointer (fixed, over everything), an item each, .ui-mi-off when it cannot be chosen now
+function ct_build_menu(ui_st: mut UiState, n: UiNode) -> UiNode {
+  let m = ct_part(ui_st, n, "ui-menu", "")
+  m.pos = 3
+  m.left = ui_st.tx_menu_x
+  m.top = ui_st.tx_menu_y
+  m.z = 950
+  for k in 0 .. TXM_N {
+    let it = ct_part(ui_st, n, TXM_CLASSES[k], TXM_LABELS[k])
+    ui_kept(it.classes, "ui-mi")
+    if not tx_menu_ok(ui_st, n, k) { ui_kept(it.classes, "ui-mi-off") }
+    ui_kept(m.children, it)
+  }
+  return m
 }

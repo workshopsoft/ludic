@@ -1,0 +1,428 @@
+# controls_text.ludic - a text field that behaves as the platform's own does:
+#   a caret anywhere in the value and a selection (the caret and its other end, the anchor); the arrows move it (Shift extends the
+#   selection; Ctrl, or Option on a Mac, a word at a time; Cmd on a Mac to the ends), Home and End; Backspace and Delete (a word with
+#   Ctrl or Option), held to repeat; Ctrl or Cmd with A selects all, C copies, X cuts, V pastes (the system's clipboard: the runtime's
+#   win_clip_*), Z undoes, Shift-Z or Y redoes; typing replaces the selection, within maxlength;
+#   the pointer puts the caret where it presses and drags a selection, Shift with a press extends it, a double press selects the word,
+#   a triple one the whole value; the right button opens Cut, Copy, Paste, Delete and Select all; Tab into a field selects its value;
+#   a value wider than the field scrolls along it so the caret stays in sight.
+# Offsets are bytes of the UTF-8 value, always at a letter's start.
+extern function win_clip_get() -> string = "win_clip_get"
+extern function win_clip_set(text: pointer) -> void = "win_clip_set"
+
+const TX_MULTI: float = 0.4            # seconds between presses that count as a double or triple one
+const TX_RUN: float = 1.0              # typing (or deleting) within this of the last is one undo step
+const TX_UNDO_MAX: int = 64
+export const TXM_CUT: int = 0           # the right-click menu's items, in its order
+export const TXM_COPY: int = 1
+export const TXM_PASTE: int = 2
+export const TXM_DELETE: int = 3
+export const TXM_ALL: int = 4
+export const TXM_N: int = 5
+export const TXM_LABELS: []string = ["Cut", "Copy", "Paste", "Delete", "Select all"]
+
+# ---- offsets ----
+# where the letter before (or after) offset `at` starts
+function tx_prev(s: string, at: int) -> int {
+  var i = Math.min(at, len(s)) - 1
+  while i > 0 and s[i] >= 128 and s[i] < 192 { i -= 1 }
+  return Math.max(i, 0)
+}
+function tx_next(s: string, at: int) -> int {
+  var i = at + 1
+  while i < len(s) and s[i] >= 128 and s[i] < 192 { i += 1 }
+  return Math.min(i, len(s))
+}
+function tx_space(c: int) -> bool { return c == 32 or c == 9 }
+# a word back: past spaces, then past the word
+function tx_word_prev(s: string, at: int) -> int {
+  var i = at
+  while i > 0 and tx_space(s[i - 1]) { i -= 1 }
+  while i > 0 and not tx_space(s[i - 1]) { i = tx_prev(s, i) }
+  return i
+}
+function tx_word_next(s: string, at: int) -> int {
+  var i = at
+  while i < len(s) and tx_space(s[i]) { i += 1 }
+  while i < len(s) and not tx_space(s[i]) { i = tx_next(s, i) }
+  return i
+}
+# the word round offset `at` (or the run of spaces, when it is in one): its start and end
+function tx_word_lo(s: string, at: int) -> int {
+  var i = at
+  let sp = at < len(s) and tx_space(s[at])
+  while i > 0 and tx_space(s[i - 1]) == sp { i = tx_prev(s, i) }
+  return i
+}
+function tx_word_hi(s: string, at: int) -> int {
+  var i = at
+  let sp = at < len(s) and tx_space(s[at])
+  while i < len(s) and tx_space(s[i]) == sp { i = tx_next(s, i) }
+  return i
+}
+# an offset held inside the value and on a letter's start
+function tx_fix(s: string, at: int) -> int {
+  var i = Math.clamp(at, 0, len(s))
+  while i > 0 and i < len(s) and s[i] >= 128 and s[i] < 192 { i -= 1 }
+  return i
+}
+
+# ---- the caret ----
+# the caret's field: entering one by the keys (Tab) selects its value, by the pointer puts nothing selected (the press places it); its
+# undo history starts afresh
+@alloc_ok("the field the caret is in, kept once on focus")
+function tx_enter(ui_st: mut UiState, n: UiNode, s: string) -> void {
+  if ui_st.tx_key == n.key { return }
+  ui_st.tx_key = keep(n.key)
+  ui_st.tx_caret = len(s)
+  ui_st.tx_anchor = len(s)
+  if ui_st.fc_visible { ui_st.tx_anchor = 0 }
+  ui_st.tx_scroll = 0.0
+  ui_st.tx_moved = an_now(ui_st)
+  List.clear(ui_st.tx_undo)
+  List.clear(ui_st.tx_undo_at)
+  List.clear(ui_st.tx_redo)
+  List.clear(ui_st.tx_redo_at)
+  ui_st.tx_last_edit = 0
+}
+export function tx_caret(ui_st: UiState, n: UiNode, s: string) -> int {
+  if ui_st.tx_key != n.key { return len(s) }
+  return tx_fix(s, ui_st.tx_caret)
+}
+export function tx_anchor(ui_st: UiState, n: UiNode, s: string) -> int {
+  if ui_st.tx_key != n.key { return len(s) }
+  return tx_fix(s, ui_st.tx_anchor)
+}
+# the caret shows solidly for a moment after it moved, then blinks half a second on, half off
+export function tx_blink_on(ui_st: UiState) -> bool {
+  let t = an_now(ui_st) - ui_st.tx_moved
+  if t < 0.5 { return true }
+  return int(t * 2.0) % 2 == 0
+}
+function tx_put(ui_st: mut UiState, caret: int, anchor: int) -> void {
+  ui_st.tx_caret = caret
+  ui_st.tx_anchor = anchor
+  ui_st.tx_moved = an_now(ui_st)
+}
+
+# ---- what may go in ----
+# text that may go into a one-line field: no line breaks or other control characters (a paste of several lines is joined by spaces)
+@alloc_ok("a paste: once per Ctrl or Cmd-V")
+function tx_clean(t: string) -> string {
+  var out = ""
+  var at = 0
+  for i in 0 .. len(t) {
+    let c = t[i]
+    if c < 32 or c == 127 {
+      if i > at { out = out + t[at..i] }
+      if (c == 10 or c == 13 or c == 9) and len(out) > 0 and out[len(out) - 1] != 32 { out = out + " " }
+      at = i + 1
+    }
+  }
+  if len(t) > at { out = out + t[at..len(t)] }
+  return out
+}
+# as much of `t` as fits in `room` bytes, cut at a letter's start
+function tx_fit(t: string, room: int) -> string {
+  if len(t) <= room { return t }
+  if room <= 0 { return "" }
+  return t[0..tx_fix(t, room)]
+}
+
+# ---- undo ----
+# the value before an edit kept for undo (a run of typing, or of deleting, is one step); a new edit forgets what was undone
+@alloc_ok("an edit in a text field: the value it replaced, kept for undo (at most TX_UNDO_MAX)")
+function tx_remember(ui_st: mut UiState, s: string, caret: int, kind: int) -> void {
+  let now = an_now(ui_st)
+  let run = kind != 0 and kind == ui_st.tx_last_edit and now - ui_st.tx_last_t < TX_RUN
+  ui_st.tx_last_edit = kind
+  ui_st.tx_last_t = now
+  List.clear(ui_st.tx_redo)
+  List.clear(ui_st.tx_redo_at)
+  if run and len(ui_st.tx_undo) > 0 { return }
+  if len(ui_st.tx_undo) >= TX_UNDO_MAX {
+    List.remove_at(ui_st.tx_undo, 0)
+    List.remove_at(ui_st.tx_undo_at, 0)
+  }
+  push(ui_st.tx_undo, keep(s))
+  push(ui_st.tx_undo_at, caret)
+}
+@alloc_ok("an undo or a redo in a text field")
+function tx_undo_step(ui_st: mut UiState, n: UiNode, s: string, caret: int, redo: bool) -> void {
+  var from = ui_st.tx_undo
+  var from_at = ui_st.tx_undo_at
+  var to = ui_st.tx_redo
+  var to_at = ui_st.tx_redo_at
+  if redo {
+    from = ui_st.tx_redo
+    from_at = ui_st.tx_redo_at
+    to = ui_st.tx_undo
+    to_at = ui_st.tx_undo_at
+  }
+  let k = len(from)
+  if k == 0 { return }
+  let v = from[k - 1]
+  let at = from_at[k - 1]
+  List.remove_at(from, k - 1)
+  List.remove_at(from_at, k - 1)
+  push(to, keep(s))
+  push(to_at, caret)
+  ui_st.tx_last_edit = 0
+  let c = tx_fix(v, at)
+  tx_put(ui_st, c, c)
+  ui_fire(ui_st, n, "change", Value.str(v))
+}
+
+# ---- the keys ----
+# a frame's keys on the focused text field (and an item chosen on its right-click menu), then the value scrolled to show the caret
+@alloc_ok("on a key in a text field, not a frame")
+export function tx_keys(ui_st: mut UiState, n: UiNode) -> void {
+  let i = ui_st.in_now
+  let s = ui_attr_text(n, "value")
+  tx_enter(ui_st, n, s)
+  tx_scroll_to_caret(ui_st, n, s)
+  let c = tx_fix(s, ui_st.tx_caret)
+  let a = tx_fix(s, ui_st.tx_anchor)
+  let lo = Math.min(c, a)
+  let hi = Math.max(c, a)
+  var max = Value.as_int(ui_attr(n, "maxlength"))
+  if max <= 0 { max = 1000 }
+  let word = (i.mod and not ui_mac()) or (i.alt and ui_mac())
+  let line = i.mod and ui_mac()                    # Cmd with an arrow: to the start or the end, as a Mac does
+  var menu = -1
+  if ui_st.tx_menu_do >= 0 and ui_st.tx_menu_key == n.key { menu = ui_st.tx_menu_do }
+  ui_st.tx_menu_do = -1
+  if menu >= 0 or i.escape or i.left or i.right or len(i.typed) > 0 { ui_st.tx_menu_key = "" }
+  # moving (Shift keeps the anchor where it was)
+  var to = -1
+  if i.left {
+    if hi > lo and not i.shift { to = lo } else if line { to = 0 } else if word { to = tx_word_prev(s, c) } else { to = tx_prev(s, c) }
+  }
+  if i.right {
+    if hi > lo and not i.shift { to = hi } else if line { to = len(s) } else if word { to = tx_word_next(s, c) } else { to = tx_next(s, c) }
+  }
+  if i.home { to = 0 }
+  if i.end { to = len(s) }
+  if to >= 0 {
+    if i.shift { tx_put(ui_st, to, a) } else { tx_put(ui_st, to, to) }
+    ui_st.tx_last_edit = 0
+    return
+  }
+  if (i.mod and i.key_a) or menu == TXM_ALL {
+    tx_put(ui_st, len(s), 0)
+    return
+  }
+  if i.mod and (i.key_z or i.key_y) {
+    tx_undo_step(ui_st, n, s, c, i.key_y or i.shift)
+    return
+  }
+  if ((i.mod and (i.key_c or i.key_x)) or menu == TXM_COPY or menu == TXM_CUT) and hi > lo { win_clip_set(s[lo..hi]) }
+  # editing: what replaces the selection (or the letter or word before or after the caret)
+  var cut_lo = lo
+  var cut_hi = hi
+  var put = ""
+  var kind = 0
+  var edit = false
+  if ((i.mod and i.key_x) or menu == TXM_CUT or menu == TXM_DELETE) and hi > lo { edit = true }
+  if (i.mod and i.key_v) or menu == TXM_PASTE {
+    put = tx_fit(tx_clean(win_clip_get()), max - (len(s) - (hi - lo)))
+    edit = true
+  }
+  if i.backspace {
+    if hi == lo and word { cut_lo = tx_word_prev(s, c) } else if hi == lo and line { cut_lo = 0 } else if hi == lo { cut_lo = tx_prev(s, c) }
+    kind = 2
+    edit = true
+  }
+  if i.delete {
+    if hi == lo and word { cut_hi = tx_word_next(s, c) } else if hi == lo { cut_hi = tx_next(s, c) }
+    kind = 2
+    edit = true
+  }
+  if not i.mod and len(i.typed) > 0 {
+    put = tx_fit(tx_clean(i.typed), max - (len(s) - (hi - lo)))
+    kind = 1
+    edit = true
+  }
+  if not edit { return }
+  if cut_lo == cut_hi and put == "" { return }
+  let out = s[0..cut_lo] + put + s[cut_hi..len(s)]
+  if out == s { return }
+  tx_remember(ui_st, s, c, kind)
+  let at = cut_lo + len(put)
+  tx_put(ui_st, at, at)
+  ui_fire(ui_st, n, "change", Value.str(out))
+}
+
+# ---- the pointer ----
+# a press on the field: the caret to the letter nearest x (Shift: the selection's caret end there); a second press soon after selects
+# the word, a third the whole value. A drag after a press extends the selection
+export function tx_press(ui_st: mut UiState, n: UiNode, x: float, drag: bool) -> void {
+  let s = ui_attr_text(n, "value")
+  tx_enter(ui_st, n, s)
+  let at = tx_at_x(ui_st, n, s, x)
+  if drag {
+    if ui_st.tx_dragging { tx_put(ui_st, at, ui_st.tx_anchor) }
+    return
+  }
+  ui_st.tx_menu_key = ""
+  ui_st.tx_last_edit = 0
+  let now = tx_now()
+  if now - ui_st.tx_press_t < TX_MULTI { ui_st.tx_clicks += 1 } else { ui_st.tx_clicks = 1 }
+  ui_st.tx_press_t = now
+  ui_st.tx_dragging = true
+  if ui_st.tx_clicks >= 3 {
+    tx_put(ui_st, len(s), 0)
+    ui_st.tx_dragging = false
+    return
+  }
+  if ui_st.tx_clicks == 2 {
+    tx_put(ui_st, tx_word_hi(s, at), tx_word_lo(s, at))
+    ui_st.tx_dragging = false
+    return
+  }
+  if ui_st.in_now.shift {
+    tx_put(ui_st, at, tx_fix(s, ui_st.tx_anchor))
+    return
+  }
+  tx_put(ui_st, at, at)
+}
+export function tx_release(ui_st: mut UiState) -> void { ui_st.tx_dragging = false }
+# the right button on a text field: its menu at the pointer (the caret stays; a press outside the selection moves it there first)
+@alloc_ok("a right-click on a text field: its menu opened")
+export function tx_menu_open(ui_st: mut UiState, n: UiNode, x: float, y: float) -> void {
+  let s = ui_attr_text(n, "value")
+  tx_enter(ui_st, n, s)
+  let at = tx_at_x(ui_st, n, s, x)
+  let lo = Math.min(ui_st.tx_caret, ui_st.tx_anchor)
+  let hi = Math.max(ui_st.tx_caret, ui_st.tx_anchor)
+  if at < lo or at > hi { tx_put(ui_st, at, at) }
+  ui_st.tx_menu_key = keep(n.key)
+  ui_st.tx_menu_x = x
+  ui_st.tx_menu_y = y
+}
+# an item of the menu pressed (its part's key ends /ui-mi-<item>): done by tx_keys this frame
+export function tx_menu_press(ui_st: mut UiState, hit: UiNode) -> bool {
+  if ui_st.tx_menu_key == "" { return false }
+  for k in 0 .. TXM_N {
+    if sel_has(hit.classes, TXM_CLASSES[k]) {
+      ui_st.tx_menu_do = k
+      return true
+    }
+  }
+  return false
+}
+export const TXM_CLASSES: []string = ["ui-mi-cut", "ui-mi-copy", "ui-mi-paste", "ui-mi-delete", "ui-mi-all"]
+# an item can be chosen now (Cut, Copy, Delete want a selection; Paste text on the clipboard)
+export function tx_menu_ok(ui_st: UiState, n: UiNode, k: int) -> bool {
+  let s = ui_attr_text(n, "value")
+  let sel = tx_fix(s, ui_st.tx_caret) != tx_fix(s, ui_st.tx_anchor)
+  if k == TXM_CUT or k == TXM_COPY or k == TXM_DELETE { return sel }
+  if k == TXM_ALL { return len(s) > 0 }
+  return true
+}
+
+# the offset whose letter edge is nearest x, measured along the field's text as it was laid out (and scrolled) last frame
+@alloc_ok("a press or a drag in a text field: its prefixes measured, once each (the measure memo)")
+function tx_at_x(ui_st: mut UiState, n: UiNode, s: string, x: float) -> int {
+  let t = tx_text_node(n)
+  if t == null or len(s) == 0 { return len(s) }
+  let size = Math.max(t.rsize, 1.0)
+  var x0 = t.x
+  if ui_st.tx_key == n.key { x0 = x0 - ui_st.tx_scroll }
+  var best = 0
+  var bd = Math.abs(x - x0)
+  var i = 0
+  while i < len(s) {
+    i = tx_next(s, i)
+    let d = Math.abs(x - (x0 + ly_text_w_raw(ui_st, s[0..i], size)))
+    if d < bd {
+      bd = d
+      best = i
+    }
+  }
+  return best
+}
+# the field's first piece of text (where the value starts on screen)
+function tx_text_node(n: UiNode) -> UiNode {
+  let f = tx_field(n)
+  if f == null { return null }
+  for j in 0 .. len(f.children) {
+    let k = f.children[j]
+    if sel_has(k.classes, "ui-pre") or sel_has(k.classes, "ui-sel") or sel_has(k.classes, "ui-post") { return k }
+  }
+  return null
+}
+function tx_field(n: UiNode) -> UiNode {
+  for i in 0 .. len(n.children) { if sel_has(n.children[i].classes, "ui-field") { return n.children[i] } }
+  return null
+}
+
+# ---- scrolling along a long value ----
+# the caret kept inside the field: the scroll moves just far enough (and back to the start once the value fits), and this frame's
+# laid-out pieces move with it (the field clips them: .ui-field is overflow: hidden)
+function tx_scroll_to_caret(ui_st: mut UiState, n: UiNode, s: string) -> void {
+  let f = tx_field(n)
+  if f == null { return }
+  var caret: UiNode = null
+  var first: UiNode = null
+  var last: UiNode = null
+  for j in 0 .. len(f.children) {
+    let k = f.children[j]
+    if sel_has(k.classes, "ui-caret") or sel_has(k.classes, "ui-caret-off") { caret = k }
+    if first == null and k.kind == UI_TEXT { first = k }
+    last = k
+  }
+  if caret == null or first == null { return }
+  let room = f.cw - ly_hin(f)
+  let start = first.x
+  let cx = caret.x - start
+  let total = (last.x + last.cw) - start
+  var off = ui_st.tx_scroll
+  if total <= room { off = 0.0 } else {
+    if cx - off > room - caret.cw { off = cx - room + caret.cw }
+    if cx - off < 0.0 { off = cx }
+    off = Math.clamp(off, 0.0, Math.max(total - room, 0.0))
+  }
+  ui_st.tx_scroll = off
+  if off != 0.0 {
+    for j in 0 .. len(f.children) { ly_offset(f.children[j], 0.0 - off, 0.0) }
+  }
+}
+
+# the wall clock in seconds: a double or a triple press is timed as the player feels it, whatever the frame rate (reading it also links
+# the window layer, whose files hold the clipboard: cocoa.ll / win32.ll, and rtlib.ll's or win_nowin.ll's stand-ins)
+function tx_now() -> float { return float(Time.now_us() / 1000) / 1000.0 }
+
+# Mac keys (Cmd for the shortcuts, Option for words)
+function ui_mac() -> bool { return Os.platform() == "macos" }
+
+# a press while the menu is up: on an item, that item (true: the press is the menu's); elsewhere the menu closes (false: the press goes on)
+function tx_menu_click(ui_st: mut UiState, root: UiNode, x: float, y: float) -> bool {
+  let n = fr_node(root, ui_st.tx_menu_key)
+  var m: UiNode = null
+  if n != null { for i in 0 .. len(n.children) { if sel_has(n.children[i].classes, "ui-menu") { m = n.children[i] } } }
+  if m == null or not (x >= m.x and y >= m.y and x < m.x + m.cw and y < m.y + m.ch) {
+    ui_st.tx_menu_key = ""
+    return false
+  }
+  for k in 0 .. len(m.children) {
+    let it = m.children[k]
+    if x >= it.x and y >= it.y and x < it.x + it.cw and y < it.y + it.ch {
+      for j in 0 .. TXM_N {
+        if sel_has(it.classes, TXM_CLASSES[j]) and tx_menu_ok(ui_st, n, j) { ui_st.tx_menu_do = j }
+      }
+    }
+  }
+  return true
+}
+# the right button: on a text field (or a part of one), the field takes the focus and its menu opens
+function tx_right_press(ui_st: mut UiState, hit: UiNode, x: float, y: float) -> void {
+  var n = hit
+  while n != null and ct_type(n) != "text" { n = n.parent }
+  if n == null or not n.enabled {
+    ui_st.tx_menu_key = ""
+    return
+  }
+  ui_focus(ui_st, n.key)
+  tx_menu_open(ui_st, n, x, y)
+}

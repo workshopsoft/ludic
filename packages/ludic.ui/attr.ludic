@@ -92,7 +92,7 @@ function el_look(ui_st: mut UiState, n: UiNode, key: string, v: Val) -> bool {
 }
 # border: 1 #ffcc00, or 1px solid accent
 function el_border(ui_st: mut UiState, n: UiNode, s: string) -> void {
-  let parts = mm_split(ui_st, s, 32)
+  let parts = mm_words(ui_st, s)             # a colour's brackets kept whole: rgba(255, 255, 255, 0.1) is one word, not four
   for i in 0 .. len(parts) {
     let p = parts[i]
     if len(p) > 0 and ((p[0] >= 48 and p[0] <= 57) or p[0] == 46) { el_sides_border(n, el_unit(ui_st, p)) } else if p == "none" { el_sides_border(n, 0.0) } else if len(p) > 0 and p != "solid" {

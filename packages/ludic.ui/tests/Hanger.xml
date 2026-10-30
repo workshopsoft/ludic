@@ -1,0 +1,1 @@
+<div style="width: 300px; height: 40px"><div style="position: relative; width: 120px; height: 40px"><button id="tab" style="position: absolute; left: 0px; top: 60px; width: 120px; height: 40px" on-click="hit()"><span>Tab {n}</span></button></div></div>

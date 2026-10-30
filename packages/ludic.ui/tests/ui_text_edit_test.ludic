@@ -1,0 +1,167 @@
+# ui_text_edit_test - a text field edits as the platform's own does: the caret where it is put, a selection that typing replaces,
+# Home / End / Delete, select all, copy and paste (the runtime's clipboard: a headless run keeps its own), undo and redo, a double press
+# that selects a word, a right-click menu, maxlength kept
+import "ludic.ui"
+program UiTextEditTest {
+  numbers float
+
+  component Typer {
+    state name: string = "Kai Moana"
+    state sent: int = 0
+    on set(v: string) { name = v }
+    on go() { sent += 1 }
+  }
+
+  function frame(ui_st: mut UiState) -> void { ui_show(ui_st, "Typer", null, 0.0, 0.0, 1920.0, 1080.0) }
+  # the dump, then the field's text joined from its pieces (before the caret, the selection, after it)
+  function value(ui_st: mut UiState) -> string {
+    let d = ui_dump(ui_nodes(ui_st, "Typer", null), 0)
+    var t = ""
+    let lines = Text.split(d, "\n")
+    for i in 0 .. len(lines) {
+      let l = lines[i]
+      if Text.contains(l, "span.ui-pre") or Text.contains(l, "span.ui-sel") or Text.contains(l, "span.ui-post") {
+        let at = Text.index_of(l, "0x0 ")
+        if at >= 0 { t = t + Text.slice(l, at + 4, Text.length(l)) }
+      }
+    }
+    return d + "\n" + t
+  }
+  function setup(ui_st: mut UiState) -> void {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    frame(ui_st)
+  }
+  # the field pressed near its left edge (the caret to the start), the press played out
+  function focus_start(ui_st: mut UiState) -> void {
+    let b = ui_box(ui_st, "f")
+    ui_click(ui_st, b.x + 1.0, b.y + b.h * 0.5)
+    for i in 0 .. 4 { frame(ui_st) }
+  }
+  # one frame with these keys, then one to let the change land
+  function keys(ui_st: mut UiState, i: UiInput) -> void {
+    ui_input(ui_st, i)
+    frame(ui_st)
+    frame(ui_st)
+  }
+  function k() -> UiInput { return new UiInput }
+  function typed(t: string) -> UiInput {
+    let i = new UiInput
+    i.typed = t
+    return i
+  }
+
+  test "typing goes in at the caret, not at the end" (ui_st: mut UiState) {
+    setup(ui_st)
+    focus_start(ui_st)
+    keys(ui_st, typed("X"))
+    expect(Text.contains(value(ui_st), "XKai Moana"))
+  }
+  test "Shift with the arrows selects, and typing replaces the selection" (ui_st: mut UiState) {
+    setup(ui_st)
+    focus_start(ui_st)
+    for n in 0 .. 3 {
+      let i = k()
+      i.right = true
+      i.shift = true
+      keys(ui_st, i)
+    }
+    keys(ui_st, typed("Lei"))
+    expect(Text.contains(value(ui_st), "Lei Moana"))
+  }
+  test "Home, End and Delete" (ui_st: mut UiState) {
+    setup(ui_st)
+    focus_start(ui_st)
+    let e = k()
+    e.end = true
+    keys(ui_st, e)
+    keys(ui_st, typed("!"))
+    let h = k()
+    h.home = true
+    keys(ui_st, h)
+    let d = k()
+    d.delete = true
+    keys(ui_st, d)
+    expect(Text.contains(value(ui_st), "ai Moana!"))
+  }
+  test "select all, copy, paste at the end, within maxlength" (ui_st: mut UiState) {
+    setup(ui_st)
+    focus_start(ui_st)
+    let a = k()
+    a.mod = true
+    a.key_a = true
+    keys(ui_st, a)
+    let c = k()
+    c.mod = true
+    c.key_c = true
+    keys(ui_st, c)
+    let e = k()
+    e.end = true
+    keys(ui_st, e)
+    let v = k()
+    v.mod = true
+    v.key_v = true
+    keys(ui_st, v)
+    expect(Text.contains(value(ui_st), "Kai MoanaKai Moana"))
+    keys(ui_st, v)                               # 18 letters: two more fit
+    expect(Text.contains(value(ui_st), "Kai MoanaKai MoanaKa"))
+    expect(not Text.contains(value(ui_st), "Kai MoanaKai MoanaKai"))
+  }
+  test "undo takes back a run of typing, redo puts it back" (ui_st: mut UiState) {
+    setup(ui_st)
+    focus_start(ui_st)
+    keys(ui_st, typed("a"))
+    keys(ui_st, typed("b"))
+    expect(Text.contains(value(ui_st), "abKai Moana"))
+    let z = k()
+    z.mod = true
+    z.key_z = true
+    keys(ui_st, z)
+    expect(Text.contains(value(ui_st), "Kai Moana"))
+    expect(not Text.contains(value(ui_st), "abKai"))
+    let y = k()
+    y.mod = true
+    y.key_y = true
+    keys(ui_st, y)
+    expect(Text.contains(value(ui_st), "abKai Moana"))
+  }
+  test "a double press selects the word under it" (ui_st: mut UiState) {
+    setup(ui_st)
+    focus_start(ui_st)
+    let b = ui_box(ui_st, "f")
+    let x = b.x + b.w - 4.0                      # over the last word (and past it: the word before the end)
+    ui_st.tx_press_t = -10.0                     # the focusing press long past: these two are a double, not a triple
+    ui_click(ui_st, x, b.y + b.h * 0.5)
+    for i in 0 .. 3 { frame(ui_st) }
+    ui_click(ui_st, x, b.y + b.h * 0.5)
+    for i in 0 .. 3 { frame(ui_st) }
+    keys(ui_st, typed("Lani"))
+    expect(Text.contains(value(ui_st), "Kai Lani"))
+  }
+  test "the right button opens the edit menu and Escape closes it" (ui_st: mut UiState) {
+    setup(ui_st)
+    focus_start(ui_st)
+    let b = ui_box(ui_st, "f")
+    let r = k()
+    r.x = b.x + 20.0
+    r.y = b.y + b.h * 0.5
+    r.down_right = true
+    keys(ui_st, r)
+    expect(Text.contains(value(ui_st), "Select all"))
+    let esc = k()
+    esc.escape = true
+    keys(ui_st, esc)
+    expect(not Text.contains(value(ui_st), "Select all"))
+  }
+  # a click puts the caret; only Enter submits (a click in a form's name field once created the character)
+  test "a click never submits, Enter does" (ui_st: mut UiState) {
+    setup(ui_st)
+    focus_start(ui_st)
+    expect(Text.contains(value(ui_st), "sent 0"))
+    let e = k()
+    e.enter = true
+    keys(ui_st, e)
+    expect(Text.contains(value(ui_st), "sent 1"))
+  }
+}

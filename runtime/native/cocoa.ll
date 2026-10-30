@@ -571,6 +571,10 @@ flags:                                          ; Shift is held-key 16 (ctrl 17,
   %al_on = icmp ne i64 %mf_al, 0
   %al_i = zext i1 %al_on to i32
   call void @win_held_bit(i32 18, i32 %al_i)
+  %mf_cm = and i64 %mf, 1048576                 ; NSEventModifierFlagCommand = 1 << 20: held key 19 (a text field's Cmd-A/C/V/X)
+  %cm_on = icmp ne i64 %mf_cm, 0
+  %cm_i = zext i1 %cm_on to i32
+  call void @win_held_bit(i32 19, i32 %cm_i)
   br label %forward
 mouse:                                          ; #50 — mouse buttons + wheel
   %mv5 = icmp eq i64 %ty, 5                     ; NSEventTypeMouseMoved
@@ -1055,6 +1059,7 @@ confine:
   call void @win_cursor_confine()
   br label %noconf
 noconf:
+  call void @win_cursor_custom()
   ret void
 }
 
@@ -2309,6 +2314,213 @@ go:
   %aem = call ptr @objc_msgSend(ptr %aecls, ptr %sel_sae)
   %sel_seh = call ptr @sel_registerName(ptr @.s_seteh)
   call void (ptr, ptr, ptr, ptr, i32, i32) @objc_msgSend(ptr %aem, ptr %sel_seh, ptr %del, ptr %sel_qe, i32 1634039412, i32 1903520116)
+  br label %out
+out:
+  ret void
+}
+
+; ---- the clipboard (the general pasteboard's plain text) -------------------------------------------------------------------------------
+; win_clip_get: a copy of the pasteboard's text, NUL-terminated, the caller's ("" when it holds none); win_clip_set: the text put on it
+@.c_nspb      = private unnamed_addr constant [13 x i8] c"NSPasteboard\00"
+@.c_nsstr2    = private unnamed_addr constant [9 x i8] c"NSString\00"
+@.s_pbgen     = private unnamed_addr constant [18 x i8] c"generalPasteboard\00"
+@.s_strfor    = private unnamed_addr constant [15 x i8] c"stringForType:\00"
+@.s_utf8s     = private unnamed_addr constant [11 x i8] c"UTF8String\00"
+@.s_pbclear   = private unnamed_addr constant [14 x i8] c"clearContents\00"
+@.s_setstr    = private unnamed_addr constant [19 x i8] c"setString:forType:\00"
+@.s_withutf8  = private unnamed_addr constant [22 x i8] c"stringWithUTF8String:\00"
+@.s_pbtype    = private unnamed_addr constant [23 x i8] c"public.utf8-plain-text\00"
+declare ptr @malloc(i64)
+declare i64 @strlen(ptr)
+declare ptr @memcpy(ptr, ptr, i64)
+
+define internal ptr @clip_board() {
+entry:
+  %cls = call ptr @objc_getClass(ptr @.c_nspb)
+  %sel = call ptr @sel_registerName(ptr @.s_pbgen)
+  %pb = call ptr (ptr, ptr) @objc_msgSend(ptr %cls, ptr %sel)
+  ret ptr %pb
+}
+define internal ptr @clip_nsstring(ptr %c) {
+entry:
+  %cls = call ptr @objc_getClass(ptr @.c_nsstr2)
+  %sel = call ptr @sel_registerName(ptr @.s_withutf8)
+  %s = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %cls, ptr %sel, ptr %c)
+  ret ptr %s
+}
+define ptr @win_clip_get() {
+entry:
+  %pb = call ptr @clip_board()
+  %type = call ptr @clip_nsstring(ptr @.s_pbtype)
+  %sel = call ptr @sel_registerName(ptr @.s_strfor)
+  %str = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %pb, ptr %sel, ptr %type)
+  %none = icmp eq ptr %str, null
+  br i1 %none, label %empty, label %have
+have:
+  %su = call ptr @sel_registerName(ptr @.s_utf8s)
+  %c = call ptr (ptr, ptr) @objc_msgSend(ptr %str, ptr %su)
+  %cnull = icmp eq ptr %c, null
+  br i1 %cnull, label %empty, label %copy
+copy:
+  %n = call i64 @strlen(ptr %c)
+  %n1 = add i64 %n, 1
+  %out = call ptr @malloc(i64 %n1)
+  call ptr @memcpy(ptr %out, ptr %c, i64 %n1)
+  ret ptr %out
+empty:
+  %e = call ptr @malloc(i64 1)
+  store i8 0, ptr %e
+  ret ptr %e
+}
+define void @win_clip_set(ptr %text) {
+entry:
+  %pb = call ptr @clip_board()
+  %sc = call ptr @sel_registerName(ptr @.s_pbclear)
+  call i64 (ptr, ptr) @objc_msgSend(ptr %pb, ptr %sc)
+  %str = call ptr @clip_nsstring(ptr %text)
+  %type = call ptr @clip_nsstring(ptr @.s_pbtype)
+  %ss = call ptr @sel_registerName(ptr @.s_setstr)
+  call i8 (ptr, ptr, ptr, ptr) @objc_msgSend(ptr %pb, ptr %ss, ptr %str, ptr %type)
+  ret void
+}
+
+; win_focused: 1 while the game's window has the keyboard (the key window), else 0 (the shell's mouse lock follows it)
+define i32 @win_focused() {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %no, label %ask
+ask:
+  %sel = call ptr @sel_registerName(ptr @.s_iskey)
+  %k8 = call i8 (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel)
+  %k = icmp ne i8 %k8, 0
+  %r = zext i1 %k to i32
+  ret i32 %r
+no:
+  ret i32 0
+}
+
+; ---- the game's own pointer (win_cursor_make / win_cursor_use) ---------------------------------------------------------------------------
+; up to 8 NSCursors made from PNG bytes (an NSImage sized to the cursor's points, so a 2x PNG is sharp on Retina), and the one in use
+; (-1: the system's). It is set every frame while the cursor shows and the pointer is over the content (the OS's elsewhere), which is
+; how a hardware cursor keeps up with the mouse however slow the frame
+@W_curs    = internal global [8 x ptr] zeroinitializer
+@W_cur_use = internal global i32 -1
+@.s_setsize  = private unnamed_addr constant [9 x i8]  c"setSize:\00"
+@.s_initcur  = private unnamed_addr constant [23 x i8] c"initWithImage:hotSpot:\00"
+@.s_curset   = private unnamed_addr constant [4 x i8]  c"set\00"
+@.s_arrowcur = private unnamed_addr constant [12 x i8] c"arrowCursor\00"
+
+define void @win_cursor_make(i32 %slot, ptr %bytes, i32 %len, i32 %wi, i32 %hi_, i32 %hxi_, i32 %hyi_) {
+entry:
+  %w = sitofp i32 %wi to double
+  %h = sitofp i32 %hi_ to double
+  %hx = sitofp i32 %hxi_ to double
+  %hy = sitofp i32 %hyi_ to double
+  %lo = icmp slt i32 %slot, 0
+  %hi = icmp sgt i32 %slot, 7
+  %bad0 = or i1 %lo, %hi
+  %nodata = icmp eq ptr %bytes, null
+  %empty = icmp sle i32 %len, 0
+  %bad1 = or i1 %bad0, %nodata
+  %bad = or i1 %bad1, %empty
+  br i1 %bad, label %out, label %go
+go:
+  %datacls = call ptr @objc_getClass(ptr @.c_data)
+  %sel_dwb = call ptr @sel_registerName(ptr @.s_datawb)
+  %lz = zext i32 %len to i64
+  %data = call ptr (ptr, ptr, ptr, i64) @objc_msgSend(ptr %datacls, ptr %sel_dwb, ptr %bytes, i64 %lz)
+  %imgcls = call ptr @objc_getClass(ptr @.c_image)
+  %sel_alloc = call ptr @sel_registerName(ptr @.s_alloc)
+  %i0 = call ptr @objc_msgSend(ptr %imgcls, ptr %sel_alloc)
+  %sel_iwd = call ptr @sel_registerName(ptr @.s_initdat)
+  %img = call ptr (ptr, ptr, ptr) @objc_msgSend(ptr %i0, ptr %sel_iwd, ptr %data)
+  %noimg = icmp eq ptr %img, null
+  br i1 %noimg, label %out, label %size
+size:
+  %sz0 = insertvalue %NSPoint undef, double %w, 0
+  %sz = insertvalue %NSPoint %sz0, double %h, 1
+  %sel_ss = call ptr @sel_registerName(ptr @.s_setsize)
+  call void (ptr, ptr, %NSPoint) @objc_msgSend(ptr %img, ptr %sel_ss, %NSPoint %sz)
+  %curcls = call ptr @objc_getClass(ptr @.c_cursor)
+  %c0 = call ptr @objc_msgSend(ptr %curcls, ptr %sel_alloc)
+  %hs0 = insertvalue %NSPoint undef, double %hx, 0
+  %hs = insertvalue %NSPoint %hs0, double %hy, 1
+  %sel_ic = call ptr @sel_registerName(ptr @.s_initcur)
+  %cur = call ptr (ptr, ptr, ptr, %NSPoint) @objc_msgSend(ptr %c0, ptr %sel_ic, ptr %img, %NSPoint %hs)
+  %at = getelementptr [8 x ptr], ptr @W_curs, i32 0, i32 %slot
+  store ptr %cur, ptr %at
+  br label %out
+out:
+  ret void
+}
+
+define void @win_cursor_use(i32 %slot) {
+entry:
+  %old = load i32, ptr @W_cur_use
+  store i32 %slot, ptr @W_cur_use
+  %same = icmp eq i32 %old, %slot
+  br i1 %same, label %out, label %apply
+apply:
+  ; back to the system's: its arrow now, not at the next move
+  %sys = icmp slt i32 %slot, 0
+  br i1 %sys, label %arrow, label %mine
+arrow:
+  %curcls = call ptr @objc_getClass(ptr @.c_cursor)
+  %sel_ar = call ptr @sel_registerName(ptr @.s_arrowcur)
+  %a = call ptr (ptr, ptr) @objc_msgSend(ptr %curcls, ptr %sel_ar)
+  %sel_set = call ptr @sel_registerName(ptr @.s_curset)
+  call void (ptr, ptr) @objc_msgSend(ptr %a, ptr %sel_set)
+  br label %out
+mine:
+  call void @win_cursor_custom()
+  br label %out
+out:
+  ret void
+}
+
+define internal void @win_cursor_custom() {
+entry:
+  %slot = load i32, ptr @W_cur_use
+  %sys = icmp slt i32 %slot, 0
+  %big = icmp sgt i32 %slot, 7
+  %no0 = or i1 %sys, %big
+  %hid = load i32, ptr @W_cursor_hidden
+  %ishid = icmp ne i32 %hid, 0
+  %no1 = or i1 %no0, %ishid
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  %no = or i1 %no1, %nowin
+  br i1 %no, label %out, label %where
+where:
+  %sel_ml = call ptr @sel_registerName(ptr @.s_mloc)
+  %pt = call %NSPoint (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_ml)
+  %px = extractvalue %NSPoint %pt, 0
+  %py = extractvalue %NSPoint %pt, 1
+  %sc = load i32, ptr @W_scale
+  %scd = sitofp i32 %sc to double
+  %fbw = load i32, ptr @W_fbw
+  %fbh = load i32, ptr @W_fbh
+  %fbwd = sitofp i32 %fbw to double
+  %fbhd = sitofp i32 %fbh to double
+  %cw = fmul double %fbwd, %scd
+  %ch = fmul double %fbhd, %scd
+  %in1 = fcmp oge double %px, 0.0
+  %in2 = fcmp olt double %px, %cw
+  %in3 = fcmp oge double %py, 0.0
+  %in4 = fcmp olt double %py, %ch
+  %ina = and i1 %in1, %in2
+  %inb = and i1 %in3, %in4
+  %in = and i1 %ina, %inb
+  br i1 %in, label %get, label %out
+get:
+  %at = getelementptr [8 x ptr], ptr @W_curs, i32 0, i32 %slot
+  %cur = load ptr, ptr %at
+  %none = icmp eq ptr %cur, null
+  br i1 %none, label %out, label %set
+set:
+  %sel_set = call ptr @sel_registerName(ptr @.s_curset)
+  call void (ptr, ptr) @objc_msgSend(ptr %cur, ptr %sel_set)
   br label %out
 out:
   ret void

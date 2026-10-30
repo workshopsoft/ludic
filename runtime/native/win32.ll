@@ -165,9 +165,27 @@ setcur:
   %hit = and i64 %lp, 65535
   %client = icmp eq i64 %hit, 1                 ; HTCLIENT
   %both = and i1 %ishid, %client
-  br i1 %both, label %nocur, label %def
+  br i1 %both, label %nocur, label %mine
 nocur:
   %c = call ptr @SetCursor(ptr null)
+  ret i64 1
+mine:
+  ; the game's own pointer over the client area (win_cursor_use); the OS's anywhere else
+  %slot = load i32, ptr @W_cur_use
+  %sys = icmp slt i32 %slot, 0
+  %big = icmp sgt i32 %slot, 7
+  %notmine0 = or i1 %sys, %big
+  %notclient = xor i1 %client, true
+  %notmine1 = or i1 %notmine0, %notclient
+  %notmine = or i1 %notmine1, %ishid
+  br i1 %notmine, label %def, label %minecur
+minecur:
+  %cat = getelementptr [8 x ptr], ptr @W_curs, i32 0, i32 %slot
+  %cur = load ptr, ptr %cat
+  %nocurs = icmp eq ptr %cur, null
+  br i1 %nocurs, label %def, label %setmine
+setmine:
+  %cm = call ptr @SetCursor(ptr %cur)
   ret i64 1
 def:
   %r = call i64 @DefWindowProcW(ptr %hwnd, i32 %msg, i64 %wp, i64 %lp)
@@ -1816,5 +1834,181 @@ freepx:
   call void @free(ptr %px)
   br label %out
 out:
+  ret void
+}
+
+; ---- the clipboard (CF_UNICODETEXT through UTF-8) ---------------------------------------------------------------------------------------
+; win_clip_get: a copy of the clipboard's text as UTF-8, NUL-terminated, the caller's ("" when it holds none); win_clip_set: the text put on it
+declare i32 @OpenClipboard(ptr)
+declare i32 @CloseClipboard()
+declare i32 @EmptyClipboard()
+declare ptr @GetClipboardData(i32)
+declare ptr @SetClipboardData(i32, ptr)
+declare ptr @GlobalLock(ptr)
+declare i32 @GlobalUnlock(ptr)
+declare ptr @GlobalAlloc(i32, i64)
+declare i32 @WideCharToMultiByte(i32, i32, ptr, i32, ptr, i32, ptr, ptr)
+
+define ptr @win_clip_get() {
+entry:
+  %ok = call i32 @OpenClipboard(ptr null)
+  %opened = icmp ne i32 %ok, 0
+  br i1 %opened, label %get, label %empty
+get:
+  %h = call ptr @GetClipboardData(i32 13)               ; CF_UNICODETEXT
+  %noh = icmp eq ptr %h, null
+  br i1 %noh, label %close_empty, label %lock
+lock:
+  %w = call ptr @GlobalLock(ptr %h)
+  %now = icmp eq ptr %w, null
+  br i1 %now, label %close_empty, label %size
+size:
+  %n = call i32 @WideCharToMultiByte(i32 65001, i32 0, ptr %w, i32 -1, ptr null, i32 0, ptr null, ptr null)
+  %bad = icmp sle i32 %n, 0
+  br i1 %bad, label %unlock_empty, label %conv
+conv:
+  %n64 = sext i32 %n to i64
+  %out = call ptr @malloc(i64 %n64)
+  call i32 @WideCharToMultiByte(i32 65001, i32 0, ptr %w, i32 -1, ptr %out, i32 %n, ptr null, ptr null)
+  call i32 @GlobalUnlock(ptr %h)
+  call i32 @CloseClipboard()
+  ret ptr %out
+unlock_empty:
+  call i32 @GlobalUnlock(ptr %h)
+  br label %close_empty
+close_empty:
+  call i32 @CloseClipboard()
+  br label %empty
+empty:
+  %e = call ptr @malloc(i64 1)
+  store i8 0, ptr %e
+  ret ptr %e
+}
+define void @win_clip_set(ptr %text) {
+entry:
+  %n = call i32 @MultiByteToWideChar(i32 65001, i32 0, ptr %text, i32 -1, ptr null, i32 0)
+  %bad = icmp sle i32 %n, 0
+  br i1 %bad, label %out, label %alloc
+alloc:
+  %n64 = sext i32 %n to i64
+  %bytes = mul i64 %n64, 2
+  %g = call ptr @GlobalAlloc(i32 2, i64 %bytes)         ; GMEM_MOVEABLE: the clipboard owns it once set
+  %nog = icmp eq ptr %g, null
+  br i1 %nog, label %out, label %fill
+fill:
+  %w = call ptr @GlobalLock(ptr %g)
+  call i32 @MultiByteToWideChar(i32 65001, i32 0, ptr %text, i32 -1, ptr %w, i32 %n)
+  call i32 @GlobalUnlock(ptr %g)
+  %ok = call i32 @OpenClipboard(ptr null)
+  %opened = icmp ne i32 %ok, 0
+  br i1 %opened, label %put, label %out
+put:
+  call i32 @EmptyClipboard()
+  call ptr @SetClipboardData(i32 13, ptr %g)
+  call i32 @CloseClipboard()
+  br label %out
+out:
+  ret void
+}
+
+; win_focused: 1 while the game's window is the foreground window, else 0 (the shell's mouse lock follows it)
+define i32 @win_focused() {
+entry:
+  %h = load ptr, ptr @W_hwnd
+  %fg = call ptr @GetForegroundWindow()
+  %same = icmp eq ptr %h, %fg
+  %nn = icmp ne ptr %h, null
+  %ok = and i1 %same, %nn
+  %r = zext i1 %ok to i32
+  ret i32 %r
+}
+
+; ---- the game's own pointer (win_cursor_make / win_cursor_use) ---------------------------------------------------------------------------
+; up to 8 cursors made from PNG bytes (the pixels as they are: the game hands the PNG drawn for the display's scale, w x h its size in
+; points), and the one in use (-1: the system's). WM_SETCURSOR puts it up over the client area
+@W_curs    = internal global [8 x ptr] zeroinitializer
+@W_cur_use = internal global i32 -1
+
+define void @win_cursor_make(i32 %slot, ptr %bytes, i32 %len, i32 %wi, i32 %hi_, i32 %hxi_, i32 %hyi_) {
+entry:
+  %w = sitofp i32 %wi to double
+  %h = sitofp i32 %hi_ to double
+  %hx = sitofp i32 %hxi_ to double
+  %hy = sitofp i32 %hyi_ to double
+  %wp = alloca i32, align 4
+  %hp = alloca i32, align 4
+  %dpip = alloca i32, align 4
+  %bmi = alloca [44 x i8], align 4
+  %bitsp = alloca ptr, align 8
+  %ii = alloca [32 x i8], align 8               ; ICONINFO: fIcon 0, xHotspot 4, yHotspot 8, hbmMask 16, hbmColor 24
+  %lo = icmp slt i32 %slot, 0
+  %hi = icmp sgt i32 %slot, 7
+  %bad = or i1 %lo, %hi
+  br i1 %bad, label %out, label %dec
+dec:
+  %px = call ptr @w_decode(ptr %bytes, i32 %len, ptr %wp, ptr %hp, ptr %dpip)
+  %nopx = icmp eq ptr %px, null
+  br i1 %nopx, label %out, label %dib
+dib:
+  %pw = load i32, ptr %wp
+  %ph = load i32, ptr %hp
+  call void @llvm.memset.p0.i64(ptr %bmi, i8 0, i64 44, i1 false)
+  store i32 40, ptr %bmi
+  %bw = getelementptr i8, ptr %bmi, i64 4
+  store i32 %pw, ptr %bw
+  %nh = sub i32 0, %ph
+  %bh = getelementptr i8, ptr %bmi, i64 8
+  store i32 %nh, ptr %bh
+  %bpl = getelementptr i8, ptr %bmi, i64 12
+  store i16 1, ptr %bpl
+  %bbc = getelementptr i8, ptr %bmi, i64 14
+  store i16 32, ptr %bbc
+  store ptr null, ptr %bitsp
+  %color = call ptr @CreateDIBSection(ptr null, ptr %bmi, i32 0, ptr %bitsp, ptr null, i32 0)
+  %nocolor = icmp eq ptr %color, null
+  br i1 %nocolor, label %freepx, label %fill
+fill:
+  %bits = load ptr, ptr %bitsp
+  %w64 = sext i32 %pw to i64
+  %h64 = sext i32 %ph to i64
+  %n = mul i64 %w64, %h64
+  %nb = mul i64 %n, 4
+  call void @llvm.memcpy.p0.p0.i64(ptr %bits, ptr %px, i64 %nb, i1 false)
+  %mask = call ptr @CreateBitmap(i32 %pw, i32 %ph, i32 1, i32 1, ptr null)
+  ; the hot spot in the PNG's pixels: points times its pixels per point
+  %pwd = sitofp i32 %pw to double
+  %sx = fdiv double %pwd, %w
+  %hxp = fmul double %hx, %sx
+  %hxi = fptosi double %hxp to i32
+  %phd = sitofp i32 %ph to double
+  %sy = fdiv double %phd, %h
+  %hyp = fmul double %hy, %sy
+  %hyi = fptosi double %hyp to i32
+  call void @llvm.memset.p0.i64(ptr %ii, i8 0, i64 32, i1 false)
+  store i32 0, ptr %ii
+  %xh = getelementptr i8, ptr %ii, i64 4
+  store i32 %hxi, ptr %xh
+  %yh = getelementptr i8, ptr %ii, i64 8
+  store i32 %hyi, ptr %yh
+  %mp = getelementptr i8, ptr %ii, i64 16
+  store ptr %mask, ptr %mp
+  %cp = getelementptr i8, ptr %ii, i64 24
+  store ptr %color, ptr %cp
+  %cur = call ptr @CreateIconIndirect(ptr %ii)
+  %d1 = call i32 @DeleteObject(ptr %mask)
+  %d2 = call i32 @DeleteObject(ptr %color)
+  %at = getelementptr [8 x ptr], ptr @W_curs, i32 0, i32 %slot
+  store ptr %cur, ptr %at
+  br label %freepx
+freepx:
+  call void @free(ptr %px)
+  br label %out
+out:
+  ret void
+}
+
+define void @win_cursor_use(i32 %slot) {
+entry:
+  store i32 %slot, ptr @W_cur_use
   ret void
 }

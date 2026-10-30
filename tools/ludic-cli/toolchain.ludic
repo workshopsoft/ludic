@@ -10,7 +10,8 @@ function build_tool(name: pointer, src: pointer) -> bool {
   # write to a temp then move, so a running bin/ludic can rebuild itself in place
   # (Windows lets a running executable be renamed, never replaced, so the old one
   # steps aside first)
-  if not shq(`{cc()} -O2 {ll} -o {out}.tmp`) { print(`build failed: {name} (link)`); return false }
+  # a tool that reads the clock (the UI preview's text fields time their presses) links the runtime's
+  if not shq(`{cc()} -O2 {ll}{rt_link_flags(ll)} -o {out}.tmp`) { print(`build failed: {name} (link)`); return false }
   if host_windows() { shell(`rm -f {out}.old; mv -f {out} {out}.old 2>/dev/null; mv -f {out}.tmp {out} && rm -f {ll} {out}.old 2>/dev/null`) }
   else { shell(`mv -f {out}.tmp {out} && rm -f {ll}`) }
   return true

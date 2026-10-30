@@ -2019,6 +2019,28 @@ extern function win_native_window() -> pointer = "win_native_window"
 extern function win_native_instance() -> pointer = "win_native_instance"
 extern function win_metal_layer() -> pointer = "win_metal_layer"
 extern function win_visible() -> int = "win_visible"
+extern function win_focused() -> int = "win_focused"
+# the game's window has the keyboard (the key window on a Mac, the foreground window on Windows; always, headless): a game's mouse lock
+# follows it
+export function r3d_window_focused() -> bool { return win_focused() != 0 }
+
+extern function win_cursor_make(slot: int, bytes: pointer, len: int, w: int, h: int, hx: int, hy: int) -> void = "win_cursor_make"
+extern function win_cursor_use(slot: int) -> void = "win_cursor_use"
+# the game's own pointer, as the OS's hardware cursor (it keeps up with the mouse whatever the frame rate): slot 0-7 made from
+# <base>@1x.png or <base>@2x.png by the display's scale, its size and hot spot in points. False when the PNG is not there
+@alloc_ok("a cursor made: its PNG read and let go")
+export function r3d_cursor_make(slot: int, base: string, size: int, hx: int, hy: int) -> bool {
+  var path = `{base}@1x.png`
+  if win_scale() >= 2 { path = `{base}@2x.png` }
+  if not Fs.exists(path) { return false }
+  let b = Fs.read_bytes(path)
+  if b == null { return false }
+  win_cursor_make(slot, b, len(b), size, size, hx, hy)
+  free(b)
+  return true
+}
+# the pointer shown while the cursor is free and over the window: a slot made above, or -1 for the system's
+export function r3d_cursor_use(slot: int) -> void { win_cursor_use(slot) }
 
 function gvk_surface_os(render3d_st: mut Render3dState, out: pointer) -> bool {
   if Os.platform() == "macos" {

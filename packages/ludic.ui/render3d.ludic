@@ -41,24 +41,32 @@ export function ui_atlas(ui_st: mut UiState, prefix: string, tex: int, cols: int
 }
 function r3u_now() -> float { return float(Time.now_us() / 1000) / 1000.0 }
 function r3u_scale(ui_st: UiState) -> float { return float(gfx_height()) / 1080.0 * ui_st.r3u_user }
-function r3u_pointer_scale() -> float { return float(gfx_pixel_scale()) }
+# Input.mouse_x/y are already the drawable's pixels (the runtime's own fix, cocoa.ll ae4acdec, after this backend's 40a91f39 scaled them
+# itself): scaling again put every hit at twice its distance from the corner on a Retina screen
+function r3u_pointer_scale() -> float { return 1.0 }
 function r3u_r(c: int) -> float { return float((c / 65536) % 256) / 255.0 }
 function r3u_g(c: int) -> float { return float((c / 256) % 256) / 255.0 }
 function r3u_b(c: int) -> float { return float(c % 256) / 255.0 }
 function r3u_rect(render3d_st: mut Render3dState, x: float, y: float, w: float, h: float, c: int, a: float) -> void { ov_rect(render3d_st, int(x), int(y), int(w), int(h), r3u_r(c), r3u_g(c), r3u_b(c), a) }
-# a rounded rectangle: a cross of two rects and a disc in each corner
+# a rounded rectangle: a cross of three rects and a quarter disc in each corner, none over another (a see-through panel stays one colour)
 function r3u_round(render3d_st: mut Render3dState, x: float, y: float, w: float, h: float, rad0: float, c: int, a: float) -> void {
   let rad = Math.min(rad0, Math.min(w, h) / 2.0)
   let r = r3u_r(c)
   let g = r3u_g(c)
   let b = r3u_b(c)
-  ov_rect(render3d_st, int(x + rad), int(y), int(w - rad * 2.0), int(h), r, g, b, a)
-  ov_rect(render3d_st, int(x), int(y + rad), int(rad), int(h - rad * 2.0), r, g, b, a)
-  ov_rect(render3d_st, int(x + w - rad), int(y + rad), int(rad), int(h - rad * 2.0), r, g, b, a)
-  ov_disc(render3d_st, x + rad, y + rad, rad, 12, r, g, b, a)
-  ov_disc(render3d_st, x + w - rad, y + rad, rad, 12, r, g, b, a)
-  ov_disc(render3d_st, x + rad, y + h - rad, rad, 12, r, g, b, a)
-  ov_disc(render3d_st, x + w - rad, y + h - rad, rad, 12, r, g, b, a)
+  let q = 1.5707964
+  let ri = float(int(rad + 0.5))
+  ov_rect(render3d_st, int(x + ri), int(y), int(x + w - ri) - int(x + ri), int(h), r, g, b, a)
+  ov_rect(render3d_st, int(x), int(y + ri), int(x + ri) - int(x), int(y + h - ri) - int(y + ri), r, g, b, a)
+  ov_rect(render3d_st, int(x + w - ri), int(y + ri), int(x + w) - int(x + w - ri), int(y + h - ri) - int(y + ri), r, g, b, a)
+  let x0 = float(int(x + ri))
+  let x1 = float(int(x + w - ri))
+  let y0 = float(int(y + ri))
+  let y1 = float(int(y + h - ri))
+  ov_pie(render3d_st, x0, y0, ri, q * 2.0, q, 6, r, g, b, a)
+  ov_pie(render3d_st, x1, y0, ri, q * 3.0, q, 6, r, g, b, a)
+  ov_pie(render3d_st, x1, y1, ri, 0.0, q, 6, r, g, b, a)
+  ov_pie(render3d_st, x0, y1, ri, q, q, 6, r, g, b, a)
 }
 # a rounded frame: four straight edges and a quarter arc at each corner
 function r3u_ring(render3d_st: mut Render3dState, x: float, y: float, w: float, h: float, rad0: float, t: float, c: int, a: float) -> void {
@@ -66,10 +74,12 @@ function r3u_ring(render3d_st: mut Render3dState, x: float, y: float, w: float, 
   let r = r3u_r(c)
   let g = r3u_g(c)
   let b = r3u_b(c)
-  ov_rect(render3d_st, int(x + rad), int(y), int(w - rad * 2.0), int(t), r, g, b, a)
-  ov_rect(render3d_st, int(x + rad), int(y + h - t), int(w - rad * 2.0), int(t), r, g, b, a)
-  ov_rect(render3d_st, int(x), int(y + rad), int(t), int(h - rad * 2.0), r, g, b, a)
-  ov_rect(render3d_st, int(x + w - t), int(y + rad), int(t), int(h - rad * 2.0), r, g, b, a)
+  # the straight edges at the arcs' own (unrounded) coordinates, so they meet the corners without a notch
+  ov_use_tex(render3d_st, render3d_st.ov_white)
+  ov_quad(render3d_st, x + rad, y, x + w - rad, y + t, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+  ov_quad(render3d_st, x + rad, y + h - t, x + w - rad, y + h, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+  ov_quad(render3d_st, x, y + rad, x + t, y + h - rad, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+  ov_quad(render3d_st, x + w - t, y + rad, x + w, y + h - rad, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
   let q = 1.5707964
   ov_arc(render3d_st, x + rad, y + rad, rad - t / 2.0, t, q * 2.0, q, 8, r, g, b, a)
   ov_arc(render3d_st, x + w - rad, y + rad, rad - t / 2.0, t, q * 3.0, q, 8, r, g, b, a)

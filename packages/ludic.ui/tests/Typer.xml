@@ -1,0 +1,1 @@
+<div class="typer"><input id="f" type="text" value="{name}" maxlength="{20}" on-change="set(event.value)" on-submit="go()"/><p>sent {sent}</p></div>

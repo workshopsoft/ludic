@@ -8,49 +8,60 @@ function fr_in(n: UiNode, px: float, py: float) -> bool {
   if n.ex != null and n.ex.no_pointer { return false }
   return px >= n.x and py >= n.y and px < n.x + n.cw and py < n.y + n.ch
 }
-# the nearest element that wants `kind`, out from the topmost one under the point: the children are
-# walked the other way from how they are painted (positioned ones by z-index, highest first, then
-# the flow, last first; a popover is on the top layer, not here), with no list made for it
+# the nearest element that wants `kind`, out from the topmost one under the point (its parents in turn, up to n): as a browser does it
 function fr_pick(n: UiNode, px: float, py: float, kind: int) -> UiNode {
-  if n.children == null { return fr_wants(n, kind) }
-  var lo = 1000000
-  var hi = -1000000
-  for i in 0 .. len(n.children) {
-    let c = n.children[i]
-    if c.pos != 0 and not c.popover {
-      lo = Math.min(lo, c.z)
-      hi = Math.max(hi, c.z)
-    }
+  var h = fr_top(n, px, py)
+  while h != null {
+    let w = fr_wants(h, kind)
+    if w != null { return w }
+    if h == n { return null }
+    h = h.parent
   }
-  var z = hi
-  while z >= lo {
-    var i = len(n.children) - 1
-    while i >= 0 {
-      let c = n.children[i]
-      if c.pos != 0 and not c.popover and c.z == z and fr_in(c, px, py) { return fr_pick_in(n, c, px, py, kind) }
-      i -= 1
-    }
-    z -= 1
-  }
-  var k = len(n.children) - 1
-  while k >= 0 {
-    let c = n.children[k]
-    if c.pos == 0 and not c.popover and fr_in(c, px, py) { return fr_pick_in(n, c, px, py, kind) }
-    if c.pos == 0 and not c.popover and fr_empty(c) {
-      let r = fr_pick(c, px, py, kind)
-      if r != null and r != c { return r }
-    }
-    k -= 1
-  }
-  return fr_wants(n, kind)
+  return null
 }
-# a box with no size of its own - a component's root <div> round a positioned screen - holds no point
-# and clips nothing: what it holds is looked through it (a screen in one was pressed and hovered never)
-function fr_empty(n: UiNode) -> bool { return n.children != null and (n.cw <= 0.0 or n.ch <= 0.0) }
-function fr_pick_in(n: UiNode, c: UiNode, px: float, py: float, kind: int) -> UiNode {
-  let r = fr_pick(c, px, py, kind)
-  if r != null { return r }
-  return fr_wants(n, kind)
+# the topmost element under the point: the children walked the other way from how they are painted (positioned ones by z-index,
+# highest first, then the flow, last first; a popover is on the top layer, not here). A child is looked into even where its parent's
+# box does not reach - a pin's label, a badge over a corner, a positioned menu hang outside it and are pressed as they are seen - but
+# a box that clips (overflow) holds nothing outside itself, and pointer-events: none lets the point through all of it
+function fr_top(n: UiNode, px: float, py: float) -> UiNode {
+  if n.hidden or (n.ex != null and n.ex.no_pointer) { return null }
+  let inside = px >= n.x and py >= n.y and px < n.x + n.cw and py < n.y + n.ch
+  if not inside and n.kind == UI_SCROLL { return null }
+  if n.children != null {
+    var lo = 1000000
+    var hi = -1000000
+    for i in 0 .. len(n.children) {
+      let c = n.children[i]
+      if c.pos != 0 and not c.popover {
+        lo = Math.min(lo, c.z)
+        hi = Math.max(hi, c.z)
+      }
+    }
+    var z = hi
+    while z >= lo {
+      var i = len(n.children) - 1
+      while i >= 0 {
+        let c = n.children[i]
+        if c.pos != 0 and not c.popover and c.z == z {
+          let r = fr_top(c, px, py)
+          if r != null { return r }
+        }
+        i -= 1
+      }
+      z -= 1
+    }
+    var k = len(n.children) - 1
+    while k >= 0 {
+      let c = n.children[k]
+      if c.pos == 0 and not c.popover {
+        let r = fr_top(c, px, py)
+        if r != null { return r }
+      }
+      k -= 1
+    }
+  }
+  if inside { return n }
+  return null
 }
 function fr_wants(n: UiNode, kind: int) -> UiNode {
   if kind == PK_CONTROL and (n.focusable or n.act != null) { return n }

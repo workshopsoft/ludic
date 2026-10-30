@@ -9,6 +9,10 @@ program UiClickTest {
     state n: int = 0
     on hit() { n += 1 }
   }
+  component Hanger {
+    state n: int = 0
+    on hit() { n += 1 }
+  }
 
   function frame(ui_st: mut UiState) -> void {
     ui_show(ui_st, "Clicker", null, 0.0, 0.0, 1920.0, 1080.0)
@@ -36,5 +40,18 @@ program UiClickTest {
     ui_click(ui_st, 1900.0, 1070.0)
     for i in 0 .. 4 { frame(ui_st) }
     expect(Text.contains(text(ui_st), "Go 1"))
+  }
+  # a positioned button hanging below its parent's box is pressed where it is drawn (a browser's hit test: only a box that clips holds
+  # nothing outside itself)
+  test "a button outside its parent's box is still pressed" (ui_st: mut UiState) {
+    let be = new UiBackend
+    be.input = false
+    ui_backend(ui_st, be)
+    ui_show(ui_st, "Hanger", null, 0.0, 0.0, 1920.0, 1080.0)
+    let b = ui_box(ui_st, "tab")
+    expect(b.y >= 40.0)
+    ui_click(ui_st, b.x + 10.0, b.y + 10.0)
+    for i in 0 .. 4 { ui_show(ui_st, "Hanger", null, 0.0, 0.0, 1920.0, 1080.0) }
+    expect(Text.contains(ui_dump(ui_nodes(ui_st, "Hanger", null), 0), "Tab 1"))
   }
 }

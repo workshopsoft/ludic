@@ -9,7 +9,7 @@ function ct_type(n: UiNode) -> string {
   if t == "" { return "text" }
   return t
 }
-function ct_takes_arrows(n: UiNode) -> bool { return ct_type(n) == "range" or ct_type(n) == "select" or ct_type(n) == "number" }
+function ct_takes_arrows(n: UiNode) -> bool { return ct_type(n) == "range" or ct_type(n) == "select" or ct_type(n) == "number" or ct_type(n) == "text" }
 function ct_takes_space(n: UiNode) -> bool { return ct_type(n) == "text" }
 function ct_change(ui_st: mut UiState, n: UiNode, v: Val) -> void {
   ui_sound(ui_st, ct_sound(n))
@@ -50,6 +50,10 @@ function ct_range_set(ui_st: mut UiState, n: UiNode, v0: float) -> void {
 }
 # a range's track pressed or dragged: the value where the pointer is
 function ct_press(ui_st: mut UiState, n: UiNode, x: float, y: float) -> void {
+  if ct_type(n) == "text" {
+    tx_press(ui_st, n, x, false)
+    return
+  }
   if ct_type(n) != "range" { return }
   for i in 0 .. len(n.children) {
     let t = n.children[i]
@@ -65,6 +69,10 @@ function ct_press(ui_st: mut UiState, n: UiNode, x: float, y: float) -> void {
 }
 function ct_drag(ui_st: mut UiState, root: UiNode, key: string, x: float, y: float) -> void {
   let n = fr_node(root, key)
+  if n != null and ct_type(n) == "text" {
+    tx_press(ui_st, n, x, true)                       # a drag: the selection's caret end follows the pointer
+    return
+  }
   if n != null { ct_press(ui_st, n, x, y) }
 }
 # typing into a focused text field, or the key a key field is waiting for
@@ -73,13 +81,7 @@ function ct_typed(ui_st: mut UiState, n: UiNode) -> void {
   let t = ct_type(n)
   if t == "key" { ct_key_typed(ui_st, n) }
   if t == "number" { ct_num_typed(ui_st, n) }
-  if t != "text" or (ui_st.in_now.typed == "" and not ui_st.in_now.backspace) { return }
-  var s = ui_attr_text(n, "value")
-  if ui_st.in_now.backspace and len(s) > 0 { s = s[0..ct_char_start(s)] }
-  var max = Value.as_int(ui_attr(n, "maxlength"))
-  if max <= 0 { max = 1000 }
-  if len(ui_st.in_now.typed) > 0 and len(s) < max { s = s + ui_st.in_now.typed[0..Math.min(len(ui_st.in_now.typed), max - len(s))] }
-  ui_fire(ui_st, n, "change", Value.str(s))
+  if t == "text" { tx_keys(ui_st, n) }                 # controls_text.ludic: the caret, the selection, the clipboard
 }
 # where the last UTF-8 character starts, so Backspace takes a whole letter
 function ct_char_start(s: string) -> int {

@@ -150,7 +150,7 @@ function title_flag() -> pointer {
 # A program that uses the window layer (Vk.*, Time.now_us) references rtlib.ll's float, memory
 # and clock helpers; link it only then, so other builds are untouched.
 function rt_link_flags(ll: pointer) -> pointer {
-  if not shq(`grep -q -E "@(clock_now_us|clock_sleep_us|win_drawable|win_scale|win_resize|fx_to_f32|mem_off|f_add)" {ll}`) { return "" }
+  if not shq(`grep -q -E "@(clock_now_us|clock_sleep_us|win_drawable|win_scale|win_resize|win_clip_get|win_clip_set|win_focused|win_cursor_make|win_cursor_use|fx_to_f32|mem_off|f_add)" {ll}`) { return "" }
   let home = ludic_home()
   return ` {home}runtime/native/rtlib.ll`
 }

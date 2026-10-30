@@ -17,7 +17,8 @@ export state DevlinkKeyState {
   dk_hold_us: long = 0       # how long each tap of a repeat is down
   dk_key: int = -1           # the key a repeat presses
 }
-# a name a UI or a player's gameplay answers (arrows, enter, escape, tab, space, backspace, shift, w a s d f r t q e z c x v), or a key code
+# a name a UI or a player's gameplay answers (arrows, enter, escape, tab, space, backspace, shift, ctrl, alt, cmd, home, end, delete,
+# w a s d f r t q e z c x v), or a key code
 function dk_code_of(s: string) -> int {
   if s == "up" { return Key.Up }
   if s == "down" { return Key.Down }
@@ -29,6 +30,12 @@ function dk_code_of(s: string) -> int {
   if s == "space" { return Key.Space }
   if s == "backspace" { return Key.Backspace }
   if s == "shift" { return Key.Shift }
+  if s == "ctrl" { return 17 }
+  if s == "alt" { return 18 }
+  if s == "cmd" { return 19 }
+  if s == "home" { return Key.Home }
+  if s == "end" { return Key.End }
+  if s == "delete" { return Key.Delete }
   if s == "w" { return Key.W }
   if s == "a" { return Key.A }
   if s == "s" { return Key.S }

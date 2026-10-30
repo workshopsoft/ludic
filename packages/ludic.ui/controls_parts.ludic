@@ -67,8 +67,10 @@ function ct_is_int(s: string, i: int) -> bool {
 }
 
 # a press let go over a control: on a select's < it steps back, anywhere else on it forward (the <
-# stepped forward too, so a cycler's left arrow did the right one's job)
+# stepped forward too, so a cycler's left arrow did the right one's job). On a text field it is only the caret put (tx_press): Enter
+# submits it, a click never did in any browser
 function ct_activate_at(ui_st: mut UiState, n: UiNode, x: float, y: float) -> void {
+  if ct_type(n) == "text" { return }
   if ct_type(n) == "select" and ct_over_part(n, "ui-prev", x, y) {
     ct_step(ui_st, n, -1)
     return

@@ -29,6 +29,8 @@ function in_repeat(ui_st: mut UiState, i: UiInput) -> void {
   i.down_key = rp_fire(ui_st, 1, i.held_down, i.down_key, now)
   i.left = rp_fire(ui_st, 2, i.held_left, i.left, now)
   i.right = rp_fire(ui_st, 3, i.held_right, i.right, now)
+  i.backspace = tx_repeat(ui_st, 4, i.held_back, i.backspace, now)
+  i.delete = tx_repeat(ui_st, 5, i.held_del, i.delete, now)
   if i.pad_a and not ui_st.rp_a { i.enter = true }
   if i.pad_b and not ui_st.rp_b { i.escape = true }
   ui_st.rp_a = i.pad_a
@@ -52,5 +54,19 @@ export function rp_fire(ui_st: mut UiState, k: int, held: bool, edge: bool, now:
   if now + 0.000001 < ui_st.rp_next[k] { return false }
   ui_st.rp_next[k] = ui_st.rp_next[k] + ui_st.rp_every
   if ui_st.rp_next[k] <= now { ui_st.rp_next[k] = now + ui_st.rp_every }
+  return true
+}
+# Backspace and Delete held: once on the press, then after half a second thirty times a second (a native field's pace, not a menu's)
+function tx_repeat(ui_st: mut UiState, k: int, held: bool, edge: bool, now: float) -> bool {
+  if not held {
+    ui_st.rp_next[k] = -1.0
+    return edge
+  }
+  if ui_st.rp_next[k] < 0.0 {
+    ui_st.rp_next[k] = now + 0.5
+    return true
+  }
+  if now < ui_st.rp_next[k] { return false }
+  ui_st.rp_next[k] = Math.max(ui_st.rp_next[k] + 0.033, now)
   return true
 }
