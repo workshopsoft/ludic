@@ -1563,6 +1563,24 @@ go:
 out:
   ret void
 }
+; Whether the window is in full screen NOW, read from the window itself (styleMask has NSWindowStyleMaskFullScreen, 1 << 14, as the
+; transition starts and loses it as it ends): toggleFullScreen: is a toggle and animated, so a caller that only remembers what it asked for
+; goes the wrong way when the window is already there, or is called during a transition
+define i32 @win_is_fullscreen() {
+entry:
+  %win = load ptr, ptr @W_win
+  %nowin = icmp eq ptr %win, null
+  br i1 %nowin, label %none, label %go
+go:
+  %sel_get = call ptr @sel_registerName(ptr @.s_getsm)
+  %sm = call i64 (ptr, ptr) @objc_msgSend(ptr %win, ptr %sel_get)
+  %bit = and i64 %sm, 16384
+  %is = icmp ne i64 %bit, 0
+  %r = zext i1 %is to i32
+  ret i32 %r
+none:
+  ret i32 0
+}
 ; Retina (backing-resolution) drawable on or off: the pixel scale follows
 define void @win_retina(i32 %on) {
 entry:

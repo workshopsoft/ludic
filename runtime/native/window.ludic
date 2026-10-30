@@ -17,6 +17,7 @@ extern function win_scale() -> int = "win_scale"
 extern function win_drawable(out: pointer) = "win_drawable"
 extern function win_retina(on: int) = "win_retina"
 extern function win_toggle_fullscreen() = "win_toggle_fullscreen"
+extern function win_is_fullscreen() -> int = "win_is_fullscreen"
 # wall clock in microseconds — the only sub-second clock available to a Ludic program
 extern function clock_now_us() -> long = "clock_now_us"
 extern function clock_sleep_us(us: long) -> void = "clock_sleep_us"
@@ -74,6 +75,8 @@ function gfx_pixel_scale(rt_win_st: RtWinState) -> int { return rt_win_st.gfx_sc
 function gfx_set_window(w: int, h: int) -> void { if is_windowed() { win_resize(w, h) } }
 # backing pixels per window point right now (the window's own answer; 1 headless)
 function gfx_live_scale() -> int { if is_windowed() { return win_scale() } else { return 1 } }
+# whether the window is in full screen right now (the window's own answer, not what was last asked for; false headless)
+function gfx_is_fullscreen() -> bool { return is_windowed() and win_is_fullscreen() != 0 }
 function gfx_toggle_fullscreen() -> void { if is_windowed() { win_toggle_fullscreen() } }
 function gfx_set_retina(on: bool) -> void { if is_windowed() { var v = 0;  if on { v = 1 };  win_retina(v) } }
 # a renderer that owns its swapchain (render3d's Vulkan path) says what the drawable is

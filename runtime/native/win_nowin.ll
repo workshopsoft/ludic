@@ -23,6 +23,10 @@ define void @win_retina(i32 %on) {
 entry:
   ret void
 }
+define i32 @win_is_fullscreen() {
+entry:
+  ret i32 0
+}
 define void @win_toggle_fullscreen() {
 entry:
   ret void

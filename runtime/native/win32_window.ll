@@ -144,6 +144,13 @@ entry:
   ret void
 }
 
+; whether the window is in full screen now
+define i32 @win_is_fullscreen() {
+entry:
+  %fs = load i32, ptr @W_fs
+  ret i32 %fs
+}
+
 ; Borderless full screen over the window's monitor, and back to the frame and the
 ; rectangle it had. (Exclusive full screen would change the display mode under a
 ; player's other windows; nothing in the game needs it.)
