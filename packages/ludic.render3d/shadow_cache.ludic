@@ -22,9 +22,10 @@
 # came, went or moved. The first frame, a teleport or a floating-origin rebase, a new shadow resolution, shadows switched back on,
 # or the camera past a window's edge rebuild it whole, at once.
 #
-# The sun: Unreal throws the cache away whenever the light turns, so the shadows' sun is stepped (sh_sun: the sun at most
-# sc_step degrees ago); the daylight's sun moves smoothly for everything else. The live cascade casts along the newest step at once,
-# each cached one from its rebuild on.
+# The sun: Unreal throws the cache away whenever the light turns, so the cached cascades' sun is stepped (sh_sun_target: the sun at
+# most sc_step degrees ago, a step too small to show: the edge of a shadow 100 m long moves 0.17 m per 0.1 degree, under a texel of the
+# cascades that hold it; a coarser step ticked visibly). The live cascade casts along the daylight's sun itself (sh_sun), every frame,
+# so the shadows near the player turn smoothly; each cached one casts along the newest step from its rebuild on.
 #
 # What a still caster's change costs (sc_track), as Unreal's CSM cache: a cascade is drawn again only when a caster its layer holds goes
 # or moves (CSMSceneExtension.cpp FCSMSceneExtension::FUpdater::PreSceneUpdate invalidates the FCachedShadowMapData whose
@@ -39,7 +40,7 @@
 #
 # R3D_UE_SHADOW_CACHE=1 caches; 0 (the default, until proven) draws every cascade every frame as before; 2 draws the camera-centred
 # windows live every frame (to judge their texels against the slice fit). R3D_UE_SHADOW_CACHE_SLICES=1|2|3 (frames a rebuild takes),
-# _MARGIN (0.15), _SUN_STEP (degrees, 1), _TURN (degrees, 10). R3D_UE_SHADOW_CACHE_EXTRA=0: a new or shown caster rebuilds the cascades
+# _MARGIN (0.15), _SUN_STEP (degrees, 0.1), _TURN (degrees, 10). R3D_UE_SHADOW_CACHE_EXTRA=0: a new or shown caster rebuilds the cascades
 # (as before); _HIDE=1: a hidden one does too; _REMESH=1: a terrain patch's new level does too; _DYN_CULL=0: the moving casters culled
 # to the whole window.
 # ============================================================================
@@ -209,7 +210,7 @@ function shadow_cache_plan(render3d_st: mut Render3dState) -> void {
   render3d_st.sc_active = true
   # the sun, stepped: it moves on once the daylight's has gone sc_step degrees from it
   if v3_dot(render3d_st.sun_dir, render3d_st.sh_sun_target) < Math.cos(Math.deg_to_rad(render3d_st.sc_step)) { v3_copy(render3d_st.sh_sun_target, render3d_st.sun_dir) }
-  v3_copy(render3d_st.sh_sun, render3d_st.sh_sun_target)
+  v3_copy(render3d_st.sh_sun, render3d_st.sun_dir)             # the live cascade casts along the daylight's sun itself, every frame
   render3d_st.sc_k = sc_corner(render3d_st)
   # what throws the whole cache away
   let jump = v3_dist(render3d_st.cam_pos, render3d_st.sc_cam) > SC_JUMP

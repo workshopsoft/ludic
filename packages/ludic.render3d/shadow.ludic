@@ -152,7 +152,7 @@ function shadow_fit(render3d_st: mut Render3dState, c: int, near: float, far: fl
   # casters up to ~900 m toward the sun (a mountain across the valley), and the
   # slice itself behind the centre: a tight depth range keeps the bias small
   let back = radius + 900.0
-  v3_madd(eye, center, render3d_st.sh_sun, back)               # the shadows' sun: stepped while the cache is on (shadow_cache.ludic)
+  v3_madd(eye, center, render3d_st.sh_sun, back)               # the live cascade's sun: the daylight's (the cached cascades' is stepped, shadow_cache.ludic)
   let up = render3d_st.sh_fit_up
   v3_set(up, 0.0, 1.0, 0.0)
   m4_look_at(render3d_st.sh_tmp_view, eye, center, up)
