@@ -17,7 +17,7 @@ const OV_FLOATS: int = 8              # x, y, u, v, r, g, b, a
 # under OV_MAP_N (0: not in the atlas); anything above is looked up in the sorted tail.
 const OV_MAP_N: int = 8192
 const OV_MAX_RANGES: int = 512
-const OV_RANGE_W: int = 7             # texture, first quad, quad count, clip x, y, w, h (w = 0: none)
+const OV_RANGE_W: int = 8             # texture, first quad, quad count, clip x, y, w, h (w = 0: none), font atlas
 
 # The interface is sRGB. While the output is HDR10 the overlay draws with its HDR10 variant, which puts
 # the interface at the picture's paper white; the SDR program there sent sRGB values as PQ, and the
@@ -208,6 +208,11 @@ function ov_clip(render3d_st: mut Render3dState, x: int, y: int, w: int, h: int)
   render3d_st.ov_clip_x = x;  render3d_st.ov_clip_y = y;  render3d_st.ov_clip_w = w;  render3d_st.ov_clip_h = h
 }
 function ov_unclip(render3d_st: mut Render3dState) -> void { ov_close_range(render3d_st);  render3d_st.ov_clip_w = 0 }
+# Another font atlas from here on, in the same frame: the quads so far keep the atlas they were made with (each range carries its font, bound
+# per range at the flush). A game with several faces (a display face, numerals) calls this, then swaps ov_font and the glyph tables. Flushing
+# instead uploads the batch twice in one frame, and on Vulkan the second upload overwrote the first before its draws ran: what was drawn
+# before the swap was lost.
+function ov_font_break(render3d_st: mut Render3dState) -> void { ov_close_range(render3d_st) }
 # close the current draw range (quads since its start, with the current texture)
 function ov_close_range(render3d_st: mut Render3dState) -> void {
   let n = render3d_st.ov_n - render3d_st.ov_range_start
@@ -216,6 +221,7 @@ function ov_close_range(render3d_st: mut Render3dState) -> void {
   let o = render3d_st.ov_nr * OV_RANGE_W
   render3d_st.ov_ranges[o] = render3d_st.ov_tex;  render3d_st.ov_ranges[o + 1] = render3d_st.ov_range_start;  render3d_st.ov_ranges[o + 2] = n
   render3d_st.ov_ranges[o + 3] = render3d_st.ov_clip_x;  render3d_st.ov_ranges[o + 4] = render3d_st.ov_clip_y;  render3d_st.ov_ranges[o + 5] = render3d_st.ov_clip_w;  render3d_st.ov_ranges[o + 6] = render3d_st.ov_clip_h
+  render3d_st.ov_ranges[o + 7] = render3d_st.ov_font
   render3d_st.ov_nr += 1
   render3d_st.ov_range_start = render3d_st.ov_n
 }
@@ -241,11 +247,15 @@ function ov_flush(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_hdr_paper"), r3d_hdr_paper_nits(render3d_st))
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.ov_prog, "u_hdr_scale"), hs)
   var last = -1
+  var last_font = font
   var clipped = false
   for i in 0 .. render3d_st.ov_nr {
     let o = i * OV_RANGE_W
     let t = render3d_st.ov_ranges[o]
     if t != last { r3d_bind_2d(render3d_st, render3d_st.ov_prog, "u_tex", 0, t);  last = t }
+    var f = render3d_st.ov_ranges[o + 7]
+    if f == 0 { f = render3d_st.ov_white }
+    if f != last_font { r3d_bind_2d(render3d_st, render3d_st.ov_prog, "u_font", 1, f);  last_font = f }
     if render3d_st.ov_ranges[o + 5] > 0 {
       clipped = true
       gpu_scissor(render3d_st, render3d_st.ov_ranges[o + 3], render3d_st.ov_ranges[o + 4], render3d_st.ov_ranges[o + 5], render3d_st.ov_ranges[o + 6])
@@ -375,13 +385,13 @@ function ov_text_wrap(render3d_st: mut Render3dState, x: int, y: int, size: int,
     while i < n {
       if sp[i] == 10 { stop = i;  break }
       if sp[i] == 32 { last_space = i }
-      let piece: string = s[first .. i + 1]
+      let piece: string = s[first..i + 1]
       let pw = ov_text_w(render3d_st, size, piece)
       free(piece)
       if pw > maxw and last_space > first { stop = last_space;  break }
       i += 1
     }
-    let line: string = s[first .. stop]
+    let line: string = s[first..stop]
     ov_text(render3d_st, x, ly, size, line, r, g, b, a)
     free(line)
     ly += size * 13 / 10
@@ -430,6 +440,10 @@ function ov_line(render3d_st: mut Render3dState, x0: float, y0: float, x1: float
   let l = Math.max(Math.sqrt(dx * dx + dy * dy), 0.001)
   let nx = -dy / l * (t * 0.5);  let ny = dx / l * (t * 0.5)
   ov_quad4(render3d_st, x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+  # a pixel's fringe along each long side (a slanted line stepped without it)
+  let fx = -dy / l * OV_AA;  let fy = dx / l * OV_AA
+  ov_quad4a(render3d_st, x0 + nx, y0 + ny, a, x1 + nx, y1 + ny, a, x1 + nx + fx, y1 + ny + fy, 0.0, x0 + nx + fx, y0 + ny + fy, 0.0, r, g, b)
+  ov_quad4a(render3d_st, x0 - nx, y0 - ny, a, x1 - nx, y1 - ny, a, x1 - nx - fx, y1 - ny - fy, 0.0, x0 - nx - fx, y0 - ny - fy, 0.0, r, g, b)
 }
 # a sub-rectangle of a texture rotated by `ang` radians about its centre (cx, cy), `w` x `h` pixels
 function ov_sub_rot(render3d_st: mut Render3dState, tex: int, cx: int, cy: int, w: int, h: int, ang: float, u0: float, v0: float, u1: float, v1: float, r: float, g: float, b: float, a: float) -> void {
@@ -482,21 +496,94 @@ function ov_text_rot_sh(render3d_st: mut Render3dState, cx: float, cy: float, si
   ov_text_rot(render3d_st, cx, cy, size, s, ang, r, g, b, a)
 }
 # a filled circle approximated by `n` wedges (float-bit centre and radius)
-function ov_disc(render3d_st: mut Render3dState, cx: float, cy: float, rad: float, n: int, r: float, g: float, b: float, a: float) -> void {
-  ov_use_tex(render3d_st, render3d_st.ov_white)
-  let step = 2.0 * PI / float(n)
-  for i in 0 .. n {
-    let a0 = float(i) * step;  let a1 = a0 + step
-    let ax = cx + Math.cos(a0) * rad;  let ay = cy + Math.sin(a0) * rad
-    let bx = cx + Math.cos(a1) * rad;  let by = cy + Math.sin(a1) * rad
-    ov_quad4(render3d_st, cx, cy, ax, ay, bx, by, cx, cy, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
-  }
+# ---- shapes with anti-aliased edges ------------------------------------------------------------------------------------------------------
+# A curved or slanted edge is a fringe one pixel wide outside the shape whose alpha falls from the shape's to nothing, so it blends into what
+# is under it instead of stepping; curves get a segment every few pixels of their length. Nothing inside a shape is drawn twice, so a
+# see-through colour stays even (a rounded panel's corners join its rectangles along edges that carry no fringe).
+const OV_AA: float = 1.0                     # the fringe, pixels
+const OV_SEG_PX: float = 3.0                 # a curve's segment, pixels of arc at its outer radius
+
+# one triangle of the current texture, each corner with its own uv and alpha (a map clipped to a circle on the CPU: ludic.mapnav's radar);
+# it takes a quad's slot, its second triangle empty
+export function ov_tri(render3d_st: mut Render3dState, x0: float, y0: float, u0: float, v0: float, a0: float, x1: float, y1: float, u1: float, v1: float, a1: float, x2: float, y2: float, u2: float, v2: float, a2: float, r: float, g: float, b: float) -> void {
+  if render3d_st.ov_n >= OV_MAX_QUADS { ov_flush(render3d_st) }
+  let k = render3d_st.ov_n * 6
+  ov_vert(render3d_st, k, x0, y0, u0, v0, r, g, b, a0)
+  ov_vert(render3d_st, k + 1, x1, y1, u1, v1, r, g, b, a1)
+  ov_vert(render3d_st, k + 2, x2, y2, u2, v2, r, g, b, a2)
+  ov_vert(render3d_st, k + 3, x0, y0, u0, v0, r, g, b, 0.0)
+  ov_vert(render3d_st, k + 4, x0, y0, u0, v0, r, g, b, 0.0)
+  ov_vert(render3d_st, k + 5, x0, y0, u0, v0, r, g, b, 0.0)
+  render3d_st.ov_n += 1
 }
-# a ring: `n` segments of thickness `t`, from angle a0 for `span` radians (float bits)
-function ov_arc(render3d_st: mut Render3dState, cx: float, cy: float, rad: float, t: float, a0: float, span: float, n: int, r: float, g: float, b: float, a: float) -> void {
+# a quad whose corners carry their own alpha (the white texture)
+function ov_quad4a(render3d_st: mut Render3dState, x0: float, y0: float, a0: float, x1: float, y1: float, a1: float, x2: float, y2: float, a2: float, x3: float, y3: float, a3: float, r: float, g: float, b: float) -> void {
+  if render3d_st.ov_n >= OV_MAX_QUADS { ov_flush(render3d_st) }
+  let k = render3d_st.ov_n * 6
+  ov_vert(render3d_st, k, x0, y0, 0.0, 0.0, r, g, b, a0)
+  ov_vert(render3d_st, k + 1, x1, y1, 1.0, 0.0, r, g, b, a1)
+  ov_vert(render3d_st, k + 2, x2, y2, 1.0, 1.0, r, g, b, a2)
+  ov_vert(render3d_st, k + 3, x0, y0, 0.0, 0.0, r, g, b, a0)
+  ov_vert(render3d_st, k + 4, x2, y2, 1.0, 1.0, r, g, b, a2)
+  ov_vert(render3d_st, k + 5, x3, y3, 0.0, 1.0, r, g, b, a3)
+  render3d_st.ov_n += 1
+}
+function ov_segs(rad: float, span: float, n: int) -> int { return Math.clamp(Math.max(n, int(Math.abs(span) * rad / OV_SEG_PX) + 1), 1, 256) }
+
+# a band round (cx, cy) from radius ri to ro (ri 0: a slice of a disc), from angle a0 through span (radians, y down). Its outer edge, its
+# inner edge and its two sides are each anti-aliased when asked (a rounded corner's sides meet its panel's rectangles: no fringe there)
+export function ov_sector(render3d_st: mut Render3dState, cx: float, cy: float, ri: float, ro: float, a0: float, span: float, aa_in: bool, aa_out: bool, aa_sides: bool, r: float, g: float, b: float, a: float) -> void {
+  ov_use_tex(render3d_st, render3d_st.ov_white)
+  let n = ov_segs(ro, span, 1)
   let step = span / float(n)
+  # the fringe straddles the true edge, half a pixel either side, so a curve is as thick as a straight edge beside it
+  let f = OV_AA
+  let h = f * 0.5
+  var rc_o = ro
+  if aa_out { rc_o = Math.max(ro - h, 0.0) }
+  var rc_i = ri
+  if aa_in and ri > h { rc_i = ri + h }
   for i in 0 .. n {
     let b0 = a0 + float(i) * step;  let b1 = b0 + step
-    ov_line(render3d_st, cx + Math.cos(b0) * rad, cy + Math.sin(b0) * rad, cx + Math.cos(b1) * rad, cy + Math.sin(b1) * rad, t, r, g, b, a)
+    let c0 = Math.cos(b0);  let s0 = Math.sin(b0);  let c1 = Math.cos(b1);  let s1 = Math.sin(b1)
+    ov_quad4a(render3d_st, cx + c0 * rc_i, cy + s0 * rc_i, a, cx + c0 * rc_o, cy + s0 * rc_o, a, cx + c1 * rc_o, cy + s1 * rc_o, a, cx + c1 * rc_i, cy + s1 * rc_i, a, r, g, b)
+    if aa_out { ov_quad4a(render3d_st, cx + c0 * rc_o, cy + s0 * rc_o, a, cx + c0 * (ro + h), cy + s0 * (ro + h), 0.0, cx + c1 * (ro + h), cy + s1 * (ro + h), 0.0, cx + c1 * rc_o, cy + s1 * rc_o, a, r, g, b) }
+    if aa_in and ri > h { ov_quad4a(render3d_st, cx + c0 * (ri - h), cy + s0 * (ri - h), 0.0, cx + c0 * rc_i, cy + s0 * rc_i, a, cx + c1 * rc_i, cy + s1 * rc_i, a, cx + c1 * (ri - h), cy + s1 * (ri - h), 0.0, r, g, b) }
   }
+  if aa_sides {
+    # each side pushed out a pixel square to itself: before a0, and after a0 + span
+    let e0c = Math.cos(a0);  let e0s = Math.sin(a0)
+    let e1c = Math.cos(a0 + span);  let e1s = Math.sin(a0 + span)
+    let nx0 = e0s * f;  let ny0 = -e0c * f
+    let nx1 = -e1s * f;  let ny1 = e1c * f
+    ov_quad4a(render3d_st, cx + e0c * ri, cy + e0s * ri, a, cx + e0c * ro, cy + e0s * ro, a, cx + e0c * ro + nx0, cy + e0s * ro + ny0, 0.0, cx + e0c * ri + nx0, cy + e0s * ri + ny0, 0.0, r, g, b)
+    ov_quad4a(render3d_st, cx + e1c * ri, cy + e1s * ri, a, cx + e1c * ro, cy + e1s * ro, a, cx + e1c * ro + nx1, cy + e1s * ro + ny1, 0.0, cx + e1c * ri + nx1, cy + e1s * ri + ny1, 0.0, r, g, b)
+  }
+}
+# a slice of a disc, from angle a0 through span (radians, y down): its curve anti-aliased, its sides left sharp (a rounded panel's corner:
+# they meet the panel's rectangles). `n` is the fewest segments; a big one gets more
+export function ov_pie(render3d_st: mut Render3dState, cx: float, cy: float, rad: float, a0: float, span: float, n: int, r: float, g: float, b: float, a: float) -> void {
+  ov_sector(render3d_st, cx, cy, 0.0, rad, a0, span, false, true, false, r, g, b, a)
+}
+function ov_disc(render3d_st: mut Render3dState, cx: float, cy: float, rad: float, n: int, r: float, g: float, b: float, a: float) -> void {
+  ov_sector(render3d_st, cx, cy, 0.0, rad, 0.0, 2.0 * PI, false, true, false, r, g, b, a)
+}
+# a ring `t` pixels thick centred on radius `rad`, from angle a0 for `span` radians: both edges anti-aliased
+function ov_arc(render3d_st: mut Render3dState, cx: float, cy: float, rad: float, t: float, a0: float, span: float, n: int, r: float, g: float, b: float, a: float) -> void {
+  ov_sector(render3d_st, cx, cy, Math.max(rad - t * 0.5, 0.0), rad + t * 0.5, a0, span, true, true, false, r, g, b, a)
+}
+# a rounded rectangle: a cross of rectangles and an anti-aliased quarter disc at each corner, nothing drawn twice (a see-through colour
+# stays even)
+export function ov_round(render3d_st: mut Render3dState, x: float, y: float, w: float, h: float, rad0: float, r: float, g: float, b: float, a: float) -> void {
+  let rad = Math.min(rad0, Math.min(w, h) * 0.5)
+  let q = 1.5707964
+  ov_use_tex(render3d_st, render3d_st.ov_white)
+  ov_quad(render3d_st, x + rad, y, x + w - rad, y + h, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+  if rad <= 0.0 { return }
+  ov_quad(render3d_st, x, y + rad, x + rad, y + h - rad, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+  ov_quad(render3d_st, x + w - rad, y + rad, x + w, y + h - rad, 0.0, 0.0, 1.0, 1.0, r, g, b, a)
+  ov_pie(render3d_st, x + rad, y + rad, rad, q * 2.0, q, 6, r, g, b, a)
+  ov_pie(render3d_st, x + w - rad, y + rad, rad, q * 3.0, q, 6, r, g, b, a)
+  ov_pie(render3d_st, x + w - rad, y + h - rad, rad, 0.0, q, 6, r, g, b, a)
+  ov_pie(render3d_st, x + rad, y + h - rad, rad, q, q, 6, r, g, b, a)
 }

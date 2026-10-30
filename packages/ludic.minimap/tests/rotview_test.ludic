@@ -71,4 +71,36 @@ program RotviewTest {
     }
     expect(t[2] - t[0] <= 2 and t[3] - t[1] <= 2)
   }
+  # a leaning view: the anchor stays put, what is ahead is drawn smaller and nearer the anchor than flat, what is behind larger, and a
+  # screen point turns back into the world point it came from
+  test "a tilted view leans the map away and still inverts" {
+    let v = new MinimapRotView
+    minimap_rv_set(v, 0.0, 0.0, 240.0, 240.0, 0.5, 0.6, 500.0, 500.0, 0.7, 200.0)
+    minimap_rv_tilt(v, 50.0, 420.0)
+    expect(near(minimap_rv_sx(v, 500.0, 500.0), v.ax, 0.001))
+    expect(near(minimap_rv_sy(v, 500.0, 500.0), v.ay, 0.001))
+    let f = new MinimapRotView
+    minimap_rv_set(f, 0.0, 0.0, 240.0, 240.0, 0.0 + 0.5, 0.6, 500.0, 500.0, 0.0, 200.0)
+    minimap_rv_tilt(f, 50.0, 420.0)
+    expect(minimap_rv_sy(f, 500.0, 450.0) > f.ay - 60.0)        # 50 m ahead is 60 px up flat; leaning, less
+    expect(minimap_rv_sy(f, 500.0, 550.0) > f.ay + 0.0)
+    for i in 0 .. 5 {
+      let x = 430.0 + float(i) * 37.0
+      let z = 560.0 - float(i) * 41.0
+      let sx = minimap_rv_sx(v, x, z)
+      let sy = minimap_rv_sy(v, x, z)
+      expect(near(minimap_rv_wx(v, sx, sy), x, 0.01))
+      expect(near(minimap_rv_wz(v, sx, sy), z, 0.01))
+    }
+  }
+  test "a round window's rim is on the circle" {
+    let v = new MinimapRotView
+    minimap_rv_set(v, 0.0, 0.0, 200.0, 200.0, 0.5, 0.5, 0.0, 0.0, 0.0, 200.0)
+    minimap_rv_round(v, 100.0, 100.0, 100.0)
+    expect(minimap_rv_inside(v, 100.0, 30.0, 10.0))
+    expect(not minimap_rv_inside(v, 15.0, 15.0, 0.0))
+    minimap_rv_rim(v, 400.0, 100.0, 10.0)
+    expect(near(v.rim_x, 190.0, 0.001))
+    expect(near(v.rim_y, 100.0, 0.001))
+  }
 }

@@ -25,6 +25,15 @@ export property MinimapRotView {
   bz0: float = 0.0
   bx1: float = 0.0
   bz1: float = 0.0
+  # the tilt (minimap_rv_tilt): the map seen leaning away, as from behind and above the player - what is ahead drawn smaller toward a
+  # horizon. pd is the eye's distance in pixels (0: flat), ps / pc the lean's sine and cosine
+  pd: float = 0.0
+  ps: float = 0.0
+  pc: float = 1.0
+  # a round window (minimap_rv_round): its middle and radius; rr 0 is the rectangle
+  rcx: float = 0.0
+  rcy: float = 0.0
+  rr: float = 0.0
 }
 
 # the view this frame: the window, the anchor as a fraction of it, the world point there, the heading up and the metres across the window
@@ -41,15 +50,35 @@ export function minimap_rv_set(v: MinimapRotView, x0: float, y0: float, w: float
   v.cs = Math.cos(rot)
   v.sn = Math.sin(rot)
   v.k = v.w / Math.max(span, 0.001)
-  # the world box: the four corners unturned
+  v.pd = 0.0
+  v.rr = 0.0
+  rv_box(v)
+}
+# the world box the window shows: the four corners unturned (a leaning view's too: a line on the map stays a line on the screen)
+function rv_box(v: MinimapRotView) -> void {
   v.bx0 = 1000000000.0
   v.bz0 = 1000000000.0
   v.bx1 = -1000000000.0
   v.bz1 = -1000000000.0
-  rv_box_add(v, x0, y0)
-  rv_box_add(v, x0 + v.w, y0)
-  rv_box_add(v, x0 + v.w, y0 + v.h)
-  rv_box_add(v, x0, y0 + v.h)
+  rv_box_add(v, v.x0, v.y0)
+  rv_box_add(v, v.x0 + v.w, v.y0)
+  rv_box_add(v, v.x0 + v.w, v.y0 + v.h)
+  rv_box_add(v, v.x0, v.y0 + v.h)
+}
+# lean the view (after minimap_rv_set): `deg` from straight down, the eye `eye` pixels from the anchor. 0 degrees is the flat map
+export function minimap_rv_tilt(v: MinimapRotView, deg: float, eye: float) -> void {
+  let a = Math.clamp(deg, 0.0, 75.0) * 0.017453292
+  v.ps = Math.sin(a)
+  v.pc = Math.cos(a)
+  v.pd = 0.0
+  if deg > 0.0 { v.pd = Math.max(eye, 1.0) }
+  rv_box(v)
+}
+# a round window (after minimap_rv_set): inside and the rim are the circle of radius r about (cx, cy), not the rectangle
+export function minimap_rv_round(v: MinimapRotView, cx: float, cy: float, r: float) -> void {
+  v.rcx = cx
+  v.rcy = cy
+  v.rr = r
 }
 function rv_box_add(v: MinimapRotView, sx: float, sy: float) -> void {
   let x = minimap_rv_wx(v, sx, sy)
@@ -61,17 +90,43 @@ function rv_box_add(v: MinimapRotView, sx: float, sy: float) -> void {
 }
 
 # a world point on the screen
-export function minimap_rv_sx(v: MinimapRotView, x: float, z: float) -> float { return v.ax + v.k * ((x - v.cx) * v.cs - (z - v.cz) * v.sn) }
-export function minimap_rv_sy(v: MinimapRotView, x: float, z: float) -> float { return v.ay + v.k * ((x - v.cx) * v.sn + (z - v.cz) * v.cs) }
+export function minimap_rv_sx(v: MinimapRotView, x: float, z: float) -> float {
+  let u = v.k * ((x - v.cx) * v.cs - (z - v.cz) * v.sn)
+  if v.pd <= 0.0 { return v.ax + u }
+  let f = -v.k * ((x - v.cx) * v.sn + (z - v.cz) * v.cs)          # pixels ahead on the flat map
+  return v.ax + u * v.pd / rv_depth(v, f)
+}
+export function minimap_rv_sy(v: MinimapRotView, x: float, z: float) -> float {
+  let w = v.k * ((x - v.cx) * v.sn + (z - v.cz) * v.cs)
+  if v.pd <= 0.0 { return v.ay + w }
+  return v.ay + w * v.pc * v.pd / rv_depth(v, -w)
+}
+# the eye's distance to a point `f` pixels ahead on the leaning map (never under a sixth of the eye's height: a point past the horizon is
+# held just short of it)
+function rv_depth(v: MinimapRotView, f: float) -> float { return Math.max(v.pd + f * v.ps, v.pd * 0.16) }
+# the flat map's pixels (u right, w down) under a screen point: the tilt undone
+function rv_flat_u(v: MinimapRotView, sx: float, sy: float) -> float {
+  if v.pd <= 0.0 { return sx - v.ax }
+  let f = rv_flat_f(v, sy)
+  return (sx - v.ax) * rv_depth(v, f) / v.pd
+}
+function rv_flat_f(v: MinimapRotView, sy: float) -> float {
+  let y = sy - v.ay
+  return -y * v.pd / Math.max(v.pc * v.pd + y * v.ps, v.pd * 0.05)
+}
+function rv_flat_w(v: MinimapRotView, sy: float) -> float {
+  if v.pd <= 0.0 { return sy - v.ay }
+  return -rv_flat_f(v, sy)
+}
 # the world under a point of the screen
 export function minimap_rv_wx(v: MinimapRotView, sx: float, sy: float) -> float {
-  let u = (sx - v.ax) / v.k
-  let w = (sy - v.ay) / v.k
+  let u = rv_flat_u(v, sx, sy) / v.k
+  let w = rv_flat_w(v, sy) / v.k
   return v.cx + u * v.cs + w * v.sn
 }
 export function minimap_rv_wz(v: MinimapRotView, sx: float, sy: float) -> float {
-  let u = (sx - v.ax) / v.k
-  let w = (sy - v.ay) / v.k
+  let u = rv_flat_u(v, sx, sy) / v.k
+  let w = rv_flat_w(v, sy) / v.k
   return v.cz - u * v.sn + w * v.cs
 }
 # a heading in the world (ludic.character's yaw) as an angle on the screen, 0 up, clockwise: what an arrow drawn at the anchor turns by
@@ -79,6 +134,10 @@ export function minimap_rv_angle(v: MinimapRotView, yaw: float) -> float { retur
 
 # is a screen point inside the window, `margin` pixels in from its edge?
 export function minimap_rv_inside(v: MinimapRotView, sx: float, sy: float, margin: float) -> bool {
+  if v.rr > 0.0 {
+    let r = Math.max(v.rr - margin, 0.0)
+    return (sx - v.rcx) * (sx - v.rcx) + (sy - v.rcy) * (sy - v.rcy) <= r * r
+  }
   return sx >= v.x0 + margin and sx <= v.x0 + v.w - margin and sy >= v.y0 + margin and sy <= v.y0 + v.h - margin
 }
 
@@ -90,6 +149,16 @@ export function minimap_rv_rim(v: MinimapRotView, sx: float, sy: float, margin: 
   v.rim_out = false
   if minimap_rv_inside(v, sx, sy, margin) { return }
   v.rim_out = true
+  if v.rr > 0.0 {
+    # on the circle, along the line from its middle
+    let ex = sx - v.rcx
+    let ey = sy - v.rcy
+    let d = Math.max(Math.sqrt(ex * ex + ey * ey), 0.0001)
+    let r = Math.max(v.rr - margin, 0.0)
+    v.rim_x = v.rcx + ex / d * r
+    v.rim_y = v.rcy + ey / d * r
+    return
+  }
   let dx = sx - v.ax
   let dy = sy - v.ay
   var t = 1.0
