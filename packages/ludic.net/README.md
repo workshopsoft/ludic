@@ -1,6 +1,6 @@
 # ludic.net
 
-A small party over UDP: a host and up to eleven guests, packets with reliable ordered delivery,
+A party over UDP: a host and up to 127 guests (a dedicated server's players), packets with reliable ordered delivery,
 the frame of a handshake, join codes, and room codes through a matchmaker with STUN, hole punching
 and a relay for the routers punching cannot get through. Uses
 [`ludic.base`](../ludic.base/README.md) and nothing else.
@@ -41,10 +41,10 @@ The tests hold the heap flat over 6000 messages.
 
 ```ludic
 property NetConfig {
-  proto (1), port (27415: an address typed without one)
-  signal_url ("": room codes off), stun_host, stun_port (27400), stun_at ("ip:port" instead)
+  proto(1), port(27415: an address typed without one)
+  signal_url("": room codes off), stun_host, stun_port(27400), stun_at("ip:port" instead)
   no_stun, force_relay                 # tests on one machine
-  relay_port0 (60000), seed            # a relayed guest's port base; the STUN dice
+  relay_port0(60000), seed            # a relayed guest's port base; the STUN dice
 }
 port NetWorld { log: fn(string) -> void, trace: fn() -> bool }   # unbound: silence
 port NetSocket { open, close, send, recv, from_ip, from_port, port, local_ip }   # unbound: Udp
@@ -56,6 +56,7 @@ port NetSocket { open, close, send, recv, from_ip, from_port, port, local_ip }  
 | --- | --- |
 | `net_config(c)` | before the first session |
 | `net_host(port, token) -> bool` | open a socket and take guests (and a room, when the matchmaker is on); false: `net_why()` |
+| `net_reserve(n, per_peer)` | make the message pool n messages and each peer's queue room for per_peer up front (a dedicated server: its most players times what each can have in flight), so neither grows in play |
 | `net_hello_set()` | the message just written is the hello: sent again on every dial |
 | `net_join(ip, port) -> bool`, `net_room_join(code) -> bool` | dial an address, or ask the matchmaker for a room's host |
 | `net_accept(slot) -> pid`, `net_joined_as(token, pid)` | the host lets a stranger in; a guest was let in |
@@ -66,8 +67,8 @@ port NetSocket { open, close, send, recv, from_ip, from_port, port, local_ip }  
 | `net_reset()`, `net_lose(why)`, `net_fresh()` | leave; out with a reason (`NET_DOWN`); a lost session read and done with |
 | `np_queue(slot, kind, rel)`, `np_queue_all(kind, rel, except)`, `np_flush(slot)`, `np_close(slot)`, `np_of_pid(pid)` | the written message to a peer or to all |
 | `net_close_when_sent(slot, secs)` | let a peer go once it has taken what was queued for it (`NET_CLOSED`) |
-| `nw_begin`, `nw_i`, `nw_b`, `nw_f`, `nw_s`, `nw_text`, `nw_len` | write a message |
-| `net_inbox() -> Queue<NetMessage>`, `net_read(m)`, `nr_i`, `nr_b`, `nr_f`, `nr_s`, `nr_text`, `nr_bad()` | what came in, in order, and reading it (a short message reads zeros and sets `nr_bad`) |
+| `nw_begin`, `nw_i`, `nw_b`, `nw_f`, `nw_s`, `nw_text`, `nw_len`; `nw_u8`, `nw_u16`, `nw_i24` (narrow, held to their range) | write a message |
+| `net_inbox() -> Queue<NetMessage>`, `net_read(m)`, `nr_i`, `nr_b`, `nr_f`, `nr_s`, `nr_text`, `nr_u8`, `nr_u16`, `nr_i24`, `nr_text_into(sb, cap)` (free text into a buffer, not interned), `nr_bad()` | what came in, in order, and reading it (a short message reads zeros and sets `nr_bad`) |
 | `net_copy_read()`, `net_written()` | pass the message read on; the message written, as if it came in |
 | `nb_put8`, `nb_put32`, `nb_get8`, `nb_get32`, `nb_copy` | bytes |
 | `net_code_of(ip, port)`, `net_join_code()`, `net_parse_code(text)`, `net_code_ip()`, `net_code_port()`, `net_is_room(text)` | ten letters for an address and port, and back; an `a.b.c.d[:port]` is taken too |
@@ -82,7 +83,7 @@ net_begin(dt)                    # time, and what came in onto the inbox
 let got = q_drain(net_inbox())   # the game's own dispatch
 for i in 0 .. len(got) { if net_peer_on(got[i].slot) { net_read(got[i]) ... } }
 net_update(dt)                   # the matchmaker, the hello, silence
-... queue this frame's messages ...
+...queue this frame 's messages ...
 net_end()                        # heartbeats, sending, slots let go
 q_drain(net_facts())
 ```

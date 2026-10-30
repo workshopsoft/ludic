@@ -206,6 +206,9 @@ function http_link_flags(ll: pointer) -> pointer {
   # for "@hs_" linked http.ll and Foundation into everything - harmless on macOS, a failed
   # link on Linux. Only the Http runtime a program actually uses calls hs_send.
   if not shq(`grep -q "call void @hs_send" {ll}`) { return "" }
+  # off macOS there is no transport yet: http_none.ll answers every request as an unreachable host (a Linux dedicated server's
+  # matchmaker code links and is never used)
+  if not is_darwin() { return ` {ludic_home()}runtime/native/http_none.ll` }
   return ` {ludic_home()}runtime/native/http.ll{needed_framework("Foundation")}`
 }
 

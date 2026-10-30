@@ -36,15 +36,46 @@ declare i16 @llvm.bswap.i16(i16)
 
 @LU_fd = internal global [16 x i32] zeroinitializer     ; fd + 1 per handle, 0 = free
 
-; sockaddr_in (BSD): len, family, port (network order), addr (network order), 8 zero
+; The same file serves macOS and Linux (a dedicated server's): their sockaddr_in, O_NONBLOCK and addrinfo differ, so the
+; platform is read once from uname (sysname "Linux" vs "Darwin": both at the start of struct utsname) and @LU_linux says which.
+declare i32 @uname(ptr)
+@LU_os = internal global i32 0                          ; 0 not read yet, 1 BSD (macOS), 2 Linux
+define internal i1 @lu_linux() {
+entry:
+  %v = load i32, ptr @LU_os
+  %known = icmp ne i32 %v, 0
+  br i1 %known, label %have, label %ask
+ask:
+  %buf = alloca [2048 x i8]
+  %r = call i32 @uname(ptr %buf)
+  %c0 = load i8, ptr %buf
+  %isl = icmp eq i8 %c0, 76                             ; 'L'
+  %os = select i1 %isl, i32 2, i32 1
+  store i32 %os, ptr @LU_os
+  br label %have
+have:
+  %w = load i32, ptr @LU_os
+  %lin = icmp eq i32 %w, 2
+  ret i1 %lin
+}
+
+; sockaddr_in: BSD len (16), family (2); Linux a 16-bit family (2); then port (network order), addr (network order), 8 zero
 define internal void @lu_addr(ptr %sa, i32 %ip, i32 %port) {
 entry:
   store i64 0, ptr %sa
   %z8 = getelementptr i8, ptr %sa, i64 8
   store i64 0, ptr %z8
+  %lin = call i1 @lu_linux()
+  br i1 %lin, label %linux, label %bsd
+linux:
+  store i16 2, ptr %sa
+  br label %rest
+bsd:
   store i8 16, ptr %sa
   %fam = getelementptr i8, ptr %sa, i64 1
   store i8 2, ptr %fam
+  br label %rest
+rest:
   %p16 = trunc i32 %port to i16
   %pn = call i16 @llvm.bswap.i16(i16 %p16)
   %pp = getelementptr i8, ptr %sa, i64 2
@@ -99,7 +130,9 @@ bindit:
   br i1 %bb, label %closefail, label %nonblock
 nonblock:
   %fl = call i32 (i32, i32, ...) @fcntl(i32 %fd, i32 3, i32 0)
-  %nb = or i32 %fl, 4
+  %lin = call i1 @lu_linux()
+  %onb = select i1 %lin, i32 2048, i32 4                ; O_NONBLOCK: Linux 04000, BSD 4
+  %nb = or i32 %fl, %onb
   %s = call i32 (i32, i32, ...) @fcntl(i32 %fd, i32 4, i32 %nb)
   br label %find
 find:
@@ -209,8 +242,8 @@ done:
   ret void
 }
 
-; addrinfo (macOS): flags, family, socktype, protocol (i32 each), addrlen (u32), then
-; canonname, addr, next (pointers at 24, 32, 40)
+; addrinfo: flags, family, socktype, protocol (i32 each), addrlen (u32), then macOS canonname, addr, next (pointers at 24,
+; 32, 40) and Linux addr, canonname, next (24, 32, 40)
 define i32 @lu_udp_resolve(ptr %name) {
 entry:
   %hints = alloca [48 x i8]
@@ -229,7 +262,9 @@ read:
   %isnull = icmp eq ptr %ai, null
   br i1 %isnull, label %none, label %addr
 addr:
-  %sap = getelementptr i8, ptr %ai, i64 32
+  %lin = call i1 @lu_linux()
+  %off = select i1 %lin, i64 24, i64 32
+  %sap = getelementptr i8, ptr %ai, i64 %off
   %sa = load ptr, ptr %sap
   %ap = getelementptr i8, ptr %sa, i64 4
   %an = load i32, ptr %ap

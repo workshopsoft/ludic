@@ -1,6 +1,6 @@
 # state.ludic - the wire's numbers, a peer, a queued message, what came in, and the session
 export const NET_MTU: int = 1200
-export const NET_PEERS: int = 12       # a host: slot 0 unused, a guest each after; a guest: 0 is the host
+export const NET_PEERS: int = 128      # a host: slot 0 unused, a guest each after (a dedicated server: 127 players); a guest: 0 is the host
 export const NET_TIMEOUT: int = 10     # seconds of silence before a peer is gone
 export const NET_HELLO: int = 1        # the one kind a stranger may send a host; every other is the game's
 const NET_BEAT: int = 0                # a heartbeat, never delivered

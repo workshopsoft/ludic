@@ -320,4 +320,37 @@ program NetTest {
     net_read(net_st, third[0])
     expect_eq(nr_i(net_st), 333)
   }
+  test "narrow numbers go and come back, held to their range" (net_st: mut NetState) {
+    nw_begin(net_st)
+    nw_u8(net_st, 200)
+    nw_u8(net_st, 300)
+    nw_u16(net_st, 51234)
+    nw_i24(net_st, -123456)
+    nw_i24(net_st, 9000000)
+    nw_u8(net_st, -5)
+    expect(nw_len(net_st) == 11)
+    net_read(net_st, net_written(net_st))
+    expect(nr_u8(net_st) == 200)
+    expect(nr_u8(net_st) == 255)
+    expect(nr_u16(net_st) == 51234)
+    expect(nr_i24(net_st) == -123456)
+    expect(nr_i24(net_st) == 8388607)
+    expect(nr_u8(net_st) == 0)
+    expect(not nr_bad(net_st))
+    expect(nr_u8(net_st) == 0)
+    expect(nr_bad(net_st))
+  }
+  test "free text reads into a buffer and is not interned" (net_st: mut NetState) {
+    let sb = sb_new(64)
+    nw_begin(net_st)
+    nw_text(net_st, "hello there", 100)
+    net_read(net_st, net_written(net_st))
+    expect(nr_text_into(net_st, sb, 100))
+    expect(sb_len(sb) == 11)
+    nw_begin(net_st)
+    nw_text(net_st, "too long for the cap", 100)
+    net_read(net_st, net_written(net_st))
+    expect(not nr_text_into(net_st, sb, 5))
+    expect(nr_bad(net_st))
+  }
 }

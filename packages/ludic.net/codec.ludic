@@ -30,6 +30,24 @@ export function nw_i(net_st: mut NetState, v: int) -> void {
   net_st.net__wl += 4
 }
 
+# narrow numbers for a message sent many times a second (a player's state, a snapshot): a byte, 16 bits, a signed 24 bits
+# (little-endian, like nw_i); each written held to its range
+export function nw_u8(net_st: mut NetState, v: int) -> void {
+  if net_st.net__wl + 1 <= NET_MTU { net_st.net__wb[net_st.net__wl] = Math.clamp(v, 0, 255) }
+  net_st.net__wl += 1
+}
+export function nw_u16(net_st: mut NetState, v: int) -> void {
+  let c = Math.clamp(v, 0, 65535)
+  nw_u8(net_st, c & 255)
+  nw_u8(net_st, (c >> 8) & 255)
+}
+export function nw_i24(net_st: mut NetState, v: int) -> void {
+  let c = Math.clamp(v, -8388608, 8388607) & 16777215
+  nw_u8(net_st, c & 255)
+  nw_u8(net_st, (c >> 8) & 255)
+  nw_u8(net_st, (c >> 16) & 255)
+}
+
 export function nw_b(net_st: mut NetState, v: bool) -> void { if v { nw_i(net_st, 1) } else { nw_i(net_st, 0) } }
 
 export function nw_f(net_st: mut NetState, v: float) -> void { nw_i(net_st, float_bits(v)) }
@@ -42,7 +60,17 @@ export function nw_text(net_st: mut NetState, s: string, cap: int) -> void {
   if n > cap { n = cap }
   nw_i(net_st, n)
   for i in 0 .. n {
-    if net_st.net__wl < NET_MTU { net_st.net__wb[net_st.net__wl] = s[i] }
+    if net_st.net__wl < NET_MTU { net_st.net__wb[net_st.net__wl] = s[i] & 255 }   # a byte of it (not the text: the message keeps nothing of the caller's)
+    net_st.net__wl += 1
+  }
+}
+
+# a text from a buffer (a frame's words gathered in a kept StrBuf: nothing of the frame's is kept by the message)
+export function nw_text_sb(net_st: mut NetState, sb: StrBuf, cap: int) -> void {
+  let n = Math.min(sb_len(sb), cap)
+  nw_i(net_st, n)
+  for i in 0 .. n {
+    if net_st.net__wl < NET_MTU { net_st.net__wb[net_st.net__wl] = sb.b[i] }
     net_st.net__wl += 1
   }
 }
@@ -57,6 +85,27 @@ export function nr_i(net_st: mut NetState) -> int {
   }
   let v = nb_get32(net_st.net__rb, net_st.net__rp)
   net_st.net__rp += 4
+  return v
+}
+
+export function nr_u8(net_st: mut NetState) -> int {
+  if net_st.net__rp + 1 > net_st.net__rl {
+    net_st.net__rbad = true
+    return 0
+  }
+  let v = net_st.net__rb[net_st.net__rp] & 255
+  net_st.net__rp += 1
+  return v
+}
+export function nr_u16(net_st: mut NetState) -> int {
+  let a = nr_u8(net_st)
+  return a | (nr_u8(net_st) << 8)
+}
+export function nr_i24(net_st: mut NetState) -> int {
+  let a = nr_u8(net_st)
+  let b = nr_u8(net_st)
+  let v = a | (b << 8) | (nr_u8(net_st) << 16)
+  if v >= 8388608 { return v - 16777216 }
   return v
 }
 
@@ -77,6 +126,20 @@ export function nr_text(net_st: mut NetState, cap: int) -> string {
   for i in 0 .. n { sb_byte(sb, net_st.net__rb[net_st.net__rp + i]) }
   net_st.net__rp += n
   return sb_intern(sb, net_st.net__ttb)
+}
+
+# a text read into the caller's buffer, not interned: free text that is different every time (a chat line) - nr_text would grow its
+# table without end. False (the buffer empty) on a bad or over-long text
+export function nr_text_into(net_st: mut NetState, sb: StrBuf, cap: int) -> bool {
+  sb_clear(sb)
+  let n = nr_i(net_st)
+  if n < 0 or n > cap or net_st.net__rp + n > net_st.net__rl {
+    net_st.net__rbad = true
+    return false
+  }
+  for i in 0 .. n { sb_byte(sb, net_st.net__rb[net_st.net__rp + i]) }
+  net_st.net__rp += n
+  return true
 }
 
 export function nr_bad(net_st: NetState) -> bool { return net_st.net__rbad }

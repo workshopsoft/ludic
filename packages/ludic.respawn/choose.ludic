@@ -52,6 +52,7 @@ function rsp_candidate(respawn_st: mut RespawnState, points: RespawnPoints, r: R
 
 # the point a subject dying at (x, z) goes to under `rule`: the first candidate whose place is safe,
 # else (every try unsafe) the first tried; -1 when the map has no point for it
+@alloc_ok("the tried flags sized to the map's points: once, on the first death")
 function rsp_choose(respawn_st: mut RespawnState, points: RespawnPoints, r: RespawnRow, rule: RespawnRule, x: float, z: float) -> int {
   let n = len(points.rows)
   while len(respawn_st.rsp_tried) < n { push(respawn_st.rsp_tried, 0) }

@@ -31,6 +31,30 @@ function net__in_take(net_st: mut NetState) -> NetMessage {
 
 export function net_spare_count(net_st: NetState) -> int { return len(net_st.net__free) }
 
+# the pool made up front to n messages (a host: its most players times what each can have in flight), and each peer's queue room
+# for per_peer, so play never grows them - a pool growing for long as players arrive is memory rising window after window to the
+# allocation fence
+@alloc_ok("the pool, made once at start")
+export function net_reserve(net_st: mut NetState, n: int, per_peer: int) -> void {
+  while len(net_st.net__free) < n { push(net_st.net__free, net__msg_new()) }
+  if len(net_st.net__free) > 0 and net_st.net__peers != null {
+    let any = net_st.net__free[0]
+    for i in 0 .. len(net_st.net__peers) {
+      let pe = net_st.net__peers[i]
+      if len(pe.queue) == 0 {
+        for k in 0 .. per_peer { push(pe.queue, any) }
+        List.clear(pe.queue)
+      }
+      if len(pe.back) == 0 {                       # the queue's other half (a flush swaps them)
+        for k in 0 .. per_peer { push(pe.back, any) }
+        List.clear(pe.back)
+      }
+    }
+  }
+  while len(net_st.net__ina) < n / 16 { net__in_grow(net_st.net__ina) }      # and the inbox: a sixteenth of them in one drain
+  while len(net_st.net__inb) < n / 16 { net__in_grow(net_st.net__inb) }
+}
+
 @alloc_ok("a pool miss: past the most messages in flight at once only, then kept")
 function net__msg_new() -> NetMsg {
   let m = new NetMsg
