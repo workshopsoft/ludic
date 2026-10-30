@@ -38,8 +38,55 @@ function r3d_set_anisotropy(render3d_st: mut Render3dState, level: int) -> void 
 }
 
 @alloc_ok("a load: a file read whole, kept or freed by its caller")
-function r3d_read_file(render3d_st: mut Render3dState, path: pointer) -> pointer {
+# A path with "dir/../" in it (a glTF's texture "../kits/x.png" under its own folder) collapsed, as the filesystem collapses it, so an
+# asset pack finds it too: a pack's names are clean, and its lookup takes the path as it is given. Null when there is none to collapse
+@alloc_ok("a file's path cleaned: a load, not a frame")
+function r3d_path_clean(path: pointer) -> pointer {
+  var n = 0
+  var up = false
+  while path[n] != 0 {
+    if n > 0 and path[n - 1] == 47 and path[n] == 46 and path[n + 1] == 46 and path[n + 2] == 47 { up = true }
+    n += 1
+  }
+  if not up { return null }
+  let out = bytes(n + 1)
+  var o = 0
+  var i = 0
+  while i < n {
+    var j = i
+    while j < n and path[j] != 47 { j += 1 }
+    var back = j - i == 2 and path[i] == 46 and path[i + 1] == 46 and j < n and o > 0
+    var s = 0
+    if back {
+      # the segment written last (out ends with its "/"): dropped, unless it is a ".." itself
+      s = o - 1
+      while s > 0 and out[s - 1] != 47 { s -= 1 }
+      if o - 1 - s == 2 and out[s] == 46 and out[s + 1] == 46 { back = false }
+    }
+    if back {
+      o = s
+    } else {
+      for k in i .. j {
+        out[o] = path[k]
+        o += 1
+      }
+      if j < n {
+        out[o] = 47
+        o += 1
+      }
+    }
+    i = j + 1
+  }
+  out[o] = 0
+  return out
+}
+
+function r3d_read_file(render3d_st: mut Render3dState, path0: pointer) -> pointer {
+  let clean = r3d_path_clean(path0)
+  var path = path0
+  if clean != null { path = clean }
   let f = file_open(path, "rb")
+  if clean != null { free(clean) }
   if f == null { return null }
   file_seek(f, 0, 2)
   let n = file_tell(f)
