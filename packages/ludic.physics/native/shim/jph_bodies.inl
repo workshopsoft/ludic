@@ -18,6 +18,12 @@ JPH_SHIM int jph_body_add(void *w, void *shape, float x, float y, float z, float
   return int(id.GetIndexAndSequenceNumber());
 }
 
+// a body's restitution (0 a dead stop .. 1 a rebound at the speed it came in): two bodies bounce as the duller of them
+JPH_SHIM void jph_body_bounce(void *w, int id, float bounce) {
+  BodyInterface &bi = static_cast<World *>(w)->sys.GetBodyInterface();
+  if (bi.IsAdded(bid(id))) bi.SetRestitution(bid(id), bounce);
+}
+
 // continuous collision detection: a dynamic body's motion quality, 0 discrete (a step is a jump) or 1 linear cast
 // (Jolt's EMotionQuality::LinearCast: the shape is swept over the step and stopped at what it would pass
 // through). A still or kinematic body has nothing to sweep and is refused. Returns the quality now set,

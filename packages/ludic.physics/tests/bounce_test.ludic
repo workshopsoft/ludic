@@ -1,0 +1,38 @@
+# bounce_test.ludic - restitution on the real Jolt: a car-sized box thrown at a wall left at the package's 0.1 comes back off it
+# as fast as the duller of the two bodies lets it (the pair bounces as the less lively one), so a car set to 0.05 returns at a
+# twentieth of its speed and one set to 0 stops dead.
+import "ludic.physics"
+import "ludic.base"
+program BounceTest {
+  numbers float
+
+  # no gravity; a 0.5 m thick wall at x = 20; the box (1500 kg, 4.4 m long) driven at it at 20 m/s; the speed it is going 1 s after
+  # the touch (negative: back the way it came)
+  function rebound(physics_st: mut PhysicsState, bounce: float, set: bool) -> float {
+    expect(phys_open(physics_st, 1024, 1))
+    phys_gravity(physics_st, 0.0)
+    expect(phys_static_add(physics_st, phys_box(physics_st, 0.25, 2.0, 15.0), 20.0, 2.0, 0.0, 0.0) >= 0)
+    phys_settle(physics_st)
+    let id = phys_body_add(physics_st, phys_box(physics_st, 2.2, 0.725, 0.9), 10.0, 1.0, 0.0, 0.0, 1500.0)
+    expect(id >= 0)
+    expect(phys_ccd(physics_st, id, true))
+    if set { phys_bounce(physics_st, id, bounce) }
+    phys_set_velocity(physics_st, id, 20.0, 0.0, 0.0)
+    for i in 0 .. 120 { phys_step(physics_st) }
+    let p = new PhysPose
+    expect(phys_pose(physics_st, id, p))
+    return p.vx
+  }
+
+  test "control: a body left at 0.1 comes back off a wall at a tenth of its speed" (physics_st: mut PhysicsState) {
+    let v = rebound(physics_st, 0.1, false)
+    expect(v < -1.0)
+    expect(v > -3.0)
+  }
+
+  test "a body set to 0.05 comes back at a twentieth, one set to 0 stops" (physics_st: mut PhysicsState) {
+    let v = rebound(physics_st, 0.05, true)
+    expect(v > -1.5)
+    expect(v <= 0.01)
+  }
+}

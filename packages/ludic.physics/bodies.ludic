@@ -34,6 +34,13 @@ export function phys_kinematic_add(physics_st: mut PhysicsState, shape: int, x: 
 @creates(PhysBody)
 export function phys_body_add(physics_st: mut PhysicsState, shape: int, x: float, y: float, z: float, yaw: float, mass: float) -> int { return ph_add(physics_st, shape, x, y, z, yaw, 2, 2, mass) }
 
+# how much one body springs back, 0 (a dead stop: a crumple) .. 1; every body starts at 0.1. Two bodies bounce as the duller of the
+# two, so a body set low is low against anything (a car against a wall or a prop). No such body or no world: nothing
+export function phys_bounce(physics_st: mut PhysicsState, id: int, bounce: float) -> void {
+  if physics_st.ph_world == null or id < 0 { return }
+  jph_body_bounce(physics_st.ph_world, id, bounce)
+}
+
 # continuous collision detection for one dynamic body: its shape is swept over each step and stopped at
 # what it would otherwise skip (a car at 60 m/s moves a metre a step, more than a wall is thick). Off by
 # default - a sweep costs, so a game turns it on for what is fast: a car, a thrown thing. Returns whether

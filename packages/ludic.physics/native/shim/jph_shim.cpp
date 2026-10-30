@@ -114,6 +114,9 @@ struct World {
       : temp(size_t(temp_kb) * 1024), jobs(cMaxPhysicsJobs, cMaxPhysicsBarriers, threads) {
     sys.Init(max_bodies, 0, max_pairs, max_contacts, bpl, ovb, olp);
     sys.SetContactListener(&contacts);
+    // two bodies bounce as little as the duller of them (Jolt's default is the livelier): a car set to crumple does not
+    // spring off a wall or a prop that was left at the package's 0.1
+    sys.SetCombineRestitution([](const Body &a, const SubShapeID &, const Body &b, const SubShapeID &) { return std::min(a.GetRestitution(), b.GetRestitution()); });
   }
   TempAllocatorImplWithMallocFallback temp;
   JobSystemThreadPool jobs;
