@@ -20,9 +20,10 @@
 # wake stays where the boat left it.
 #
 #   water_fx_set(render3d_st, 2)                                  # 0 off, 1 low, 2 high (the game's setting; high is the default)
-#   water_fx_stamp(render3d_st, x, z, 0.4, 0.0, 0.01, 0.2)        # a body: render-space place, radius, push down, push down fast, foam
-#   water_fx_wake(render3d_st, x0, z0, x1, z1, 0.8, 0.0, 0.01, 0.1) # a body that moved from (x0, z0) to (x1, z1) since the last frame
-#   water_fx_splash(render3d_st, x, z, 0.5, 4.0)                  # something entered the water: radius, speed it came at
+#   water_fx_stamp(render3d_st, x, z, 0.4, 0.0, 0.01, 0.2, level) # a body: render-space place, radius, push down, push down fast, foam, the surface's height
+#                                                                 # (a stamp stirs only the water at its own level: a fountain's bowl is not its pool)
+#   water_fx_wake(render3d_st, x0, z0, x1, z1, 0.8, 0.0, 0.01, 0.1, level) # a body that moved from (x0, z0) to (x1, z1) since the last frame
+#   water_fx_splash(render3d_st, x, z, 0.5, 4.0, level)           # something entered the water: radius, speed it came at
 # The game says where the bodies are every frame it has any in the water; a client calls it for the bodies it sees (a remote
 # player's too): nothing goes over the net. No stamp for water_fx_idle_seconds and the field is cleared and the pass skipped.
 # ============================================================================
@@ -52,6 +53,7 @@ export function water_fx_set(render3d_st: mut Render3dState, q: int) -> void {
   var v = q
   if v < 0 { v = 0 }
   if v > 2 { v = 2 }
+  if r3d_env_has(render3d_st, "R3D_NOWATERFX") { v = 0 }
   if v == render3d_st.wfx_q { return }
   render3d_st.wfx_q = v
   water_fx_free(render3d_st)
@@ -80,7 +82,7 @@ function water_fx_lists(render3d_st: mut Render3dState) -> void {
 # Add a body or an impact to this frame's field: at (x, z) in render space, a disc of `radius` metres that is pushed `drop` metres
 # down at once (a thing put into the water) and given `push` metres a step of downward speed (a thing moving through it), and
 # `foam` (0 .. 1) of white water. A stamp that falls outside the window is dropped.
-export function water_fx_stamp(render3d_st: mut Render3dState, x: float, z: float, radius: float, drop: float, push: float, foam: float) -> void {
+export function water_fx_stamp(render3d_st: mut Render3dState, x: float, z: float, radius: float, drop: float, push: float, foam: float, level: float) -> void {
   if render3d_st.wfx_q == 0 { return }
   water_fx_lists(render3d_st)
   if render3d_st.wfx_ns >= WFX_MAX { return }
@@ -90,14 +92,14 @@ export function water_fx_stamp(render3d_st: mut Render3dState, x: float, z: floa
   }
   let o = render3d_st.wfx_ns * 4
   render3d_st.wfx_st0[o] = x;  render3d_st.wfx_st0[o + 1] = z;  render3d_st.wfx_st0[o + 2] = Math.max(radius, 0.05);  render3d_st.wfx_st0[o + 3] = drop
-  render3d_st.wfx_st1[o] = push;  render3d_st.wfx_st1[o + 1] = foam;  render3d_st.wfx_st1[o + 2] = 0.0;  render3d_st.wfx_st1[o + 3] = 0.0
+  render3d_st.wfx_st1[o] = push;  render3d_st.wfx_st1[o + 1] = foam;  render3d_st.wfx_st1[o + 2] = level;  render3d_st.wfx_st1[o + 3] = 0.0
   render3d_st.wfx_ns += 1
   render3d_st.wfx_idle = 0.0
 }
 
 # A body that went from (x0, z0) to (x1, z1) since the last frame: a stamp every half radius along the way (at most 6), the push
 # and foam each stamp's own. A fast boat is a line of discs, which is what makes its V.
-export function water_fx_wake(render3d_st: mut Render3dState, x0: float, z0: float, x1: float, z1: float, radius: float, drop: float, push: float, foam: float) -> void {
+export function water_fx_wake(render3d_st: mut Render3dState, x0: float, z0: float, x1: float, z1: float, radius: float, drop: float, push: float, foam: float, level: float) -> void {
   if render3d_st.wfx_q == 0 { return }
   let dx = x1 - x0
   let dz = z1 - z0
@@ -107,17 +109,17 @@ export function water_fx_wake(render3d_st: mut Render3dState, x0: float, z0: flo
   if n > 6 { n = 6 }
   for i in 0 .. n {
     let t = (float(i) + 1.0) / float(n)
-    water_fx_stamp(render3d_st, x0 + dx * t, z0 + dz * t, radius, drop / float(n), push / float(n), foam / float(n))
+    water_fx_stamp(render3d_st, x0 + dx * t, z0 + dz * t, radius, drop / float(n), push / float(n), foam / float(n), level)
   }
 }
 
 # Something entered the water at (x, z) coming down at `speed` m/s with a body about `radius` metres across: a drop, a ring and
 # a patch of foam, all of them with the speed.
-export function water_fx_splash(render3d_st: mut Render3dState, x: float, z: float, radius: float, speed: float) -> void {
+export function water_fx_splash(render3d_st: mut Render3dState, x: float, z: float, radius: float, speed: float, level: float) -> void {
   if render3d_st.wfx_q == 0 { return }
   let s = Math.min(Math.max(speed, 0.0), 14.0) / 14.0
-  water_fx_stamp(render3d_st, x, z, radius * (1.0 + 1.2 * s), 0.012 + 0.05 * s, 0.0, 0.25 + 0.7 * s)
-  water_fx_stamp(render3d_st, x, z, radius * 0.6, 0.0, 0.01 + 0.03 * s, 0.0)
+  water_fx_stamp(render3d_st, x, z, radius * (1.0 + 1.2 * s), 0.012 + 0.05 * s, 0.0, 0.25 + 0.7 * s, level)
+  water_fx_stamp(render3d_st, x, z, radius * 0.6, 0.0, 0.01 + 0.03 * s, 0.0, level)
 }
 
 # the floating origin moved: render space is sim space shifted by what it has moved, so the field keeps its places (water_rebase)

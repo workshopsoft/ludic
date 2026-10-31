@@ -317,6 +317,13 @@ void main() {
   if (u_fx_on > 0.5) {
     vec2 rel = abs(wp.xz - u_fx_win.xy) / u_fx_win.z;
     float fade = 1.0 - smoothstep(0.62, 0.9, max(rel.x, rel.y));
+    // only the water the stamps were made on: the texel's own level (read bilinear: where the field's own edge lies the level blends toward 0 and the stir, which is nothing there, fades with it)
+    {
+      float nt0 = u_fx_map.z;
+      vec2 uv0 = fract((wp.xz / u_fx_map.w + u_fx_map.xy) / nt0);
+      float lv = texture(u_fx, uv0).a;
+      fade *= 1.0 - smoothstep(0.08, 0.22, abs(lv - wp.y));
+    }
     if (fade > 0.0) {
       float nt = u_fx_map.z;
       vec2 uv = (wp.xz / u_fx_map.w + u_fx_map.xy) / nt;
@@ -452,6 +459,9 @@ void main() {
   // there is no ground at all, is the same colour as over a bed far down). The most of the bed that can come through is
   // the blue's, which the water takes least of; where that is under a hundredth the bed is not read.
   float pathLen = depthBelow * (1.0 + 1.0 / max(NoV, 0.25));
+  // A basin with no shore (a fountain's pool: the body that turns the lapping wash off) is a few centimetres over a pale stone floor, and water that
+  // thin has no colour of its own: it read as a flat cyan sheet of the sky. Its water is lit and tinted as a clear half metre of it, as the lakes are
+  if (!sea && u_wash < 0.5) { pathLen = max(pathLen, 0.5 * (1.0 + 1.0 / max(NoV, 0.25))); }
   float blueLeft = exp(-0.06 * pathLen);
   bool deep = sea && blueLeft * (1.0 - smoothstep(4.0, 9.0, depthBelow)) < 0.012;
   vec2 ruv2 = suv;
@@ -525,6 +535,7 @@ void main() {
   // quantity at any angle, so the water dissolves into the ground it meets instead.
   // The sea's foam is the one thing that stays white where the water ends.
   float soft = smoothstep(0.0, 0.5, shoreRay);
+  if (!sea && u_wash < 0.5) { soft = 1.0; }     // a basin's water does not dissolve into its floor: the film is the water's colour, not the stone's
   col = mix(bed, col, max(soft, sf));
   o_color = vec4(sane(col), 1.0);
 }

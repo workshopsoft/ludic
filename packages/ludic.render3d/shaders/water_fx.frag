@@ -1,5 +1,7 @@
 // One step of the water interaction height field (water_fx.ludic). A small toroidal grid of the surface around the camera:
-// r = height (metres, down is positive), g = velocity (metres a step), b = foam (0 .. 1), a unused.
+// r = height (metres, down is positive), g = velocity (metres a step), b = foam (0 .. 1), a = the height of the water surface that stirred it
+// (render space): a stamp stirs the water at its own level, and the motion carries the level of where it came from, so a fountain's bowl does not
+// ring with the pool's waves under it (water.frag fades the field out where its level is not the surface's).
 //
 // The mechanism is Unreal 5.8's Water Advanced shallow water interaction (Plugins/Experimental/WaterAdvanced: ShallowWaterSubsystem.cpp
 // snaps a Niagara Grid2D simulation of FShallowWaterSimParameters.WorldGridSize at ResolutionMaxAxis texels to the cursor pawn each tick,
@@ -19,7 +21,7 @@ uniform float u_damp;           // velocity kept a step (1: none)
 uniform float u_foam_keep;      // foam kept a step
 uniform float u_stamps;         // stamps this step (0 on the steps after the first)
 uniform vec4 u_st0[48];         // x, z (render space), radius, height pushed down (metres)
-uniform vec4 u_st1[48];         // velocity pushed down (metres a step), foam, 0, 0
+uniform vec4 u_st1[48];         // velocity pushed down (metres a step), foam, the surface's height, 0
 
 vec4 at(ivec2 p) {
   int n = int(u_n);
@@ -42,6 +44,7 @@ void main() {
   // the wave equation: the surface is pulled toward the mean of its neighbours, the motion is damped
   v += u_k * (l.r + r.r + d.r + u.r - 4.0 * h);
   v *= u_damp;
+  v -= 0.003 * h;                  // a little pull to rest: no mound of water outlives what made it
   h += v;
   // what the window is about to meet is nothing: the rim takes the motion off, so a texel the window moves over holds none of the far
   // side's, and no wave goes round the torus
@@ -51,6 +54,18 @@ void main() {
   v *= rim;
   // foam spreads a little and dies
   float f = (c.b * 4.0 + l.b + r.b + d.b + u.b) * (1.0 / 8.0) * u_foam_keep;
+  // the level: from the most stirred of this texel and its neighbours (a wave moves less than a texel a step)
+  float lev = c.a;
+  float en = abs(c.r) + 8.0 * abs(c.g) + c.b;
+  float e1 = abs(l.r) + 8.0 * abs(l.g) + l.b;
+  if (e1 > en) { en = e1; lev = l.a; }
+  e1 = abs(r.r) + 8.0 * abs(r.g) + r.b;
+  if (e1 > en) { en = e1; lev = r.a; }
+  e1 = abs(d.r) + 8.0 * abs(d.g) + d.b;
+  if (e1 > en) { en = e1; lev = d.a; }
+  e1 = abs(u.r) + 8.0 * abs(u.g) + u.b;
+  if (e1 > en) { en = e1; lev = u.a; }
+  float bestk = 0.0;
   // the bodies and impacts of this frame
   int ns = int(u_stamps);
   for (int i = 0; i < ns; i++) {
@@ -59,13 +74,19 @@ void main() {
     float dist = length(wp - a.xy);
     if (dist < a.z) {
       float k = 0.5 + 0.5 * cos(3.14159265 * dist / a.z);
-      h += a.w * k;
-      v += b.x * k;
+      // the push has no net volume (a depression with a raised ring round it, the way water displaced by a hull or a hand goes round it):
+      // a one-signed push would heap a mound that never leaves, and a body pushing all the time would be a growing flat-shaded hill
+      float k2 = 0.0;
+      if (dist < a.z * 1.8) { k2 = 0.5 + 0.5 * cos(3.14159265 * dist / (a.z * 1.8)); }
+      float kz = k - k2 * (1.0 / 3.24);
+      h += a.w * kz;
+      v += b.x * kz;
       f += b.y * k;
+      if (k > bestk && k > 0.02) { bestk = k; lev = b.z; }
     }
   }
   // a number that would end as nothing is nothing (half floats do not decay to zero by themselves)
   if (abs(h) < 0.00004 && abs(v) < 0.00002) { h = 0.0; v = 0.0; }
   if (f < 0.004) { f = 0.0; }
-  o_color = vec4(clamp(h, -0.5, 0.5), clamp(v, -0.2, 0.2), clamp(f, 0.0, 1.0), 0.0);
+  o_color = vec4(clamp(h, -0.5, 0.5), clamp(v, -0.2, 0.2), clamp(f, 0.0, 1.0), lev);
 }
