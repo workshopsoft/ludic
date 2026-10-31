@@ -228,6 +228,6 @@ void main() {
   // out from it.
   float ax = 1.0;
   if (u_model_h > 2.0) ax = smoothstep(0.12, 0.30, length(a_pos.xz) / max(u_model_h * 0.22, 0.05));
-  v_near = mix(1.0, clamp((gl_Position.w - 0.5) / 1.7, 0.0, 1.0), ax);
+  v_near = mix(1.0, clamp((gl_Position.w - 0.3) / 0.7, 0.0, 1.0), ax);   // 0.3 m to 1 m: the subtlety of Unreals camera-distance fade
 #endif
 }
