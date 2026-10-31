@@ -294,6 +294,12 @@ function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
   gvk_bq_memory(render3d_st, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT)
 }
 
+# the buffer program p's storage buffer t reads: the one bound by name, else the null buffer
+function gvk_sbuf_at(render3d_st: mut Render3dState, p: int, t: int) -> int {
+  let b = render3d_st.gvk_prog_sbuf[p][t]
+  if b <= 0 or b >= len(render3d_st.gvk_buf) or render3d_st.gvk_buf[b] == 0 { return gvk_null_buffer(render3d_st) }
+  return b
+}
 # the stand-in for a storage buffer nothing was bound to: 256 zeroed bytes, made when first needed
 function gvk_null_buffer(render3d_st: mut Render3dState) -> int {
   if render3d_st.gvk_null_buf == 0 {
@@ -996,7 +1002,7 @@ function gvk_sc_clear(render3d_st: mut Render3dState) -> void {
 }
 
 # the bucket of program p's set for the key in gvk_sc_tmp (its first nk words): FNV-1a over the program and every key word's
-# two halves (a texture's handle and generation, a sampler's or buffer's Vulkan handle)
+# two halves (a texture's handle and generation, a sampler's Vulkan handle, a buffer's serial)
 const GVK_SC_BUCKETS: int = 16384
 function gvk_sc_hash(render3d_st: Render3dState, p: int, nk: int) -> int {
   # in 32 bits held in a long, so no step overflows (a 32-bit value times the 24-bit prime)
@@ -1029,8 +1035,9 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
   while len(render3d_st.gvk_ub_frame) <= p { push(render3d_st.gvk_ub_frame, 0);  push(render3d_st.gvk_ub_offv, 0);  push(render3d_st.gvk_ub_offf, 0) }
   let nt = len(v.t_name)
   let ns = len(v.s_name)
-  # the key: every texture as this draw resolves it, and its sampler; then each storage buffer's VkBuffer (a buffer re-filled
-  # while a frame reads it swaps to its second, so the handle, not the id, says what the set holds)
+  # the key: every texture as this draw resolves it, and its sampler; then each storage buffer's VkBuffer by its serial (a buffer
+  # re-filled while a frame reads it swaps to its second, so the id does not say what the set holds; and a destroyed buffer's handle
+  # value comes back for a new one, so the handle does not either: a set written for the old one read the old one's memory)
   @alloc_ok("filled to 138 at start-up (@max 138: 64 textures and 8 storage buffers a draw)")
   while len(render3d_st.gvk_sc_tmp) < nt * 2 + ns + 2 { push(render3d_st.gvk_sc_tmp, zero) }
   for t in 0 .. nt {
@@ -1055,10 +1062,9 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
     render3d_st.gvk_sc_tmp[t * 2 + 1] = smp
   }
   for t in 0 .. ns {
-    var b = render3d_st.gvk_prog_sbuf[p][t]
-    if b <= 0 or b >= len(render3d_st.gvk_buf) or render3d_st.gvk_buf[b] == 0 { b = gvk_null_buffer(render3d_st) }
+    let b = gvk_sbuf_at(render3d_st, p, t)
     render3d_st.gvk_buf_used[b] = render3d_st.gvk_frame_no
-    render3d_st.gvk_sc_tmp[nt * 2 + t] = render3d_st.gvk_buf[b]
+    render3d_st.gvk_sc_tmp[nt * 2 + t] = render3d_st.gvk_buf_serial[b]
   }
   let nk = nt * 2 + ns
   var set: long = 0
@@ -1181,7 +1187,7 @@ function gvk_sc_make(render3d_st: mut Render3dState, p: int, nt: int) -> long {
     let at = bi * VkDescriptorBufferInfo_sizeof
     let off0: long = 0
     let whole: long = -1                              # VK_WHOLE_SIZE
-    Vk.put_i64(bis, at + VkDescriptorBufferInfo_buffer, render3d_st.gvk_sc_tmp[nt * 2 + t])
+    Vk.put_i64(bis, at + VkDescriptorBufferInfo_buffer, render3d_st.gvk_buf[gvk_sbuf_at(render3d_st, p, t)])
     Vk.put_i64(bis, at + VkDescriptorBufferInfo_offset, off0)
     Vk.put_i64(bis, at + VkDescriptorBufferInfo_range, whole)
     Vk.put_i32(writes, nw * ww + VkWriteDescriptorSet_sType, VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET)

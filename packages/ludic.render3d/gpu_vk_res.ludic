@@ -760,8 +760,10 @@ function gvk_buf_new(render3d_st: mut Render3dState) -> int {
     render3d_st.gvk_buf_used = new []int;  render3d_st.gvk_retired_buf = new []long;  render3d_st.gvk_retired_mem = new []long
     render3d_st.gvk_bsp_buf = new []long;  render3d_st.gvk_bsp_mem = new []long;  render3d_st.gvk_bsp_size = new []int
     render3d_st.gvk_bsp_map = new []pointer;  render3d_st.gvk_bsp_used = new []int
+    render3d_st.gvk_buf_serial = new []long;  render3d_st.gvk_bsp_serial = new []long
     # handle 0 is "no buffer", as it is on OpenGL
     push(render3d_st.gvk_buf, zero);  push(render3d_st.gvk_buf_mem, zero);  push(render3d_st.gvk_buf_size, 0);  push(render3d_st.gvk_buf_map, null);  push(render3d_st.gvk_buf_used, 0)
+    push(render3d_st.gvk_buf_serial, zero)
     gvk_bsp_grow(render3d_st)
   }
   # a handle a deleted buffer gave back first (gvk_buf_delete)
@@ -772,6 +774,7 @@ function gvk_buf_new(render3d_st: mut Render3dState) -> int {
     return b
   }
   push(render3d_st.gvk_buf, zero);  push(render3d_st.gvk_buf_mem, zero);  push(render3d_st.gvk_buf_size, 0);  push(render3d_st.gvk_buf_map, null);  push(render3d_st.gvk_buf_used, 0)
+  push(render3d_st.gvk_buf_serial, zero)
   gvk_bsp_grow(render3d_st)
   return len(render3d_st.gvk_buf) - 1
 }
@@ -808,6 +811,7 @@ function gvk_buf_release(render3d_st: mut Render3dState, b: int) -> void {
     gvk_mem_free(render3d_st, gvk_mem_id(render3d_st.gvk_buf_mem[b]))
   }
   render3d_st.gvk_buf[b] = zero;  render3d_st.gvk_buf_mem[b] = zero;  render3d_st.gvk_buf_size[b] = 0;  render3d_st.gvk_buf_map[b] = null;  render3d_st.gvk_buf_used[b] = 0
+  render3d_st.gvk_buf_serial[b] = zero
 }
 # read by a draw recorded this frame, or by the presented frame still on the GPU
 function gvk_buf_busy(render3d_st: Render3dState, b: int) -> bool {
@@ -903,6 +907,8 @@ function gvk_buf_reserve(render3d_st: mut Render3dState, b: int, n: int) -> bool
   r = Vk.bind_buffer_memory(render3d_st.gvk_dev, buf, gvk_mem_handle(render3d_st, ma), gvk_mem_offset(render3d_st, ma))
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkBindBufferMemory", r) }
   render3d_st.gvk_buf[b] = buf;  render3d_st.gvk_buf_mem[b] = mem;  render3d_st.gvk_buf_size[b] = size;  render3d_st.gvk_buf_map[b] = gvk_mem_ptr(render3d_st, ma)
+  render3d_st.gvk_serial_next += 1
+  render3d_st.gvk_buf_serial[b] = render3d_st.gvk_serial_next
   gvk_prime(render3d_st, b, buf)
   return true
 }
@@ -1027,6 +1033,7 @@ function gvk_bsp_grow(render3d_st: mut Render3dState) -> void {
   push(render3d_st.gvk_bsp_size, 0)
   push(render3d_st.gvk_bsp_map, null)
   push(render3d_st.gvk_bsp_used, 0)
+  push(render3d_st.gvk_bsp_serial, zero)
 }
 function gvk_bsp_busy(render3d_st: Render3dState, b: int) -> bool {
   let u = render3d_st.gvk_bsp_used[b]
@@ -1041,11 +1048,13 @@ function gvk_bsp_swap(render3d_st: mut Render3dState, b: int, n: int) -> bool {
   let ts = render3d_st.gvk_buf_size[b]
   let tp = render3d_st.gvk_buf_map[b]
   let tu = render3d_st.gvk_buf_used[b]
+  let tq = render3d_st.gvk_buf_serial[b]
   render3d_st.gvk_buf[b] = render3d_st.gvk_bsp_buf[b];  render3d_st.gvk_buf_mem[b] = render3d_st.gvk_bsp_mem[b]
   render3d_st.gvk_buf_size[b] = render3d_st.gvk_bsp_size[b];  render3d_st.gvk_buf_map[b] = render3d_st.gvk_bsp_map[b]
   render3d_st.gvk_buf_used[b] = render3d_st.gvk_bsp_used[b]
   render3d_st.gvk_bsp_buf[b] = tb;  render3d_st.gvk_bsp_mem[b] = tm;  render3d_st.gvk_bsp_size[b] = ts
   render3d_st.gvk_bsp_map[b] = tp;  render3d_st.gvk_bsp_used[b] = tu
+  render3d_st.gvk_buf_serial[b] = render3d_st.gvk_bsp_serial[b];  render3d_st.gvk_bsp_serial[b] = tq
   return true
 }
 # the busy first becomes the second (the old second let go), leaving the handle empty for a new one
@@ -1055,8 +1064,9 @@ function gvk_bsp_park(render3d_st: mut Render3dState, b: int) -> void {
   render3d_st.gvk_bsp_buf[b] = render3d_st.gvk_buf[b];  render3d_st.gvk_bsp_mem[b] = render3d_st.gvk_buf_mem[b]
   render3d_st.gvk_bsp_size[b] = render3d_st.gvk_buf_size[b];  render3d_st.gvk_bsp_map[b] = render3d_st.gvk_buf_map[b]
   render3d_st.gvk_bsp_used[b] = render3d_st.gvk_buf_used[b]
+  render3d_st.gvk_bsp_serial[b] = render3d_st.gvk_buf_serial[b]
   render3d_st.gvk_buf[b] = zero;  render3d_st.gvk_buf_mem[b] = zero;  render3d_st.gvk_buf_size[b] = 0
-  render3d_st.gvk_buf_map[b] = null;  render3d_st.gvk_buf_used[b] = 0
+  render3d_st.gvk_buf_map[b] = null;  render3d_st.gvk_buf_used[b] = 0;  render3d_st.gvk_buf_serial[b] = zero
 }
 # the second let go: destroyed now, or retired until the frame that read it has finished
 function gvk_bsp_drop(render3d_st: mut Render3dState, b: int) -> void {
@@ -1077,5 +1087,5 @@ function gvk_bsp_drop(render3d_st: mut Render3dState, b: int) -> void {
     gvk_mem_free(render3d_st, gvk_mem_id(render3d_st.gvk_bsp_mem[b]))
   }
   render3d_st.gvk_bsp_buf[b] = zero;  render3d_st.gvk_bsp_mem[b] = zero;  render3d_st.gvk_bsp_size[b] = 0
-  render3d_st.gvk_bsp_map[b] = null;  render3d_st.gvk_bsp_used[b] = 0
+  render3d_st.gvk_bsp_map[b] = null;  render3d_st.gvk_bsp_used[b] = 0;  render3d_st.gvk_bsp_serial[b] = zero
 }
