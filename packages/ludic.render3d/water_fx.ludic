@@ -1,0 +1,266 @@
+# ============================================================================
+# water_fx.ludic - the water answering what is in it: rings and wakes round a body wading or swimming, a splash where
+# something enters, a bow wave and a wake behind a boat or a car, rings from an impact, all fading, on every body of
+# water (the sea, the lakes, a fountain's pool) because water.frag reads one field for all of them.
+#
+# The method is Unreal 5.8's Water Advanced shallow water interaction (Engine/Plugins/Experimental/WaterAdvanced/Source/
+# WaterAdvanced: Private/ShallowWaterSubsystem.cpp, Public/ShallowWaterSettings.h, Public/ShallowWaterCommon.h):
+#   - a small simulation grid (FShallowWaterSimParameters: WorldGridSize 2000 uu, ResolutionMaxAxis 512 texels) that follows the
+#     cursor pawn (UShallowWaterSubsystem::Tick snaps the Niagara system to the pawn's place, only while a body is over water
+#     and for GSWRemainActiveForSeconds after), so the cost is a window round the camera and nothing when nothing is in the water;
+#   - the bodies feed it: the nearest MaxActivePawnNum (6) pawns by significance through collision proxies, and
+#     RegisterImpact(position, velocity, radius) for a splash or a hit, written to the NDC_ShallowWater data channel as
+#     Position / Velocity / Radius (WriteImpactToNDC);
+#   - the grid's height and normal go to a render target (NormalAndHeight) the water material reads through the SimLocation
+#     parameter (the grid's centre, UKismetMaterialLibrary::SetVectorParameterValue(GridCenterMPCName)), as a normal offset.
+# Here: a toroidal RGBA16F grid (height, velocity, foam) stepped by the damped wave equation (shaders/water_fx.frag) with the
+# bodies as stamps (position, radius, height, velocity, foam), the window snapped to whole texels so a texel is always the same
+# place in the world (no resampling blur as the camera moves), the rim absorbing so a texel the window moves onto holds nothing,
+# and water.frag adding the field's gradient to its normal and its foam to the lap. The grid is world-fixed on a torus, so a
+# wake stays where the boat left it.
+#
+#   water_fx_set(render3d_st, 2)                                  # 0 off, 1 low, 2 high (the game's setting; high is the default)
+#   water_fx_stamp(render3d_st, x, z, 0.4, 0.0, 0.01, 0.2, level) # a body: render-space place, radius, push down, push down fast, foam, the surface's height
+#                                                                 # (a stamp stirs only the water at its own level: a fountain's bowl is not its pool)
+#   water_fx_wake(render3d_st, x0, z0, x1, z1, 0.8, 0.0, 0.01, 0.1, level) # a body that moved from (x0, z0) to (x1, z1) since the last frame
+#   water_fx_splash(render3d_st, x, z, 0.5, 4.0, level)           # something entered the water: radius, speed it came at
+# The game says where the bodies are every frame it has any in the water; a client calls it for the bodies it sees (a remote
+# player's too): nothing goes over the net. No stamp for water_fx_idle_seconds and the field is cleared and the pass skipped.
+# ============================================================================
+numbers float
+
+const WFX_MAX: int = 48                  # stamps held for a step (the shader's array)
+const WFX_STEP: float = 1.0 / 60.0       # seconds a step
+const WFX_MAX_STEPS: int = 3             # steps a frame, so a slow frame does not spend more on the sim
+const WFX_IDLE: float = 7.0              # seconds with no stamp before the field is let go: the waves are 1e-3 of what they were
+const WFX_REACH: float = 0.7             # a stamp this share of the half window from its centre and nearer is taken
+
+# the grid's size for a quality: texels a side and metres a side
+export function water_fx_texels(q: int) -> int {
+  if q >= 2 { return 384 }
+  if q == 1 { return 192 }
+  return 0
+}
+export function water_fx_extent(q: int) -> float {
+  if q >= 2 { return 32.0 }
+  if q == 1 { return 24.0 }
+  return 0.0
+}
+
+# 0 off (no grid, no pass, no read), 1 low (192 texels over 24 m), 2 high (384 over 32 m). A change makes the grid again.
+@alloc_ok("a quality changed: the grid made again, not a frame")
+export function water_fx_set(render3d_st: mut Render3dState, q: int) -> void {
+  var v = q
+  if v < 0 { v = 0 }
+  if v > 2 { v = 2 }
+  if r3d_env_has(render3d_st, "R3D_NOWATERFX") { v = 0 }
+  if v == render3d_st.wfx_q { return }
+  render3d_st.wfx_q = v
+  water_fx_free(render3d_st)
+  render3d_st.wfx_ns = 0
+  render3d_st.wfx_acc = 0.0
+  render3d_st.wfx_live = false
+}
+
+export function water_fx_on(render3d_st: Render3dState) -> bool { return render3d_st.wfx_q > 0 }
+
+@alloc_ok("a quality changed: the grid freed, not a frame")
+function water_fx_free(render3d_st: mut Render3dState) -> void {
+  if render3d_st.wfx_a != null { target_free(render3d_st, render3d_st.wfx_a);  render3d_st.wfx_a = null }
+  if render3d_st.wfx_b != null { target_free(render3d_st, render3d_st.wfx_b);  render3d_st.wfx_b = null }
+  render3d_st.wfx_n = 0
+}
+
+@alloc_ok("a quality changed: the stamp lists made once")
+function water_fx_lists(render3d_st: mut Render3dState) -> void {
+  if render3d_st.wfx_st0 == null {
+    render3d_st.wfx_st0 = floats(WFX_MAX * 4)
+    render3d_st.wfx_st1 = floats(WFX_MAX * 4)
+  }
+}
+
+# Add a body or an impact to this frame's field: at (x, z) in render space, a disc of `radius` metres that is pushed `drop` metres
+# down at once (a thing put into the water) and given `push` metres a step of downward speed (a thing moving through it), and
+# `foam` (0 .. 1) of white water. A stamp that falls outside the window is dropped.
+export function water_fx_stamp(render3d_st: mut Render3dState, x: float, z: float, radius: float, drop: float, push: float, foam: float, level: float) -> void {
+  if render3d_st.wfx_q == 0 { return }
+  water_fx_lists(render3d_st)
+  if render3d_st.wfx_ns >= WFX_MAX { return }
+  if render3d_st.wfx_n > 0 {
+    let reach = water_fx_extent(render3d_st.wfx_q) * 0.5 * WFX_REACH
+    if Math.abs(x - render3d_st.wfx_crx) > reach or Math.abs(z - render3d_st.wfx_crz) > reach { return }
+  }
+  let o = render3d_st.wfx_ns * 4
+  render3d_st.wfx_st0[o] = x;  render3d_st.wfx_st0[o + 1] = z;  render3d_st.wfx_st0[o + 2] = Math.max(radius, 0.05);  render3d_st.wfx_st0[o + 3] = drop
+  render3d_st.wfx_st1[o] = push;  render3d_st.wfx_st1[o + 1] = foam;  render3d_st.wfx_st1[o + 2] = level;  render3d_st.wfx_st1[o + 3] = 0.0
+  render3d_st.wfx_ns += 1
+  render3d_st.wfx_idle = 0.0
+}
+
+# A body that went from (x0, z0) to (x1, z1) since the last frame: a stamp every half radius along the way (at most 6), the push
+# and foam each stamp's own. A fast boat is a line of discs, which is what makes its V.
+export function water_fx_wake(render3d_st: mut Render3dState, x0: float, z0: float, x1: float, z1: float, radius: float, drop: float, push: float, foam: float, level: float) -> void {
+  if render3d_st.wfx_q == 0 { return }
+  let dx = x1 - x0
+  let dz = z1 - z0
+  let len = Math.sqrt(dx * dx + dz * dz)
+  var n = int(Math.ceil(len / Math.max(radius * 0.5, 0.05)))
+  if n < 1 { n = 1 }
+  if n > 6 { n = 6 }
+  for i in 0 .. n {
+    let t = (float(i) + 1.0) / float(n)
+    water_fx_stamp(render3d_st, x0 + dx * t, z0 + dz * t, radius, drop / float(n), push / float(n), foam / float(n), level)
+  }
+}
+
+# Something entered the water at (x, z) coming down at `speed` m/s with a body about `radius` metres across: a drop, a ring and
+# a patch of foam, all of them with the speed.
+export function water_fx_splash(render3d_st: mut Render3dState, x: float, z: float, radius: float, speed: float, level: float) -> void {
+  if render3d_st.wfx_q == 0 { return }
+  let s = Math.min(Math.max(speed, 0.0), 14.0) / 14.0
+  water_fx_stamp(render3d_st, x, z, radius * (1.0 + 1.2 * s), 0.012 + 0.05 * s, 0.0, 0.25 + 0.7 * s, level)
+  water_fx_stamp(render3d_st, x, z, radius * 0.6, 0.0, 0.01 + 0.03 * s, 0.0, level)
+}
+
+# the floating origin moved: render space is sim space shifted by what it has moved, so the field keeps its places (water_rebase)
+function water_fx_rebase(render3d_st: mut Render3dState, dx: float, dz: float) -> void {
+  render3d_st.wfx_ox = render3d_st.wfx_ox + dx
+  render3d_st.wfx_oz = render3d_st.wfx_oz + dz
+  render3d_st.wfx_crx = render3d_st.wfx_crx - dx
+  render3d_st.wfx_crz = render3d_st.wfx_crz - dz
+}
+
+@alloc_ok("the grid, made once when first needed")
+function water_fx_make(render3d_st: mut Render3dState) -> void {
+  let was = render3d_st.gvk_tag
+  render3d_st.gvk_tag = VKM_WATER
+  let n = water_fx_texels(render3d_st.wfx_q)
+  if render3d_st.wfx_prog == 0 { render3d_st.wfx_prog = r3d_program(render3d_st, "fullscreen.vert", "water_fx.frag", "") }
+  render3d_st.wfx_a = water_fx_target(render3d_st, n)
+  render3d_st.wfx_b = water_fx_target(render3d_st, n)
+  render3d_st.wfx_n = n
+  render3d_st.wfx_dx = water_fx_extent(render3d_st.wfx_q) / float(n)
+  render3d_st.wfx_cur = 0
+  render3d_st.wfx_live = false
+  render3d_st.gvk_tag = was
+  water_fx_clear(render3d_st)
+}
+@alloc_ok("the grid, made once when first needed")
+function water_fx_target(render3d_st: mut Render3dState, n: int) -> Target {
+  let t = target_new(render3d_st, n, n, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+  gpu_tex_bind(render3d_st, GPU_TEX2D, t.color)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_S, GPU_REPEAT)
+  gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_WRAP_T, GPU_REPEAT)
+  return t
+}
+function water_fx_clear(render3d_st: mut Render3dState) -> void {
+  if render3d_st.wfx_a == null { return }
+  gpu_depth_test(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  gpu_clear_color(render3d_st, 0.0, 0.0, 0.0, 0.0)
+  target_bind(render3d_st, render3d_st.wfx_a)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
+  target_bind(render3d_st, render3d_st.wfx_b)
+  gpu_clear(render3d_st, GPU_COLOR_BUFFER_BIT)
+  render3d_st.wfx_live = false
+}
+
+# the texel `v` metres (sim space) is in, as a whole number
+function wfx_tex(v: float, dx: float) -> float { return Math.floor(v / dx) }
+# v into [0, n)
+function wfx_mod(v: float, n: float) -> float { return v - n * Math.floor(v / n) }
+
+# Once a frame, before the water is drawn: the window put where the camera looks, the frame's time stepped, the stamps spent.
+export function water_fx_frame(render3d_st: mut Render3dState) -> void {
+  if render3d_st.wfx_q == 0 { return }
+  if render3d_st.wfx_n == 0 { water_fx_make(render3d_st) }
+  let dt = render3d_st.r3d_dt
+  water_fx_lists(render3d_st)
+  render3d_st.wfx_steps = 0
+  # the window: the camera's place and a little ahead of where it looks, in whole texels
+  let dx = render3d_st.wfx_dx
+  let n = float(render3d_st.wfx_n)
+  let ext = water_fx_extent(render3d_st.wfx_q)
+  var fx = -render3d_st.cam_view[2]
+  var fz = -render3d_st.cam_view[10]
+  let fl = Math.sqrt(fx * fx + fz * fz)
+  if fl > 0.001 { fx = fx / fl;  fz = fz / fl } else { fx = 0.0;  fz = 0.0 }
+  let lead = ext * 0.16
+  let sx = render3d_st.cam_pos[0] + fx * lead + render3d_st.wfx_ox
+  let sz = render3d_st.cam_pos[2] + fz * lead + render3d_st.wfx_oz
+  let tx = wfx_tex(sx, dx)
+  let tz = wfx_tex(sz, dx)
+  # a jump (a teleport, a respawn) leaves the field's old places under the new window: let it go
+  let jumped = Math.abs(tx - render3d_st.wfx_cx) > n * 0.4 or Math.abs(tz - render3d_st.wfx_cz) > n * 0.4
+  render3d_st.wfx_cx = tx
+  render3d_st.wfx_cz = tz
+  render3d_st.wfx_crx = tx * dx - render3d_st.wfx_ox
+  render3d_st.wfx_crz = tz * dx - render3d_st.wfx_oz
+  if jumped { water_fx_clear(render3d_st);  render3d_st.wfx_ns = 0 }
+  # nothing in the water for a while: the waves are gone, the field is let go and the pass is not run
+  if render3d_st.wfx_ns == 0 {
+    render3d_st.wfx_idle = render3d_st.wfx_idle + dt
+    if not render3d_st.wfx_live { return }
+    if render3d_st.wfx_idle > WFX_IDLE {
+      water_fx_clear(render3d_st)
+      return
+    }
+  } else {
+    render3d_st.wfx_live = true
+  }
+  render3d_st.wfx_acc = render3d_st.wfx_acc + dt
+  var steps = int(render3d_st.wfx_acc / WFX_STEP)
+  if steps > WFX_MAX_STEPS { steps = WFX_MAX_STEPS;  render3d_st.wfx_acc = 0.0 } else { render3d_st.wfx_acc = render3d_st.wfx_acc - float(steps) * WFX_STEP }
+  if steps == 0 { return }
+  let c = render3d_st.wfx_speed * WFX_STEP / dx
+  render3d_st.wfx_k = Math.min(c * c, 0.45)
+  let p = render3d_st.wfx_prog
+  gpu_depth_test(render3d_st, false)
+  gpu_depth_write(render3d_st, false)
+  gpu_blend(render3d_st, false)
+  gpu_cull(render3d_st, false)
+  gpu_use_program(render3d_st, p)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_n"), n)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_dx"), dx)
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_center_tex"), wfx_mod(tx, n), wfx_mod(tz, n))
+  u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_center_r"), render3d_st.wfx_crx, render3d_st.wfx_crz)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_k"), render3d_st.wfx_k)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_damp"), render3d_st.wfx_damp)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_foam_keep"), 0.985)
+  u_f4v(render3d_st, gpu_uniform(render3d_st, p, "u_st0"), WFX_MAX, render3d_st.wfx_st0)
+  u_f4v(render3d_st, gpu_uniform(render3d_st, p, "u_st1"), WFX_MAX, render3d_st.wfx_st1)
+  for s in 0 .. steps {
+    var src = render3d_st.wfx_a
+    var dst = render3d_st.wfx_b
+    if render3d_st.wfx_cur == 1 { src = render3d_st.wfx_b;  dst = render3d_st.wfx_a }
+    target_bind(render3d_st, dst)
+    r3d_bind_2d(render3d_st, p, "u_prev", 0, src.color)
+    var ns = 0
+    if s == 0 { ns = render3d_st.wfx_ns }
+    u_f(render3d_st, gpu_uniform(render3d_st, p, "u_stamps"), float(ns))
+    mesh_draw(render3d_st, render3d_st.post_fs)
+    render3d_st.wfx_cur = 1 - render3d_st.wfx_cur
+    render3d_st.wfx_steps += 1
+    render3d_st.wfx_total += 1
+  }
+  render3d_st.wfx_ns = 0
+}
+
+# The field on water.frag's program p (every body's draw). With the field off or idle it binds a stand-in and says so.
+function water_fx_bind(render3d_st: mut Render3dState, p: int) -> void {
+  var on = 0.0
+  var tex = render3d_st.post_scene.color
+  if render3d_st.wfx_q > 0 and render3d_st.wfx_n > 0 and render3d_st.wfx_live {
+    on = 1.0
+    tex = render3d_st.wfx_a.color
+    if render3d_st.wfx_cur == 1 { tex = render3d_st.wfx_b.color }
+  }
+  r3d_bind_2d(render3d_st, p, "u_fx", 28, tex)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_fx_on"), on)
+  if on == 0.0 { return }
+  let n = float(render3d_st.wfx_n)
+  let dx = render3d_st.wfx_dx
+  # render space x / dx + shift is the texel in the torus
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_fx_map"), wfx_mod(render3d_st.wfx_ox / dx, n), wfx_mod(render3d_st.wfx_oz / dx, n), n, dx)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_fx_win"), render3d_st.wfx_crx, render3d_st.wfx_crz, 0.5 * n * dx, render3d_st.wfx_gain)
+}

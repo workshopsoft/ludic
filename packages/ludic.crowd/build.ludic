@@ -103,6 +103,10 @@ function cw_clear_map(crowd_st: mut CrowdState) -> void {
   List.clear(crowd_st.cw_sn_act)
   List.clear(crowd_st.cw_sn_cap)
   List.clear(crowd_st.cw_sn_use)
+  List.clear(crowd_st.cw_sn_held)
+  List.clear(crowd_st.cw_sn_leave)
+  List.clear(crowd_st.cw_sn_leave_anim)
+  List.clear(crowd_st.cw_sn_appr)
   List.clear(crowd_st.cw_sn_from)
   List.clear(crowd_st.cw_sn_to)
   List.clear(crowd_st.cw_sn_min)
@@ -217,6 +221,10 @@ export function crowd_build(crowd_st: mut CrowdState, zones: PopulationZones, sc
     push(crowd_st.cw_sn_act, cw_act_code(s.act))
     push(crowd_st.cw_sn_cap, s.capacity)
     push(crowd_st.cw_sn_use, 0)
+    push(crowd_st.cw_sn_held, 0)
+    push(crowd_st.cw_sn_leave, s.leave_s)
+    push(crowd_st.cw_sn_leave_anim, s.leave_anim)
+    push(crowd_st.cw_sn_appr, s.approach)
     push(crowd_st.cw_sn_from, s.from)
     push(crowd_st.cw_sn_to, s.to)
     push(crowd_st.cw_sn_min, s.min_s)
@@ -310,9 +318,17 @@ export function crowd_scenario_users(crowd_st: CrowdState, i: int) -> int {
   return crowd_st.cw_sn_use[i]
 }
 
-# the nearest scenario with `tag` within `r` of a point that has room and is open at the hour; -1 none.
+# the nearest scenario of `tag` (its text) within r of a point with room, open at the crowd's hour; -1 none (a mission's, a dev's)
+export function crowd_scenario_nearest(crowd_st: CrowdState, x: float, z: float, r: float, tag: string) -> int {
+  for t in 0 .. len(crowd_st.cw_tags) {
+    if crowd_st.cw_tags[t] == tag { return cw_scenario_near(crowd_st, x, z, r, t, crowd_st.cw_hour, -1) }
+  }
+  return -1
+}
+
+# the nearest scenario with `tag` within `r` of a point that has room and is open at the hour, other than `skip`; -1 none.
 # Looks at the cells round the point and allocates nothing
-function cw_scenario_near(crowd_st: CrowdState, x: float, z: float, r: float, tag: int, hour: float) -> int {
+function cw_scenario_near(crowd_st: CrowdState, x: float, z: float, r: float, tag: int, hour: float, skip: int) -> int {
   if crowd_st.cw_sn == 0 or tag < 0 { return -1 }
   let cell = crowd_st.cw_cfg.cell
   let cx0 = int(Math.floor((x - r) / cell))
@@ -326,7 +342,7 @@ function cw_scenario_near(crowd_st: CrowdState, x: float, z: float, r: float, ta
       var e = imap_get(crowd_st.cw_si_head, cw_cellkey(cx, cz), 0)
       while e > 0 {
         let i = e - 1
-        if crowd_st.cw_sn_tag[i] == tag and crowd_st.cw_sn_use[i] < crowd_st.cw_sn_cap[i] and cw_in_hours(hour, crowd_st.cw_sn_from[i], crowd_st.cw_sn_to[i]) {
+        if i != skip and crowd_st.cw_sn_tag[i] == tag and crowd_st.cw_sn_use[i] < crowd_st.cw_sn_cap[i] and cw_in_hours(hour, crowd_st.cw_sn_from[i], crowd_st.cw_sn_to[i]) {
           let dx = crowd_st.cw_sn_x[i] - x
           let dz = crowd_st.cw_sn_z[i] - z
           let d = dx * dx + dz * dz
