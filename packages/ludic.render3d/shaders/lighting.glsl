@@ -2,7 +2,7 @@
 uniform sampler2D u_irradiance;          // equirect, diffuse-convolved sky
 uniform sampler2DArray u_prefilter;      // equirect, GGX-prefiltered sky per roughness level
 uniform sampler2D u_brdf;                // split-sum BRDF LUT
-#define CASCADES 5
+#define CASCADES 6
 uniform sampler2DArrayShadow u_shadow;   // CASCADES layers
 float shadowTap(vec2 uv, int c, float ref) { return texture(u_shadow, vec4(uv, float(c), ref)); }
 // Depth is REVERSED everywhere (fmath.ludic): clip z runs 0 .. w, the buffer holds 1 at the near plane and 0 at the far
@@ -249,14 +249,19 @@ uniform float u_sh_gather;
 // the last cascade's fade plane moved that much closer): the blend into the next cascade a share of this one's own length (shadow.ludic,
 // R3D_UE_CASCADE_FADE); 0 the old 15 % of the split.
 uniform float u_sh_fade;
+// The lookup's biases (shadow.ludic shadow_bind, R3D_SHADOW_BIAS): x the normal offset's scale, y the slope-scaled depth bias's, z the constant
+// depth bias in metres. The defaults are the ones the lookup was tuned with; a smaller one lets a thin caster's shadow meet its foot (the
+// peter-panning of a lamp post stood on a plinth) at the price of acne on a grazing surface.
+uniform vec3 u_sh_bias;
 // one cascade's lookup, with a normal offset and a slope-scaled depth bias; gather: Unreal's 3x3 gather PCF in the near cascades
 // (its reach, a texel and a half, is the disc's there: the bias is the same), the disc beyond (every cascade under u_sh_gather)
 float shadowSlopeQ(int c, vec3 wpos, vec3 n, float tanT, bool gather) {
   float tx = cascadeTexel(c);
   float filt = (c >= 4) ? 2.6 : ((c == 3) ? 2.0 : 1.5);   // matches shadowSample's rad
-  vec3 wp = wpos + n * tx * (2.5 + 1.5 * tanT);
-  if (gather && (c <= 2 || u_sh_gather > 0.5)) return shadowGather3(c, wp, tx * (1.0 + filt * tanT) + 0.02);
-  return shadowSample(c, wp, tx * (1.0 + filt * tanT) + 0.02);
+  vec3 wp = wpos + n * tx * (2.5 + 1.5 * tanT) * u_sh_bias.x;
+  float bias = tx * (1.0 + filt * tanT) * u_sh_bias.y + u_sh_bias.z;
+  if (gather && (c <= 2 || u_sh_gather > 0.5)) return shadowGather3(c, wp, bias);
+  return shadowSample(c, wp, bias);
 }
 float shadowSlope(int c, vec3 wpos, vec3 n, float tanT) { return shadowSlopeQ(c, wpos, n, tanT, false); }
 

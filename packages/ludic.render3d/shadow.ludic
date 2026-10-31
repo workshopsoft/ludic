@@ -5,7 +5,7 @@
 # ============================================================================
 
 # the size of each cascade's depth layer; shadow_set_res changes it at run time
-const SHADOW_CASCADES: int = 5
+const SHADOW_CASCADES: int = 6
 
 # Unreal 5.8's directional light (DirectionalLightComponent.cpp: DynamicShadowCascades 4, DynamicShadowDistanceMovableLight 40000 cm,
 # CascadeDistributionExponent 3, FarShadowCascadeCount 0): four cascades out to 400 m, split by GetSplitDistance - the near plane plus
@@ -20,21 +20,28 @@ function shadow_ue_splits(render3d_st: mut Render3dState, near: float) -> void {
   if render3d_st.sh_ue < 0 {
     render3d_st.sh_ue = 1
     if r3d_env_has(render3d_st, "R3D_UE_CSM") and r3d_env(render3d_st, "R3D_UE_CSM") == "0" { render3d_st.sh_ue = 0 }
+    # DynamicShadowCascades (DirectionalLightComponent.cpp GetSplitDistance: ShadowNear + ComputeAccumulatedScale(exponent, i, count) x the
+    # distance less the near): five cascades by default, not Unreal's four. The eye sees a shadow's texel at arm's length as a block (the
+    # first of four, out to 10 m, has 1 cm texels, 6 px at 1.5 m); five put the first at 3.3 m (3 mm texels) and the rest at 13, 43, 133 and
+    # 400 m, the texels of the old first now the second's. R3D_UE_CSM_CASCADES=4 puts Unreal's default back.
+    render3d_st.sh_ue_n = 5
+    if r3d_env_has(render3d_st, "R3D_UE_CSM_CASCADES") { render3d_st.sh_ue_n = min(max(Text.to_int(r3d_env(render3d_st, "R3D_UE_CSM_CASCADES")), 1), 5) }
   }
   if render3d_st.sh_ue == 0 { return }
+  let n = render3d_st.sh_ue_n
   var total = 0.0
   var w = 1.0
-  for i in 0 .. UE_CSM_CASCADES { total += w;  w *= UE_CSM_EXPONENT }
+  for i in 0 .. n { total += w;  w *= UE_CSM_EXPONENT }
   var acc = 0.0
   w = 1.0
-  for i in 0 .. UE_CSM_CASCADES {
+  for i in 0 .. n {
     acc += w;  w *= UE_CSM_EXPONENT
     render3d_st.sh_split[i] = near + acc / total * (UE_CSM_DISTANCE - near)
   }
-  for i in UE_CSM_CASCADES .. SHADOW_CASCADES { render3d_st.sh_split[i] = 1000000.0 }
+  for i in n .. SHADOW_CASCADES { render3d_st.sh_split[i] = 1000000.0 }
 }
 function shadow_ue_count(render3d_st: Render3dState) -> int {
-  if render3d_st.sh_ue == 1 { return UE_CSM_CASCADES }
+  if render3d_st.sh_ue == 1 { return render3d_st.sh_ue_n }
   return SHADOW_CASCADES
 }
 
@@ -58,7 +65,7 @@ function shadow_init__t(render3d_st: mut Render3dState) -> void {
   render3d_st.sh_range = floats(SHADOW_CASCADES)
   render3d_st.sh_texel = floats(SHADOW_CASCADES)
   # the fourth slice keeps a tree-sized texel out to a kilometre; only the massif uses the last
-  render3d_st.sh_split[0] = 16.0;  render3d_st.sh_split[1] = 60.0;  render3d_st.sh_split[2] = 250.0;  render3d_st.sh_split[3] = 1100.0;  render3d_st.sh_split[4] = 6000.0
+  render3d_st.sh_split[0] = 16.0;  render3d_st.sh_split[1] = 60.0;  render3d_st.sh_split[2] = 250.0;  render3d_st.sh_split[3] = 1100.0;  render3d_st.sh_split[4] = 6000.0;  render3d_st.sh_split[5] = 1000000.0
   render3d_st.sh_tmp_proj = m4_new();  render3d_st.sh_tmp_vp = m4_new();  render3d_st.sh_tmp_inv = m4_new();  render3d_st.sh_tmp_view = m4_new()
   render3d_st.sh_corner = floats(3)
   shadow_fog(render3d_st)
@@ -304,6 +311,7 @@ function shadow_bind(render3d_st: mut Render3dState, prog: int) -> void {
   shadow_filter_read(render3d_st)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_sh_gather"), render3d_st.sh_gather)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_sh_fade"), render3d_st.sh_fade)
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_sh_bias"), render3d_st.sh_bias_n, render3d_st.sh_bias_s, render3d_st.sh_bias_c)
 }
 # The lookup's filter and cascade blend (lighting.glsl u_sh_gather, u_sh_fade), read once. R3D_SHADOW_PCF3_ALL=0: the rotated 8-tap disc
 # again wherever a caller does not ask for the gather (Unreal's Manual3x3PCF: ShadowFilteringCommon.ush, every cascade alike).
@@ -314,7 +322,20 @@ function shadow_filter_read(render3d_st: mut Render3dState) -> void {
   render3d_st.sh_gather = 1.0
   if r3d_env_has(render3d_st, "R3D_SHADOW_PCF3_ALL") and r3d_env(render3d_st, "R3D_SHADOW_PCF3_ALL") == "0" { render3d_st.sh_gather = 0.0 }
   render3d_st.sh_fade = 0.1
+  # R3D_SHADOW_BIAS="<normal offset scale> <slope bias scale> <constant metres>": the lookup's biases (lighting.glsl u_sh_bias)
+  render3d_st.sh_bias_n = 1.0;  render3d_st.sh_bias_s = 1.0;  render3d_st.sh_bias_c = 0.02
+  if r3d_env_has(render3d_st, "R3D_SHADOW_BIAS") { shadow_bias_read(render3d_st, r3d_env(render3d_st, "R3D_SHADOW_BIAS")) }
   if r3d_env_has(render3d_st, "R3D_UE_CASCADE_FADE") { render3d_st.sh_fade = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_UE_CASCADE_FADE")), 0.0, 0.3) }
+}
+
+@alloc_ok("read once, from the environment")
+function shadow_bias_read(render3d_st: mut Render3dState, v: string) -> void {
+  let parts = Text.split(v, " ")
+  if len(parts) >= 3 {
+    render3d_st.sh_bias_n = Math.clamp(ue_parse_float(parts[0]), 0.0, 4.0)
+    render3d_st.sh_bias_s = Math.clamp(ue_parse_float(parts[1]), 0.0, 4.0)
+    render3d_st.sh_bias_c = Math.clamp(ue_parse_float(parts[2]), 0.0, 0.2)
+  }
 }
 
 # R3D_DEBUG / the shadow debug switch: what the passes found, said once each (text made only then)
