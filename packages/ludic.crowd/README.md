@@ -42,7 +42,7 @@ downtown {
 }
 
 # crowd/scenarios.lres - where people do something
-bench_a { x: 20.0, z: 20.0, yaw: 90.0, tag: "bench", act: "sit", capacity: 2, min_s: 10.0, max_s: 20.0 }
+bench_a { x: 20.0, z: 20.0, yaw: 90.0, tag: "bench", act: "sit", capacity: 2, min_s: 10.0, max_s: 20.0, leave_s: 2.2, leave_anim: "sit_up", approach: 0.7 }
 atm     { x: 10.0, z: -30.0, tag: "atm", act: "use", capacity: 1, from: 6.0, to: 22.0 }
 smoke   { x: 40.0, z: 40.0, radius: 3.0, tag: "smoke", act: "stand", capacity: 4 }               # an area
 ```
@@ -119,8 +119,13 @@ A ped chooses its next act from its schedule's slots that cover the hour, by wei
 `pick` away (`wander_min` to `wander_max`); `commute` is a walk three times as far, a fifth faster; `stand`, `sit`
 and `work` stay put for the slot's time. A slot with an **anchor** looks for the nearest scenario with that tag
 within 80 m that is open at the hour and has room (`capacity`): it reserves its place (`crowd_scenario_users`),
-walks to it (a line of users along a bench, or anywhere in an area), does the scenario's `act` for its time, and
-frees it. With none to go to, `sit` and `work` become standing, `shop` a walk. A reserved scenario is freed when its
+walks to it (a line of users along a bench, 0.7 m apart, or anywhere in an area), does the scenario's `act` for its time, and
+frees it. A user holds its own place (a bench's seat) until it leaves: a newcomer takes the first free one, never one still
+sat on. The last 0.9 m to a place of a line are walked straight onto it, slowing, so the user stands on it within 3 cm
+(no slide). A scenario with `leave_s` keeps a user whose time is over on its place that long more with the key
+`leave_anim` (getting up from a bench), and only then does it walk on. A scenario with `approach` is reached from the front: its user first
+walks to that far ahead of its place, then straight back onto it (a bench's sitter comes round the bench, never over it).
+A user who leaves a scenario does not take the same one again for its next act. With none to go to, `sit` and `work` become standing, `shop` a walk. A reserved scenario is freed when its
 user runs, panics, is removed or is killed. `CROWD_USING` says who took what and when it was left (the game plays the
 scenario's `anim`).
 
@@ -247,9 +252,9 @@ shots fired, spawning and culling the whole time, and the heap does not grow by 
 | `crowd_threat`, `crowd_scare`, `crowd_witness_weight`, `crowd_witnessed` | what happens, who saw |
 | `crowd_embody`, `crowd_set_leg`, `crowd_release`, `crowd_handoff`, `crowd_uid_of`, `crowd_ext_of` | persistent identities |
 | `crowd_anim_speed/_turn/_state/_key/_set(uid)` | the graph's parameters and keys |
-| `crowd_remove`, `crowd_kill`, `crowd_place`, `crowd_goto` | the game's hand on a ped |
+| `crowd_remove`, `crowd_kill`, `crowd_place`, `crowd_goto`, `crowd_use` | the game's hand on a ped (`crowd_use`: to a scenario's free place, for a stay) |
 | `crowd_zone_at`, `crowd_density_at`, `crowd_traffic_at`, `crowd_traffic_target`, `crowd_cell_units`, `crowd_cell_seed`, `crowd_unit_id`, `crowd_uid` | the data's answers |
-| `crowd_scenario_count/_key/_users` | scenarios |
+| `crowd_scenario_count/_key/_users`, `crowd_scenario_nearest` | scenarios |
 | `crowd_role`, `crowd_sync_mark/_out/_gone`, `crowd_sync_in/_in_gone` | multiplayer |
 
 `crowd_facts()` is a `Queue<CrowdFact>`: `CROWD_SPAWNED`, `CROWD_GONE` (why: far, culled, removed, killed, reset, sync),

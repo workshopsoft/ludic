@@ -111,7 +111,7 @@ export const CROWD_WHY_REMOVED: int = 2  # crowd_remove
 export const CROWD_WHY_KILLED: int = 3   # crowd_kill: its place stays empty a while
 export const CROWD_WHY_RESET: int = 4    # the map was rebuilt
 export const CROWD_WHY_SYNC: int = 5     # a client's copy the host no longer sends
-export const CROWD_WHY_RELEASED: int = 6 # crowd_release: handed back to its owner
+export const CROWD_WHY_RELEASED: int = 6  # crowd_release: handed back to its owner
 
 export property CrowdFact {
   what: int = 0
@@ -162,6 +162,14 @@ export property CrowdPed {
   blocked: float = 0.0           # seconds it could not move
   scn: int = -1                  # the scenario it is going to or using
   scn_used: bool = false         # it has arrived and is using it
+  place: int = -1                # its place at that scenario (a seat of a bench), -1 none
+  leaving: bool = false          # its time there is over and it is getting up (PedScenario.leave_s)
+  out_on: bool = false           # stepping out to the front of the place it got up from (PedScenario.approach) before anything else
+  out_x: float = 0.0
+  out_t: float = 0.0              # seconds it has been stepping out (it gives up after 4: something stands there)
+  out_z: float = 0.0
+  last_scn: int = -1             # the scenario it last used (its next is another: a sitter who got up does not sit down there again)
+  stay: float = 0.0              # seconds it stays at the scenario crowd_use sent it to (0: the scenario's own time)
   lead: int = -1                 # handle of its group's leader, -1 the leader or alone
   member: int = 0
   fear: float = 0.0
@@ -283,6 +291,10 @@ export state CrowdState {
   cw_sn_act: []int = new []int
   cw_sn_cap: []int = new []int
   cw_sn_use: []int = new []int               # how many are at it or on their way
+  cw_sn_held: []int = new []int              # its places taken (a bit a place, the first 30): a user keeps its own until it leaves
+  cw_sn_leave: []float = new []float         # seconds a user takes to get up after its time (PedScenario.leave_s)
+  cw_sn_leave_anim: []string = new []string
+  cw_sn_appr: []float = new []float          # metres ahead of a place its user comes from (PedScenario.approach)
   cw_sn_from: []float = new []float
   cw_sn_to: []float = new []float
   cw_sn_anim: []string = new []string

@@ -159,6 +159,29 @@ export function crowd_place(crowd_st: mut CrowdState, uid: int, x: float, z: flo
   return true
 }
 
+# send a calm ped to scenario i (a bench, a counter): it takes a free place there, walks to it, stays `stay_s` (0: the scenario's own
+# time), gets up and goes on with its day. False: no such ped, not calm, a puppet, or no room
+export function crowd_use(crowd_st: mut CrowdState, uid: int, i: int, stay_s: float) -> bool {
+  let row = cw_row_of(crowd_st, uid)
+  if row < 0 or i < 0 or i >= crowd_st.cw_sn { return false }
+  let p = crowd_st.cw_tab.rec[row]
+  if p.react != PedReact.Calm or p.lod == CROWD_PUPPET or p.ext >= 0 { return false }
+  if crowd_st.cw_sn_use[i] >= crowd_st.cw_sn_cap[i] { return false }
+  cw_leave_scenario(crowd_st, p)
+  p.lead = -1
+  p.out_on = false
+  crowd_st.cw_sn_use[i] += 1
+  p.scn = i
+  p.scn_used = false
+  cw_spot(crowd_st, p, i, cw_take_place(crowd_st, p, i))
+  p.has_dest = true
+  p.act = CROWD_WALK
+  p.repath = 0.0
+  p.blocked = 0.0
+  p.stay = stay_s
+  return true
+}
+
 # send a calm ped walking to a point (a scripted errand, a call for a cop): it walks there, then goes on with its day
 export function crowd_goto(crowd_st: mut CrowdState, uid: int, x: float, z: float) -> bool {
   let row = cw_row_of(crowd_st, uid)
