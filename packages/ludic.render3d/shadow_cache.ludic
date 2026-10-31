@@ -89,7 +89,6 @@ function shadow_cache_mode(render3d_st: mut Render3dState) -> int {
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_TURN") { render3d_st.sc_turn = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_TURN")), 0.0) }
     # the live cascades (shadow cache's sun is stepped, so a cached cascade's shadows tick with it: the nearest, whose texels are
     # small, stay live and turn smoothly with the sun - as Unreal, which draws a moving light's cascades every frame)
-    render3d_st.sc_live = 2
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_LIVE") { render3d_st.sc_live = min(max(Text.to_int(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_LIVE")), SC_FIRST_MIN), 4) }
     render3d_st.sc_extra_on = 1
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_EXTRA") and r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_EXTRA") == "0" { render3d_st.sc_extra_on = 0 }
