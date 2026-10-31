@@ -65,11 +65,15 @@ export function r3d_ue_light_shadows(render3d_st: mut Render3dState, on: bool) -
   render3d_st.ue_ls_on = 0
   if on { render3d_st.ue_ls_on = 1 }
 }
+# (the settings are made on the first ask whether or not the game already chose on or off: r3d_ue_light_shadows sets the flag alone, and a
+# game that applies its setting before the first frame with local lights left them unmade - a null read on that frame)
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
 function ue_ls_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.ue_ls_on < 0 {
     render3d_st.ue_ls_on = 1
     if r3d_env_has(render3d_st, "R3D_UE_LIGHT_SHADOWS") and r3d_env(render3d_st, "R3D_UE_LIGHT_SHADOWS") == "0" { render3d_st.ue_ls_on = 0 }
+  }
+  if render3d_st.ue_ls == null {
     let s = new UeLightShadows
     if r3d_env_has(render3d_st, "R3D_UE_LS_RES") { s.max_resolution = Text.to_int(r3d_env(render3d_st, "R3D_UE_LS_RES")) }
     if r3d_env_has(render3d_st, "R3D_UE_LS_PAGES") { s.max_atlas_pages = Text.to_int(r3d_env(render3d_st, "R3D_UE_LS_PAGES")) }
