@@ -1323,12 +1323,12 @@ void lawnMacro(vec2 wm, float wy, float dist, vec3 N, inout vec3 alb, inout vec3
   float hG = mix(clamp(l / 0.16, 0.0, 1.0) * 0.8, 0.4, far);        // the blades' height
   float hS = mix(clamp(det * 0.5, 0.0, 1.0), 0.47, far);             // the soil's: stones high, crumbs low
   float s = surfNoise(wm / 13.0 + 31.0, 1024.0) * 0.55 + surfNoise(wm / 3.1 + 7.0, 1024.0) * 0.3 + surfNoise(wm / 0.8 + 3.0, 1024.0) * 0.15;
-  float wS = smoothstep(0.55, 0.78, s + 0.05 * dry);
+  float wS = smoothstep(0.62, 0.82, s + 0.05 * dry);
   float wg = clamp(mix(-1.0, 1.0, 1.0 - wS) + hG, 0.0001, 1.0);
   float ws = clamp(mix(-1.0, 1.0, wS) + hS, 0.0001, 1.0);
   float bare = ws / (wg + ws);
   float sand = 1.0 - smoothstep(6.0, 18.0, wy);
-  vec3 soilC = mix(vec3(0.165, 0.103, 0.049), vec3(0.34, 0.27, 0.17), sand * 0.85);
+  vec3 soilC = mix(vec3(0.15, 0.098, 0.05), vec3(0.24, 0.19, 0.125), sand * 0.85);
   soilC *= mix(1.0, 0.72, wet) * mix(1.0, 1.18, dry);
   vec3 soil = soilC * det;
   alb = mix(alb, soil, bare);
