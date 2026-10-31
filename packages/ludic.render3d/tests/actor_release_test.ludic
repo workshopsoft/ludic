@@ -28,6 +28,36 @@ program ActorReleaseTest {
   function stage(render3d_st: mut Render3dState) -> void {
     if render3d_st.ac_actors == null { render3d_st.ac_actors = new []Actor }
     if render3d_st.ac_spare == null { render3d_st.ac_spare = new []Actor }
+    if render3d_st.ac_spare_sk == null { render3d_st.ac_spare_sk = new []Actor }
+  }
+
+  test "a skinned record's rooms are made whole once and kept: a skinned model takes it again, a rigid one does not" (render3d_st: mut Render3dState) {
+    stage(render3d_st)
+    let m = new Model
+    m.prims = new []Prim
+    m.skin = bones2()
+    let r = new Model
+    r.prims = new []Prim
+    let p0 = actor_new(render3d_st, r)
+    let a = actor_new(render3d_st, m)
+    expect(a.prev_mat != null)                       # with the record, not at its first motion pass
+    ac_prev_room(a, true)
+    expect(a.prev_bones != null and a.fbones != null)
+    expect_eq(len(a.fbones_v), SKIN_MAX_JOINTS)      # every joint's view at once: no view made at a later follow
+    let fb = a.fbones
+    actor_release(render3d_st, p0)
+    let rigid = len(render3d_st.ac_spare)
+    let skinned = len(render3d_st.ac_spare_sk)
+    actor_release(render3d_st, a)
+    expect_eq(len(render3d_st.ac_spare_sk), skinned + 1)
+    expect_eq(len(render3d_st.ac_spare), rigid)
+    let b = actor_new(render3d_st, r)
+    expect(b == p0 and b != a)
+    let c = actor_new(render3d_st, m)
+    expect(c == a and c.fbones == fb)
+    ac_follow_room(c, 2)
+    expect(c.fbones == fb and len(c.fbones_v) == SKIN_MAX_JOINTS)
+    actor_release_all(render3d_st)
   }
 
   test "the held stay on the stage, the rest go back to the pool, and nobody is held after" (render3d_st: mut Render3dState) {
