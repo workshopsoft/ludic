@@ -383,10 +383,22 @@ function cmd_pack_verify(path: pointer) -> int {
 # So the resources go in the pack under exactly the name the package looks them
 # up by. Source (.ludic) and documentation are left out: the game is already
 # compiled, and nobody reads a package's FEATURES.md out of a .app.
+#
+# Both places count: a project's own packages/ (a game's local packages) and the
+# toolchain's (ludic.render3d and the rest). A project with a packages/ of its
+# own once shipped without the toolchain's - no shaders - so the toolchain's are
+# always added, but for a module the project has a copy of (the project's wins)
+# and when the two are the same directory (a project inside the checkout).
 function pack_add_packages(l: PackList) -> void {
-  var base = "packages"
-  if not file_exists(base) { base = `{ludic_home()}packages` }
-  if not file_exists(base) { return }
+  let home = `{ludic_home()}packages`
+  if file_exists("packages") { pack_add_packages_from(l, "packages", "") }
+  if not file_exists(home) { return }
+  if file_exists("packages") and shq(`test packages -ef {home}`) { return }
+  pack_add_packages_from(l, home, "packages")
+}
+
+# every package directory under `base`; with `skip` set, but for those that are also under `skip`
+function pack_add_packages_from(l: PackList, base: pointer, skip: pointer) -> void {
   let mods = capture(`ls {base} 2>/dev/null`)
   let n = slen(mods)
   var i = 0
@@ -396,6 +408,7 @@ function pack_add_packages(l: PackList) -> void {
     let mod = s_trim(line)
     if slen(mod) == 0 { continue }
     if not shq(`test -d {base}/{mod}`) { continue }      # packages/README.md is an index, not a package
+    if slen(skip) > 0 and shq(`test -d {skip}/{mod}`) { continue }
     pack_gather_pkg(l, base, mod)
   }
 }

@@ -454,14 +454,18 @@ function packignore_case() -> void {
 # application, not a directory that looks like one: a plist that plutil parses,
 # an executable where Info.plist says it is, an .icns, and a signature. The
 # app's own assets go in the pack beside it, and the display name is allowed a
-# space - which is where the shell quoting in the bundler earns its keep.
+# space - which is where the shell quoting in the bundler earns its keep. The
+# project has a packages/ of its own, and the pack still carries the toolchain's
+# packages' resources beside it (a game with local packages once shipped with no
+# shaders), and the app is run without LUDIC_HOME, as the Finder starts it.
 function bundle_case() -> void {
   let lbl = "ludic bundle -> a .app with metadata, icon, assets and a signature"
   if not is_darwin() { skip(lbl);  return }
   let work = `{tmp_dir()}/bundle`
   let root = capture_line("pwd")
-  shell(`rm -rf {work} && mkdir -p {work}/src {work}/assets`)
+  shell(`rm -rf {work} && mkdir -p {work}/src {work}/assets {work}/packages/probe.local`)
   write_file(`{work}/assets/hello.txt`, "packed")
+  write_file(`{work}/packages/probe.local/note.txt`, "local")
   # a 64x64 source icon: small, but sips will scale it and iconutil accept it
   shell(`sips -s format png --resampleHeightWidth 64 64 /System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/GenericApplicationIcon.icns --out {work}/assets/icon.png > /dev/null 2>&1`)
   write_file(`{work}/package.ludic`, bundle_manifest_src())
@@ -489,7 +493,7 @@ function bundle_case() -> void {
   if env != "0" { bad2(lbl, `LSEnvironment.MallocLargeCache came out [{env}]`);  return }
   if not shq(`codesign --verify "{app}" > /dev/null 2>&1`) { bad2(lbl, "the signature does not verify");  return }
   # and it runs from a directory with none of its assets, reading them from the pack
-  let got = s_trim(capture(`cd / && "{app}/Contents/MacOS/Probe App" 2>&1`))
+  let got = s_trim(capture(`cd / && env -u LUDIC_HOME "{app}/Contents/MacOS/Probe App" 2>&1`))
   if got != "packed" { bad2(lbl, `the bundled app printed [{got}], wanted [packed]`);  return }
   ok(lbl)
 }
@@ -515,6 +519,8 @@ function bundle_probe_src() -> pointer {
   s = s + "  entry {" + nl()
   s = s + "    var t = Fs.read_text(\"assets/hello.txt\")" + nl()
   s = s + "    if t == null { t = \"MISS\" }" + nl()
+  s = s + "    if Fs.read_text(\"packages/probe.local/note.txt\") == null { t = \"MISS the project's package\" }" + nl()
+  s = s + "    if Fs.read_text(\"packages/ludic.render3d/shaders/spv/manifest.txt\") == null { t = \"MISS the toolchain's shaders\" }" + nl()
   s = s + "    print(t)" + nl()
   s = s + "  }" + nl()
   s = s + "}" + nl()
