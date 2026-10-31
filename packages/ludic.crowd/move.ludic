@@ -432,7 +432,12 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
       let side = (p.x - p.dest_x) * fz - (p.z - p.dest_z) * fx
       if ahead < -0.05 or Math.abs(side) > ahead + 0.15 {
         let reach = Math.max(0.3, sp * dt * 1.1)                 # a far ped's step a second long, a near one's turn: never round the point
-        cw_move_to(crowd_st, p, row, p.dest_x + fx * ap, p.dest_z + fz * ap, sp, dt, reach * reach)
+        let ox = p.dest_x + fx * ap
+        let oz = p.dest_z + fz * ap
+        let od = Math.sqrt((ox - p.x) * (ox - p.x) + (oz - p.z) * (oz - p.z))
+        # the last 2 m to the front point straight (refused: steered round), as the way's corner can be where it stands (a nav that
+        # bends round the bench from inside its margin): a steered step there would stand still for good
+        if od < 2.0 or cw_move_to(crowd_st, p, row, ox, oz, sp, dt, reach * reach) { cw_step_straight(crowd_st, p, row, ox, oz, sp, dt, false) }
         return
       }
     }
@@ -500,8 +505,9 @@ function cw_step_straight(crowd_st: mut CrowdState, p: CrowdPed, row: int, tx: f
   if stop { sp = Math.min(speed, Math.max(0.35, d * 2.2)) }
   p.speed = sp
   let step = Math.min(d, sp * dt)
-  # a straight step the nav refuses (the place is in front of a bench and the walker behind it): steered there the usual way, round it
-  if d > CW_SPOT_OWN and not CrowdNav.walkable(p.x + dx / d * step, p.z + dz / d * step) {
+  # a straight step the nav refuses (the place is in front of a bench and the walker behind it): steered there the usual way, round it.
+  # Its own place is asked about first, as a steered step asks about the look ahead: a game's nav may tell its movers apart by it
+  if d > CW_SPOT_OWN and CrowdNav.crossing(p.x, p.z) >= 0 and not CrowdNav.walkable(p.x + dx / d * step, p.z + dz / d * step) {
     cw_move_to(crowd_st, p, row, tx, tz, speed, dt, CW_SPOT_AT * CW_SPOT_AT)
     return false
   }
