@@ -26,6 +26,12 @@ uniform float u_sea;              // 1: the open sea (swell, deep colour, the sh
 uniform float u_wash;             // 1: the thin lapping wash on a still body's edge (the sea has its foam band instead)
 uniform sampler2D u_swell_a;      // the sea's swell as slopes (water_sea.ludic's bake), tiling every SEA_TILE_A metres
 uniform sampler2D u_swell_b;      // the same for the short ripples, tiling every SEA_TILE_B metres
+// The water interaction field (water_fx.ludic): a wave height grid round the camera that bodies, impacts and wakes stir. r height (metres,
+// down is positive), g velocity, b foam. A texel is a fixed place in the world: render x / dx + u_fx_map.xy is its place in the torus.
+uniform sampler2D u_fx;
+uniform float u_fx_on;
+uniform vec4 u_fx_map;            // x, z: the torus shift in texels; z: texels a side; w: metres a texel
+uniform vec4 u_fx_win;            // the window's centre in render space x, z; its half extent in metres; the slope a unit of gradient is worth
 // One texel of the mask by its global index, read across tile borders: a tile of the page says what the tile is, an
 // array layer holds a mixed tile's texels. Off the map and a tile with no file read wet.
 float wetTexel(ivec2 g, int res) {
@@ -303,6 +309,31 @@ void main() {
     float amp = u_wade.z * (ring * 0.9 + churn * 0.7);
     n = normalize(n + vec3(away.x * amp, 0.0, away.y * amp) * 0.55);
   }
+  // ---- WHAT STIRS THE WATER ------------------------------------------------------------
+  // The interaction field (a wader's rings, a wake, a splash, an impact), read as the gradient of its height and added to the normal;
+  // its foam is the lap's. It fades to nothing toward the window's rim (the field is zero there), after the distance flattening for the
+  // reason the wade rings are: it is what a body is doing to the water right here. Only normals and a lit white change; nothing glows.
+  float fxFoam = 0.0;
+  if (u_fx_on > 0.5) {
+    vec2 rel = abs(wp.xz - u_fx_win.xy) / u_fx_win.z;
+    float fade = 1.0 - smoothstep(0.62, 0.9, max(rel.x, rel.y));
+    if (fade > 0.0) {
+      float nt = u_fx_map.z;
+      vec2 uv = (wp.xz / u_fx_map.w + u_fx_map.xy) / nt;
+      float e = 1.0 / nt;
+      float hl = texture(u_fx, uv - vec2(e, 0.0)).r;
+      float hr = texture(u_fx, uv + vec2(e, 0.0)).r;
+      float hd = texture(u_fx, uv - vec2(0.0, e)).r;
+      float hu = texture(u_fx, uv + vec2(0.0, e)).r;
+      vec2 g = vec2(hr - hl, hu - hd) / (2.0 * u_fx_map.w);
+      // a slope a ripple of this size could not have is a stamp's edge: bounded
+      g = g * min(1.0, 0.7 / max(length(g) * u_fx_win.w, 0.001));
+      n = normalize(n + vec3(g.x, 0.0, g.y) * u_fx_win.w * fade);
+      float ff = texture(u_fx, uv).b;
+      // foam is flecks, not a disc
+      fxFoam = ff * fade * smoothstep(0.12, 0.7, ff * (0.55 + 0.9 * (gnoise(wp.xz * 5.5 + u_time * 0.3) * 0.5 + 0.5)));
+    }
+  }
   // What the depth found may not be the bed: a fish, or the legs of someone wading, stands
   // clear of the ground it is over. The light to it still crosses depthBelow of water, but
   // the shore's terms - the wash, the lap and the soft edge, which exist to hide where the
@@ -377,6 +408,7 @@ void main() {
     // the wash dies where the surface meets the ground, so it cannot end on a hard line
     foam *= smoothstep(0.0, 0.5, shoreRay);
   }
+  foam += fxFoam * 0.85;
   float NoV = max(dot(n, v), 0.0);
   float F = 0.02 + 0.98 * pow(1.0 - NoV, 5.0);
   vec3 hv = normalize(v + u_sun_dir);
@@ -394,6 +426,7 @@ void main() {
       float wmin = wetMin4(wp.xz, 2.0);
       sf *= smoothstep(0.45, 0.9, wmin);
     }
+    sf = max(sf, fxFoam * 0.85);
   }
   float shadow = 1.0;
   bool sunSeen = !sea;

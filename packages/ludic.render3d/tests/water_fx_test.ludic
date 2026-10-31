@@ -1,0 +1,107 @@
+# water_fx_test.ludic - the water interaction field's CPU side (water_fx.ludic): the quality setting, the stamps a frame holds, the window a stamp must
+# be inside, the floating origin. The field itself (the wave equation, the rings, the wake, the fade) is shaders/water_fx.frag and is proved by the
+# game's pictures (occutown docs, waterfx shots). No device.
+import "ludic.render3d/r3d.ludic"
+program WaterFxTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  test "off by default: a stamp is not kept and the field is not asked for" (render3d_st: mut Render3dState) {
+    expect(not water_fx_on(render3d_st))
+    water_fx_stamp(render3d_st, 1.0, 2.0, 0.3, 0.0, 0.01, 0.1)
+    expect_eq(render3d_st.wfx_ns, 0)
+    water_fx_wake(render3d_st, 0.0, 0.0, 3.0, 0.0, 0.5, 0.0, 0.01, 0.1)
+    expect_eq(render3d_st.wfx_ns, 0)
+  }
+
+  test "the quality is off, low or high and a number outside that is held to it" (render3d_st: mut Render3dState) {
+    water_fx_set(render3d_st, 7)
+    expect_eq(render3d_st.wfx_q, 2)
+    water_fx_set(render3d_st, -3)
+    expect_eq(render3d_st.wfx_q, 0)
+    water_fx_set(render3d_st, 1)
+    expect_eq(render3d_st.wfx_q, 1)
+    expect_eq(water_fx_texels(1), 192)
+    expect_eq(water_fx_texels(2), 384)
+    expect_eq(water_fx_texels(0), 0)
+    # low is coarser over a smaller window; a texel is never under 8 cm (a ripple a hand wide is four of them)
+    expect(water_fx_extent(2) / float(water_fx_texels(2)) < 0.09)
+    expect(water_fx_extent(1) / float(water_fx_texels(1)) < 0.13)
+    water_fx_set(render3d_st, 0)
+    expect(not water_fx_on(render3d_st))
+  }
+
+  test "a stamp is kept with its place, radius, push and foam; a change of quality empties the frame" (render3d_st: mut Render3dState) {
+    water_fx_set(render3d_st, 2)
+    water_fx_stamp(render3d_st, 1.5, -2.5, 0.4, 0.02, 0.003, 0.2)
+    expect_eq(render3d_st.wfx_ns, 1)
+    expect(Math.abs(render3d_st.wfx_st0[0] - 1.5) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_st0[1] + 2.5) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_st0[2] - 0.4) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_st0[3] - 0.02) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_st1[0] - 0.003) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_st1[1] - 0.2) < 0.0001)
+    water_fx_set(render3d_st, 1)
+    expect_eq(render3d_st.wfx_ns, 0)
+  }
+
+  test "a wake is a line of stamps, one every half radius, six at most, and their push adds up to the call's" (render3d_st: mut Render3dState) {
+    water_fx_set(render3d_st, 2)
+    water_fx_wake(render3d_st, 0.0, 0.0, 1.0, 0.0, 0.5, 0.0, 0.012, 0.06)
+    expect_eq(render3d_st.wfx_ns, 4)
+    var push = 0.0
+    for i in 0 .. render3d_st.wfx_ns { push += render3d_st.wfx_st1[i * 4] }
+    expect(Math.abs(push - 0.012) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_st0[(render3d_st.wfx_ns - 1) * 4] - 1.0) < 0.0001)
+    water_fx_wake(render3d_st, 0.0, 0.0, 30.0, 0.0, 0.5, 0.0, 0.012, 0.06)
+    expect_eq(render3d_st.wfx_ns, 10)
+  }
+
+  test "a frame holds 48 stamps and drops the rest" (render3d_st: mut Render3dState) {
+    water_fx_set(render3d_st, 2)
+    for i in 0 .. 60 { water_fx_stamp(render3d_st, float(i) * 0.01, 0.0, 0.3, 0.0, 0.01, 0.0) }
+    expect_eq(render3d_st.wfx_ns, WFX_MAX)
+  }
+
+  test "a stamp beyond the window is dropped: the field is a torus and a far one would ring under the camera" (render3d_st: mut Render3dState) {
+    water_fx_set(render3d_st, 2)
+    render3d_st.wfx_n = 384         # as if the grid had been made (no device here)
+    render3d_st.wfx_crx = 10.0
+    render3d_st.wfx_crz = -4.0
+    water_fx_stamp(render3d_st, 12.0, -3.0, 0.3, 0.0, 0.01, 0.0)
+    expect_eq(render3d_st.wfx_ns, 1)
+    water_fx_stamp(render3d_st, 10.0 + 16.0, -4.0, 0.3, 0.0, 0.01, 0.0)    # at the rim of the half window
+    expect_eq(render3d_st.wfx_ns, 1)
+    water_fx_stamp(render3d_st, 10.0, -4.0 - 100.0, 0.3, 0.0, 0.01, 0.0)
+    expect_eq(render3d_st.wfx_ns, 1)
+    render3d_st.wfx_n = 0
+  }
+
+  test "the floating origin: the field keeps its places, render space moves and sim space follows" (render3d_st: mut Render3dState) {
+    render3d_st.wfx_crx = 5.0
+    render3d_st.wfx_crz = 6.0
+    water_fx_rebase(render3d_st, 100.0, -50.0)
+    # the origin moved by (100, -50): everything in render space is 100 less in x, 50 more in z, and sim space = render space + this
+    expect(Math.abs(render3d_st.wfx_ox - 100.0) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_oz + 50.0) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_crx + 95.0) < 0.0001)
+    expect(Math.abs(render3d_st.wfx_crz - 56.0) < 0.0001)
+    # render + sim offset is what it was: 5 + 0 = -95 + 100, 6 + 0 = 56 - 50
+    expect(Math.abs((render3d_st.wfx_crx + render3d_st.wfx_ox) - 5.0) < 0.0001)
+    expect(Math.abs((render3d_st.wfx_crz + render3d_st.wfx_oz) - 6.0) < 0.0001)
+  }
+
+  test "a splash is a drop and a ring, bigger and foamier the faster it came" (render3d_st: mut Render3dState) {
+    water_fx_set(render3d_st, 2)
+    water_fx_splash(render3d_st, 0.0, 0.0, 0.5, 2.0)
+    expect_eq(render3d_st.wfx_ns, 2)
+    let slow_drop = render3d_st.wfx_st0[3]
+    let slow_foam = render3d_st.wfx_st1[1]
+    let slow_r = render3d_st.wfx_st0[2]
+    render3d_st.wfx_ns = 0
+    water_fx_splash(render3d_st, 0.0, 0.0, 0.5, 12.0)
+    expect(render3d_st.wfx_st0[3] > slow_drop)
+    expect(render3d_st.wfx_st1[1] > slow_foam)
+    expect(render3d_st.wfx_st0[2] > slow_r)
+  }
+}
