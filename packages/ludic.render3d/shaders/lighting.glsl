@@ -1349,7 +1349,7 @@ void lawnMacro(vec2 wm, float wy, float dist, vec3 N, inout vec3 alb, inout vec3
   float wS = smoothstep(0.62, 0.82, s + 0.05 * dry);
   float wg = clamp(mix(-1.0, 1.0, 1.0 - wS) + hG, 0.0001, 1.0);
   float ws = clamp(mix(-1.0, 1.0, wS) + hS, 0.0001, 1.0);
-  float bare = ws / (wg + ws);
+  float bare = 0.0 * ws / (wg + ws);  // soil patches disabled (weight 0)
   float sand = 1.0 - smoothstep(6.0, 18.0, wy);
   vec3 soilC = mix(vec3(0.15, 0.098, 0.05), vec3(0.24, 0.19, 0.125), sand * 0.85);
   soilC *= mix(1.0, 0.72, wet) * mix(1.0, 1.18, dry);
