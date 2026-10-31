@@ -115,7 +115,7 @@ function model_release(render3d_st: mut Render3dState, m: Model) -> void {
     }
     free(m.prims)
   }
-  skin_free(m.skin)
+  skin_park(render3d_st, m.skin)
   free(m)
 }
 
