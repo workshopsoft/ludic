@@ -167,6 +167,10 @@ export property PedScenario {
   @Unit("s") @Range(1, 7200) min_s: float = 20.0
   @Unit("s") @Range(1, 7200) max_s: float = 90.0
   anim: string = ""
+  # getting up: a user whose time is over stays on its place this long more, playing `leave_anim` (the game's state key: standing up
+  # from a bench), before it walks on. 0: it walks on at once
+  @Unit("s") @Range(0, 30) leave_s: float = 0.0
+  leave_anim: string = ""
 }
 
 @PerMap @ByKey

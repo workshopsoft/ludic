@@ -40,6 +40,7 @@ function cw_leave_scenario(crowd_st: mut CrowdState, p: CrowdPed) -> void {
   if p.scn < 0 { return }
   if p.scn < crowd_st.cw_sn {
     crowd_st.cw_sn_use[p.scn] = Math.max(0, crowd_st.cw_sn_use[p.scn] - 1)
+    if p.place >= 0 and p.place < 30 and (crowd_st.cw_sn_held[p.scn] & (1 << p.place)) != 0 { crowd_st.cw_sn_held[p.scn] -= 1 << p.place }
     if p.scn_used {
       let f = cw_fact(crowd_st, CROWD_USING, p.uid)
       f.crime = p.scn
@@ -50,6 +51,23 @@ function cw_leave_scenario(crowd_st: mut CrowdState, p: CrowdPed) -> void {
   }
   p.scn = -1
   p.scn_used = false
+  p.place = -1
+  p.leaving = false
+}
+
+# the first free place of scenario i (its places are taken one a user: a leaver's is free again, whoever else still sits), held for p
+function cw_take_place(crowd_st: mut CrowdState, p: CrowdPed, i: int) -> int {
+  let cap = Math.min(crowd_st.cw_sn_cap[i], 30)
+  let held = crowd_st.cw_sn_held[i]
+  for k in 0 .. cap {
+    if (held & (1 << k)) == 0 {
+      crowd_st.cw_sn_held[i] = held | (1 << k)
+      p.place = k
+      return k
+    }
+  }
+  p.place = -1
+  return Math.max(0, crowd_st.cw_sn_use[i] - 1)
 }
 
 # where a user of scenario i stands: an area's hashed point, else along the facing's right by its place
@@ -110,7 +128,7 @@ function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
       crowd_st.cw_sn_use[i] += 1
       p.scn = i
       p.scn_used = false
-      cw_spot(crowd_st, p, i, crowd_st.cw_sn_use[i] - 1)
+      cw_spot(crowd_st, p, i, cw_take_place(crowd_st, p, i))
       p.has_dest = true
       p.act = CROWD_WALK
       return
@@ -336,6 +354,10 @@ function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
     p.yaw = crowd_st.cw_sn_yaw[p.scn]
     p.speed = 0.0
     p.act_t = crowd_st.cw_sn_min[p.scn] + (crowd_st.cw_sn_max[p.scn] - crowd_st.cw_sn_min[p.scn]) * cw_roll(p, 24)
+    if p.stay > 0.0 {
+      p.act_t = p.stay
+      p.stay = 0.0
+    }
     let f = cw_fact(crowd_st, CROWD_USING, p.uid)
     f.crime = p.scn
     f.count = 1
@@ -383,12 +405,57 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
     if not p.has_dest { return }
     var sp = ty.walk_speed * p.pace
     if p.act == CROWD_COMMUTE { sp = sp * 1.2 }
+    if p.scn >= 0 and crowd_st.cw_sn_r[p.scn] <= 0.0 and cw_near_spot(p) {
+      if cw_step_to_spot(crowd_st, p, row, sp, dt) { cw_arrive(crowd_st, p, ty) }
+      return
+    }
     if cw_move(crowd_st, p, row, p.dest_x, p.dest_z, sp, dt) { cw_arrive(crowd_st, p, ty) }
     return
   }
   cw_halt(p, dt)
   p.act_t -= dt
-  if p.act_t <= 0.0 { cw_next_act(crowd_st, p) }
+  if p.act_t > 0.0 { return }
+  # its time at a place that takes getting up from (a bench) is over: it stays on it while it gets up, then goes on with its day
+  if p.scn >= 0 and p.scn_used and not p.leaving and crowd_st.cw_sn_leave[p.scn] > 0.0 {
+    p.leaving = true
+    p.act_t = crowd_st.cw_sn_leave[p.scn]
+    p.key = crowd_st.cw_sn_leave_anim[p.scn]
+    return
+  }
+  cw_next_act(crowd_st, p)
+}
+
+# within CW_SPOT_NEAR of the very place it is going to (a seat, a spot at a counter): the last steps are walked straight onto it, slowing,
+# with nobody to steer round (the place is its own) - a walk that stopped within 0.8 m and was put on its place slid the rest
+const CW_SPOT_NEAR: float = 0.9
+const CW_SPOT_AT: float = 0.03
+function cw_near_spot(p: CrowdPed) -> bool {
+  let dx = p.dest_x - p.x
+  let dz = p.dest_z - p.z
+  return dx * dx + dz * dz < CW_SPOT_NEAR * CW_SPOT_NEAR
+}
+
+function cw_step_to_spot(crowd_st: mut CrowdState, p: CrowdPed, row: int, speed: float, dt: float) -> bool {
+  let dx = p.dest_x - p.x
+  let dz = p.dest_z - p.z
+  let d = Math.sqrt(dx * dx + dz * dz)
+  if d <= CW_SPOT_AT {
+    p.speed = 0.0
+    return true
+  }
+  # slows to a stop over the last half metre (never below a slow step), never past the place
+  let sp = Math.min(speed, Math.max(0.35, d * 2.2))
+  p.speed = sp
+  let step = Math.min(d, sp * dt)
+  if p.lod == CROWD_FULL {
+    let turn = cw_turn(p.yaw, cw_yaw_of(dx, dz))
+    let lim = 7.0 * dt
+    p.yaw += Math.clamp(turn, -lim, lim)
+  } else {
+    p.yaw = cw_yaw_of(dx, dz)
+  }
+  cw_set_pos(crowd_st, p, row, p.x + dx / d * step, p.z + dz / d * step)
+  return step >= d - CW_SPOT_AT
 }
 
 function cw_flee_dest(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {

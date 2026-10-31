@@ -103,6 +103,9 @@ function cw_clear_map(crowd_st: mut CrowdState) -> void {
   List.clear(crowd_st.cw_sn_act)
   List.clear(crowd_st.cw_sn_cap)
   List.clear(crowd_st.cw_sn_use)
+  List.clear(crowd_st.cw_sn_held)
+  List.clear(crowd_st.cw_sn_leave)
+  List.clear(crowd_st.cw_sn_leave_anim)
   List.clear(crowd_st.cw_sn_from)
   List.clear(crowd_st.cw_sn_to)
   List.clear(crowd_st.cw_sn_min)
@@ -217,6 +220,9 @@ export function crowd_build(crowd_st: mut CrowdState, zones: PopulationZones, sc
     push(crowd_st.cw_sn_act, cw_act_code(s.act))
     push(crowd_st.cw_sn_cap, s.capacity)
     push(crowd_st.cw_sn_use, 0)
+    push(crowd_st.cw_sn_held, 0)
+    push(crowd_st.cw_sn_leave, s.leave_s)
+    push(crowd_st.cw_sn_leave_anim, s.leave_anim)
     push(crowd_st.cw_sn_from, s.from)
     push(crowd_st.cw_sn_to, s.to)
     push(crowd_st.cw_sn_min, s.min_s)
@@ -308,6 +314,14 @@ export function crowd_scenario_key(crowd_st: CrowdState, i: int) -> string {
 export function crowd_scenario_users(crowd_st: CrowdState, i: int) -> int {
   if i < 0 or i >= crowd_st.cw_sn { return 0 }
   return crowd_st.cw_sn_use[i]
+}
+
+# the nearest scenario of `tag` (its text) within r of a point with room, open at the crowd's hour; -1 none (a mission's, a dev's)
+export function crowd_scenario_nearest(crowd_st: CrowdState, x: float, z: float, r: float, tag: string) -> int {
+  for t in 0 .. len(crowd_st.cw_tags) {
+    if crowd_st.cw_tags[t] == tag { return cw_scenario_near(crowd_st, x, z, r, t, crowd_st.cw_hour) }
+  }
+  return -1
 }
 
 # the nearest scenario with `tag` within `r` of a point that has room and is open at the hour; -1 none.

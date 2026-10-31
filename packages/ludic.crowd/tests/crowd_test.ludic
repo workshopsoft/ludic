@@ -6,6 +6,7 @@
 import "ludic.crowd"
 import "ludic.base"
 program CrowdTest {
+  friend module ludic_crowd
   numbers float
   state CrowdTestState {
     hour: float = 12.0
@@ -486,6 +487,96 @@ program CrowdTest {
     var after = 0
     for i in 0 .. crowd_scenario_count(crowd_st) { after += crowd_scenario_users(crowd_st, i) }
     expect_eq(after, before - 1)
+  }
+
+  test "seats: a bench's two places are never shared, a sitter walks onto its place without a slide and gets up where it sat" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    var rises = 0
+    var held_ok = true
+    var rise_uid = -1
+    var rise_x = 0.0
+    var rise_z = 0.0
+    for k in 0 .. 3000 {
+      sim(crowd_st, m, s, 0.1, 0.1)
+      # the sitters on bench_a: at most one on each place, each within a few cm of one of them
+      var on_a = 0
+      var on_b = 0
+      for i in 0 .. crowd_count(crowd_st) {
+        let u = crowd_ped_at(crowd_st, i)
+        if crowd_act(crowd_st, u) != CROWD_SIT { continue }
+        let key = crowd_anim_key(crowd_st, u)
+        if key != "sit_bench" and key != "sit_up" { continue }       # a friend standing by its sitting leader has the act, not the seat
+        let x = crowd_x(crowd_st, u)
+        let z = crowd_z(crowd_st, u)
+        if dist(x, z, 20.0, 20.0) > 2.0 { continue }
+        if dist(x, z, 20.0, 19.65) < 0.05 { on_a += 1 } else if dist(x, z, 20.0, 20.35) < 0.05 { on_b += 1 } else { held_ok = false }
+        # getting up: the leave key, on the place it sat on, for leave_s
+        if crowd_anim_key(crowd_st, u) == "sit_up" {
+          if rise_uid != u {
+            rise_uid = u
+            rise_x = x
+            rise_z = z
+            rises += 1
+          } else if dist(x, z, rise_x, rise_z) > 0.001 { held_ok = false }
+        }
+      }
+      expect(on_a <= 1)
+      expect(on_b <= 1)
+    }
+    expect(held_ok)
+    expect(rises > 1)
+    # the places themselves: three users of a two-place bench in turn; the first leaves while the second sits, and the third takes the
+    # first's place, never the second's (a count of users handed the third the place still taken)
+    var bi = -1
+    for i in 0 .. crowd_scenario_count(crowd_st) { if crowd_scenario_key(crowd_st, i) == "bench_a" { bi = i } }
+    expect(bi >= 0)
+    crowd_reset(crowd_st)
+    expect(load_town(crowd_st, zones, scen))
+    let a = new CrowdPed
+    let b = new CrowdPed
+    let c = new CrowdPed
+    a.scn = bi
+    b.scn = bi
+    c.scn = bi
+    crowd_st.cw_sn_use[bi] = 1
+    expect_eq(cw_take_place(crowd_st, a, bi), 0)
+    crowd_st.cw_sn_use[bi] = 2
+    expect_eq(cw_take_place(crowd_st, b, bi), 1)
+    cw_leave_scenario(crowd_st, a)
+    crowd_st.cw_sn_use[bi] += 1
+    expect_eq(cw_take_place(crowd_st, c, bi), 0)
+    expect_eq(crowd_st.cw_sn_held[bi], 3)
+    # crowd_use: a calm ped sent to the bench for 3 s walks onto a free place, sits, gets up for leave_s on it, then walks on
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    for k in 0 .. 3000 {
+      if crowd_scenario_users(crowd_st, bi) < 2 { break }
+      sim(crowd_st, m, s, 0.1, 0.1)
+    }
+    expect_eq(crowd_scenario_nearest(crowd_st, 20.0, 20.0, 5.0, "bench"), bi)
+    var u = -1
+    for i in 0 .. crowd_count(crowd_st) {
+      let v = crowd_ped_at(crowd_st, i)
+      if u < 0 and dist(crowd_x(crowd_st, v), crowd_z(crowd_st, v), 20.0, 20.0) < 30.0 and crowd_scenario_users(crowd_st, bi) < 2 and crowd_use(crowd_st, v, bi, 3.0) { u = v }
+    }
+    expect(u >= 0)
+    var sat_t = -1.0
+    var up_t = -1.0
+    var gone_t = -1.0
+    var t = 0.0
+    for k in 0 .. 900 {
+      sim(crowd_st, m, s, 0.1, 0.1)
+      t += 0.1
+      if not crowd_alive(crowd_st, u) { break }
+      let key = crowd_anim_key(crowd_st, u)
+      if sat_t < 0.0 and key == "sit_bench" and crowd_act(crowd_st, u) == CROWD_SIT { sat_t = t }
+      if up_t < 0.0 and key == "sit_up" { up_t = t }
+      if up_t > 0.0 and gone_t < 0.0 and key != "sit_up" { gone_t = t }
+    }
+    expect(sat_t > 0.0)
+    expect(up_t - sat_t > 2.9 and up_t - sat_t < 3.3)
+    expect(gone_t - up_t > 1.9 and gone_t - up_t < 2.3)
   }
 
   test "friends come together and walk together; a follower goes on without its leader" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
