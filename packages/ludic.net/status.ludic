@@ -1,0 +1,58 @@
+# status.ludic - a host's answer to a server browser, without a session: anyone may send a query (20 bytes: "MQ", the protocol byte, a
+# zero, a 4-byte nonce, zeros) and a hosting session answers it at once from its socket with "MR", the protocol byte, a zero, the same
+# nonce, the status's length (2 bytes) and the status the game set (net_status_set: its own bytes - a name, players, rules). No slot is
+# taken and nothing is kept, so a browser can ask every server in its list how it is and time the round trip as its ping (Source's
+# A2S_INFO). A host with no status set, or a session that is not hosting, stays silent.
+#
+# A browser asks from a plain socket of its own (Udp.open(0)): net_status_query writes the query, net_status_reply reads an answer.
+
+export const NET_STATUS_MOST: int = 1024       # a status's bytes at most (one packet under the MTU)
+
+# the status a query is answered with: n bytes of b (copied: the game may write its next one into the same buffer); n = 0 stops answering
+export function net_status_set(net_st: mut NetState, b: []byte, n: int) -> void {
+  if net_st.net__status == null {
+    @alloc_ok("once: the answer's buffer")
+    net_st.net__status = buffer(NET_STATUS_MOST + 12)
+    nb_put8(net_st.net__status, 0, 'M')
+    nb_put8(net_st.net__status, 1, 'R')
+  }
+  let m = Math.clamp(n, 0, NET_STATUS_MOST)
+  for i in 0 .. m { net_st.net__status[12 + i] = b[i] }
+  net_st.net__status_n = m
+}
+
+function net__status_packet(net_st: mut NetState, n: int, ip: int, port: int) -> bool {
+  if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'Q' { return false }
+  if net_st.net__state != NET_HOSTING or net_st.net__status_n <= 0 { return true }
+  if nb_get8(net_st.net__in, 2) != net__conf(net_st).proto { return true }
+  let b = net_st.net__status
+  nb_put8(b, 2, net__conf(net_st).proto)
+  nb_put8(b, 3, 0)
+  nb_put32(b, 4, nb_get32(net_st.net__in, 4))
+  nb_put8(b, 8, net_st.net__status_n % 256)
+  nb_put8(b, 9, net_st.net__status_n / 256)
+  nb_put8(b, 10, 0)
+  nb_put8(b, 11, 0)
+  NetSocket.send(net_st.net__sock, ip, port, b, 12 + net_st.net__status_n)
+  return true
+}
+
+# a query for the host at ip:port, sent from the browser's own socket (q: a buffer of 20 bytes or more, reused)
+export function net_status_query(sock: int, ip: int, port: int, proto: int, nonce: int, q: []byte) -> bool {
+  for i in 0 .. 20 { q[i] = 0 }
+  nb_put8(q, 0, 'M')
+  nb_put8(q, 1, 'Q')
+  nb_put8(q, 2, proto)
+  nb_put32(q, 4, nonce)
+  return Udp.send(sock, ip, port, q, 20) == 20
+}
+
+# an answer read into r by Udp.recv (n its bytes): the status's length, its bytes at r[12 ..]; -1 when r is not an answer for proto
+export function net_status_reply(r: []byte, n: int, proto: int) -> int {
+  if n < 12 or nb_get8(r, 0) != 'M' or nb_get8(r, 1) != 'R' or nb_get8(r, 2) != proto { return -1 }
+  let m = nb_get8(r, 8) + 256 * nb_get8(r, 9)
+  if 12 + m > n { return -1 }
+  return m
+}
+# the nonce an answer carries (the query's, back): which query it answers
+export function net_status_nonce(r: []byte) -> int { return nb_get32(r, 4) }
