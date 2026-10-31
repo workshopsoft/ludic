@@ -143,6 +143,53 @@ program NetTest {
     expect(not net_is_room("ABCDE1"))
   }
 
+  # a server browser's query (status.ludic): 20 bytes, "MQ", the protocol, a nonce
+  function query_from(net_test_st: mut NetTestState, ip: int, port: int, proto: int, nonce: int) -> void {
+    let b = buffer(20)
+    nb_put8(b, 0, 'M')
+    nb_put8(b, 1, 'Q')
+    nb_put8(b, 2, proto)
+    nb_put32(b, 4, nonce)
+    let p = new Pkt
+    p.ip = ip
+    p.port = port
+    p.len = 20
+    p.data = b
+    push(net_test_st.inbound, p)
+  }
+
+  test "a host answers a browser's query with its status, takes no slot, and a host with none stays silent" (net_st: mut NetState, net_test_st: mut NetTestState) {
+    fresh(net_st, net_test_st)
+    expect(net_host(net_st, 27415, 77))
+    let ip = Udp.ip("10.0.0.30")
+    query_from(net_test_st, ip, 6000, 1, 1234)
+    net_begin(net_st, 0.01)
+    expect_eq(len(net_test_st.sent), 0)                      # no status set: no answer
+    let st = buffer(5)
+    for i in 0 .. 5 { st[i] = 'a' + i }
+    net_status_set(net_st, st, 5)
+    query_from(net_test_st, ip, 6000, 1, 99887766)
+    query_from(net_test_st, ip, 6001, 9, 5)                  # another build's protocol: ignored
+    net_begin(net_st, 0.01)
+    expect_eq(len(net_test_st.sent), 1)
+    let r = net_test_st.sent[0]
+    expect_eq(r.ip, ip)
+    expect_eq(r.port, 6000)
+    expect_eq(net_status_reply(r.data, r.len, 1), 5)
+    expect_eq(net_status_reply(r.data, r.len, 2), -1)
+    expect_eq(net_status_nonce(r.data), 99887766)
+    expect_eq(r.data[12], 'a')
+    expect_eq(r.data[16], 'e')
+    expect_eq(len(q_drain(net_inbox(net_st))), 0)             # nothing for the game, no peer
+    # a guest is no host: it does not answer
+    fresh(net_st, net_test_st)
+    expect(net_join(net_st, Udp.ip("10.0.0.1"), 27415))
+    net_status_set(net_st, st, 5)
+    query_from(net_test_st, ip, 6000, 1, 7)
+    net_begin(net_st, 0.0)
+    for i in 0 .. len(net_test_st.sent) { expect(not (net_test_st.sent[i].data[0] == 'M' and net_test_st.sent[i].data[1] == 'R')) }
+  }
+
   test "a host takes a stranger only with a hello, and hands out pids from 2" (net_st: mut NetState, net_test_st: mut NetTestState) {
     let pid = host_with_guest(net_st, net_test_st)
     expect_eq(pid, 2)
