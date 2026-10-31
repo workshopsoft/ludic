@@ -6,6 +6,14 @@ program UeLightShadowsTest {
   numbers float
   function links_runtime() -> bool { return Input.key_pressed(0) }
 
+  test "the settings are there when the game chose on or off before the first ask (a saved setting applied at boot)" (render3d_st: mut Render3dState) {
+    r3d_ue_light_shadows(render3d_st, true)
+    expect(ue_ls_on(render3d_st))
+    expect(r3d_ue_light_shadow_settings(render3d_st) != null)
+    r3d_ue_light_shadows(render3d_st, false)
+    expect(not ue_ls_on(render3d_st))
+  }
+
   test "fade between the min and fade resolutions" {
     expect_near(ue_ls_fade_alpha(100.0, 64, 32, 0.25), 1.0, 0.00001)
     expect_near(ue_ls_fade_alpha(32.0, 64, 32, 0.25), 0.0, 0.00001)

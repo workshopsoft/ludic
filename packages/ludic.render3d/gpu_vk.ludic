@@ -59,9 +59,12 @@ function gvk_no_command_pooling() -> void {
   if not Os.has_env("MVK_CONFIG_USE_COMMAND_POOLING") { Os.set_env("MVK_CONFIG_USE_COMMAND_POOLING", "0") }
   # MoltenVK encodes a submitted command buffer into Metal inside vkQueueSubmit on the caller's thread by default (12 % of the main
   # thread in a downtown tour, 2026-10-29); MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0 encodes it on MoltenVK's own queue thread instead.
-  # On unless R3D_MVK_ASYNC_SUBMIT=0 (or the variable is already set)
+  # That races MetalFX (mfx.ludic): the scaler's own command buffer is committed to the queue straight after the frame's first part is
+  # submitted, and when the queue thread has not encoded that part yet (the machine under load) the scaler runs first, on a frame not
+  # drawn: a black frame on screen, 6 to 11 in 300 under eight busy cores, none in 600 with synchronous submits. So synchronous
+  # stays, MetalFX being on by default; R3D_MVK_ASYNC_SUBMIT=1 asks for the queue thread (only with R3D_METALFX=0, or the black frames).
   if Os.has_env("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS") { return }
-  if Os.has_env("R3D_MVK_ASYNC_SUBMIT") and Os.env("R3D_MVK_ASYNC_SUBMIT") == "0" { return }
+  if not (Os.has_env("R3D_MVK_ASYNC_SUBMIT") and Os.env("R3D_MVK_ASYNC_SUBMIT") == "1") { return }
   Os.set_env("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0")
 }
 

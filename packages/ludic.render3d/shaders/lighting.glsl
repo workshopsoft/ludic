@@ -2,7 +2,7 @@
 uniform sampler2D u_irradiance;          // equirect, diffuse-convolved sky
 uniform sampler2DArray u_prefilter;      // equirect, GGX-prefiltered sky per roughness level
 uniform sampler2D u_brdf;                // split-sum BRDF LUT
-#define CASCADES 5
+#define CASCADES 6
 uniform sampler2DArrayShadow u_shadow;   // CASCADES layers
 float shadowTap(vec2 uv, int c, float ref) { return texture(u_shadow, vec4(uv, float(c), ref)); }
 // Depth is REVERSED everywhere (fmath.ludic): clip z runs 0 .. w, the buffer holds 1 at the near plane and 0 at the far
@@ -249,14 +249,19 @@ uniform float u_sh_gather;
 // the last cascade's fade plane moved that much closer): the blend into the next cascade a share of this one's own length (shadow.ludic,
 // R3D_UE_CASCADE_FADE); 0 the old 15 % of the split.
 uniform float u_sh_fade;
+// The lookup's biases (shadow.ludic shadow_bind, R3D_SHADOW_BIAS): x the normal offset's scale, y the slope-scaled depth bias's, z the constant
+// depth bias in metres. The defaults are the ones the lookup was tuned with; a smaller one lets a thin caster's shadow meet its foot (the
+// peter-panning of a lamp post stood on a plinth) at the price of acne on a grazing surface.
+uniform vec3 u_sh_bias;
 // one cascade's lookup, with a normal offset and a slope-scaled depth bias; gather: Unreal's 3x3 gather PCF in the near cascades
 // (its reach, a texel and a half, is the disc's there: the bias is the same), the disc beyond (every cascade under u_sh_gather)
 float shadowSlopeQ(int c, vec3 wpos, vec3 n, float tanT, bool gather) {
   float tx = cascadeTexel(c);
   float filt = (c >= 4) ? 2.6 : ((c == 3) ? 2.0 : 1.5);   // matches shadowSample's rad
-  vec3 wp = wpos + n * tx * (2.5 + 1.5 * tanT);
-  if (gather && (c <= 2 || u_sh_gather > 0.5)) return shadowGather3(c, wp, tx * (1.0 + filt * tanT) + 0.02);
-  return shadowSample(c, wp, tx * (1.0 + filt * tanT) + 0.02);
+  vec3 wp = wpos + n * tx * (2.5 + 1.5 * tanT) * u_sh_bias.x;
+  float bias = tx * (1.0 + filt * tanT) * u_sh_bias.y + u_sh_bias.z;
+  if (gather && (c <= 2 || u_sh_gather > 0.5)) return shadowGather3(c, wp, bias);
+  return shadowSample(c, wp, bias);
 }
 float shadowSlope(int c, vec3 wpos, vec3 n, float tanT) { return shadowSlopeQ(c, wpos, n, tanT, false); }
 
@@ -486,17 +491,33 @@ vec3 ueAOMultiBounce(vec3 base, float ao) {
 // ---- Unreal's local lights (ue_lights.ludic): point and spot lights in Unreal's units, attenuation and cone (UE 5.8
 // DeferredLightingCommon.ush GetLocalLightAttenuation, DynamicLightingCommon.ush SpotAttenuation, CapsuleLightIntegrate.ush
 // IntegrateLight with no source radius: 1 / (d^2 + DistBiasSqr), DistBiasSqr 1 cm^2), lit by the sun's BRDF; spot lights shadowed by ueSpotShadow.
-// The forward light buffer (ue_lights.ludic ue_lights_frame), 5 vec4 a light: xyz position, w InvRadius (1 / AttenuationRadius);
+// The forward light buffer (ue_lights.ludic ue_lights_frame), 6 vec4 a light: xyz position, w InvRadius (1 / AttenuationRadius);
 // rgb the light's colour x its intensity in candela, w FalloffExponent (0: inverse squared); xyz the spot's -direction, w
 // CosOuterCone (-2: a point light); x InvCosConeDifference, y SpecularScale, z DiffuseScale, w VolumetricScatteringIntensity;
-// x its shadow map (ue_lightshadows.ludic: >= 0 a spot's layer, -2 - p a point light's cube, -1 none).
+// x its shadow map (ue_lightshadows.ludic: >= 0 a spot's layer, -2 - p a point light's cube, -1 none); xyz its tangent, w its
+// light profile's layer in u_ies (-1 none).
 uniform int u_ll_n;
 readonly buffer u_ue_lights { vec4 ue_ll[]; };
-vec4 llPos(int i) { return ue_ll[i * 5]; }
-vec4 llCol(int i) { return ue_ll[i * 5 + 1]; }
-vec4 llDir(int i) { return ue_ll[i * 5 + 2]; }
-vec4 llMisc(int i) { return ue_ll[i * 5 + 3]; }
-float llShadow(int i) { return ue_ll[i * 5 + 4].x; }
+uniform sampler2DArray u_ies;      // the IES light profiles (ies.ludic): UE's IES atlas, a profile a layer
+vec4 llPos(int i) { return ue_ll[i * 6]; }
+vec4 llCol(int i) { return ue_ll[i * 6 + 1]; }
+vec4 llDir(int i) { return ue_ll[i * 6 + 2]; }
+vec4 llMisc(int i) { return ue_ll[i * 6 + 3]; }
+float llShadow(int i) { return ue_ll[i * 6 + 4].x; }
+vec4 llIes(int i) { return ue_ll[i * 6 + 5]; }
+// IESLightProfilesCommon.ush ComputeLightProfileMultiplier (UE 5.8): the profile sampled at the angle off the light's direction
+// (asin of ToLight . Direction over PI, + 0.5) and the angle round it from its bitangent (cross(Tangent, Direction)); 1 without one.
+// toLight the unit vector to the light, dir the light's forward (Unreal's LightData.Direction)
+float ueLightProfile(int i, vec3 toLight, vec3 dir) {
+  vec4 ti = llIes(i);
+  if (ti.w < 0.0) return 1.0;
+  vec3 tangent = ti.xyz;
+  vec3 bitangent = normalize(cross(tangent, dir));
+  vec3 localToLight = vec3(dot(toLight, dir), dot(toLight, bitangent), dot(toLight, tangent));
+  float normAngle = asin(clamp(dot(toLight, dir), -1.0, 1.0)) / PI + 0.5;
+  float normTangentAngle = atan(-localToLight.z, -localToLight.y) / (PI * 2.0) + 0.5;
+  return textureLod(u_ies, vec3(normAngle, normTangentAngle, ti.w), 0.0).r;
+}
 // The light grid (ue_lightgrid.ludic): per cell a count and a first index into the lights' indices (LightGridCommon.ush).
 readonly buffer u_ue_lg_num { uint ue_lg_num[]; };
 readonly buffer u_ue_lg_data { uint ue_lg_data[]; };
@@ -548,6 +569,8 @@ float ueLocalLightAttenuation(int i, vec3 wpos, float distBiasSqr, out vec3 L) {
     float sm = clamp((dot(L, ld.xyz) - ld.w) * llMisc(i).x, 0.0, 1.0);
     mask *= sm * sm;
   }
+  // (the light profile, as DeferredLightPixelShaders' LightProfileMultiplier: points and spots alike)
+  mask *= ueLightProfile(i, L, -ld.xyz);
   return mask;
 }
 // Spot light shadow maps (ue_lightshadows.ludic), 8 vec4 a map in u_ue_ls: FShadowProjectionMatrix (with the inner and border

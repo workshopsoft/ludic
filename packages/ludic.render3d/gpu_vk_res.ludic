@@ -650,6 +650,7 @@ function gvk_mip_bias(render3d_st: mut Render3dState) -> float {
     if render3d_st.gvk_mb_nobias == 1 { return 0.0 }
     var k: long = ups_temporal(render3d_st)
     k = (k * 1048576 + max(render3d_st.post_w, -1) + 1) * 1048576 + max(gfx_width(), -1) + 1
+    k = k * 64 + int(Math.floor(render3d_st.tex_mip_bias * 8.0 + 0.5)) + 16            # (a game's texture detail setting joins what the bias is made from)
     if k != render3d_st.gvk_mb_key {
       render3d_st.gvk_mb_key = k
       render3d_st.gvk_mb_val = gvk_mip_bias_of(render3d_st)
@@ -660,7 +661,9 @@ function gvk_mip_bias(render3d_st: mut Render3dState) -> float {
   if r3d_env_has(render3d_st, "R3D_NO_MIPBIAS") { return 0.0 }
   return gvk_mip_bias_of(render3d_st)
 }
-function gvk_mip_bias_of(render3d_st: mut Render3dState) -> float {
+# the upscaler's bias plus the game's texture detail setting (levels added to every texture: +1 half the size, +2 a quarter)
+function gvk_mip_bias_of(render3d_st: mut Render3dState) -> float { return gvk_mip_bias_up(render3d_st) + render3d_st.tex_mip_bias }
+function gvk_mip_bias_up(render3d_st: mut Render3dState) -> float {
   # MetalFX (and a screen percentage under any other temporal upscaler): Unreal's automatic view mip bias (upscale.ludic)
   if not r3d_dlss_live(render3d_st) { return ups_mip_bias(render3d_st) }
   # the size the scene draws at (post_w), which the screen percentage or dynamic resolution may set off DLSS's own
