@@ -171,6 +171,9 @@ export property PedScenario {
   # from a bench), before it walks on. 0: it walks on at once
   @Unit("s") @Range(0, 30) leave_s: float = 0.0
   leave_anim: string = ""
+  # a place reached from the front: a user first walks to this far ahead of its place (along the facing), then straight back onto it - a
+  # bench's sitter comes round to the front of the bench, never over it. 0: straight to the place
+  @Unit("m") @Range(0, 5) approach: float = 0.0
 }
 
 @PerMap @ByKey

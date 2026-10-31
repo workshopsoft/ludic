@@ -42,7 +42,7 @@ downtown {
 }
 
 # crowd/scenarios.lres - where people do something
-bench_a { x: 20.0, z: 20.0, yaw: 90.0, tag: "bench", act: "sit", capacity: 2, min_s: 10.0, max_s: 20.0, leave_s: 2.2, leave_anim: "sit_up" }
+bench_a { x: 20.0, z: 20.0, yaw: 90.0, tag: "bench", act: "sit", capacity: 2, min_s: 10.0, max_s: 20.0, leave_s: 2.2, leave_anim: "sit_up", approach: 0.7 }
 atm     { x: 10.0, z: -30.0, tag: "atm", act: "use", capacity: 1, from: 6.0, to: 22.0 }
 smoke   { x: 40.0, z: 40.0, radius: 3.0, tag: "smoke", act: "stand", capacity: 4 }               # an area
 ```
@@ -123,7 +123,9 @@ walks to it (a line of users along a bench, 0.7 m apart, or anywhere in an area)
 frees it. A user holds its own place (a bench's seat) until it leaves: a newcomer takes the first free one, never one still
 sat on. The last 0.9 m to a place of a line are walked straight onto it, slowing, so the user stands on it within 3 cm
 (no slide). A scenario with `leave_s` keeps a user whose time is over on its place that long more with the key
-`leave_anim` (getting up from a bench), and only then does it walk on. With none to go to, `sit` and `work` become standing, `shop` a walk. A reserved scenario is freed when its
+`leave_anim` (getting up from a bench), and only then does it walk on. A scenario with `approach` is reached from the front: its user first
+walks to that far ahead of its place, then straight back onto it (a bench's sitter comes round the bench, never over it).
+A user who leaves a scenario does not take the same one again for its next act. With none to go to, `sit` and `work` become standing, `shop` a walk. A reserved scenario is freed when its
 user runs, panics, is removed or is killed. `CROWD_USING` says who took what and when it was left (the game plays the
 scenario's `anim`).
 

@@ -169,6 +169,7 @@ export function crowd_use(crowd_st: mut CrowdState, uid: int, i: int, stay_s: fl
   if crowd_st.cw_sn_use[i] >= crowd_st.cw_sn_cap[i] { return false }
   cw_leave_scenario(crowd_st, p)
   p.lead = -1
+  p.out_on = false
   crowd_st.cw_sn_use[i] += 1
   p.scn = i
   p.scn_used = false

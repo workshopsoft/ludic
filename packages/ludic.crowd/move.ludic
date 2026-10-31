@@ -42,6 +42,7 @@ function cw_leave_scenario(crowd_st: mut CrowdState, p: CrowdPed) -> void {
     crowd_st.cw_sn_use[p.scn] = Math.max(0, crowd_st.cw_sn_use[p.scn] - 1)
     if p.place >= 0 and p.place < 30 and (crowd_st.cw_sn_held[p.scn] & (1 << p.place)) != 0 { crowd_st.cw_sn_held[p.scn] -= 1 << p.place }
     if p.scn_used {
+      p.last_scn = p.scn
       let f = cw_fact(crowd_st, CROWD_USING, p.uid)
       f.crime = p.scn
       f.count = 0
@@ -123,7 +124,7 @@ function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
   let dur = crowd_st.cw_sl_min[s] + (crowd_st.cw_sl_max[s] - crowd_st.cw_sl_min[s]) * cw_roll(p, 22)
   let tag = crowd_st.cw_sl_tag[s]
   if tag >= 0 {
-    let i = cw_scenario_near(crowd_st, p.x, p.z, 80.0, tag, hour)
+    let i = cw_scenario_near(crowd_st, p.x, p.z, 80.0, tag, hour, p.last_scn)          # never straight back to the one just left
     if i >= 0 {
       crowd_st.cw_sn_use[i] += 1
       p.scn = i
@@ -179,11 +180,16 @@ function cw_pick_dest(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> voi
 # one step toward (tx, tz) at `speed`. True when it is there. FULL asks for a corner often and goes round the
 # people near; all tiers obey a crossing's light
 function cw_move(crowd_st: mut CrowdState, p: CrowdPed, row: int, tx: float, tz: float, speed: float, dt: float) -> bool {
+  return cw_move_to(crowd_st, p, row, tx, tz, speed, dt, 0.64)
+}
+
+# the same, arrived within sqrt(near2) metres
+function cw_move_to(crowd_st: mut CrowdState, p: CrowdPed, row: int, tx: float, tz: float, speed: float, dt: float, near2: float) -> bool {
   let x = p.x
   let z = p.z
   let dx = tx - x
   let dz = tz - z
-  if dx * dx + dz * dz < 0.64 {
+  if dx * dx + dz * dz < near2 {
     p.speed = 0.0
     return true
   }
@@ -399,12 +405,37 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
       return
     }
   }
+  if p.out_on {
+    # out to the front of the seat it got up from first (never back over the bench), then on with its day
+    let ty_sp = ty.walk_speed * p.pace
+    p.out_t += dt
+    if cw_step_straight(crowd_st, p, row, p.out_x, p.out_z, ty_sp, dt, false) or p.out_t > 4.0 { p.out_on = false }
+    return
+  }
   let going = p.act == CROWD_WALK or p.act == CROWD_COMMUTE or (p.scn >= 0 and not p.scn_used)
   if going {
-    if not p.has_dest { cw_pick_dest(crowd_st, p, ty) }
+    if not p.has_dest {
+      # a walk to a scenario that lost its way (blocked a second): the place is given up for another to take, and it wanders on
+      if p.scn >= 0 and not p.scn_used { cw_leave_scenario(crowd_st, p) }
+      cw_pick_dest(crowd_st, p, ty)
+    }
     if not p.has_dest { return }
     var sp = ty.walk_speed * p.pace
     if p.act == CROWD_COMMUTE { sp = sp * 1.2 }
+    if p.scn >= 0 and crowd_st.cw_sn_r[p.scn] <= 0.0 and crowd_st.cw_sn_appr[p.scn] > 0.0 {
+      # from the front: to the point `approach` ahead of the place while it is behind or beside it (outside the 45 degrees before it), then
+      # straight back onto it
+      let fx = Math.sin(crowd_st.cw_sn_yaw[p.scn])
+      let fz = Math.cos(crowd_st.cw_sn_yaw[p.scn])
+      let ap = crowd_st.cw_sn_appr[p.scn]
+      let ahead = (p.x - p.dest_x) * fx + (p.z - p.dest_z) * fz
+      let side = (p.x - p.dest_x) * fz - (p.z - p.dest_z) * fx
+      if ahead < -0.05 or Math.abs(side) > ahead + 0.15 {
+        let reach = Math.max(0.3, sp * dt * 1.1)                 # a far ped's step a second long, a near one's turn: never round the point
+        cw_move_to(crowd_st, p, row, p.dest_x + fx * ap, p.dest_z + fz * ap, sp, dt, reach * reach)
+        return
+      }
+    }
     if p.scn >= 0 and crowd_st.cw_sn_r[p.scn] <= 0.0 and cw_near_spot(p) {
       if cw_step_to_spot(crowd_st, p, row, sp, dt) { cw_arrive(crowd_st, p, ty) }
       return
@@ -422,13 +453,28 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
     p.key = crowd_st.cw_sn_leave_anim[p.scn]
     return
   }
+  var ox = 0.0
+  var oz = 0.0
+  let out = p.leaving and p.scn >= 0 and crowd_st.cw_sn_appr[p.scn] > 0.0
+  if out {
+    ox = p.x + Math.sin(crowd_st.cw_sn_yaw[p.scn]) * crowd_st.cw_sn_appr[p.scn]
+    oz = p.z + Math.cos(crowd_st.cw_sn_yaw[p.scn]) * crowd_st.cw_sn_appr[p.scn]
+  }
   cw_next_act(crowd_st, p)
+  if out {
+    p.out_on = true
+    p.out_t = 0.0
+    p.out_x = ox
+    p.out_z = oz
+  }
 }
 
 # within CW_SPOT_NEAR of the very place it is going to (a seat, a spot at a counter): the last steps are walked straight onto it, slowing,
-# with nobody to steer round (the place is its own) - a walk that stopped within 0.8 m and was put on its place slid the rest
+# with nobody to steer round (the place is its own; a straight step the nav refuses is steered round as any) - a walk that stopped within
+# 0.8 m and was put on its place slid the rest
 const CW_SPOT_NEAR: float = 0.9
 const CW_SPOT_AT: float = 0.03
+const CW_SPOT_OWN: float = 0.45        # the last of it is the place's own: never refused (a seat's place stands at its bench's edge)
 function cw_near_spot(p: CrowdPed) -> bool {
   let dx = p.dest_x - p.x
   let dz = p.dest_z - p.z
@@ -436,17 +482,29 @@ function cw_near_spot(p: CrowdPed) -> bool {
 }
 
 function cw_step_to_spot(crowd_st: mut CrowdState, p: CrowdPed, row: int, speed: float, dt: float) -> bool {
-  let dx = p.dest_x - p.x
-  let dz = p.dest_z - p.z
+  return cw_step_straight(crowd_st, p, row, p.dest_x, p.dest_z, speed, dt, true)
+}
+
+# a straight step toward (tx, tz) at most `speed`, never past it; slowing over the last half metre when `stop`. True: there (within
+# CW_SPOT_AT)
+function cw_step_straight(crowd_st: mut CrowdState, p: CrowdPed, row: int, tx: float, tz: float, speed: float, dt: float, stop: bool) -> bool {
+  let dx = tx - p.x
+  let dz = tz - p.z
   let d = Math.sqrt(dx * dx + dz * dz)
   if d <= CW_SPOT_AT {
-    p.speed = 0.0
+    if stop { p.speed = 0.0 }
     return true
   }
   # slows to a stop over the last half metre (never below a slow step), never past the place
-  let sp = Math.min(speed, Math.max(0.35, d * 2.2))
+  var sp = speed
+  if stop { sp = Math.min(speed, Math.max(0.35, d * 2.2)) }
   p.speed = sp
   let step = Math.min(d, sp * dt)
+  # a straight step the nav refuses (the place is in front of a bench and the walker behind it): steered there the usual way, round it
+  if d > CW_SPOT_OWN and not CrowdNav.walkable(p.x + dx / d * step, p.z + dz / d * step) {
+    cw_move_to(crowd_st, p, row, tx, tz, speed, dt, CW_SPOT_AT * CW_SPOT_AT)
+    return false
+  }
   if p.lod == CROWD_FULL {
     let turn = cw_turn(p.yaw, cw_yaw_of(dx, dz))
     let lim = 7.0 * dt

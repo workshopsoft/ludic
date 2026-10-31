@@ -564,6 +564,8 @@ program CrowdTest {
     var sat_t = -1.0
     var up_t = -1.0
     var gone_t = -1.0
+    var out_x0 = 0.0
+    var out_x1 = 0.0
     var t = 0.0
     for k in 0 .. 900 {
       sim(crowd_st, m, s, 0.1, 0.1)
@@ -572,8 +574,14 @@ program CrowdTest {
       let key = crowd_anim_key(crowd_st, u)
       if sat_t < 0.0 and key == "sit_bench" and crowd_act(crowd_st, u) == CROWD_SIT { sat_t = t }
       if up_t < 0.0 and key == "sit_up" { up_t = t }
-      if up_t > 0.0 and gone_t < 0.0 and key != "sit_up" { gone_t = t }
+      if up_t > 0.0 and gone_t < 0.0 and key != "sit_up" {
+        gone_t = t
+        out_x0 = crowd_x(crowd_st, u)
+      }
+      if gone_t > 0.0 and t - gone_t < 0.75 { out_x1 = crowd_x(crowd_st, u) }
     }
+    # it stepped out to the front of the bench (bench_a faces +x) before going anywhere: never back over it
+    expect(out_x1 - out_x0 > 0.3)
     expect(sat_t > 0.0)
     expect(up_t - sat_t > 2.9 and up_t - sat_t < 3.3)
     expect(gone_t - up_t > 1.9 and gone_t - up_t < 2.3)

@@ -150,6 +150,8 @@ function cw_ped_clear(p: CrowdPed) -> void {
   p.place = -1
   p.leaving = false
   p.stay = 0.0
+  p.last_scn = -1
+  p.out_on = false
   p.lead = -1
   p.member = 0
   p.fear = 0.0
