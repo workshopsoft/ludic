@@ -81,13 +81,13 @@ program WaterSeaTest {
     water_planes_clear(render3d_st)
   }
 
-  test "the sea is one of sixteen bodies, and a seventeenth is refused" (render3d_st: mut Render3dState) {
+  test "the sea is one of WATER_MAX bodies, and one more is refused" (render3d_st: mut Render3dState) {
     render3d_st.cam_far = 14000.0
     var n = 0
-    for i in 0 .. 16 { if water_sea_put(render3d_st, float(i), 0.0, 0.0, 10.0, 10.0) >= 0 { n += 1 } }
-    expect_eq(n, 16)
+    for i in 0 .. WATER_MAX { if water_sea_put(render3d_st, float(i), 0.0, 0.0, 10.0, 10.0) >= 0 { n += 1 } }
+    expect_eq(n, WATER_MAX)
     expect_eq(water_sea_put(render3d_st, 0.0, 0.0, 0.0, 10.0, 10.0), -1)
-    expect_eq(water_body_count(render3d_st), 16)
+    expect_eq(water_body_count(render3d_st), WATER_MAX)
     water_planes_clear(render3d_st)
     expect_eq(water_body_count(render3d_st), 0)
   }

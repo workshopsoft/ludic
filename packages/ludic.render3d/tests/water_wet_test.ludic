@@ -1,6 +1,6 @@
 # water_wet_test.ludic - still water bodies and the wet mask (water.ludic, water_wet.ludic) on the shore fixture
 # (tests/maps/shore, make_shore.py: tile 0 the sea with a dry cut below sea level, tile 1 all dry, tile 2 no wet file).
-# On the CPU: 16 bodies are held and a 17th refused; a mesh body keeps its model and is never masked or
+# On the CPU: WATER_MAX bodies are held and one more refused; a mesh body keeps its model and is never masked or
 # mirrored; the mask reads tiles nearest first within a budget, knows a tile all dry or all wet by one byte, keeps a
 # mixed one's texels, and says dry on the cut's texels and wet on the sea's, the edge halfway between their centres;
 # off the map and on a tile with no file it says wet. The pictures are lab/shore_lab.ludic + lab/shore_check.py. No device.
@@ -20,31 +20,33 @@ program WaterWetTest {
     return m
   }
 
-  test "16 bodies are held and a 17th refused; planes and meshes share them" (render3d_st: mut Render3dState) {
+  test "WATER_MAX bodies are held and one more refused; planes and meshes share them" (render3d_st: mut Render3dState) {
     var n = 0
-    for i in 0 .. 8 { if water_body_put(render3d_st, float(i), 0.0, 0.0, 10.0, 10.0, false) >= 0 { n += 1 } }
-    for i in 0 .. 8 { if water_mesh_put(render3d_st, surface(5.0), float(i), 1.0, 2.0) >= 0 { n += 1 } }
-    expect_eq(n, 16)
-    expect_eq(water_body_count(render3d_st), 16)
+    let half = WATER_MAX / 2
+    for i in 0 .. half { if water_body_put(render3d_st, float(i), 0.0, 0.0, 10.0, 10.0, false) >= 0 { n += 1 } }
+    for i in 0 .. half { if water_mesh_put(render3d_st, surface(5.0), float(i), 1.0, 2.0) >= 0 { n += 1 } }
+    expect_eq(n, WATER_MAX)
+    expect_eq(water_body_count(render3d_st), WATER_MAX)
     expect_eq(water_body_put(render3d_st, 0.0, 0.0, 0.0, 1.0, 1.0, false), -1)
     expect_eq(water_mesh_put(render3d_st, surface(1.0), 0.0, 0.0, 0.0), -1)
     expect_eq(render3d_st.wb_kind[0], WATER_PLANE)
-    expect_eq(render3d_st.wb_kind[15], WATER_MESH)
-    expect(render3d_st.wb_model[15] != null)
+    expect_eq(render3d_st.wb_kind[WATER_MAX - 1], WATER_MESH)
+    let last = WATER_MAX - 1
+    expect(render3d_st.wb_model[last] != null)
     # the mesh's offset is its (cx, level, cz); it is never the mirrored body
-    expect_near(render3d_st.wb_cx[15], 7.0, 0.0001);  expect_near(render3d_st.wb_level[15], 1.0, 0.0001);  expect_near(render3d_st.wb_cz[15], 2.0, 0.0001)
+    expect_near(render3d_st.wb_cx[last], float(half - 1), 0.0001);  expect_near(render3d_st.wb_level[last], 1.0, 0.0001);  expect_near(render3d_st.wb_cz[last], 2.0, 0.0001)
     expect_eq(render3d_st.wb_primary, -1)
     # a plane takes the mask, a mesh does not
     water_body_mask(render3d_st, 0, true)
-    water_body_mask(render3d_st, 15, true)
+    water_body_mask(render3d_st, last, true)
     expect_eq(render3d_st.wb_masked[0], 1)
-    expect_eq(render3d_st.wb_masked[15], 0)
+    expect_eq(render3d_st.wb_masked[last], 0)
     # the floating origin moves every body
     water_rebase(render3d_st, 100.0, 1.0, -50.0)
-    expect_near(render3d_st.wb_cx[15], -93.0, 0.0001);  expect_near(render3d_st.wb_level[15], 0.0, 0.0001);  expect_near(render3d_st.wb_cz[15], 52.0, 0.0001)
+    expect_near(render3d_st.wb_cx[last], float(half - 1) - 100.0, 0.0001);  expect_near(render3d_st.wb_level[last], 0.0, 0.0001);  expect_near(render3d_st.wb_cz[last], 52.0, 0.0001)
     water_planes_clear(render3d_st)
     expect_eq(water_body_count(render3d_st), 0)
-    expect(render3d_st.wb_model[15] == null)
+    expect(render3d_st.wb_model[last] == null)
   }
 
   test "the wet tiles are found by the tiles' pattern" {
