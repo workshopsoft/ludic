@@ -85,6 +85,30 @@ function morph_load(render3d_st: mut Render3dState, pr: Prim, p: Val, mesh: Val)
   pr.morph = mo
 }
 
+# everything morph_load made for a primitive (model_release: a model let go gives its morphs back too)
+function morph_free(mo: Morph) -> void {
+  if mo == null { return }
+  if mo.pos != null { free(mo.pos) }
+  if mo.nrm != null { free(mo.nrm) }
+  if mo.dpos != null {
+    for t in 0 .. len(mo.dpos) { if mo.dpos[t] != null { free(mo.dpos[t]) } }
+    free(mo.dpos)
+  }
+  if mo.dnrm != null {
+    for t in 0 .. len(mo.dnrm) { if mo.dnrm[t] != null { free(mo.dnrm[t]) } }
+    free(mo.dnrm)
+  }
+  if mo.names != null {
+    for t in 0 .. len(mo.names) { if len(mo.names[t]) > 0 { free(mo.names[t]) } }
+    free(mo.names)
+  }
+  if mo.outp != null { free(mo.outp) }
+  if mo.outn != null { free(mo.outn) }
+  if mo.idx != null { free(mo.idx) }
+  if mo.outi != null { free(mo.outi) }
+  free(mo)
+}
+
 # the primitive's own indices kept on mo (a copy the triangles hidden are left out of when the index buffer is filled again)
 @alloc_ok("loading a model: a primitive's indices, once")
 function morph_indices(render3d_st: mut Render3dState, mo: Morph, p: Val) -> void {

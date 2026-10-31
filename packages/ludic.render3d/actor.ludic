@@ -64,14 +64,12 @@ property Actor {
   leader_id: int = 0,         # the leader's id when attached: a recycled record is not the same figure
   fmap:      words,           # per joint of this model: the leader's node, or -1
   fbones:    floats,          # 16 per joint: the palette this part skins with
-  fbones_v:  [][]float,
-  fcap:      int = 0,         # joints fbones and fbones_v hold: kept with the record across follows (a view is an allocation of its own
-                              # that free(list) does not give back, so the room is made once and only ever grows)
+  fbones_v:  [][]float,        # (fbones and fdyn are kept with the record across follows, room for the most joints a skin has, and
+                              # their views made as joints are first needed: a view is an allocation free(list) does not give back)
   # its live joints (actor_part_live): placed by the game each frame in the leader's model frame, over what they follow
   fdyn:      floats,          # 16 per joint
   fdyn_v:    [][]float,
   fdyn_on:   words,           # 1 per joint: placed
-  dcap:      int = 0,         # joints fdyn and fdyn_v hold, kept as fcap is
   held:      bool = false,    # its owner keeps it across the next actor_release_all (actor_hold)
   # last frame's placement and pose, for its motion (taa.ludic): what it was when the motion pass last drew it
   prev_mat:   floats,
@@ -1117,7 +1115,7 @@ function actor_own_skin(a: Actor) -> Skin {
 # of the part's joints found a node of the same name (a part with fewer than all is a bad export: the rest stay at
 # rest), or -1 when either has no skin. The part's model needs a skin (a rigid hat: attach it with a bone's matrix).
 # actor_release(leader) hides its followers; actor_release(part) frees the palette. Attach again to re-bind.
-@alloc_ok("one palette per actor record, made at its first follow (or a follow with more joints) and kept with the record")
+@alloc_ok("one palette per actor record, made at its first follow and kept with the record; its views made once per joint")
 function actor_follow(part: Actor, leader: Actor) -> int {
   if part == null or leader == null or part.model == null or leader.model == null { return -1 }
   if part.model.skin == null { return -1 }
@@ -1128,14 +1126,19 @@ function actor_follow(part: Actor, leader: Actor) -> int {
   let m = skin_follow_map(part.model.skin, ls)
   let n = part.model.skin.n_joints
   part.fmap = m
-  if part.fcap < n {
-    part.fbones = floats(n * 16)
-    part.fbones_v = m4_views(part.fbones, n)
-    part.fcap = n
-  }
+  ac_follow_room(part, n)
   part.leader = leader
   part.leader_id = leader.id
   return skin_follow_bound(m, n)
+}
+# a record's palette room for n joints (see fbones_v)
+@alloc_ok("a record's palette room, once, and a view per joint the first time a part with that many joints follows")
+function ac_follow_room(a: Actor, n: int) -> void {
+  if a.fbones == null or len(a.fbones) < n * 16 {
+    a.fbones = floats(Math.max(n, SKIN_MAX_JOINTS) * 16)
+    a.fbones_v = new [][]float
+  }
+  while len(a.fbones_v) < n { push(a.fbones_v, view(a.fbones, len(a.fbones_v) * 16, 16)) }
 }
 function actor_unfollow(a: Actor) -> void {
   if a == null { return }
@@ -1463,11 +1466,11 @@ function actor_part_live(a: Actor) -> bool {
   if a == null or a.fmap == null or a.model == null or a.model.skin == null { return false }
   if a.fdyn_on != null { return true }
   let n = a.model.skin.n_joints
-  if a.dcap < n {
-    a.fdyn = floats(n * 16)
-    a.fdyn_v = m4_views(a.fdyn, n)
-    a.dcap = n
+  if a.fdyn == null {
+    a.fdyn = floats(Math.max(n, SKIN_MAX_JOINTS) * 16)
+    a.fdyn_v = new [][]float
   }
+  while len(a.fdyn_v) < n { push(a.fdyn_v, view(a.fdyn, len(a.fdyn_v) * 16, 16)) }
   a.fdyn_on = words(n)
   for j in 0 .. n { a.fdyn_on[j] = 0 }
   return true
