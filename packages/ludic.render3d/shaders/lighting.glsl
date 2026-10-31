@@ -1301,6 +1301,26 @@ SurfP surfSecond() { return SurfP(u_s2, u_s2_b, u_s2_c, u_s2_d, u_s2_e); }
 // worn asphalt, a marking's paint worn through) the second over that share of the surface, in patches with a ragged edge
 // (R3D_SURF_ALT_SKIP: the weight first, then each surface read only where its weight is not 0 - mix gives the other exactly - with
 // every derivative taken before the branch; the patches' ragged edges, where both are read, are a few percent of the area)
+// The ground's own macro layers over a lawn scan (Unreal's Landscape material: a layer's macro colour variation sampled at a
+// scale far larger than the tile, so the tiling does not read, a bare-soil layer blended by a height-and-noise weight, and the
+// rough, matt response of soil and grass; the weights are functions of the WORLD place alone, so they hold at every distance).
+// wm: world metres of the pixel; alb, n, arm: the lawn scan's; N the geometric normal. Dry/lush share across tens of metres,
+// bare soil in patches a few metres across where the scan's blades are lowest (its own luminance, Landscape's height-blend).
+void lawnMacro(vec2 wm, float dist, vec3 N, inout vec3 alb, inout vec3 n, inout vec3 arm) {
+  float big = surfNoise(wm / 71.0, 1024.0) * 0.55 + surfNoise(wm / 23.0 + 5.0, 1024.0) * 0.3 + surfNoise(wm / 7.0 + 11.0, 1024.0) * 0.15;
+  float dry = smoothstep(0.40, 0.70, big);
+  float wet = smoothstep(0.50, 0.28, big);
+  alb *= mix(vec3(1.0), vec3(1.3, 1.12, 0.72), dry * 0.5);          // sun-dried: yellow-olive
+  alb *= mix(vec3(1.0), vec3(0.78, 0.95, 0.8), wet * 0.6);          // lush: deeper, bluer green
+  float l = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+  float s = surfNoise(wm / 13.0 + 31.0, 1024.0) * 0.5 + surfNoise(wm / 2.9 + 7.0, 1024.0) * 0.32 + mix(0.5, surfNoise(wm / 0.9 + 3.0, 1024.0), 1.0 - smoothstep(8.0, 30.0, dist)) * 0.18;
+  float low = clamp(1.0 - l / 0.16, 0.0, 1.0);                     // the blades' low texels
+  float bare = smoothstep(0.68, 0.80, s + 0.12 * (low - 0.5) + 0.06 * dry);
+  vec3 soil = vec3(0.115, 0.085, 0.058) * clamp(0.6 + 5.0 * l, 0.7, 1.5);
+  alb = mix(alb, soil, bare * 0.8);
+  arm.g = mix(max(arm.g, 0.88), 1.0, bare);
+  n = normalize(mix(n, N, 0.45 * bare));
+}
 void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec3 col, vec2 uv, out vec3 alb, out vec3 n, out vec3 arm) {
   SurfP A = surfMain(), B = surfSecond();
   vec3 a1 = vec3(0.0), n1 = N, r1 = vec3(0.0), a2 = vec3(0.0), n2 = N, r2 = vec3(0.0);
@@ -1330,6 +1350,7 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     w = smoothstep(0.5 - aa, 0.5 + aa, v);
     float soil = w * (1.0 - smoothstep(0.5, 0.56 + aa, v));
     if (all2 || w > 0.0) surfaceAtPd(d, nm, am, A, qa, qax, qay, N, N, wp, dpx, dpy, col, a1, n1, r1);
+    if (A.e.y == 0.0 && B.e.y == 0.0 && w > 0.0) lawnMacro(wp.xz + vec2(A.a.z, A.a.w) * A.a.x, length(u_cam_pos - wp), N, a1, n1, r1);
     if (all2 || w < 1.0) surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, col2, a2, n2, r2);
     vec3 mixed = mix(a2, a1, w);
     alb = mix(mixed, mixed * vec3(0.55, 0.5, 0.42), soil * 0.7);
@@ -1343,6 +1364,7 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     w = smoothstep(0.036, 0.044, green + e * 0.012);
   }
   if (all2 || w > 0.0) surfaceAtPd(d, nm, am, A, qa, qax, qay, N, N, wp, dpx, dpy, col, a1, n1, r1);
+  if (B.e.y == 0.0 && w > 0.0) lawnMacro(wp.xz + vec2(A.a.z, A.a.w) * A.a.x, length(u_cam_pos - wp), N, a1, n1, r1);
   if (all2 || w < 1.0) surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, col2, a2, n2, r2);
   alb = mix(a2, a1, w);
   n = normalize(mix(n2, n1, w));
