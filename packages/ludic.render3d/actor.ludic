@@ -342,7 +342,8 @@ function actor_hide_part(a: Actor, name: string, hidden: bool) -> void {
 
 @creates(Actor)
 function actor_new(render3d_st: mut Render3dState, model: Model) -> Actor {
-  let a = actor_fresh(render3d_st)
+  var skinned = model != null and model.skin != null
+  let a = actor_fresh_as(render3d_st, skinned)
   a.model = model
   a.scale = 1.0
   a.rough = 1.0
@@ -1051,9 +1052,30 @@ function actor_clear_all(render3d_st: mut Render3dState) -> void {
 }
 
 # A record as `new Actor` makes it, with its matrix and tint: a released one when there is one.
+function actor_fresh(render3d_st: mut Render3dState) -> Actor { return actor_fresh_as(render3d_st, false) }
+# A spare whose kept room fits: a skinned model takes a record that already holds a skinned palette (ac_prev_room's, a follower's),
+# a rigid one a record without, so the records' first-use rooms are made as the skinned figures' peak grows and not again as the
+# pool's records change hands (looked for among the last AC_FIT_LOOK spares; the last one when none fits)
+const AC_FIT_LOOK: int = 32
+function actor_spare_fit(sp: []Actor, skinned: bool) -> void {
+  let n = len(sp)
+  var i = n - 1
+  while i >= 0 and i >= n - AC_FIT_LOOK {
+    if (sp[i].prev_bones != null) == skinned {
+      if i != n - 1 {
+        let t = sp[i]
+        sp[i] = sp[n - 1]
+        sp[n - 1] = t
+      }
+      return
+    }
+    i -= 1
+  }
+}
 @alloc_ok("the actor pool ran dry: one more record, which actor_release keeps in the pool after")
-function actor_fresh(render3d_st: mut Render3dState) -> Actor {
+function actor_fresh_as(render3d_st: mut Render3dState, skinned: bool) -> Actor {
   let sp = render3d_st.ac_spare
+  if sp != null and len(sp) > 1 { actor_spare_fit(sp, skinned) }
   if sp == null or len(sp) == 0 {
     let a = new Actor
     a.tint = v3_new(1.0, 1.0, 1.0)
