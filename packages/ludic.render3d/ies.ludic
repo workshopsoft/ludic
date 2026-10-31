@@ -326,6 +326,19 @@ export function ies_profile_load(render3d_st: mut Render3dState, path: string) -
   push(render3d_st.ies_layers, k)
   return k
 }
+# are the profiles looked up (R3D_IES=0 or ies_lookups(st, false): every light's multiplier 1, its brightness still its profile's - an
+# A/B of the lookup's cost on one build)?
+export function ies_lookups(render3d_st: mut Render3dState, on: bool) -> void {
+  render3d_st.ies_on = 0
+  if on { render3d_st.ies_on = 1 }
+}
+export function ies_lookups_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ies_on < 0 {
+    render3d_st.ies_on = 1
+    if r3d_env_has(render3d_st, "R3D_IES") and r3d_env(render3d_st, "R3D_IES") == "0" { render3d_st.ies_on = 0 }
+  }
+  return render3d_st.ies_on == 1
+}
 export function ies_profile_error(render3d_st: Render3dState) -> string { return render3d_st.ies_error }
 # the profile's max candela (UE's IESTexture->Brightness: what a light with use_ies_brightness shines at), 0 for no such profile
 export function ies_profile_brightness(render3d_st: Render3dState, layer: int) -> float {

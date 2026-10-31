@@ -189,7 +189,7 @@ function ue_lights_frame(render3d_st: mut Render3dState) -> void {
     if tl < 0.000001 { tl = 1.0 }
     data[o + 20] = l.tan_x / tl;  data[o + 21] = l.tan_y / tl;  data[o + 22] = l.tan_z / tl
     data[o + 23] = -1.0
-    if l.ies >= 0 and render3d_st.ies_profiles != null and l.ies < len(render3d_st.ies_profiles) { data[o + 23] = float(l.ies) }
+    if l.ies >= 0 and ies_lookups_on(render3d_st) and render3d_st.ies_profiles != null and l.ies < len(render3d_st.ies_profiles) { data[o + 23] = float(l.ies) }
     # the spheres of the lights that cast: kgpu's local light caster cull (kgpu_frame_lights) gathers from them
     if l.cast_shadows and render3d_st.ue_ll_cull {
       let q = render3d_st.ue_ll_nsph * 4
