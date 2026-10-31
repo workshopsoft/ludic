@@ -93,16 +93,30 @@ function skin_attribs(render3d_st: mut Render3dState, m: Mesh, attrs: Val, pr: P
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 @creates(Skin)
 function skin_load(render3d_st: mut Render3dState, idx: int) -> Skin {
-  let sk = new Skin
   let nodes = value_get(render3d_st.gltf_doc, "nodes")
   let n = value_count(nodes)
-  sk.n_nodes = n
-  sk.par = words(n);  sk.walk = words(n)
-  sk.rest_t = floats(n * 3);  sk.rest_r = floats(n * 4);  sk.rest_s = floats(n * 3);  sk.rest_g = floats(n * 4)
-  sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = floats(n * 16)
-  sk.gmat_v = m4_views(sk.gmat, n)
-  sk.names = new []string
-  sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = floats(3)
+  let skv = value_at(value_get(render3d_st.gltf_doc, "skins"), idx)
+  let jl = value_get(skv, "joints")
+  var nj = value_count(jl)
+  if nj > SKIN_MAX_JOINTS { print(`skin: {nj} joints, only the first {SKIN_MAX_JOINTS} are used`);  nj = SKIN_MAX_JOINTS }
+  # a parked skin of the same shape (skin_park: a released model's) is filled again, its buffers and their views as they are
+  var sk = skin_unpark(render3d_st, n, nj)
+  if sk == null {
+    sk = new Skin
+    sk.n_nodes = n
+    sk.par = words(n);  sk.walk = words(n)
+    sk.rest_t = floats(n * 3);  sk.rest_r = floats(n * 4);  sk.rest_s = floats(n * 3);  sk.rest_g = floats(n * 4)
+    sk.pose_r = floats(n * 4);  sk.pose_t = floats(n * 3);  sk.gmat = floats(n * 16)
+    sk.gmat_v = m4_views(sk.gmat, n)
+    sk.names = new []string
+    sk.tmp_l = m4_new();  sk.tmp_q = q_new();  sk.tmp_a = q_new();  sk.tmp_b = q_new();  sk.tmp_c = q_new();  sk.tmp_v = floats(3)
+    sk.n_joints = nj
+    sk.joints = words(nj)
+    sk.inv_bind = floats(nj * 16)
+    sk.inv_v = m4_views(sk.inv_bind, nj)
+    sk.bones = floats(nj * 16)
+    sk.bones_v = m4_views(sk.bones, nj)
+  }
   for i in 0 .. n { sk.par[i] = -1 }
   for i in 0 .. n {
     let nd = value_at(nodes, i)
@@ -142,16 +156,6 @@ function skin_load(render3d_st: mut Render3dState, idx: int) -> Skin {
     else { q_store(sk.rest_g, i, sk.tmp_a) }
   }
   # the skin: joints and inverse bind matrices
-  let skv = value_at(value_get(render3d_st.gltf_doc, "skins"), idx)
-  let jl = value_get(skv, "joints")
-  var nj = value_count(jl)
-  if nj > SKIN_MAX_JOINTS { print(`skin: {nj} joints, only the first {SKIN_MAX_JOINTS} are used`);  nj = SKIN_MAX_JOINTS }
-  sk.n_joints = nj
-  sk.joints = words(nj)
-  sk.inv_bind = floats(nj * 16)
-  sk.inv_v = m4_views(sk.inv_bind, nj)
-  sk.bones = floats(nj * 16)
-  sk.bones_v = m4_views(sk.bones, nj)
   for j in 0 .. nj { sk.joints[j] = value_as_int(value_at(jl, j)) }
   if value_has(skv, "inverseBindMatrices") != 0 {
     let ib = gltf_accessor(render3d_st, value_as_int(value_get(skv, "inverseBindMatrices")))
@@ -263,6 +267,35 @@ function skin_clone(src: Skin) -> Skin {
 # free its owner's data again, so only the lists that hold them go (a few bytes a joint stay). Its spare
 # clones go with it; one still out shares its rest data and names, so never free a skin while a clone is out.
 @releases(Skin)
+# A released model's skin kept for the next load of a model of the same shape (nodes, joints): its buffers and their views are
+# filled again there. A view is an allocation of its own that free(list) does not give back, so a model loaded, released and
+# loaded again (a figure's set streamed in and out) would leave a skin's worth of them each time. Its clones stay its spares.
+const SKIN_PARKED_MAX: int = 64
+@alloc_ok("the parked skins' list: at most SKIN_PARKED_MAX")
+function skin_park(render3d_st: mut Render3dState, sk: Skin) -> void {
+  if sk == null { return }
+  if render3d_st.sk_parked == null { render3d_st.sk_parked = new []Skin }
+  if sk.src != null or len(render3d_st.sk_parked) >= SKIN_PARKED_MAX {
+    skin_free(sk)
+    return
+  }
+  for i in 0 .. len(sk.names) { if sk.names[i] != null and len(sk.names[i]) > 0 { free(sk.names[i]) } }
+  List.clear(sk.names)
+  push(render3d_st.sk_parked, sk)
+}
+function skin_unpark(render3d_st: mut Render3dState, n: int, nj: int) -> Skin {
+  let l = render3d_st.sk_parked
+  if l == null { return null }
+  for i in 0 .. len(l) {
+    let sk = l[i]
+    if sk.n_nodes == n and sk.n_joints == nj {
+      l[i] = l[len(l) - 1]
+      List.pop(l)
+      return sk
+    }
+  }
+  return null
+}
 function skin_free(sk: Skin) -> void {
   if sk == null { return }
   if sk.names != null {
