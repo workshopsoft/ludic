@@ -91,7 +91,9 @@ program SunDiscTest {
     expect_near(st.sun_color[2] / st.sun_color[1], 0.81, 0.01)
   }
 
-  test "Unreal's sun lower down is warmer and dimmer, and the disc is the light's colour" {
+  # the disc is the sun's own light; the light on the ground carries the moon's as well (Unreal's two atmosphere lights, daylight.ludic),
+  # at most its outer-space illuminance more
+  test "Unreal's sun lower down is warmer and dimmer, and the disc is the sun's share of the light" {
     let st = july()
     daylight_set(st, 10.5)
     let g51 = st.sun_color[1]
@@ -100,7 +102,9 @@ program SunDiscTest {
     expect(st.sun_color[1] < g51)
     expect(st.sun_color[0] / st.sun_color[1] > rg51 + 0.05)
     expect(st.sun_color[2] / st.sun_color[1] < 0.75)
-    expect_near(st.sky_disc_col[0], st.sun_color[0], 0.001)
-    expect_near(st.sky_disc_col[2], st.sun_color[2], 0.001)
+    for i in 0 .. 3 {
+      expect(st.sun_color[i] >= st.sky_disc_col[i] - 0.001)
+      expect(st.sun_color[i] - st.sky_disc_col[i] <= st.day_moon_outer[i] + 0.001)
+    }
   }
 }

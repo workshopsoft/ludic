@@ -17,7 +17,9 @@ uniform float u_bands;
 uniform vec2 u_percent;           // ExposureLowPercent, ExposureHighPercent (0..1)
 uniform vec2 u_scale_bias;        // HistogramScale, HistogramBias
 uniform vec2 u_avg_lum;           // MinAverageLuminance, MaxAverageLuminance (white point x 0.18)
-uniform float u_compensation;     // ExposureCompensationSettings x ExposureCompensationCurve: 2^AutoExposureBias, no curve
+uniform float u_compensation;     // ExposureCompensationSettings x ExposureCompensationCurve: 2^AutoExposureBias (the curve is the LUT's)
+uniform vec4 u_curve[16];         // ExposureCompensationCurveLUT: 64 samples of 2^AutoExposureBiasCurve(EV100), 4 a vec4 (all 1: no curve)
+uniform vec3 u_curve_sb;          // EV100ToExposureCompensationCurveLUTScaleBias (x, y), LuminanceMax (z)
 uniform vec2 u_speed;             // ExposureSpeedUp, ExposureSpeedDown (stops a second)
 uniform vec2 u_exp_m;             // ExponentialUpM, ExponentialDownM
 uniform float u_start_distance;   // r.EyeAdaptation.ExponentialTransitionDistance (1.5)
@@ -40,6 +42,13 @@ float bucket(int i) {
 #endif
 }
 float logLumFromPosition(float p) { return (p - u_scale_bias.y) / u_scale_bias.x; }
+// the LUT's texel i, and Texture2DSampleLevel's bilinear read of it with a clamped sampler at u (a 64 x 1 texture: along x only)
+float curveAt(int i) { int k = clamp(i, 0, 63);  return u_curve[k / 4][k % 4]; }
+float curveSample(float u) {
+  float x = u * 64.0 - 0.5;
+  float x0 = floor(x);
+  return mix(curveAt(int(x0)), curveAt(int(x0) + 1), x - x0);
+}
 float exponentialAdaption(float cur, float tgt, float ft, float speed, float m) {
   float factor = 1.0 - exp2(-ft * speed);
   return cur + (tgt - cur) * factor * m;
@@ -86,7 +95,9 @@ void main() {
   float oldScale = texture(u_prev, vec2(0.5)).r;
   float targetAvg = clamp(avgLum, u_avg_lum.x, u_avg_lum.y);
   float targetExposure = targetAvg / 0.18;
-  float mgec = u_compensation;
+  // EyeAdaptationCommon: the curve is read at the frame's own average (not the clamped target), in EV100
+  float ev100 = log2((avgLum / 0.18) / u_curve_sb.z);
+  float mgec = u_compensation * curveSample(ev100 * u_curve_sb.x + u_curve_sb.y);
   float oldExposure = mgec / (oldScale != 0.0 && oldScale == oldScale ? oldScale : 1.0);
   float force = (oldScale > 0.0 && oldScale == oldScale) ? u_force : 1.0;
   float est = computeEyeAdaptation(oldExposure, targetExposure, u_dt, force);

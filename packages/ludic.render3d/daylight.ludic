@@ -20,6 +20,7 @@ function daylight_init(render3d_st: mut Render3dState) -> void {
   render3d_st.fire_pos = v3_new(0.0, -1000.0, 0.0)
   render3d_st.fire_color = v3_new(0.0, 0.0, 0.0)
   render3d_st.day_moon_dir = v3_new(0.0, 1.0, 0.0)
+  render3d_st.day_moon_outer = v3_new(0.0, 0.0, 0.0)
   render3d_st.hand_pos = v3_new(0.0, -1000.0, 0.0);  render3d_st.hand_color = v3_new(0.0, 0.0, 0.0);  render3d_st.hand_dir = v3_new(0.0, 0.0, -1.0);  render3d_st.hand_cone = -2.0;  render3d_st.hand_reach = 12.0
   render3d_st.day_light = 1.0
 }
@@ -115,9 +116,9 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
     ue_sky_ground_transmittance(render3d_st, Math.sin(el), ut)
     let ui = ue_sun_tmp2(render3d_st)
     ue_sky_illum(render3d_st, ui)                    # white above the air (ue_sky.ludic ue_sun_outer), as the sky's own scattering takes it
-    sr = ui[0] * ut[0] * sunk
-    sg = ui[1] * ut[1] * sunk
-    sb = ui[2] * ut[2] * sunk
+    sr = ui [0] * ut[0] * sunk
+    sg = ui [1] * ut[1] * sunk
+    sb = ui [2] * ut[2] * sunk
     lel = el
   }
   # the visible disc is the real sun's, wherever the light is clamped to or the moon has taken over
@@ -141,8 +142,36 @@ function daylight_set(render3d_st: mut Render3dState, hours: float) -> void {
   }
   let mce = Math.cos(mel)
   v3_set(render3d_st.day_moon_dir, -(Math.sin(maz) * mce), Math.sin(mel), -(Math.cos(maz) * mce))
+  # The moon as Unreal's second atmosphere light (SkyAtmosphereRendering.cpp AtmosphereLights[1], SkyAtmosphere.usf
+  # SECOND_ATMOSPHERE_LIGHT_ENABLED): always there, at its own direction and illuminance (its light colour times its phase's share), the
+  # atmosphere's transmittance and the planet's shadow putting it out under the horizon. The sky of a moonlit night is its scattering,
+  # not the sun's from the moon's place (the one light below is still handed to the moon for the ground's light and shadows).
+  let mlit = 0.06 + 0.94 * render3d_st.day_moon_illum
+  v3_set(render3d_st.day_moon_outer, render3d_st.day_sun_base[0] * (0.0130 * mlit), render3d_st.day_sun_base[1] * (0.0165 * mlit), render3d_st.day_sun_base[2] * (0.0250 * mlit))
+  render3d_st.day_set = true
   render3d_st.day_moon = false
-  if el < Math.deg_to_rad(-7.0) {
+  if ue_sunlight_on(render3d_st) and not ue_sky_moon_as_sun(render3d_st) {
+    # Unreal's two atmosphere lights on the ground (SkyAtmosphereRendering.cpp AtmosphereLights[0], [1]): the sun's above and the moon's,
+    # each its outer-space illuminance times the air's transmittance toward it, both always on. One light carries both here: the
+    # brighter one's direction (the moon's held between 6 and 70 degrees for its shadows), the sum of the two (each in its own colour);
+    # the hand-over is where the sun under the horizon has fallen to the moon's light, so the ground's light never steps. It was the
+    # sun's down to 7 degrees under the horizon, then the moon's faded in to 16 under it: a dusk lit by neither, and the night's
+    # first hour black (R3D_UE_SKY_LIGHT0_MOON=1 puts that back).
+    let mt = ue_sun_tmp(render3d_st)
+    ue_sky_ground_transmittance(render3d_st, Math.sin(mel), mt)
+    let mo = render3d_st.day_moon_outer
+    let mr = mo[0] * mt[0] * sunk
+    let mg = mo[1] * mt[1] * sunk
+    let mb = mo[2] * mt[2] * sunk
+    if 0.2126 * mr + 0.7152 * mg + 0.0722 * mb > 0.2126 * sr + 0.7152 * sg + 0.0722 * sb {
+      render3d_st.day_moon = true
+      laz = maz
+      lel = Math.clamp(mel, Math.deg_to_rad(6.0), Math.deg_to_rad(70.0))
+    }
+    sr = sr + mr
+    sg = sg + mg
+    sb = sb + mb
+  } else if el < Math.deg_to_rad(-7.0) {
     render3d_st.day_moon = true
     laz = maz
     lel = Math.clamp(mel, Math.deg_to_rad(6.0), Math.deg_to_rad(70.0))

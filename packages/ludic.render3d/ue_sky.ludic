@@ -81,10 +81,30 @@ function ue_sky_on(render3d_st: mut Render3dState) -> bool {
   return render3d_st.ue_sky_on == 1
 }
 
-# the sun's true direction, toward it (ours: y up)
+# the sun's true direction, toward it (ours: y up): Unreal's AtmosphereLights[0] is the sun's own directional light, wherever it is. Once
+# daylight_set has put the sun (day_set, day_on) that is sky_disc_dir: the light itself is handed to the moon at night, and the atmosphere
+# lit from the moon's place at the sun's illuminance made a noon sky (and a noon sky light) all night. R3D_UE_SKY_LIGHT0_MOON=1 puts that back.
 function ue_sky_sun(render3d_st: mut Render3dState, o: floats) -> void {
-  if render3d_st.day_on { v3_set(o, render3d_st.sky_disc_dir[0], render3d_st.sky_disc_dir[1], render3d_st.sky_disc_dir[2]) }
+  if (render3d_st.day_on or render3d_st.day_set) and not ue_sky_moon_as_sun(render3d_st) { v3_set(o, render3d_st.sky_disc_dir[0], render3d_st.sky_disc_dir[1], render3d_st.sky_disc_dir[2]) }
   else { v3_set(o, render3d_st.sun_dir[0], render3d_st.sun_dir[1], render3d_st.sun_dir[2]) }
+}
+function ue_sky_moon_as_sun(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_sky_l0m < 0 {
+    render3d_st.ue_sky_l0m = 0
+    if r3d_env_has(render3d_st, "R3D_UE_SKY_LIGHT0_MOON") and r3d_env(render3d_st, "R3D_UE_SKY_LIGHT0_MOON") == "1" { render3d_st.ue_sky_l0m = 1 }
+  }
+  return render3d_st.ue_sky_l0m == 1
+}
+# Unreal's second atmosphere light (AtmosphereLights[1], SECOND_ATMOSPHERE_LIGHT_ENABLED): the moon, toward it, and its outer-space
+# illuminance (daylight.ludic day_moon_outer) x SkyAndAerialPerspectiveLuminanceFactor `k`; black (no second light) before daylight_set,
+# with the light handed to the moon as before (R3D_UE_SKY_LIGHT0_MOON=1) or with R3D_UE_SKY_LIGHT1=0
+function ue_sky_light1(render3d_st: mut Render3dState, k: float, dir: floats, illum: floats) -> void {
+  v3_set(dir, 0.0, 1.0, 0.0)
+  v3_set(illum, 0.0, 0.0, 0.0)
+  if not render3d_st.day_set or render3d_st.day_moon_outer == null or ue_sky_moon_as_sun(render3d_st) { return }
+  if r3d_env_has(render3d_st, "R3D_UE_SKY_LIGHT1") and r3d_env(render3d_st, "R3D_UE_SKY_LIGHT1") == "0" { return }
+  v3_set(dir, render3d_st.day_moon_dir[0], render3d_st.day_moon_dir[1], render3d_st.day_moon_dir[2])
+  v3_set(illum, render3d_st.day_moon_outer[0] * k, render3d_st.day_moon_outer[1] * k, render3d_st.day_moon_outer[2] * k)
 }
 # the outer-space illuminance
 function ue_sky_illum(render3d_st: mut Render3dState, o: floats) -> void {
@@ -267,6 +287,13 @@ function ue_sky_luts(render3d_st: mut Render3dState) -> void {
   ue_sky_illum(render3d_st, sun)
   let k = s.sky_and_aerial_perspective_luminance_factor
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_light_illum"), sun[0] * k, sun[1] * k, sun[2] * k)
+  # the moon, in the same local frame
+  let md = render3d_st.ue_sky_l1d
+  let mi = render3d_st.ue_sky_l1i
+  ue_sky_light1(render3d_st, k, md, mi)
+  let mx = md[0];  let my = md[2];  let mz = md[1]
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_light1_dir"), f[0] * mx + f[1] * my + f[2] * mz, f[3] * mx + f[4] * my + f[5] * mz, f[6] * mx + f[7] * my + f[8] * mz)
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "ua_light1_illum"), mi)
   ue_sky_lut_draw(render3d_st, render3d_st.ue_sky_view, p)
   prof_end(render3d_st)
   ue_fog_luts(render3d_st)

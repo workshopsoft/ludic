@@ -59,6 +59,10 @@ property UePost {
   auto_exposure_max_brightness: float = 20.0,      # AutoExposureMaxBrightness (EV100)
   auto_exposure_speed_up: float = 3.0,             # AutoExposureSpeedUp (stops a second)
   auto_exposure_speed_down: float = 1.0,           # AutoExposureSpeedDown
+  # AutoExposureBiasCurve (Exposure Compensation Curve): stops added by the scene's own average EV100, keys (EV100, stops) in pairs, EV100
+  # rising, linear between them and held past the ends (a UCurveFloat of linear keys); null none (Unreal's default). Baked to the 64-sample
+  # LUT r.EyeAdaptation.ExposureCompensationCurveLUT makes (ue_exposure_curve_lut); not blended by a volume: the base's own
+  auto_exposure_bias_curve: []float = null,
   histogram_log_min: float = -10.0,                # HistogramLogMin (EV100)
   histogram_log_max: float = 20.0,                 # HistogramLogMax (EV100)
   extended_luminance_range: bool = true,           # r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange
@@ -236,6 +240,17 @@ export function r3d_ue_exposure(render3d_st: mut Render3dState, on: bool) -> voi
   render3d_st.ue_exposure = 0
   if on { render3d_st.ue_exposure = 1 }
 }
+# the exposure scale the tonemapper multiplies by now (EyeAdaptation.x, either meter's 1 x 1 target), read back for a proof (a flush and
+# 4 bytes: never in a frame's own work); 0 before the first frame metered
+@alloc_ok("a proof's read back: one float")
+export function r3d_exposure_now(render3d_st: mut Render3dState) -> float {
+  if render3d_st.post_adapt_t == null { return 0.0 }
+  let px = floats(1)
+  var ok = false
+  unsafe { ok = gpu_tex_read_all(render3d_st, render3d_st.post_adapt_t[render3d_st.post_adapt_i].color, data_of(px)) }
+  if not ok { return 0.0 }
+  return px[0]
+}
 function ue_exposure_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.ue_exposure < 0 {
     render3d_st.ue_exposure = 1
@@ -372,6 +387,12 @@ function ue_exposure_pass(render3d_st: mut Render3dState) -> void {
   u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_scale_bias"), hist_scale, hist_bias)
   u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_avg_lum"), min_white * 0.18, max_white * 0.18)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_compensation"), Math.pow(2.0, pp.auto_exposure_bias))
+  # the compensation curve's LUT and where an EV100 reads it (GetExposureCompensationCurveLUTScaleBias), and LuminanceMax
+  let lut = ue_exposure_curve_lut(render3d_st, pp.auto_exposure_bias_curve)
+  u_f4v(render3d_st, gpu_uniform(render3d_st, p, "u_curve"), 16, lut)
+  let n = float(UE_EC_LUT_N)
+  let cs = (n - 1.0) / (n * (UE_EC_LUT_MAX_X - UE_EC_LUT_MIN_X))
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_curve_sb"), cs, 0.5 / n - UE_EC_LUT_MIN_X * cs, lum_max)
   u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_speed"), pp.auto_exposure_speed_up, pp.auto_exposure_speed_down)
   u_f2(render3d_st, gpu_uniform(render3d_st, p, "u_exp_m"), m_up, m_down)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_start_distance"), pp.exponential_transition_distance)
@@ -381,6 +402,50 @@ function ue_exposure_pass(render3d_st: mut Render3dState) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_force"), force)
   mesh_draw(render3d_st, render3d_st.post_fs)
   render3d_st.post_adapt_i = next
+}
+
+# PostProcessEyeAdaptation.cpp CreateCurveLUT: r.EyeAdaptation.ExposureCompensationCurveLUT.NumSamples 64 values of 2^bias at EV100 from
+# .MinX -10 to .MaxX 20, read bilinear and clamped by ue_eye_adapt.frag at the frame's average EV100 (EyeAdaptationCommon). Remade only
+# when the curve is another list or its keys changed; all ones with no curve (Unreal's white dummy)
+const UE_EC_LUT_N: int = 64
+const UE_EC_LUT_MIN_X: float = -10.0
+const UE_EC_LUT_MAX_X: float = 20.0
+@alloc_ok("made once and kept: the curve's 64 samples")
+function ue_exposure_curve_lut(render3d_st: mut Render3dState, curve: []float) -> floats {
+  if render3d_st.ue_ec_lut == null {
+    render3d_st.ue_ec_lut = floats(UE_EC_LUT_N)
+    render3d_st.ue_ec_key = floats(16)
+    render3d_st.ue_ec_n = -1
+  }
+  let lut = render3d_st.ue_ec_lut
+  var n = 0
+  if curve != null { n = len(curve) / 2 }
+  var same = n == render3d_st.ue_ec_n and n * 2 <= 16
+  if same { for i in 0 .. n * 2 { if render3d_st.ue_ec_key[i] != curve[i] { same = false } } }
+  if same { return lut }
+  render3d_st.ue_ec_n = n
+  for i in 0 .. Math.min(n * 2, 16) { render3d_st.ue_ec_key[i] = curve[i] }
+  if n * 2 > 16 { render3d_st.ue_ec_n = -1 }          # more keys than the copy holds: remade every frame
+  let delta = (UE_EC_LUT_MAX_X - UE_EC_LUT_MIN_X) / float(UE_EC_LUT_N - 1)
+  for i in 0 .. UE_EC_LUT_N {
+    var bias = 0.0
+    if n > 0 { bias = ue_curve_linear(curve, n, UE_EC_LUT_MIN_X + delta * float(i)) }
+    lut[i] = Math.pow(2.0, bias)
+  }
+  return lut
+}
+# a curve of linear keys (x, y pairs, x rising) at x: held at the first and last keys' values past its ends (FRichCurve::Eval)
+function ue_curve_linear(c: []float, n: int, x: float) -> float {
+  if x <= c[0] { return c[1] }
+  for k in 1 .. n {
+    if x <= c[k * 2] {
+      let x0 = c[k * 2 - 2];  let x1 = c[k * 2]
+      var t = 0.0
+      if x1 > x0 { t = (x - x0) / (x1 - x0) }
+      return Math.lerp(c[k * 2 - 1], c[k * 2 + 1], t)
+    }
+  }
+  return c[n * 2 - 1]
 }
 
 # ---- Unreal's Gaussian bloom (BM_SOG) ----------------------------------------------------------------------------------------------
@@ -1018,6 +1083,7 @@ export function ue_pp_resolve(render3d_st: mut Render3dState, x: float, y: float
   fin.bloom_quality = base.bloom_quality;  fin.gaussian_bloom_cross = base.gaussian_bloom_cross;  fin.filter_size_scale = base.filter_size_scale
   # LensFlareTints is not blended by a volume (no LERP_PP in SceneView.cpp): the base's own; r.LensFlareQuality is global
   fin.lens_flare_tints = base.lens_flare_tints;  fin.lens_flare_quality = base.lens_flare_quality
+  fin.auto_exposure_bias_curve = base.auto_exposure_bias_curve
   let d = render3d_st.ue_pp_work
   ue_pp_pack(base, d)
   if ue_volumes_on(render3d_st) and render3d_st.ue_vols != null {

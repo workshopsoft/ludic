@@ -3,7 +3,8 @@
 // with ParticipatingMediaCommon.ush's phase functions. Units are Unreal's sky units, kilometres; the planet frame is Unreal's, z up.
 // One pass per define: UA_TRANSMITTANCE (256x64), UA_MULTISCAT (32x32), UA_SKYVIEW (192x104), UA_AP (RenderCameraAerialPerspectiveVolumeCS:
 // the 32x32x16 camera volume, drawn unwrapped 512x32, slice-major), UA_DISTANT (RenderDistantSkyLightLutCS, 1x1). Per-pixel noise is off in these LUT
-// passes in Unreal too (DEFAULT_SAMPLE_OFFSET 0.3); the second atmosphere light is not ported (the moon lights the night instead).
+// passes in Unreal too (DEFAULT_SAMPLE_OFFSET 0.3). The second atmosphere light (SECOND_ATMOSPHERE_LIGHT_ENABLED: AtmosphereLights[1], the
+// moon) is added in the same march as Unreal adds it, when its illuminance is not zero (ua_light1_illum).
 in vec2 v_uv;
 out vec4 o_color;
 uniform vec2 ua_radii;                 // BottomRadiusKm, TopRadiusKm
@@ -23,6 +24,8 @@ uniform sampler2D ua_transmittance;    // the transmittance LUT (multi-scatterin
 uniform sampler2D ua_multiscat;        // the multi-scattering LUT (sky view pass)
 uniform vec4 ua_light_dir;             // xyz: the sun in the sky view LUT's local frame; w: the view height (km)
 uniform vec3 ua_light_illum;           // AtmosphereLightIlluminanceOuterSpace x SkyAndAerialPerspectiveLuminanceFactor
+uniform vec3 ua_light1_dir;            // AtmosphereLightDirection[1] (the moon) in the same frame as ua_light_dir.xyz
+uniform vec3 ua_light1_illum;          // AtmosphereLightIlluminanceOuterSpace[1] x SkyAndAerialPerspectiveLuminanceFactor (0: no second light)
 uniform float ua_ap_scale;             // AerialPespectiveViewDistanceScale (the AP pass; 1 elsewhere)
 uniform vec4 ua_ap;                    // AP volume: DepthResolution, SliceLengthKm, StartDepthKm, SampleCountPerSlice
 uniform mat4 ua_inv_vp;                // the camera's inverse view-projection (our frame), for the AP pass's view directions
@@ -104,7 +107,7 @@ vec3 uaGetMultipleScattering(vec3 p, float viewZenithCosAngle) {
 struct UaResult { vec3 L; vec3 opticalDepth; vec3 transmittance; vec3 multiScatAs1; };
 // IntegrateSingleScatteredLuminance, the LUT passes' path (no depth buffer, no shadow map, no clouds)
 UaResult uaIntegrate(vec3 worldPos, vec3 worldDir, bool ground, bool variableCount, float sampleCountIni, bool mieRayPhase,
-                     vec3 lightDir, vec3 lightIllum, bool useMultiScat, float tMaxMax) {
+                     vec3 lightDir, vec3 lightIllum, bool useMultiScat, float tMaxMax, vec3 light1Dir, vec3 light1Illum) {
   UaResult r;
   r.L = vec3(0.0);  r.opticalDepth = vec3(0.0);  r.transmittance = vec3(1.0);  r.multiScatAs1 = vec3(0.0);
   if (dot(worldPos, worldPos) <= ua_radii.x * ua_radii.x) return r;
@@ -131,6 +134,10 @@ UaResult uaIntegrate(vec3 worldPos, vec3 worldDir, bool ground, bool variableCou
   float cosTheta = dot(lightDir, worldDir);
   float miePhase = uaHenyeyGreenstein(ua_mie_ext.w, -cosTheta);
   float rayPhase = uaRayleighPhase(cosTheta);
+  bool second = max(light1Illum.r, max(light1Illum.g, light1Illum.b)) > 0.0;
+  float cosTheta1 = dot(light1Dir, worldDir);
+  float miePhase1 = uaHenyeyGreenstein(ua_mie_ext.w, -cosTheta1);
+  float rayPhase1 = uaRayleighPhase(cosTheta1);
   vec3 L = vec3(0.0);
   vec3 throughput = vec3(1.0);
   vec3 opticalDepth = vec3(0.0);
@@ -170,6 +177,22 @@ UaResult uaIntegrate(vec3 worldPos, vec3 worldDir, bool ground, bool variableCou
     float tPlanet = uaRaySphereIntersectNearest(P, lightDir, UA_PLANET_RADIUS_OFFSET * up, ua_radii.x);
     float planetShadow = tPlanet >= 0.0 ? 0.0 : 1.0;
     vec3 S = lightIllum * (planetShadow * transToLight * phaseTimesScattering + multiScat * m.scattering);
+    if (second) {
+      // light 1: its own phase, transmittance, multiple scattering and planet shadow (SkyAtmosphere.usf SECOND_ATMOSPHERE_LIGHT_ENABLED)
+      float light1ZenithCos = dot(light1Dir, up);
+      vec3 transToLight1 = vec3(1.0);
+#ifndef UA_TRANSMITTANCE
+      transToLight1 = uaGetTransmittance(light1ZenithCos, pHeight);
+#endif
+      vec3 phaseTimesScattering1 = mieRayPhase ? m.scatteringMie * miePhase1 + m.scatteringRay * rayPhase1 : m.scattering * uniformPhase;
+      vec3 multiScat1 = vec3(0.0);
+#if defined(UA_SKYVIEW) || defined(UA_AP) || defined(UA_DISTANT)
+      if (useMultiScat) multiScat1 = uaGetMultipleScattering(P, light1ZenithCos);
+#endif
+      float tPlanet1 = uaRaySphereIntersectNearest(P, light1Dir, UA_PLANET_RADIUS_OFFSET * up, ua_radii.x);
+      float planetShadow1 = tPlanet1 >= 0.0 ? 0.0 : 1.0;
+      S += light1Illum * (planetShadow1 * transToLight1 * phaseTimesScattering1 + multiScat1 * m.scattering);
+    }
     vec3 safeExt = max(m.extinction, vec3(1.0e-9));
     r.multiScatAs1 += throughput * m.scattering * dt;
     vec3 Sint = (S - S * sampleTransmittance) / safeExt;
@@ -187,6 +210,14 @@ UaResult uaIntegrate(vec3 worldPos, vec3 worldDir, bool ground, bool variableCou
 #endif
     float NdotL = clamp(dot(up, lightDir), 0.0, 1.0);
     L += lightIllum * transToLight * throughput * NdotL * ua_ground_albedo / UA_PI;
+    if (second) {
+      float light1ZenithCos = dot(up, light1Dir);
+      vec3 transToLight1 = vec3(1.0);
+#ifndef UA_TRANSMITTANCE
+      transToLight1 = uaGetTransmittance(light1ZenithCos, pHeight);
+#endif
+      L += light1Illum * transToLight1 * throughput * clamp(dot(up, light1Dir), 0.0, 1.0) * ua_ground_albedo / UA_PI;
+    }
   }
   r.L = L;
   r.opticalDepth = opticalDepth;
@@ -272,7 +303,7 @@ void main() {
   uaFromTransmittanceLutUVs(viewHeight, viewZenithCosAngle, uv);
   vec3 worldPos = vec3(0.0, 0.0, viewHeight);
   vec3 worldDir = vec3(0.0, sqrt(1.0 - viewZenithCosAngle * viewZenithCosAngle), viewZenithCosAngle);
-  UaResult ss = uaIntegrate(worldPos, worldDir, false, false, ua_samples.x, false, vec3(0.0, 0.0, 1.0), vec3(0.0), false, 9000000.0);
+  UaResult ss = uaIntegrate(worldPos, worldDir, false, false, ua_samples.x, false, vec3(0.0, 0.0, 1.0), vec3(0.0), false, 9000000.0, vec3(0.0, 0.0, 1.0), vec3(0.0));
   o_color = vec4(sqrt(exp(-ss.opticalDepth)), 1.0);   // EncodeTransmittance
 #endif
 #ifdef UA_MULTISCAT
@@ -282,8 +313,8 @@ void main() {
   vec3 worldPos = vec3(0.0, 0.0, viewHeight);
   vec3 worldDir = vec3(0.0, 0.0, 1.0);
   // r.SkyAtmosphere.MultiScatteringLUT.HighQuality 0: two opposite directions
-  UaResult r0 = uaIntegrate(worldPos, worldDir, true, false, ua_samples.y, false, lightDir, vec3(1.0), false, 9000000.0);
-  UaResult r1 = uaIntegrate(worldPos, -worldDir, true, false, ua_samples.y, false, lightDir, vec3(1.0), false, 9000000.0);
+  UaResult r0 = uaIntegrate(worldPos, worldDir, true, false, ua_samples.y, false, lightDir, vec3(1.0), false, 9000000.0, vec3(0.0, 0.0, 1.0), vec3(0.0));
+  UaResult r1 = uaIntegrate(worldPos, -worldDir, true, false, ua_samples.y, false, lightDir, vec3(1.0), false, 9000000.0, vec3(0.0, 0.0, 1.0), vec3(0.0));
   const float sphereSolidAngle = 4.0 * UA_PI;
   vec3 integratedIlluminance = (sphereSolidAngle / 2.0) * (r0.L + r1.L);
   vec3 multiScatAs1 = 0.5 * (r0.multiScatAs1 + r1.multiScatAs1);
@@ -323,7 +354,7 @@ void main() {
     if (tTop >= 0.0) worldPos = worldPos + worldDir * tTop - (worldPos / viewHeight) * UA_PLANET_RADIUS_OFFSET;
     else { o_color = vec4(0.0);  return; }
   }
-  UaResult ss = uaIntegrate(worldPos, worldDir, false, true, 0.0, true, ua_light_dir.xyz, ua_light_illum, true, 9000000.0);
+  UaResult ss = uaIntegrate(worldPos, worldDir, false, true, 0.0, true, ua_light_dir.xyz, ua_light_illum, true, 9000000.0, ua_light1_dir, ua_light1_illum);
   o_color = vec4(ss.L, dot(ss.transmittance, vec3(1.0 / 3.0)));
 #endif
 #ifdef UA_AP
@@ -378,14 +409,14 @@ void main() {
     tMaxMax = max(0.0, tMaxMax - lenToAtmo);
   }
   float count = max(1.0, (zi + 1.0) * ua_ap.w);
-  UaResult ss = uaIntegrate(rayStart, worldDir, false, false, count, true, ua_light_dir.xyz, ua_light_illum, true, tMaxMax);
+  UaResult ss = uaIntegrate(rayStart, worldDir, false, false, count, true, ua_light_dir.xyz, ua_light_illum, true, tMaxMax, ua_light1_dir, ua_light1_illum);
   o_color = vec4(ss.L, dot(ss.transmittance, vec3(1.0 / 3.0)));
 #endif
 #ifdef UA_DISTANT
   vec3 samplePos = vec3(0.0, 0.0, ua_radii.x + 6.0);   // r.SkyAtmosphere.DistantSkyLightLUT.Altitude
   vec3 acc = vec3(0.0);
   for (int i = 0; i < 64; i++) {
-    UaResult ss = uaIntegrate(samplePos, UA_SPHERE[i], false, false, 10.0, false, ua_light_dir.xyz, ua_light_illum, true, 9000000.0);
+    UaResult ss = uaIntegrate(samplePos, UA_SPHERE[i], false, false, 10.0, false, ua_light_dir.xyz, ua_light_illum, true, 9000000.0, ua_light1_dir, ua_light1_illum);
     acc += ss.L * ua_sky_lum_factor;
   }
   vec3 illuminance = acc * (4.0 * UA_PI / 64.0);

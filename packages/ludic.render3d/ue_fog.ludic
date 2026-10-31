@@ -138,6 +138,12 @@ function ue_fog_luts(render3d_st: mut Render3dState) -> void {
   r3d_bind_2d(render3d_st, p, "ua_multiscat", 1, render3d_st.ue_sky_ms.color)
   u_f4(render3d_st, gpu_uniform(render3d_st, p, "ua_light_dir"), sx, sy, sz, f[9])
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_light_illum"), sun[0] * k, sun[1] * k, sun[2] * k)
+  # the moon (ue_sky.ludic ue_sky_light1), planet-relative as the sun
+  let md = render3d_st.ue_sky_l1d
+  let mi = render3d_st.ue_sky_l1i
+  ue_sky_light1(render3d_st, k, md, mi)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_light1_dir"), md[0], md[2], md[1])
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "ua_light1_illum"), mi)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "ua_ap_scale"), s.aerial_pespective_view_distance_scale)
   # CameraAerialPerspectiveVolumeDepthResolution, the slice length (Depth / resolution), the start depth, SampleCountMaxPerSlice x scale
   u_f4(render3d_st, gpu_uniform(render3d_st, p, "ua_ap"), s.ap_depth_resolution, s.ap_depth_km / s.ap_depth_resolution, s.aerial_perspective_start_depth, s.ap_sample_count_per_slice * s.trace_sample_count_scale)
@@ -151,6 +157,8 @@ function ue_fog_luts(render3d_st: mut Render3dState) -> void {
   r3d_bind_2d(render3d_st, p, "ua_multiscat", 1, render3d_st.ue_sky_ms.color)
   u_f4(render3d_st, gpu_uniform(render3d_st, p, "ua_light_dir"), sx, sy, sz, f[9])
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_light_illum"), sun[0] * k, sun[1] * k, sun[2] * k)
+  u_f3(render3d_st, gpu_uniform(render3d_st, p, "ua_light1_dir"), md[0], md[2], md[1])
+  u_v3(render3d_st, gpu_uniform(render3d_st, p, "ua_light1_illum"), mi)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "ua_ap_scale"), 1.0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "ua_sky_lum_factor"), s.sky_luminance_factor)
   ue_sky_lut_draw(render3d_st, render3d_st.ue_distant, p)

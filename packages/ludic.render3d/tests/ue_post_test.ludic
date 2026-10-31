@@ -151,4 +151,18 @@ program UePostTest {
     ue_tod_grade(render3d_st)
     expect_near(ue_pp_resolve(render3d_st, 0.0, 0.0, 0.0).scene_color_tint_r, 1.0, 0.00001)
   }
+
+  # PostProcessEyeAdaptation.cpp CreateCurveLUT: 64 samples of 2^curve from EV100 -10 to 20; the curve's linear keys held past its ends
+  test "the exposure compensation curve bakes Unreal's 64-sample LUT" (render3d_st: mut Render3dState) {
+    let lut = ue_exposure_curve_lut(render3d_st, null)
+    for i in 0 .. 64 { expect_near(lut[i], 1.0, 0.00001) }
+    let c = new []float
+    push(c, -8.0);  push(c, -2.0);  push(c, -4.0);  push(c, 0.0)
+    ue_exposure_curve_lut(render3d_st, c)
+    expect_near(lut[0], 0.25, 0.00001)                       # EV100 -10: before the first key, its -2 stops
+    expect_near(lut[63], 1.0, 0.00001)                       # EV100 20: past the last, 0
+    # sample 9 is EV100 -10 + 9 x 30 / 63 = -5.714: -2 + 2 x (2.286 / 4) = -0.857 stops
+    expect_near(lut[9], Math.pow(2.0, -2.0 + 2.0 * ((-10.0 + 9.0 * 30.0 / 63.0 + 8.0) / 4.0)), 0.00001)
+    expect_near(ue_curve_linear(c, 2, -6.0), -1.0, 0.00001)
+  }
 }
