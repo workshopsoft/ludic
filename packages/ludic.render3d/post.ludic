@@ -281,7 +281,8 @@ function post_copy_prev(render3d_st: mut Render3dState) -> void {
 # Unreal's AO taps read its furthest HZB (PostProcessAmbientOcclusionCommon.ush GetHZBDepth) at ComputeMipLevel's mip, which at
 # r.AmbientOcclusionMipLevelFactor 0.5 is below 0 for every tap: mip 0, half the frame's size. R3D_UE_AO_HZB=0: the full frame's depth
 # the screen-space bounce (ssgi.frag u_gi): off as Unreal 5.8 leaves its deprecated SSGI, R3D_UE_SSGI=1 on
-function post_ssgi_on(render3d_st: mut Render3dState) -> bool { return r3d_env_has(render3d_st, "R3D_UE_SSGI") and r3d_env(render3d_st, "R3D_UE_SSGI") == "1" }
+# (a game's setting: post_ssgi_want 1; the switch wins over it)
+function post_ssgi_on(render3d_st: mut Render3dState) -> bool { return render3d_st.post_ssgi_want == 1 or (r3d_env_has(render3d_st, "R3D_UE_SSGI") and r3d_env(render3d_st, "R3D_UE_SSGI") == "1") }
 function post_ao_hzb_on(render3d_st: mut Render3dState) -> bool { return not (r3d_env_has(render3d_st, "R3D_UE_AO_HZB") and r3d_env(render3d_st, "R3D_UE_AO_HZB") == "0") }
 
 # Unreal's AO shader quality from its post process volume's AmbientOcclusionQuality (Scene.cpp: 50 by default), as FSSAOHelper::
@@ -289,6 +290,7 @@ function post_ao_hzb_on(render3d_st: mut Render3dState) -> bool { return not (r3
 # the quad blur (post_ssao_pass). 50 is level 2, medium: 3 directions of 2 steps, blurred over the quad. R3D_UE_AO_QUALITY=0..100 another
 function post_ao_level(render3d_st: mut Render3dState) -> int {
   var q = 50.0
+  if render3d_st.post_ao_q >= 0.0 { q = render3d_st.post_ao_q }                  # (a game's setting; the switch wins over it)
   if r3d_env_has(render3d_st, "R3D_UE_AO_QUALITY") { q = Text.to_float(r3d_env(render3d_st, "R3D_UE_AO_QUALITY")) }
   var level = 0
   if q > 75.0 { level += 1 }
