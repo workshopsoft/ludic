@@ -414,6 +414,11 @@ void main() {
     foam *= smoothstep(120.0, 15.0, dist);
     // the wash dies where the surface meets the ground, so it cannot end on a hard line
     foam *= smoothstep(0.0, 0.5, shoreRay);
+    // a thin foam line where the surface is within a few centimetres of the depth behind it (as UE's shore foam),
+    // broken up by the detail noise so it is lace, not a ruled stroke; it reads from further off than the wash.
+    // After the soft-edge mask: the line lives in the last centimetres, where that mask is near zero.
+    float shoreLine = smoothstep(0.0, 0.015, shoreBelow) * smoothstep(0.10, 0.03, shoreBelow);
+    foam += u_wash * shoreLine * (0.35 + 0.4 * fdet) * smoothstep(0.30, 0.55, fmid + 0.25 * fdet) * smoothstep(250.0, 40.0, dist);
   }
   foam += fxFoam * 0.85;
   float NoV = max(dot(n, v), 0.0);
