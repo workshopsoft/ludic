@@ -65,10 +65,13 @@ property Actor {
   fmap:      words,           # per joint of this model: the leader's node, or -1
   fbones:    floats,          # 16 per joint: the palette this part skins with
   fbones_v:  [][]float,
+  fcap:      int = 0,         # joints fbones and fbones_v hold: kept with the record across follows (a view is an allocation of its own
+                              # that free(list) does not give back, so the room is made once and only ever grows)
   # its live joints (actor_part_live): placed by the game each frame in the leader's model frame, over what they follow
   fdyn:      floats,          # 16 per joint
   fdyn_v:    [][]float,
   fdyn_on:   words,           # 1 per joint: placed
+  dcap:      int = 0,         # joints fdyn and fdyn_v hold, kept as fcap is
   held:      bool = false,    # its owner keeps it across the next actor_release_all (actor_hold)
   # last frame's placement and pose, for its motion (taa.ludic): what it was when the motion pass last drew it
   prev_mat:   floats,
@@ -1114,7 +1117,7 @@ function actor_own_skin(a: Actor) -> Skin {
 # of the part's joints found a node of the same name (a part with fewer than all is a bad export: the rest stay at
 # rest), or -1 when either has no skin. The part's model needs a skin (a rigid hat: attach it with a bone's matrix).
 # actor_release(leader) hides its followers; actor_release(part) frees the palette. Attach again to re-bind.
-@alloc_ok("one palette per attached part, made at attach and freed by actor_release / actor_unfollow")
+@alloc_ok("one palette per actor record, made at its first follow (or a follow with more joints) and kept with the record")
 function actor_follow(part: Actor, leader: Actor) -> int {
   if part == null or leader == null or part.model == null or leader.model == null { return -1 }
   if part.model.skin == null { return -1 }
@@ -1125,8 +1128,11 @@ function actor_follow(part: Actor, leader: Actor) -> int {
   let m = skin_follow_map(part.model.skin, ls)
   let n = part.model.skin.n_joints
   part.fmap = m
-  part.fbones = floats(n * 16)
-  part.fbones_v = m4_views(part.fbones, n)
+  if part.fcap < n {
+    part.fbones = floats(n * 16)
+    part.fbones_v = m4_views(part.fbones, n)
+    part.fcap = n
+  }
   part.leader = leader
   part.leader_id = leader.id
   return skin_follow_bound(m, n)
@@ -1135,8 +1141,6 @@ function actor_unfollow(a: Actor) -> void {
   if a == null { return }
   actor_part_still(a)
   if a.fmap != null { free(a.fmap);  a.fmap = null }
-  if a.fbones != null { free(a.fbones);  a.fbones = null }
-  if a.fbones_v != null { free(a.fbones_v);  a.fbones_v = null }
   a.leader = null
   a.leader_id = 0
 }
@@ -1454,21 +1458,22 @@ function ac_follow_palette(a: Actor) -> void {
 # Live joints of a followed part: bones of its own that the game moves (hair guides swinging, a strap), placed each frame with
 # actor_part_pose; every other joint still follows the leader. actor_part_live makes the room (once: false when the actor
 # follows nothing), actor_part_still gives it back (actor_unfollow and actor_release do), and the joints follow again.
-@alloc_ok("the live joints' room, made once when a part's own bones start moving, freed with its follow")
+@alloc_ok("the live joints' room, made once per actor record when a part's own bones start moving, kept with the record")
 function actor_part_live(a: Actor) -> bool {
   if a == null or a.fmap == null or a.model == null or a.model.skin == null { return false }
   if a.fdyn_on != null { return true }
   let n = a.model.skin.n_joints
-  a.fdyn = floats(n * 16)
-  a.fdyn_v = m4_views(a.fdyn, n)
+  if a.dcap < n {
+    a.fdyn = floats(n * 16)
+    a.fdyn_v = m4_views(a.fdyn, n)
+    a.dcap = n
+  }
   a.fdyn_on = words(n)
   for j in 0 .. n { a.fdyn_on[j] = 0 }
   return true
 }
 function actor_part_still(a: Actor) -> void {
   if a == null { return }
-  if a.fdyn != null { free(a.fdyn);  a.fdyn = null }
-  if a.fdyn_v != null { free(a.fdyn_v);  a.fdyn_v = null }
   if a.fdyn_on != null { free(a.fdyn_on);  a.fdyn_on = null }
 }
 # joint j's global matrix in the leader's model frame (16 floats, the frame the leader's pose is in) from now until set again or

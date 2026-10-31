@@ -109,6 +109,15 @@ program FollowTest {
     ac_follow_palette(part)
     for i in 0 .. 16 { expect_near(part.fbones_v[1][i], part.fbones_v[0][i], 0.0001) }
     actor_unfollow(part)
-    expect(part.fdyn == null)
+    expect(part.fdyn_on == null)                          # still again: the live joints' room is kept with the record
+    # a record followed again (a pooled actor, a figure re-dressed) reuses its palette and its views: no new allocation per follow
+    let pal = part.fbones
+    let pal_v = part.fbones_v
+    let dyn_v = part.fdyn_v
+    expect_eq(actor_follow(part, lead), 1)
+    expect(actor_part_live(part))
+    expect(part.fbones == pal and part.fbones_v == pal_v and part.fdyn_v == dyn_v)
+    ac_follow_palette(part)
+    for i in 0 .. 16 { expect_near(part.fbones_v[1][i], part.fbones_v[0][i], 0.0001) }
   }
 }
