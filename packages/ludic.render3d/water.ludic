@@ -15,7 +15,7 @@
 # planar reflection pass, because every mirrored plane is another full scene pass. water_level /
 # water_cx ... mirror that one, so code written against a single plane still reads the surface
 # that reflects.
-const WATER_MAX: int = 16
+const WATER_MAX: int = 32
 const WATER_PLANE: int = 0
 const WATER_MESH: int = 1
 
