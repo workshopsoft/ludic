@@ -1,0 +1,101 @@
+# ies_test.ludic - IES light profiles (ies.ludic) without a device: UE 5.8's FIESLoader parse (header, angles, candela times the
+# multiplier, max candela as the brightness, its refusals), Interpolate2D (bilinear, the horizontal symmetry), the profile texture
+# (normalised to its max), ComputeLightProfileMultiplier's lookup, and a light that takes its brightness from its profile.
+import "ludic.render3d/r3d.ludic"
+program IesTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  # a small type C file: 3 vertical angles (0, 45, 90), 2 horizontal (0, 90: symmetric in each quadrant), candela x 2
+  function small() -> string {
+    return "IESNA:LM-63-2002\r\n[TEST] small\r\n[MANUFAC] gpp\r\nTILT=NONE\r\n1 1000 2.0 3 2 1 2 0 0 0\r\n1.0 1.0 100\r\n0 45 90\r\n0 90\r\n500 250 0\r\n400 200 1.0E+1\r\nEND\r\n"
+  }
+
+  test "a file parses as FIESLoader reads it" {
+    let p = ies_parse(small())
+    expect(p.ok)
+    expect_eq(len(p.v_angles), 3)
+    expect_eq(len(p.h_angles), 2)
+    expect_eq(p.photometric_type, IES_TYPE_C)
+    expect_near(p.lumens_per_lamp, 1000.0, 0.0001)
+    expect_near(p.candela[0], 1000.0, 0.0001)            # 500 x 2: the first horizontal angle's column
+    expect_near(p.candela[5], 20.0, 0.0001)              # 1.0E+1 x 2: the second column's last
+    expect_near(p.brightness, 1000.0, 0.0001)           # ComputeMax
+  }
+
+  test "numbers as atof reads them" {
+    expect_near(ies_atof("12.5"), 12.5, 0.00001)
+    expect_near(ies_atof("-3"), -3.0, 0.00001)
+    expect_near(ies_atof("1.5E+03"), 1500.0, 0.001)
+    expect_near(ies_atof("2e-2"), 0.02, 0.000001)
+    expect_near(ies_atof(".25"), 0.25, 0.000001)
+  }
+
+  test "files UE refuses are refused" {
+    expect(not ies_parse("IESNA:LM-63-2002\nTILT=INCLUDE\n1 1000 1 1 1 1 2 0 0 0\n1 1 100\n0\n0\n5\n").ok)      # TILT=INCLUDE
+    let p = ies_parse("TILT=NONE\n1 1000 1 2 1 1 2 0 0 0\n1 1 100\n45 0\n0\n5 6\n")                            # V not increasing
+    expect(not p.ok)
+    expect(p.error == "V Values are not in increasing order")
+    expect(not ies_parse("TILT=NONE\n1 1000 1 2 1 1 2 0 0 0\n1 1 100\n0 90\n0\n5 6\n7 8\n").ok)                 # content after the values
+    expect(not ies_parse("no tilt line\n").ok)
+    expect(ies_parse("TILT=NONE\n1 1000 1 1 1 1 2 0 0 0\n1 1 100\n0\n0\n5\n").ok)                                # LM-63-1986: no version line
+  }
+
+  test "Interpolate2D: bilinear between the angles, the quadrant symmetry of a 0..90 file" {
+    let p = ies_parse(small())
+    expect_near(ies_interpolate2d(p, 0.0, 0.0), 1000.0, 0.001)
+    expect_near(ies_interpolate2d(p, 0.0, 22.5), 750.0, 0.001)      # half way to 45
+    expect_near(ies_interpolate2d(p, 45.0, 0.0), 900.0, 0.001)      # half way to the 90 degree plane (800)
+    # 90 .. 180 is the first quadrant mirrored (UE: HAngle = last - fmod(H, last)), 180 .. 270 the first again
+    expect_near(ies_interpolate2d(p, 135.0, 0.0), ies_interpolate2d(p, 45.0, 0.0), 0.001)
+    expect_near(ies_interpolate2d(p, 200.0, 45.0), ies_interpolate2d(p, 20.0, 45.0), 0.001)
+    expect_near(ies_interpolate2d(p, 0.0, 170.0), 0.0, 0.001)       # past the last vertical angle: its value
+    expect_near(ies_filter_pos(-5.0, p.v_angles), 0.0, 0.00001)
+    expect_near(ies_filter_pos(67.5, p.v_angles), 1.5, 0.00001)
+  }
+
+  test "the profile texture is the candela over the max; the lookup is ComputeLightProfileMultiplier's" {
+    let p = ies_parse(small())
+    let w = 64
+    let h = 32
+    let tex = floats(w * h)
+    ies_extract(p, w, h, tex)
+    expect_near(tex[0], 1.0, 0.0001)                                 # H 0, V 0: the max
+    expect_near(tex[16], ies_interpolate2d(p, 0.0, 45.0) / 1000.0, 0.0001)      # x 16 of 64: V 45
+    let tmp = floats(2)
+    # a light pointing down (its direction -y), its tangent +z; a point straight under it: the vector to the light is +y
+    ies_profile_uv(0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0, tmp)
+    expect_near(tmp[0], 0.0, 0.0001)                                 # asin(-1) / PI + 0.5: V 0 at the light's forward
+    # a point 45 degrees off, away along the tangent: the vector to the light is (0, 1, -1) / sqrt 2
+    let s = 1.0 / Math.sqrt(2.0)
+    ies_profile_uv(0.0, s, -s, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0, tmp)
+    expect_near(tmp[0], 0.25, 0.0001)                                # 45 of 180 degrees
+    expect_near(tmp[1], 0.75, 0.0001)                                # atan2(-z, -y) = atan2(+s, 0) = 90 degrees: 270 of 360
+    let m = ies_profile_multiplier(p, tex, w, h, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0, tmp)
+    expect_near(m, 1.0, 0.01)                                        # straight under: the max
+    let m45 = ies_profile_multiplier(p, tex, w, h, 0.0, s, -s, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0, tmp)
+    expect(m45 < 0.6 and m45 > 0.35)                                 # 45 degrees off: 250 x 2 or 200 x 2 of 1000 by the plane
+  }
+
+  test "a light with its profile's brightness shines at the max candela, in its units" (render3d_st: mut Render3dState) {
+    let k = ies_profile_add(render3d_st, small())
+    expect_eq(k, 0)
+    expect(ies_profile_add(render3d_st, "nothing") == -1)
+    expect(ies_profile_error(render3d_st) == "HeaderError")
+    let l = ue_light_add(render3d_st, false, 0.0, 0.0, 0.0)
+    l.intensity_units = UE_LIGHT_CANDELAS
+    l.intensity = 5.0
+    l.ies = k
+    expect_near(ue_light_candela_ies(render3d_st, l), 5.0, 0.0001)            # bUseIESBrightness off: the light's own
+    l.use_ies_brightness = true
+    l.ies_brightness_scale = 0.5
+    expect_near(ue_light_candela_ies(render3d_st, l), 500.0, 0.0001)         # 1000 cd x 0.5
+    render3d_st.cam_pos = v3_new(0.0, 0.0, -5.0)
+    render3d_st.cam_fwd = v3_new(0.0, 0.0, 1.0)
+    ue_lights_frame(render3d_st)
+    expect_eq(render3d_st.ue_ll_n, 1)
+    expect_near(render3d_st.ue_ll_data[4], 500.0, 0.0001)                     # colour (1) x candela
+    expect_near(render3d_st.ue_ll_data[22], 1.0, 0.0001)                      # its tangent (0, 0, 1)
+    expect_near(render3d_st.ue_ll_data[23], 0.0, 0.0001)                      # its profile's layer
+  }
+}

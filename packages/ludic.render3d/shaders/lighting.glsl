@@ -491,17 +491,33 @@ vec3 ueAOMultiBounce(vec3 base, float ao) {
 // ---- Unreal's local lights (ue_lights.ludic): point and spot lights in Unreal's units, attenuation and cone (UE 5.8
 // DeferredLightingCommon.ush GetLocalLightAttenuation, DynamicLightingCommon.ush SpotAttenuation, CapsuleLightIntegrate.ush
 // IntegrateLight with no source radius: 1 / (d^2 + DistBiasSqr), DistBiasSqr 1 cm^2), lit by the sun's BRDF; spot lights shadowed by ueSpotShadow.
-// The forward light buffer (ue_lights.ludic ue_lights_frame), 5 vec4 a light: xyz position, w InvRadius (1 / AttenuationRadius);
+// The forward light buffer (ue_lights.ludic ue_lights_frame), 6 vec4 a light: xyz position, w InvRadius (1 / AttenuationRadius);
 // rgb the light's colour x its intensity in candela, w FalloffExponent (0: inverse squared); xyz the spot's -direction, w
 // CosOuterCone (-2: a point light); x InvCosConeDifference, y SpecularScale, z DiffuseScale, w VolumetricScatteringIntensity;
-// x its shadow map (ue_lightshadows.ludic: >= 0 a spot's layer, -2 - p a point light's cube, -1 none).
+// x its shadow map (ue_lightshadows.ludic: >= 0 a spot's layer, -2 - p a point light's cube, -1 none); xyz its tangent, w its
+// light profile's layer in u_ies (-1 none).
 uniform int u_ll_n;
 readonly buffer u_ue_lights { vec4 ue_ll[]; };
-vec4 llPos(int i) { return ue_ll[i * 5]; }
-vec4 llCol(int i) { return ue_ll[i * 5 + 1]; }
-vec4 llDir(int i) { return ue_ll[i * 5 + 2]; }
-vec4 llMisc(int i) { return ue_ll[i * 5 + 3]; }
-float llShadow(int i) { return ue_ll[i * 5 + 4].x; }
+uniform sampler2DArray u_ies;      // the IES light profiles (ies.ludic): UE's IES atlas, a profile a layer
+vec4 llPos(int i) { return ue_ll[i * 6]; }
+vec4 llCol(int i) { return ue_ll[i * 6 + 1]; }
+vec4 llDir(int i) { return ue_ll[i * 6 + 2]; }
+vec4 llMisc(int i) { return ue_ll[i * 6 + 3]; }
+float llShadow(int i) { return ue_ll[i * 6 + 4].x; }
+vec4 llIes(int i) { return ue_ll[i * 6 + 5]; }
+// IESLightProfilesCommon.ush ComputeLightProfileMultiplier (UE 5.8): the profile sampled at the angle off the light's direction
+// (asin of ToLight . Direction over PI, + 0.5) and the angle round it from its bitangent (cross(Tangent, Direction)); 1 without one.
+// toLight the unit vector to the light, dir the light's forward (Unreal's LightData.Direction)
+float ueLightProfile(int i, vec3 toLight, vec3 dir) {
+  vec4 ti = llIes(i);
+  if (ti.w < 0.0) return 1.0;
+  vec3 tangent = ti.xyz;
+  vec3 bitangent = normalize(cross(tangent, dir));
+  vec3 localToLight = vec3(dot(toLight, dir), dot(toLight, bitangent), dot(toLight, tangent));
+  float normAngle = asin(clamp(dot(toLight, dir), -1.0, 1.0)) / PI + 0.5;
+  float normTangentAngle = atan(-localToLight.z, -localToLight.y) / (PI * 2.0) + 0.5;
+  return textureLod(u_ies, vec3(normAngle, normTangentAngle, ti.w), 0.0).r;
+}
 // The light grid (ue_lightgrid.ludic): per cell a count and a first index into the lights' indices (LightGridCommon.ush).
 readonly buffer u_ue_lg_num { uint ue_lg_num[]; };
 readonly buffer u_ue_lg_data { uint ue_lg_data[]; };
@@ -553,6 +569,8 @@ float ueLocalLightAttenuation(int i, vec3 wpos, float distBiasSqr, out vec3 L) {
     float sm = clamp((dot(L, ld.xyz) - ld.w) * llMisc(i).x, 0.0, 1.0);
     mask *= sm * sm;
   }
+  // (the light profile, as DeferredLightPixelShaders' LightProfileMultiplier: points and spots alike)
+  mask *= ueLightProfile(i, L, -ld.xyz);
   return mask;
 }
 // Spot light shadow maps (ue_lightshadows.ludic), 8 vec4 a map in u_ue_ls: FShadowProjectionMatrix (with the inner and border

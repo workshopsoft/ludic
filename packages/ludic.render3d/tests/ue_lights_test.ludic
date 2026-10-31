@@ -38,7 +38,7 @@ program UeLightsTest {
     ue_lights_frame(render3d_st)
     expect_eq(render3d_st.ue_ll_n, 40)
     expect_near(render3d_st.ue_ll_data[0], 1.0, 0.00001)
-    expect_near(render3d_st.ue_ll_data[39 * 20], 40.0, 0.00001)
+    expect_near(render3d_st.ue_ll_data[39 * 24], 40.0, 0.00001)
     expect_near(render3d_st.ue_ll_data[16], -1.0, 0.00001)                # no shadow map named yet
     behind.attenuation_radius = 40.0                                       # now it reaches past the camera
     ue_lights_frame(render3d_st)
