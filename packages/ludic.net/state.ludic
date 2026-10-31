@@ -69,6 +69,8 @@ export state NetState {
   net__punch_left: words = null
   net__punch_t: float = 0.0
   net__punch_b: []byte = null    # the punch itself, "MP" and two zeros, made once
+  net__status: []byte = null     # a host's answer to a browser's query (status.ludic): "MR", the protocol, the nonce, the game's bytes
+  net__status_n: int = 0         # ... its length; 0 = no status set, a query goes unanswered
   net__relay_ip: int = 0
   net__relay_port: int = 0
   net__via_relay: bool = false  # a guest talking to its host through the relay
