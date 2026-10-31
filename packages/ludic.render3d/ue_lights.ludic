@@ -9,7 +9,8 @@
 # Positions are render space (metres); ue_light_rebase moves them with the floating origin.
 #
 # The shader side is lighting.glsl ueLocalLights (surfaces, the sun's BRDF) and ue_volfog.frag (the fog); the light grid is
-# ue_lightgrid.ludic, the shadows ue_lightshadows.ludic. Not ported yet: source radius / length, rect lights, IES, light functions.
+# ue_lightgrid.ludic, the shadows ue_lightshadows.ludic, the light profiles ies.ludic (IESTexture, bUseIESBrightness,
+# IESBrightnessScale, the light's tangent). Not ported yet: source radius / length, rect lights, light functions.
 # R3D_UE_LIGHTS=0 (or r3d_ue_lights(st, false)) turns them all off. R3D_LL adds test lights (see ue_lights_env).
 # ============================================================================
 
@@ -39,7 +40,11 @@ property UeLocalLight {
   shadow_bias: float = 0.5,                    # ShadowBias
   shadow_slope_bias: float = 0.5,              # ShadowSlopeBias
   shadow_sharpen: float = 0.0,                 # ShadowSharpen
-  shadow_resolution_scale: float = 1.0         # ShadowResolutionScale
+  shadow_resolution_scale: float = 1.0,        # ShadowResolutionScale
+  ies: int = -1,                               # IESTexture: a profile's layer (ies.ludic ies_profile_add), -1 none
+  use_ies_brightness: bool = false,            # bUseIESBrightness: the profile's max candela is the intensity (in the light's units)
+  ies_brightness_scale: float = 1.0,           # IESBrightnessScale
+  tan_x: float = 0.0, tan_y: float = 0.0, tan_z: float = 1.0      # the light's tangent (its up: the profile's 90 degree plane)
 }
 
 export function r3d_ue_lights(render3d_st: mut Render3dState, on: bool) -> void {
@@ -83,27 +88,36 @@ function ue_light_cone(l: UeLocalLight, o: floats) -> void {
   o[0] = inner;  o[1] = outer
 }
 # ComputeLightBrightness in the shader's units (candela over metres squared)
-export function ue_light_candela(l: UeLocalLight) -> float {
-  if not l.use_inverse_squared_falloff { return l.intensity }
-  if l.intensity_units == UE_LIGHT_CANDELAS { return l.intensity }
+export function ue_light_candela(l: UeLocalLight) -> float { return ue_light_candela_of(l, l.intensity) }
+# the same with a light profile's brightness: ULightComponent::ComputeLightBrightness takes the profile's max candela (times
+# IESBrightnessScale) for the intensity when bUseIESBrightness (TextureMultiplier 1), and the point's or spot's units convert it
+export function ue_light_candela_ies(render3d_st: Render3dState, l: UeLocalLight) -> float {
+  var b = l.intensity
+  if l.ies >= 0 and l.use_ies_brightness { b = ies_profile_brightness(render3d_st, l.ies) * l.ies_brightness_scale }
+  return ue_light_candela_of(l, b)
+}
+function ue_light_candela_of(l: UeLocalLight, intensity: float) -> float {
+  if not l.use_inverse_squared_falloff { return intensity }
+  if l.intensity_units == UE_LIGHT_CANDELAS { return intensity }
   if l.intensity_units == UE_LIGHT_LUMENS {
     if l.spot {
       let outer = Math.clamp(l.outer_cone_angle * PI / 180.0, Math.clamp(l.inner_cone_angle, 0.0, 88.9) * PI / 180.0 + 0.001, 88.9 * PI / 180.0 + 0.001)
-      return l.intensity / (2.0 * PI * (1.0 - Math.cos(outer)))
+      return intensity / (2.0 * PI * (1.0 - Math.cos(outer)))
     }
-    return l.intensity / (4.0 * PI)
+    return intensity / (4.0 * PI)
   }
-  if l.intensity_units == UE_LIGHT_EV { return Math.pow(2.0, l.intensity) }
-  return l.intensity * 16.0 / 10000.0
+  if l.intensity_units == UE_LIGHT_EV { return Math.pow(2.0, intensity) }
+  return intensity * 16.0 / 10000.0
 }
 
 # Each frame: every enabled light whose sphere of influence reaches into the view (Unreal's VisibleLightInfos bInViewFrustum,
 # with MaxDrawDistance), nearest first, at most ue_ll_max (R3D_UE_LL_MAX, 1024), packed into the forward light buffer
 # (ForwardLightBuffer): 5 vec4 a light - position and InvRadius; colour x candela and FalloffExponent (0 inverse squared);
 # -direction and CosOuterCone (-2 a point); InvCosConeDifference, SpecularScale, DiffuseScale, VolumetricScatteringIntensity;
-# the light's shadow map (ue_lightshadows.ludic: a spot's layer, -2 - its cube for a point, -1 none). The grid
+# the light's shadow map (ue_lightshadows.ludic: a spot's layer, -2 - its cube for a point, -1 none); its tangent and its light
+# profile's layer (-1 none: FLightRenderParameters' Tangent and IESAtlasIndex). The grid
 # (ue_lightgrid.ludic) culls them into cells; ue_lights_upload sends the buffer once the shadow pass has named the maps.
-const UE_LL_FLOATS: int = 20
+const UE_LL_FLOATS: int = 24
 function ue_lights_frame(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_ll_n = 0
   render3d_st.ue_ll_nsph = 0
@@ -145,7 +159,7 @@ function ue_lights_frame(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_ll_nsph = 0
   for k in 0 .. m {
     let l = render3d_st.ue_lls[int(pick[k])]
-    let c = ue_light_candela(l)
+    let c = ue_light_candela_ies(render3d_st, l)
     let o = k * UE_LL_FLOATS
     data[o] = l.x;  data[o + 1] = l.y;  data[o + 2] = l.z
     data[o + 3] = 1.0 / Math.max(l.attenuation_radius, 0.01)
@@ -171,6 +185,11 @@ function ue_lights_frame(render3d_st: mut Render3dState) -> void {
     data[o + 14] = l.diffuse_scale
     data[o + 15] = l.volumetric_scattering_intensity
     data[o + 16] = -1.0;  data[o + 17] = 0.0;  data[o + 18] = 0.0;  data[o + 19] = 0.0
+    var tl = Math.sqrt(l.tan_x * l.tan_x + l.tan_y * l.tan_y + l.tan_z * l.tan_z)
+    if tl < 0.000001 { tl = 1.0 }
+    data[o + 20] = l.tan_x / tl;  data[o + 21] = l.tan_y / tl;  data[o + 22] = l.tan_z / tl
+    data[o + 23] = -1.0
+    if l.ies >= 0 and render3d_st.ies_profiles != null and l.ies < len(render3d_st.ies_profiles) { data[o + 23] = float(l.ies) }
     # the spheres of the lights that cast: kgpu's local light caster cull (kgpu_frame_lights) gathers from them
     if l.cast_shadows and render3d_st.ue_ll_cull {
       let q = render3d_st.ue_ll_nsph * 4
@@ -218,6 +237,7 @@ function ue_lights_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_i(render3d_st, gpu_uniform(render3d_st, prog, "u_ll_n"), render3d_st.ue_ll_n)
   if render3d_st.ue_ll_n == 0 { return }
   gpu_bind_buffer(render3d_st, prog, "u_ue_lights", render3d_st.ue_ll_buf)
+  r3d_bind_tex(render3d_st, prog, "u_ies", 36, GPU_TEX2D_ARRAY, ies_texture(render3d_st))
   ue_lightgrid_bind(render3d_st, prog)
   ue_lightshadows_bind(render3d_st, prog)
 }
