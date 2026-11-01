@@ -283,8 +283,8 @@ function pack_roundtrip_case() -> void {
   shell(`rm -rf {work}/assets`)
   # run from somewhere with no relation to the project at all
   let got = s_trim(capture(`cd / && {work}/ship/probe 2>&1`))
-  if got != "alpha|beta|1|5|0" {
-    bad2(lbl, `read back [{got}], wanted [alpha|beta|1|5|0]`);  return
+  if got != "alpha|beta|1|5|0|alpha|1|4|0" {
+    bad2(lbl, `read back [{got}], wanted [alpha|beta|1|5|0|alpha|1|4|0]`);  return
   }
   ok(lbl)
 }
@@ -298,7 +298,11 @@ function pack_probe_src() -> pointer {
   s = s + "    var b = Fs.read_text(\"assets/sub/b.txt\")" + nl()
   s = s + "    if a == null { a = \"MISS\" }" + nl()
   s = s + "    if b == null { b = \"MISS\" }" + nl()
-  s = s + "    print(`{a}|{b}|{string(Fs.exists(\"assets/a.txt\"))}|{string(Fs.size(\"assets/a.txt\"))}|{string(Fs.exists(\"assets/gone.txt\"))}`)" + nl()
+  # a path that reaches a packed file through "..", "." or "//" (a part beside its look's folder: parts/masculine/../hair/x.glb)
+  # is the file the filesystem would open: read, found, sized; one that climbs out of the pack's names is still a miss
+  s = s + "    var c = Fs.read_text(\"assets/sub/../a.txt\")" + nl()
+  s = s + "    if c == null { c = \"MISS\" }" + nl()
+  s = s + "    print(`{a}|{b}|{string(Fs.exists(\"assets/a.txt\"))}|{string(Fs.size(\"assets/a.txt\"))}|{string(Fs.exists(\"assets/gone.txt\"))}|{c}|{string(Fs.exists(\"assets/sub/./b.txt\"))}|{string(Fs.size(\"assets//sub/../sub/b.txt\"))}|{string(Fs.exists(\"assets/../a.txt\"))}`)" + nl()
   s = s + "  }" + nl()
   s = s + "}" + nl()
   return s

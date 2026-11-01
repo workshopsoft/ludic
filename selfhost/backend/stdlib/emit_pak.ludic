@@ -106,6 +106,8 @@ function emit_pak_prelude() -> void {
   emith("@.pak_res   = private unnamed_addr constant [13 x i8] c\"../Resources\\00\"\n")
   emith("@.pak_appsup= private unnamed_addr constant [28 x i8] c\"Library/Application Support\\00\"\n")
   emith("@.pak_home  = private unnamed_addr constant [5 x i8] c\"HOME\\00\"\n")
+  emith("@.pak_sldot = private unnamed_addr constant [3 x i8] c\"/.\\00\"\n")   # lp_pak_find: a path to canonicalise
+  emith("@.pak_slsl  = private unnamed_addr constant [3 x i8] c\"//\\00\"\n")
 
   # up to 8 packs may be mounted; the base pointer of each mapping, in mount order
   emith("@L_pak_base = internal global [8 x ptr] zeroinitializer\n")
@@ -218,9 +220,19 @@ function emit_pak_lookup() -> void {
   emith("miss:\n  ret ptr null\n}\n")
 
   # search every mounted pack, last mounted first, so a pack listed later in
-  # packs.index shadows the ones before it
+  # packs.index shadows the ones before it. A path the filesystem resolves through
+  # "." / ".." segments or doubled slashes ("parts/masculine/../hair/x.glb") is the
+  # same file in a pack: the pack's names are canonical, so such a path is looked
+  # up by its Path.normalize form (lp_path_norm, freed after), as open() would
+  # resolve it on disk. Paths without "/." or "//" are searched as they are.
   emith("define ptr @lp_pak_find(ptr %path, ptr %outlen) {\n")
-  emith("entry:\n  %p = call ptr @lp_pak_norm(ptr %path)\n  %np = load i32, ptr @L_pak_n\n")
+  emith("entry:\n  %p0 = call ptr @lp_pak_norm(ptr %path)\n")
+  emith("  %hd = call ptr @strstr(ptr %p0, ptr @.pak_sldot)\n  %hs = call ptr @strstr(ptr %p0, ptr @.pak_slsl)\n")
+  emith("  %hdn = icmp ne ptr %hd, null\n  %hsn = icmp ne ptr %hs, null\n  %odd = or i1 %hdn, %hsn\n  br i1 %odd, label %canon, label %plain\n")
+  emith("canon:\n  %cp = call ptr @lp_path_norm(ptr %p0)\n  %cr = call ptr @lp_pak_find_n(ptr %cp, ptr %outlen)\n  call void @lp_free(ptr %cp)\n  ret ptr %cr\n")
+  emith("plain:\n  %pr = call ptr @lp_pak_find_n(ptr %p0, ptr %outlen)\n  ret ptr %pr\n}\n")
+  emith("define ptr @lp_pak_find_n(ptr %p, ptr %outlen) {\n")
+  emith("entry:\n  %np = load i32, ptr @L_pak_n\n")
   emith("  %ip = alloca i32\n  %i0 = sub i32 %np, 1\n  store i32 %i0, ptr %ip\n  br label %loop\n")
   emith("loop:\n  %i = load i32, ptr %ip\n  %done = icmp slt i32 %i, 0\n  br i1 %done, label %miss, label %body\n")
   emith("body:\n  %slot = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %i\n  %base = load ptr, ptr %slot\n")
