@@ -53,6 +53,23 @@ export function crowd_lod(crowd_st: CrowdState, uid: int) -> int {
   if r < 0 { return -1 }
   return crowd_st.cw_tab.rec[r].lod
 }
+# test aid: which chat conditions block this ped (bit 0 cooldown, 1 lod, 2 act, 3 scn, 4 ext, 5 lead, 6 react, 7 no dest)
+export function crowd_chat_gate(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  let p = crowd_st.cw_tab.rec[r]
+  var m = 0
+  if p.chat_cd > 0.0 { m += 1 }
+  if p.lod != CROWD_FULL { m += 2 }
+  if p.act != CROWD_WALK { m += 4 }
+  if p.scn >= 0 { m += 8 }
+  if p.ext >= 0 { m += 16 }
+  if p.lead >= 0 { m += 32 }
+  if p.react != PedReact.Calm { m += 64 }
+  if not p.has_dest { m += 128 }
+  return m
+}
+
 export function crowd_fear(crowd_st: CrowdState, uid: int) -> float {
   let r = cw_row_of(crowd_st, uid)
   if r < 0 { return 0.0 }
@@ -198,3 +215,4 @@ export function crowd_goto(crowd_st: mut CrowdState, uid: int, x: float, z: floa
   p.blocked = 0.0
   return true
 }
+

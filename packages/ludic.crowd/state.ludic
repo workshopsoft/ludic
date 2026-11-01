@@ -159,6 +159,8 @@ export property CrowdPed {
   repath: float = 0.0            # seconds until the corner is asked for again
   act_t: float = 0.0             # seconds left in the act
   wait_t: float = 0.0            # seconds waited for a light
+  chat_with: int = -1            # the uid of the ped it stands facing for a chat (-1: none)
+  chat_cd: float = 0.0           # seconds until it may stop for a chat again
   blocked: float = 0.0           # seconds it could not move
   scn: int = -1                  # the scenario it is going to or using
   scn_used: bool = false         # it has arrived and is using it

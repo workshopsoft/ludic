@@ -144,6 +144,8 @@ function cw_ped_clear(p: CrowdPed) -> void {
   p.repath = 0.0
   p.act_t = 0.0
   p.wait_t = 0.0
+  p.chat_with = -1
+  p.chat_cd = 0.0
   p.blocked = 0.0
   p.scn = -1
   p.scn_used = false
