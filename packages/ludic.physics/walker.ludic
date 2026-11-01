@@ -56,6 +56,15 @@ export function phys_walker_remove(physics_st: mut PhysicsState, id: int) -> voi
   physics_st.ph_walkers[id] = null
 }
 
+# the owner group (phys_body_group) a walker moves with: while it is set the walker neither meets nor pushes that group's bodies (getting in
+# and out of a car: Unreal's character ignores the physics base it rides, IgnoreActorWhenMoving), 0 meets everything again. Returns the
+# group now set, -1 with no such walker
+export function phys_walker_group(physics_st: mut PhysicsState, id: int, group: int) -> int {
+  let k = ph_walker(physics_st, id)
+  if k == null or physics_st.ph_world == null { return -1 }
+  return jph_char_group(physics_st.ph_world, k, group)
+}
+
 # one step of dt at (vx, vz) metres a second across; jump > 0 leaves the ground at that speed up.
 # Returns the ground state after it.
 export function phys_walker_step(physics_st: mut PhysicsState, id: int, dt: float, vx: float, vz: float, jump: float) -> int {
