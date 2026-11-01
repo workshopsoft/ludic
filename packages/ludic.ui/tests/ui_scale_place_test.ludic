@@ -1,0 +1,97 @@
+# ui_scale_place_test - a scaled interface (the backend's design-px-to-screen-px scale, a player's Interface size times the screen's
+# lines over 1080) on screens of any shape: text is drawn at the width it was measured at, centred and right-aligned text sits where its
+# box says, and a ring of absolutely placed items (a radial menu's slices) is centred on the screen's centre at every scale and aspect.
+# A ring placed at a fixed design x (960 for a 1920 wide design) is NOT centred on a 16:10 screen or at an Interface size over 100%: a
+# layout that wants the screen's centre says calc(50% + ...), which these tests hold to.
+import "ludic.ui"
+program UiScalePlaceTest {
+  numbers float
+  state SpState {
+    s: float = 1.0                       # screen px per design px
+    xs: floats = new floats              # each drawn text's x, size and width at that size
+    sizes: floats = new floats
+    ws: floats = new floats
+  }
+  # a face whose glyphs are 0.55 em wide: a width in screen px that grows with the size it is drawn at
+  function w(s: string, size: float) -> float { return float(len(s)) * size * 0.55 }
+  function sc(sp: SpState) -> float { return sp.s }
+  function rec(sp: mut SpState, x: float, y: float, s: string, size: float, c: int, a: float) -> void {
+    push(sp.xs, x)
+    push(sp.sizes, size)
+    push(sp.ws, w(s, size))
+  }
+  function sp_load(ui_st: mut UiState, sp: mut SpState, s: float, sw: float, sh: float, css: string, body: string) -> UiNode {
+    sp.s = s
+    let b = new UiBackend
+    b.text = fn rec
+    b.measure = fn w
+    b.scale = fn sc
+    ui_backend(ui_st, b)
+    ui_load_text(ui_st, "<ui><style>" + css + "</style><screen name='t'>" + body + "</screen></ui>", "t.xml")
+    ui_show(ui_st, "t", null, 0.0, 0.0, sw, sh)
+    let root: UiNode = ui_nodes(ui_st, "t", null)
+    ui_place(ui_st, root, 0.0, 0.0, sw, sh)
+    return root
+  }
+  function near(a: float, b: float) -> bool { return Math.abs(a - b) <= 1.0 }
+
+  test "text is drawn at the size it was measured at, at every scale" (ui_st: mut UiState, sp: mut SpState) {
+    let scales = [1.0, 1300.0 / 1080.0, 1440.0 / 1080.0 * 1.25, 720.0 / 1080.0]
+    for i in 0 .. len(scales) {
+      let r = sp_load(ui_st, sp, scales[i], 2000.0, 1300.0, ".p { font-size: 17.5px; white-space: nowrap }", "<div><p class='p'>Empty hands</p></div>")
+      let p = r.children[0].children[0]
+      expect_eq(len(ui_errors(ui_st)), 0)
+      expect(len(sp.sizes) > 0)
+      let k = len(sp.sizes) - 1
+      expect(near(sp.sizes[k], 17.5 * scales[i]))
+      expect(near(sp.ws[k], p.mw))
+    }
+  }
+  test "centred and right-aligned text sits where its box says, scaled" (ui_st: mut UiState, sp: mut SpState) {
+    let s = 1300.0 / 1080.0
+    let r = sp_load(ui_st, sp, s, 2000.0, 1300.0, ".c { width: 240px; font-size: 26.25px; text-align: center } .r { width: 240px; font-size: 20.5px; text-align: right }", "<div><p class='c'>Draw</p><p class='r'>Fists</p></div>")
+    let c = r.children[0].children[0]
+    let q = r.children[0].children[1]
+    expect(len(sp.xs) >= 2)
+    expect(near(c.w, 240.0 * s))
+    expect(near(sp.xs[0] + sp.ws[0] / 2.0, c.x + c.w / 2.0))
+    expect(near(sp.xs[1] + sp.ws[1], q.x + q.w))
+  }
+  test "a radial ring placed from the screen's centre is centred at every scale and aspect" (ui_st: mut UiState, sp: mut SpState) {
+    # (screen w, h, Interface size): 16:9, a Mac's 16:10ish, a 4:3, and 125%
+    let sws = [1920.0, 2000.0, 1280.0, 2560.0]
+    let shs = [1080.0, 1300.0, 960.0, 1440.0]
+    let us = [1.0, 1.0, 1.0, 1.25]
+    for c in 0 .. len(sws) {
+      let s = shs[c] / 1080.0 * us[c]
+      var body = "<div class='ww'>"
+      let n = 6
+      for i in 0 .. n {
+        let a = 6.283185307 * float(i) / float(n)
+        let dx = int(Math.sin(a) * 216.0)
+        let dy = int(-Math.cos(a) * 216.0)
+        body = body + `<div class='slot' style='left: calc(50% + {dx - 80}px); top: calc(50% + {dy - 62}px)'/>`
+      }
+      body = body + "<div class='hub'/></div>"
+      let r = sp_load(ui_st, sp, s, sws[c], shs[c], ".ww { position: absolute; left: 0; top: 0; width: fill; height: fill } .slot { position: absolute; width: 160px; height: 124px } .hub { position: absolute; left: calc(50% - 120px); top: calc(50% - 70px); width: 240px; height: 140px }", body)
+      expect_eq(len(ui_errors(ui_st)), 0)
+      let ww = r.children[0]
+      for i in 0 .. n {
+        let a = 6.283185307 * float(i) / float(n)
+        let e = ww.children[i]
+        expect(near(e.x + e.w / 2.0, sws[c] / 2.0 + float(int(Math.sin(a) * 216.0)) * s))
+        expect(near(e.y + e.h / 2.0, shs[c] / 2.0 + float(int(-Math.cos(a) * 216.0)) * s))
+      }
+      let hub = ww.children[n]
+      expect(near(hub.x + hub.w / 2.0, sws[c] / 2.0))
+      expect(near(hub.y + hub.h / 2.0, shs[c] / 2.0))
+    }
+  }
+  test "a fixed design x of 960 is the centre only on a 16:9 screen at 100%" (ui_st: mut UiState, sp: mut SpState) {
+    let css = ".hub { position: absolute; left: 840px; top: 470px; width: 240px; height: 140px }"
+    let a = sp_load(ui_st, sp, 1.0, 1920.0, 1080.0, css, "<div class='hub'/>")
+    expect(near(a.children[0].x + a.children[0].w / 2.0, 960.0))
+    let b = sp_load(ui_st, sp, 1300.0 / 1080.0, 2000.0, 1300.0, css, "<div class='hub'/>")
+    expect(b.children[0].x + b.children[0].w / 2.0 > 1100.0)          # 155 px right of the 2000 px screen's centre
+  }
+}
