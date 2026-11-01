@@ -11,6 +11,9 @@ uniform vec2 u_texel;
 uniform float u_radius;
 uniform float u_intensity;
 uniform float u_contact;    // the tight contact pass; 0 switches it off entirely
+uniform float u_contact_sun; // the sun's screen-space contact shadow (UE ContactShadows, ShadowRayCast); 0 off, else its strength
+uniform mat4 u_view;
+uniform vec3 u_sun_dir;     // toward the sun, world space
 uniform float u_frame;
 uniform float u_gi;         // the bounce (post.ludic: Unreal 5.8 has deprecated SSGI and leaves it off; R3D_UE_SSGI=1 turns it on)
 uniform sampler2D u_hzb;    // the furthest depth at half size (ao_hzb.frag), as the view's distance
@@ -167,6 +170,33 @@ void main() {
     }
     cao = 1.0 - u_contact * cao / float(CS);
     ao = min(ao, clamp(cao, 0.0, 1.0));
+  }
+  // ---- SUN CONTACT SHADOW -------------------------------------------------------------
+  // Unreal's ContactShadows (DeferredLightingCommon.ush ShadowRayCast): a short ray from the
+  // pixel toward the light through the scene depth, a few steps from a jittered start; a step
+  // the depth buffer has in front of the ray by less than a thickness is a hit. The cascades
+  // cannot resolve a lamp post's foot or a kerb's lip; this catches the last centimetres.
+  if (u_contact_sun > 0.0 && !past) {
+    vec3 L = normalize(mat3(u_view) * u_sun_dir);
+    float dist = -P.z;
+    if (dot(N, L) > 0.0 && dist < 80.0) {
+      const int CSS = 8;
+      float len = clamp(0.03 * dist, 0.08, 1.5);           // ContactShadowLength as a share of the view depth
+      float thick = max(0.6 * len, 0.04);                  // the depth an occluder is taken to have
+      vec3 S0 = P + N * (0.004 * dist + 0.005);            // off the surface: no self-hit on its own depth
+      float hit = 0.0;
+      for (int i = 0; i < CSS; i++) {
+        float tt = (float(i) + noise) / float(CSS);
+        vec3 S = S0 + L * len * tt;
+        vec4 c = u_proj * vec4(S, 1.0);
+        vec2 uv = c.xy / c.w * 0.5 + 0.5;
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) break;
+        float dz = viewPos(uv).z - S.z;                   // > 0: the scene is in front of the ray here
+        if (dz > 0.002 * dist && dz < thick) { hit = 1.0 - tt * tt; break; }
+      }
+      float fadeC = 1.0 - smoothstep(50.0, 80.0, dist);
+      ao = min(ao, 1.0 - u_contact_sun * hit * fadeC);
+    }
   }
   float fade = smoothstep(120.0, 350.0, -P.z);
   ao = mix(clamp(ao, 0.0, 1.0), 1.0, fade);

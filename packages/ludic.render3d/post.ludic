@@ -353,6 +353,14 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   var contact = render3d_st.post_contact
   if r3d_env_has(render3d_st, "R3D_NOCONTACT") { contact = 0.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_contact"), contact)
+  # the sun's contact shadow (ssgi.frag, UE ContactShadows), the sun turned into view space
+  var csun = render3d_st.post_contact_sun
+  if r3d_env_has(render3d_st, "R3D_NOCONTACT") or render3d_st.sun_dir == null or render3d_st.cam_view == null { csun = 0.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_contact_sun"), csun)
+  if csun > 0.0 {
+    u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_view"), render3d_st.cam_view)
+    u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_sun_dir"), render3d_st.sun_dir)
+  }
   mesh_draw(render3d_st, render3d_st.post_fs)
   prof_split(render3d_st, "SSAO/GI: blur")
   target_bind(render3d_st, render3d_st.post_ao_blur)
