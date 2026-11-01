@@ -6,6 +6,8 @@
 ; apart from the clock:
 ;
 ;   clock_now_us() -> us     QueryPerformanceCounter, in microseconds
+;
+; and, as rtlib.ll, weak no-window fallbacks for the window layer (the clipboard, focus, cursor, scale) at the end.
 ; ============================================================================
 
 declare i32 @QueryPerformanceCounter(ptr)
@@ -371,4 +373,97 @@ entry:
   %frac = udiv i64 %rus, %fv
   %t = add i64 %sus, %frac
   ret i64 %t
+}
+
+; ---- the window layer with no window (rtlib.ll's weak fallbacks, the same on Windows): a program that links only the runtime (a tool such
+; as ludic-ui-preview, a test) still links; win32.ll's and win32_window.ll's real ones win when linked
+define weak ptr @win_native_window() {
+entry:
+  ret ptr null
+}
+define weak ptr @win_native_instance() {
+entry:
+  ret ptr null
+}
+define weak ptr @win_metal_layer() {
+entry:
+  ret ptr null
+}
+; the window is always drawn to here (cocoa.ll asks macOS whether it is covered)
+define weak i32 @win_visible() {
+entry:
+  ret i32 1
+}
+; the drawable's size, for a graphics API that follows the window (render3d's Vulkan resize check);
+; headless there is no window, so 0 x 0. cocoa.ll's real one wins when linked.
+; win_set_title: cocoa.ll's in a windowed build; nothing to retitle headless
+define weak void @win_set_title(ptr %title) {
+entry:
+  ret void
+}
+
+define weak void @win_drawable(ptr %out) {
+entry:
+  store i32 0, ptr %out
+  %o1 = getelementptr i32, ptr %out, i32 1
+  store i32 0, ptr %o1
+  ret void
+}
+declare ptr @malloc(i64)
+declare i64 @strlen(ptr)
+declare ptr @memcpy(ptr, ptr, i64)
+
+; ---- the clipboard with no window: a copy the process keeps (a headless run's copy and paste, a test's); cocoa.ll's / win32.ll's
+; system clipboard wins when linked
+@clip_mem = internal global ptr null
+define internal ptr @clip_dup(ptr %c) {
+entry:
+  %n = call i64 @strlen(ptr %c)
+  %n1 = add i64 %n, 1
+  %out = call ptr @malloc(i64 %n1)
+  call ptr @memcpy(ptr %out, ptr %c, i64 %n1)
+  ret ptr %out
+}
+define weak ptr @win_clip_get() {
+entry:
+  %m = load ptr, ptr @clip_mem
+  %none = icmp eq ptr %m, null
+  br i1 %none, label %empty, label %copy
+copy:
+  %d = call ptr @clip_dup(ptr %m)
+  ret ptr %d
+empty:
+  %e = call ptr @malloc(i64 1)
+  store i8 0, ptr %e
+  ret ptr %e
+}
+define weak void @win_clip_set(ptr %text) {
+entry:
+  %d = call ptr @clip_dup(ptr %text)
+  store ptr %d, ptr @clip_mem
+  ret void
+}
+
+; win_focused with no window: always (a headless run has the keyboard)
+define weak i32 @win_focused() {
+entry:
+  ret i32 1
+}
+; the game's own pointer with no window: nothing to show
+define weak void @win_cursor_make(i32 %slot, ptr %bytes, i32 %len, i32 %wi, i32 %hi_, i32 %hxi_, i32 %hyi_) {
+entry:
+  %w = sitofp i32 %wi to double
+  %h = sitofp i32 %hi_ to double
+  %hx = sitofp i32 %hxi_ to double
+  %hy = sitofp i32 %hyi_ to double
+  ret void
+}
+define weak void @win_cursor_use(i32 %slot) {
+entry:
+  ret void
+}
+; the display's scale with no window: one pixel a point
+define weak i32 @win_scale() {
+entry:
+  ret i32 1
 }
