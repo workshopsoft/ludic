@@ -46,16 +46,23 @@ program WaterFxTest {
     expect_eq(render3d_st.wfx_ns, 0)
   }
 
-  test "a wake is a line of stamps, one every half radius, six at most, and their push adds up to the call's" (render3d_st: mut Render3dState) {
+  test "a wake is a train of stamps a quarter wavelength apart, twelve at most, pushing in alternating crests and troughs, foam adding up" (render3d_st: mut Render3dState) {
     water_fx_set(render3d_st, 2)
     water_fx_wake(render3d_st, 0.0, 0.0, 1.0, 0.0, 0.5, 0.0, 0.012, 0.06, 0.0)
-    expect_eq(render3d_st.wfx_ns, 4)
-    var push = 0.0
-    for i in 0 .. render3d_st.wfx_ns { push += render3d_st.wfx_st1[i * 4] }
-    expect(Math.abs(push - 0.012) < 0.0001)
+    expect_eq(render3d_st.wfx_ns, 12)
+    var foam = 0.0
+    var pos = 0
+    var neg = 0
+    for i in 0 .. render3d_st.wfx_ns {
+      foam += render3d_st.wfx_st1[i * 4 + 1]
+      if render3d_st.wfx_st1[i * 4] > 0.0001 { pos += 1 }
+      if render3d_st.wfx_st1[i * 4] < -0.0001 { neg += 1 }
+    }
+    expect(Math.abs(foam - 0.06) < 0.0001)
+    expect(pos > 0 and neg > 0)
     expect(Math.abs(render3d_st.wfx_st0[(render3d_st.wfx_ns - 1) * 4] - 1.0) < 0.0001)
     water_fx_wake(render3d_st, 0.0, 0.0, 30.0, 0.0, 0.5, 0.0, 0.012, 0.06, 0.0)
-    expect_eq(render3d_st.wfx_ns, 10)
+    expect_eq(render3d_st.wfx_ns, 24)
   }
 
   test "a frame holds 48 stamps and drops the rest" (render3d_st: mut Render3dState) {
