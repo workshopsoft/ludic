@@ -449,3 +449,50 @@ function prof_shadow_name(c: int, part: int) -> pointer {
   if part == 2 { return "shadow c3: layers" }
   return "shadow c3: buildings"
 }
+
+# ---- the live cascades' casters, gathered in light space ---------------------------------------------------------------------
+# Unreal 5.8 gathers a whole-scene directional shadow's subjects per light, not per view: FSceneRenderer::GatherShadowPrimitives
+# (ShadowSetup.cpp) tests each primitive's bounds against the cascade's own convex volume, the view's frustum slice extruded toward the
+# light (FProjectedShadowInfo::CasterOuterFrustum, built in SetupWholeSceneProjection from the cascade's bounds and the light's
+# direction), and the main view's occlusion never removes a shadow subject (a shadow depth view has no occlusion of the main view).
+# Before this the big world's buildings cast into the live cascades from the camera's own instance list (kgpu b_cmds: the camera's
+# frustum), so a building behind the camera cast nothing in front of it, and turned into view its shadow came back.
+# Here, before the frame's first pass (render.ludic, after shadow_cache_plan, ahead of the big world's cull): the light volume of every
+# live cascade at once - shadow_fit's own orthographic box for the slice from the near plane to the last live split, which holds each live
+# cascade's box (each slice's sphere lies inside the whole one's), extruded 900 m toward the sun as theirs. The big world's cull gathers
+# its casters into it (kgpu_cull_into). R3D_UE_SHADOW_LIGHT_CULL=0: the camera's list again.
+function shadow_cast_mode(render3d_st: mut Render3dState) -> int {
+  if render3d_st.sh_cast_mode < 0 {
+    render3d_st.sh_cast_mode = 1
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_LIGHT_CULL") and r3d_env(render3d_st, "R3D_UE_SHADOW_LIGHT_CULL") == "0" { render3d_st.sh_cast_mode = 0 }
+  }
+  return render3d_st.sh_cast_mode
+}
+function shadow_cast_plan(render3d_st: mut Render3dState) -> void {
+  render3d_st.sh_cast_on = false
+  if shadow_cast_mode(render3d_st) != 1 or not render3d_st.sh_enabled or render3d_st.r3d_no_shadow or render3d_st.sh_vp == null { return }
+  if render3d_st.sc_mode == 2 { return }                       # the debug windows (R3D_UE_SHADOW_CACHE=2): the camera's list
+  if not render3d_st.sc_active { v3_copy(render3d_st.sh_sun, render3d_st.sun_dir) }
+  # the live cascades: those before the cache's first, or every one drawn
+  var last = shadow_ue_count(render3d_st) - 1
+  if render3d_st.sc_active { last = render3d_st.sc_first - 1 }
+  if last < 0 { return }
+  let near = render3d_st.cam_near
+  var far = render3d_st.sh_split[last]
+  let wall = r3d_reach(render3d_st, 0.0)
+  if wall > 0.0 and far > wall { far = Math.max(wall, near + 1.0) }
+  # fitted in the last slot (refitted or set to none by the pass), its matrix kept in sh_cast_vp meanwhile, then the two swapped back
+  let s = SHADOW_CASCADES - 1
+  let keep_r = render3d_st.sh_range[s]
+  let keep_t = render3d_st.sh_texel[s]
+  for i in 0 .. 16 { render3d_st.sh_cast_vp[i] = render3d_st.sh_vp[s * 16 + i] }
+  shadow_fit(render3d_st, s, near, far)
+  for i in 0 .. 16 {
+    let t = render3d_st.sh_vp[s * 16 + i]
+    render3d_st.sh_vp[s * 16 + i] = render3d_st.sh_cast_vp[i]
+    render3d_st.sh_cast_vp[i] = t
+  }
+  render3d_st.sh_range[s] = keep_r
+  render3d_st.sh_texel[s] = keep_t
+  render3d_st.sh_cast_on = true
+}

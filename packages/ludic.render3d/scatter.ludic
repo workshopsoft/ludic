@@ -1398,7 +1398,15 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
       # crown of drooping needle cards is mostly slivers from the side, so the sun, which
       # sees the crown from above, cast a trunk line with a few blobs. The near levels
       # now also cast their LOD2 mesh, alpha-tested, on top of the card.
-      if l.n_lods > 2 and l.g_on {
+      # The near cascades take their casters from the light's side, not the camera's: l.g_dst and lod_buf are the camera's frustum
+      # culled lists, so a tree behind the camera cast nothing in front of it. As Unreal gathers a whole-scene shadow's subjects by
+      # the cascade's own volume (ShadowSetup.cpp FProjectedShadowInfo::GetCullingVolume: CasterOuterFrustum / ShadowBoundsAccurate,
+      # never the view's frustum), every instance in the cascade's reach, by distance band (layer_casters_make, its radius threshold
+      # Unreal's r.Shadow.RadiusThreshold), cast as its LOD2 mesh. R3D_UE_SHADOW_LIGHT_CULL=0: the camera's lists again.
+      if l.n_lods > 2 and render3d_st.sh_cascade < SC_IMP_CAST_CASCADE and not render3d_st.sh_local and shadow_cast_mode(render3d_st) == 1 {
+        if render3d_st.sh_cascade == 0 { layer_casters_make(render3d_st, l) }
+        layer_draw_casters_lod(render3d_st, l, l.lods[2], light_vp)
+      } else if l.n_lods > 2 and l.g_on {
         render3d_st.sc_ind_base = 17;  render3d_st.sc_ind_n = 3;  render3d_st.sc_ind_stride = 3
         layer_draw_model(render3d_st, l, l.g_model_sh, l.g_dst, 1, false, true, light_vp)
         render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1;  render3d_st.sc_ind_stride = 4
@@ -1490,6 +1498,16 @@ function layer_casters_in(render3d_st: mut Render3dState, l: Layer) -> int {
   let reach = Math.max(Math.min(l.model.height * 6.0, 40.0), 8.0) + render3d_st.sh_cast_slack   # a cached cascade's: its window's margin more
   let far = render3d_st.sh_split[render3d_st.sh_cascade] * render3d_st.sc_cast_k + reach
   return min(int(far / SC_CAST_M), SC_CAST_BUCKETS - 1)
+}
+# a tree layer's near casters (one level: layer_casters_make's buckets for an impostor layer) drawn as mesh m, the buckets up to the
+# cascade's reach
+function layer_draw_casters_lod(render3d_st: mut Render3dState, l: Layer, m: Model, light_vp: floats) -> void {
+  let last = layer_casters_in(render3d_st, l)
+  if last < 0 or l.cast_end == null { return }
+  let end = l.cast_end[last]
+  if end <= 0 { return }
+  render3d_st.gvk_first_inst = 0
+  layer_draw_model(render3d_st, l, m, l.sh_buf, end, false, true, light_vp)
 }
 # the casters of a banded layer this cascade draws: each level's buckets up to layer_casters_in's, from where that level begins in sh_buf
 function layer_draw_casters_in(render3d_st: mut Render3dState, l: Layer, light_vp: floats) -> void {

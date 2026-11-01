@@ -100,6 +100,12 @@ export property KGpu {
   s_cap: int = 0,
   s_ready: bool = false,    # this frame's cached cascades' casters are in b_s_cmds
   s_planes: floats,
+  b_c_counts: int = 0,      # the sun's live cascades' casters (shadow_cast_plan): culled to the live slice's light volume, not the view,
+  b_c_offs: int = 0,        # their instances after the cache's in b_dst (from dst_cap + s_cap, c_cap of them)
+  b_c_cursors: int = 0,
+  b_c_cmds: int = 0,
+  c_cap: int = 0,
+  c_ready: bool = false,    # this frame's live cascades' casters are in b_c_cmds
   b_ident: int = 0,
   b_ident_box: int = 0,     # an identity instance with a box kit's reference w, d, h, for its impostor bake
   kt_u: floats,             # a box kit's tuples as the card shader takes them (kitbox_uniforms)
@@ -211,8 +217,10 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
   kgpu_fill_dead(render3d_st, g, 0, src_cap)
   # the shadow cache's casters (R3D_UE_SHADOW_CACHE) take a list of their own after the rest
   if shadow_cache_mode(render3d_st) == 1 { g.s_cap = max(dst_cap / 2, 1) }
+  # the live cascades' casters (shadow_cast_plan) take one more after that
+  if shadow_cast_mode(render3d_st) == 1 { g.c_cap = max(dst_cap / 2, 1) }
   g.b_dst = gpu_buffer_new(render3d_st)
-  gpu_buffer_upload(render3d_st, g.b_dst, (dst_cap + g.s_cap) * KG_DST_FLOATS * 4, null, GPU_DYNAMIC)
+  gpu_buffer_upload(render3d_st, g.b_dst, (dst_cap + g.s_cap + g.c_cap) * KG_DST_FLOATS * 4, null, GPU_DYNAMIC)
   gpu_buffer_gpu_owned(render3d_st, g.b_dst)
   g.b_kits = gpu_buffer_new(render3d_st)
   gpu_buffer_upload(render3d_st, g.b_kits, n_kits * 32, null, GPU_DYNAMIC)
@@ -274,6 +282,15 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
     gpu_buffer_upload(render3d_st, g.b_s_cmds, n_kits * KG_REC * 20, data_of(rec), GPU_DYNAMIC)
     gpu_buffer_gpu_owned(render3d_st, g.b_s_cmds)
   }
+  if g.c_cap > 0 {
+    if g.s_planes == null { g.s_planes = floats(24) }
+    g.b_c_counts = kgpu_gpu_words(render3d_st, n_kits * 2 * 4)
+    g.b_c_offs = kgpu_gpu_words(render3d_st, n_kits * 2 * 4)
+    g.b_c_cursors = kgpu_gpu_words(render3d_st, n_kits * 2 * 4)
+    g.b_c_cmds = gpu_buffer_new(render3d_st)
+    gpu_buffer_upload(render3d_st, g.b_c_cmds, n_kits * KG_REC * 20, data_of(rec), GPU_DYNAMIC)
+    gpu_buffer_gpu_owned(render3d_st, g.b_c_cmds)
+  }
   g.b_ident = gpu_buffer_new(render3d_st)
   kgpu_ident(render3d_st, g)
   g.card_mesh = mesh_card(render3d_st)
@@ -285,6 +302,12 @@ function kgpu_new__t(render3d_st: mut Render3dState, n_kits: int, src_cap: int, 
 }
 
 # the kits' shading-cost switches, each on unless its variable is 0, read once (start-up)
+function kgpu_gpu_words(render3d_st: mut Render3dState, n: int) -> int {
+  let b = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, b, n, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, b)
+  return b
+}
 function kgpu_read_opts(render3d_st: mut Render3dState, g: KGpu) -> void {
   g.pre_on = not kgpu_env_off(render3d_st, "R3D_KIT_PREPASS")
   g.opt_mesh = 1.0
@@ -392,6 +415,10 @@ function kgpu_rec_write(render3d_st: mut Render3dState, g: KGpu, at: int, data: 
   if g.b_s_cmds != 0 {
     let sm = gpu_buffer_map(render3d_st, g.b_s_cmds)
     if sm != null { mem_copy(mem_off(sm, at), data, n) }
+  }
+  if g.b_c_cmds != 0 {
+    let cm = gpu_buffer_map(render3d_st, g.b_c_cmds)
+    if cm != null { mem_copy(mem_off(cm, at), data, n) }
   }
 }
 
@@ -701,6 +728,12 @@ export function kgpu_frame(render3d_st: mut Render3dState, g: KGpu, o: ForgOrigi
   g.s_ready = false
   if g.prof_split { prof_split(render3d_st, "kgpu cache") }
   if render3d_st.sc_cull and g.s_cap > 0 { kgpu_frame_cache(render3d_st, g) }
+  g.c_ready = false
+  if g.prof_split { prof_split(render3d_st, "kgpu live casters") }
+  if render3d_st.sh_cast_on and g.c_cap > 0 {
+    kgpu_cull_into(render3d_st, g, render3d_st.sh_cast_vp, g.b_c_counts, g.b_c_offs, g.b_c_cursors, g.b_c_cmds, g.dst_cap + g.s_cap, g.c_cap)
+    g.c_ready = true
+  }
   if g.prof_split { kgpu_split_say(g, lights, main_cap) }
   if r3d_env_has(render3d_st, "R3D_UE_LS_DEBUG") { kgpu_lights_debug(render3d_st, g) }
 }
@@ -764,26 +797,36 @@ function kgpu_frame_lights(render3d_st: mut Render3dState, g: KGpu, start: int) 
 # cached window holds the buildings beside and behind the camera too, whichever way it turns. The main cull's four steps with the
 # window's planes (sc_cull_vp; the level by the camera's distance as ever), into their own counters and records after everything in b_dst.
 function kgpu_frame_cache(render3d_st: mut Render3dState, g: KGpu) -> void {
+  kgpu_cull_into(render3d_st, g, render3d_st.sc_cull_vp, g.b_s_counts, g.b_s_offs, g.b_s_cursors, g.b_s_cmds, g.dst_cap, g.s_cap)
+  g.s_ready = true
+}
+
+# A shadow's own caster list: the main cull's four steps with a light volume's planes (`vp`, an orthographic light view-projection) in
+# place of the camera's, and never the camera's occlusion - Unreal gathers a whole-scene shadow's subjects by the light's own frustum
+# (ShadowSetup.cpp FProjectedShadowInfo::AddSubjectPrimitive via GatherShadowPrimitives' per-light culling), and a shadow depth view has
+# no occlusion of the main view. Into counters and records of its own, at b_dst[start .. start + cap). The level is still chosen by the
+# camera's distance, as the view's (Unreal's shadow LOD follows the view's: CalcAndUpdateLODToRender).
+function kgpu_cull_into(render3d_st: mut Render3dState, g: KGpu, vp: floats, counts: int, offs: int, cursors: int, cmds: int, start: int, cap: int) -> void {
   let bins = g.n_kits * 2
-  kinst_planes(render3d_st.sc_cull_vp, g.s_planes)
+  kinst_planes(vp, g.s_planes)
   g.pr[0] = bins;  g.pr[1] = 0;  g.pr[2] = 0;  g.pr[3] = 0
-  g.bufs[0] = g.b_s_counts;  g.bufs[1] = g.b_s_cursors
+  g.bufs[0] = counts;  g.bufs[1] = cursors
   gpu_dispatch(render3d_st, g.c_reset, data_of(g.pr), 16, g.bufs, (bins + 63) / 64)
   for pass in 0 .. 2 {
     kgpu_cull_params(render3d_st, g, pass, false)          # a shadow's list: never the camera's occlusion
     for i in 0 .. 24 { g.prm[i] = float_bits(g.s_planes[i]) }
-    g.bufs[0] = g.b_src;  g.bufs[1] = g.b_kits;  g.bufs[2] = g.b_cells;  g.bufs[3] = g.b_s_counts
-    g.bufs[4] = g.b_s_offs;  g.bufs[5] = g.b_s_cursors;  g.bufs[6] = g.b_dst
+    g.prm[31] = start + cap
+    g.bufs[0] = g.b_src;  g.bufs[1] = g.b_kits;  g.bufs[2] = g.b_cells;  g.bufs[3] = counts
+    g.bufs[4] = offs;  g.bufs[5] = cursors;  g.bufs[6] = g.b_dst
     g.bufs[7] = occ_inst_buf(render3d_st, g.b_src);  g.bufs[8] = g.b_kbox
     gpu_dispatch(render3d_st, g.c_cull, data_of(g.prm), KG_PRM * 4, g.bufs, (g.arena.high + 63) / 64)
     if pass == 0 {
-      g.pa[0] = bins;  g.pa[1] = g.n_kits;  g.pa[2] = g.dst_cap + g.s_cap;  g.pa[3] = g.dst_cap
+      g.pa[0] = bins;  g.pa[1] = g.n_kits;  g.pa[2] = start + cap;  g.pa[3] = start
       g.pa[4] = 0;  g.pa[5] = 0;  g.pa[6] = 0;  g.pa[7] = 0
-      g.bufs[0] = g.b_s_counts;  g.bufs[1] = g.b_s_offs;  g.bufs[2] = g.b_kits;  g.bufs[3] = g.b_s_cmds;  g.bufs[4] = g.b_s_cmds
+      g.bufs[0] = counts;  g.bufs[1] = offs;  g.bufs[2] = g.b_kits;  g.bufs[3] = cmds;  g.bufs[4] = cmds
       gpu_dispatch(render3d_st, g.c_args, data_of(g.pa), 32, g.bufs, 1)
     }
   }
-  g.s_ready = true
 }
 
 # the cull's Params (kinst_cull.comp): six planes, the camera and scale, then instances, bins, pass, capacity; then the previous frame's
@@ -993,6 +1036,8 @@ export function kgpu_draw_casters(render3d_st: mut Render3dState, g: KGpu, light
   var cmds = g.b_cmds
   if render3d_st.sh_local and g.l_ready { cmds = g.b_l_cmds }
   if render3d_st.sh_phase == SH_PHASE_STATIC and g.s_ready { cmds = g.b_s_cmds }   # a cached cascade's (shadow_cache.ludic)
+  # a live cascade's: the casters in the live slice's light volume (shadow_cast_plan), behind and beside the camera too
+  if render3d_st.sh_phase == SH_PHASE_ALL and not render3d_st.sh_local and g.c_ready { cmds = g.b_c_cmds }
   if render3d_st.sh_phase == SH_PHASE_DYN or render3d_st.sh_phase == SH_PHASE_EXTRA { return }   # buildings never move (nor come late)
   gpu_use_program(render3d_st, p)
   u_mat4(render3d_st, gpu_uniform(render3d_st, p, "u_light_vp"), light_vp)
