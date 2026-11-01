@@ -1359,6 +1359,38 @@ void lawnMacro(vec2 wm, float wy, float dist, vec3 N, inout vec3 alb, inout vec3
   arm.b = 0.0;
   n = normalize(mix(n, N, 0.35 * bare));
 }
+// The ground's rock by slope (tilemap_mask.ludic tmd_slope_blend_set; surface.ludic binds it, R3D_GSLOPE=0 off): Unreal's landscape
+// auto-material - a slope mask from the pixel's world normal (the grass's normal map included) over a band, x .. y of 1 - normal y -
+// height-blended against the grass as MaterialExpressionLandscapeLayerBlend.cpp's LB_HeightBlend does it: each layer's weight
+// w' = clamp(lerp(-1, 1, w) + height, 0.0001, 1), then the weights renormalised, so the edge follows the textures' detail and never
+// the triangles. The heights are the layers' albedo detail (luminance over its base), scaled by z; w 1 on, 0 none. The rock is the
+// second surface's scan in the rock tone (rgb of u_gslope_c), laid on the lawn's share only: paving stays paving.
+uniform vec4 u_gslope;
+uniform vec4 u_gslope_c;
+void gslopeRock(SurfP B, vec3 qb, vec3 qbx, vec3 qby, vec3 N, vec3 nG, vec3 wp, vec3 dpx, vec3 dpy, vec3 gA, vec3 gBase, float lawn,
+                inout vec3 alb, inout vec3 n, inout vec3 arm) {
+  if (u_gslope.w < 0.5 || lawn <= 0.0) return;
+  vec3 ns = lawn > 0.0 ? nG : N;
+  float m = smoothstep(u_gslope.x, u_gslope.y, 1.0 - clamp(ns.y, 0.0, 1.0));
+  // the band's widest reach once a layer's height has pushed it: a pixel short of the band by more is grass whatever the heights
+  float reach = smoothstep(u_gslope.x - (u_gslope.y - u_gslope.x), u_gslope.y, 1.0 - clamp(ns.y, 0.0, 1.0));
+  if (reach <= 0.0) return;
+  vec3 rb = u_gslope_c.rgb;
+  float rl = dot(rb, vec3(0.2126, 0.7152, 0.0722));
+  rb *= min(1.0, 0.18 / max(rl, 1e-3));
+  vec3 ra, rn, rr;
+  surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, rb, ra, rn, rr);
+  const vec3 L = vec3(0.2126, 0.7152, 0.0722);
+  float hr = clamp(0.5 * dot(ra, L) / max(dot(rb, L), 1e-3), 0.0, 1.0) * u_gslope.z;
+  float hg = clamp(0.5 * dot(gA, L) / max(dot(gBase, L), 1e-3), 0.0, 1.0) * u_gslope.z;
+  float wr = clamp(mix(-1.0, 1.0, m) + hr, 0.0001, 1.0);
+  float wg = clamp(mix(-1.0, 1.0, 1.0 - m) + hg, 0.0001, 1.0);
+  float k = wr / (wr + wg) * lawn;
+  alb = mix(alb, ra, k);
+  n = normalize(mix(n, rn, k));
+  arm = mix(arm, rr, k);
+}
+
 void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec3 col, vec2 uv, out vec3 alb, out vec3 n, out vec3 arm) {
   SurfP A = surfMain(), B = surfSecond();
   vec3 a1 = vec3(0.0), n1 = N, r1 = vec3(0.0), a2 = vec3(0.0), n2 = N, r2 = vec3(0.0);
@@ -1394,6 +1426,7 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     alb = mix(mixed, mixed * vec3(0.55, 0.5, 0.42), soil * 0.7);
     n = normalize(mix(n2, n1, w));
     arm = mix(r2, r1, w);
+    gslopeRock(B, qb, qbx, qby, N, n1, wp, dpx, dpy, a1, col, w, alb, n, arm);
     return;
   } else {
     float green = col.g - max(col.r, col.b);
@@ -1407,6 +1440,7 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
   alb = mix(a2, a1, w);
   n = normalize(mix(n2, n1, w));
   arm = mix(r2, r1, w);
+  if (B.e.y == 0.0) gslopeRock(B, qb, qbx, qby, N, n1, wp, dpx, dpy, a1, col, w, alb, n, arm);
 }
 
 // a road's gutter and a kerb's rounded nose (u_surf_e.z, .w metres; the road bake's kerbDistances): a road's and a kerb top's uvs are their

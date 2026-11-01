@@ -53,7 +53,8 @@ property Prim {
   arm2: int = 0,
   lu: int = 0,          # the ground's lawn (tilemap_mask.ludic tmk_lawn): its tile's coverage texture, 0 none (the vertex colour decides)
   lu_tx: float = 0.0,   # and that tile's place (the patch's uvs are the tile grid's: its own part of them is uv minus these)
-  lu_tz: float = 0.0
+  lu_tz: float = 0.0,
+  gslope: floats = null  # the ground's slope rock blend (tilemap_mask.ludic tmd_slope_blend_set): lo, hi (1 - normal y), height contrast, on, rock r g b; null none
 }
 property Model {
   prims:  []Prim,

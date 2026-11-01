@@ -114,6 +114,27 @@ export function tmd_steep_set(td: TileDraw, slope: float, r: float, g: float, b:
   tmk_redraw(td)
 }
 
+# The rock laid by the shader, per pixel, instead of by the vertex colour (Unreal's landscape auto-material: a slope mask from the
+# pixel's world normal, height-blended as MaterialExpressionLandscapeLayerBlend's LB_HeightBlend). Class `cls` (the conform's
+# rock) and the steep test go: their texels draw as plain ground and count as lawn (tmk_lawn), and model.frag's surfaceGround
+# turns ground whose normal leans between lo_deg and hi_deg degrees into the rock tone (r, g, b), its edge following the
+# textures' height by `contrast` (0 a plain band). A lo_deg of 0 or less turns it off. Patches drawn already are made again.
+@alloc_ok("a map being opened: the band, once")
+export function tmd_slope_blend_set(td: TileDraw, cls: int, lo_deg: float, hi_deg: float, contrast: float, r: float, g: float, b: float) -> void {
+  if lo_deg <= 0.0 {
+    td.slope_class = -1;  td.gslope = null
+  } else {
+    td.slope_class = cls
+    td.steep_ny = 0.0
+    let gs = floats(8)
+    gs[0] = 1.0 - Math.cos(lo_deg * 0.017453293);  gs[1] = 1.0 - Math.cos(Math.max(hi_deg, lo_deg + 0.1) * 0.017453293)
+    gs[2] = contrast;  gs[3] = 1.0
+    gs[4] = r;  gs[5] = g;  gs[6] = b;  gs[7] = 0.0
+    td.gslope = gs
+  }
+  tmk_redraw(td)
+}
+
 # The classes no skirt hangs from: a patch's skirt (a strip hung from its edge to close a crack against a coarser neighbour) is
 # not hung from an edge vertex with a texel of one of these round it at the full mask's levels: a hole's edge has no ground to close
 # a crack for, and over a tunnel's shallow roof (the conform's cover) the strip hung into the tube. Patches drawn already are made again.
@@ -145,7 +166,7 @@ function tmk_noskirt_at(td: TileDraw, fk: int, ci: int, cj: int, cs: int) -> boo
 
 # the tone of class c into out[o .. o + 2]; a class with no tone takes `plain` (the ground's tint, or the steep tone)
 function tmk_tone(td: TileDraw, c: int, plain: floats, out: floats, o: int) -> void {
-  if c >= 0 and c < TMK_TONES and td.tone_on[c] == 1 {
+  if c >= 0 and c != td.slope_class and c < TMK_TONES and td.tone_on[c] == 1 {
     out[o] = td.tones[c * 3];  out[o + 1] = td.tones[c * 3 + 1];  out[o + 2] = td.tones[c * 3 + 2]
   } else {
     out[o] = plain[0];  out[o + 1] = plain[1];  out[o + 2] = plain[2]
@@ -221,6 +242,7 @@ function tmk_lawn(render3d_st: mut Render3dState, td: TileDraw, slot: int, px: [
     let bl = td.tones[c * 3 + 2]
     if td.tone_on[c] != 0 and g - Math.max(r, bl) > 0.04 { green[c] = 1 }
   }
+  if td.slope_class >= 0 and td.slope_class < 256 { green[td.slope_class] = 1 }
   var any = false
   for i in 0 .. n * n {
     a[i] = green[int(px[i * step])]

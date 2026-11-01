@@ -65,6 +65,8 @@ export property TileDraw {
   noskirt: words = null              # 256: 1 for a class no skirt hangs from (tmd_noskirt: a hole's edge, thin ground over a tunnel), null none
   steep_ny: float = 0.0              # a texel no class names draws steep_color where the ground's normal y is below this (0: never)
   steep_color: floats = floats(3)
+  slope_class: int = -1              # tmd_slope_blend_set: the rock class, drawn as plain ground and in the lawn; the shader lays the rock by slope
+  gslope: floats = null              # its band for the shader (Prim.gslope), null: off
   fk_n: int = 0                      # the pool of full masks: places, their tiles, when last wanted, the texels
   fk_tile: words = null
   fk_used: words = null
@@ -211,6 +213,7 @@ function tmd_build(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, slo
   pr.lu = 0
   if coloured and td.mk_tile[slot] == p.tile { pr.lu = td.lu_tex[slot] }
   pr.lu_tx = float(tx);  pr.lu_tz = float(tz)
+  pr.gslope = td.gslope
   # the terrain pass's (terrain_pass.ludic: out of the actors' list, culled by its box, casting into the sun's cached cascades;
   # R3D_TERRAIN_PASS=0 an actor on the stage as before)
   if p.actor == null {
