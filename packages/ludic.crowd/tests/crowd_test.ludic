@@ -424,6 +424,45 @@ program CrowdTest {
     expect(longest >= 2.5)
   }
 
+  test "two wanderers passing close sometimes stop and face each other, then walk on" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    s.px = 3.5
+    s.pz = 6.0
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 0.5, 0.05)
+    var a = -1
+    var b = -1
+    for i in 0 .. crowd_count(crowd_st) {
+      let u = crowd_ped_at(crowd_st, i)
+      if a < 0 { a = u } else if b < 0 { b = u }
+    }
+    expect(b >= 0)
+    var faced = 0
+    for k in 0 .. 60000 {
+      if not crowd_alive(crowd_st, a) or not crowd_alive(crowd_st, b) {
+        # the ring recycles people: take two others
+        a = -1
+        b = -1
+        for i in 0 .. crowd_count(crowd_st) {
+          let u = crowd_ped_at(crowd_st, i)
+          if a < 0 { a = u } else if b < 0 { b = u }
+        }
+        if b < 0 { break }
+      }
+      if crowd_act(crowd_st, a) == CROWD_WALK and crowd_act(crowd_st, b) == CROWD_WALK and Math.abs(crowd_x(crowd_st, a) - crowd_x(crowd_st, b)) + Math.abs(crowd_z(crowd_st, a) - crowd_z(crowd_st, b)) > 2.0 {
+        crowd_place(crowd_st, a, 3.0, 3.0)
+        crowd_place(crowd_st, b, 4.0, 3.0)
+      }
+      sim(crowd_st, m, s, 0.05, 0.05)
+      if crowd_act(crowd_st, a) == CROWD_STAND and crowd_act(crowd_st, b) == CROWD_STAND and crowd_speed(crowd_st, a) < 0.05 {
+        let ea = Math.abs(cw_turn(crowd_yaw(crowd_st, a), 1.5708))
+        let eb = Math.abs(cw_turn(crowd_yaw(crowd_st, b), -1.5708))
+        if ea < 0.2 and eb < 0.2 { faced += 1 }
+      }
+    }
+    expect(faced > 0)
+  }
+
   test "a solid box the nav port refuses is never entered" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
     fresh(crowd_st, zones, scen)
     s.block = true

@@ -403,7 +403,36 @@ function cw_leg(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, dt
   if p.act_t > 0.0 { p.act_t -= dt }
 }
 
+# two wanderers passing within CW_CHAT_R now and then stop and face each other for 3-6 s (a cooldown follows); the talk is the idle state
+const CW_CHAT_R: float = 1.5
+const CW_CHAT_P: float = 0.004
+const CW_CHAT_CD: float = 40.0
+function cw_try_chat(crowd_st: mut CrowdState, p: CrowdPed, row: int, dt: float) -> void {
+  if p.chat_cd > 0.0 or p.lod != CROWD_FULL or p.act != CROWD_WALK or p.scn >= 0 or p.ext >= 0 or p.lead >= 0 { return }
+  let n = tb_within(crowd_st.cw_tab, crowd_st.cw_grid, p.x, p.z, CW_CHAT_R, -1, 0, crowd_st.cw_near)
+  for k in 0 .. n {
+    let r2 = crowd_st.cw_near[k]
+    if r2 == row { continue }
+    let o = crowd_st.cw_tab.rec[r2]
+    if o.chat_cd > 0.0 or o.lod == CROWD_PUPPET or o.act != CROWD_WALK or o.scn >= 0 or o.ext >= 0 or o.lead >= 0 or o.react != PedReact.Calm { continue }
+    if cw_roll(p, 27) >= CW_CHAT_P { return }
+    let t = 3.0 + 3.0 * cw_roll(p, 28)
+    p.has_dest = false
+    p.act = CROWD_STAND
+    p.act_t = t
+    p.chat_cd = CW_CHAT_CD
+    p.chat_with = o.uid
+    o.has_dest = false
+    o.act = CROWD_STAND
+    o.act_t = t
+    o.chat_cd = CW_CHAT_CD
+    o.chat_with = p.uid
+    return
+  }
+}
+
 function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, dt: float) -> void {
+  if p.chat_cd > 0.0 { p.chat_cd -= dt }
   if p.ext >= 0 {
     cw_leg(crowd_st, p, row, ty, dt)
     return
@@ -429,6 +458,7 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
       if p.scn >= 0 and not p.scn_used { cw_leave_scenario(crowd_st, p) }
       cw_pick_dest(crowd_st, p, ty)
     }
+    cw_try_chat(crowd_st, p, row, dt)
     if not p.has_dest { return }
     var sp = ty.walk_speed * p.pace
     if p.act == CROWD_COMMUTE { sp = sp * 1.2 }
@@ -460,7 +490,16 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
   }
   cw_halt(p, dt)
   p.act_t -= dt
+  if p.chat_with >= 0 {
+    # the chat: it stands (the idle state) turned to the other by the body yaw, and gives it up when its time or the other is gone
+    let orow = tb_row(crowd_st.cw_tab, p.chat_with)
+    if orow < 0 { p.chat_with = -1 } else {
+      let o = crowd_st.cw_tab.rec[orow]
+      cw_face(p, o.x, o.z, dt)
+    }
+  }
   if p.act_t > 0.0 { return }
+  p.chat_with = -1
   # its time at a place that takes getting up from (a bench) is over: it stays on it while it gets up, then goes on with its day
   if p.scn >= 0 and p.scn_used and not p.leaving and crowd_st.cw_sn_leave[p.scn] > 0.0 {
     p.leaving = true
