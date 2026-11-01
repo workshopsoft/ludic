@@ -80,6 +80,25 @@ program TileMaskTest {
     expect(td.steep_ny == 0.0)
   }
 
+  test "the slope blend draws its rock class and the steep ground as plain ground and hands the shader its band" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    let n1 = 65
+    tmd_steep_set(td, 0.0001, 0.3, 0.3, 0.3)                  # every vertex steep under the vertex test ...
+    tmd_slope_blend_set(td, 1, 35.0, 40.0, 1.0, 0.3, 0.3, 0.3)  # ... which the blend takes over; class 1 (sand) is its rock
+    expect(colour(render3d_st, td, 1, 0))
+    expect(is(td, n1, 52, 10, 0.5, 0.5, 0.5))                 # the park: the tint, no steep tone
+    expect(is(td, n1, 32, 32, 0.5, 0.5, 0.5))                 # the rock class: the tint, not its tone
+    expect(is(td, n1, 5, 5, 0.2, 0.3, 0.1))                   # other classes keep theirs
+    expect(td.gslope != null)
+    expect_near(td.gslope[0], 1.0 - Math.cos(35.0 * 0.017453293), 0.0001)
+    expect_near(td.gslope[1], 1.0 - Math.cos(40.0 * 0.017453293), 0.0001)
+    expect_near(td.gslope[4], 0.3, 0.0001)
+    tmd_slope_blend_set(td, 1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)  # off: the class draws its tone again
+    expect(td.gslope == null)
+    expect(colour(render3d_st, td, 1, 0))
+    expect(is(td, n1, 32, 32, 0.6, 0.5, 0.3))
+  }
+
   test "a tile with no mask, or the mask turned off, draws the tint as before" (render3d_st: mut Render3dState) {
     let td = open(render3d_st)
     expect(not colour(render3d_st, td, 2, 0))

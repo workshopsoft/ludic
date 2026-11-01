@@ -152,7 +152,8 @@ let UL_NAMES: []string = [
   "u_fac_a", "u_fac_b", "u_fac_c", "u_fac_d", "u_fac_e",
   "u_rooms", "u_im_cell", "u_im_atlas", "u_im_gain", "u_im_lit",
   "u_dither_frame", "u_shadow_tan_max", "u_head_on", "u_headmap", "u_fol_h", "u_follicle", "u_fol_b", "u_fol_m", "u_fol_on",
-  "u_micro_p", "u_micro", "u_micro_mask", "u_micro_m", "u_micro_r", "u_bent_p", "u_bent", "u_sss_u"
+  "u_micro_p", "u_micro", "u_micro_mask", "u_micro_m", "u_micro_r", "u_bent_p", "u_bent", "u_sss_u",
+  "u_gslope", "u_gslope_c"
 ]
 const UL_FAC_COAT: int = 0
 const UL_MR_SCALE: int = 1
@@ -205,7 +206,9 @@ const UL_MICRO_R: int = 55
 const UL_BENT_P: int = 56
 const UL_BENT: int = 57
 const UL_SSS_U: int = 58
-const UL_N: int = 59
+const UL_GSLOPE: int = 59               # the ground's slope rock blend (tilemap_mask.ludic tmd_slope_blend_set), then its rock tone
+const UL_GSLOPE_C: int = 60
+const UL_N: int = 61
 
 function gpu_ul_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gpu_ul_on < 0 {
