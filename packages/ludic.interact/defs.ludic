@@ -1,0 +1,31 @@
+# defs.ludic - an interaction point: a named place on an object type, in the object's frame (+z forward, +x the facing's right, +y up,
+# metres; yaw about +y, 0 facing +z). A game names its file: `def InteractPoints from "data/interact_points.lres"`. Rows are keyed
+# `<obj>.<name>` (kit_bench.seat_0), written by tools/measure.py from a glb's SOCKET_ empties or measured from a mesh.
+export property InteractPoint {
+  key: string = ""
+  obj: string = ""                                     # the object type: a kit, a car model, a weapon
+  name: string = ""                                    # seat_0, stand_0, helm, wheel_l, grip, mag ...
+  @OneOf("root", "pelvis", "feet", "hand_r", "hand_l", "eye", "head") part: string = "root"   # the body part that goes on it
+  @Unit("m") x: float = 0.0
+  @Unit("m") y: float = 0.0
+  @Unit("m") z: float = 0.0
+  @Unit("deg") yaw: float = 0.0                        # the way the body faces there (relative to the object)
+  @Unit("deg") pitch: float = 0.0                      # a full rotation when a hand needs one (a grip): yaw, then pitch, then roll
+  @Unit("deg") roll: float = 0.0
+  ax: float = 0.0                                      # an optional axis or direction (a wheel's spin axis, a door's swing, a barrel)
+  ay: float = 0.0
+  az: float = 0.0
+  @Unit("m") @Range(0, 10) radius: float = 0.0         # how near counts as on it (a reach, a trigger, a seat's half width)
+}
+
+@ByKey
+export open registry InteractPoints of InteractPoint as IPT
+
+# the row of an object's point, -1 when it has none (a load-time ask: callers keep the index)
+export function interact_find(obj: string, name: string) -> int {
+  for i in 0 .. IPT_COUNT {
+    let p = InteractPoints[i]
+    if p.obj == obj and p.name == name { return i }
+  }
+  return -1
+}

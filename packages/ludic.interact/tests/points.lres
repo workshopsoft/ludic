@@ -1,0 +1,3 @@
+bench.seat_0 { obj: "bench", name: "seat_0", part: "pelvis", x: -0.35, y: 0.48, z: 0.09, yaw: 0.0, radius: 0.25 }
+bench.seat_1 { obj: "bench", name: "seat_1", part: "pelvis", x: 0.35, y: 0.48, z: 0.09, yaw: 0.0, radius: 0.25 }
+bench.stand_0 { obj: "bench", name: "stand_0", part: "feet", x: -0.35, y: 0.0, z: 0.47, yaw: 0.0, radius: 0.3 }

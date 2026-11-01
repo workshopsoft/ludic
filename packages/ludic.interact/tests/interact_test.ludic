@@ -1,0 +1,52 @@
+# interact_test.ludic - the points' rows, the sit-target solve, a point in the world and the warp's weight
+import "ludic.interact"
+import "ludic.base"
+program InteractTest {
+  numbers float
+  def InteractPoints from "points.lres"
+
+  test "rows are found by object and name" () {
+    expect_eq(IPT_COUNT, 3)
+    let i = interact_find("bench", "seat_1")
+    expect(i >= 0)
+    expect(InteractPoints[i].part == "pelvis")
+    expect_eq(interact_find("bench", "nope"), -1)
+  }
+
+  test "the solve puts the part on the point by moving the root only, at any yaw" () {
+    let out = floats(4)
+    # facing +z: a pelvis 0.38 m behind the root and 0.5 m up lands on a seat at (1, 0.48, 2) from a root 0.38 m in front of it
+    interact_solve(1.0, 0.48, 2.0, 0.0, 0.0, 0.5, -0.38, out)
+    expect_near(out[0], 1.0, 0.0001)
+    expect_near(out[1], -0.02, 0.0001)
+    expect_near(out[2], 2.38, 0.0001)
+    # any yaw: the part, put back through the root's frame, is on the point
+    for k in 0 .. 16 {
+      let yaw = float(k) * 0.41 - 3.0
+      interact_solve(5.0, 1.0, -3.0, yaw, 0.2, 0.9, -0.4, out)
+      let c = Math.cos(out[3])
+      let s = Math.sin(out[3])
+      let wx = out[0] + c * 0.2 + s * (-0.4)
+      let wz = out[2] - s * 0.2 + c * (-0.4)
+      expect(interact_error(wx, out[1] + 0.9, wz, 5.0, 1.0, -3.0) < 0.0001)
+    }
+  }
+
+  test "a point in the world: the object's place and turn" () {
+    let out = floats(4)
+    let i = interact_find("bench", "seat_0")
+    # seat_0 is 0.35 m left, 0.48 up, 0.09 forward; the bench at (10, 1, 20) faces +x (yaw 90)
+    interact_world(i, 10.0, 1.0, 20.0, 1.5707963, out)
+    expect_near(out[0], 10.09, 0.0001)
+    expect_near(out[1], 1.48, 0.0001)
+    expect_near(out[2], 20.35, 0.0001)
+    expect_near(out[3], 1.5707963, 0.0001)
+  }
+
+  test "the warp's weight: none before its window, all after, smooth inside" () {
+    expect_near(interact_warp(0.0, 0.5, 1.5), 0.0, 0.0001)
+    expect_near(interact_warp(1.0, 0.5, 1.5), 0.5, 0.0001)
+    expect_near(interact_warp(2.0, 0.5, 1.5), 1.0, 0.0001)
+    expect_near(interact_warp(1.0, 1.0, 1.0), 1.0, 0.0001)
+  }
+}

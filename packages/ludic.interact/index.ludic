@@ -1,0 +1,8 @@
+# ludic.interact - interaction points (README.md): the rows (defs.ludic), the solve (solve.ludic), the debug markers (markers.ludic)
+module ludic_interact uses ludic_render3d, ludic_base
+numbers float
+import "ludic.base"
+import "ludic.render3d/r3d.ludic"
+import "defs.ludic"
+import "solve.ludic"
+import "markers.ludic"

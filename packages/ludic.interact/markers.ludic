@@ -1,0 +1,116 @@
+# markers.ludic - debug markers: a small tinted box on each point and a thin stick the way it faces, by body part (pelvis orange, feet
+# green, right hand blue, left hand cyan, eye magenta, root white). Drawn only while a game shows them (a dev verb).
+export state InteractMarkers {
+  box: Model = null
+  actors: []Actor = new []Actor
+  used: int = 0
+}
+
+# a part's colour, into out[0..2]
+export function interact_part_tint(part: string, out: floats) -> void {
+  var r = 1.0
+  var g = 1.0
+  var b = 1.0
+  if part == "pelvis" {
+    g = 0.45
+    b = 0.05
+  } else if part == "feet" {
+    r = 0.1
+    g = 0.9
+    b = 0.2
+  } else if part == "hand_r" {
+    r = 0.15
+    g = 0.3
+  } else if part == "hand_l" {
+    r = 0.1
+    g = 0.9
+    b = 0.95
+  } else if part == "eye" or part == "head" {
+    r = 0.95
+    g = 0.15
+    b = 0.9
+  }
+  out[0] = r
+  out[1] = g
+  out[2] = b
+}
+
+function im_box_model(render3d_st: mut Render3dState) -> Model {
+  let v = floats(24 * 8)
+  let c = floats(24 * 4)
+  let ix = words(36)
+  let n = [1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0]
+  for f in 0 .. 6 {
+    let nx = n[f * 3]
+    let ny = n[f * 3 + 1]
+    let nz = n[f * 3 + 2]
+    var ux = 0.0
+    var uy = 0.0
+    var uz = 0.0
+    if Math.abs(ny) > 0.5 { ux = 1.0 } else { uy = 1.0 }
+    let wx = ny * uz - nz * uy
+    let wy = nz * ux - nx * uz
+    let wz = nx * uy - ny * ux
+    for k in 0 .. 4 {
+      var a = -0.5
+      var b = -0.5
+      if k == 1 or k == 2 { a = 0.5 }
+      if k >= 2 { b = 0.5 }
+      let i = f * 4 + k
+      v[i * 8] = nx * 0.5 + ux * a + wx * b
+      v[i * 8 + 1] = ny * 0.5 + uy * a + wy * b
+      v[i * 8 + 2] = nz * 0.5 + uz * a + wz * b
+      v[i * 8 + 3] = nx
+      v[i * 8 + 4] = ny
+      v[i * 8 + 5] = nz
+      v[i * 8 + 6] = a + 0.5
+      v[i * 8 + 7] = b + 0.5
+      for j in 0 .. 4 { c[i * 4 + j] = 1.0 }
+    }
+    let o = f * 6
+    ix[o] = f * 4
+    ix[o + 1] = f * 4 + 1
+    ix[o + 2] = f * 4 + 2
+    ix[o + 3] = f * 4
+    ix[o + 4] = f * 4 + 2
+    ix[o + 5] = f * 4 + 3
+  }
+  return model_from_arrays(render3d_st, v, c, 24, ix, 36, 0.87)
+}
+
+@alloc_ok("markers are a debug view")
+function im_next(m: mut InteractMarkers, render3d_st: mut Render3dState) -> Actor {
+  if m.box == null { m.box = im_box_model(render3d_st) }
+  if m.used >= len(m.actors) {
+    let a = actor_new(render3d_st, m.box)
+    a.tag = "interact/marker"
+    a.casts = false
+    push(m.actors, a)
+  }
+  let a = m.actors[m.used]
+  m.used += 1
+  return a
+}
+
+# a frame's markers begin: every one hidden until drawn again
+export function interact_markers_begin(m: mut InteractMarkers) -> void {
+  for i in 0 .. len(m.actors) { m.actors[i].visible = false }
+  m.used = 0
+}
+
+function im_put(a: Actor, x: float, y: float, z: float, yaw: float, sx: float, sy: float, sz: float, t: floats) -> void {
+  actor_place_rot(a, x, y, z, yaw, 0.0, 0.0, sx, sy, sz)
+  a.tint[0] = t[0]
+  a.tint[1] = t[1]
+  a.tint[2] = t[2]
+  a.visible = true
+}
+
+# one point's marker in render space (the caller's origin already taken off): a 6 cm box, a 25 cm stick the way it faces
+@alloc_ok("markers are a debug view")
+export function interact_marker(m: mut InteractMarkers, render3d_st: mut Render3dState, x: float, y: float, z: float, yaw: float, part: string) -> void {
+  let t = floats(3)
+  interact_part_tint(part, t)
+  im_put(im_next(m, render3d_st), x, y, z, yaw, 0.06, 0.06, 0.06, t)
+  im_put(im_next(m, render3d_st), x + Math.sin(yaw) * 0.125, y, z + Math.cos(yaw) * 0.125, yaw, 0.015, 0.015, 0.25, t)
+}
