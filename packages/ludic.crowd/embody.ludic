@@ -140,6 +140,22 @@ export function crowd_anim_key(crowd_st: CrowdState, uid: int) -> string {
   if r < 0 { return "" }
   return crowd_st.cw_tab.rec[r].key
 }
+# the scenario a ped is using (arrived on its place: a bench it sits on) and its place there (a seat of the bench); -1 when none. A game
+# reads the scenario's key (crowd_scenario_key) to find the thing's interaction points (ludic.interact: a bench kit's seats)
+export function crowd_ped_scenario(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  let p = crowd_st.cw_tab.rec[r]
+  if not p.scn_used { return -1 }
+  return p.scn
+}
+export function crowd_ped_place(crowd_st: CrowdState, uid: int) -> int {
+  let r = cw_row_of(crowd_st, uid)
+  if r < 0 { return -1 }
+  let p = crowd_st.cw_tab.rec[r]
+  if not p.scn_used { return -1 }
+  return p.place
+}
 # the AnimSets row that plays this ped's type
 export function crowd_anim_set(crowd_st: CrowdState, uid: int) -> string {
   let r = cw_row_of(crowd_st, uid)

@@ -1,0 +1,46 @@
+# solve.ludic - the sit-target solve (Second Life's llSitTarget: the avatar's root goes where its sit offset lands the body on the
+# target) and a point taken into the world. Pure: numbers in, numbers out.
+#
+# Frames: yaw 0 faces +z; the facing's right is (cos yaw, -sin yaw) (ludic.crowd's places), forward (sin yaw, cos yaw).
+
+# a point of an object (row i) in the world, the object standing at ox, oy, oz turned oyaw (radians): out = [x, y, z, yaw]
+export function interact_world(i: int, ox: float, oy: float, oz: float, oyaw: float, out: floats) -> void {
+  let p = InteractPoints[i]
+  let c = Math.cos(oyaw)
+  let s = Math.sin(oyaw)
+  out[0] = ox + c * p.x + s * p.z
+  out[1] = oy + p.y
+  out[2] = oz - s * p.x + c * p.z
+  out[3] = oyaw + p.yaw * 0.017453292
+}
+
+# The root place and yaw that put a body part on a point: the part is at (bx right, by up, bz forward) of the root in the current pose
+# (a joint's model-space place, or a clip's last key), the point at px, py, pz facing pyaw (radians). The body faces the point's way and
+# its root goes to the point less the part's offset turned by that yaw: out = [x, y, z, yaw]. Only the root moves: no bone is turned.
+export function interact_solve(px: float, py: float, pz: float, pyaw: float, bx: float, by: float, bz: float, out: floats) -> void {
+  let c = Math.cos(pyaw)
+  let s = Math.sin(pyaw)
+  out[0] = px - (c * bx + s * bz)
+  out[1] = py - by
+  out[2] = pz - (c * bz - s * bx)
+  out[3] = pyaw
+}
+
+# The warp's weight at time t of a window [t0, t1] (Unreal's Motion Warping: a clip's root is carried onto its target over a window of
+# the clip, not snapped): 0 before, 1 after, smooth between
+export function interact_warp(t: float, t0: float, t1: float) -> float {
+  if t1 <= t0 {
+    if t >= t0 { return 1.0 }
+    return 0.0
+  }
+  let u = Math.clamp((t - t0) / (t1 - t0), 0.0, 1.0)
+  return u * u * (3.0 - 2.0 * u)
+}
+
+# how far a body part (world place) is from a point (world place), metres: the error a test or a shot measures against the renderer's pose
+export function interact_error(wx: float, wy: float, wz: float, px: float, py: float, pz: float) -> float {
+  let dx = wx - px
+  let dy = wy - py
+  let dz = wz - pz
+  return Math.sqrt(dx * dx + dy * dy + dz * dz)
+}

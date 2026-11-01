@@ -1,0 +1,5 @@
+# ludic.interact - interaction points: where a body meets an object (a bench's seats, a boat's helm, a car's door handle, a gun's grip),
+# as named points per object type, and the sit-target solve that puts a body part on one by moving the root only. See README.md.
+package "ludic.interact"
+version "0.1.0"
+kind source
