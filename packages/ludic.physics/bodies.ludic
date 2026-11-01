@@ -52,6 +52,14 @@ export function phys_ccd(physics_st: mut PhysicsState, id: int, on: bool) -> boo
   return jph_body_ccd(physics_st.ph_world, id, flag) == 1
 }
 
+# the owner a body belongs to: bodies of one group > 0 never collide with each other (a car's body and its open doors, as Unreal keeps the
+# bodies of one component apart: the sim filter's component id), and meet everything else as before; 0 takes it out of its group. Returns
+# the group now set (0 none), -1 for a removed id or no world
+export function phys_body_group(physics_st: mut PhysicsState, id: int, group: int) -> int {
+  if physics_st.ph_world == null or id < 0 { return -1 }
+  return jph_body_group(physics_st.ph_world, id, group)
+}
+
 # does the body sweep over its steps (phys_ccd)? false for a still or kinematic body, a removed id or no world
 export function phys_is_ccd(physics_st: PhysicsState, id: int) -> bool {
   if physics_st.ph_world == null or id < 0 { return false }

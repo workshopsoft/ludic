@@ -7,6 +7,24 @@ struct Walker {
   CharacterVirtual *c;
   float step_up;
   float stick;
+  uint32 group = CollisionGroup::cInvalidGroup;   // the owner group it is moving with (jph_char_group): its bodies are not met
+};
+
+// the walker's own inner body is not met, nor (while it has a group) a body of that group: Unreal's CharacterMovementComponent ignores
+// the physics base it rides while it moves (CharacterMovementComponent.cpp: IgnoreActorWhenMoving(MovementBaseRootActor, true))
+class WalkerFilter : public BodyFilter {
+public:
+  WalkerFilter(BodyID self, const GroupFilter *f, uint32 g) : mSelf(self), mF(f), mG(g) {}
+  bool ShouldCollide(const BodyID &id) const override { return id != mSelf; }
+  bool ShouldCollideLocked(const Body &b) const override {
+    if (mG == CollisionGroup::cInvalidGroup) return true;
+    const CollisionGroup &cg = b.GetCollisionGroup();
+    return !(cg.GetGroupFilter() == mF && cg.GetGroupID() == mG);
+  }
+private:
+  BodyID mSelf;
+  const GroupFilter *mF;
+  uint32 mG;
 };
 
 // r wide, h tall, feet at (x, y, z); a slope steeper than max_slope degrees is not ground
@@ -80,7 +98,7 @@ JPH_SHIM int jph_char_step(void *w, void *k, float dt, float vx, float vz, float
   CharacterVirtual::ExtendedUpdateSettings u;
   u.mWalkStairsStepUp = Vec3(0.0f, wk->step_up, 0.0f);
   u.mStickToFloorStepDown = Vec3(0.0f, jump > 0.0f ? 0.0f : -wk->stick, 0.0f);
-  IgnoreSingleBodyFilter self(c->GetInnerBodyID());
+  WalkerFilter self(c->GetInnerBodyID(), ww->same.GetPtr(), wk->group);
   c->ExtendedUpdate(dt, g, u, ww->sys.GetDefaultBroadPhaseLayerFilter(L_MOVING), ww->sys.GetDefaultLayerFilter(L_MOVING),
                     self, {}, ww->temp);
   return jph_char_says(ww, c, vx, vz);
@@ -101,9 +119,27 @@ JPH_SHIM void jph_char_read(void *k, float *out) {
 // put it somewhere, standing still (a teleport, a map swap, getting off a boat)
 JPH_SHIM void jph_char_place(void *w, void *k, float x, float y, float z) {
   World *ww = static_cast<World *>(w);
-  CharacterVirtual *c = static_cast<Walker *>(k)->c;
+  Walker *wk = static_cast<Walker *>(k);
+  CharacterVirtual *c = wk->c;
   c->SetPosition(RVec3(x, y, z));
   c->SetLinearVelocity(Vec3::sZero());
-  IgnoreSingleBodyFilter self(c->GetInnerBodyID());
+  WalkerFilter self(c->GetInnerBodyID(), ww->same.GetPtr(), wk->group);
   c->RefreshContacts(ww->sys.GetDefaultBroadPhaseLayerFilter(L_MOVING), ww->sys.GetDefaultLayerFilter(L_MOVING), self, {}, ww->temp);
+}
+
+// the owner group the walker moves with (0: none): the casts skip that group's bodies and its inner body joins the group, so getting in
+// and out of a car neither the capsule nor its body pushes the car. Returns the group now set
+JPH_SHIM int jph_char_group(void *w, void *k, int group) {
+  World *ww = static_cast<World *>(w);
+  Walker *wk = static_cast<Walker *>(k);
+  uint32 g = group > 0 ? uint32(group) : CollisionGroup::cInvalidGroup;
+  if (wk->group == g) return group > 0 ? group : 0;
+  wk->group = g;
+  BodyInterface &bi = ww->sys.GetBodyInterface();
+  BodyID in = wk->c->GetInnerBodyID();
+  if (!in.IsInvalid() && bi.IsAdded(in)) {
+    if (group > 0) bi.SetCollisionGroup(in, CollisionGroup(ww->same, CollisionGroup::GroupID(g), 0));
+    else bi.SetCollisionGroup(in, CollisionGroup());
+  }
+  return group > 0 ? group : 0;
 }

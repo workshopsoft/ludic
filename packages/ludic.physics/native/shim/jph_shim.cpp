@@ -106,6 +106,17 @@ public:
   int lost = 0;
 };
 
+// bodies of one owner (a car's body and its doors; a walker getting in or out of that car) given the same group never collide with each
+// other, whatever else they meet: Unreal's rule for the bodies of one component (PhysicsFiltering.h GetSimData: sim filter word2 is the
+// skeletal mesh component's id; Chaos CollisionFilterData.cpp FInstanceData::ComponentId), here Jolt's CollisionGroup with one filter
+class SameGroupFilter : public GroupFilter {
+public:
+  bool CanCollide(const CollisionGroup &a, const CollisionGroup &b) const override {
+    if (a.GetGroupFilter() != this || b.GetGroupFilter() != this) return true;
+    return a.GetGroupID() == CollisionGroup::cInvalidGroup || a.GetGroupID() != b.GetGroupID();
+  }
+};
+
 struct World {
   // pairs and contacts are for what MOVES: a valley of sixty thousand still trunks makes none
   // between them, so they are sized for the moving things, not the body count; the temporary memory
@@ -117,7 +128,9 @@ struct World {
     // two bodies bounce as little as the duller of them (Jolt's default is the livelier): a car set to crumple does not
     // spring off a wall or a prop that was left at the package's 0.1
     sys.SetCombineRestitution([](const Body &a, const SubShapeID &, const Body &b, const SubShapeID &) { return std::min(a.GetRestitution(), b.GetRestitution()); });
+    same = new SameGroupFilter();
   }
+  Ref<GroupFilter> same;
   TempAllocatorImplWithMallocFallback temp;
   JobSystemThreadPool jobs;
   BPLayers bpl;

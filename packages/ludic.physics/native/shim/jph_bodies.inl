@@ -108,3 +108,15 @@ JPH_SHIM void jph_body_set_pose(void *w, int id, float x, float y, float z, floa
   bi.SetPositionAndRotation(bid(id), RVec3(x, y, z), Quat(qx, qy, qz, qw).Normalized(), EActivation::Activate);
   bi.SetLinearVelocity(bid(id), Vec3(vx, vy, vz));
 }
+
+// a body's owner group (SameGroupFilter): two bodies of one group > 0 never collide; 0 takes it out of every group. Returns the group now
+// set, -1 when there is no such body
+JPH_SHIM int jph_body_group(void *w, int id, int group) {
+  World *ww = static_cast<World *>(w);
+  BodyInterface &bi = ww->sys.GetBodyInterface();
+  if (!bi.IsAdded(bid(id))) return -1;
+  if (group > 0) bi.SetCollisionGroup(bid(id), CollisionGroup(ww->same, CollisionGroup::GroupID(group), 0));
+  else bi.SetCollisionGroup(bid(id), CollisionGroup());
+  const CollisionGroup &g = bi.GetCollisionGroup(bid(id));
+  return g.GetGroupFilter() == ww->same.GetPtr() ? int(g.GetGroupID()) : 0;
+}

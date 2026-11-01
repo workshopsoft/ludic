@@ -28,6 +28,8 @@ extern function jph_body_velocity(w: pointer, id: int, x: float, y: float, z: fl
 extern function jph_body_target(w: pointer, id: int, x: float, y: float, z: float, yaw: float, dt: float) -> void = "jph_body_target"
 extern function jph_body_bounce(w: pointer, id: int, bounce: float) -> void = "jph_body_bounce"
 extern function jph_body_ccd(w: pointer, id: int, on: int) -> int = "jph_body_ccd"
+extern function jph_body_group(w: pointer, id: int, group: int) -> int = "jph_body_group"
+extern function jph_char_group(w: pointer, k: pointer, group: int) -> int = "jph_char_group"
 extern function jph_body_ccd_of(w: pointer, id: int) -> int = "jph_body_ccd_of"
 extern function jph_body_awake(w: pointer, id: int) -> int = "jph_body_awake"
 extern function jph_body_buoyancy(w: pointer, id: int, sy: float, nx: float, ny: float, nz: float, buoy: float, lin: float, ang: float, cx: float, cz: float, dt: float) -> int = "jph_body_buoyancy"
