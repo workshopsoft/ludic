@@ -19,7 +19,7 @@ uses the same rows, the same solve and the same markers.
 
 ## The format
 
-One row per point, keyed `<obj>.<name>`, in a game's file (`def InteractPoints from "data/interact_points.lres"`):
+One row per point, keyed `<obj>__<name>` (a row key cannot hold a dot; lookups go by the obj and name fields, interact_find), in a game's file (`def InteractPoints from "data/interact_points.lres"`):
 
 ```
 kit_bench.seat_0 { obj: "kit_bench", name: "seat_0", part: "pelvis", x: -0.35, y: 0.481, z: 0.085, yaw: 0.0, radius: 0.25 }
