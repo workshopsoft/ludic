@@ -402,6 +402,28 @@ program CrowdTest {
     expect(s.placed > 100)
   }
 
+  test "a wanderer that arrives stands there a few seconds before it takes another destination" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    sim(crowd_st, m, s, 0.5, 0.05)
+    let u = ped_of_type(crowd_st, PEDT_JOGGER, 0.0, 0.0)
+    expect(u >= 0)
+    var px = crowd_x(crowd_st, u)
+    var pz = crowd_z(crowd_st, u)
+    var still = 0.0
+    var longest = 0.0
+    for k in 0 .. 240 {
+      sim(crowd_st, m, s, 0.5, 0.05)
+      if not crowd_alive(crowd_st, u) { break }
+      let d = dist(crowd_x(crowd_st, u), crowd_z(crowd_st, u), px, pz)
+      px = crowd_x(crowd_st, u)
+      pz = crowd_z(crowd_st, u)
+      if d < 0.05 { still += 0.5 } else { still = 0.0 }
+      longest = Math.max(longest, still)
+    }
+    expect(longest >= 2.5)
+  }
+
   test "a solid box the nav port refuses is never entered" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
     fresh(crowd_st, zones, scen)
     s.block = true
