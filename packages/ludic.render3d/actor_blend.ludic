@@ -197,5 +197,6 @@ function ac_prim_factors(render3d_st: mut Render3dState, ap: AcProg, pr: Prim) -
   }
   u_f4(render3d_st, ap.l_fbase, 1.0 - f[0], 1.0 - f[1], 1.0 - f[2], 1.0 - f[3])
   u_f2(render3d_st, ap.l_fmr, 1.0 - f[4], 1.0 - f[5])
-  u_f3(render3d_st, ap.l_femis, f[6], f[7], f[8])
+  let es = mpc_emis(render3d_st, pr)
+  u_f3(render3d_st, ap.l_femis, f[6] * es, f[7] * es, f[8] * es)
 }

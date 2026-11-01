@@ -1,0 +1,42 @@
+# ============================================================================
+# mpc.ludic — Unreal's Material Parameter Collection, its scalars: named values a game sets once a frame that every material bound to
+# one reads (UMaterialParameterCollection, a material's CollectionParameter node). Ported for one use: a material's emissive colour
+# multiplied by a collection scalar, so a street lamp's lens (its mesh's own emissive material) is lit at night and dark by day, as an
+# Unreal project drives its lamps' emissive from its time of day. A glTF material binds its emissiveFactor to a scalar through its
+# extras: { "emissive_param": "<name>" } (gltf.ludic gltf_factors). A scalar never set is its default, 1 (the factor as authored).
+# ============================================================================
+
+# the scalar named `name`: its slot (made, at 1, when first asked for)
+@alloc_ok("a collection scalar: made once, when a material or the game first names it")
+export function r3d_mpc_scalar(render3d_st: mut Render3dState, name: string) -> int {
+  if render3d_st.mpc_names == null {
+    render3d_st.mpc_names = new []string
+    render3d_st.mpc_vals = floats(16)
+  }
+  for i in 0 .. len(render3d_st.mpc_names) { if render3d_st.mpc_names[i] == name { return i } }
+  let n = len(render3d_st.mpc_names)
+  if n >= len(render3d_st.mpc_vals) {
+    let grown = floats(n * 2)
+    for i in 0 .. n { grown[i] = render3d_st.mpc_vals[i] }
+    render3d_st.mpc_vals = grown
+  }
+  push(render3d_st.mpc_names, name[0..len(name)])
+  render3d_st.mpc_vals[n] = 1.0
+  return n
+}
+
+# set the scalar `name` (SetScalarParameterValue on the collection's instance)
+export function r3d_mpc_set(render3d_st: mut Render3dState, name: string, v: float) -> void {
+  let i = r3d_mpc_scalar(render3d_st, name)
+  render3d_st.mpc_vals[i] = v
+}
+
+export function r3d_mpc_get(render3d_st: mut Render3dState, name: string) -> float {
+  return render3d_st.mpc_vals[r3d_mpc_scalar(render3d_st, name)]
+}
+
+# a primitive's emissive multiplier: its bound scalar, or 1
+function mpc_emis(render3d_st: Render3dState, pr: Prim) -> float {
+  if pr.emis_param < 0 or render3d_st.mpc_vals == null { return 1.0 }
+  return render3d_st.mpc_vals[pr.emis_param]
+}
