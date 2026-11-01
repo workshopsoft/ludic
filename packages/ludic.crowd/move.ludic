@@ -348,6 +348,8 @@ function cw_follow(crowd_st: mut CrowdState, p: CrowdPed, row: int, lrow: int, t
 
 # ---- one ped's step ---------------------------------------------------------------------------
 
+const CW_DWELL_MIN: float = 3.0
+const CW_DWELL_MAX: float = 7.0
 function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
   if p.scn >= 0 and not p.scn_used {
     p.scn_used = true
@@ -369,6 +371,14 @@ function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
     f.count = 1
     f.x = p.x
     f.z = p.z
+    return
+  }
+  # a wanderer that reaches its destination stands there a few seconds (CW_DWELL_MIN..MAX) before it takes another
+  if p.act == CROWD_WALK {
+    p.has_dest = false
+    p.act = CROWD_STAND
+    p.speed = 0.0
+    p.act_t = CW_DWELL_MIN + (CW_DWELL_MAX - CW_DWELL_MIN) * cw_roll(p, 26)
     return
   }
   cw_next_act(crowd_st, p)
