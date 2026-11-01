@@ -1466,27 +1466,8 @@ void surfKerb(vec2 uv, vec3 wp, vec3 N, inout vec3 alb, inout vec3 n, inout vec3
     vec2 gn = length(grad) > 1e-6 ? normalize(grad) : vec2(1.0, 0.0);
     vec2 tg = vec2(-gn.y, gn.x);
     float s = dot(q, tg) + 97.0 * surfHash(floor(vec2(atan(tg.y, tg.x) * 4.0, 0.5)), 1024.0);
-    // repair patches: rectangles of fresher, darker asphalt with a sealed seam, set square to the kerb in the lanes (a cell of 16 m
-    // along and 3.5 m across, a fifth of them patched)
-    float pa = s / 16.0;
-    float pd = (d - g - 0.15) / 3.5;
-    vec2 pc = vec2(floor(pa), floor(pd));
-    float ph = surfHash(pc + 17.0, 1024.0);
-    if (pd >= 0.0 && ph < 0.2) {
-      vec2 lo = vec2(0.1 + 0.4 * surfHash(pc + 3.0, 1024.0), 0.05 + 0.3 * surfHash(pc + 5.0, 1024.0));
-      vec2 hi = lo + vec2(0.15 + 0.3 * surfHash(pc + 7.0, 1024.0), 0.35 + 0.3 * surfHash(pc + 11.0, 1024.0));
-      vec2 f = vec2(fract(pa), fract(pd));
-      vec2 m2 = vec2(16.0, 3.5);
-      vec2 e = min(f - lo, hi - f) * m2;                  // metres inside the patch's edges (negative outside)
-      // a lane's repair stops at the middle of the road (the two kerbs' distances add to its width), so the two sides' never cross
-      float inside = min(min(e.x, e.y), 0.5 * (uv.x + uv.y) - 0.15 - d);
-      float pw = max(fwidth(inside), 1e-4);
-      float in1 = smoothstep(-pw, pw, inside);
-      float seam = 1.0 - smoothstep(0.02, 0.05 + pw, abs(inside));
-      alb = mix(alb, mix(vec3(dot(alb, vec3(0.333))), alb, 0.5) * 0.72, in1);
-      arm.g = mix(arm.g, arm.g * 0.9, in1);
-      alb *= 1.0 - 0.5 * seam;
-    }
+    // (no repair patches here: squared to the kerb by this triangle's distance gradient, a patch inside a junction was cut along the
+    // road's triangle edges into dark hard-edged triangles; repair patches are decal_patch rows, tools/district/decals.mjs, clear of junctions)
     float pan = 1.0 - smoothstep(g - aa, g + aa, d);
     float l = dot(alb, vec3(0.2126, 0.7152, 0.0722));
     vec3 concrete = mix(vec3(l), alb, 0.25) * 1.9;
