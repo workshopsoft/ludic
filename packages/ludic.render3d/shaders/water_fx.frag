@@ -43,6 +43,7 @@ void main() {
   float v = c.g;
   // the wave equation: the surface is pulled toward the mean of its neighbours, the motion is damped
   v += u_k * (l.r + r.r + d.r + u.r - 4.0 * h);
+  v += 0.12 * (l.g + r.g + d.g + u.g - 4.0 * v);   // viscosity: the fine ripples die faster than the long swell
   v *= u_damp;
   v -= 0.003 * h;                  // a little pull to rest: no mound of water outlives what made it
   h += v;
