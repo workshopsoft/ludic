@@ -14,7 +14,7 @@
 ; The units follow cocoa.ll's points and backing pixels: a game asks for a 960 x 540
 ; window, the display's whole-number scale (w_fit_scale, win32.ll) turns that into
 ; pixels, win_scale reports the factor as the Retina backing scale is reported,
-; and the mouse keeps arriving in the game's own units because W_scale divides by it.
+; and the mouse arrives in the drawable's pixels, as cocoa.ll's does (win32.ll win_mouse).
 ; ============================================================================
 
 @W_hwnd  = external global ptr
@@ -36,7 +36,7 @@ declare ptr @MonitorFromWindow(ptr, i32)
 declare i32 @GetMonitorInfoA(ptr, ptr)
 declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 
-@W_pixscale = internal global i32 1
+@W_pixscale = external global i32
 @W_fs       = internal global i32 0
 @W_fs_style = internal global i64 0
 @W_fs_rect  = internal global [4 x i32] zeroinitializer

@@ -114,6 +114,9 @@ declare void @llvm.memset.p0.i64(ptr, i8, i64, i1)
 @W_fbw     = global i32 320
 @W_fbh     = global i32 240
 @W_scale   = global i32 3
+; the display's pixels per window unit (cocoa.ll's backing scale): win32_window.ll's win_resize sets it for a
+; GPU window; a software framebuffer never changes it, its scale lives in W_scale alone
+@W_pixscale = global i32 1
 
 @W_fb      = internal global ptr null
 @W_key     = internal global i32 0
@@ -1066,7 +1069,7 @@ ret:
   ret void
 }
 
-; [x, y, buttons, wheel, raw dx, raw dy]; the wheel and the raw motion are per call
+; [x, y, buttons, wheel, raw dx, raw dy]; x, y in the drawable's pixels; the wheel and the raw motion are per call
 define void @win_mouse(ptr %out) {
 entry:
   %pt = alloca [8 x i8], align 4
@@ -1128,9 +1131,17 @@ clamp:
   store i32 %y2, ptr @W_my
   br label %emit
 emit:
-  %mx = load i32, ptr @W_mx
+  ; the position in the DRAWABLE's pixels, as cocoa.ll reports it (what the game draws and hit-tests its UI in):
+  ; W_mx / W_my are window units, and a GPU window's drawable is W_pixscale times that. Reporting the units put
+  ; every click at 1/W_pixscale of its distance from the corner on a scaled display (175% -> half), off every button
+  %mxu = load i32, ptr @W_mx
+  %myu = load i32, ptr @W_my
+  %psc0 = load i32, ptr @W_pixscale
+  %pslo = icmp slt i32 %psc0, 1
+  %psc = select i1 %pslo, i32 1, i32 %psc0
+  %mx = mul i32 %mxu, %psc
+  %my = mul i32 %myu, %psc
   store i32 %mx, ptr %out
-  %my = load i32, ptr @W_my
   %p1 = getelementptr i32, ptr %out, i32 1
   store i32 %my, ptr %p1
   %mb = load i32, ptr @W_mbtn
