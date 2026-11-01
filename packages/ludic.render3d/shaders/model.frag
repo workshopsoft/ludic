@@ -1063,7 +1063,7 @@ void main() {
     vec3 hh = normalize(vv + u_sun_dir);
     float NoH = max(dot(n, hh), 0.0);
     float NoV = max(dot(n, vv), 0.0);
-    float sheen = pow(NoH, 26.0) * 0.55 + pow(1.0 - NoV, 4.0) * 0.05;
+    float sheen = pow(1.0 - NoV, 4.0) * 0.05;   // the waxy rim only: the tight glint lobe (pow(NoH, 26) * 0.55) saturated every sun-facing needle card to white specks (2026-11-01 fir shots)
     sheen *= smoothstep(0.10, 0.42, NoV);
 #ifdef BLADE
     sheen *= 0.2;   // a sward seen from above is tips edge-on to the sun: the leaf's glint frosted them white
