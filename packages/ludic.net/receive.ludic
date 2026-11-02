@@ -25,6 +25,9 @@ function net__packet(net_st: mut NetState, n0: int, ip: int, port: int) -> void 
   let p = net_st.net__peers[slot]
   var n = n0
   if nb_get8(net_st.net__in, 3) == 2 {
+    # A sealed packet says who sent it (bytes 8 .. 12), and only the pid this slot holds may: both directions are sealed under one key, so the
+    # host's own packet, sent back to it from the guest's address, would open as the guest's and its messages be taken as the guest's
+    if nb_get32(net_st.net__in, 8) != p.pid { return }
     n = net__sec_open(net_st, slot, n0)                          # a sealed packet: its tag, its counter, its messages decrypted (secure.ludic)
     if n < 0 { return }
   } else if p.sec_in {
@@ -35,15 +38,22 @@ function net__packet(net_st: mut NetState, n0: int, ip: int, port: int) -> void 
   # (a re-join) carries the old numbers and would drop the new hello as already taken
   let ack = nb_get32(net_st.net__in, 12)
   if ack > p.acked and ack < p.next_id {
+    net__rtt_sample(net_st, p, ack)
     p.acked = ack
     p.dup = 0
-  } else if p.acked < p.next_id - 1 {
-    # a reliable message of ours is out, and the packets from it still acknowledge nothing new: the receiver takes them strictly in order and
-    # drops what comes after a lost one, so it is waiting for it. Sent again at once (not a quarter second after each was sent: Unreal's
-    # NetConnection resends on a negative acknowledgement, TCP on three duplicate acknowledgements)
+  } else if ack == p.acked and p.acked < p.next_id - 1 and nb_get8(net_st.net__in, 17) > 0 {
+    # A reliable message of ours is out, the packet acknowledges nothing new, and it says the peer has had a reliable message past the one
+    # it waits for (byte 17): the receiver takes them strictly in order and drops what comes after a lost one, so one was lost. Three such
+    # packets in a row (TCP's three duplicate acknowledgements, RFC 5681 3.2: one or two may be packets that came out of order) send every
+    # message it has not taken again at once, and no sooner again than a round trip later, when the resent ones can have been taken (Unreal's
+    # NetConnection resends on a negative acknowledgement from the packet history in the same way). A packet that only acknowledges nothing
+    # new is no evidence: on a line slower than the packets are frequent, every packet the peer sends before ours arrives does that
     p.dup += 1
-    if p.dup >= 3 {
+    var wait = p.srtt
+    if not p.rtt_any { wait = p.rto }
+    if p.dup >= 3 and net_st.net__time - p.fast_t >= wait {
       p.dup = 0
+      p.fast_t = net_st.net__time
       net__resend_now(net_st, p)
     }
   }
@@ -60,21 +70,32 @@ function net__slot_for(net_st: mut NetState, n: int, ip: int, port: int) -> int 
   }
   if net_st.net__state != NET_HOSTING { return -1 }
   if n < 28 or nb_get8(net_st.net__in, 3) != 1 or nb_get8(net_st.net__in, 20) != NET_HELLO { return -1 }       # (a stranger's hello is plain)
-  # a host with a number of its own (net_secret_set) takes a stranger only when it answers a challenge: its address is then its own. A
-  # relayed guest (the relay's address, a made-up port) is the matchmaker's to vouch for
-  if net_st.net__secret != 0 and not (net_st.net__relay_ip != 0 and ip == net_st.net__relay_ip) {
-    let want = net__cookie_for(net_st, ip, port)
-    if token != want {
-      net__challenge(net_st, ip, port, want)
+  # A hardened host (net_harden) takes a stranger only when it answers a challenge: its address is then its own. A guest the relay brings
+  # (a packet unwrapped from the relay's own address and port; the relay's address and a made-up port) cannot be sent a challenge it would
+  # answer, and is the matchmaker's to vouch for: but no more than NET_WAIT_RELAYED of those wait at once (a source address of the relay's,
+  # made up, gets that far and no further)
+  let relayed = net_st.net__from_relay
+  if net_st.net__hardened and not relayed {
+    let c = net__cookie_for(net_st, ip, port, false)
+    if token != c and token != net__cookie_for(net_st, ip, port, true) {
+      net__challenge(net_st, ip, port, c)
       return -1
     }
   }
   var held = 0
+  var waiting = 0
   for i in 1 .. NET_PEERS {
     let q = net_st.net__peers[i]
-    if q.on and q.ip == ip { held += 1 }
+    if q.on and q.ip == ip {
+      held += 1
+      if q.pid < 2 { waiting += 1 }
+    }
   }
-  if held >= NET_PER_IP { return -1 }
+  if relayed {
+    if waiting >= NET_WAIT_RELAYED { return -1 }
+  } else if held >= NET_PER_IP or waiting >= NET_WAIT_PER_IP {
+    return -1
+  }
   for i in 1 .. NET_PEERS {
     if not net_st.net__peers[i].on {
       net__open(net_st, i, ip, port, 0)
@@ -87,7 +108,7 @@ function net__slot_for(net_st: mut NetState, n: int, ip: int, port: int) -> int 
 function net__messages(net_st: mut NetState, slot: int, n: int) -> void {
   let p = net_st.net__peers[slot]
   let from = nb_get32(net_st.net__in, 8)
-  let count = nb_get32(net_st.net__in, 16)
+  let count = nb_get8(net_st.net__in, 16)                       # (at most 250; byte 17 is the peer's word on a loss: net__packet)
   var o = 20
   for c in 0 .. count {
     if o + 4 > n { return }
@@ -107,6 +128,7 @@ function net__messages(net_st: mut NetState, slot: int, n: int) -> void {
     if rel {
       p.ack_due = true
       if id != p.recv_id + 1 { take = false } else { p.recv_id = id }
+      if id > p.seen_id and id < p.recv_id + 1000000 { p.seen_id = id }   # (what the next packet to it says: send.ludic byte 17)
     }
     if take { net__deliver(net_st, slot, from, kind, o, ml) }
     o += ml
@@ -126,25 +148,35 @@ function net__deliver(net_st: mut NetState, slot: int, from: int, kind: int, o: 
   q_push(net_inbox(net_st), m)
 }
 
-# the number a stranger's address is asked to answer with: made of the address and the host's own (16 bits and 15 bits a pass, so no
-# product passes 2^31). An address that never receives the challenge cannot know it
-function net__cookie_for(net_st: NetState, ip: int, port: int) -> int {
-  let a = ip & 65535
-  let b = (ip >> 16) & 65535
-  let c = port & 65535
-  let s1 = net_st.net__secret & 65535
-  let s2 = (net_st.net__secret >> 16) & 32767
-  var h1 = s1
-  h1 = (h1 * 911 + a + 1) % 65521
-  h1 = (h1 * 911 + b + 3) % 65521
-  h1 = (h1 * 911 + c + 5) % 65521
-  h1 = (h1 * 911 + s2 + 7) % 65521
-  var h2 = s2 + 11
-  h2 = (h2 * 733 + c + 2) % 32749
-  h2 = (h2 * 733 + a + 4) % 32749
-  h2 = (h2 * 733 + b + 6) % 32749
-  h2 = (h2 * 733 + s1 + 8) % 32749
-  return h1 * 32768 + h2 + 1
+# The number a stranger's address is asked to answer with: the first four bytes of HMAC-SHA256 under the host's secret of the address, the
+# port and the secret's epoch, never 0 (Unreal's StatelessConnectHandlerComponent::GenerateCookie: Cookie = HMAC(HandshakeSecret, Timestamp +
+# Client IP + Client Port)). Only the host knows the secret, so an address that never receives the challenge cannot know its number, and one
+# address's number says nothing about another's. `old`: under the secret before this one
+function net__cookie_for(net_st: mut NetState, ip: int, port: int, old: bool) -> int {
+  let m = net_st.net__ckb
+  nb_put32(m, 0, ip)
+  nb_put32(m, 4, port)
+  var key = net_st.net__key_now
+  var gen = net_st.net__key_gen
+  if old {
+    key = net_st.net__key_old
+    gen -= 1
+  }
+  nb_put32(m, 8, gen)
+  net__hmac(net_st, key, m, 12)
+  let c = nb_get32(net_st.net__sd, 0)
+  if c == 0 { return 1 }
+  return c
+}
+
+# A new secret for the challenge, from the system's CSPRNG, and the one it replaces still taken for one more epoch: every 15 s and up to 5 s
+# more at random, so a number lives 15 to 40 s (Unreal's StatelessConnectHandlerComponent::UpdateSecret: two secrets, SECRET_UPDATE_TIME 15 +
+# rand(SECRET_UPDATE_TIME_VARIANCE 5) s). A number caught on the wire is no good for long, and none is good after the host restarts
+function net__key_roll(net_st: mut NetState) -> void {
+  nb_copy(net_st.net__key_old, 0, net_st.net__key_now, 0, 32)
+  for i in 0 .. 8 { nb_put32(net_st.net__key_now, i * 4, Crypto.random_u32()) }
+  net_st.net__key_gen += 1
+  net_st.net__key_t = net_st.net__time + 15.0 + float((Crypto.random_u32() >> 1) % 5000) / 1000.0
 }
 
 # the challenge to a stranger: "MC", the protocol, a zero, the number, zeros to 20 bytes (the size of the smallest packet taken)
@@ -177,11 +209,39 @@ function net__challenge_packet(net_st: mut NetState, n: int, ip: int, port: int)
   return true
 }
 
-# every reliable message of ours the peer has not taken goes again in the next flush (one that went in the last tenth of a second has not
-# had its answer's time yet)
+# every reliable message of ours the peer has not taken goes again in the next flush: the receiver drops every one after the lost one, so the
+# ones sent since it are lost too (they are a round trip's worth at most: this runs once a round trip)
 function net__resend_now(net_st: mut NetState, p: NetPeer) -> void {
   for i in 0 .. len(p.queue) {
     let m = p.queue[i]
-    if m.rel and m.id > p.acked and m.sent >= 0.0 and net_st.net__time - m.sent > 0.1 { m.sent = -1.0 }
+    if m.rel and m.id > p.acked and m.sent >= 0.0 { m.sent = -1.0 }
+  }
+}
+
+# The round trip measured by the acknowledgement of `ack`, and the retransmission timeout made of it (RFC 6298 2: SRTT and RTTVAR, RTO =
+# SRTT + 4 RTTVAR; ENet's protocol.c: roundTripTimeout = roundTripTime + 4 roundTripTimeVariance). Only a message that went once is measured
+# (Karn's rule): the acknowledgement of one sent again may be the first send's
+function net__rtt_sample(net_st: mut NetState, p: NetPeer, ack: int) -> void {
+  for i in 0 .. len(p.queue) {
+    let m = p.queue[i]
+    if not m.rel or m.id != ack { continue }
+    if m.tries != 1 or m.sent < 0.0 { return }
+    let r = net_st.net__time - m.sent
+    if r < 0.0 { return }
+    if not p.rtt_any {
+      p.rtt_any = true
+      p.srtt = r
+      p.rttvar = r / 2.0
+    } else {
+      var d = p.srtt - r
+      if d < 0.0 { d = 0.0 - d }
+      p.rttvar = 0.75 * p.rttvar + 0.25 * d
+      p.srtt = 0.875 * p.srtt + 0.125 * r
+    }
+    var t = p.srtt + 4.0 * p.rttvar
+    if t < NET_RTO_MIN { t = NET_RTO_MIN }
+    if t > NET_RTO_MAX { t = NET_RTO_MAX }
+    p.rto = t
+    return
   }
 }

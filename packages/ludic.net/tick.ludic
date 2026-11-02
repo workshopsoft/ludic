@@ -8,6 +8,7 @@ export function net_begin(net_st: mut NetState, dt: float) -> void {
   # Kept under an hour: past 3600 s it is moved back by 3000 and every time taken from it with it
   if net_st.net__time > 3600.0 { net__rebase(net_st, 3000.0) }
   net_st.net__time = net_st.net__time + dt
+  if net_st.net__hardened and net_st.net__time >= net_st.net__key_t { net__key_roll(net_st) }
   net__pump(net_st)
 }
 
@@ -118,11 +119,14 @@ export function net_fresh(net_st: mut NetState) -> void { if net_st.net__state =
 function net__rebase(net_st: mut NetState, by: float) -> void {
   net_st.net__time = net_st.net__time - by
   net_st.net__beat_t = net_st.net__beat_t - by
+  net_st.net__dial_heard = net_st.net__dial_heard - by     # (room_tick.ludic compares it with the host's heard: both move, or a join mid-rebase reads as answered)
+  net_st.net__key_t = net_st.net__key_t - by
   if net_st.net__peers == null { return }
   for i in 0 .. NET_PEERS {
     let p = net_st.net__peers[i]
     p.heard = p.heard - by
     p.close_t = p.close_t - by
+    p.fast_t = p.fast_t - by
     for k in 0 .. len(p.queue) {
       let m = p.queue[k]
       m.made = m.made - by

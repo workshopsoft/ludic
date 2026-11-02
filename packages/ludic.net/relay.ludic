@@ -75,11 +75,13 @@ function net__relay_send(net_st: mut NetState, p: NetPeer, o: int) -> int {
 function net__unwrap(net_st: mut NetState, n: int, ip: int, port: int) -> int {
   net_st.net__from_ip = ip
   net_st.net__from_port = port
+  net_st.net__from_relay = false
   if n < 6 or net_st.net__relay_ip == 0 or ip != net_st.net__relay_ip or port != net_st.net__relay_port { return n }
   if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'L' or nb_get8(net_st.net__in, 2) != 'R' or nb_get8(net_st.net__in, 3) != 'S' { return n }
   let sid = (nb_get8(net_st.net__in, 4) << 8) | nb_get8(net_st.net__in, 5)
   nb_copy(net_st.net__in, 0, net_st.net__in, 6, n - 6)
   # the host: this guest's session; a guest: the relay itself is its host
   if sid > 0 { net_st.net__from_port = net__conf(net_st).relay_port0 + sid }
+  net_st.net__from_relay = true
   return n - 6
 }
