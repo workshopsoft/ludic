@@ -96,8 +96,23 @@ export function net_accept(net_st: mut NetState, slot: int) -> int {
   if net_st.net__state != NET_HOSTING or not net_peer_on(net_st, slot) { return 0 }
   let p = net_st.net__peers[slot]
   if p.pid >= 2 { return p.pid }
-  p.pid = net_st.net__next_pid
-  net_st.net__next_pid += 1
+  # a pid is a byte on a game's wire (2 .. 255): handed out round and round, never one a peer holds now - a counter that only went up passed
+  # 255 at the 254th join since the host began, and a host that stayed up for days wrote pids that were another player's or no player's
+  var pid = net_st.net__next_pid
+  var found = 0
+  for t in 0 .. 254 {
+    if pid < 2 or pid > 255 { pid = 2 }
+    var used = false
+    for i in 1 .. NET_PEERS { if net_st.net__peers[i].on and net_st.net__peers[i].pid == pid { used = true } }
+    if not used {
+      found = pid
+      break
+    }
+    pid += 1
+  }
+  if found == 0 { return 0 }
+  p.pid = found
+  net_st.net__next_pid = found + 1
   return p.pid
 }
 

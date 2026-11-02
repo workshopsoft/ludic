@@ -3,6 +3,10 @@
 # once the game has queued its own, net_end (heartbeats, sending, letting slots go)
 export function net_begin(net_st: mut NetState, dt: float) -> void {
   if not net_active(net_st) { return }
+  # The session's clock is a float (seven digits): a host's frame is a few milliseconds, and past 18 hours a float's step is more than twice a
+  # frame, so `time + dt` went on being `time` - no packet was sent again, no silent peer let go, no heartbeat - until the host was restarted.
+  # Kept under an hour: past 3600 s it is moved back by 3000 and every time taken from it with it
+  if net_st.net__time > 3600.0 { net__rebase(net_st, 3000.0) }
   net_st.net__time = net_st.net__time + dt
   net__pump(net_st)
 }
@@ -110,3 +114,19 @@ function net__lose_with(net_st: mut NetState, why: int, text: string) -> void {
 
 # a lost session read and done with: idle again
 export function net_fresh(net_st: mut NetState) -> void { if net_st.net__state == NET_LOST { net_st.net__state = NET_IDLE } }
+
+function net__rebase(net_st: mut NetState, by: float) -> void {
+  net_st.net__time = net_st.net__time - by
+  net_st.net__beat_t = net_st.net__beat_t - by
+  if net_st.net__peers == null { return }
+  for i in 0 .. NET_PEERS {
+    let p = net_st.net__peers[i]
+    p.heard = p.heard - by
+    p.close_t = p.close_t - by
+    for k in 0 .. len(p.queue) {
+      let m = p.queue[k]
+      m.made = m.made - by
+      if m.sent >= 0.0 { m.sent = m.sent - by }
+    }
+  }
+}
