@@ -56,6 +56,7 @@ port NetSocket { open, close, send, recv, from_ip, from_port, port, local_ip }  
 | --- | --- |
 | `net_config(c)` | before the first session |
 | `net_host(port, token) -> bool` | open a socket and take guests (and a room, when the matchmaker is on); false: `net_why()` |
+| `net_secret_set(n)` | a host's own number (not 0): a stranger's hello is answered with a challenge (`MC`) and counted only when the next packet brings the number back (a joining machine answers by itself); at most `NET_PER_IP` slots to one address; status answers capped at `NET_STATUS_PER_SEC` a second |
 | `net_reserve(n, per_peer)` | make the message pool n messages and each peer's queue room for per_peer up front (a dedicated server: its most players times what each can have in flight), so neither grows in play |
 | `net_hello_set()` | the message just written is the hello: sent again on every dial |
 | `net_join(ip, port) -> bool`, `net_room_join(code) -> bool` | dial an address, or ask the matchmaker for a room's host |

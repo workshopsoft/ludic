@@ -2,6 +2,7 @@
 export const NET_MTU: int = 1200
 export const NET_PEERS: int = 128      # a host: slot 0 unused, a guest each after (a dedicated server: 127 players); a guest: 0 is the host
 export const NET_TIMEOUT: int = 10     # seconds of silence before a peer is gone
+export const NET_PER_IP: int = 64      # slots one address may hold on a host (a household behind one router is a few; a flood from one machine is stopped)
 export const NET_HELLO: int = 1        # the one kind a stranger may send a host; every other is the game's
 const NET_BEAT: int = 0                # a heartbeat, never delivered
 
@@ -32,6 +33,7 @@ property NetPeer {
   recv_id: int = 0,            # the highest reliable id taken from it, in order
   acked: int = 0,              # the highest id it has taken from us
   ack_due: bool = false,
+  dup: int = 0,                # packets in a row that acknowledged nothing new while a reliable message of ours waits (a loss, or a slow line)
   queue: []NetMsg,
   back: []NetMsg,              # the queue's other list, filled by a flush and swapped in
   closing: bool = false,       # let go once it has taken close_id
@@ -92,6 +94,10 @@ export state NetState {
   net__sock: int = 0
   net__time: float = 0.0
   net__token: int = 0
+  net__status_sec: int = 0        # the second (net time) the status answers are counted in, and how many it has given (status.ludic)
+  net__status_cnt: int = 0
+  net__secret: int = 0            # a host's own number (net_secret_set): a stranger's hello is answered with a challenge and counted only with its answer
+  net__cookie: int = 0            # a joining machine's answer to that challenge, sent in its packets' token until the welcome
   net__my_pid: int = 0
   net__next_pid: int = 2
   net__peers: []NetPeer = net__peers_new()

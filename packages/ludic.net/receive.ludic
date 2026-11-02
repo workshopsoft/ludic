@@ -15,6 +15,7 @@ function net__packet(net_st: mut NetState, n: int, ip: int, port: int) -> void {
   @alloc_ok("only while tracing every packet")
   if NetWorld.trace() { net__log(`in {n} bytes from {Udp.ip_text(ip)}:{port}`) }
   if n < 20 { return }
+  if net__challenge_packet(net_st, n, ip, port) { return }   # a host's challenge to this joining machine
   if net__stun_packet(net_st, n) { return }                # what the router looks like from outside
   if net__status_packet(net_st, n, ip, port) { return }    # a server browser asking how this host is (status.ludic)
   if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'L' { return }   # a punch ("MP") or noise
@@ -26,7 +27,19 @@ function net__packet(net_st: mut NetState, n: int, ip: int, port: int) -> void {
   # only what this connection has sent can be acknowledged: a packet from the one before it
   # (a re-join) carries the old numbers and would drop the new hello as already taken
   let ack = nb_get32(net_st.net__in, 12)
-  if ack > p.acked and ack < p.next_id { p.acked = ack }
+  if ack > p.acked and ack < p.next_id {
+    p.acked = ack
+    p.dup = 0
+  } else if p.acked < p.next_id - 1 {
+    # a reliable message of ours is out, and the packets from it still acknowledge nothing new: the receiver takes them strictly in order and
+    # drops what comes after a lost one, so it is waiting for it. Sent again at once (not a quarter second after each was sent: Unreal's
+    # NetConnection resends on a negative acknowledgement, TCP on three duplicate acknowledgements)
+    p.dup += 1
+    if p.dup >= 3 {
+      p.dup = 0
+      net__resend_now(net_st, p)
+    }
+  }
   net__messages(net_st, slot, n)
 }
 
@@ -40,6 +53,21 @@ function net__slot_for(net_st: mut NetState, n: int, ip: int, port: int) -> int 
   }
   if net_st.net__state != NET_HOSTING { return -1 }
   if n < 28 or nb_get8(net_st.net__in, 20) != NET_HELLO { return -1 }
+  # a host with a number of its own (net_secret_set) takes a stranger only when it answers a challenge: its address is then its own. A
+  # relayed guest (the relay's address, a made-up port) is the matchmaker's to vouch for
+  if net_st.net__secret != 0 and not (net_st.net__relay_ip != 0 and ip == net_st.net__relay_ip) {
+    let want = net__cookie_for(net_st, ip, port)
+    if token != want {
+      net__challenge(net_st, ip, port, want)
+      return -1
+    }
+  }
+  var held = 0
+  for i in 1 .. NET_PEERS {
+    let q = net_st.net__peers[i]
+    if q.on and q.ip == ip { held += 1 }
+  }
+  if held >= NET_PER_IP { return -1 }
   for i in 1 .. NET_PEERS {
     if not net_st.net__peers[i].on {
       net__open(net_st, i, ip, port, 0)
@@ -89,4 +117,64 @@ function net__deliver(net_st: mut NetState, slot: int, from: int, kind: int, o: 
   m.len = ml
   nb_copy(m.data, 0, net_st.net__in, o, ml)
   q_push(net_inbox(net_st), m)
+}
+
+# the number a stranger's address is asked to answer with: made of the address and the host's own (16 bits and 15 bits a pass, so no
+# product passes 2^31). An address that never receives the challenge cannot know it
+function net__cookie_for(net_st: NetState, ip: int, port: int) -> int {
+  let a = ip & 65535
+  let b = (ip >> 16) & 65535
+  let c = port & 65535
+  let s1 = net_st.net__secret & 65535
+  let s2 = (net_st.net__secret >> 16) & 32767
+  var h1 = s1
+  h1 = (h1 * 911 + a + 1) % 65521
+  h1 = (h1 * 911 + b + 3) % 65521
+  h1 = (h1 * 911 + c + 5) % 65521
+  h1 = (h1 * 911 + s2 + 7) % 65521
+  var h2 = s2 + 11
+  h2 = (h2 * 733 + c + 2) % 32749
+  h2 = (h2 * 733 + a + 4) % 32749
+  h2 = (h2 * 733 + b + 6) % 32749
+  h2 = (h2 * 733 + s1 + 8) % 32749
+  return h1 * 32768 + h2 + 1
+}
+
+# the challenge to a stranger: "MC", the protocol, a zero, the number, zeros to 20 bytes (the size of the smallest packet taken)
+function net__challenge(net_st: mut NetState, ip: int, port: int, cookie: int) -> void {
+  let b = net_st.net__out
+  for i in 0 .. 20 { nb_put8(b, i, 0) }
+  nb_put8(b, 0, 'M')
+  nb_put8(b, 1, 'C')
+  nb_put8(b, 2, net__conf(net_st).proto)
+  nb_put32(b, 4, cookie)
+  NetSocket.send(net_st.net__sock, ip, port, b, 20)
+}
+
+# a host's challenge, to a machine that is joining: the number kept and the hello sent again at once with it
+function net__challenge_packet(net_st: mut NetState, n: int, ip: int, port: int) -> bool {
+  if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'C' { return false }
+  if net_st.net__state != NET_JOINING or net_st.net__via_relay { return true }
+  if ip != net_st.net__join_ip or port != net_st.net__join_port { return true }
+  if nb_get8(net_st.net__in, 2) != net__conf(net_st).proto { return true }
+  let c = nb_get32(net_st.net__in, 4)
+  if c == 0 or c == net_st.net__cookie { return true }
+  net_st.net__cookie = c
+  let p = net_st.net__peers[0]
+  if p.on {
+    for i in 0 .. len(p.queue) {
+      let m = p.queue[i]
+      m.sent = -1.0
+    }
+  }
+  return true
+}
+
+# every reliable message of ours the peer has not taken goes again in the next flush (one that went in the last tenth of a second has not
+# had its answer's time yet)
+function net__resend_now(net_st: mut NetState, p: NetPeer) -> void {
+  for i in 0 .. len(p.queue) {
+    let m = p.queue[i]
+    if m.rel and m.id > p.acked and m.sent >= 0.0 and net_st.net__time - m.sent > 0.1 { m.sent = -1.0 }
+  }
 }

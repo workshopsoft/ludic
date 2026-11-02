@@ -6,6 +6,7 @@
 #
 # A browser asks from a plain socket of its own (Udp.open(0)): net_status_query writes the query, net_status_reply reads an answer.
 
+export const NET_STATUS_PER_SEC: int = 50     # answers a second a hardened host gives (net_secret_set); a browser asks a server once in a while
 export const NET_STATUS_MOST: int = 1024       # a status's bytes at most (one packet under the MTU)
 
 # the status a query is answered with: n bytes of b (copied: the game may write its next one into the same buffer); n = 0 stops answering
@@ -25,6 +26,17 @@ function net__status_packet(net_st: mut NetState, n: int, ip: int, port: int) ->
   if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'Q' { return false }
   if net_st.net__state != NET_HOSTING or net_st.net__status_n <= 0 { return true }
   if nb_get8(net_st.net__in, 2) != net__conf(net_st).proto { return true }
+  # a hardened host (net_secret_set) answers at most NET_STATUS_PER_SEC a second: a 20-byte query with a made-up source address brings a
+  # kilobyte to whoever that address is, and a host that is a lever on someone else's line is cut off at its own share of it
+  if net_st.net__secret != 0 {
+    let sec = int(net_st.net__time)
+    if sec != net_st.net__status_sec {
+      net_st.net__status_sec = sec
+      net_st.net__status_cnt = 0
+    }
+    if net_st.net__status_cnt >= NET_STATUS_PER_SEC { return true }
+    net_st.net__status_cnt += 1
+  }
   let b = net_st.net__status
   nb_put8(b, 2, net__conf(net_st).proto)
   nb_put8(b, 3, 0)

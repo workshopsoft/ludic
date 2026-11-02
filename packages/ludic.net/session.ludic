@@ -25,6 +25,7 @@ export function net_join(net_st: mut NetState, ip: int, port: int) -> bool {
   if not net__socket(net_st) { return false }
   for i in 0 .. NET_PEERS { np_close(net_st, i) }
   net_st.net__token = 0
+  net_st.net__cookie = 0
   net_st.net__my_pid = 0
   net_st.net__state = NET_JOINING
   net_dial(net_st, ip, port)
@@ -50,6 +51,7 @@ export function net_hello_set(net_st: mut NetState) -> void {
 # (again) to that address, with a fresh connection and the hello sent anew
 export function net_dial(net_st: mut NetState, ip: int, port: int) -> void {
   np_close(net_st, 0)
+  net_st.net__cookie = 0
   net_st.net__join_ip = ip
   net_st.net__join_port = port
   net__open(net_st, 0, ip, port, 1)
@@ -73,6 +75,13 @@ export function net_become_host(net_st: mut NetState, token: int) -> void {
   net_st.net__next_pid = 2
   net_st.net__token = token
 }
+
+# A host that sets a number of its own (anything but 0, from the game's random) asks every stranger to prove its address before it gets
+# a slot: a hello from an address is answered with a challenge (a number made of the address and this one) and counted only when the
+# next packet brings the number back. A joining machine answers by itself (receive.ludic). Without it, a flood of hellos with made-up
+# source addresses filled every slot, and none of the senders ever saw an answer (Quake 3's getchallenge, Unreal's stateless handshake
+# cookie, Source's challenge number). 0 (the default): a host that does not ask.
+export function net_secret_set(net_st: mut NetState, secret: int) -> void { net_st.net__secret = secret }
 
 # a welcome: this machine is `pid` in the session `token`
 export function net_joined_as(net_st: mut NetState, token: int, pid: int) -> void {

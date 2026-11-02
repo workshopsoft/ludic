@@ -45,7 +45,9 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
   nb_put8(net_st.net__out, 1, 'L')
   nb_put8(net_st.net__out, 2, net__conf(net_st).proto)
   nb_put8(net_st.net__out, 3, 1)
-  nb_put32(net_st.net__out, 4, net_st.net__token)
+  var token = net_st.net__token
+  if net_st.net__state == NET_JOINING and net_st.net__cookie != 0 { token = net_st.net__cookie }       # (a joining machine answers the host's challenge)
+  nb_put32(net_st.net__out, 4, token)
   nb_put32(net_st.net__out, 8, net_st.net__my_pid)
   nb_put32(net_st.net__out, 12, p.recv_id)
   nb_put32(net_st.net__out, 16, count)
