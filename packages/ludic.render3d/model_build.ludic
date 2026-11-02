@@ -46,6 +46,15 @@ function model_from_arrays(render3d_st: mut Render3dState, v: floats, c: floats,
   return model
 }
 
+# the buffers handed to model_from_arrays, given back: the model copied them to the GPU and keeps none (c may be null)
+export function model_arrays_free(v: floats, c: floats, ix: words) -> void {
+  unsafe {
+    free(v)
+    if c != null { free(c) }
+    free(ix)
+  }
+}
+
 # ---- a model's box (Model.has_box, bx0 .. bz1: static_chunks.ludic culls by it) -----------------------------------------------------------
 # empty: the next grow sets it
 function model_box_reset(m: Model) -> void {
