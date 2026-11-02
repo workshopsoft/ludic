@@ -37,8 +37,10 @@ property NetPeer {
   sec_in: bool = false,        # a sealed packet has come from it: a plain one is dropped from now on
   sec_out: bool = false,       # what is sent to it is sealed
   rx_any: bool = false,
-  ck: []byte,                  # the cipher key and the MAC key (32 bytes each)
+  ck: []byte,                  # the cipher key and the MAC key it is sealed for (32 bytes each; kx.ludic: one pair a direction)
   mk: []byte,
+  rk: []byte,                  # ... and the pair its own sealed packets are opened with
+  rm: []byte,
   tx_ctr: int = 0,             # the counter of the next sealed packet to it
   rx_max: int = 0,             # the newest counter taken from it, and which of the 32 before it have come (bit 0 is rx_max)
   rx_bits: int = 0,
@@ -56,6 +58,7 @@ export property NetMessage {
   from: int = 0,               # the sender's pid, as its header says
   kind: int = 0,
   len: int = 0,
+  sealed: bool = false,        # it came in a sealed packet (secure.ludic): a game takes a secret only from one
   data: []byte
 }
 
@@ -114,6 +117,24 @@ export state NetState {
   net__stl: []byte = buffer(128)
   net__sd: []byte = buffer(32)
   net__slb: []byte = buffer(16)
+  net__in_sealed: bool = false    # the packet being read was sealed (its messages are marked so)
+  net__fe: []long = net__fe_new() # kx.ludic's scratch: the field's elements, the clamped scalar, the base point
+  net__kz: []byte = buffer(32)
+  net__kbase: []byte = buffer(32)
+  net__ke_sk: []byte = buffer(32) # this machine's ephemeral key pair, for the handshake under way (the secret wiped once used)
+  net__ke_pk: []byte = buffer(32)
+  net__ki_sk: []byte = buffer(32) # a host's static identity (net_identity_set)
+  net__ki_pk: []byte = buffer(32)
+  net__ki_set: bool = false
+  net__kp_e: []byte = buffer(32)  # the other side's ephemeral public key, and a guest's host's static one, as read
+  net__kp_s: []byte = buffer(32)
+  net__kdh: []byte = buffer(32)   # a shared secret, the two of them, the salt, the info, HKDF's key, output and message
+  net__kikm: []byte = buffer(64)
+  net__ksalt: []byte = buffer(64)
+  net__kinfo: []byte = buffer(96)
+  net__kprk: []byte = buffer(32)
+  net__kokm: []byte = buffer(128)
+  net__kxm: []byte = buffer(160)
   net__secret: int = 0            # a host's own number (net_secret_set): a stranger's hello is answered with a challenge and counted only with its answer
   net__cookie: int = 0            # a joining machine's answer to that challenge, sent in its packets' token until the welcome
   net__my_pid: int = 0
@@ -161,6 +182,8 @@ function net__peers_new() -> []NetPeer {
     p.back = new []NetMsg
     p.ck = buffer(32)
     p.mk = buffer(32)
+    p.rk = buffer(32)
+    p.rm = buffer(32)
     push(out, p)
   }
   return out

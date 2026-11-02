@@ -1,0 +1,395 @@
+# kx.ludic - the key exchange: two machines that never sent a secret agree on a session's keys, one pair a direction, and the guest knows it is
+# the host it met before (the shape of Valve's GameNetworkingSockets handshake and of Noise's "NK": an ephemeral key each, and the host's
+# static one).
+#
+#   the guest's hello   its ephemeral X25519 public key E_c (net_kx_hello: 32 bytes in the game's hello)
+#   the host's answer   its ephemeral public key E_s and its STATIC public key S_s (net_kx_reply: 64 bytes in the game's first answer), once
+#                       net_kx_accept took the guest's key and made the keys
+#   the keys            HKDF-SHA256 (RFC 5869): salt E_c || E_s, input DH(e_c, E_s) || DH(e_c, S_s) - each side computes it from its own secret
+#                       and the other's public key -, info "ludic.net kx 1" || S_s; 128 bytes: the guest-to-host cipher and MAC keys, then the
+#                       host-to-guest pair. A guest seals with the first pair and opens with the second, a host the other way round
+#   X25519              RFC 7748, the Montgomery ladder over GF(2^255 - 19) as TweetNaCl writes it (a field element: 16 limbs of 16 bits in
+#                       64-bit longs; carries by an arithmetic shift, branch-free swaps): no branch and no index depends on a secret
+#
+# Only the host's static key proves who answered: a man in the middle answers with its own, and the guest sees a static key that is not the one
+# it pinned (the game keeps the key it saw first per address: trust on first use, as SSH's known_hosts). The ephemeral keys give each session
+# fresh keys (forward secrecy: a static key stolen later does not open a recorded session), and DH(e_c, S_s) ties them to the host's identity.
+# A shared secret of all zeros (a low-order point, RFC 7748 6.1) is refused. The keys go into secure.ludic's sealing; nothing secret is sent.
+# The scratch is the state's: nothing is made a packet, and a handshake makes only the random bytes' text.
+
+const NET_FE_N: int = 224
+const NET_FA: int = 0          # the field's scratch (net__fe): the ladder's a, b, c, d, e, f, the point's u, the inverse's and the packing's
+const NET_FB: int = 16
+const NET_FC: int = 32
+const NET_FD: int = 48
+const NET_FE: int = 64
+const NET_FF: int = 80
+const NET_FX: int = 96
+const NET_FI: int = 112
+const NET_FT: int = 128
+const NET_FM: int = 144
+const NET_FK: int = 160        # 121665, (A - 2) / 4 of the curve
+const NET_FP: int = 176        # a product's 31 limbs
+
+const NET_KX_INFO: string = "ludic.net kx 1"
+const NET_HEX: string = "0123456789abcdef"
+
+function net__fe_new() -> []long {
+  let f = new []long
+  for i in 0 .. NET_FE_N { push(f, long(0)) }
+  return f
+}
+
+# ---- GF(2^255 - 19) and X25519 (RFC 7748; TweetNaCl's car25519, sel25519, pack25519, M, inv25519, crypto_scalarmult) ------------------------
+
+# x >> 16 keeping the sign (Ludic's >> is logical): the top 16 bits filled with the sign bit
+function net__sar16(x: long) -> long {
+  let s: long = x >> 63
+  return (x >> 16) | ((0 - s) << 48)
+}
+
+# the limbs of the element at o carried back under 2^16 (the top's carry wraps round times 38: 2^256 = 38 mod p)
+function net__car(f: []long, o: int) -> void {
+  for i in 0 .. 16 {
+    f[o + i] = f[o + i] + 65536
+    let c = net__sar16(f[o + i])
+    if i < 15 { f[o + i + 1] = f[o + i + 1] + c - 1 } else { f[o] = f[o] + 38 * (c - 1) }
+    f[o + i] = f[o + i] - (c << 16)
+  }
+}
+
+# the elements at p and q swapped when b is 1, left when 0, the same work either way
+function net__sel(f: []long, p: int, q: int, b: int) -> void {
+  let c: long = 0 - long(b)
+  for i in 0 .. 16 {
+    let t = c & (f[p + i] ^ f[q + i])
+    f[p + i] = f[p + i] ^ t
+    f[q + i] = f[q + i] ^ t
+  }
+}
+
+function net__fadd(f: []long, o: int, a: int, b: int) -> void { for i in 0 .. 16 { f[o + i] = f[a + i] + f[b + i] } }
+function net__fsub(f: []long, o: int, a: int, b: int) -> void { for i in 0 .. 16 { f[o + i] = f[a + i] - f[b + i] } }
+
+# o = a * b (o may be a or b: the product is made apart first)
+function net__fmul(f: []long, o: int, a: int, b: int) -> void {
+  for i in 0 .. 31 { f[NET_FP + i] = 0 }
+  for i in 0 .. 16 {
+    let ai = f[a + i]
+    for j in 0 .. 16 { f[NET_FP + i + j] = f[NET_FP + i + j] + ai * f[b + j] }
+  }
+  for i in 0 .. 15 { f[NET_FP + i] = f[NET_FP + i] + 38 * f[NET_FP + i + 16] }
+  for i in 0 .. 16 { f[o + i] = f[NET_FP + i] }
+  net__car(f, o)
+  net__car(f, o)
+}
+
+# o = 1 / i, as i^(p - 2) (o may be i)
+function net__finv(f: []long, o: int, i: int) -> void {
+  for k in 0 .. 16 { f[NET_FI + k] = f[i + k] }
+  var a = 253
+  while a >= 0 {
+    net__fmul(f, NET_FI, NET_FI, NET_FI)
+    if a != 2 and a != 4 { net__fmul(f, NET_FI, NET_FI, i) }
+    a -= 1
+  }
+  for k in 0 .. 16 { f[o + k] = f[NET_FI + k] }
+}
+
+# the element at n as its 32 little-endian bytes, fully reduced mod p
+function net__fpack(f: []long, out: []byte, n: int) -> void {
+  for i in 0 .. 16 { f[NET_FT + i] = f[n + i] }
+  net__car(f, NET_FT)
+  net__car(f, NET_FT)
+  net__car(f, NET_FT)
+  for j in 0 .. 2 {
+    f[NET_FM] = f[NET_FT] - 0xffed
+    for i in 1 .. 15 {
+      f[NET_FM + i] = f[NET_FT + i] - 0xffff - ((f[NET_FM + i - 1] >> 16) & 1)
+      f[NET_FM + i - 1] = f[NET_FM + i - 1] & 0xffff
+    }
+    f[NET_FM + 15] = f[NET_FT + 15] - 0x7fff - ((f[NET_FM + 14] >> 16) & 1)
+    let b = int((f[NET_FM + 15] >> 16) & 1)
+    f[NET_FM + 14] = f[NET_FM + 14] & 0xffff
+    net__sel(f, NET_FT, NET_FM, 1 - b)
+  }
+  for i in 0 .. 16 {
+    out[2 * i] = int(f[NET_FT + i] & 255)
+    out[2 * i + 1] = int((f[NET_FT + i] >> 8) & 255)
+  }
+}
+
+# X25519(k, u) into q (32 bytes each; RFC 7748 5: the scalar clamped, the top bit of u ignored)
+function net__x25519(net_st: mut NetState, q: []byte, k: []byte, u: []byte) -> void {
+  let f = net_st.net__fe
+  let z = net_st.net__kz
+  for i in 0 .. 32 { z[i] = k[i] & 255 }
+  z[31] = (z[31] & 127) | 64
+  z[0] = z[0] & 248
+  for i in 0 .. 16 { f[NET_FX + i] = long(u[2 * i] & 255) + (long(u[2 * i + 1] & 255) << 8) }
+  f[NET_FX + 15] = f[NET_FX + 15] & 0x7fff
+  for i in 0 .. 16 {
+    f[NET_FB + i] = f[NET_FX + i]
+    f[NET_FA + i] = 0
+    f[NET_FC + i] = 0
+    f[NET_FD + i] = 0
+    f[NET_FK + i] = 0
+  }
+  f[NET_FA] = 1
+  f[NET_FD] = 1
+  f[NET_FK] = 0xdb41
+  f[NET_FK + 1] = 1
+  var i = 254
+  while i >= 0 {
+    let r = (z[i >> 3] >> (i & 7)) & 1
+    net__sel(f, NET_FA, NET_FB, r)
+    net__sel(f, NET_FC, NET_FD, r)
+    net__fadd(f, NET_FE, NET_FA, NET_FC)
+    net__fsub(f, NET_FA, NET_FA, NET_FC)
+    net__fadd(f, NET_FC, NET_FB, NET_FD)
+    net__fsub(f, NET_FB, NET_FB, NET_FD)
+    net__fmul(f, NET_FD, NET_FE, NET_FE)
+    net__fmul(f, NET_FF, NET_FA, NET_FA)
+    net__fmul(f, NET_FA, NET_FC, NET_FA)
+    net__fmul(f, NET_FC, NET_FB, NET_FE)
+    net__fadd(f, NET_FE, NET_FA, NET_FC)
+    net__fsub(f, NET_FA, NET_FA, NET_FC)
+    net__fmul(f, NET_FB, NET_FA, NET_FA)
+    net__fsub(f, NET_FC, NET_FD, NET_FF)
+    net__fmul(f, NET_FA, NET_FC, NET_FK)
+    net__fadd(f, NET_FA, NET_FA, NET_FD)
+    net__fmul(f, NET_FC, NET_FC, NET_FA)
+    net__fmul(f, NET_FA, NET_FD, NET_FF)
+    net__fmul(f, NET_FD, NET_FB, NET_FX)
+    net__fmul(f, NET_FB, NET_FE, NET_FE)
+    net__sel(f, NET_FA, NET_FB, r)
+    net__sel(f, NET_FC, NET_FD, r)
+    i -= 1
+  }
+  net__finv(f, NET_FC, NET_FC)
+  net__fmul(f, NET_FA, NET_FA, NET_FC)
+  net__fpack(f, q, NET_FA)
+  for k2 in 0 .. 32 { z[k2] = 0 }
+}
+
+# a public key: X25519(sk, 9)
+function net__x25519_base(net_st: mut NetState, pk: []byte, sk: []byte) -> void {
+  let u = net_st.net__kbase
+  for i in 0 .. 32 { u[i] = 0 }
+  u[0] = 9
+  net__x25519(net_st, pk, sk, u)
+}
+
+# ---- HKDF-SHA256 (RFC 5869) ----------------------------------------------------------------------------------------------------------------
+
+# HKDF-Extract: the pseudo-random key HMAC(salt, ikm) into net__kprk (a salt of up to 64 bytes; ikm of up to 64)
+function net__hkdf_extract(net_st: mut NetState, salt: []byte, slen: int, ikm: []byte, ilen: int) -> void {
+  net__hmac_k(net_st, salt, slen, ikm, ilen)
+  for i in 0 .. 32 { net_st.net__kprk[i] = net_st.net__sd[i] }
+}
+
+# HKDF-Expand: `blocks` times 32 bytes of output keying material into net__kokm, from net__kprk and info (up to 96 bytes)
+# (T(i) = HMAC(PRK, T(i - 1) || info || i))
+function net__hkdf_expand(net_st: mut NetState, info: []byte, ilen: int, blocks: int) -> void {
+  let m = net_st.net__kxm
+  let okm = net_st.net__kokm
+  for b in 0 .. blocks {
+    var n = 0
+    if b > 0 {
+      for i in 0 .. 32 { m[i] = okm[(b - 1) * 32 + i] }
+      n = 32
+    }
+    for i in 0 .. ilen { m[n + i] = info[i] & 255 }
+    n += ilen
+    m[n] = b + 1
+    n += 1
+    net__hmac_k(net_st, net_st.net__kprk, 32, m, n)
+    for i in 0 .. 32 { okm[b * 32 + i] = net_st.net__sd[i] }
+  }
+}
+
+# ---- the handshake --------------------------------------------------------------------------------------------------------------------------
+
+# 32 bytes of the system's secure generator (Crypto.random_bytes: /dev/urandom) into out. False when it gave none (a target without one reads
+# zeros): no key is made of those
+@alloc_ok("a handshake: once a join")
+function net__random32(out: []byte) -> bool {
+  let hex = Crypto.random_bytes(32)
+  if not net__unhex32(hex, out) { return false }
+  var any = 0
+  for i in 0 .. 32 { any = any | (out[i] & 255) }
+  return any != 0
+}
+
+# 64 hex digits as 32 bytes into out; false when they are not
+function net__unhex32(hex: string, out: []byte) -> bool {
+  if len(hex) != 64 { return false }
+  for i in 0 .. 32 {
+    let hi = net__hex_nibble(hex[i * 2])
+    let lo = net__hex_nibble(hex[i * 2 + 1])
+    if hi < 0 or lo < 0 { return false }
+    out[i] = hi * 16 + lo
+  }
+  return true
+}
+
+@alloc_ok("a key as text: once a join, or a log line")
+function net__hex32(b: []byte) -> string {
+  var s = ""
+  for i in 0 .. 32 {
+    let hi = (b[i] >> 4) & 15
+    let lo = b[i] & 15
+    s = s + NET_HEX[hi .. hi + 1] + NET_HEX[lo .. lo + 1]
+  }
+  return s
+}
+
+# 32 bytes of the message being read into out; false when it is short
+function net__read32(net_st: mut NetState, out: []byte) -> bool {
+  for i in 0 .. 32 { out[i] = nr_u8(net_st) }
+  return not nr_bad(net_st)
+}
+
+function net__write32(net_st: mut NetState, b: []byte) -> void { for i in 0 .. 32 { nw_u8(net_st, b[i] & 255) } }
+
+# the 32 bytes at o of b are all zero (in constant time)
+function net__zero32(b: []byte, o: int) -> bool {
+  var any = 0
+  for i in 0 .. 32 { any = any | (b[o + i] & 255) }
+  return any == 0
+}
+
+# the session's four keys into p from net__kikm (the two shared secrets), net__ksalt (E_c || E_s) and the host's static public key: a guest
+# seals with the guest-to-host pair and opens with the other, a host the other way round. Counters and the replay window start fresh (fresh
+# keys: a counter never repeats under one)
+function net__kx_keys(net_st: mut NetState, p: NetPeer, host_static: []byte, guest: bool) -> void {
+  net__hkdf_extract(net_st, net_st.net__ksalt, 64, net_st.net__kikm, 64)
+  let info = net_st.net__kinfo
+  for i in 0 .. len(NET_KX_INFO) { info[i] = NET_KX_INFO[i] & 255 }
+  for i in 0 .. 32 { info[len(NET_KX_INFO) + i] = host_static[i] & 255 }
+  net__hkdf_expand(net_st, info, len(NET_KX_INFO) + 32, 4)
+  let okm = net_st.net__kokm
+  var tx = 0
+  var rx = 64
+  if not guest {
+    tx = 64
+    rx = 0
+  }
+  for i in 0 .. 32 {
+    p.ck[i] = okm[tx + i]
+    p.mk[i] = okm[tx + 32 + i]
+    p.rk[i] = okm[rx + i]
+    p.rm[i] = okm[rx + 32 + i]
+  }
+  for i in 0 .. 128 { okm[i] = 0 }
+  for i in 0 .. 64 { net_st.net__kikm[i] = 0 }
+  for i in 0 .. 32 { net_st.net__kprk[i] = 0 }
+  p.key_set = true
+  p.sec_in = false
+  p.sec_out = false
+  p.tx_ctr = 0
+  p.rx_any = false
+  p.rx_max = 0
+  p.rx_bits = 0
+}
+
+# The host's identity: its static key pair from 64 hex digits of secret (net_identity_new made them once; the game keeps them in a file of its
+# own, beside its config, and never sends them). False when it is no key
+export function net_identity_set(net_st: mut NetState, hex: string) -> bool {
+  if not net__unhex32(hex, net_st.net__ki_sk) { return false }
+  if net__zero32(net_st.net__ki_sk, 0) { return false }
+  net__x25519_base(net_st, net_st.net__ki_pk, net_st.net__ki_sk)
+  net_st.net__ki_set = true
+  return true
+}
+
+# a new identity's secret: 64 hex digits of the system's secure generator ("" when it has none)
+@alloc_ok("a host's identity: made once, ever")
+export function net_identity_new() -> string {
+  let b = buffer(32)
+  if not net__random32(b) { return "" }
+  return net__hex32(b)
+}
+
+# the host's static public key as 64 hex digits (what its guests pin; "" before net_identity_set)
+export function net_identity_public(net_st: NetState) -> string {
+  if not net_st.net__ki_set { return "" }
+  return net__hex32(net_st.net__ki_pk)
+}
+
+# A guest, writing its hello: an ephemeral key pair made and its public key written (32 bytes) into the message being written. False when the
+# system gave no random bytes (no handshake can be made: the game says so and does not join)
+export function net_kx_hello(net_st: mut NetState) -> bool {
+  if not net__random32(net_st.net__ke_sk) { return false }
+  net__x25519_base(net_st, net_st.net__ke_pk, net_st.net__ke_sk)
+  net__write32(net_st, net_st.net__ke_pk)
+  return true
+}
+
+# The host, reading a hello from the guest in `slot`: the guest's ephemeral public key read (32 bytes, from the message being read), an
+# ephemeral pair of the host's made and the slot's keys derived; net_kx_reply writes the answer. From then on the host opens sealed packets
+# from that guest, and seals its own from the guest's first sealed one. False when there is no identity (net_identity_set), the key is short,
+# the system gave no random bytes, or a shared secret is zero
+export function net_kx_accept(net_st: mut NetState, slot: int) -> bool {
+  if net_st.net__peers == null or slot < 1 or slot >= NET_PEERS or not net_st.net__ki_set { return false }
+  let p = net_st.net__peers[slot]
+  if not p.on { return false }
+  p.key_set = false
+  if not net__read32(net_st, net_st.net__kp_e) { return false }
+  if not net__random32(net_st.net__ke_sk) { return false }
+  net__x25519_base(net_st, net_st.net__ke_pk, net_st.net__ke_sk)
+  let dh = net_st.net__kdh
+  let ikm = net_st.net__kikm
+  net__x25519(net_st, dh, net_st.net__ke_sk, net_st.net__kp_e)
+  for i in 0 .. 32 { ikm[i] = dh[i] }
+  net__x25519(net_st, dh, net_st.net__ki_sk, net_st.net__kp_e)
+  for i in 0 .. 32 { ikm[32 + i] = dh[i] }
+  for i in 0 .. 32 { net_st.net__ke_sk[i] = 0 }        # (the ephemeral secret is used once and forgotten)
+  for i in 0 .. 32 { dh[i] = 0 }
+  if net__zero32(ikm, 0) or net__zero32(ikm, 32) { return false }
+  let salt = net_st.net__ksalt
+  for i in 0 .. 32 {
+    salt[i] = net_st.net__kp_e[i]
+    salt[32 + i] = net_st.net__ke_pk[i]
+  }
+  net__kx_keys(net_st, p, net_st.net__ki_pk, false)
+  return true
+}
+
+# the host's answer to the hello net_kx_accept took: its ephemeral public key and its static one (64 bytes) into the message being written
+export function net_kx_reply(net_st: mut NetState) -> void {
+  net__write32(net_st, net_st.net__ke_pk)
+  net__write32(net_st, net_st.net__ki_pk)
+}
+
+# A guest, reading the host's answer: its ephemeral and static public keys read (64 bytes, from the message being read) and the session's
+# keys derived; every packet to the host is sealed from now on. The static key is net_kx_host_key's, for the game to check against the one it
+# pinned BEFORE it sends anything secret. False when the answer is short, there was no hello made, or a shared secret is zero (nothing sealed)
+export function net_kx_finish(net_st: mut NetState) -> bool {
+  if net_st.net__peers == null { return false }
+  let p = net_st.net__peers[0]
+  if not p.on { return false }
+  p.key_set = false
+  let got = net__read32(net_st, net_st.net__kp_e) and net__read32(net_st, net_st.net__kp_s)
+  if not got or net__zero32(net_st.net__ke_sk, 0) { return false }
+  let dh = net_st.net__kdh
+  let ikm = net_st.net__kikm
+  net__x25519(net_st, dh, net_st.net__ke_sk, net_st.net__kp_e)
+  for i in 0 .. 32 { ikm[i] = dh[i] }
+  net__x25519(net_st, dh, net_st.net__ke_sk, net_st.net__kp_s)
+  for i in 0 .. 32 { ikm[32 + i] = dh[i] }
+  for i in 0 .. 32 { net_st.net__ke_sk[i] = 0 }
+  for i in 0 .. 32 { dh[i] = 0 }
+  if net__zero32(ikm, 0) or net__zero32(ikm, 32) { return false }
+  let salt = net_st.net__ksalt
+  for i in 0 .. 32 {
+    salt[i] = net_st.net__ke_pk[i]
+    salt[32 + i] = net_st.net__kp_e[i]
+  }
+  net__kx_keys(net_st, p, net_st.net__kp_s, true)
+  p.sec_out = true
+  return true
+}
+
+# the static public key of the host whose answer net_kx_finish read, as 64 hex digits (what a game pins per address)
+export function net_kx_host_key(net_st: NetState) -> string { return net__hex32(net_st.net__kp_s) }

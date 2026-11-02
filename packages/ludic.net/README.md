@@ -127,15 +127,31 @@ slot let go once it took its last message, and no matchmaker. The matchmaker, ST
 are covered by the game's `tests/net.sh` (`NET_ROOM=1`, `NET_RELAY=1`) against
 `tools/partyserver` on localhost.
 
-## Sealed packets (secure.ludic)
+## Sealed packets and the key exchange (secure.ludic, kx.ludic)
 
-`net_peer_key(slot, hex)` (host) and `net_secure(hex)` (guest) give a peer a 32-byte key (64 hex digits, from the game's welcome): from the
+Nothing secret is ever sent. The guest's hello carries an ephemeral X25519 public key (`net_kx_hello()`, 32 bytes written into the hello
+before `net_hello_set`); the host reads it (`net_kx_accept(slot)`, which also derives the slot's keys) and answers with its own ephemeral key
+and its static identity key (`net_kx_reply()`, 64 bytes); the guest reads them (`net_kx_finish()`). Both sides derive four keys with
+HKDF-SHA256 (RFC 5869) from DH(e_c, E_s) || DH(e_c, S_s), salted with both ephemeral keys: a cipher and a MAC key for each direction. From the
 guest's next packet on every packet is sealed - messages encrypted with ChaCha20 (RFC 8439), the packet (header, ciphertext, a 4-byte counter)
-tagged with 8 bytes of HMAC-SHA256 under a key derived from the first - and a host takes plain packets from a guest only until its first sealed
-one. A counter taken twice (or 32 behind the newest) and a tag that does not match are dropped. `net_sec_selftest()` runs the primitives against
-their published answers and a packet sealed and opened (0: all well); a game turns sealing on only when it passes. The key travels in the
-welcome, in the clear: this stops forgery, replay and tampering by anyone who did not see the welcome, not eavesdropping by one who did (that
-wants a key exchange).
+tagged with 8 bytes of HMAC-SHA256 - and a host takes plain packets from a guest only until its first sealed one. A counter taken twice (or 32
+behind the newest) and a tag that does not match are dropped. A message that came in a sealed packet has `sealed` set: a game takes a secret
+only from one.
+
+| | |
+| --- | --- |
+| `net_identity_new() -> string` | a host's static secret: 64 hex digits of the OS CSPRNG (`""` when there is none). Made once, kept by the game in a file of its own |
+| `net_identity_set(hex) -> bool`, `net_identity_public() -> string` | the host's identity from that secret, and its public key (what guests pin) |
+| `net_kx_hello() -> bool` | a guest: an ephemeral pair made, its public key written into the message being written |
+| `net_kx_accept(slot) -> bool`, `net_kx_reply()` | the host: the guest's key read and the slot's keys made; the answer written |
+| `net_kx_finish() -> bool`, `net_kx_host_key() -> string` | a guest: the answer read and the keys made (sealing starts); the host's static key, to check against a pin |
+| `net_peer_sealed(slot) -> bool` | that guest's packets are sealed both ways now |
+| `net_sec_selftest() -> int` | the primitives against their published answers (ChaCha20, HMAC, RFC 7748's X25519 vectors, RFC 5869's HKDF case), a handshake's two sides and a packet sealed and opened: 0 all well |
+
+The host's static key is what stops a man in the middle: the game pins it per address the first time it joins (trust on first use, as SSH's
+known_hosts) and refuses a changed one, so only the very first join to a host can be intercepted unnoticed. The ephemeral keys make each
+connection's keys fresh (forward secrecy; the counters never repeat under a key). Not done: signed host keys (a pin made by the game's own
+service rather than on first use), a 16-byte tag, rekeying past 2^32 packets a direction.
 
 ## Status queries
 

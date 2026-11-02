@@ -30,6 +30,7 @@ function net__packet(net_st: mut NetState, n0: int, ip: int, port: int) -> void 
   } else if p.sec_in {
     return                                                   # a plain packet from a peer that seals its own: not from it
   }
+  net_st.net__in_sealed = n != n0                            # (its messages marked sealed or not: net__deliver)
   p.heard = net_st.net__time
   # only what this connection has sent can be acknowledged: a packet from the one before it
   # (a re-join) carries the old numbers and would drop the new hello as already taken
@@ -122,6 +123,7 @@ function net__deliver(net_st: mut NetState, slot: int, from: int, kind: int, o: 
   m.from = from
   m.kind = kind
   m.len = ml
+  m.sealed = net_st.net__in_sealed
   nb_copy(m.data, 0, net_st.net__in, o, ml)
   q_push(net_inbox(net_st), m)
 }
