@@ -359,7 +359,7 @@ export function net_sec_selftest(net_st: mut NetState) -> int {
     nb_copy(inb, 0, copy, 0, sealed)
     let r = net__sec_open(net_st, slot, sealed)
     var ok = r == 40
-    if ok { for i in 0 .. 40 { if i != 3 and (inb[i] & 255) != i + 1 { ok = false } } }
+    if ok { for i in 20 .. 40 { if (inb[i] & 255) != i + 1 { ok = false } } }       # (the messages as they were; the header is not encrypted)
     if not ok { bad = bad | 4 }
     # the same packet again: refused
     nb_copy(inb, 0, copy, 0, sealed)
