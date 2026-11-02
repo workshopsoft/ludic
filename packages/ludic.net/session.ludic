@@ -76,12 +76,23 @@ export function net_become_host(net_st: mut NetState, token: int) -> void {
   net_st.net__token = token
 }
 
-# A host that sets a number of its own (anything but 0, from the game's random) asks every stranger to prove its address before it gets
-# a slot: a hello from an address is answered with a challenge (a number made of the address and this one) and counted only when the
-# next packet brings the number back. A joining machine answers by itself (receive.ludic). Without it, a flood of hellos with made-up
-# source addresses filled every slot, and none of the senders ever saw an answer (Quake 3's getchallenge, Unreal's stateless handshake
-# cookie, Source's challenge number). 0 (the default): a host that does not ask.
-export function net_secret_set(net_st: mut NetState, secret: int) -> void { net_st.net__secret = secret }
+# A hardened host asks every stranger to prove its address before it gets a slot: a hello from an address is answered with a challenge (a
+# number made of the address, the port and a secret only the host knows: receive.ludic net__cookie_for) and counted only when the next packet
+# brings the number back. A joining machine answers by itself (receive.ludic). Without it, a flood of hellos with made-up source addresses
+# filled every slot, and none of the senders ever saw an answer (Quake 3's getchallenge, Unreal's stateless handshake cookie, Source's
+# challenge number). The secret is 32 bytes from the system's CSPRNG, made here and replaced every 15 to 20 s. Off (the default): a host
+# that does not ask.
+export function net_harden(net_st: mut NetState, on: bool) -> void {
+  if on and not net_st.net__hardened {
+    net__key_roll(net_st)                                     # (both secrets new: Unreal's first UpdateSecret)
+    net__key_roll(net_st)
+  }
+  net_st.net__hardened = on
+}
+
+# The older call: anything but 0 hardens the host (net_harden). The number itself is no longer used: the secret is the package's own, from the
+# system's CSPRNG (a number from the game's Random came from the deterministic simulation generator, and 31 bits of it fell to a search)
+export function net_secret_set(net_st: mut NetState, secret: int) -> void { net_harden(net_st, secret != 0) }
 
 # a welcome: this machine is `pid` in the session `token`
 export function net_joined_as(net_st: mut NetState, token: int, pid: int) -> void {

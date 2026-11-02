@@ -6,7 +6,8 @@
 #
 # A browser asks from a plain socket of its own (Udp.open(0)): net_status_query writes the query, net_status_reply reads an answer.
 
-export const NET_STATUS_PER_SEC: int = 50     # answers a second a hardened host gives (net_secret_set); a browser asks a server once in a while
+export const NET_STATUS_PER_SEC: int = 200    # answers a second a hardened host gives (net_harden), to everyone; a browser asks a server once in a while
+export const NET_STATUS_PER_ADDR: int = 4     # ... and to one address (by a hash of it: two that share one share its count)
 export const NET_STATUS_MOST: int = 1024       # a status's bytes at most (one packet under the MTU)
 
 # the status a query is answered with: n bytes of b (copied: the game may write its next one into the same buffer); n = 0 stops answering
@@ -26,13 +27,16 @@ function net__status_packet(net_st: mut NetState, n: int, ip: int, port: int) ->
   if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'Q' { return false }
   if net_st.net__state != NET_HOSTING or net_st.net__status_n <= 0 { return true }
   if nb_get8(net_st.net__in, 2) != net__conf(net_st).proto { return true }
-  # A hardened host (net_secret_set) answers a query only when it carries the number the host would give that address (bytes 8 .. 12): else it
+  # A hardened host (net_harden) answers a query only when it carries the number the host would give that address (bytes 8 .. 12): else it
   # answers a challenge of 12 bytes, shorter than the query (a 20-byte query with a made-up source address brought a kilobyte to whoever the
   # address was: the reflection of an A2S_INFO, which Source closed the same way). A querier that gets the challenge asks again with the number
-  # (net_status_challenge, net_status_query_c); one that cannot (an old browser) sees the host offline. And at most NET_STATUS_PER_SEC a second
-  if net_st.net__secret != 0 {
-    let want = net__cookie_for(net_st, ip, port)
-    if nb_get32(net_st.net__in, 8) != want {
+  # (net_status_challenge, net_status_query_c); one that cannot (an old browser) sees the host offline. And at most NET_STATUS_PER_ADDR a second
+  # to one address (its address proved by the number, so the count is its own: one asker that sends a hundred a second no longer uses up the
+  # NET_STATUS_PER_SEC everyone shares and makes the host look offline to every browser)
+  if net_st.net__hardened {
+    let want = net__cookie_for(net_st, ip, port, false)
+    let got = nb_get32(net_st.net__in, 8)
+    if got != want and got != net__cookie_for(net_st, ip, port, true) {
       let c = net_st.net__out
       for i in 0 .. 12 { nb_put8(c, i, 0) }
       nb_put8(c, 0, 'M')
@@ -47,9 +51,12 @@ function net__status_packet(net_st: mut NetState, n: int, ip: int, port: int) ->
     if sec != net_st.net__status_sec {
       net_st.net__status_sec = sec
       net_st.net__status_cnt = 0
+      for i in 0 .. 64 { net_st.net__sq_n[i] = 0 }
     }
-    if net_st.net__status_cnt >= NET_STATUS_PER_SEC { return true }
+    let h = (ip * -1640531535) >> 26                            # (Knuth's multiplicative hash of the address, 2654435761 as a 32-bit int: its top 6 bits)
+    if net_st.net__status_cnt >= NET_STATUS_PER_SEC or net_st.net__sq_n[h] >= NET_STATUS_PER_ADDR { return true }
     net_st.net__status_cnt += 1
+    net_st.net__sq_n[h] += 1
   }
   let b = net_st.net__status
   nb_put8(b, 2, net__conf(net_st).proto)

@@ -3,6 +3,11 @@ export const NET_MTU: int = 1200
 export const NET_PEERS: int = 128      # a host: slot 0 unused, a guest each after (a dedicated server: 127 players); a guest: 0 is the host
 export const NET_TIMEOUT: int = 10     # seconds of silence before a peer is gone
 export const NET_PER_IP: int = 64      # slots one address may hold on a host (a household behind one router is a few; a flood from one machine is stopped)
+export const NET_WAIT_PER_IP: int = 4  # ... and of those, slots not yet let in (net_accept): a hello's slot is taken before the game has read it
+export const NET_WAIT_RELAYED: int = 8 # slots not yet let in that the relay holds for its guests (they all have its address, and prove no address)
+export const NET_RTO_FIRST: float = 0.25   # seconds before a reliable message goes again, until a round trip has been measured
+export const NET_RTO_MIN: float = 0.1      # ... and the least and most it is given once one has (each try doubles it, up to the most)
+export const NET_RTO_MAX: float = 2.0
 export const NET_HELLO: int = 1        # the one kind a stranger may send a host; every other is the game's
 const NET_BEAT: int = 0                # a heartbeat, never delivered
 
@@ -18,6 +23,7 @@ property NetMsg {
   rel: bool = false,
   id: int = 0,
   sent: float = 0.0,           # net seconds it was last sent; -1 never
+  tries: int = 0,              # how many times it has gone (a round trip is measured only from one that went once: Karn's rule)
   len: int = 0,
   made: float = 0.0,           # net seconds it was queued
   data: []byte
@@ -42,7 +48,13 @@ property NetPeer {
   tx_ctr: int = 0,             # the counter of the next sealed packet to it
   rx_max: int = 0,             # the newest counter taken from it, and which of the 32 before it have come (bit 0 is rx_max)
   rx_bits: int = 0,
-  dup: int = 0,                # packets in a row that acknowledged nothing new while a reliable message of ours waits (a loss, or a slow line)
+  dup: int = 0,                # packets in a row that acknowledged nothing new and said the peer dropped a later message of ours (a loss)
+  seen_id: int = 0,            # the highest reliable id that came from it, taken or dropped as early: past recv_id, one of its was lost
+  rtt_any: bool = false,       # a round trip to it has been measured: srtt and rttvar hold (RFC 6298)
+  srtt: float = 0.0,
+  rttvar: float = 0.0,
+  rto: float = 0.25,           # seconds before a reliable message to it goes again (doubled on each try)
+  fast_t: float = 0.0,         # net seconds of the last resend on its word that a message was lost
   queue: []NetMsg,
   back: []NetMsg,              # the queue's other list, filled by a flush and swapped in
   closing: bool = false,       # let go once it has taken close_id
@@ -114,7 +126,14 @@ export state NetState {
   net__stl: []byte = buffer(128)
   net__sd: []byte = buffer(32)
   net__slb: []byte = buffer(16)
-  net__secret: int = 0            # a host's own number (net_secret_set): a stranger's hello is answered with a challenge and counted only with its answer
+  net__hardened: bool = false     # net_harden: a stranger's hello is answered with a challenge and counted only with its answer
+  net__key_now: []byte = buffer(32)   # the challenge's secrets (32 bytes from the system's CSPRNG): this epoch's, and the one before
+  net__key_old: []byte = buffer(32)
+  net__key_gen: int = 0           # the epoch of key_now (key_old's is one less)
+  net__key_t: float = 0.0         # net seconds when key_now is replaced
+  net__ckb: []byte = buffer(16)   # the address, port and epoch a cookie is made of
+  net__from_relay: bool = false   # the packet being read came wrapped from the relay's own address and port (relay.ludic net__unwrap)
+  net__sq_n: words = words(64)    # status answers this second, by a hash of the asker's address (status.ludic)
   net__cookie: int = 0            # a joining machine's answer to that challenge, sent in its packets' token until the welcome
   net__my_pid: int = 0
   net__next_pid: int = 2

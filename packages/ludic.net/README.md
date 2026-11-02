@@ -15,10 +15,17 @@ the game's. The package gets bytes there once, in order, and says what happened 
 ## The wire
 
 A packet is a 20-byte header - `"ML"`, the protocol byte, `1`, the session token, the sender's pid,
-the highest reliable id taken in order, a message count - then messages: a kind, a flags byte, a
-reliable id when the message is reliable, a 16-bit length and the payload. A reliable message is
-kept until acknowledged and sent again every quarter second; a receiver takes them strictly in
-order and drops what arrives early (it comes again). An unreliable one half a second old is
+the highest reliable id taken in order, a message count (byte 16), how far past that id the reliable
+ids that came from the peer go (byte 17: not 0 when a message was lost and the ones after it dropped),
+two zeros - then messages: a kind, a flags byte, a reliable id when the message is reliable, a 16-bit
+length and the payload. A receiver takes reliable messages strictly in order and drops what arrives
+early (it comes again). A reliable message is kept until acknowledged and sent again after the peer's
+retransmission timeout: SRTT + 4 RTTVAR from the measured round trip (RFC 6298, ENet; 0.25 s before
+the first measurement, held to 0.1 .. 2 s), doubled on each try. Three packets in a row whose byte 17
+says a message was lost send every unacknowledged one again at once, at most once a round trip; a
+packet that only acknowledges nothing new does not (on a slow line every packet does that). A
+receiver from before byte 17 reads bytes 16 .. 20 as the count and stops at the last message, so the
+two interoperate without a protocol change. An unreliable one half a second old is
 dropped. A message is at most `NET_MTU - 40` bytes and is cut, silently, past that; a string is at
 most 200 bytes (`nw_s`), a longer one is `nw_text` with its own cap. Numbers are little-endian and
 a float goes as its bits.
@@ -56,7 +63,7 @@ port NetSocket { open, close, send, recv, from_ip, from_port, port, local_ip }  
 | --- | --- |
 | `net_config(c)` | before the first session |
 | `net_host(port, token) -> bool` | open a socket and take guests (and a room, when the matchmaker is on); false: `net_why()` |
-| `net_secret_set(n)` | a host's own number (not 0): a stranger's hello is answered with a challenge (`MC`) and counted only when the next packet brings the number back (a joining machine answers by itself); at most `NET_PER_IP` slots to one address; status answers capped at `NET_STATUS_PER_SEC` a second |
+| `net_harden(on)` (`net_secret_set(n)`: the older call, anything but 0 is on) | a stranger's hello is answered with a challenge (`MC`, 20 bytes, no bigger than the hello) and counted only when the next packet brings the number back (a joining machine answers by itself). The number is the first 4 bytes of HMAC-SHA256 of the address, port and epoch under a 32-byte secret from the system's CSPRNG, replaced every 15-20 s with the one before still taken (Unreal's stateless handshake), so a number lives 15-40 s. A guest the relay wraps skips it, but at most `NET_WAIT_RELAYED` of those wait at once. At most `NET_PER_IP` slots to one address, `NET_WAIT_PER_IP` of them not yet let in; status answers capped at `NET_STATUS_PER_ADDR` a second to one address and `NET_STATUS_PER_SEC` to all |
 | `net_reserve(n, per_peer)` | make the message pool n messages and each peer's queue room for per_peer up front (a dedicated server: its most players times what each can have in flight), so neither grows in play |
 | `net_hello_set()` | the message just written is the hello: sent again on every dial |
 | `net_join(ip, port) -> bool`, `net_room_join(code) -> bool` | dial an address, or ask the matchmaker for a room's host |
@@ -122,7 +129,8 @@ ludic test packages/ludic.net
 ```
 
 `netact_test.ludic` is the `@Net` layer over a fake transport (two peers in one program: prediction, refusal and rollback, broadcast, row reducers, ordering, a flat heap) and `netact_glue_test.ludic` the glue over a fake socket. The rest: a fake socket: the codec, the codes, a host taking a stranger only with a hello, delivery in order,
-resending until taken, a stale unreliable message dropped, the hello's timeout, a silent guest, a
+resending until taken (after the measured timeout, doubled on each try; at once only on the peer's word of a loss), the challenge and
+its secret's lifetime, the cap on slots waiting at one address, a stale unreliable message dropped, the hello's timeout, a silent guest, a
 slot let go once it took its last message, and no matchmaker. The matchmaker, STUN and the relay
 are covered by the game's `tests/net.sh` (`NET_ROOM=1`, `NET_RELAY=1`) against
 `tools/partyserver` on localhost.
@@ -139,5 +147,5 @@ wants a key exchange).
 
 ## Status queries
 
-A host with `net_secret_set` answers a status query only when it carries the number the host gives that address (bytes 8 .. 12 of the 20-byte
+A host with `net_harden` answers a status query only when it carries the number the host gives that address (bytes 8 .. 12 of the 20-byte
 query): else a 12-byte challenge (`MH`, the nonce, the number) that `net_status_challenge` reads and `net_status_query_c` answers.

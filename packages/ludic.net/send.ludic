@@ -1,8 +1,10 @@
 # send.ludic - everything due goes out now, in as many packets as it takes (up to eight a call).
 # A packet is a 20-byte header - "ML", the protocol, 1, the session token, the sender's pid, the
-# highest reliable id taken in order, a message count - then each message: kind, flags, a
-# reliable id when it is reliable, a 16-bit length, the payload. A reliable message goes again
-# every quarter second until acknowledged; an unreliable one half a second old is dropped.
+# highest reliable id taken in order, a message count (byte 16), how far past that id the reliable
+# ids that came from the peer go (byte 17: 0, or a message of the peer's was lost and the ones after
+# it dropped), two zeros - then each message: kind, flags, a reliable id when it is reliable, a 16-bit
+# length, the payload. A reliable message goes again after the peer's retransmission timeout
+# (net__rto_of) until acknowledged; an unreliable one half a second old is dropped.
 export function np_flush(net_st: mut NetState, slot: int) -> void {
   if not net_peer_on(net_st, slot) { return }
   let p = net_st.net__peers[slot]
@@ -25,7 +27,7 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
       continue
     }
     var due = true
-    if m.rel and not (m.sent < 0.0) and net_st.net__time - m.sent < 0.25 { due = false }
+    if m.rel and not (m.sent < 0.0) and net_st.net__time - m.sent < net__rto_of(p, m) { due = false }
     var size = 4 + m.len
     if m.rel { size += 4 }
     var lim = NET_MTU
@@ -34,6 +36,7 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
       o = net__put_msg(net_st, o, m)
       count += 1
       m.sent = net_st.net__time
+      m.tries += 1
       if net_st.net__kind_out != null and m.kind < 64 { net_st.net__kind_out[m.kind] += size }
       if m.rel { kept_push(keep, m) } else { kept_push(net_st.net__free, m) }   # a reliable one kept until acknowledged
     } else {
@@ -53,6 +56,7 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
   nb_put32(net_st.net__out, 8, net_st.net__my_pid)
   nb_put32(net_st.net__out, 12, p.recv_id)
   nb_put32(net_st.net__out, 16, count)
+  nb_put8(net_st.net__out, 17, Math.clamp(p.seen_id - p.recv_id, 0, 255))   # (a receiver from before byte 17 reads bytes 16 .. 20 as the count: it parses the messages there are and stops)
   var total = o
   if p.sec_out {
     nb_put8(net_st.net__out, 3, 2)                              # (a sealed packet: secure.ludic)
@@ -98,3 +102,16 @@ export function net_kind_bytes(net_st: NetState, kind: int) -> int {
 }
 
 export function net_bytes_out(net_st: NetState) -> int { return net_st.net__bytes_out }
+
+# How long a reliable message waits for its acknowledgement before it goes again: the peer's retransmission timeout, doubled for every time it
+# has gone already, up to NET_RTO_MAX (RFC 6298 5.5's backoff; ENet's protocol.c doubles each command's roundTripTimeout the same way)
+function net__rto_of(p: NetPeer, m: NetMsg) -> float {
+  var t = p.rto
+  var k = 1
+  while k < m.tries and t < NET_RTO_MAX {
+    t = t * 2.0
+    k += 1
+  }
+  if t > NET_RTO_MAX { return NET_RTO_MAX }
+  return t
+}

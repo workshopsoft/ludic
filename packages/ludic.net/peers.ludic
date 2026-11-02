@@ -29,6 +29,12 @@ function net__open(net_st: mut NetState, slot: int, ip: int, port: int, pid: int
   p.acked = 0
   p.ack_due = false
   p.dup = 0
+  p.seen_id = 0
+  p.rtt_any = false
+  p.srtt = 0.0
+  p.rttvar = 0.0
+  p.rto = NET_RTO_FIRST
+  p.fast_t = -1000.0                     # (never: the first word of a loss is acted on at once)
   p.key_set = false
   p.sec_in = false
   p.sec_out = false
@@ -58,6 +64,7 @@ export function np_queue(net_st: mut NetState, slot: int, kind: int, rel: bool) 
   m.rel = rel
   m.id = 0
   m.sent = -1.0
+  m.tries = 0
   m.made = net_st.net__time
   var n = net_st.net__wl
   if n > NET_MTU - 40 { n = NET_MTU - 40 }
