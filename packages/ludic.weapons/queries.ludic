@@ -167,4 +167,6 @@ export function weapons_unanswered(weapons_st: WeaponsState, h: int) -> int {
 }
 
 # seconds the tick has run: the clock a guest's shot is stamped with and the host rewinds by
-export function weapons_time(weapons_st: WeaponsState) -> float { return weapons_st.wp__time }
+export function weapons_time(weapons_st: WeaponsState) -> float { return float(weapons_st.wp__time) }
+# the same clock in full: a host that runs for days reads this one (a float of it steps 62 ms after a week)
+export function weapons_clock(weapons_st: WeaponsState) -> double { return weapons_st.wp__time }

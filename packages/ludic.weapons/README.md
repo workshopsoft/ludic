@@ -184,7 +184,10 @@ the match's `weapons_seed` by the host). A guest's own shot is predicted:
    spread to the most the weapon can have in any stance.
 4. **Lag compensation**: `WeaponsWorld.rewind(stamp)` (the stamp held to `weapons_config`'s `max_rewind` of now) puts the
    bodies back where the guest saw them, the round is resolved for real through the damage port, `restore()` puts them
-   back. The game answers those two with the positions it keeps a short history of.
+   back. The game answers those two with the positions it keeps a short history of. The clock (`weapons_clock`, and each
+   shooter's rate) is a double, so a host that runs for weeks keeps the millisecond (a float's step is 62 ms after a week):
+   such a host calls `weapons_host_take_at` with a double stamp and binds `rewind_at(double)`, called right after `rewind`
+   with the same moment in full. `weapons_time` and `weapons_host_take` (floats) are kept for short sessions.
 5. **The answers**: the action is `@Broadcast(all)`. The owner is told only that it was accepted (a `WP_CONFIRMED` fact, and the
    shot is no longer in the air) or refused (the `@Predicted` count is put back, `NetActions.rejected` tells the game,
    which can ask for the owner's snapshot: the magazine is not in an undo record, the snapshot sets it right, and

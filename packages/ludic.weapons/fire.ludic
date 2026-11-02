@@ -223,9 +223,9 @@ function wp__pull(weapons_st: mut WeaponsState, s: Shooter, h: int, gun: int, g:
   s.streak = true
   weapons_st.wp__spread_used = spread
   if mode == WP_MODE_GUESS {
-    dispatch WeaponsFire { who: h, actor: s.actor, gun: gun, weapon: g.weapon, ammo: g.ammo_type, shot_no: shot_no, stamp: weapons_st.wp__time, ox: ox, oy: oy, oz: oz, dx: dx, dy: dy, dz: dz, spread: spread, charge: charge }
+    dispatch WeaponsFire { who: h, actor: s.actor, gun: gun, weapon: g.weapon, ammo: g.ammo_type, shot_no: shot_no, stamp: float(weapons_st.wp__time), ox: ox, oy: oy, oz: oz, dx: dx, dy: dy, dz: dz, spread: spread, charge: charge }
   } else {
-    s.next_ok = Math.max(s.next_ok, weapons_st.wp__time) + wp__interval(g)
+    s.next_ok = wp__dmax(s.next_ok, weapons_st.wp__time) + double(wp__interval(g))
   }
   wp__spent(weapons_st, s, g, h, gun)
 }

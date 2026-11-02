@@ -48,6 +48,7 @@ program WeaponsTest {
     effects: int = 0
     last_effect_kind: int = 0
     rewound: float = -1.0
+    rewound_at: double = -1.0                  # the same moment as rewind_at gave it (the clock in full)
     restored: int = 0
     can_fire: bool = true
     origin_ok: bool = true
@@ -74,6 +75,7 @@ program WeaponsTest {
   function a_body_z(arena_st: Arena, a: int) -> float { return arena_st.zs[a] }
   function a_blocked(arena_st: Arena, ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return arena_st.cover }
   function a_rewind(arena_st: mut Arena, t: float) -> void { arena_st.rewound = t }
+  function a_rewind_at(arena_st: mut Arena, t: double) -> void { arena_st.rewound_at = t }
   function a_restore(arena_st: mut Arena) -> void { arena_st.restored += 1 }
   function a_hit_actor(arena_st: Arena) -> int { return arena_st.hit_a }
   function a_hit_zone(arena_st: Arena) -> int { return arena_st.hit_zn }
@@ -191,7 +193,7 @@ program WeaponsTest {
     arena_st.last_effect_kind = kind
   }
   function a_allow_shot(arena_st: Arena, sender: int, actor: int) -> bool { return arena_st.allow_shot }
-  bind WeaponsWorld { allow_shot: fn a_allow_shot, aim_y: fn a_aim_y, muzzle_y: fn a_muzzle_y, can_fire: fn a_can_fire, origin_ok: fn a_origin_ok, hostile: fn a_hostile, body_x: fn a_body_x, body_y: fn a_body_y, body_z: fn a_body_z, blocked: fn a_blocked, rewind: fn a_rewind, restore: fn a_restore, hit_actor: fn a_hit_actor, hit_zone: fn a_hit_zone, hit_material: fn a_hit_material, hit_nx: fn a_hit_nx, hit_ny: fn a_hit_ny, hit_nz: fn a_hit_nz, pierce_cost: fn a_cost, find: fn a_find, cast: fn a_cast, sweep: fn a_sweep }
+  bind WeaponsWorld { allow_shot: fn a_allow_shot, aim_y: fn a_aim_y, muzzle_y: fn a_muzzle_y, can_fire: fn a_can_fire, origin_ok: fn a_origin_ok, hostile: fn a_hostile, body_x: fn a_body_x, body_y: fn a_body_y, body_z: fn a_body_z, blocked: fn a_blocked, rewind: fn a_rewind, rewind_at: fn a_rewind_at, restore: fn a_restore, hit_actor: fn a_hit_actor, hit_zone: fn a_hit_zone, hit_material: fn a_hit_material, hit_nx: fn a_hit_nx, hit_ny: fn a_hit_ny, hit_nz: fn a_hit_nz, pierce_cost: fn a_cost, find: fn a_find, cast: fn a_cast, sweep: fn a_sweep }
   bind WeaponsDamage { hurt: fn d_hurt, alive: fn d_alive }
 
   # the session, as the game would bind it: the role is the package's own, a message lands in a list
@@ -1203,6 +1205,20 @@ program WeaponsTest {
     let cf = q_drain(weapons_facts(weapons_st))
     expect_eq(cf[0].what, WP_CONFIRMED)
     expect_eq(cf[0].shot_no, 1)
+  }
+
+  test "a host that has run for a week still rewinds to the millisecond and keeps the rate (the clock is a double)" (weapons_st: mut WeaponsState, arena_st: mut Arena) {
+    fresh(weapons_st, arena_st)
+    weapons_set_local(weapons_st, 9)
+    let h = armed(weapons_st, WPN_SIDEARM, 30)
+    weapons_set_role(weapons_st, WEAPONS_HOST)
+    weapons_run(weapons_st, 604800.0)
+    let now = weapons_clock(weapons_st)
+    let at = now - double(0.1)
+    expect_eq(weapons_host_take_at(weapons_st, 0, 1, 0, WPN_SIDEARM, 1, at, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0), WP_OK)
+    let err = arena_st.rewound_at - at
+    expect(err < double(0.001) and err > double(-0.001))          # a float of a week steps 62 ms
+    expect_eq(weapons_host_take_at(weapons_st, 0, 1, 0, WPN_SIDEARM, 2, now, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0), WP_TOO_FAST)
   }
 
   test "the host refuses a shot it could not have seen: stale, too fast, not held, from nowhere, while it could not fire, or busy" (weapons_st: mut WeaponsState, arena_st: mut Arena) {

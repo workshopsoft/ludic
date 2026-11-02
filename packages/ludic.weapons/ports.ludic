@@ -33,6 +33,7 @@ export port WeaponsWorld {
   origin_ok: fn(int, float, float, float) -> bool = fn wp__yes4                 # the host: may this actor shoot from there (near its own position)
   allow_shot: fn(int, int) -> bool = fn wp__yes2           # the host: (sender, actor) does the machine that sent the shot play that actor
   rewind: fn(float) -> void = fn wp__rewind                # the host: put the bodies where they were at this time (lag compensation)
+  rewind_at: fn(double) -> void = fn wp__rewind_at         # ... the same time in full (weapons_clock's double); called right after rewind: a host bind one
   restore: fn() -> void = fn wp__restore                   # ... and back
 }
 function wp__zero(a: int) -> float { return 0.0 }
@@ -52,6 +53,7 @@ function wp__enemy(a: int, b: int) -> bool { return a != b }
 function wp__nobody(x: float, y: float, z: float, r: float, out: []int) -> int { return 0 }
 function wp__open(ax: float, ay: float, az: float, bx: float, by: float, bz: float) -> bool { return false }
 function wp__rewind(t: float) -> void { }
+function wp__rewind_at(t: double) -> void { }
 function wp__restore() -> void { }
 
 # damage goes out here: ludic.vitals' `vitals_weapon_hurt` and `vitals_actor_standing` answer it in a line.

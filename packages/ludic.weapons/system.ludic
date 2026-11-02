@@ -7,7 +7,7 @@
 export function weapons_reset(weapons_st: mut WeaponsState) -> void {
   weapons_st.wp__shooters = wp__table()
   weapons_st.wp__by_actor = imap_new()
-  weapons_st.wp__time = 0.0
+  weapons_st.wp__time = double(0.0)
   for i in 0 .. len(weapons_st.wp__projs) { weapons_st.wp__projs[i].live = false }
   q_clear(weapons_st.wp__q)
 }

@@ -50,7 +50,7 @@ function wp__run_shooter(weapons_st: mut WeaponsState, s: Shooter, h: int, dt: f
 }
 
 export function weapons_run(weapons_st: mut WeaponsState, dt: float) -> void {
-  weapons_st.wp__time += dt
+  weapons_st.wp__time += double(dt)
   let tb = weapons_st.wp__shooters
   var i = 0
   while i < tb_len(tb) {

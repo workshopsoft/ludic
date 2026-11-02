@@ -55,7 +55,7 @@ export property Shooter {
   mine: bool = false                      # this machine owns it (a guest's own player)
   seq: int = 0                            # the last inventory snapshot sent or taken
   last_no: int = 0                        # the host: the last shot number it accepted from this shooter
-  next_ok: float = 0.0                    # the host: the time before which it takes no more shots from it
+  next_ok: double = 0.0                   # the host: the time before which it takes no more shots from it (the clock's, a double)
 }
 
 # a body in flight. A pooled record: `live` false is a free place
@@ -98,7 +98,8 @@ export state WeaponsState {
   wp__seed: int = 1
   wp__role: int = 0
   wp__local: int = -1                     # the actor this machine plays
-  wp__time: float = 0.0                   # seconds the tick has run
+  wp__time: double = 0.0                  # seconds the tick has run: a double, as a host that runs for weeks counts it (a float's step is
+                                          #   62 ms after a week: the rate check and the rewind would be that coarse)
   wp__found: []int = new []int            # the bodies a blast found, kept
   wp__modes: []int = new []int            # the fire modes of a gun, worked out into a kept list
   wp__projs: []Projectile = new []Projectile

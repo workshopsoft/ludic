@@ -45,7 +45,7 @@ function wp__fire_why(weapons_st: WeaponsState, sender: int, actor: int, gun: in
   if not WeaponsWorld.can_fire(actor) { return WP_CANT }
   if s.busy == WBUSY_EQUIP or s.busy == WBUSY_RELOAD_END or (s.busy != WBUSY_NONE and not Weapons[g.weapon].reload_each) { return WP_BUSY }
   if g.mag < Weapons[g.weapon].ammo_per_shot { return WP_NO_AMMO }
-  if weapons_st.wp__time + weapons_st.wp__slack < s.next_ok { return WP_TOO_FAST }
+  if weapons_st.wp__time + double(weapons_st.wp__slack) < s.next_ok { return WP_TOO_FAST }
   if not WeaponsWorld.origin_ok(actor, ox, oy, oz) { return WP_BAD_ORIGIN }
   return WP_OK
 }
@@ -60,6 +60,11 @@ export function weapons_fire_ok(weapons_st: WeaponsState, a: WeaponsFire, sender
 # some other way calls it). Returns WP_OK, or why it was refused. The seed is the host's own, derived from the
 # shot number, so a guest cannot pick a lucky one; the spread is held to what the weapon can have in any stance
 export function weapons_host_take(weapons_st: mut WeaponsState, sender: int, actor: int, gun: int, weapon: int, shot_no: int, stamp: float, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, claimed: float, charge: float) -> int {
+  return weapons_host_take_at(weapons_st, sender, actor, gun, weapon, shot_no, double(stamp), ox, oy, oz, dx, dy, dz, claimed, charge)
+}
+# the same with the stamp in full (weapons_clock's double): a host that runs for days passes this one, as UE rebases its movement
+# timestamps every MinTimeBetweenTimeStampResets (CharacterMovementComponent.cpp) so that a float's step never grows past a few ms
+export function weapons_host_take_at(weapons_st: mut WeaponsState, sender: int, actor: int, gun: int, weapon: int, shot_no: int, stamp: double, ox: float, oy: float, oz: float, dx: float, dy: float, dz: float, claimed: float, charge: float) -> int {
   let why = wp__fire_why(weapons_st, sender, actor, gun, weapon, shot_no, ox, oy, oz)
   if why == WP_NOT_HOST { return why }
   let h = weapons_of(weapons_st, actor)
@@ -77,13 +82,17 @@ export function weapons_host_take(weapons_st: mut WeaponsState, sender: int, act
     s.busy = WBUSY_NONE
     s.busy_t = 0.0
   }
-  let at = Math.clamp(stamp, weapons_st.wp__time - weapons_st.wp__max_rewind, weapons_st.wp__time)
+  var at = stamp
+  let oldest = weapons_st.wp__time - double(weapons_st.wp__max_rewind)
+  if at < oldest { at = oldest }
+  if at > weapons_st.wp__time { at = weapons_st.wp__time }
   let seed = weapons_shot_seed(weapons_st.wp__seed, actor, shot_no)
   let spread = Math.clamp(claimed, 0.0, wp__spread_cap(g))
-  WeaponsWorld.rewind(at)
+  WeaponsWorld.rewind(float(at))
+  WeaponsWorld.rewind_at(at)
   wp__fire_round(weapons_st, s, h, gun, g, ox, oy, oz, dx, dy, dz, seed, shot_no, spread, charge, WP_MODE_AUTH)
   WeaponsWorld.restore()
-  s.next_ok = Math.max(s.next_ok, weapons_st.wp__time) + wp__interval(g)
+  s.next_ok = wp__dmax(s.next_ok, weapons_st.wp__time) + double(wp__interval(g))
   wp__spent(weapons_st, s, g, h, gun)
   s.shots = shot_no
   s.last_no = shot_no
@@ -209,4 +218,9 @@ export function weapons_apply_snapshot(weapons_st: mut WeaponsState, actor: int,
     at += 1
   }
   return true
+}
+
+function wp__dmax(a: double, b: double) -> double {
+  if a > b { return a }
+  return b
 }
