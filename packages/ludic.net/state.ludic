@@ -4,7 +4,7 @@ export const NET_PEERS: int = 128      # a host: slot 0 unused, a guest each aft
 export const NET_TIMEOUT: int = 10     # seconds of silence before a peer is gone
 export const NET_PER_IP: int = 64      # slots one address may hold on a host (a household behind one router is a few; a flood from one machine is stopped)
 export const NET_WAIT_PER_IP: int = 4  # ... and of those, slots not yet let in (net_accept): a hello's slot is taken before the game has read it
-export const NET_WAIT_RELAYED: int = 8 # slots not yet let in that the relay holds for its guests (they all have its address, and prove no address)
+export const NET_WAIT_RELAYED: int = 8  # slots not yet let in that the relay holds for its guests (they all have its address, and prove no address)
 export const NET_RTO_FIRST: float = 0.25   # seconds before a reliable message goes again, until a round trip has been measured
 export const NET_RTO_MIN: float = 0.1      # ... and the least and most it is given once one has (each try doubles it, up to the most)
 export const NET_RTO_MAX: float = 2.0
@@ -43,8 +43,10 @@ property NetPeer {
   sec_in: bool = false,        # a sealed packet has come from it: a plain one is dropped from now on
   sec_out: bool = false,       # what is sent to it is sealed
   rx_any: bool = false,
-  ck: []byte,                  # the cipher key and the MAC key (32 bytes each)
+  ck: []byte,                  # the cipher key and the MAC key it is sealed for (32 bytes each; kx.ludic: one pair a direction)
   mk: []byte,
+  rk: []byte,                  # ... and the pair its own sealed packets are opened with
+  rm: []byte,
   tx_ctr: int = 0,             # the counter of the next sealed packet to it
   rx_max: int = 0,             # the newest counter taken from it, and which of the 32 before it have come (bit 0 is rx_max)
   rx_bits: int = 0,
@@ -68,6 +70,7 @@ export property NetMessage {
   from: int = 0,               # the sender's pid, as its header says
   kind: int = 0,
   len: int = 0,
+  sealed: bool = false,        # it came in a sealed packet (secure.ludic): a game takes a secret only from one
   data: []byte
 }
 
@@ -134,6 +137,24 @@ export state NetState {
   net__ckb: []byte = buffer(16)   # the address, port and epoch a cookie is made of
   net__from_relay: bool = false   # the packet being read came wrapped from the relay's own address and port (relay.ludic net__unwrap)
   net__sq_n: words = words(64)    # status answers this second, by a hash of the asker's address (status.ludic)
+  net__in_sealed: bool = false    # the packet being read was sealed (its messages are marked so)
+  net__fe: []long = net__fe_new()  # kx.ludic's scratch: the field's elements, the clamped scalar, the base point
+  net__kz: []byte = buffer(32)
+  net__kbase: []byte = buffer(32)
+  net__ke_sk: []byte = buffer(32)  # this machine's ephemeral key pair, for the handshake under way (the secret wiped once used)
+  net__ke_pk: []byte = buffer(32)
+  net__ki_sk: []byte = buffer(32)  # a host's static identity (net_identity_set)
+  net__ki_pk: []byte = buffer(32)
+  net__ki_set: bool = false
+  net__kp_e: []byte = buffer(32)  # the other side's ephemeral public key, and a guest's host's static one, as read
+  net__kp_s: []byte = buffer(32)
+  net__kdh: []byte = buffer(32)   # a shared secret, the two of them, the salt, the info, HKDF's key, output and message
+  net__kikm: []byte = buffer(64)
+  net__ksalt: []byte = buffer(64)
+  net__kinfo: []byte = buffer(96)
+  net__kprk: []byte = buffer(32)
+  net__kokm: []byte = buffer(128)
+  net__kxm: []byte = buffer(160)
   net__cookie: int = 0            # a joining machine's answer to that challenge, sent in its packets' token until the welcome
   net__my_pid: int = 0
   net__next_pid: int = 2
@@ -180,6 +201,8 @@ function net__peers_new() -> []NetPeer {
     p.back = new []NetMsg
     p.ck = buffer(32)
     p.mk = buffer(32)
+    p.rk = buffer(32)
+    p.rm = buffer(32)
     push(out, p)
   }
   return out

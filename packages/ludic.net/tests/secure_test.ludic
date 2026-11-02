@@ -1,16 +1,32 @@
-# secure_test.ludic - sealed packets: ChaCha20 and HMAC-SHA256 against their published answers, and a packet sealed, opened, refused when changed
-# and refused when it comes twice (secure.ludic net_sec_selftest says which part fails)
+# secure_test.ludic - sealed packets and the key exchange: ChaCha20, HMAC-SHA256, X25519 (RFC 7748) and HKDF-SHA256 (RFC 5869) against their
+# published answers, a handshake's two sides agreeing on keys a direction, and a packet sealed, opened, refused when changed and refused when it
+# comes twice (secure.ludic net_sec_selftest says which part fails); the exported handshake between a host and a guest state
 import "ludic.net"
 import "ludic.base"
 program SecureTest {
   numbers float
 
-  test "the primitives and a sealed packet pass their known answers" (net_st: mut NetState) {
+  test "the primitives, a handshake and a sealed packet pass their known answers" (net_st: mut NetState) {
     expect_eq(net_sec_selftest(net_st), 0)
   }
 
-  test "a key is 64 hex digits and nothing else" (net_st: mut NetState) {
-    expect(not net_peer_key(net_st, 1, "00"))
-    expect(not net_secure(net_st, "zz"))
+  test "an identity is 64 hex digits, its public key is X25519's of them" (net_st: mut NetState) {
+    expect(not net_identity_set(net_st, "00"))
+    expect(not net_identity_set(net_st, "0000000000000000000000000000000000000000000000000000000000000000"))
+    expect_eq(net_identity_public(net_st), "")
+    # RFC 7748 6.1: Bob's private key and its public key
+    expect(net_identity_set(net_st, "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb"))
+    expect_eq(net_identity_public(net_st), "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f")
+  }
+
+  test "a new identity is 64 hex digits of the system's generator, never the same twice" (net_st: mut NetState) {
+    let a = net_identity_new()
+    let b = net_identity_new()
+    expect_eq(len(a), 64)
+    expect(a != b)
+  }
+
+  test "a host without an identity takes no handshake" (net_st: mut NetState) {
+    expect(not net_kx_accept(net_st, 1))
   }
 }
