@@ -11,18 +11,25 @@ function net__pump(net_st: mut NetState) -> void {
   }
 }
 
-function net__packet(net_st: mut NetState, n: int, ip: int, port: int) -> void {
+function net__packet(net_st: mut NetState, n0: int, ip: int, port: int) -> void {
   @alloc_ok("only while tracing every packet")
-  if NetWorld.trace() { net__log(`in {n} bytes from {Udp.ip_text(ip)}:{port}`) }
-  if n < 20 { return }
-  if net__challenge_packet(net_st, n, ip, port) { return }   # a host's challenge to this joining machine
-  if net__stun_packet(net_st, n) { return }                # what the router looks like from outside
-  if net__status_packet(net_st, n, ip, port) { return }    # a server browser asking how this host is (status.ludic)
+  if NetWorld.trace() { net__log(`in {n0} bytes from {Udp.ip_text(ip)}:{port}`) }
+  if n0 < 20 { return }
+  if net__challenge_packet(net_st, n0, ip, port) { return }   # a host's challenge to this joining machine
+  if net__stun_packet(net_st, n0) { return }                # what the router looks like from outside
+  if net__status_packet(net_st, n0, ip, port) { return }    # a server browser asking how this host is (status.ludic)
   if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'L' { return }   # a punch ("MP") or noise
   if nb_get8(net_st.net__in, 2) != net__conf(net_st).proto { return }
-  let slot = net__slot_for(net_st, n, ip, port)
+  let slot = net__slot_for(net_st, n0, ip, port)
   if slot < 0 { return }
   let p = net_st.net__peers[slot]
+  var n = n0
+  if nb_get8(net_st.net__in, 3) == 2 {
+    n = net__sec_open(net_st, slot, n0)                          # a sealed packet: its tag, its counter, its messages decrypted (secure.ludic)
+    if n < 0 { return }
+  } else if p.sec_in {
+    return                                                   # a plain packet from a peer that seals its own: not from it
+  }
   p.heard = net_st.net__time
   # only what this connection has sent can be acknowledged: a packet from the one before it
   # (a re-join) carries the old numbers and would drop the new hello as already taken
@@ -52,7 +59,7 @@ function net__slot_for(net_st: mut NetState, n: int, ip: int, port: int) -> int 
     return slot
   }
   if net_st.net__state != NET_HOSTING { return -1 }
-  if n < 28 or nb_get8(net_st.net__in, 20) != NET_HELLO { return -1 }
+  if n < 28 or nb_get8(net_st.net__in, 3) != 1 or nb_get8(net_st.net__in, 20) != NET_HELLO { return -1 }       # (a stranger's hello is plain)
   # a host with a number of its own (net_secret_set) takes a stranger only when it answers a challenge: its address is then its own. A
   # relayed guest (the relay's address, a made-up port) is the matchmaker's to vouch for
   if net_st.net__secret != 0 and not (net_st.net__relay_ip != 0 and ip == net_st.net__relay_ip) {

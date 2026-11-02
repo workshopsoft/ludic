@@ -33,6 +33,15 @@ property NetPeer {
   recv_id: int = 0,            # the highest reliable id taken from it, in order
   acked: int = 0,              # the highest id it has taken from us
   ack_due: bool = false,
+  key_set: bool = false,       # secure.ludic: its keys are set
+  sec_in: bool = false,        # a sealed packet has come from it: a plain one is dropped from now on
+  sec_out: bool = false,       # what is sent to it is sealed
+  rx_any: bool = false,
+  ck: []byte,                  # the cipher key and the MAC key (32 bytes each)
+  mk: []byte,
+  tx_ctr: int = 0,             # the counter of the next sealed packet to it
+  rx_max: int = 0,             # the newest counter taken from it, and which of the 32 before it have come (bit 0 is rx_max)
+  rx_bits: int = 0,
   dup: int = 0,                # packets in a row that acknowledged nothing new while a reliable message of ours waits (a loss, or a slow line)
   queue: []NetMsg,
   back: []NetMsg,              # the queue's other list, filled by a flush and swapped in
@@ -96,6 +105,15 @@ export state NetState {
   net__token: int = 0
   net__status_sec: int = 0        # the second (net time) the status answers are counted in, and how many it has given (status.ludic)
   net__status_cnt: int = 0
+  net__cw: words = words(16)      # secure.ludic's scratch: the ChaCha20 block's working state and its input, SHA-256's words and state
+  net__cs: words = words(16)
+  net__sw: words = words(64)
+  net__sh: words = words(8)
+  net__skb: []byte = buffer(64)
+  net__spad: []byte = buffer(64)
+  net__stl: []byte = buffer(128)
+  net__sd: []byte = buffer(32)
+  net__slb: []byte = buffer(16)
   net__secret: int = 0            # a host's own number (net_secret_set): a stranger's hello is answered with a challenge and counted only with its answer
   net__cookie: int = 0            # a joining machine's answer to that challenge, sent in its packets' token until the welcome
   net__my_pid: int = 0
@@ -141,6 +159,8 @@ function net__peers_new() -> []NetPeer {
     let p = new NetPeer
     p.queue = new []NetMsg
     p.back = new []NetMsg
+    p.ck = buffer(32)
+    p.mk = buffer(32)
     push(out, p)
   }
   return out

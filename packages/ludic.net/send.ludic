@@ -28,7 +28,9 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
     if m.rel and not (m.sent < 0.0) and net_st.net__time - m.sent < 0.25 { due = false }
     var size = 4 + m.len
     if m.rel { size += 4 }
-    if due and o + size <= NET_MTU and count < 250 {
+    var lim = NET_MTU
+    if p.sec_out { lim = NET_MTU - NET_SEC_TAIL }                # (room for a sealed packet's counter and tag)
+    if due and o + size <= lim and count < 250 {
       o = net__put_msg(net_st, o, m)
       count += 1
       m.sent = net_st.net__time
@@ -51,7 +53,12 @@ function net__flush_one(net_st: mut NetState, p: NetPeer) -> bool {
   nb_put32(net_st.net__out, 8, net_st.net__my_pid)
   nb_put32(net_st.net__out, 12, p.recv_id)
   nb_put32(net_st.net__out, 16, count)
-  let sent = net__relay_send(net_st, p, o)
+  var total = o
+  if p.sec_out {
+    nb_put8(net_st.net__out, 3, 2)                              # (a sealed packet: secure.ludic)
+    total = net__seal(net_st, p, o)
+  }
+  let sent = net__relay_send(net_st, p, total)
   if sent > 0 { net_st.net__bytes_out += sent + 28 }          # with the IP and UDP headers: what the line carries
   @alloc_ok("only while tracing every packet")
   if NetWorld.trace() { net__log(`out {o} bytes to {Udp.ip_text(p.ip)}:{p.port}: {sent}`) }

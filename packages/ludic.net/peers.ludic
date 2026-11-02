@@ -29,6 +29,13 @@ function net__open(net_st: mut NetState, slot: int, ip: int, port: int, pid: int
   p.acked = 0
   p.ack_due = false
   p.dup = 0
+  p.key_set = false
+  p.sec_in = false
+  p.sec_out = false
+  p.rx_any = false
+  p.tx_ctr = 0
+  p.rx_max = 0
+  p.rx_bits = 0
   net__queue_free(net_st, p)
   p.closing = false
 }

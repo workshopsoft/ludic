@@ -126,3 +126,18 @@ resending until taken, a stale unreliable message dropped, the hello's timeout, 
 slot let go once it took its last message, and no matchmaker. The matchmaker, STUN and the relay
 are covered by the game's `tests/net.sh` (`NET_ROOM=1`, `NET_RELAY=1`) against
 `tools/partyserver` on localhost.
+
+## Sealed packets (secure.ludic)
+
+`net_peer_key(slot, hex)` (host) and `net_secure(hex)` (guest) give a peer a 32-byte key (64 hex digits, from the game's welcome): from the
+guest's next packet on every packet is sealed - messages encrypted with ChaCha20 (RFC 8439), the packet (header, ciphertext, a 4-byte counter)
+tagged with 8 bytes of HMAC-SHA256 under a key derived from the first - and a host takes plain packets from a guest only until its first sealed
+one. A counter taken twice (or 32 behind the newest) and a tag that does not match are dropped. `net_sec_selftest()` runs the primitives against
+their published answers and a packet sealed and opened (0: all well); a game turns sealing on only when it passes. The key travels in the
+welcome, in the clear: this stops forgery, replay and tampering by anyone who did not see the welcome, not eavesdropping by one who did (that
+wants a key exchange).
+
+## Status queries
+
+A host with `net_secret_set` answers a status query only when it carries the number the host gives that address (bytes 8 .. 12 of the 20-byte
+query): else a 12-byte challenge (`MH`, the nonce, the number) that `net_status_challenge` reads and `net_status_query_c` answers.

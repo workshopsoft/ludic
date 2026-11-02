@@ -1,0 +1,16 @@
+# secure_test.ludic - sealed packets: ChaCha20 and HMAC-SHA256 against their published answers, and a packet sealed, opened, refused when changed
+# and refused when it comes twice (secure.ludic net_sec_selftest says which part fails)
+import "ludic.net"
+import "ludic.base"
+program SecureTest {
+  numbers float
+
+  test "the primitives and a sealed packet pass their known answers" (net_st: mut NetState) {
+    expect_eq(net_sec_selftest(net_st), 0)
+  }
+
+  test "a key is 64 hex digits and nothing else" (net_st: mut NetState) {
+    expect(not net_peer_key(net_st, 1, "00"))
+    expect(not net_secure(net_st, "zz"))
+  }
+}

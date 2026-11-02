@@ -26,9 +26,23 @@ function net__status_packet(net_st: mut NetState, n: int, ip: int, port: int) ->
   if nb_get8(net_st.net__in, 0) != 'M' or nb_get8(net_st.net__in, 1) != 'Q' { return false }
   if net_st.net__state != NET_HOSTING or net_st.net__status_n <= 0 { return true }
   if nb_get8(net_st.net__in, 2) != net__conf(net_st).proto { return true }
-  # a hardened host (net_secret_set) answers at most NET_STATUS_PER_SEC a second: a 20-byte query with a made-up source address brings a
-  # kilobyte to whoever that address is, and a host that is a lever on someone else's line is cut off at its own share of it
+  # A hardened host (net_secret_set) answers a query only when it carries the number the host would give that address (bytes 8 .. 12): else it
+  # answers a challenge of 12 bytes, shorter than the query (a 20-byte query with a made-up source address brought a kilobyte to whoever the
+  # address was: the reflection of an A2S_INFO, which Source closed the same way). A querier that gets the challenge asks again with the number
+  # (net_status_challenge, net_status_query_c); one that cannot (an old browser) sees the host offline. And at most NET_STATUS_PER_SEC a second
   if net_st.net__secret != 0 {
+    let want = net__cookie_for(net_st, ip, port)
+    if nb_get32(net_st.net__in, 8) != want {
+      let c = net_st.net__out
+      for i in 0 .. 12 { nb_put8(c, i, 0) }
+      nb_put8(c, 0, 'M')
+      nb_put8(c, 1, 'H')
+      nb_put8(c, 2, net__conf(net_st).proto)
+      nb_put32(c, 4, nb_get32(net_st.net__in, 4))
+      nb_put32(c, 8, want)
+      NetSocket.send(net_st.net__sock, ip, port, c, 12)
+      return true
+    }
     let sec = int(net_st.net__time)
     if sec != net_st.net__status_sec {
       net_st.net__status_sec = sec
@@ -68,3 +82,20 @@ export function net_status_reply(r: []byte, n: int, proto: int) -> int {
 }
 # the nonce an answer carries (the query's, back): which query it answers
 export function net_status_nonce(r: []byte) -> int { return nb_get32(r, 4) }
+
+# a query that carries the number a host's challenge gave (net_status_challenge): the same as net_status_query, with it at bytes 8 .. 12
+export function net_status_query_c(sock: int, ip: int, port: int, proto: int, nonce: int, cookie: int, q: []byte) -> bool {
+  for i in 0 .. 20 { q[i] = 0 }
+  nb_put8(q, 0, 'M')
+  nb_put8(q, 1, 'Q')
+  nb_put8(q, 2, proto)
+  nb_put32(q, 4, nonce)
+  nb_put32(q, 8, cookie)
+  return Udp.send(sock, ip, port, q, 20) == 20
+}
+
+# the number a host's challenge (12 bytes, "MH") brings for the query with the nonce it echoes; 0 when r is not one for proto
+export function net_status_challenge(r: []byte, n: int, proto: int) -> int {
+  if n < 12 or nb_get8(r, 0) != 'M' or nb_get8(r, 1) != 'H' or nb_get8(r, 2) != proto { return 0 }
+  return nb_get32(r, 8)
+}

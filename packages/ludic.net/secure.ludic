@@ -1,0 +1,385 @@
+# secure.ludic - packets that cannot be forged, replayed or read by whoever does not hold the session's key.
+#
+# A host gives a guest a key (net_peer_key; the game puts it in its welcome, 64 hex digits), the guest takes it (net_secure) and from its next
+# packet on every packet it sends is SEALED: the messages are encrypted with ChaCha20 (RFC 8439) and the whole packet - header, ciphertext and a
+# counter - carries a tag, the first 8 bytes of an HMAC-SHA256 under a second key derived from the first. The host answers in kind from the first
+# sealed packet it takes; a plain packet from a peer that has sealed one is dropped. A counter taken twice, or more than 32 behind the newest, is
+# dropped (replay); a tag that does not match is dropped (a forged or damaged packet).
+#
+#   a sealed packet   the 20-byte header with byte 3 = 2 (a plain one: 1), the messages encrypted, a 4-byte counter, an 8-byte tag
+#   the nonce         the sender's pid (the header's), the counter, 0 - never twice under one key (a counter a packet, a pid a sender)
+#   the keys          32 bytes of ChaCha20 key; the MAC key is HMAC-SHA256(that key, "ludic.net mac")
+#
+# What it protects against: anyone who is not on the path between the two, who never saw the welcome (the key), and anyone who changes a packet
+# on the path (the tag). What it does not: someone who reads the welcome - the key travels in it, in the clear, for there is no key exchange
+# here (an X25519 one would need the key to be made by both sides and never sent). It is a MAC and a cipher ready for one.
+#
+# The primitives are the standard ones with known answers; net_sec_selftest runs them (and a packet sealed and opened) and says which fail, so a
+# game turns security on only when it passes. Nothing here makes anything in play: the scratch is in the state.
+
+export const NET_SEC_TAIL: int = 12
+
+const NET_SHA_K: []int = [0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2]
+
+# ---- ChaCha20 -----------------------------------------------------------------------------------------------------------------------------
+
+function net__rotl(x: int, n: int) -> int { return (x << n) | (x >> (32 - n)) }
+
+function net__qr(s: words, a: int, b: int, c: int, d: int) -> void {
+  s[a] = s[a] + s[b]
+  s[d] = net__rotl(s[d] ^ s[a], 16)
+  s[c] = s[c] + s[d]
+  s[b] = net__rotl(s[b] ^ s[c], 12)
+  s[a] = s[a] + s[b]
+  s[d] = net__rotl(s[d] ^ s[a], 8)
+  s[c] = s[c] + s[d]
+  s[b] = net__rotl(s[b] ^ s[c], 7)
+}
+
+# the 64 bytes of keystream for a key (32 bytes), a block counter and a nonce (three words) into out
+function net__chacha_block(net_st: mut NetState, key: []byte, ctr: int, n0: int, n1: int, n2: int, out: []byte) -> void {
+  let s = net_st.net__cs
+  let x = net_st.net__cw
+  s[0] = 0x61707865
+  s[1] = 0x3320646e
+  s[2] = 0x79622d32
+  s[3] = 0x6b206574
+  for i in 0 .. 8 { s[4 + i] = nb_get32(key, i * 4) }
+  s[12] = ctr
+  s[13] = n0
+  s[14] = n1
+  s[15] = n2
+  for i in 0 .. 16 { x[i] = s[i] }
+  for r in 0 .. 10 {
+    net__qr(x, 0, 4, 8, 12)
+    net__qr(x, 1, 5, 9, 13)
+    net__qr(x, 2, 6, 10, 14)
+    net__qr(x, 3, 7, 11, 15)
+    net__qr(x, 0, 5, 10, 15)
+    net__qr(x, 1, 6, 11, 12)
+    net__qr(x, 2, 7, 8, 13)
+    net__qr(x, 3, 4, 9, 14)
+  }
+  for i in 0 .. 16 { nb_put32(out, i * 4, x[i] + s[i]) }
+}
+
+# bytes [from, to) of buf exclusive-or'd with the keystream (blocks counted from 1): encrypting and decrypting are the same
+function net__chacha_xor(net_st: mut NetState, key: []byte, n0: int, n1: int, n2: int, buf: []byte, from: int, to: int) -> void {
+  var ctr = 1
+  var at = from
+  while at < to {
+    net__chacha_block(net_st, key, ctr, n0, n1, n2, net_st.net__skb)
+    var k = 0
+    while k < 64 and at < to {
+      buf[at] = (buf[at] ^ net_st.net__skb[k]) & 255
+      at += 1
+      k += 1
+    }
+    ctr += 1
+  }
+}
+
+# ---- SHA-256 and HMAC ---------------------------------------------------------------------------------------------------------------------
+
+function net__rotr(x: int, n: int) -> int { return (x >> n) | (x << (32 - n)) }
+
+function net__sha_init(h: words) -> void {
+  h[0] = 0x6a09e667
+  h[1] = 0xbb67ae85
+  h[2] = 0x3c6ef372
+  h[3] = 0xa54ff53a
+  h[4] = 0x510e527f
+  h[5] = 0x9b05688c
+  h[6] = 0x1f83d9ab
+  h[7] = 0x5be0cd19
+}
+
+# one 64-byte block of b at o into the state h (w: 64 words of scratch)
+function net__sha_block(h: words, w: words, b: []byte, o: int) -> void {
+  for t in 0 .. 16 {
+    w[t] = ((b[o + t * 4] & 255) << 24) | ((b[o + t * 4 + 1] & 255) << 16) | ((b[o + t * 4 + 2] & 255) << 8) | (b[o + t * 4 + 3] & 255)
+  }
+  for t in 16 .. 64 {
+    let s0 = net__rotr(w[t - 15], 7) ^ net__rotr(w[t - 15], 18) ^ (w[t - 15] >> 3)
+    let s1 = net__rotr(w[t - 2], 17) ^ net__rotr(w[t - 2], 19) ^ (w[t - 2] >> 10)
+    w[t] = w[t - 16] + s0 + w[t - 7] + s1
+  }
+  var a = h[0]
+  var b1 = h[1]
+  var c = h[2]
+  var d = h[3]
+  var e = h[4]
+  var f = h[5]
+  var g = h[6]
+  var hh = h[7]
+  for t in 0 .. 64 {
+    let big1 = net__rotr(e, 6) ^ net__rotr(e, 11) ^ net__rotr(e, 25)
+    let ch = (e & f) ^ ((e ^ -1) & g)
+    let t1 = hh + big1 + ch + NET_SHA_K[t] + w[t]
+    let big0 = net__rotr(a, 2) ^ net__rotr(a, 13) ^ net__rotr(a, 22)
+    let mj = (a & b1) ^ (a & c) ^ (b1 & c)
+    let t2 = big0 + mj
+    hh = g
+    g = f
+    f = e
+    e = d + t1
+    d = c
+    c = b1
+    b1 = a
+    a = t1 + t2
+  }
+  h[0] = h[0] + a
+  h[1] = h[1] + b1
+  h[2] = h[2] + c
+  h[3] = h[3] + d
+  h[4] = h[4] + e
+  h[5] = h[5] + f
+  h[6] = h[6] + g
+  h[7] = h[7] + hh
+}
+
+# the state's eight words, big-endian, as 32 bytes of d
+function net__sha_out(h: words, d: []byte) -> void {
+  for i in 0 .. 8 {
+    d[i * 4] = (h[i] >> 24) & 255
+    d[i * 4 + 1] = (h[i] >> 16) & 255
+    d[i * 4 + 2] = (h[i] >> 8) & 255
+    d[i * 4 + 3] = h[i] & 255
+  }
+}
+
+# HMAC-SHA256 of msg[0 .. n) under a 32-byte key (padded with zeros to the 64-byte block) into net__sd (32 bytes)
+function net__hmac(net_st: mut NetState, key: []byte, msg: []byte, n: int) -> void {
+  let h = net_st.net__sh
+  let w = net_st.net__sw
+  let pad = net_st.net__spad
+  let tail = net_st.net__stl
+  let dig = net_st.net__sd
+  # the inner hash: (key ^ 0x36 ...) then the message
+  for i in 0 .. 64 {
+    var kb = 0
+    if i < 32 { kb = key[i] & 255 }
+    pad[i] = kb ^ 54
+  }
+  net__sha_init(h)
+  net__sha_block(h, w, pad, 0)
+  var at = 0
+  while at + 64 <= n {
+    net__sha_block(h, w, msg, at)
+    at += 64
+  }
+  let rem = n - at
+  for i in 0 .. 128 { tail[i] = 0 }
+  for i in 0 .. rem { tail[i] = msg[at + i] }
+  tail[rem] = 128
+  var total = 64
+  if rem + 9 > 64 { total = 128 }
+  let bits = (64 + n) * 8
+  tail[total - 4] = (bits >> 24) & 255
+  tail[total - 3] = (bits >> 16) & 255
+  tail[total - 2] = (bits >> 8) & 255
+  tail[total - 1] = bits & 255
+  net__sha_block(h, w, tail, 0)
+  if total == 128 { net__sha_block(h, w, tail, 64) }
+  net__sha_out(h, dig)
+  # the outer hash: (key ^ 0x5c ...) then the inner digest
+  for i in 0 .. 64 {
+    var kb = 0
+    if i < 32 { kb = key[i] & 255 }
+    pad[i] = kb ^ 92
+  }
+  net__sha_init(h)
+  net__sha_block(h, w, pad, 0)
+  for i in 0 .. 128 { tail[i] = 0 }
+  for i in 0 .. 32 { tail[i] = dig[i] }
+  tail[32] = 128
+  let obits = (64 + 32) * 8
+  tail[62] = (obits >> 8) & 255
+  tail[63] = obits & 255
+  net__sha_block(h, w, tail, 0)
+  net__sha_out(h, dig)
+}
+
+# ---- keys -----------------------------------------------------------------------------------------------------------------------------------
+
+function net__hex_nibble(c: int) -> int {
+  if c >= 48 and c <= 57 { return c - 48 }
+  if c >= 97 and c <= 102 { return c - 87 }
+  if c >= 65 and c <= 70 { return c - 55 }
+  return -1
+}
+
+# a peer's keys from 64 hex digits: the cipher key, and the MAC key made of it. False when it is no key
+function net__set_keys(net_st: mut NetState, p: NetPeer, hex: string) -> bool {
+  if len(hex) != 64 { return false }
+  for i in 0 .. 32 {
+    let hi = net__hex_nibble(hex[i * 2])
+    let lo = net__hex_nibble(hex[i * 2 + 1])
+    if hi < 0 or lo < 0 { return false }
+    p.ck[i] = hi * 16 + lo
+  }
+  let label = net_st.net__slb
+  let text = "ludic.net mac"
+  for i in 0 .. len(text) { label[i] = text[i] & 255 }
+  net__hmac(net_st, p.ck, label, len(text))
+  for i in 0 .. 32 { p.mk[i] = net_st.net__sd[i] }
+  p.key_set = true
+  p.sec_in = false
+  p.sec_out = false
+  p.tx_ctr = 0
+  p.rx_any = false
+  p.rx_max = 0
+  p.rx_bits = 0
+  return true
+}
+
+# the host: the key of the guest in `slot` (64 hex digits); sealing starts when that guest's first sealed packet is taken
+export function net_peer_key(net_st: mut NetState, slot: int, hex: string) -> bool {
+  if net_st.net__peers == null or slot < 0 or slot >= NET_PEERS { return false }
+  let p = net_st.net__peers[slot]
+  if not p.on { return false }
+  return net__set_keys(net_st, p, hex)
+}
+
+# the guest: the key of the host (from its welcome); every packet from now on is sealed
+export function net_secure(net_st: mut NetState, hex: string) -> bool {
+  if net_st.net__peers == null { return false }
+  let p = net_st.net__peers[0]
+  if not p.on { return false }
+  if not net__set_keys(net_st, p, hex) { return false }
+  p.sec_out = true
+  return true
+}
+
+# the peer's packets are sealed both ways now
+export function net_peer_sealed(net_st: NetState, slot: int) -> bool {
+  if net_st.net__peers == null or slot < 0 or slot >= NET_PEERS { return false }
+  return net_st.net__peers[slot].sec_in
+}
+
+# ---- sealing and opening a packet ----------------------------------------------------------------------------------------------------------
+
+# the packet in net__out (o bytes, byte 3 already 2) sealed for p: the messages encrypted, the counter and the tag after them. The new length
+function net__seal(net_st: mut NetState, p: NetPeer, o: int) -> int {
+  let out = net_st.net__out
+  let ctr = p.tx_ctr
+  p.tx_ctr = ctr + 1
+  net__chacha_xor(net_st, p.ck, nb_get32(out, 8), ctr, 0, out, 20, o)
+  nb_put32(out, o, ctr)
+  net__hmac(net_st, p.mk, out, o + 4)
+  for i in 0 .. 8 { out[o + 4 + i] = net_st.net__sd[i] }
+  return o + NET_SEC_TAIL
+}
+
+# the sealed packet in net__in (n bytes) from the peer in `slot`: its tag checked, its counter taken once, its messages decrypted in place.
+# The packet's length without the tail, or -1 when it is not good
+function net__sec_open(net_st: mut NetState, slot: int, n: int) -> int {
+  let p = net_st.net__peers[slot]
+  let inb = net_st.net__in
+  if not p.key_set or n < 20 + NET_SEC_TAIL { return -1 }
+  net__hmac(net_st, p.mk, inb, n - 8)
+  var diff = 0
+  for i in 0 .. 8 { diff = diff | ((inb[n - 8 + i] ^ net_st.net__sd[i]) & 255) }
+  if diff != 0 { return -1 }
+  let ctr = nb_get32(inb, n - 12)
+  if p.rx_any {
+    let ahead = ctr - p.rx_max
+    if ahead > 0 and ahead < 1073741824 {
+      if ahead >= 32 { p.rx_bits = 1 } else { p.rx_bits = (p.rx_bits << ahead) | 1 }
+      p.rx_max = ctr
+    } else {
+      let back = p.rx_max - ctr
+      if back < 0 or back >= 32 { return -1 }
+      if ((p.rx_bits >> back) & 1) != 0 { return -1 }
+      p.rx_bits = p.rx_bits | (1 << back)
+    }
+  } else {
+    p.rx_any = true
+    p.rx_max = ctr
+    p.rx_bits = 1
+  }
+  net__chacha_xor(net_st, p.ck, nb_get32(inb, 8), ctr, 0, inb, 20, n - 12)
+  p.sec_in = true
+  p.sec_out = true
+  return n - NET_SEC_TAIL
+}
+
+# ---- the known answers --------------------------------------------------------------------------------------------------------------------
+
+# Runs the primitives against their published answers (RFC 8439's ChaCha20 block, SHA-256 of "abc" through HMAC's pieces, RFC 4231's first
+# HMAC case) and a packet sealed by one peer and opened by another (and refused when a byte is changed or when it comes twice). The bits of what
+# failed: 1 ChaCha20, 2 HMAC, 4 a sealed packet not opened, 8 a changed packet opened, 16 a repeated packet opened. 0: all well
+@alloc_ok("a self-test: once, at start")
+export function net_sec_selftest(net_st: mut NetState) -> int {
+  var bad = 0
+  # ChaCha20, RFC 8439 2.3.2: key 00 01 .. 1f, nonce 00 00 00 09 00 00 00 4a 00 00 00 00, block counter 1: the keystream starts 10 f1 e7 e4 d1 3b 59 15
+  let key = buffer(32)
+  for i in 0 .. 32 { key[i] = i }
+  let ks = buffer(64)
+  net__chacha_block(net_st, key, 1, 0x09000000, 0x4a000000, 0, ks)
+  let want = [0x10, 0xf1, 0xe7, 0xe4, 0xd1, 0x3b, 0x59, 0x15]
+  for i in 0 .. 8 { if (ks[i] & 255) != want[i] { bad = bad | 1 } }
+  # HMAC-SHA256, RFC 4231 case 1: key 20 bytes of 0x0b, data "Hi There": b0344c61 d8db3853 ...
+  let hk = buffer(32)
+  for i in 0 .. 20 { hk[i] = 11 }
+  let msg = buffer(8)
+  let hi = "Hi There"
+  for i in 0 .. 8 { msg[i] = hi[i] & 255 }
+  net__hmac(net_st, hk, msg, 8)
+  let hw = [0xb0, 0x34, 0x4c, 0x61, 0xd8, 0xdb, 0x38, 0x53]
+  for i in 0 .. 8 { if (net_st.net__sd[i] & 255) != hw[i] { bad = bad | 2 } }
+  # a packet: sealed for one peer, opened by another with the same key
+  let a = new NetPeer
+  a.ck = buffer(32)
+  a.mk = buffer(32)
+  let b = new NetPeer
+  b.ck = buffer(32)
+  b.mk = buffer(32)
+  let saved_pid = net_st.net__my_pid
+  net_st.net__my_pid = 5
+  let hex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+  if net__set_keys(net_st, a, hex) and net__set_keys(net_st, b, hex) {
+    let out = net_st.net__out
+    for i in 0 .. 40 { out[i] = i + 1 }
+    nb_put32(out, 8, 5)
+    out[3] = 2
+    let sealed = net__seal(net_st, a, 40)
+    var same = true
+    for i in 20 .. 40 { if (out[i] & 255) == i + 1 { same = false } }       # (encrypted: no byte of the messages is as it was)
+    if not same { bad = bad | 1 }
+    let copy = buffer(64)
+    nb_copy(copy, 0, out, 0, sealed)
+    let slot = 1
+    let holder = net_st.net__peers[slot]
+    let keep_on = holder.on
+    let keep_key = holder.key_set
+    # the opener is a real slot's peer for the call: its keys set from b's, its counters fresh, and put back after
+    net__set_keys(net_st, holder, hex)
+    let inb = net_st.net__in
+    nb_copy(inb, 0, copy, 0, sealed)
+    let r = net__sec_open(net_st, slot, sealed)
+    var ok = r == 40
+    if ok { for i in 0 .. 40 { if i != 3 and (inb[i] & 255) != i + 1 { ok = false } } }
+    if not ok { bad = bad | 4 }
+    # the same packet again: refused
+    nb_copy(inb, 0, copy, 0, sealed)
+    if net__sec_open(net_st, slot, sealed) >= 0 { bad = bad | 16 }
+    # a changed byte: refused (a fresh packet, so the counter is not what refuses it)
+    net_st.net__out[3] = 2
+    for i in 0 .. 40 { net_st.net__out[i] = i + 1 }
+    nb_put32(net_st.net__out, 8, 5)
+    net_st.net__out[3] = 2
+    let sealed2 = net__seal(net_st, a, 40)
+    nb_copy(inb, 0, net_st.net__out, 0, sealed2)
+    inb[25] = (inb[25] ^ 1) & 255
+    if net__sec_open(net_st, slot, sealed2) >= 0 { bad = bad | 8 }
+    holder.key_set = keep_key
+    holder.sec_in = false
+    holder.sec_out = false
+    holder.on = keep_on
+  } else {
+    bad = bad | 4
+  }
+  net_st.net__my_pid = saved_pid
+  return bad
+}
