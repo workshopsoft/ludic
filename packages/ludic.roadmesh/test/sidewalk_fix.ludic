@@ -47,7 +47,8 @@ export function test_sidewalk(recs: []Rec) -> int {
       let ev = rarg(r, 3)
       let ends = new [][]double
       for k in 0 .. v_len(ev) { push(ends, v_pts(v_item(ev, k))) }
-      check_pts_list(c, "rails", bulb_rails(v_getn(n, "x", 0.0), v_getn(n, "z", 0.0), u[0], u[1], arg_n(r, 2), ends, v_nums(rarg(r, 4))), w)
+      # (the fifth argument: the entry arcs' least radius, sidewalk.ts bulbRails `entry`)
+      check_pts_list(c, "rails", bulb_rails(v_getn(n, "x", 0.0), v_getn(n, "z", 0.0), u[0], u[1], arg_n(r, 2), ends, arg_n(r, 4)), w)
     } else if f == "stations" or f == "junction" or f == "lvlAt" or f == "rampAt" or f == "bulb" {
       # the Sidewalk's methods run on the native world now (world.ludic): the chunk bake's bytes check them
       continue
@@ -57,4 +58,3 @@ export function test_sidewalk(recs: []Rec) -> int {
   }
   return check_report(c)
 }
-
