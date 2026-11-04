@@ -22,6 +22,8 @@ export property JEnd {
   r: Offsets = null
   l: Offsets = null
   setback: double = 0.0
+  # the least setback this end can do with on a too short edge (a turning circle's tightest entry: bulb_least), -1: its setback
+  least: double = -1.0
 }
 
 export property Corner {
@@ -52,6 +54,26 @@ export property Junction {
   radius: double = 0.0
   notes: []string = null
   strict: bool = false
+  # a strict turning circle's entry radius (bulb_entry)
+  entry: double = 0.0
+}
+
+# a cul-de-sac's entry curve radius (bulbEntry): 7.6 m, more where a band reaches past it from the kerb
+let BULB_ENTRY: double = 7.6
+# a turning circle's steepest grade (BULB_GRADE)
+let BULB_GRADE: double = 0.05
+export function bulb_entry(e: JEnd) -> double {
+  return jmax(BULB_ENTRY, bulb_least(e))
+}
+# the tightest entry curve a turning circle's lines take without folding (bulbLeast)
+export function bulb_least(e: JEnd) -> double {
+  return jmax(e.r.walk - e.r.gutter, e.l.walk - e.l.gutter) + 0.5
+}
+# where a turning circle's entry curve leaves a kerb line `gutter` from the centre line (bulbEntryAt)
+export function bulb_entry_at(radius: double, gutter: double, entry: double) -> double {
+  let g = jmax(0.0, gutter)
+  if radius > g { return Math.sqrt((radius - g) * (radius + g + 2.0 * entry)) }
+  return 0.0
 }
 
 # JunctionOptions as data. The radius by edge pair is the bake's (sceneRadius): the larger of the two edges' profiles' radii
@@ -343,7 +365,12 @@ export function junction_of<C>(node: NetNode, opt: JOpt, hasSettled: bool, settl
       let e = ends[0]
       let g = jmax(e.r.gutter, e.l.gutter)
       if opt.strict and out.radius < g + 0.5 { push(out.notes, `node {node.key}: its turning circle ({js_str(out.radius)} m) is not wider than {e.edge.key} ({js_fixed(g, 2)} m to the kerb)`) }
-      if opt.strict { e.setback = Math.sqrt(jmax(0.0, out.radius * out.radius - g * g)) } else {
+      if opt.strict {
+        out.entry = bulb_entry(e)
+        e.setback = jmax(bulb_entry_at(out.radius, e.r.gutter, out.entry), bulb_entry_at(out.radius, e.l.gutter, out.entry))
+        let tight = bulb_least(e)
+        e.least = jmax(bulb_entry_at(out.radius, e.r.gutter, tight), bulb_entry_at(out.radius, e.l.gutter, tight))
+      } else {
         let w = jmax(e.r.walk, e.l.walk)
         e.setback = Math.sqrt(jmax(0.0, out.radius * out.radius - w * w))
       }
@@ -531,18 +558,37 @@ export function setbacks(net: Net, opt: JOpt, notes: []string) -> Setbacks {
   let ne = len(net.edges)
   let nf = doubles(ne)
   let nt = doubles(ne)
+  let lf = doubles(ne)
+  let lt = doubles(ne)
   for i in 0 .. ne {
     nf[i] = 0.0
     nt[i] = 0.0
+    lf[i] = 0.0
+    lt[i] = 0.0
   }
   for q in 0 .. len(net.nodes) {
     let j = junction_of(net.nodes[q], opt, true, fn settled_none, 0)
     for k in 0 .. len(j.ends) {
       let e = j.ends[k]
       let x = e.edge.idx
-      if e.out { nf[x] = jmax(nf[x], e.setback) } else { nt[x] = jmax(nt[x], e.setback) }
+      var least = e.setback
+      if e.least >= 0.0 { least = e.least }
+      if e.out {
+        nf[x] = jmax(nf[x], e.setback)
+        lf[x] = jmax(lf[x], least)
+      } else {
+        nt[x] = jmax(nt[x], e.setback)
+        lt[x] = jmax(lt[x], least)
+      }
     }
   }
+  return settle_setbacks(net, opt, notes, nf, nt, lf, lt)
+}
+
+# both ends of every edge settled together (setbacks' merge): an end that can do with less gives first, down to its least, then
+# the two are scaled to the room
+export function settle_setbacks(net: Net, opt: JOpt, notes: []string, nf: []double, nt: []double, lf: []double, lt: []double) -> Setbacks {
+  let ne = len(net.edges)
   let o = new Setbacks
   o.from = doubles(ne)
   o.to = doubles(ne)
@@ -550,6 +596,18 @@ export function setbacks(net: Net, opt: JOpt, notes: []string) -> Setbacks {
     let e = net.edges[i]
     let room = jmax(0.0, e.length - MIN_STRIP)
     if nf[i] + nt[i] <= room + 0.000000001 {
+      o.from[i] = nf[i]
+      o.to[i] = nt[i]
+      continue
+    }
+    var over = nf[i] + nt[i] - room
+    let gf = jmin(over, jmax(0.0, nf[i] - lf[i]))
+    nf[i] -= gf
+    over -= gf
+    let gt = jmin(over, jmax(0.0, nt[i] - lt[i]))
+    nt[i] -= gt
+    over -= gt
+    if over <= 0.000000001 {
       o.from[i] = nf[i]
       o.to[i] = nt[i]
       continue

@@ -33,6 +33,7 @@ export property LPRule {
   arHead: double = 1.8
   arWidth: double = 0.3
   arHeadWidth: double = 0.9
+  arTurns: double = 0.0       # turn arrows this far before an approach's stop (ArrowPaint.turns; 0: none)
 }
 
 export property LPOptions {
@@ -45,6 +46,7 @@ export property LPOptions {
   chunk: double = 0.0         # 0: no grid
   goreKinds: []string = null
   merge: LinePaint = null     # the gore's merge line (default dash 3, gap 3)
+  yellow: string = ""         # the material of the lines between opposing traffic (centre, inner); "": the marking material (lanePaint.ts)
 }
 
 export property LPMeta {
@@ -115,6 +117,8 @@ export function lp_options_of(v: Val) -> LPOptions {
         r.arHead = v_getn(av, "head", 1.8)
         r.arWidth = v_getn(av, "width", 0.3)
         r.arHeadWidth = v_getn(av, "headWidth", 0.9)
+        r.arTurns = v_getn(av, "turns", 0.0)
+        if r.arTurns != r.arTurns { r.arTurns = 0.0 }
       }
       push(o.rules, r)
     }
@@ -124,6 +128,7 @@ export function lp_options_of(v: Val) -> LPOptions {
   o.stop = v_getn(v, "stop", 0.5)
   o.minPiece = v_getn(v, "minPiece", 0.5)
   o.up = v_getn(v, "up", 0.02)
+  o.yellow = v_gets(v, "yellow", "")
   o.chunk = v_getn(v, "chunk", 0.0)
   if o.chunk != o.chunk { o.chunk = 0.0 }
   o.goreKinds = new []string
@@ -794,6 +799,7 @@ property QPiece {
   node: int = 0
   poly: []double = null
   y: double = 0.0
+  mat: string = ""         # a through line's material ("": the paint's own)
 }
 
 property PaintCtx<C> {
@@ -801,6 +807,7 @@ property PaintCtx<C> {
   w: PaintWorld = null
   g: SurfaceGrid = null
   mat: string = ""
+  yellow: string = ""      # the opposing traffic's lines' material (LPOptions.yellow)
   up: double = 0.02
   lift: double = 0.0
   meta: LPMeta = null
@@ -822,6 +829,12 @@ function count<C>(x: PaintCtx<C>, k: string, n: int) -> void {
 }
 
 # layStrip: a quad strip along a strip's frame between fine metres a and b, between the line's band edges
+# a line's material by its kind: the opposing traffic's lines (centre, inner) yellow when the options name one (lanePaint.ts matOf)
+function mat_of<C>(x: PaintCtx<C>, kind: string) -> string {
+  if x.yellow != "" and (kind == "centre" or kind == "inner" or kind == "flush" or kind == "hatch") { return x.yellow }
+  return x.mat
+}
+
 function lay_strip<C>(x: PaintCtx<C>, es: PStations, level: int, a: double, bb: double, d: LineDef) -> void {
   let cuts = new []double
   push(cuts, a)
@@ -838,7 +851,7 @@ function lay_strip<C>(x: PaintCtx<C>, es: PStations, level: int, a: double, bb: 
     sf_point(es, s1, d, 0, 0.0, x.sg, poly, 2)
     sf_point(es, s1, d, 1, 0.0, x.sg, poly, 4)
     sf_point(es, s0, d, 1, 0.0, x.sg, poly, 6)
-    x.meta.tris += lay(x.b, x.mat, x.g, poly, level, sf_y(es, (s0 + s1) / 2.0, x.sg) + x.lift, x.up, 0.6)
+    x.meta.tris += lay(x.b, mat_of(x, d.kind), x.g, poly, level, sf_y(es, (s0 + s1) / 2.0, x.sg) + x.lift, x.up, 0.6)
   }
   count(x, d.kind, 1)
 }
@@ -881,7 +894,9 @@ function lay_path<C>(x: PaintCtx<C>, q: QPiece, a: double, bb: double) -> void {
     poly[7] = p[1]
     path_point_to(path, (s0 + s1) / 2.0, (b00 + b11) / 2.0, p)
     let yf = x.yf
-    x.meta.tris += lay(x.b, x.mat, x.g, poly, q.level, yf(x.yc, q.node, p[0], p[1]), x.up, 0.6)
+    var m = x.mat
+    if q.mat != "" { m = q.mat }
+    x.meta.tris += lay(x.b, m, x.g, poly, q.level, yf(x.yc, q.node, p[0], p[1]), x.up, 0.6)
   }
 }
 
@@ -931,7 +946,9 @@ function lay_queued<C>(x: PaintCtx<C>, queue: []QPiece, size: double) -> void {
       b = q.b
     }
     if q.kind == Q_STRIP { lay_strip(x, q.es, q.level, a, b, q.def) } else if q.kind == Q_PATH { lay_path(x, q, a, b) } else {
-      x.meta.tris += lay(x.b, x.mat, x.g, q.poly, q.level, q.y, x.up, 0.6)
+      var qm = x.mat
+      if q.mat != "" { qm = q.mat }
+      x.meta.tris += lay(x.b, qm, x.g, q.poly, q.level, q.y, x.up, 0.6)
     }
   }
 }
@@ -1101,6 +1118,8 @@ export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt:
   x.yf = yf
   x.yc = yc
   b_slot(b, mat, "marking")
+  if opt.yellow != "" { b_slot(b, opt.yellow, "marking") }
+  x.yellow = opt.yellow
   let ne = len(w.edges)
   let el = new EdgeLines
   el.done = buffer(ne)
@@ -1330,6 +1349,7 @@ export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt:
           q.b = ps[k * 2 + 1]
           q.kind = Q_PATH
           q.path = path
+          if not merge { q.mat = mat_of(x, t.kind) }
           q.ba0 = t.a0
           q.ba1 = t.a1
           q.bc0 = t.c0
@@ -1375,7 +1395,7 @@ export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt:
     let l = w_laid(w, ei)
     let oneWay = (e.lanesFwd > 0.0) != (e.lanesBack > 0.0)
     if rule == null or es == null or l == null { continue }
-    if len(defs) == 0 and not (rule.arrows and oneWay) { continue }
+    if len(defs) == 0 and not (rule.arrows and (oneWay or rule.arTurns != 0.0)) { continue }
     let level = level_code(e.level)
     let s0 = st_s(es, 0)
     let s1 = st_s(es, es.n - 1)
@@ -1445,6 +1465,7 @@ export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt:
           q.poly = off_chunk_lines(raw, chunk)
           q.level = level
           q.y = sf_y(es, s + run / 2.0, x.sg) + lift
+          q.mat = mat_of(x, "hatch")
           push(queue, q)
           count(x, "hatch", 1)
           s += rule.hatch
@@ -1529,9 +1550,117 @@ export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt:
         }
       }
     }
+    # turn arrows on the approaches of two or more lanes into a junction of three or more roads (lanePaint.ts)
+    if rule.arrows and rule.arTurns != 0.0 {
+      let alen = rule.arLength
+      let head = jmin(rule.arHead, alen)
+      let half = rule.arWidth / 2.0
+      let headHalf = rule.arHeadWidth / 2.0
+      let back = rule.arTurns
+      let runs = runs_for(blocked, s0, s1, stop, false, false)
+      let nr = len(runs) / 2
+      for pass in 0 .. 2 {
+        let fwd = pass == 0
+        let n = dsel(fwd, e.lanesFwd, e.lanesBack)
+        let deg = isel(fwd, e.toDeg, e.fromDeg)
+        if n < 2.0 or deg < 3 or nr == 0 { continue }
+        # the run the approach waits on: from the node's side, the first long enough for the arrows
+        var ra: double = 0.0
+        var rb: double = 0.0
+        var found = false
+        for k in 0 .. nr {
+          let r = dsel(fwd, double(nr - 1 - k), double(k))
+          let a = runs[int(r) * 2]
+          let bb = runs[int(r) * 2 + 1]
+          if not found and bb - a >= back + alen {
+            ra = a
+            rb = bb
+            found = true
+          }
+        }
+        if not found { continue }
+        let tipS = dsel(fwd, rb - back, ra + back)
+        let tail = dsel(fwd, tipS - alen, tipS + alen)
+        if (fwd and tail < ra) or (not fwd and tail > rb) { continue }
+        let dir = dsel(fwd, 1.0, -1.0)
+        let baseS = tipS - dir * head
+        let side = isel(fwd == fwdRight, 1, -1)
+        let sgn = dsel(side == 1, 1.0, -1.0)
+        sf_seg(es, tail, x.sg)
+        let i = x.sg.i
+        let med = off_med(es, side, i)
+        let lns = off_lanes(es, side, i)
+        let lw = (lns - med) / n
+        for j in 0 .. int(n) {
+          let c = sgn * (med + lw * (double(j) + 0.5))
+          let lo = jmin(tail, baseS)
+          let hi = jmax(tail, baseS)
+          let raw = doubles(8)
+          sf_point(es, lo, null, 2, c - half, x.sg, raw, 0)
+          sf_point(es, hi, null, 2, c - half, x.sg, raw, 2)
+          sf_point(es, hi, null, 2, c + half, x.sg, raw, 4)
+          sf_point(es, lo, null, 2, c + half, x.sg, raw, 6)
+          push_piece(queue, off_chunk_lines(raw, chunk), level, sf_y(es, (lo + hi) / 2.0, x.sg) + lift)
+          let tri = doubles(6)
+          if dir == 1.0 {
+            sf_point(es, baseS, null, 2, c - headHalf, x.sg, tri, 0)
+            sf_point(es, tipS, null, 2, c, x.sg, tri, 2)
+            sf_point(es, baseS, null, 2, c + headHalf, x.sg, tri, 4)
+          } else {
+            sf_point(es, tipS, null, 2, c, x.sg, tri, 0)
+            sf_point(es, baseS, null, 2, c - headHalf, x.sg, tri, 2)
+            sf_point(es, baseS, null, 2, c + headHalf, x.sg, tri, 4)
+          }
+          push_piece(queue, off_chunk_lines(tri, chunk), level, sf_y(es, (baseS + tipS) / 2.0, x.sg) + lift)
+          # the branch toward the centre (the lane by the centre) or the kerb (the kerb's lane), inside the lane
+          var toward: double = 0.0
+          if j == 0 { toward = -sgn } else if j == int(n) - 1 { toward = sgn }
+          if toward == 0.0 { continue }
+          let lwid = dsel(rule.hasWidth, rule.width, opt.width)
+          let room = lw / 2.0 - lwid - opt.inset
+          let reach = room * 0.55
+          let headLat = room - reach - half
+          if headLat <= 0.05 { continue }
+          let m0 = tail + dir * (alen - head) * 0.35
+          let m1 = m0 + dir * (alen - head) * 0.3
+          let cb = c + toward * reach
+          let br = doubles(8)
+          sf_point(es, m0, null, 2, c - half * toward, x.sg, br, 0)
+          sf_point(es, m1, null, 2, cb - half * toward, x.sg, br, 2)
+          sf_point(es, m1, null, 2, cb + half * toward, x.sg, br, 4)
+          sf_point(es, m0, null, 2, c + half * toward, x.sg, br, 6)
+          push_piece(queue, off_chunk_lines(br, chunk), level, sf_y(es, (m0 + m1) / 2.0, x.sg) + lift)
+          let hb = jmin(headHalf, headLat)
+          let hp = doubles(6)
+          if toward * dir > 0.0 {
+            sf_point(es, m1 - dir * hb, null, 2, cb, x.sg, hp, 0)
+            sf_point(es, m1 + dir * hb, null, 2, cb, x.sg, hp, 2)
+            sf_point(es, m1, null, 2, cb + toward * headLat, x.sg, hp, 4)
+          } else {
+            sf_point(es, m1 - dir * hb, null, 2, cb, x.sg, hp, 0)
+            sf_point(es, m1, null, 2, cb + toward * headLat, x.sg, hp, 2)
+            sf_point(es, m1 + dir * hb, null, 2, cb, x.sg, hp, 4)
+          }
+          push_piece(queue, off_chunk_lines(hp, chunk), level, sf_y(es, m1, x.sg) + lift)
+        }
+        count(x, "arrow", 1)
+      }
+    }
   }
   lay_queued(x, queue, chunk)
   return meta
+}
+
+# a laid polygon queued at a height (a hatch's or an arrow's piece: lay_queued lays it)
+function push_piece(queue: []QPiece, poly: []double, level: int, y: double) -> void {
+  let q = new QPiece
+  q.a = 0.0
+  q.b = 1.0
+  q.kind = Q_HATCH
+  q.poly = poly
+  q.level = level
+  q.y = y
+  push(queue, q)
 }
 
 function runs_for(blocked: []double, s0: double, s1: double, stop: double, startGoes: bool, endGoes: bool) -> []double {

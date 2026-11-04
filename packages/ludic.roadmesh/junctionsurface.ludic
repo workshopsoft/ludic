@@ -160,6 +160,9 @@ property SArm {
   g: double = 0.0
   k: double = 0.0
   lvl: double = 0.0
+  # a turning circle's grade capped past the node (nodeSurface's capL, gt): 0 for none
+  capL: double = 0.0
+  gt: double = 0.0
 }
 
 export property NodeSurface {
@@ -216,10 +219,12 @@ export function node_surface<C, D>(node: NetNode, j: Junction, laid: []EdgeGrade
       let i = isel(e.out, 0, len(es.st) - 1)
       let st = es.st[i]
       let nb = es.st[isel(e.out, 1, len(es.st) - 2)]
-      var dl = hypot2(nb.px - st.px, nb.pz - st.pz)
+      # the way along is square to the station's frame (its seam's line), so the surface is level along the seam (junctionSurface.ts)
+      let fwd = dsel((nb.px - st.px) * st.nz - (nb.pz - st.pz) * st.nx < 0.0, -1.0, 1.0)
+      let ux = fwd * st.nz
+      let uz = -fwd * st.nx
+      var dl = dabs((nb.px - st.px) * ux + (nb.pz - st.pz) * uz)
       if dl == 0.0 or dl != dl { dl = 1.0 }
-      let ux = (nb.px - st.px) / dl
-      let uz = (nb.pz - st.pz) / dl
       var offR: double = 0.0
       var offL: double = 0.0
       if e.out {
@@ -238,7 +243,18 @@ export function node_surface<C, D>(node: NetNode, j: Junction, laid: []EdgeGrade
       let back = -((node.x - st.px) * ux + (node.z - st.pz) * uz)
       var k: double = 0.0
       if back > 0.05 and len(j.ends) > 1 { k = (yn - st.y + g * back) / (back * back) }
-      push(ns.arms, sarm(a[0], a[1], b[0], b[1], st.px, st.pz, ux, uz, st.y, g, k, lvl))
+      # a turning circle eases from its street's grade to BULB_GRADE by the node and holds it past it (junctionSurface.ts)
+      var capL: double = 0.0
+      var gt: double = 0.0
+      if j.kind == "bulb" and len(j.ends) == 1 and back > 0.05 and dabs(g) > BULB_GRADE {
+        gt = dsel(g > 0.0, BULB_GRADE, -BULB_GRADE)
+        k = (g - gt) / (2.0 * back)
+        capL = back
+      }
+      let arm = sarm(a[0], a[1], b[0], b[1], st.px, st.pz, ux, uz, st.y, g, k, lvl)
+      arm.capL = capL
+      arm.gt = gt
+      push(ns.arms, arm)
       continue
     }
     let cx = node.x + e.ux * e.setback
@@ -271,6 +287,7 @@ export function node_surface<C, D>(node: NetNode, j: Junction, laid: []EdgeGrade
 function sarm_value(q: SArm, mode: int, px: double, pz: double) -> double {
   if mode == 1 { return q.lvl }
   let d = (px - q.cx) * q.ux + (pz - q.cz) * q.uz
+  if q.capL > 0.0 and d < -q.capL { return q.y - q.g * q.capL + q.k * q.capL * q.capL + q.gt * (d + q.capL) }
   return q.y + q.g * d + q.k * d * d
 }
 

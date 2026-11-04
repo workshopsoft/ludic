@@ -24,6 +24,8 @@ export function paint_world_of(sw: Sw) -> PaintWorld {
     p.length = e.length
     p.s = e.s
     p.line = e.line
+    if e.fromIdx >= 0 { p.fromDeg = len(net.nodes[e.fromIdx].edges) }
+    if e.toIdx >= 0 { p.toDeg = len(net.nodes[e.toIdx].edges) }
     push(w.edges, p)
   }
   w.st = new []PStations

@@ -16,6 +16,8 @@ export property PEdge {
   length: double = 0.0
   s: []double = null
   line: []double = null
+  fromDeg: int = 0         # how many roads meet at its from node and at its to node (the turn arrows' junctions)
+  toDeg: int = 0
 }
 
 # an edge's strip: per station p (x, z), n (x, z), k, s, y (7 numbers), and the offsets on each side (median, lanes, road on the
