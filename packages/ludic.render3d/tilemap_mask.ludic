@@ -393,13 +393,15 @@ export function tmk_colours(render3d_st: mut Render3dState, td: TileDraw, slot: 
 
 # the colour of the corner at texel (ci, cj) of the tile for cells of cs texels into out[o .. o + 3]: the mean tone of the
 # cs x cs texels centred on it (2 x 2 at level 0) from the full mask `fk`, or (fk < 0, far) of the coarse blocks round it;
-# texels no class names wear `plain`
+# texels no class names wear `plain`; its alpha 1 plus the share of sand classes (tmd_sand: lighting.glsl surfaceGround)
 function tmk_corner(td: TileDraw, fk: int, slot: int, ci: int, cj: int, cs: int, plain: floats, out: floats, o: int) -> void {
   let tm = td.tm
   let res = tm.res
   let top = res - 1
   let tone = td.mk_tone
   var r = 0.0;  var g = 0.0;  var bl = 0.0;  var w = 0.0
+  var s = 0.0                                          # the sand classes' texels (tmd_sand)
+  let sc = td.sand_cls
   if fk >= 0 {
     let h = Math.max(cs / 2, 1)
     let i0 = ci - h;  let j0 = cj - h
@@ -408,8 +410,10 @@ function tmk_corner(td: TileDraw, fk: int, slot: int, ci: int, cj: int, cs: int,
       let jj = min(max(j, 0), top)
       for i in i0 .. i0 + 2 * h {
         let ii = min(max(i, 0), top)
-        tmk_tone(td, int(td.fk_data[fo + jj * res + ii]), plain, tone, 0)
+        let k = int(td.fk_data[fo + jj * res + ii])
+        tmk_tone(td, k, plain, tone, 0)
         r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
+        if sc != null and sc[k] != 0 { s += 1.0 }
       }
     }
   } else {
@@ -421,12 +425,14 @@ function tmk_corner(td: TileDraw, fk: int, slot: int, ci: int, cj: int, cs: int,
       let jj = min(max(j, 0), cn - 1)
       for i in bi - hc .. bi + hc {
         let ii = min(max(i, 0), cn - 1)
-        tmk_tone(td, int(td.mk_coarse[slot * cn * cn + jj * cn + ii]), plain, tone, 0)
+        let k = int(td.mk_coarse[slot * cn * cn + jj * cn + ii])
+        tmk_tone(td, k, plain, tone, 0)
         r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
+        if sc != null and sc[k] != 0 { s += 1.0 }
       }
     }
   }
-  out[o] = r / w;  out[o + 1] = g / w;  out[o + 2] = bl / w;  out[o + 3] = 1.0
+  out[o] = r / w;  out[o + 1] = g / w;  out[o + 2] = bl / w;  out[o + 3] = 1.0 + s / w   # alpha over 1: the sand's share
 }
 
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")

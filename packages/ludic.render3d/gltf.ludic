@@ -13,7 +13,7 @@ property Prim {
   verts: int = 0,       # vertices in the mesh (each attribute buffer holds this many)
   name: string,         # the material's name (a part to tint: "hk_jacket")
   fac: floats,          # the material's factors, or null (all 1, no emission): base r g b a, roughness, metallic, emissive r g b
-  emis_param: int = -1, # the material parameter collection scalar its emission is multiplied by (mpc.ludic; the glTF material's
+  emis_param: int = -1,  # the material parameter collection scalar its emission is multiplied by (mpc.ludic; the glTF material's
                         # extras "emissive_param"), -1 none: Unreal's emissive driven by a collection parameter (a lamp's lens at night)
   ext: floats,          # glTF extensions read, or null: clear coat factor and roughness (KHR_materials_clearcoat), the metal/roughness
                         # texture's uv scale u v (KHR_texture_transform: a car paint's flakes are its noise tiled 20 times)
@@ -53,6 +53,10 @@ property Prim {
   diff2: int = 0,       # its maps
   nrm2: int = 0,
   arm2: int = 0,
+  surf3: floats = null,  # a third on the ground, the sand (surf_apply_sand), blended in by the vertex colour's alpha over 1 (tilemap_mask tmk_corner), or null
+  diff3: int = 0,
+  nrm3: int = 0,
+  arm3: int = 0,
   lu: int = 0,          # the ground's lawn (tilemap_mask.ludic tmk_lawn): its tile's coverage texture, 0 none (the vertex colour decides)
   lu_tx: float = 0.0,   # and that tile's place (the patch's uvs are the tile grid's: its own part of them is uv minus these)
   lu_tz: float = 0.0,

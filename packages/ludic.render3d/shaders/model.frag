@@ -809,6 +809,7 @@ void main() {
     // surfaces' normal maps are not read there (a virtual texture page keeps its normals at every distance)
     if (u_surf_q.w < 0.5) g_surf_flat_at = 120.0;
 #endif
+    g_ground_sand = ground ? clamp(v_col.a - 1.0, 0.0, 1.0) : 0.0;
     if (ground || (u_s2.x > 0.0 && u_surf.y < 0.5)) surfaceGround(u_diff, u_nrm, u_arm, v_wpos, N, base, v_uv, sa, sn, sr);
     else surfaceAtP(u_diff, u_nrm, u_arm, surfMain(), surfPlace(surfMain(), v_wpos, v_uv, v_wpos), N, N, v_wpos, base, sa, sn, sr);
     d.rgb = (u_surf_b.x > 0.5 || ground) ? sa : sa * v_col.rgb;

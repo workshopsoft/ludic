@@ -170,6 +170,19 @@ export function surf_apply_ground(lib: SurfaceLib, pr: Prim, green: string, pave
   return true
 }
 
+# the ground's sand (tilemap_draw tmd_sand): a third surface where the land use is a sand class (the vertex colour's alpha over 1,
+# tilemap_mask tmk_corner); a key missing from the library leaves the primitive without it
+@alloc_ok("a patch slot being made: its sand's numbers, once")
+export function surf_apply_sand(lib: SurfaceLib, pr: Prim, key: string) -> bool {
+  if lib == null or pr == null or key == "" { return false }
+  let c = surf_key(lib, key)
+  if c == null { return false }
+  pr.diff3 = c.diff;  pr.nrm3 = c.nrm;  pr.arm3 = c.arm
+  if pr.surf3 == null { pr.surf3 = floats(20) }
+  surf_numbers(c.row, pr.surf3)
+  return true
+}
+
 # the floating origin's world x, z (the game's, once a frame or on a rebase): world-laid tiles keep their place in the world
 export function r3d_surface_origin(render3d_st: mut Render3dState, ox: float, oz: float) -> void {
   render3d_st.surf_ox = ox
@@ -221,6 +234,13 @@ export function surf_bind(render3d_st: mut Render3dState, p: int, pr: Prim) -> v
     gpu_ul_bind_2d(render3d_st, p, UL_S2_DIFF, 28, pr.diff2)
     gpu_ul_bind_2d(render3d_st, p, UL_S2_NRM, 29, pr.nrm2)
     gpu_ul_bind_2d(render3d_st, p, UL_S2_ARM, 30, pr.arm2)
+    # the ground's sand (surf_apply_sand); u_s3.x 0 none (a program keeps the last primitive's uniforms)
+    surf_bind_one(render3d_st, p, pr.surf3, UL_S3)
+    if pr.surf3 != null {
+      gpu_ul_bind_2d(render3d_st, p, UL_S3_DIFF, 32, pr.diff3)
+      gpu_ul_bind_2d(render3d_st, p, UL_S3_NRM, 33, pr.nrm3)
+      gpu_ul_bind_2d(render3d_st, p, UL_S3_ARM, 34, pr.arm3)
+    }
   }
   # the ground's lawn coverage (tilemap_mask.ludic tmk_lawn) and its tile's place; x 0: none, the vertex colour decides
   if pr.lu != 0 {

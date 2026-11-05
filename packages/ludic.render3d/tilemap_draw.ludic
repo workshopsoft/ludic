@@ -51,6 +51,8 @@ export property TileDraw {
   tones: floats = null               # 8 x r g b, linear
   surf_green: string = ""            # the surfaces laid over the ground (tmd_surfaces; surface.ludic surf_apply_ground): where the
   surf_paved: string = ""            # tone is green, and elsewhere; "" for the plain tones
+  surf_sand: string = ""             # the sand laid over the sand classes (tmd_sand), "" none
+  sand_cls: words = null             # 256: 1 where a class is sand
   tone_on: words = null              # 1 where a class has a tone
   mk_tile: words = null              # per mesh slot: the tile its coarse grid is of, -1 none read
   lu_tex: words = null               # per mesh slot: its tile's lawn coverage (tmk_lawn), 0 none
@@ -178,7 +180,7 @@ function tmd_fill(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, colo
   let pr = p.model.prims[0]
   pr.verts = ms.nv
   pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
-  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved) }
+  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved);  surf_apply_sand(render3d_st.surf_lib, pr, td.surf_sand) }
   p.model.tris = ms.ni / 3
   p.held = true
   p.coloured = coloured
@@ -191,7 +193,7 @@ function tmd_model_of(render3d_st: Render3dState, td: TileDraw, m: Mesh, nv: int
   pr.mesh = m
   pr.verts = nv
   pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
-  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved) }
+  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved);  surf_apply_sand(render3d_st.surf_lib, pr, td.surf_sand) }
   pr.fac = floats(9)
   for k in 0 .. 9 { pr.fac[k] = td.fac[k] }
   let model = new Model
@@ -363,5 +365,17 @@ function tmd_lod_want(render3d_st: mut Render3dState, td: TileDraw, s: int, k: i
 export function tmd_surfaces(td: TileDraw, green: string, paved: string) -> void {
   td.surf_green = green
   td.surf_paved = paved
+  tmk_redraw(td)
+}
+
+# the ground's sand: surface `key` from the renderer's library over the classes `classes` (a beach, a sea bed) in place of the
+# paving, its share a vertex's (the vertex colour's alpha over 1: tilemap_mask tmk_corner) blended with a noisy edge by
+# lighting.glsl surfaceGround; "" none. Patches drawn already are made again.
+@alloc_ok("a map being opened: the class table, once")
+export function tmd_sand(td: TileDraw, key: string, classes: []int) -> void {
+  td.surf_sand = key
+  if td.sand_cls == null { td.sand_cls = words(256) }
+  for c in 0 .. 256 { td.sand_cls[c] = 0 }
+  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { td.sand_cls[classes[i]] = 1 } }
   tmk_redraw(td)
 }

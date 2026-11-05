@@ -261,11 +261,11 @@ function stc_occ_candidate(render3d_st: mut Render3dState, a: Actor, b: floats) 
 function stc_same_mat(p: Prim, q: Prim) -> bool {
   if p == q { return true }
   if p.diff != q.diff or p.nrm != q.nrm or p.arm != q.arm { return false }
-  if p.diff2 != q.diff2 or p.nrm2 != q.nrm2 or p.arm2 != q.arm2 or p.lu != q.lu or p.hmap != q.hmap or p.btex != q.btex { return false }
+  if p.diff2 != q.diff2 or p.nrm2 != q.nrm2 or p.arm2 != q.arm2 or p.diff3 != q.diff3 or p.lu != q.lu or p.hmap != q.hmap or p.btex != q.btex { return false }
   if p.lu_tx != q.lu_tx or p.lu_tz != q.lu_tz { return false }
   if p.micro != null or q.micro != null or p.fab != null or q.fab != null or p.eye != null or q.eye != null { return false }
   if p.morph != null or q.morph != null { return false }
-  return stc_same_floats(p.fac, q.fac) and stc_same_floats(p.ext, q.ext) and stc_same_floats(p.surf, q.surf) and stc_same_floats(p.surf2, q.surf2)
+  return stc_same_floats(p.fac, q.fac) and stc_same_floats(p.ext, q.ext) and stc_same_floats(p.surf, q.surf) and stc_same_floats(p.surf2, q.surf2) and stc_same_floats(p.surf3, q.surf3)
 }
 function stc_same_floats(a: floats, b: floats) -> bool {
   if a == null or b == null { return a == null and b == null }
