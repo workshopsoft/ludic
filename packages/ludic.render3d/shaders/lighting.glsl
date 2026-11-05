@@ -23,6 +23,9 @@ uniform float u_fog_density;
 uniform float u_fog_height_falloff;
 uniform float u_fog_base;          // the height the fog's density is measured from (0 = the world's y = 0)
 uniform float u_clip_y;          // planar-reflection pass: discard everything below this height
+// Two-sided foliage's transmission (model.frag FOLIAGE, Unreal's TwoSidedBxDF): x 1 off (R3D_FOLIAGE_TRANSMIT=0; a program that never
+// sets it has it on), y the subsurface colour's factor on the leaf's base colour (R3D_FOLIAGE_SS; 0 unset: 1)
+uniform vec2 u_leaf_tr;
 uniform float u_spec_scale;      // 1 for surfaces; foliage crowns get a fraction: needles are
                                  // tiny rough cylinders, not sheets, and a crown of card quads
                                  // seen at grazing angles otherwise mirrors the sky and frosts

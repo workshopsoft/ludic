@@ -1032,8 +1032,33 @@ void main() {
 #endif
 #endif
 #ifdef FOLIAGE
-  // thin-leaf translucency: light leaking through toward the viewer, and a wrapped diffuse
   vec3 v = normalize(u_cam_pos - v_wpos);
+  float sunLeft = sunZone(v_wpos);   // a light zone takes the sun's glow through the leaf and its sheen too
+#ifndef BLADE
+  if (u_leaf_tr.x < 0.5) {
+    // Unreal's Two Sided Foliage shading model (UE 5.8 ShadingModels.ush TwoSidedBxDF, the non-SGGX path), the sun through the leaf:
+    //   half Wrap = 0.5;
+    //   half WrapNoL = saturate( ( -dot(N, AreaLight.DiffuseL) + Wrap ) / Square( 1 + Wrap ) );
+    //   half VoL = dot(V, AreaLight.DiffuseL);
+    //   float Scatter = D_GGX( 0.6*0.6, saturate( -VoL ) );
+    //   Lighting.Transmission = AreaLight.FalloffColor * (AreaLight.Falloff * WrapNoL * Scatter) * SubsurfaceColor;
+    // added under the light's TransmissionShadow (DeferredLightingCommon.ush: LightAccumulator_AddSplit( ..., Lighting.Transmission, ...,
+    // MaskedLightColor * Shadow.TransmissionShadow )). The sky on the leaf's back (BasePassPixelShader.usf GetSkyLighting):
+    //   float3 BackfaceDiffuseLookup = GetEffectiveSkySHDiffuse(-WorldNormal) * ResolvedView.SkyLightColor.rgb;
+    //   OutSubsurfaceLighting += BackfaceDiffuseLookup * SkyVisibility;
+    // and its use: (DiffuseIndirectLighting * DiffuseColorForIndirect + SubsurfaceIndirectLighting * SubsurfaceColor)
+    //   * AOMultiBounce( GBuffer.BaseColor, ShadingOcclusion.DiffOcclusion )
+    // The subsurface colour is the leaf's own base colour times u_leaf_tr.y, as foliage materials feed SubsurfaceColor.
+    // The default lit part (DefaultLitBxDF) is shade() above.
+    vec3 ssCol = alb * ((u_leaf_tr.y > 0.0) ? u_leaf_tr.y : 1.0);
+    float wrapNoL = clamp((-dot(n, u_sun_dir) + 0.5) / (1.5 * 1.5), 0.0, 1.0);
+    float scatter = D_GGX(clamp(-dot(v, u_sun_dir), 0.0, 1.0), 0.6);   // D_GGX(NoH, a) takes a, a2 = 0.6 * 0.6
+    col += u_sun_color * (wrapNoL * scatter) * ssCol * shadow * cloudShadow(v_wpos) * sunLeft;
+    col += skyIrradiance(-n) * ssCol * ueAOMultiBounce(alb, arm.r);
+  } else
+#endif
+  {
+  // thin-leaf translucency: light leaking through toward the viewer, and a wrapped diffuse
   float back = pow(max(dot(-v, u_sun_dir), 0.0), 3.0);
   float wrap = max(dot(N, u_sun_dir) * 0.5 + 0.5, 0.0);
   // Only a thin leaf a few metres away is translucent. A clump card at 200 m is a whole
@@ -1044,9 +1069,9 @@ void main() {
   float thin = 1.0 - smoothstep(60.0, 260.0, dist);
   // a dense crown of cards is not a thin leaf: much less light comes through it
   if (u_model_h > 2.0) thin *= 0.45;
-  float sunLeft = sunZone(v_wpos);   // a light zone takes the sun's glow through the leaf and its sheen too
   col += alb * u_sun_color * (0.24 * back + 0.07 * wrap) * thin * shadow * cloudShadow(v_wpos) * sunLeft;
   col += alb * skyIrradiance(vec3(0, 1, 0)) * 0.12 * arm.r;
+  }
   // ---- leaf sheen ---------------------------------------------------------------------
   // A LEAF IS NOT MATTE. Foliage roughness is pinned to 1.0 just above and grazing Fresnel
   // is switched off, so nothing green in this game has ever had a highlight - and the glint
