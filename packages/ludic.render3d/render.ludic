@@ -53,11 +53,12 @@ function leaf_tr_flags(render3d_st: mut Render3dState) -> void {
   render3d_st.leaf_tr_read = true
   if r3d_env_has(render3d_st, "R3D_FOLIAGE_TRANSMIT") and r3d_env(render3d_st, "R3D_FOLIAGE_TRANSMIT") == "0" { render3d_st.leaf_tr_off = 1.0 }
   if r3d_env_has(render3d_st, "R3D_FOLIAGE_SS") { render3d_st.leaf_tr_ss = Text.to_float(r3d_env(render3d_st, "R3D_FOLIAGE_SS")) }
+  if r3d_env_has(render3d_st, "R3D_IMP_GRADE") and r3d_env(render3d_st, "R3D_IMP_GRADE") == "0" { render3d_st.imp_grade = 0.0 }
 }
 function fog_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_clip_y"), render3d_st.r3d_clip_y)
   leaf_tr_flags(render3d_st)
-  u_f2(render3d_st, gpu_uniform(render3d_st, prog, "u_leaf_tr"), render3d_st.leaf_tr_off, render3d_st.leaf_tr_ss)
+  u_f3(render3d_st, gpu_uniform(render3d_st, prog, "u_leaf_tr"), render3d_st.leaf_tr_off, render3d_st.leaf_tr_ss, render3d_st.imp_grade)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_spec_scale"), 1.0)
   # Unreal's fog (ue_fog.ludic) replaces the analytic one: density 0 here leaves only the fog wall
   var fog_density = render3d_st.r3d_fog_density

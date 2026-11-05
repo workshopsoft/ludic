@@ -61,10 +61,16 @@ void main() {
   // also pulling the colour out of it. Darken without desaturating: the same factor on
   // all three channels, and a touch of saturation put back, because the thing that makes
   // a far tree line read as forest rather than as a wash is that it is still GREEN.
-  alb = mix(alb, alb * 0.72, far);
-  float lum = dot(alb, vec3(0.2126, 0.7152, 0.0722));
-  alb = mix(vec3(lum), alb, 1.45);          // conifer foliage is SATURATED, not grey-green
-  alb *= 0.78;                               // and it is dark: a spruce canopy is not a lawn
+  // (Unreal's impostor material shades the baked base colour as the mesh's own; this grading - darker with distance, saturation pushed
+  // 1.45x, then x0.78 - was written for conifers and made far broadleaf crowns a brighter, more saturated green than the near mesh.
+  // On by default: measured 2026-11-05, off made far crowns pale grey-green, further from the near mesh; the near/far step is the near
+  // crown's own self-shadow, which the card does not have. R3D_IMP_GRADE=0 turns it off)
+  if (u_leaf_tr.z > 0.5) {
+    alb = mix(alb, alb * 0.72, far);
+    float lum = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+    alb = mix(vec3(lum), alb, 1.45);          // conifer foliage is SATURATED, not grey-green
+    alb *= 0.78;                               // and it is dark: a spruce canopy is not a lawn
+  }
   // the card itself is the caster: look up the shadow a little toward the sun so it does not self-shadow
   float shadow = sunShadow(v_wpos + u_sun_dir * u_radius * 0.7, vec3(0, 1, 0), viewDepth);
   // crowns are dense: darken toward the centre of the card as a cheap interior occlusion
