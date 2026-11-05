@@ -648,6 +648,40 @@ program CrowdTest {
     expect(gone_t - up_t > 1.9 and gone_t - up_t < 2.3)
   }
 
+  test "a jogger runs leg after leg at its type's jog pace; a talk circle's places face across it" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
+    fresh(crowd_st, zones, scen)
+    crowd_prime(crowd_st)
+    expect_eq(cw_act_code("jog"), CROWD_JOG)
+    # a calm walker sent jogging for 60 s keeps the jog act, moves at jog_speed within the +-7.5% band, and is never stopped between legs
+    var u = -1
+    for i in 0 .. crowd_count(crowd_st) {
+      let v = crowd_ped_at(crowd_st, i)
+      let r = cw_row_of(crowd_st, v)
+      if u < 0 and r >= 0 and crowd_st.cw_tab.rec[r].lead < 0 and crowd_act(crowd_st, v) == CROWD_WALK { u = v }
+    }
+    expect(u >= 0)
+    let p = crowd_st.cw_tab.rec[cw_row_of(crowd_st, u)]
+    p.act = CROWD_JOG
+    p.act_t = 60.0
+    p.has_dest = false
+    let js = PedTypes[p.type].jog_speed
+    var fast = 0
+    var n = 0
+    for k in 0 .. 300 {
+      sim(crowd_st, m, s, 0.1, 0.1)
+      if not crowd_alive(crowd_st, u) { break }
+      expect_eq(crowd_act(crowd_st, u), CROWD_JOG)
+      n += 1
+      let sp = crowd_speed(crowd_st, u)
+      expect(sp < js * 1.08 + 0.01)
+      if sp > js * 0.92 - 0.01 { fast += 1 }
+    }
+    expect(n > 0)
+    expect(fast > n / 2)
+    # the ring: a talk area's first two places opposite each other round its middle, each facing it once there
+    expect(cw_ring_turn(0) == 0.0 and cw_ring_turn(1) == 0.5 and cw_ring_turn(2) == 0.25)
+  }
+
   test "friends come together and walk together; a follower goes on without its leader" (crowd_st: mut CrowdState, m: mut CrowdStepsMachine, zones: mut PopulationZones, scen: mut PedScenarios, s: mut CrowdTestState) {
     fresh(crowd_st, zones, scen)
     crowd_prime(crowd_st)

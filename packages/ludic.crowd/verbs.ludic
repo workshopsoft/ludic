@@ -215,4 +215,3 @@ export function crowd_goto(crowd_st: mut CrowdState, uid: int, x: float, z: floa
   p.blocked = 0.0
   return true
 }
-
