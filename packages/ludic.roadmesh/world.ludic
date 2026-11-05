@@ -31,7 +31,9 @@ export function pt_key(x: double, z: double) -> string { return `{double_bits(x)
 export function ground_y(g: Ground, x: double, z: double) -> double {
   if g == null or g.kind == 0 { return NAN }
   if g.kind == 2 {
-    let i = Dict.get_or(g.ptsK, pt_key(x, z), -1)
+    let pk = pt_key(x, z)
+    let i = Dict.get_or(g.ptsK, pk, -1)
+    free(pk)
     if i < 0 {
       g.miss += 1
       return NAN
@@ -40,7 +42,9 @@ export function ground_y(g: Ground, x: double, z: double) -> double {
   }
   let tx = int(Math.floor((x - g.originX) / g.tileSize))
   let tz = int(Math.floor((z - g.originZ) / g.tileSize))
-  let hi = Dict.get_or(g.tiles, tile_key(tx, tz), -2)
+  let hk = tile_key(tx, tz)
+  let hi = Dict.get_or(g.tiles, hk, -2)
+  free(hk)
   if hi == -2 { return NAN }
   if hi < 0 {
     g.miss += 1
@@ -71,7 +75,9 @@ function g_at(g: Ground, home: []byte, tx: int, tz: int, ix: int, iz: int) -> do
   let res = g.res
   let cx = floor_div(ix, res)
   let cz = floor_div(iz, res)
-  let ti = Dict.get_or(g.tiles, tile_key(cx, cz), -2)
+  let tk = tile_key(cx, cz)
+  let ti = Dict.get_or(g.tiles, tk, -2)
+  free(tk)
   if ti >= 0 { return u16_at(g.data[ti], (iz - cz * res) * res + (ix - cx * res)) }
   if ti == -1 { g.miss += 1 }
   let jz = max(0, min(res - 1, iz - tz * res))
@@ -385,6 +391,8 @@ function grid_build(w: RWorld) -> void {
             at = len(w.gridL)
             Dict.set(w.grid, k, at)
             push(w.gridL, new []int)
+          } else {
+            free(k)
           }
           push(w.gridL[at], q)
           push(w.gridL[at], i)
@@ -399,7 +407,9 @@ export function edges_near(w: RWorld, px: double, pz: double, r: double) -> []in
   let seen = Dict.new()
   for cx in int(Math.floor((px - r) / CELL)) .. int(Math.floor((px + r) / CELL)) + 1 {
     for cz in int(Math.floor((pz - r) / CELL)) .. int(Math.floor((pz + r) / CELL)) + 1 {
-      let at = Dict.get_or(w.grid, tile_key(cx, cz), -1)
+      let gk = tile_key(cx, cz)
+      let at = Dict.get_or(w.grid, gk, -1)
+      free(gk)
       if at < 0 { continue }
       let L = w.gridL[at]
       for m in 0 .. len(L) / 2 {

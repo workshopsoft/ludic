@@ -76,7 +76,10 @@ property ChunkSet {
 function chunk_of(cs: ChunkSet, cx: int, cz: int) -> MeshChunk {
   let k = `{cx},{cz}`
   let i = Dict.get_or(cs.keys, k, -1)
-  if i >= 0 { return cs.list[i] }
+  if i >= 0 {
+    free(k)
+    return cs.list[i]
+  }
   let c = new MeshChunk
   c.cx = cx
   c.cz = cz
