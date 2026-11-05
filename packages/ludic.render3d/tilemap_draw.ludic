@@ -52,6 +52,7 @@ export property TileDraw {
   oz: float = 0.0
   # the land-use mask and its tones (tilemap_mask.ludic)
   mask_pattern: string = ""          # the mask tiles ({tx} {tz}); "" none
+  mask_file_pattern: string = ""     # a live map's tiles past its pool: their mask files (tmd_mask_file_pattern), "" none
   tones: floats = null               # 8 x r g b, linear
   surf_green: string = ""            # the surfaces laid over the ground (tmd_surfaces; surface.ludic surf_apply_ground): where the
   surf_paved: string = ""            # tone is green, and elsewhere; "" for the plain tones

@@ -82,6 +82,10 @@ export function tmd_mask_pattern(td: TileDraw, pattern: string) -> void {
   tmk_redraw(td)
 }
 
+# a live map's tiles past its pool (the far ground's) read their classes from these files ({tx} {tz}); "" none. Set before they are built
+# (the far ground's draw is made once, tilemap_far.ludic tmf_new: set it right after)
+export function tmd_mask_file_pattern(td: TileDraw, pattern: string) -> void { td.mask_file_pattern = pattern }
+
 # tile t's mask read again when a patch of it is next built (its classes changed in memory: a live conform)
 export function tmd_mask_forget(td: TileDraw, t: int) -> void {
   for s in 0 .. td.ms.mslots { if td.mk_tile[s] == t { td.mk_tile[s] = -1;  td.mk_has[s] = 0 } }
@@ -190,9 +194,19 @@ function tmk_plain(td: TileDraw, v: int) -> floats {
 @alloc_ok("a tile being read: its mask's decode, once")
 function tmk_read(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: int, full: int) -> bool {
   let tm = td.tm
-  if tm.live_mask != null { return tmk_read_live(render3d_st, td, t, slot, full) }
+  if tm.live_mask != null {
+    # a tile in the map's pool reads its live classes; one past it (the far ground's, tilemap_far.ludic: its heights not held) reads its
+    # mask file when the far draw was given its own (tmd_mask_file_pattern), else has none
+    if tm.slot_of[t] >= 0 or td.mask_file_pattern == "" { return tmk_read_live(render3d_st, td, t, slot, full) }
+    return tmk_read_file(render3d_st, td, t, slot, full, td.mask_file_pattern)
+  }
   if td.mask_pattern == "" { return false }
-  let path = Text.replace(Text.replace(td.mask_pattern, "{tx}", string(t % tm.cols)), "{tz}", string(t / tm.cols))
+  return tmk_read_file(render3d_st, td, t, slot, full, td.mask_pattern)
+}
+@alloc_ok("a tile being read: its mask's decode, once")
+function tmk_read_file(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: int, full: int, pattern: string) -> bool {
+  let tm = td.tm
+  let path = Text.replace(Text.replace(pattern, "{tx}", string(t % tm.cols)), "{tz}", string(t / tm.cols))
   var px: []byte = null
   if Fs.exists(path) { px = png_decode_bytes(render3d_st, path, td.mk_scratch) }
   let ch = render3d_st.tex_channels
