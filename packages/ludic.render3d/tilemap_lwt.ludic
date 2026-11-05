@@ -43,6 +43,7 @@ export property TmMeshes {
   slot_tile: words = null           # the tile whose table a slot holds, -1 free
   slot_used: words = null
   slot_of: words = null             # per tile: its slot, -1 not read, -2 no usable file
+  tried: words = null               # per tile: the clock it last could not be read (its heights or a neighbour's not in yet)
   tab: words = null                 # mslots x entries x LWT_ENTRY
   entries: int = 0                  # table entries a tile: patches^2 x levels
   clock: int = 0
@@ -142,7 +143,8 @@ export function tmm_new(tm: TileMap, slots: int) -> TmMeshes {
   ms.slot_tile = words(ms.mslots);  ms.slot_used = words(ms.mslots)
   for s in 0 .. ms.mslots { ms.slot_tile[s] = -1;  ms.slot_used[s] = 0 }
   ms.slot_of = words(tm.cols * tm.rows)
-  for t in 0 .. tm.cols * tm.rows { ms.slot_of[t] = -1 }
+  ms.tried = words(tm.cols * tm.rows)
+  for t in 0 .. tm.cols * tm.rows { ms.slot_of[t] = -1;  ms.tried[t] = -1 }
   ms.tab = words(ms.mslots * ms.entries * LWT_ENTRY)
   let c0 = tm.patch_texels
   ms.raw = buffer(lwt_locked_max(c0))

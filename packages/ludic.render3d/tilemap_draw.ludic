@@ -275,17 +275,21 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
       if s >= 0 and tmap_tile_dist(tm, tx, tz, cam_x, cam_z) <= radius { ms.slot_used[s] = ms.clock }
     }
   }
-  for n in 0 .. td.tile_budget {
+  # (a tile that cannot be read yet - its heights or a neighbour's still held by a live conform - is passed over this frame and the next
+  # nearest tried: stopping at it starved every other tile, and a live re-conform's ring of forgotten tiles stayed undrawn)
+  var loaded = 0
+  for n in 0 .. td.tile_budget * 4 {
+    if loaded >= td.tile_budget { break }
     var bx = -1;  var bz = -1;  var bd = 1000000000.0
     for tz in tz0 .. tz1 + 1 {
       for tx in tx0 .. tx1 + 1 {
-        if ms.slot_of[tz * tm.cols + tx] != -1 { continue }
+        if ms.slot_of[tz * tm.cols + tx] != -1 or ms.tried[tz * tm.cols + tx] == ms.clock { continue }
         let d = tmap_tile_dist(tm, tx, tz, cam_x, cam_z)
         if d <= radius and d < bd { bx = tx;  bz = tz;  bd = d }
       }
     }
     if bx < 0 { break }
-    if tmm_load(ms, tm, bx, bz) == -1 { break }
+    if tmm_load(ms, tm, bx, bz) == -1 { ms.tried[bz * tm.cols + bx] = ms.clock } else { loaded += 1 }
   }
   # what a mesh slot holds now: patches of a tile that left are let go, patches out of range too, the rest stood
   let pp = tm.patches * tm.patches
