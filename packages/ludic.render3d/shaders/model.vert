@@ -90,6 +90,7 @@ out vec2 v_rot;
 // cards near the trunk are darkened as the crown's interior. This is how game trees
 // have been shaded since SpeedTree; without it a card crown reads as frosted.
 uniform float u_model_h;     // the model's height (m), 0 = not a crown
+uniform float u_open_crown;  // 1: its cards are not one round crown about its middle (a palm: fronds on a bare trunk): no hull
 out float v_hull;            // 0 at the crown's axis .. 1 at its rim
 // An aspen leaf hangs on a flattened stalk, so it twists in air a conifer does not feel at
 // all. u_flutter is per layer: 0 for everything else, and the quake is written out as a
@@ -175,7 +176,10 @@ void main() {
   }
 #endif
   v_hull = 1.0;
-  if (u_model_h > 2.0) {
+  // A broadleaf's crown is a ball of cards about the middle of the tree: its normals are bent out of that ball and its inside is
+  // occluded. A palm's fronds sit on top of a bare trunk: the ball's centre (0.55 of the height) is on the trunk, so the trunk below
+  // it was bent to face the ground and the fronds by the axis half occluded - a palm drew near black against the light. It keeps its own.
+  if (u_model_h > 2.0 && u_open_crown < 0.5) {
     vec3 cc = vec3(0.0, u_model_h * i_pos.w * 0.55, 0.0);
     vec3 rel = p - cc;
     float rr = length(rel.xz) / max(u_model_h * i_pos.w * 0.28, 0.1);

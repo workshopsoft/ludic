@@ -8207,7 +8207,7 @@ T 4d4fa91b u_ue_lph 25
 S 4d4fa91b u_ue_ls 26
 T 4d4fa91b u_ue_lsh 27
 P 9dce3246 model.vert bake.frag 
-B 9dce3246 vert 0 264
+B 9dce3246 vert 0 268
 U 9dce3246 vert u_view 0 mat4 1 0
 U 9dce3246 vert u_proj 64 mat4 1 0
 U 9dce3246 vert u_light_vp 128 mat4 1 0
@@ -8221,7 +8221,8 @@ U 9dce3246 vert u_ts_half 224 float 1 0
 U 9dce3246 vert u_tp_on 228 float 1 0
 U 9dce3246 vert u_tp_dims 240 vec4 1 0
 U 9dce3246 vert u_model_h 256 float 1 0
-U 9dce3246 vert u_flutter 260 float 1 0
+U 9dce3246 vert u_open_crown 260 float 1 0
+U 9dce3246 vert u_flutter 264 float 1 0
 I 9dce3246 i_rot 4 vec4
 I 9dce3246 a_pos 0 vec3
 I 9dce3246 i_pos 3 vec4
@@ -8351,7 +8352,7 @@ T 9dce3246 u_ue_lph 27
 S 9dce3246 u_ue_ls 28
 T 9dce3246 u_ue_lsh 29
 P 439a2253 model.vert bake.frag #define CARD;
-B 439a2253 vert 0 264
+B 439a2253 vert 0 268
 U 439a2253 vert u_view 0 mat4 1 0
 U 439a2253 vert u_proj 64 mat4 1 0
 U 439a2253 vert u_light_vp 128 mat4 1 0
@@ -8365,7 +8366,8 @@ U 439a2253 vert u_ts_half 224 float 1 0
 U 439a2253 vert u_tp_on 228 float 1 0
 U 439a2253 vert u_tp_dims 240 vec4 1 0
 U 439a2253 vert u_model_h 256 float 1 0
-U 439a2253 vert u_flutter 260 float 1 0
+U 439a2253 vert u_open_crown 260 float 1 0
+U 439a2253 vert u_flutter 264 float 1 0
 I 439a2253 i_rot 4 vec4
 I 439a2253 a_pos 0 vec3
 I 439a2253 i_pos 3 vec4
@@ -8495,7 +8497,7 @@ T 439a2253 u_ue_lph 27
 S 439a2253 u_ue_ls 28
 T 439a2253 u_ue_lsh 29
 P 86f427b0 model.vert bake.frag #define FLOWER;
-B 86f427b0 vert 0 264
+B 86f427b0 vert 0 268
 U 86f427b0 vert u_view 0 mat4 1 0
 U 86f427b0 vert u_proj 64 mat4 1 0
 U 86f427b0 vert u_light_vp 128 mat4 1 0
@@ -8509,7 +8511,8 @@ U 86f427b0 vert u_ts_half 224 float 1 0
 U 86f427b0 vert u_tp_on 228 float 1 0
 U 86f427b0 vert u_tp_dims 240 vec4 1 0
 U 86f427b0 vert u_model_h 256 float 1 0
-U 86f427b0 vert u_flutter 260 float 1 0
+U 86f427b0 vert u_open_crown 260 float 1 0
+U 86f427b0 vert u_flutter 264 float 1 0
 I 86f427b0 i_rot 4 vec4
 I 86f427b0 a_pos 0 vec3
 I 86f427b0 i_pos 3 vec4
@@ -8639,7 +8642,7 @@ T 86f427b0 u_ue_lph 27
 S 86f427b0 u_ue_ls 28
 T 86f427b0 u_ue_lsh 29
 P bfa15301 model.vert depth.frag #define FOLIAGE;#define WIND;#define ALPHA_TEST;
-B bfa15301 vert 0 264
+B bfa15301 vert 0 268
 U bfa15301 vert u_view 0 mat4 1 0
 U bfa15301 vert u_proj 64 mat4 1 0
 U bfa15301 vert u_light_vp 128 mat4 1 0
@@ -8653,7 +8656,8 @@ U bfa15301 vert u_ts_half 224 float 1 0
 U bfa15301 vert u_tp_on 228 float 1 0
 U bfa15301 vert u_tp_dims 240 vec4 1 0
 U bfa15301 vert u_model_h 256 float 1 0
-U bfa15301 vert u_flutter 260 float 1 0
+U bfa15301 vert u_open_crown 260 float 1 0
+U bfa15301 vert u_flutter 264 float 1 0
 I bfa15301 i_rot 4 vec4
 I bfa15301 a_pos 0 vec3
 I bfa15301 i_pos 3 vec4
@@ -8781,7 +8785,7 @@ T bfa15301 u_ue_lph 26
 S bfa15301 u_ue_ls 27
 T bfa15301 u_ue_lsh 28
 P 266d2401 model.vert depth.frag #define FOLIAGE;#define WIND;#define ALPHA_TEST;#define NEAR_FADE;
-B 266d2401 vert 0 264
+B 266d2401 vert 0 268
 U 266d2401 vert u_view 0 mat4 1 0
 U 266d2401 vert u_proj 64 mat4 1 0
 U 266d2401 vert u_light_vp 128 mat4 1 0
@@ -8795,7 +8799,8 @@ U 266d2401 vert u_ts_half 224 float 1 0
 U 266d2401 vert u_tp_on 228 float 1 0
 U 266d2401 vert u_tp_dims 240 vec4 1 0
 U 266d2401 vert u_model_h 256 float 1 0
-U 266d2401 vert u_flutter 260 float 1 0
+U 266d2401 vert u_open_crown 260 float 1 0
+U 266d2401 vert u_flutter 264 float 1 0
 I 266d2401 i_rot 4 vec4
 I 266d2401 a_pos 0 vec3
 I 266d2401 i_pos 3 vec4
@@ -8923,7 +8928,7 @@ T 266d2401 u_ue_lph 26
 S 266d2401 u_ue_ls 27
 T 266d2401 u_ue_lsh 28
 P 01089da8 model.vert model.frag 
-B 01089da8 vert 0 264
+B 01089da8 vert 0 268
 U 01089da8 vert u_view 0 mat4 1 0
 U 01089da8 vert u_proj 64 mat4 1 0
 U 01089da8 vert u_light_vp 128 mat4 1 0
@@ -8937,7 +8942,8 @@ U 01089da8 vert u_ts_half 224 float 1 0
 U 01089da8 vert u_tp_on 228 float 1 0
 U 01089da8 vert u_tp_dims 240 vec4 1 0
 U 01089da8 vert u_model_h 256 float 1 0
-U 01089da8 vert u_flutter 260 float 1 0
+U 01089da8 vert u_open_crown 260 float 1 0
+U 01089da8 vert u_flutter 264 float 1 0
 I 01089da8 i_rot 4 vec4
 I 01089da8 a_pos 0 vec3
 I 01089da8 i_pos 3 vec4
@@ -9108,7 +9114,7 @@ T 01089da8 u_ue_lph 50
 S 01089da8 u_ue_ls 51
 T 01089da8 u_ue_lsh 52
 P 254e7887 model.vert model.frag #define CARD;#define CHEAP;
-B 254e7887 vert 0 264
+B 254e7887 vert 0 268
 U 254e7887 vert u_view 0 mat4 1 0
 U 254e7887 vert u_proj 64 mat4 1 0
 U 254e7887 vert u_light_vp 128 mat4 1 0
@@ -9122,7 +9128,8 @@ U 254e7887 vert u_ts_half 224 float 1 0
 U 254e7887 vert u_tp_on 228 float 1 0
 U 254e7887 vert u_tp_dims 240 vec4 1 0
 U 254e7887 vert u_model_h 256 float 1 0
-U 254e7887 vert u_flutter 260 float 1 0
+U 254e7887 vert u_open_crown 260 float 1 0
+U 254e7887 vert u_flutter 264 float 1 0
 I 254e7887 i_rot 4 vec4
 I 254e7887 a_pos 0 vec3
 I 254e7887 i_pos 3 vec4
@@ -9289,7 +9296,7 @@ T 254e7887 u_ue_lph 50
 S 254e7887 u_ue_ls 51
 T 254e7887 u_ue_lsh 52
 P 1ce5c5d1 model.vert model.frag #define FOLIAGE;#define WIND;#define ALPHA_TEST;
-B 1ce5c5d1 vert 0 264
+B 1ce5c5d1 vert 0 268
 U 1ce5c5d1 vert u_view 0 mat4 1 0
 U 1ce5c5d1 vert u_proj 64 mat4 1 0
 U 1ce5c5d1 vert u_light_vp 128 mat4 1 0
@@ -9303,7 +9310,8 @@ U 1ce5c5d1 vert u_ts_half 224 float 1 0
 U 1ce5c5d1 vert u_tp_on 228 float 1 0
 U 1ce5c5d1 vert u_tp_dims 240 vec4 1 0
 U 1ce5c5d1 vert u_model_h 256 float 1 0
-U 1ce5c5d1 vert u_flutter 260 float 1 0
+U 1ce5c5d1 vert u_open_crown 260 float 1 0
+U 1ce5c5d1 vert u_flutter 264 float 1 0
 I 1ce5c5d1 i_rot 4 vec4
 I 1ce5c5d1 a_pos 0 vec3
 I 1ce5c5d1 i_pos 3 vec4
@@ -9469,7 +9477,7 @@ T 1ce5c5d1 u_ue_lph 50
 S 1ce5c5d1 u_ue_ls 51
 T 1ce5c5d1 u_ue_lsh 52
 P 5e70d731 model.vert model.frag #define FOLIAGE;#define WIND;#define ALPHA_TEST;#define NEAR_FADE;
-B 5e70d731 vert 0 264
+B 5e70d731 vert 0 268
 U 5e70d731 vert u_view 0 mat4 1 0
 U 5e70d731 vert u_proj 64 mat4 1 0
 U 5e70d731 vert u_light_vp 128 mat4 1 0
@@ -9483,7 +9491,8 @@ U 5e70d731 vert u_ts_half 224 float 1 0
 U 5e70d731 vert u_tp_on 228 float 1 0
 U 5e70d731 vert u_tp_dims 240 vec4 1 0
 U 5e70d731 vert u_model_h 256 float 1 0
-U 5e70d731 vert u_flutter 260 float 1 0
+U 5e70d731 vert u_open_crown 260 float 1 0
+U 5e70d731 vert u_flutter 264 float 1 0
 I 5e70d731 i_rot 4 vec4
 I 5e70d731 a_pos 0 vec3
 I 5e70d731 i_pos 3 vec4
@@ -9649,7 +9658,7 @@ T 5e70d731 u_ue_lph 50
 S 5e70d731 u_ue_ls 51
 T 5e70d731 u_ue_lsh 52
 P f4a2b586 model.vert model.frag #define FOLIAGE;#define WIND;#define BLADE;
-B f4a2b586 vert 0 280
+B f4a2b586 vert 0 284
 U f4a2b586 vert u_view 0 mat4 1 0
 U f4a2b586 vert u_proj 64 mat4 1 0
 U f4a2b586 vert u_light_vp 128 mat4 1 0
@@ -9665,7 +9674,8 @@ U f4a2b586 vert u_ts_half 240 float 1 0
 U f4a2b586 vert u_tp_on 244 float 1 0
 U f4a2b586 vert u_tp_dims 256 vec4 1 0
 U f4a2b586 vert u_model_h 272 float 1 0
-U f4a2b586 vert u_flutter 276 float 1 0
+U f4a2b586 vert u_open_crown 276 float 1 0
+U f4a2b586 vert u_flutter 280 float 1 0
 I f4a2b586 i_rot 4 vec4
 I f4a2b586 a_pos 0 vec3
 I f4a2b586 i_pos 3 vec4
@@ -9841,7 +9851,7 @@ T f4a2b586 u_ue_lph 50
 S f4a2b586 u_ue_ls 51
 T f4a2b586 u_ue_lsh 52
 P b4587cd4 model.vert model.frag #define FOLIAGE;#define WIND;#define CARD;
-B b4587cd4 vert 0 264
+B b4587cd4 vert 0 268
 U b4587cd4 vert u_view 0 mat4 1 0
 U b4587cd4 vert u_proj 64 mat4 1 0
 U b4587cd4 vert u_light_vp 128 mat4 1 0
@@ -9855,7 +9865,8 @@ U b4587cd4 vert u_ts_half 224 float 1 0
 U b4587cd4 vert u_tp_on 228 float 1 0
 U b4587cd4 vert u_tp_dims 240 vec4 1 0
 U b4587cd4 vert u_model_h 256 float 1 0
-U b4587cd4 vert u_flutter 260 float 1 0
+U b4587cd4 vert u_open_crown 260 float 1 0
+U b4587cd4 vert u_flutter 264 float 1 0
 I b4587cd4 i_rot 4 vec4
 I b4587cd4 a_pos 0 vec3
 I b4587cd4 i_pos 3 vec4
@@ -10022,7 +10033,7 @@ T b4587cd4 u_ue_lph 50
 S b4587cd4 u_ue_ls 51
 T b4587cd4 u_ue_lsh 52
 P 4dda406a model.vert model.frag #define FOLIAGE;#define WIND;#define EQ_PASS;
-B 4dda406a vert 0 264
+B 4dda406a vert 0 268
 U 4dda406a vert u_view 0 mat4 1 0
 U 4dda406a vert u_proj 64 mat4 1 0
 U 4dda406a vert u_light_vp 128 mat4 1 0
@@ -10036,7 +10047,8 @@ U 4dda406a vert u_ts_half 224 float 1 0
 U 4dda406a vert u_tp_on 228 float 1 0
 U 4dda406a vert u_tp_dims 240 vec4 1 0
 U 4dda406a vert u_model_h 256 float 1 0
-U 4dda406a vert u_flutter 260 float 1 0
+U 4dda406a vert u_open_crown 260 float 1 0
+U 4dda406a vert u_flutter 264 float 1 0
 I 4dda406a i_rot 4 vec4
 I 4dda406a a_pos 0 vec3
 I 4dda406a i_pos 3 vec4
@@ -10202,7 +10214,7 @@ T 4dda406a u_ue_lph 50
 S 4dda406a u_ue_ls 51
 T 4dda406a u_ue_lsh 52
 P b603a056 model.vert model.frag #define FOLIAGE;#define WIND;#define EQ_PASS;#define NEAR_FADE;
-B b603a056 vert 0 264
+B b603a056 vert 0 268
 U b603a056 vert u_view 0 mat4 1 0
 U b603a056 vert u_proj 64 mat4 1 0
 U b603a056 vert u_light_vp 128 mat4 1 0
@@ -10216,7 +10228,8 @@ U b603a056 vert u_ts_half 224 float 1 0
 U b603a056 vert u_tp_on 228 float 1 0
 U b603a056 vert u_tp_dims 240 vec4 1 0
 U b603a056 vert u_model_h 256 float 1 0
-U b603a056 vert u_flutter 260 float 1 0
+U b603a056 vert u_open_crown 260 float 1 0
+U b603a056 vert u_flutter 264 float 1 0
 I b603a056 i_rot 4 vec4
 I b603a056 a_pos 0 vec3
 I b603a056 i_pos 3 vec4
@@ -10382,7 +10395,7 @@ T b603a056 u_ue_lph 50
 S b603a056 u_ue_ls 51
 T b603a056 u_ue_lsh 52
 P 3b183d8f model.vert model.frag #define FOLIAGE;#define WIND;#define FLOWER;
-B 3b183d8f vert 0 264
+B 3b183d8f vert 0 268
 U 3b183d8f vert u_view 0 mat4 1 0
 U 3b183d8f vert u_proj 64 mat4 1 0
 U 3b183d8f vert u_light_vp 128 mat4 1 0
@@ -10396,7 +10409,8 @@ U 3b183d8f vert u_ts_half 224 float 1 0
 U 3b183d8f vert u_tp_on 228 float 1 0
 U 3b183d8f vert u_tp_dims 240 vec4 1 0
 U 3b183d8f vert u_model_h 256 float 1 0
-U 3b183d8f vert u_flutter 260 float 1 0
+U 3b183d8f vert u_open_crown 260 float 1 0
+U 3b183d8f vert u_flutter 264 float 1 0
 I 3b183d8f i_rot 4 vec4
 I 3b183d8f a_pos 0 vec3
 I 3b183d8f i_pos 3 vec4
@@ -10562,7 +10576,7 @@ T 3b183d8f u_ue_lph 50
 S 3b183d8f u_ue_ls 51
 T 3b183d8f u_ue_lsh 52
 P 79b77ed9 model.vert model.frag #define SHADOW_PASS;#define WIND;#define CARD;
-B 79b77ed9 vert 0 264
+B 79b77ed9 vert 0 268
 U 79b77ed9 vert u_view 0 mat4 1 0
 U 79b77ed9 vert u_proj 64 mat4 1 0
 U 79b77ed9 vert u_light_vp 128 mat4 1 0
@@ -10576,7 +10590,8 @@ U 79b77ed9 vert u_ts_half 224 float 1 0
 U 79b77ed9 vert u_tp_on 228 float 1 0
 U 79b77ed9 vert u_tp_dims 240 vec4 1 0
 U 79b77ed9 vert u_model_h 256 float 1 0
-U 79b77ed9 vert u_flutter 260 float 1 0
+U 79b77ed9 vert u_open_crown 260 float 1 0
+U 79b77ed9 vert u_flutter 264 float 1 0
 I 79b77ed9 i_rot 4 vec4
 I 79b77ed9 a_pos 0 vec3
 I 79b77ed9 i_pos 3 vec4
@@ -10743,7 +10758,7 @@ T 79b77ed9 u_ue_lph 50
 S 79b77ed9 u_ue_ls 51
 T 79b77ed9 u_ue_lsh 52
 P b9fc2041 model.vert model.frag #define WIND;
-B b9fc2041 vert 0 264
+B b9fc2041 vert 0 268
 U b9fc2041 vert u_view 0 mat4 1 0
 U b9fc2041 vert u_proj 64 mat4 1 0
 U b9fc2041 vert u_light_vp 128 mat4 1 0
@@ -10757,7 +10772,8 @@ U b9fc2041 vert u_ts_half 224 float 1 0
 U b9fc2041 vert u_tp_on 228 float 1 0
 U b9fc2041 vert u_tp_dims 240 vec4 1 0
 U b9fc2041 vert u_model_h 256 float 1 0
-U b9fc2041 vert u_flutter 260 float 1 0
+U b9fc2041 vert u_open_crown 260 float 1 0
+U b9fc2041 vert u_flutter 264 float 1 0
 I b9fc2041 i_rot 4 vec4
 I b9fc2041 a_pos 0 vec3
 I b9fc2041 i_pos 3 vec4
@@ -10928,7 +10944,7 @@ T b9fc2041 u_ue_lph 50
 S b9fc2041 u_ue_ls 51
 T b9fc2041 u_ue_lsh 52
 P f34dce08 model.vert shadow.frag #define SHADOW_PASS;
-B f34dce08 vert 0 264
+B f34dce08 vert 0 268
 U f34dce08 vert u_view 0 mat4 1 0
 U f34dce08 vert u_proj 64 mat4 1 0
 U f34dce08 vert u_light_vp 128 mat4 1 0
@@ -10942,7 +10958,8 @@ U f34dce08 vert u_ts_half 224 float 1 0
 U f34dce08 vert u_tp_on 228 float 1 0
 U f34dce08 vert u_tp_dims 240 vec4 1 0
 U f34dce08 vert u_model_h 256 float 1 0
-U f34dce08 vert u_flutter 260 float 1 0
+U f34dce08 vert u_open_crown 260 float 1 0
+U f34dce08 vert u_flutter 264 float 1 0
 I f34dce08 i_rot 4 vec4
 I f34dce08 a_pos 0 vec3
 I f34dce08 i_pos 3 vec4
@@ -11071,7 +11088,7 @@ T f34dce08 u_ue_lph 27
 S f34dce08 u_ue_ls 28
 T f34dce08 u_ue_lsh 29
 P 512004a1 model.vert shadow.frag #define SHADOW_PASS;#define WIND;
-B 512004a1 vert 0 264
+B 512004a1 vert 0 268
 U 512004a1 vert u_view 0 mat4 1 0
 U 512004a1 vert u_proj 64 mat4 1 0
 U 512004a1 vert u_light_vp 128 mat4 1 0
@@ -11085,7 +11102,8 @@ U 512004a1 vert u_ts_half 224 float 1 0
 U 512004a1 vert u_tp_on 228 float 1 0
 U 512004a1 vert u_tp_dims 240 vec4 1 0
 U 512004a1 vert u_model_h 256 float 1 0
-U 512004a1 vert u_flutter 260 float 1 0
+U 512004a1 vert u_open_crown 260 float 1 0
+U 512004a1 vert u_flutter 264 float 1 0
 I 512004a1 i_rot 4 vec4
 I 512004a1 a_pos 0 vec3
 I 512004a1 i_pos 3 vec4
@@ -11214,7 +11232,7 @@ T 512004a1 u_ue_lph 27
 S 512004a1 u_ue_ls 28
 T 512004a1 u_ue_lsh 29
 P b964507f model.vert shadow.frag #define SHADOW_PASS;#define WIND;#define ALPHA_TEST;
-B b964507f vert 0 264
+B b964507f vert 0 268
 U b964507f vert u_view 0 mat4 1 0
 U b964507f vert u_proj 64 mat4 1 0
 U b964507f vert u_light_vp 128 mat4 1 0
@@ -11228,7 +11246,8 @@ U b964507f vert u_ts_half 224 float 1 0
 U b964507f vert u_tp_on 228 float 1 0
 U b964507f vert u_tp_dims 240 vec4 1 0
 U b964507f vert u_model_h 256 float 1 0
-U b964507f vert u_flutter 260 float 1 0
+U b964507f vert u_open_crown 260 float 1 0
+U b964507f vert u_flutter 264 float 1 0
 I b964507f i_rot 4 vec4
 I b964507f a_pos 0 vec3
 I b964507f i_pos 3 vec4

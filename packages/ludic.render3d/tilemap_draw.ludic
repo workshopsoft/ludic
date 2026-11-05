@@ -21,6 +21,8 @@
 # ============================================================================
 numbers float
 
+const TMD_RETRY: int = 60             # frames before a patch whose build failed is tried again
+
 export property TmPatch {
   tile: int = -1                     # the tile it is of (tz * cols + tx) while it holds a mesh
   px: int = 0
@@ -33,6 +35,8 @@ export property TmPatch {
   coloured: bool = false             # ... with the land use's vertex colours (attribute 7)
   rvt_lu: int = -1                   # the lawn texture and colouring its RVT pages were drawn with (rvt.ludic)
   rvt_col: bool = false
+  failed: int = -1                   # the frame (ms.clock) its last build failed (its tile's levels not readable yet), -1 none: asked again
+                                     # TMD_RETRY frames on (a live conform drops a tile's levels; a patch built in that gap kept no mesh for good)
 }
 
 export property TileDraw {
@@ -111,6 +115,7 @@ function tmd_release(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch) -
   if p.held { gpu_mesh_free(render3d_st, p.mesh);  p.held = false;  td.frees += 1 }
   p.lod = -1
   p.tile = -1
+  p.failed = -1
 }
 
 # the whole ground let go (a map swap, the end): every level, then every patch's records
@@ -307,7 +312,7 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
         let p = td.patches[s * pp + k]
         let d = tmd_dist(tm, tmap_patch_cx(tm, t % tm.cols, k % tm.patches), tmap_patch_cz(tm, t / tm.cols, k / tm.patches), cam_x, cam_z)
         if d > radius or d >= bd { continue }
-        if tmd_lod_want(render3d_st, td, s, k, d, cam_x, cam_y, cam_z) == p.lod { continue }
+        if tmd_lod_want(render3d_st, td, s, k, d, cam_x, cam_y, cam_z) == p.lod and (p.failed < 0 or ms.clock - p.failed < TMD_RETRY) { continue }
         bi = s * pp + k;  bd = d
       }
     }
@@ -317,7 +322,7 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
     let p = td.patches[bi]
     p.tile = ms.slot_tile[s];  p.px = k % tm.patches;  p.pz = k / tm.patches
     let want = tmd_lod_want(render3d_st, td, s, k, bd, cam_x, cam_y, cam_z)
-    if not tmd_build(render3d_st, td, p, s, want) { p.lod = want }      # unreadable: no mesh, and not asked for again every frame
+    if tmd_build(render3d_st, td, p, s, want) { p.failed = -1 } else { p.lod = want;  p.failed = ms.clock }   # unreadable: no mesh, asked again TMD_RETRY frames on
   }
   if r3d_env_has(render3d_st, "R3D_TERRAIN_LODS") and render3d_st.ac_frame == Text.to_int(r3d_env(render3d_st, "R3D_TERRAIN_LODS")) { tmd_lods_say(td) }
 }

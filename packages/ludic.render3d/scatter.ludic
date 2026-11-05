@@ -29,6 +29,8 @@ property Layer {
   foliage:  bool = false,
   wind:     float = 0.0,        # float bits
   flutter:  float = 0.0,        # float bits; per-leaf tremble (aspen), 0 = none
+  open_crown: bool = false,     # its cards are not one round crown about its middle (a palm's fronds on top of a bare trunk): model.vert
+                                # leaves its own normals and no crown occlusion (the hull is a broadleaf's: centred at 0.55 of the height)
   tint:     floats,
   inst:     floats,          # INST_FLOATS per instance
   count:    int = 0,
@@ -1180,6 +1182,9 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
   var mh = 0.0
   if not card and l.foliage { mh = model.height }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), mh)
+  var oc = 0.0
+  if l.open_crown { oc = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_open_crown"), oc)
   if not card and l.foliage and not shadow and render3d_st.sc_a2c { gpu_alpha_to_coverage(render3d_st, true) }
   if card {
     u_f(render3d_st, gpu_uniform(render3d_st, p, "u_card_w"), l.atlas.radius * 2.0);  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_card_h"), l.atlas.height)
@@ -1302,6 +1307,9 @@ function layer_draw_depth(render3d_st: mut Render3dState, l: Layer, model: Model
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wind"), l.wind)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_flutter"), l.flutter)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), model.height)
+  var oc = 0.0
+  if l.open_crown { oc = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_open_crown"), oc)
   u_mat4(render3d_st, gpu_ul(render3d_st, p, UL_VIEW), render3d_st.cam_view)
   u_mat4(render3d_st, gpu_ul(render3d_st, p, UL_PROJ), render3d_st.cam_proj)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_y"), render3d_st.r3d_clip_y)
