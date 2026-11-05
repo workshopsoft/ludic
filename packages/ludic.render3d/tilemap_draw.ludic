@@ -112,6 +112,15 @@ function tmd_release(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch) -
 }
 
 # the whole ground let go (a map swap, the end): every level, then every patch's records
+# tile t's drawn patches let go (its heights changed: a live conform): they are built again from its new levels; without this a tile
+# read back into the same mesh slot kept the patches of its old heights
+export function tmd_tile_forget(render3d_st: mut Render3dState, td: TileDraw, t: int) -> void {
+  for i in 0 .. len(td.patches) {
+    let p = td.patches[i]
+    if p.tile == t { tmd_release(render3d_st, td, p) }
+  }
+}
+
 export function tmd_free(render3d_st: mut Render3dState, td: TileDraw) -> void {
   for i in 0 .. len(td.patches) {
     let p = td.patches[i]
