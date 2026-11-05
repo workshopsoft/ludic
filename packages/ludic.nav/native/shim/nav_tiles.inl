@@ -44,6 +44,52 @@ NAV_SHIM int nav_tile_build(void *h, int tx, int tz, const float *v, int nv, con
   return polys;
 }
 
+// The same tile in two halves, for a build off the main thread (Job.spawn, GTA V's streaming workers): nav_tile_make runs Recast's
+// pipeline and answers the tile's bytes (Detour's allocator, *data) and its polygons - it reads the mesh's params only, so it may run
+// on any thread while the mesh is queried; nav_tile_add, on the thread that owns the mesh, replaces tile (tx, tz) with them (the mesh
+// frees them; null or no polygons: the tile is only removed). -1 failed, else the polygons. The bytes travel in out (4 ints: the
+// pointer in out[0..1], the size in out[2]), so the caller never holds Detour's pointer itself
+NAV_SHIM int nav_tile_make(void *h, int tx, int tz, const float *v, int nv, const int *t, int nt,
+                           const unsigned char *area, const float *cyl, int nc, const float *foot, int nf, const float *c,
+                           int *out) {
+  Nav *n = static_cast<Nav *>(h);
+  const dtNavMeshParams *mp = n->mesh->getParams();
+  unsigned char *data = nullptr;
+  int size = 0;
+  memset(out, 0, 4 * sizeof(int));
+  rcConfig cfg;
+  nav_config(cfg, c);
+  cfg.tileSize = (int)(mp->tileWidth / cfg.cs + 0.5f);
+  if (fabsf(cfg.tileSize * cfg.cs - mp->tileWidth) > 0.001f) return -1;
+  cfg.borderSize = cfg.walkableRadius + 3;
+  cfg.width = cfg.height = cfg.tileSize + cfg.borderSize * 2;
+  float lo[3], hi[3];
+  rcCalcBounds(v, nv, lo, hi);
+  cfg.bmin[0] = mp->orig[0] + tx * mp->tileWidth - cfg.borderSize * cfg.cs;
+  cfg.bmin[2] = mp->orig[2] + tz * mp->tileHeight - cfg.borderSize * cfg.cs;
+  cfg.bmax[0] = mp->orig[0] + (tx + 1) * mp->tileWidth + cfg.borderSize * cfg.cs;
+  cfg.bmax[2] = mp->orig[2] + (tz + 1) * mp->tileHeight + cfg.borderSize * cfg.cs;
+  cfg.bmin[1] = lo[1] - 1.0f;
+  cfg.bmax[1] = hi[1] + c[2] + 1.0f;
+  NavIn in = {v, nv, t, nt, area, cyl, nc, foot, nf, c};
+  int polys = 0;
+  if (!nav_pipeline(cfg, in, tx, tz, &data, &size, &polys)) return -1;
+  memcpy(out, &data, sizeof(data));
+  out[2] = size;
+  return polys;
+}
+NAV_SHIM int nav_tile_add(void *h, int tx, int tz, int *out, int polys) {
+  Nav *n = static_cast<Nav *>(h);
+  unsigned char *data = nullptr;
+  memcpy(&data, out, sizeof(data));
+  const int size = out[2];
+  memset(out, 0, 4 * sizeof(int));
+  n->mesh->removeTile(n->mesh->getTileRefAt(tx, tz, 0), nullptr, nullptr);
+  if (!data || polys <= 0) { if (data) dtFree(data); return polys < 0 ? -1 : 0; }
+  if (dtStatusFailed(n->mesh->addTile(data, size, DT_TILE_FREE_DATA, 0, nullptr))) { dtFree(data); return -1; }
+  return polys;
+}
+
 // the set's bytes: "NAVT", a version, the mesh's params, then each tile's ref, size and data.
 // First call with buf null for the size, then with a buffer that big
 static const int NAV_MAGIC = 'N' << 24 | 'A' << 16 | 'V' << 8 | 'T';

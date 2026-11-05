@@ -2,7 +2,7 @@
 # template (docs/plan 25); the tables sized by the program are emit_fence.ludic's.
 function emit_fence_globals() -> void {
   emith("@lp_site = global i32 0\n")
-  emith("@lp_want = global i8 0\n")
+  emith("@lp_want = thread_local global i8 0\n")
   emith("@lp_ar_on = global i8 0\n")
   emith("@lp_ar_tried = global i8 0\n")
   emith("@lp_ar_lo = global i64 0\n")
@@ -1908,7 +1908,7 @@ function emit_fence_frame() -> void {
 }
 function emit_fence_win() -> void {
   emith("@lp_site = global i32 0\n")
-  emith("@lp_want = global i8 0\n")
+  emith("@lp_want = thread_local global i8 0\n")
   emith("@lp_fdecl = global i32 0\n")
   emith("define ptr @lp_malloc(i64 %n) {\n")
   emith("entry:\n")

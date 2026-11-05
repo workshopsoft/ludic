@@ -281,3 +281,113 @@ entry:
   store atomic i32 %v, ptr %p release, align 4
   ret void
 }
+
+; ---- the background queue (Job.spawn): as threads.ll's, over SRW locks and condition variables -------------------------------------
+
+@B_ready = internal global i32 0
+@B_lock  = internal global ptr null
+@B_cond  = internal global ptr null
+@B_head  = internal global i32 0
+@B_tail  = internal global i32 0
+@B_fn    = internal global [256 x ptr] zeroinitializer
+@B_ctx   = internal global [256 x ptr] zeroinitializer
+@B_flag  = internal global [256 x ptr] zeroinitializer
+@B_i     = internal global [256 x i32] zeroinitializer
+
+define internal i32 @b_worker(ptr %arg) {
+entry:
+  store i32 1, ptr @T_worker
+  %lk = load ptr, ptr @B_lock
+  %cv = load ptr, ptr @B_cond
+  br label %park
+park:
+  call void @AcquireSRWLockExclusive(ptr %lk)
+  br label %check
+check:
+  %h = load i32, ptr @B_head
+  %t = load i32, ptr @B_tail
+  %empty = icmp eq i32 %h, %t
+  br i1 %empty, label %sleep, label %take
+sleep:
+  ; INFINITE wait, exclusive mode
+  %w0 = call i32 @SleepConditionVariableSRW(ptr %cv, ptr %lk, i32 -1, i32 0)
+  br label %check
+take:
+  %ix = and i32 %h, 255
+  %ix64 = zext i32 %ix to i64
+  %pf = getelementptr [256 x ptr], ptr @B_fn, i64 0, i64 %ix64
+  %pc = getelementptr [256 x ptr], ptr @B_ctx, i64 0, i64 %ix64
+  %pg = getelementptr [256 x ptr], ptr @B_flag, i64 0, i64 %ix64
+  %pi = getelementptr [256 x i32], ptr @B_i, i64 0, i64 %ix64
+  %fn = load ptr, ptr %pf
+  %ctx = load ptr, ptr %pc
+  %flag = load ptr, ptr %pg
+  %i = load i32, ptr %pi
+  %h1 = add i32 %h, 1
+  store i32 %h1, ptr @B_head
+  call void @ReleaseSRWLockExclusive(ptr %lk)
+  call void %fn(i32 %i, ptr %ctx)
+  %fz = icmp eq ptr %flag, null
+  br i1 %fz, label %park, label %mark
+mark:
+  store atomic i32 1, ptr %flag release, align 4
+  br label %park
+}
+
+define internal void @b_init() {
+entry:
+  %r = load i32, ptr @B_ready
+  %have = icmp ne i32 %r, 0
+  br i1 %have, label %out, label %make
+make:
+  %lk = call ptr @t_zeroed()
+  %cv = call ptr @t_zeroed()
+  store ptr %lk, ptr @B_lock
+  store ptr %cv, ptr @B_cond
+  %h0 = call ptr @CreateThread(ptr null, i64 0, ptr @b_worker, ptr null, i32 0, ptr null)
+  %x0 = call i32 @CloseHandle(ptr %h0)
+  %h1 = call ptr @CreateThread(ptr null, i64 0, ptr @b_worker, ptr null, i32 0, ptr null)
+  %x1 = call i32 @CloseHandle(ptr %h1)
+  store i32 1, ptr @B_ready
+  br label %out
+out:
+  ret void
+}
+
+define i32 @thr_bg_run(ptr %fn, i32 %i, ptr %ctx, ptr %flag) {
+entry:
+  call void @b_init()
+  %lk = load ptr, ptr @B_lock
+  %cv = load ptr, ptr @B_cond
+  call void @AcquireSRWLockExclusive(ptr %lk)
+  %h = load i32, ptr @B_head
+  %t = load i32, ptr @B_tail
+  %used = sub i32 %t, %h
+  %full = icmp sge i32 %used, 256
+  br i1 %full, label %refuse, label %put
+refuse:
+  call void @ReleaseSRWLockExclusive(ptr %lk)
+  ret i32 0
+put:
+  %ix = and i32 %t, 255
+  %ix64 = zext i32 %ix to i64
+  %pf = getelementptr [256 x ptr], ptr @B_fn, i64 0, i64 %ix64
+  %pc = getelementptr [256 x ptr], ptr @B_ctx, i64 0, i64 %ix64
+  %pg = getelementptr [256 x ptr], ptr @B_flag, i64 0, i64 %ix64
+  %pi = getelementptr [256 x i32], ptr @B_i, i64 0, i64 %ix64
+  store ptr %fn, ptr %pf
+  store ptr %ctx, ptr %pc
+  store ptr %flag, ptr %pg
+  store i32 %i, ptr %pi
+  %fz = icmp eq ptr %flag, null
+  br i1 %fz, label %go, label %clear
+clear:
+  store atomic i32 0, ptr %flag release, align 4
+  br label %go
+go:
+  %t1 = add i32 %t, 1
+  store i32 %t1, ptr @B_tail
+  call void @WakeAllConditionVariable(ptr %cv)
+  call void @ReleaseSRWLockExclusive(ptr %lk)
+  ret i32 1
+}

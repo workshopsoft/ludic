@@ -489,6 +489,7 @@ function emit_ns_call(ns: pointer, meth: pointer, e: Node) -> Val {
   # cooperative scheduler; Sync.* is the advanced, opt-in message-passing tier. #14.
   if (ns == "Job") {
     if (meth == "parallel_for") { bare = "job_parallel_for";  push(labels, "count"); push(labels, "work"); push(labels, "ctx");  if len(e.kids) > 1 { check_worker_ref(e.kids[1]) } }
+    if (meth == "spawn") { bare = "job_spawn";  push(labels, "work"); push(labels, "i"); push(labels, "ctx"); push(labels, "flag");  if len(e.kids) > 0 { check_worker_ref(e.kids[0]) } }
   }
   # Huge.* / Angle.* / Percent.* -> the numeric runtime (runtime/native/numeric.ludic,
   # spliced on demand). Ordinary Ludic functions, so the generic call path keeps
