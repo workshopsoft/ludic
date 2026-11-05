@@ -115,8 +115,29 @@ export function tmb_lock_read(render3d_st: mut Render3dState, tm: TileMap, k: Tm
     print(`tilemap: {path} is {render3d_st.tex_w} x {render3d_st.tex_h}: the row says {tm.res} x {tm.res}; the tile is baked unlocked`)
     return false
   }
+  return tmb_lock_bits(tm, k, px, ch * bps)
+}
+
+# tile (tx, tz)'s locked texels from the map's live classes (tmap_hold_new's live masks, a live conform's), as tmb_lock_read takes
+# them from a mask file: the live levels (tilemap_lwt.ludic tmm_live) cut with the bake's lock, so a coarse level never lifts the
+# ground over a road, a sidewalk or a pad (unlocked, the levels spanned a street from its kerbs' heights: grass bands through the
+# asphalt, 2026-11-05). false (bits null) when the tile has no live classes yet
+@alloc_ok("a tile's live levels: the lock's bits, once a make")
+export function tmb_lock_live(tm: TileMap, k: TmLock, tx: int, tz: int) -> bool {
+  k.bits = null
+  if tm.live_mask == null { return false }
+  let s = tm.slot_of[tz * tm.cols + tx]
+  if s < 0 or tm.live_mask_on[s] == 0 { return false }
   let n = tm.res * tm.res
-  let step = ch * bps
+  if k.scratch == null or len(k.scratch) < n { k.scratch = buffer(n) }
+  let px = k.scratch
+  for i in 0 .. n { px[i] = tm.live_mask[s * n + i] }
+  return tmb_lock_bits(tm, k, px, 1)
+}
+
+@alloc_ok("a bake: the lock's bits, once a tile")
+function tmb_lock_bits(tm: TileMap, k: TmLock, px: []byte, step: int) -> bool {
+  let n = tm.res * tm.res
   let bits = buffer(n)
   for i in 0 .. n {
     let c = int(px[i * step])

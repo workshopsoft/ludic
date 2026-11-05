@@ -79,6 +79,7 @@ export property TmMeshes {
   mem: [][]byte = null              # per tile: its levels' bytes, made in memory (null: not made)
   mbuf: []byte = null               # the bytes a patch is read from now (live), or null (the file)
   mpos: int = 0
+  lock: TmLock = null              # the live levels' LOD lock (tmm_live_lock): its bits from the live classes, null: unlocked
 }
 
 # the levels made in memory from the height tiles instead of read from baked files (the height tile and its neighbours must be in the
@@ -88,6 +89,10 @@ export function tmm_live(ms: TmMeshes, tm: TileMap) -> void {
   ms.mem = new [][]byte
   for i in 0 .. tm.cols * tm.rows { push(ms.mem, null) }
 }
+
+# the live levels cut with a LOD lock (tilemap_bake.ludic TmLock: tmb_lock_new, tmb_lock_under), its bits read from the map's live
+# classes each time a tile's levels are made
+export function tmm_live_lock(ms: TmMeshes, k: TmLock) -> void { ms.lock = k }
 
 # a tile's levels made again (its heights changed): the next draw makes them from the height tiles
 export function tmm_forget(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> void {
@@ -263,7 +268,7 @@ export function tmm_load(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> int {
           if (dx == 0 and dz == 0) or tm.slot_of[nt] >= 0 { if not tmap_settled(tm, nt) { return -1 } }
         }
       } }
-      ms.mem[t] = tmb_tile(tm, tx, tz)
+      if ms.lock != null and tmb_lock_live(tm, ms.lock, tx, tz) { ms.mem[t] = tmb_tile_locked(tm, tx, tz, ms.lock) } else { ms.mem[t] = tmb_tile(tm, tx, tz) }
       if ms.mem[t] == null { ms.slot_of[t] = -2;  ms.no_file += 1;  return -2 }
     }
     let mb = ms.mem[t]
