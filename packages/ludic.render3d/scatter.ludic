@@ -1375,7 +1375,6 @@ function scatter_draw(render3d_st: mut Render3dState) -> void {
     if render3d_st.sc_skip_card and l.card { continue }
     if l.grass and sc_grass_replaced(render3d_st) { continue }
     if render3d_st.r3d_no_trees and l.imp != null and not l.card { continue }
-    if not l.casts { continue }
     layer_update(render3d_st, l)
     layer_draw_near(render3d_st, l, false, null, false)
     layer_draw_far(render3d_st, l, false, null)
@@ -1395,6 +1394,8 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
     if render3d_st.sc_skip_card and l.card { continue }
     if l.grass and sc_grass_replaced(render3d_st) { continue }
     if render3d_st.r3d_no_trees and l.imp != null and not l.card { continue }
+    # (Mass's instanced tier, bCastShadows false: seen, never cast. Its skip sat in scatter_draw, so such a layer cast and was not drawn)
+    if not l.casts { continue }
     layer_update(render3d_st, l)
     if l.imp != null {
       # the impostor casts only into the far cascades: every tree on the map was drawn as a card
