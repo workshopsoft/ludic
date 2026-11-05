@@ -105,7 +105,7 @@ export function w_junction(w: PaintWorld, ni: int) -> PJunction {
 }
 
 # ---- a world from tagged values (the fixtures' and the job's) ------------------------------------------------------------
-export function pedge_of(v: Val) -> PEdge {
+export function pedge_of(v: RmVal) -> PEdge {
   let e = new PEdge
   e.key = v_gets(v, "key", "")
   e.profile = v_gets(v, "profile", "")
@@ -124,7 +124,7 @@ export function pedge_of(v: Val) -> PEdge {
 }
 
 # edges: [PEdge values]; nodes: [{key, edges: [keys]}] (or null); dump: {width, stations, junctions, laid, crossings} as lists of {key, v}
-export function world_of(forward: string, edges: Val, nodes: Val, dump: Val) -> PaintWorld {
+export function world_of(forward: string, edges: RmVal, nodes: RmVal, dump: RmVal) -> PaintWorld {
   let w = new PaintWorld
   w.forward = forward
   w.edges = new []PEdge

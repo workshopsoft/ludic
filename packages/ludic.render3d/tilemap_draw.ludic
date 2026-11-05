@@ -57,6 +57,7 @@ export property TileDraw {
   lu_a: []byte = null                # tmk_lawn's working texels, res x res each
   lu_b: []byte = null
   mk_has: words = null               # per mesh slot: 1 when that tile has a mask
+  mk_live: []byte = null             # a live mask's texels (tmk_read_live), res x res, made once
   mk_coarse: []byte = null           # per mesh slot: the majority class of each mk_cf x mk_cf block
   mk_cf: int = 8
   mk_fine: int = 0                   # the coarsest level that reads the full texels

@@ -72,6 +72,43 @@ export property TmMeshes {
   no_file: int = 0
   reads: int = 0
   uv_per_tile: float = 1.0
+  # live levels (tmm_live): a tile's file made in memory from its height tiles (tilemap_bake.ludic tmb_tile) when first wanted, not read
+  # from disk: no bake (a studio's view of rows being edited)
+  live: bool = false
+  mem: [][]byte = null              # per tile: its levels' bytes, made in memory (null: not made)
+  mbuf: []byte = null               # the bytes a patch is read from now (live), or null (the file)
+  mpos: int = 0
+}
+
+# the levels made in memory from the height tiles instead of read from baked files (the height tile and its neighbours must be in the
+# map's cache: tmap_ensure round the camera)
+export function tmm_live(ms: TmMeshes, tm: TileMap) -> void {
+  ms.live = true
+  ms.mem = new [][]byte
+  for i in 0 .. tm.cols * tm.rows { push(ms.mem, null) }
+}
+
+# a tile's levels made again (its heights changed): the next draw makes them from the height tiles
+export function tmm_forget(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> void {
+  if not ms.live or tx < 0 or tz < 0 or tx >= tm.cols or tz >= tm.rows { return }
+  let t = tz * tm.cols + tx
+  ms.mem[t] = null
+  if ms.slot_of[t] >= 0 { ms.slot_tile[ms.slot_of[t]] = -1 }
+  ms.slot_of[t] = -1
+}
+
+# n bytes into dst: from the live bytes at the read place, or the open file
+function tmm_src_read(ms: TmMeshes, f: pointer, dst: []byte, n: int) -> int {
+  if ms.mbuf == null { return file_read(f, data_of(dst), n) }
+  let k = min(n, len(ms.mbuf) - ms.mpos)
+  if k <= 0 { return 0 }
+  for i in 0 .. k { dst[i] = ms.mbuf[ms.mpos + i] }
+  ms.mpos += k
+  return k
+}
+function tmm_src_close(ms: TmMeshes, f: pointer) -> void {
+  if ms.mbuf == null and f != null { file_close(f) }
+  ms.mbuf = null
 }
 
 function lwt_entries(tm: TileMap) -> int { return tm.patches * tm.patches * (tm.lod_max + 1) }
@@ -210,6 +247,25 @@ export function tmm_load(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> int {
     if ms.slot_used[k] != ms.clock and (s < 0 or ms.slot_used[k] < ms.slot_used[s]) { s = k }
   }
   if s < 0 { return -1 }
+  if ms.live {
+    if ms.mem[t] == null {
+      # (the tile and its neighbours' heights must be in: not yet, asked again next frame)
+      for dz in -1 .. 2 { for dx in -1 .. 2 {
+        let nx = tx + dx
+        let nz = tz + dz
+        if nx >= 0 and nz >= 0 and nx < tm.cols and nz < tm.rows and not tmap_settled(tm, nz * tm.cols + nx) { return -1 }
+      } }
+      ms.mem[t] = tmb_tile(tm, tx, tz)
+      if ms.mem[t] == null { ms.slot_of[t] = -2;  ms.no_file += 1;  return -2 }
+    }
+    let mb = ms.mem[t]
+    if ms.slot_tile[s] >= 0 { ms.slot_of[ms.slot_tile[s]] = -1 }
+    for i in 0 .. ms.entries * LWT_ENTRY { ms.tab[s * ms.entries * LWT_ENTRY + i] = lw_get32(mb, LWT_HEAD + i * 4) }
+    ms.slot_tile[s] = t
+    ms.slot_used[s] = ms.clock
+    ms.slot_of[t] = s
+    return s
+  }
   let path = tmap_mesh_path(tm, tx, tz)
   let f = file_open(path, "rb")
   if f == null { free(path);  ms.slot_of[t] = -2;  ms.no_file += 1;  return -2 }
@@ -248,17 +304,24 @@ export function tmm_patch(ms: TmMeshes, tm: TileMap, slot: int, tx: int, tz: int
   let c = tm.patch_texels >> lod
   let n1 = c + 1
   let at = ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY]
-  let path = tmap_mesh_path(tm, tx, tz)
-  let f = file_open(path, "rb")
-  free(path)
-  if f == null { return false }
-  file_seek(f, at, 0)
+  var f: pointer = null
+  if ms.live {
+    ms.mbuf = ms.mem[tz * tm.cols + tx]
+    if ms.mbuf == null { return false }
+    ms.mpos = at
+  } else {
+    let path = tmap_mesh_path(tm, tx, tz)
+    f = file_open(path, "rb")
+    free(path)
+    if f == null { return false }
+    file_seek(f, at, 0)
+  }
   let kind = ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY + 3]
   if kind == 2 { return tmm_compact_patch(ms, tm, f, tx, tz, px, pz, lod, lift) }
   if kind == 1 { return tmm_locked_patch(ms, tm, f, tx, tz, px, pz, lod, lift) }
   ms.locked = false
-  let got = file_read(f, data_of(ms.raw), n1 * n1 * 4)
-  file_close(f)
+  let got = tmm_src_read(ms, f, ms.raw, n1 * n1 * 4)
+  tmm_src_close(ms, f)
   if got != n1 * n1 * 4 { return false }
   ms.reads += 1
   let size = tmap_patch_size(tm)
@@ -296,14 +359,14 @@ export function tmm_patch(ms: TmMeshes, tm: TileMap, slot: int, tx: int, tz: int
 function tmm_locked_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: int, px: int, pz: int, lod: int, lift: float) -> bool {
   let c0 = tm.patch_texels
   let raw = ms.raw
-  var got = file_read(f, data_of(raw), 12)
+  var got = tmm_src_read(ms, f, raw, 12)
   let nv = lw_get32(raw, 0)
   let nt = lw_get32(raw, 4)
   let np = lw_get32(raw, 8)
-  if got != 12 or nv < 3 or nv > (c0 + 1) * (c0 + 1) or np < 4 or np > 4 * c0 or nt < 1 or (nt + 2 * np) > lwt_locked_tris(c0) { file_close(f);  return false }
+  if got != 12 or nv < 3 or nv > (c0 + 1) * (c0 + 1) or np < 4 or np > 4 * c0 or nt < 1 or (nt + 2 * np) > lwt_locked_tris(c0) { tmm_src_close(ms, f);  return false }
   let body = nv * 8 + nt * 12 + np * 4
-  got = file_read(f, data_of(raw), body)
-  file_close(f)
+  got = tmm_src_read(ms, f, raw, body)
+  tmm_src_close(ms, f)
   if got != body { return false }
   ms.reads += 1
   let size = tmap_patch_size(tm)
@@ -367,16 +430,16 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
   let c0 = tm.patch_texels
   let n0 = c0 + 1
   let raw = ms.raw
-  var got = file_read(f, data_of(raw), 12)
+  var got = tmm_src_read(ms, f, raw, 12)
   let nv = lw_get32(raw, 0)
   let nbits = lw_get32(raw, 4)
   let nhole = lw_get32(raw, 8)
-  if got != 12 or nv < 4 or nv > n0 * n0 or nbits < 0 or nbits > c0 * c0 or nhole < 0 or nhole > c0 * c0 { file_close(f);  return false }
+  if got != 12 or nv < 4 or nv > n0 * n0 or nbits < 0 or nbits > c0 * c0 or nhole < 0 or nhole > c0 * c0 { tmm_src_close(ms, f);  return false }
   let bb = lwt_bits_bytes(nbits)
   let hb = lwt_bits_bytes(nhole)
   let body = bb + hb + nv * 4
-  got = file_read(f, data_of(raw), body)
-  file_close(f)
+  got = tmm_src_read(ms, f, raw, body)
+  tmm_src_close(ms, f)
   if got != body { return false }
   ms.reads += 1
   # the cells: the level's own, split depth first as the bits say (a stack in cx/cz/cs from the top: the last pushed is next)

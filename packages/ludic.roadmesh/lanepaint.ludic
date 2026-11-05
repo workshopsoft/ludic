@@ -61,7 +61,7 @@ export const LINE_NEAR: double = 0.005
 export const LINE_CLEAR: double = 0.02
 
 # ---- options from tagged values ------------------------------------------------------------------------------------------
-function line_paint_of(v: Val) -> LinePaint {
+function line_paint_of(v: RmVal) -> LinePaint {
   if v_undef(v) { return null }
   let p = new LinePaint
   p.style = v_gets(v, "style", "")
@@ -87,7 +87,7 @@ function line_paint_of(v: Val) -> LinePaint {
   }
   return p
 }
-export function lp_options_of(v: Val) -> LPOptions {
+export function lp_options_of(v: RmVal) -> LPOptions {
   let o = new LPOptions
   o.rules = new []LPRule
   let ps = v_get(v, "profiles")
@@ -185,7 +185,7 @@ export function edge_middle(e: PEdge) -> []double {
   return d_pair(L[i * 2] + (L[(i + 1) * 2] - L[i * 2]) * f, L[i * 2 + 1] + (L[(i + 1) * 2 + 1] - L[i * 2 + 1]) * f)
 }
 # inArea: whether an edge's middle lies in a named area (no name: yes; a name with no polygons: no)
-export function in_area(e: PEdge, area: string, areas: Val) -> bool {
+export function in_area(e: PEdge, area: string, areas: RmVal) -> bool {
   if area == "" { return true }
   let polys = v_get(areas, area)
   if polys == null or v_len(polys) == 0 { return false }
@@ -194,7 +194,7 @@ export function in_area(e: PEdge, area: string, areas: Val) -> bool {
   return false
 }
 # flushMedian: whether an edge's median is drawn flush (planted: {profile: {share, minRun, area?}})
-export function flush_median(e: PEdge, planted: Val, areas: Val) -> bool {
+export function flush_median(e: PEdge, planted: RmVal, areas: RmVal) -> bool {
   if e.profile == "" { return false }
   let rule = v_get(planted, e.profile)
   if v_undef(rule) or not (e.median > 0.01) { return false }
@@ -500,7 +500,7 @@ function cm_put(m: CellMap, k: int, v: int) -> void {
 }
 
 export property SurfaceGrid {
-  layers: []Layer = null
+  layers: []RmLayer = null
   size: double = 6.0
   cells: CellMap = null
   start: []int = null
@@ -557,7 +557,7 @@ function sg_each(g: SurfaceGrid, counts: []int, fill: []int) -> void {
   }
 }
 
-export function surface_grid(layers: []Layer) -> SurfaceGrid {
+export function surface_grid(layers: []RmLayer) -> SurfaceGrid {
   let g = new SurfaceGrid
   g.layers = layers
   g.cells = cm_new()
@@ -586,8 +586,8 @@ export function surface_grid(layers: []Layer) -> SurfaceGrid {
   return g
 }
 # the surface layers of a builder: those of slot road or park, in the order they were drawn
-export function surface_of(b: Builder) -> []Layer {
-  let out = new []Layer
+export function surface_of(b: Builder) -> []RmLayer {
+  let out = new []RmLayer
   for i in 0 .. len(b.layers) {
     let s = b_slot_of(b, b.layers[i].material)
     if s == "road" or s == "park" { push(out, b.layers[i]) }
@@ -969,8 +969,8 @@ property OkCtx {
   j: PJunction = null
   el: EdgeLines = null
   opt: LPOptions = null
-  planted: Val = null
-  areas: Val = null
+  planted: RmVal = null
+  areas: RmVal = null
   fwdRight: bool = true
   gore: bool = false
 }
@@ -979,14 +979,14 @@ function rule_for(e: PEdge, opt: LPOptions) -> LPRule {
   if e.profile == "" or not (e.steps <= 0.0) { return null }
   return rule_of_key(opt, e.profile)
 }
-function is_flush(el: EdgeLines, w: PaintWorld, ei: int, planted: Val, areas: Val) -> bool {
+function is_flush(el: EdgeLines, w: PaintWorld, ei: int, planted: RmVal, areas: RmVal) -> bool {
   if int(el.flushDone[ei]) == 0 {
     el.flushDone[ei] = 1
     if flush_median(w.edges[ei], planted, areas) { el.flush[ei] = 1 } else { el.flush[ei] = 0 }
   }
   return int(el.flush[ei]) != 0
 }
-function lines_for(el: EdgeLines, w: PaintWorld, ei: int, opt: LPOptions, fwdRight: bool, planted: Val, areas: Val) -> []LineDef {
+function lines_for(el: EdgeLines, w: PaintWorld, ei: int, opt: LPOptions, fwdRight: bool, planted: RmVal, areas: RmVal) -> []LineDef {
   if int(el.done[ei]) != 0 { return el.defs[ei] }
   let e = w.edges[ei]
   let rule = rule_for(e, opt)
@@ -1094,7 +1094,7 @@ function strip_cap(es: PStations, q: double, d: LineDef, sg: Seg, caps: []double
 # paintLanes: the lane paint of a whole bake (every laid edge of `only`, or of the network) drawn into b in material mat on the
 # surface layers given (surface_of(b) before the paint); only: a Dict of edge keys or null; planted, areas: tagged values
 # (undefined for none); yf(yc, node, x, z): the node's surface height (Sidewalk.nodeY)
-export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []Layer, opt: LPOptions, mat: string, lift: double, only: Dict, planted: Val, areas: Val, yf: fn(C, int, double, double) -> double, yc: C) -> LPMeta {
+export function paint_lanes<C>(b: Builder, w: PaintWorld, surface: []RmLayer, opt: LPOptions, mat: string, lift: double, only: Dict, planted: RmVal, areas: RmVal, yf: fn(C, int, double, double) -> double, yc: C) -> LPMeta {
   let meta = new LPMeta
   meta.pieceKeys = new []string
   meta.pieceN = new []int

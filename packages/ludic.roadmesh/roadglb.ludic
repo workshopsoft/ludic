@@ -419,7 +419,7 @@ function jv_scene(name: string, n: int) -> JV {
 }
 
 # roadGlb: a node per material layer (sorted by name), welded
-export function road_glb(layers: []Layer, extras: JV, tones: bool, weldOn: bool) -> BOut {
+export function road_glb(layers: []RmLayer, extras: JV, tones: bool, weldOn: bool) -> BOut {
   var size = 0
   for i in 0 .. len(layers) { size += (len(layers[i].positions) + len(layers[i].normals) + len(layers[i].uvs) + len(layers[i].indices)) * 4 + 16 }
   let bin = bout_new(size)

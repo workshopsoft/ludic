@@ -12,7 +12,7 @@ export property Mats {
   tram: string = "tram"
 }
 
-export property RoadProfile {
+export property RmRoadProfile {
   key: string = ""
   title: string = ""
   lanesFwd: double = 1.0
@@ -87,25 +87,25 @@ export function mats_copy(m: Mats) -> Mats {
 }
 
 # a walkway: no lanes, walked the whole of (a pedestrian way, stairs, anything with steps)
-export function walkway_of(p: RoadProfile) -> bool {
+export function walkway_of(p: RmRoadProfile) -> bool {
   return p != null and p.lanesFwd + p.lanesBack == 0.0 and (p.kind == "pedestrian" or p.kind == "stairs" or p.steps > 0.0)
 }
 
 # ---- a profile from plain row values (ludic.roads' defaults for what is missing) ------------------------------------------
-function plain_n(p: Val, k: string, d: double) -> double {
+function plain_n(p: RmVal, k: string, d: double) -> double {
   let f = v_get(p, k)
   if f == null or f.tag != T_NUM { return d }
   let v = f.num
   if v != v or v == INF or v == -INF { return d }
   return v
 }
-function plain_s(p: Val, k: string, d: string) -> string {
+function plain_s(p: RmVal, k: string, d: string) -> string {
   let f = v_get(p, k)
   if f == null or f.tag != T_STR or f.str == "" { return d }
   return f.str
 }
-export function profile_of_plain(key: string, p: Val) -> RoadProfile {
-  let o = new RoadProfile
+export function profile_of_plain(key: string, p: RmVal) -> RmRoadProfile {
+  let o = new RmRoadProfile
   o.key = key
   o.title = plain_s(p, "title", key)
   o.lanesFwd = plain_n(p, "lanes_fwd", 1.0)
@@ -142,10 +142,10 @@ export function profile_of_plain(key: string, p: Val) -> RoadProfile {
   return o
 }
 
-# a profile as the studio holds it (RoadProfile's own field names), from a job or a fixture; null for none
-export function profile_of_val(v: Val) -> RoadProfile {
+# a profile as the studio holds it (RmRoadProfile's own field names), from a job or a fixture; null for none
+export function profile_of_val(v: RmVal) -> RmRoadProfile {
   if v_undef(v) { return null }
-  let o = new RoadProfile
+  let o = new RmRoadProfile
   o.key = v_gets(v, "key", "")
   o.title = v_gets(v, "title", "")
   o.lanesFwd = v_getn(v, "lanesFwd", 0.0)
@@ -173,7 +173,7 @@ export function profile_of_val(v: Val) -> RoadProfile {
   o.mat = mats_of_val(v_get(v, "mat"))
   return o
 }
-export function mats_of_val(v: Val) -> Mats {
+export function mats_of_val(v: RmVal) -> Mats {
   let m = new Mats
   if v_undef(v) { return m }
   m.road = v_gets(v, "road", "road")
@@ -197,7 +197,7 @@ function side_of(carriage: double, shoulder: double, park: double, plant: double
 }
 
 # forward: "right" or "left"; profile null for none
-export function section_of(lanesFwd: double, lanesBack: double, laneWidth: double, profile: RoadProfile, forward: string, sidewalk: double) -> Section {
+export function section_of(lanesFwd: double, lanesBack: double, laneWidth: double, profile: RmRoadProfile, forward: string, sidewalk: double) -> Section {
   let fwd = lanesFwd * laneWidth
   let back = lanesBack * laneWidth
   var r = dsel(forward == "right", fwd, back)

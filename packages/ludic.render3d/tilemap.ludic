@@ -72,6 +72,12 @@ export property TileMap {
   hole_on: words = null             # 256: 1 for a class that is a hole
   hole_bits: []byte = null          # slots x res x res: 1 a hole texel
   hole_any: words = null            # per slot: 1 when its tile has a hole texel
+  # HELD tiles (tmap_hold_new: a game that changes a tile's heights in memory as it loads, a live conform): a tile just loaded is
+  # held (its texels read as not loaded: tmap_ready false, the live levels wait) until the game lets it go (tmap_release);
+  # the game may hand each slot a class mask in memory (live_mask) that the drawn ground reads instead of the .mask.png
+  fresh: words = null               # per slot: 1 while held
+  live_mask: []byte = null          # slots x res x res land-use classes, or null (no masks in memory)
+  live_mask_on: words = null        # per slot: 1 when its live mask is set
 }
 
 # what is wrong with a row's numbers, or "" : the question a game asks before it opens a map
@@ -117,7 +123,52 @@ export function tmap_pool(tm: TileMap, slots: int) -> void {
   tm.slot_of = words(tm.cols * tm.rows)
   for t in 0 .. tm.cols * tm.rows { tm.slot_of[t] = -1 }
   if tm.hole_pattern != "" { tm_holes_alloc(tm) }
+  if tm.fresh != null { tm_hold_alloc(tm) }
 }
+
+# Tiles held as they load (see TileMap.fresh) and class masks kept in memory per slot: for a game that conforms the ground live
+@alloc_ok("a map being opened: the hold flags and the masks, made once for the pool")
+export function tmap_hold_new(tm: TileMap) -> void {
+  tm_hold_alloc(tm)
+  for s in 0 .. tm.slots { if tm.slot_tile[s] >= 0 { tm.fresh[s] = 1 } }
+}
+@alloc_ok("a map being opened: the hold flags and the masks, made once for the pool")
+function tm_hold_alloc(tm: TileMap) -> void {
+  tm.fresh = words(tm.slots)
+  tm.live_mask_on = words(tm.slots)
+  for s in 0 .. tm.slots { tm.fresh[s] = 0;  tm.live_mask_on[s] = 0 }
+  tm.live_mask = buffer(tm.slots * tm.res * tm.res)
+}
+# a held slot (its tile loaded, waiting for the game), -1 none
+export function tmap_held_next(tm: TileMap) -> int {
+  if tm.fresh == null { return -1 }
+  for s in 0 .. tm.slots { if tm.fresh[s] != 0 and tm.slot_tile[s] >= 0 { return s } }
+  return -1
+}
+export function tmap_slot_tile(tm: TileMap, s: int) -> int { return tm.slot_tile[s] }
+# slot s is the game's again: its heights (and live mask) as the game left them
+export function tmap_release(tm: TileMap, s: int) -> void { if tm.fresh != null { tm.fresh[s] = 0 } }
+# is tile t loaded and not held? (a tile with no file counts as settled)
+export function tmap_settled(tm: TileMap, t: int) -> bool {
+  let s = tm.slot_of[t]
+  if s == TM_NO_FILE { return true }
+  if s < 0 { return false }
+  return tm.fresh == null or tm.fresh[s] == 0
+}
+# slot s's sample k (j * res + i) in metres, and set (clamped to the 16-bit range)
+export function tmap_slot_h(tm: TileMap, s: int, k: int) -> float {
+  let o = (s * tm.res * tm.res + k) * 2
+  return tm.h_off + tm.h_min + float((tm.data[o] << 8) | tm.data[o + 1]) * tm.step
+}
+export function tmap_slot_set_h(tm: TileMap, s: int, k: int, h: float) -> void {
+  let o = (s * tm.res * tm.res + k) * 2
+  let r = min(max(int(Math.round((h - tm.h_off - tm.h_min) / tm.step)), 0), 65535)
+  tm.data[o] = (r >> 8) & 255
+  tm.data[o + 1] = r & 255
+}
+# slot s's live class mask: sample k set to class c; tmap_live_mask_done marks the slot's mask set
+export function tmap_slot_set_class(tm: TileMap, s: int, k: int, c: int) -> void { tm.live_mask[s * tm.res * tm.res + k] = c }
+export function tmap_live_mask_done(tm: TileMap, s: int) -> void { tm.live_mask_on[s] = 1 }
 
 # Holes: the texels of tile masks `pattern` ({tx} {tz}; tmap_mask_pattern_of the tiles' by default) whose class is one of
 # `classes` have no ground for physics: tmap_field answers its `hole` value there (a heightfield leaves those cells out), the
@@ -272,6 +323,7 @@ export function tmap_load(render3d_st: mut Render3dState, tm: TileMap, tx: int, 
   mem_copy(mem_off(data_of(tm.data), s * n), px, n)
   free(px)
   if tm.hole_pattern != "" { tm_holes_read(render3d_st, tm, s, tx, tz) }
+  if tm.fresh != null { tm.fresh[s] = 1;  tm.live_mask_on[s] = 0 }
   if tm.slot_tile[s] >= 0 { tm.slot_of[tm.slot_tile[s]] = -1;  tm.evicts += 1 }
   tm.slot_tile[s] = t
   tm.slot_used[s] = tm.clock
@@ -362,7 +414,9 @@ function tm_texel_known(tm: TileMap, i: int, j: int) -> bool {
   let h = tm.rows * tm.res
   let ci = min(max(i, 0), w - 1)
   let cj = min(max(j, 0), h - 1)
-  return tm.slot_of[(cj / tm.res) * tm.cols + ci / tm.res] != -1
+  let s = tm.slot_of[(cj / tm.res) * tm.cols + ci / tm.res]
+  if s >= 0 and tm.fresh != null and tm.fresh[s] != 0 { return false }
+  return s != -1
 }
 
 # The ground's height at world (x, z), metres: bilinear between texel centres, across tile edges too. The port a physics

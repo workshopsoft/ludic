@@ -12,12 +12,12 @@ export property MeshOpt {
   medians: bool = false       # opt.medians given
   barrierKinds: []string = null
   barrierH: double = 0.9
-  planted: Val = null         # opt.medians.planted (undefined: null)
-  areas: Val = null
+  planted: RmVal = null         # opt.medians.planted (undefined: null)
+  areas: RmVal = null
   markings: bool = false
   lanePaint: LPOptions = null  # null: none (its chunk already set to the bake's)
   chunk: double = 0.0         # 0: none
-  structures: Val = null      # StructureOptions (null: none)
+  structures: RmVal = null      # StructureOptions (null: none)
   matSkirt: string = "skirt"
   matStructure: string = "structure"
   matMarking: string = "marking"
@@ -28,7 +28,7 @@ export property MeshOpt {
 export property RoadMesh {
   b: Builder = null
   problems: []string = null
-  crossings: []Crossing = null
+  crossings: []RmCrossing = null
   st: StMeta = null
   lp: LPMeta = null
   barriers: int = -1          # barrier medians carried through (-1: none asked)
@@ -1046,11 +1046,11 @@ export function build_road_mesh(sw: Sw, o: MeshOpt, only: Dict) -> RoadMesh {
   for ni in 0 .. len(net.nodes) { node_mesh(k, net.nodes[ni], only) }
   if k.full and o.medians { mesh.barriers = k.barriers }
   # ---- crossings ----
-  mesh.crossings = new []Crossing
+  mesh.crossings = new []RmCrossing
   if k.full {
     let count = new []int
     for i in 0 .. len(net.edges) { push(count, 0) }
-    let xs = new []Crossing
+    let xs = new []RmCrossing
     for q in 0 .. len(w.crossings) {
       let plan = w.crossings[q]
       let es = sw_stations_i(sw, plan.segIdx)
@@ -1207,7 +1207,7 @@ function kerb_line_dist(ix: KerbIx, line: []int, x: double, z: double) -> double
   return m
 }
 
-export function kerb_distances(layers: []Layer) -> void {
+export function kerb_distances(layers: []RmLayer) -> void {
   let ix = new KerbIx
   ix.segs = new []double
   for li in 0 .. len(layers) {

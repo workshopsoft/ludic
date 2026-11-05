@@ -82,6 +82,12 @@ export function tmd_mask_pattern(td: TileDraw, pattern: string) -> void {
   tmk_redraw(td)
 }
 
+# tile t's mask read again when a patch of it is next built (its classes changed in memory: a live conform)
+export function tmd_mask_forget(td: TileDraw, t: int) -> void {
+  for s in 0 .. td.ms.mslots { if td.mk_tile[s] == t { td.mk_tile[s] = -1;  td.mk_has[s] = 0 } }
+  for k in 0 .. td.fk_n { if td.fk_tile[k] == t { td.fk_tile[k] = -1 } }
+}
+
 # class `c` (0 .. 15) draws (r, g, b), linear. Patches drawn already are made again, a few a frame.
 export function tmd_tone_set(td: TileDraw, c: int, r: float, g: float, b: float) -> void {
   if c < 0 or c >= TMK_TONES { return }
@@ -184,6 +190,7 @@ function tmk_plain(td: TileDraw, v: int) -> floats {
 @alloc_ok("a tile being read: its mask's decode, once")
 function tmk_read(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: int, full: int) -> bool {
   let tm = td.tm
+  if tm.live_mask != null { return tmk_read_live(render3d_st, td, t, slot, full) }
   if td.mask_pattern == "" { return false }
   let path = Text.replace(Text.replace(td.mask_pattern, "{tx}", string(t % tm.cols)), "{tz}", string(t / tm.cols))
   var px: []byte = null
@@ -196,8 +203,28 @@ function tmk_read(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: in
   if px == null { return false }
   td.mk_scratch = px
   if odd { return false }
+  return tmk_take(render3d_st, td, slot, full, px, render3d_st.tex_channels * (render3d_st.tex_depth / 8))
+}
+
+# tile t's mask from the map's memory (tmap_hold_new's live masks, a live conform's classes) instead of a file: false when its
+# slot has none set
+@alloc_ok("a tile being read: its mask's copy, once")
+function tmk_read_live(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: int, full: int) -> bool {
+  let tm = td.tm
+  let s = tm.slot_of[t]
+  if s < 0 or tm.live_mask_on[s] == 0 { return false }
   let n = tm.res * tm.res
-  let step = ch * bps
+  if td.mk_live == null { td.mk_live = buffer(n) }
+  let o = s * n
+  for i in 0 .. n { td.mk_live[i] = tm.live_mask[o + i] }
+  return tmk_take(render3d_st, td, slot, full, td.mk_live, 1)
+}
+
+# tile mask texels px (`step` bytes a texel, the class the first) into the pool place `full` and slot's coarse grid and lawn
+@alloc_ok("a tile being read: its mask's tables, once")
+function tmk_take(render3d_st: mut Render3dState, td: TileDraw, slot: int, full: int, px: []byte, step: int) -> bool {
+  let tm = td.tm
+  let n = tm.res * tm.res
   if full >= 0 {
     if td.fk_data == null { td.fk_data = buffer(td.fk_n * n) }
     let o = full * n

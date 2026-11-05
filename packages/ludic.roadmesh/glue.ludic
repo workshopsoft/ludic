@@ -121,7 +121,7 @@ export function pw_fill_junction(w: PaintWorld, ni: int) -> void {
 }
 
 # the structures' context (roadStructures.ts StructureContext) over the native sidewalk
-export function st_ctx_world(sw: Sw, opt: Val, matStructure: string, skirt: double, only: Dict, problems: []string) -> StCtx {
+export function st_ctx_world(sw: Sw, opt: RmVal, matStructure: string, skirt: double, only: Dict, problems: []string) -> StCtx {
   let c = st_ctx_new()
   c.opt = opt
   c.lift = sw.lift

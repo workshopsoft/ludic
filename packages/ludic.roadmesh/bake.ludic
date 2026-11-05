@@ -5,7 +5,7 @@
 # reports. The same bytes as the TypeScript bake.
 
 # ---- the job -------------------------------------------------------------------------------------------------------------------
-function side_of_val(v: Val) -> SectionSide {
+function side_of_val(v: RmVal) -> SectionSide {
   let s = new SectionSide
   s.carriage = v_getn(v, "carriage", 0.0)
   s.shoulder = v_getn(v, "shoulder", 0.0)
@@ -14,7 +14,7 @@ function side_of_val(v: Val) -> SectionSide {
   s.walk = v_getn(v, "walk", 0.0)
   return s
 }
-export function section_of_val(v: Val) -> Section {
+export function section_of_val(v: RmVal) -> Section {
   let s = new Section
   s.left = side_of_val(v_get(v, "left"))
   s.right = side_of_val(v_get(v, "right"))
@@ -34,10 +34,10 @@ export function section_of_val(v: Val) -> Section {
   return s
 }
 
-export function net_of_job(j: Val) -> Net {
+export function net_of_job(j: RmVal) -> Net {
   let net = new Net
   net.forward = v_gets(j, "forward", "right")
-  net.profiles = new []RoadProfile
+  net.profiles = new []RmRoadProfile
   let pd = Dict.new()
   let pv = v_get(j, "profiles")
   for i in 0 .. v_len(pv) {
@@ -108,13 +108,13 @@ export function net_of_job(j: Val) -> Net {
     e.fromIdx = Dict.get_or(net.nodeByKey, e.from, -1)
     e.toIdx = Dict.get_or(net.nodeByKey, e.to, -1)
   }
-  net.structures = new []Val
+  net.structures = new []RmVal
   let sv = v_get(j, "structures")
   for i in 0 .. v_len(sv) { push(net.structures, v_item(sv, i)) }
   return net
 }
 
-export function grades_of_job(j: Val, net: Net) -> []EdgeGrade {
+export function grades_of_job(j: RmVal, net: Net) -> []EdgeGrade {
   let out = new []EdgeGrade
   let gv = v_get(j, "grades")
   for i in 0 .. len(net.edges) {
@@ -136,7 +136,7 @@ export function grades_of_job(j: Val, net: Net) -> []EdgeGrade {
   return out
 }
 
-export function ground_of_job(j: Val) -> Ground {
+export function ground_of_job(j: RmVal) -> Ground {
   let g = new Ground
   let v = v_get(j, "ground")
   let kind = v_gets(v, "kind", "none")
@@ -168,7 +168,7 @@ export function ground_of_job(j: Val) -> Ground {
   return g
 }
 
-export function jopt_of_job(o: Val) -> JOpt {
+export function jopt_of_job(o: RmVal) -> JOpt {
   let jo = new JOpt
   jo.strict = true
   let r = v_get(o, "radii")
@@ -184,7 +184,7 @@ export function jopt_of_job(o: Val) -> JOpt {
   return jo
 }
 
-export function rule_of_job(o: Val) -> CrossingRule {
+export function rule_of_job(o: RmVal) -> CrossingRule {
   let r = new CrossingRule
   let c = v_get(o, "crossings")
   if v_undef(c) { return r }
@@ -201,7 +201,7 @@ export function rule_of_job(o: Val) -> CrossingRule {
   }
   return r
 }
-export function dims_of_job(o: Val) -> Dims {
+export function dims_of_job(o: RmVal) -> Dims {
   let d = new Dims
   let c = v_get(o, "crossings")
   if v_undef(c) { return d }
@@ -214,7 +214,7 @@ export function dims_of_job(o: Val) -> Dims {
 }
 
 # a build's options: LOD0 (`mesh`), LOD1 (`coarse`), LOD2 (`far`)
-export function mesh_opt_of(o: Val, chunk: double, which: int) -> MeshOpt {
+export function mesh_opt_of(o: RmVal, chunk: double, which: int) -> MeshOpt {
   let m = new MeshOpt
   m.uv = v_getn(o, "uvMetres", 4.0)
   m.lift = v_getn(o, "lift", 0.02)
@@ -255,7 +255,7 @@ export function mesh_opt_of(o: Val, chunk: double, which: int) -> MeshOpt {
 
 # ---- the bake ------------------------------------------------------------------------------------------------------------------
 export property Bake {
-  job: Val = null
+  job: RmVal = null
   t0: long = 0                # the phases' times (stderr when ROADMESH_TIMES is set)
   times: string = ""
   dir: string = ""            # where the files go (a scratch folder the studio copies from)
@@ -287,12 +287,12 @@ function box_chunk(b: Bake, cx: int, cz: int) -> bool {
 property BuildJob {
   b: Bake = null
   w: RWorld = null
-  o: Val = null
+  o: RmVal = null
   lift: double = 0.02
   meshes: []RoadMesh = null
   cut: [][]MeshChunk = null
   coarse: bool = false
-  far: Val = null
+  far: RmVal = null
   zones: bool = false
   zonesAll: []MRow = null
   lanes: []LaneChunk = null
@@ -499,7 +499,7 @@ function zone_n(m: MRow, k: string) -> double {
   for i in 0 .. len(m.nk) { if m.nk[i] == k { return m.nv[i] } }
   return NAN
 }
-function crossing_jv(c: Crossing) -> JV {
+function crossing_jv(c: RmCrossing) -> JV {
   let o = jv_obj()
   jv_put(o, "key", jv_str(c.key))
   jv_put(o, "seg", jv_str(c.seg))
