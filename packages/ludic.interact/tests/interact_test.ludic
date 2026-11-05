@@ -3,6 +3,8 @@ import "ludic.interact"
 import "ludic.base"
 program InteractTest {
   numbers float
+  # never called: naming Input links the engine's runtime, which render3d's textures stand on
+  function links_runtime() -> bool { return Input.key_pressed(0) }
   def InteractPoints from "points.lres"
 
   test "rows are found by object and name" () {
