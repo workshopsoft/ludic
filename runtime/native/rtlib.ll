@@ -433,3 +433,54 @@ define weak i32 @win_scale() {
 entry:
   ret i32 1
 }
+
+; ---- slow handlers (a build with LUDIC_SLOW_HANDLERS=1: each handler call is timed) ---------------------------
+; lp_slow_t0: the clock when LUDIC_SLOW_HANDLER_US (read once) is over 0, else 0; lp_slow_t1 prints a handler whose call took longer
+@lp_slow_lim = internal global i64 -1
+@.lp_slow_env = private unnamed_addr constant [22 x i8] c"LUDIC_SLOW_HANDLER_US\00"
+@.lp_slow_fmt = private unnamed_addr constant [26 x i8] c"slow handler: %s %lld us\0A\00"
+declare ptr @getenv(ptr)
+declare i64 @atoll(ptr)
+declare i32 @dprintf(i32, ptr, ...)
+define i64 @lp_slow_t0() {
+entry:
+  %l = load i64, ptr @lp_slow_lim
+  %unset = icmp eq i64 %l, -1
+  br i1 %unset, label %read, label %have
+read:
+  %e = call ptr @getenv(ptr @.lp_slow_env)
+  %none = icmp eq ptr %e, null
+  br i1 %none, label %zero, label %parse
+parse:
+  %v = call i64 @atoll(ptr %e)
+  store i64 %v, ptr @lp_slow_lim
+  br label %have
+zero:
+  store i64 0, ptr @lp_slow_lim
+  br label %have
+have:
+  %l2 = load i64, ptr @lp_slow_lim
+  %on = icmp sgt i64 %l2, 0
+  br i1 %on, label %clock, label %off
+clock:
+  %t = call i64 @clock_now_us()
+  ret i64 %t
+off:
+  ret i64 0
+}
+define void @lp_slow_t1(i64 %t0, ptr %name) {
+entry:
+  %z = icmp eq i64 %t0, 0
+  br i1 %z, label %out, label %chk
+chk:
+  %t = call i64 @clock_now_us()
+  %d = sub i64 %t, %t0
+  %l = load i64, ptr @lp_slow_lim
+  %slow = icmp sgt i64 %d, %l
+  br i1 %slow, label %say, label %out
+say:
+  %r = call i32 (i32, ptr, ...) @dprintf(i32 1, ptr @.lp_slow_fmt, ptr %name, i64 %d)
+  br label %out
+out:
+  ret void
+}

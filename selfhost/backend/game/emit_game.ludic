@@ -45,8 +45,38 @@ function emit_call_one(d: Node) -> void {
   }
   let run = lbl("hrun");  let skip = lbl("hskip")
   emit("  br i1 ");  emit(hc);  emit(", label %");  emit(run);  emit(", label %");  emit(skip);  emit("\n")
-  emit(run);  emit(":\n  call void @sys_");  emit(d.s);  emit("()\n")
+  if slow_on() {
+    # a build with LUDIC_SLOW_HANDLERS=1: the call timed (rtlib.ll lp_slow_t0/t1), a handler over LUDIC_SLOW_HANDLER_US us named in the log
+    slow_name(d.s)
+    let t0 = nreg()
+    emit(run);  emit(":\n  ");  emit(t0);  emit(" = call i64 @lp_slow_t0()\n  call void @sys_");  emit(d.s);  emit("()\n")
+    emit("  call void @lp_slow_t1(i64 ");  emit(t0);  emit(", ptr @.slow_");  emit(d.s);  emit(")\n")
+  } else {
+    emit(run);  emit(":\n  call void @sys_");  emit(d.s);  emit("()\n")
+  }
   emit("  br label %");  emit(skip);  emit("\n");  emit(skip);  emit(":\n")
+}
+
+# LUDIC_SLOW_HANDLERS=1 in the compiler's environment: every handler call is timed (a profiling build; nothing otherwise)
+var g_slow_handlers: int = 0            # 0 not read yet, 1 off, 2 on
+var g_slow_names: []pointer = null
+function slow_on() -> bool {
+  if g_slow_handlers == 0 {
+    g_slow_handlers = 1
+    g_slow_names = new []pointer
+    if getenv_or("LUDIC_SLOW_HANDLERS", "") != "" {
+      g_slow_handlers = 2
+      emith("declare i64 @lp_slow_t0()\n")
+      emith("declare void @lp_slow_t1(i64, ptr)\n")
+    }
+  }
+  return g_slow_handlers == 2
+}
+function slow_name(n: pointer) -> void {
+  var i = 0
+  while i < len(g_slow_names) { if g_slow_names[i] == n { return };  i += 1 }
+  push(g_slow_names, n)
+  emith(`@.slow_{n} = private unnamed_addr constant [{itoa(cstr_len(n) + 1)} x i8] c"{n}\\00"\n`)
 }
 
 # Engine-owned systems (#43/#47): systems the compiler injects into the frame

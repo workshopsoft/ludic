@@ -364,7 +364,7 @@ function tmm_job_start(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> bool {
     let s = tm.slot_of[tz * tm.cols + tx]
     if s >= 0 and tm.live_mask_on[s] != 0 {
       if j.k == null { j.k = new TmLock;  j.k.lx = new []int;  j.k.lz = new []int;  j.k.ls = new []int }
-      j.k.on = ms.lock.on;  j.k.under = ms.lock.under;  j.k.hole = ms.lock.hole
+      j.k.on = ms.lock.on;  j.k.under = ms.lock.under;  j.k.hole = ms.lock.hole;  j.k.carve = ms.lock.carve;  j.k.carve_lod = ms.lock.carve_lod
       j.k.tol = ms.lock.tol;  j.k.sink = ms.lock.sink;  j.k.rise = ms.lock.rise
       mem_copy(data_of(j.mask), mem_off(data_of(tm.live_mask), s * n), n)
       j.locked = true
