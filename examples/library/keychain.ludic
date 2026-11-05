@@ -1,0 +1,58 @@
+# keychain.ludic — Keychain.* : keep a secret in the operating system's own store.
+#
+#   Keychain.set("com.example.game", "player", token)     # replaces what was there
+#   let t = Keychain.get("com.example.game", "player")    # null when there is none
+#   Keychain.delete("com.example.game", "player")
+#
+# The login keychain on macOS, Credential Manager on Windows, the Secret Service (libsecret)
+# on Linux. The service name is fresh each run, so nothing is left behind and no earlier
+# run's item is touched. Where the store is reachable this prints:
+#   1 1 1 hunter2 1 1 sw0rdfish 1 1 1 0 0 1 1
+# and where it is not (Linux with no Secret Service running):
+#   unavailable 1 1 1
+program KeychainDemo {
+  function bi(b: bool) -> int { if b { return 1 };  return 0 }
+  function shown(s: string) -> string { if s == null { return "null" };  return s }
+
+  entry {
+    let service = `ludic.test.keychain.{Crypto.random_hex(8)}`
+    let account = "player one"
+
+    if not Keychain.available() {
+      # every call fails cleanly, with the reason
+      let why = Keychain.error()
+      let got = Keychain.get(service, account)
+      print(`unavailable {bi(len(why) > 0)} {bi(got == null)} {bi(not Keychain.set(service, account, "x"))}`)
+      return
+    }
+
+    # nothing there yet: null, and no error - absence is not a failure
+    let none = Keychain.get(service, account)
+    let a = bi(none == null)
+    let b = bi(Keychain.error() == "")
+    let c = bi(not Keychain.has(service, account))
+
+    # store, read back
+    let stored = Keychain.set(service, account, "hunter2")
+    let first = Keychain.get(service, account)
+
+    # replace, read back
+    let replaced = Keychain.set(service, account, "sw0rdfish")
+    let second = Keychain.get(service, account)
+
+    # a second account under the same service is its own item
+    let other = Keychain.set(service, "player two", "other")
+    let kept = shown(Keychain.get(service, account)) == "sw0rdfish"
+
+    # delete: true once, then false with no error; the item is gone
+    let gone = Keychain.delete(service, account)
+    let again = Keychain.delete(service, account)
+    let after = Keychain.has(service, account)
+    let clean = Keychain.error() == ""
+    let other_left = shown(Keychain.get(service, "player two")) == "other"
+    Keychain.delete(service, "player two")
+
+    if not stored { print(`set failed: {Keychain.error()}`) }
+    print(`{a} {b} {c} {shown(first)} {bi(stored)} {bi(replaced)} {shown(second)} {bi(other)} {bi(kept)} {bi(gone)} {bi(again)} {bi(after)} {bi(clean)} {bi(other_left)}`)
+  }
+}

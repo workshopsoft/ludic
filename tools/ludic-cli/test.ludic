@@ -1671,6 +1671,32 @@ function cmd_dev_test() -> int {
       else { bad2("process.ludic via ludic build", `got [{got2}]`) }
     } else { bad2("ludic build of a Process.* program", capture_line(`tail -1 {tmp_dir()}/proc_lb.out`)) }
   }
+  # Keychain.*: the OS secret store, through ludicc and ludic build. On macOS a real round trip in
+  # the login keychain (a fresh service name each run, deleted again); a keychain that will not
+  # take an item (locked, a session with no UI) skips. On Linux the run has no session bus, so
+  # what is checked is the clean "unavailable" answer - libsecret loaded at run time or not there
+  # at all, and no failure to link or start either way.
+  let kc_os = host_os()
+  if is_darwin() or (kc_os == "Linux") {
+    var kc_want = "1 1 1 hunter2 1 1 sw0rdfish 1 1 1 0 0 1 1"
+    var kc_run = ""
+    if kc_os == "Linux" {
+      kc_want = "unavailable 1 1 1"
+      kc_run = "env -u DBUS_SESSION_BUS_ADDRESS -u DISPLAY -u WAYLAND_DISPLAY "
+    }
+    if shq(`LUDIC_HOME=. bin/ludicc examples/library/keychain.ludic -o {tmp_dir()}/kc_demo > {tmp_dir()}/kc.out 2>&1`) {
+      let got = capture_line(`{kc_run}{tmp_dir()}/kc_demo < /dev/null`)
+      if (got == kc_want) { ok("keychain.ludic (Keychain.set/get/has/delete/error - the OS secret store)") }
+      else if s_starts(got, "set failed") { skip(`keychain.ludic: the keychain refused an item here ({got})`) }
+      else { bad2("keychain.ludic", `got [{got}]`) }
+    } else { bad2("keychain.ludic build", capture_line(`tail -1 {tmp_dir()}/kc.out`)) }
+    if shq(`LUDIC_HOME=. bin/ludic build examples/library/keychain.ludic --headless -o {tmp_dir()}/kc_lb > {tmp_dir()}/kc_lb.out 2>&1`) {
+      let got2 = capture_line(`{kc_run}{tmp_dir()}/kc_lb < /dev/null`)
+      if (got2 == kc_want) { ok("ludic build links the keychain layer for a program that uses Keychain.*") }
+      else if s_starts(got2, "set failed") { skip(`keychain.ludic via ludic build: the keychain refused an item here`) }
+      else { bad2("keychain.ludic via ludic build", `got [{got2}]`) }
+    } else { bad2("ludic build of a Keychain.* program", capture_line(`tail -1 {tmp_dir()}/kc_lb.out`)) }
+  }
 
   feat_case("events/recurse", "", "16", "recurse.ludic (EV6: re-entrant emit is depth-bounded, no runaway cycle)")
   net_case("events/scoped", "2")

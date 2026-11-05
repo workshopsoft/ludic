@@ -230,6 +230,14 @@ namespace Process {
   alias kill(handle) = process_kill
   alias free(handle) = process_free
 }
+namespace Keychain {
+  alias set(service, account, secret) = keychain_set
+  alias get(service, account) = keychain_get
+  alias has(service, account) = keychain_has
+  alias delete(service, account) = keychain_delete
+  alias available() = keychain_available
+  alias error() = keychain_error
+}
 namespace World {
   alias get() = world_get
   alias set() = world_set

@@ -1,0 +1,108 @@
+# ============================================================================
+# keychain.ludic — the Keychain.* standard library: the operating system's secret store.
+#
+# A secret is a short string (a token, a password, a session key) kept by the OS for the user
+# who is logged in, named by a service and an account:
+#
+#   Keychain.set("com.example.game", "player@example.com", token)
+#   let t = Keychain.get("com.example.game", "player@example.com")   # null when there is none
+#   Keychain.delete("com.example.game", "player@example.com")
+#
+# The store is the platform's own, so the secret never sits in a save file:
+#   macOS    the login keychain (Security.framework), a generic password item     keychain.ll
+#   Windows  Credential Manager (advapi32), a generic credential "service/account" keychain_win.ll
+#   Linux    the Secret Service over D-Bus (libsecret, opened at run time):        keychain_linux.ll
+#            GNOME Keyring, KWallet, KeePassXC
+# The names match what keytar and secret-tool use, so other tools can read what a game stores.
+#
+# Every call is synchronous and may wait on the OS (a locked keyring asks the user to unlock
+# it), so call it at a menu or at start-up, not every frame. Keychain.error() says why the
+# last call failed. Like Http.* it is OUT-OF-BAND and must never feed a deterministic
+# lockstep/replay simulation.
+# ============================================================================
+
+extern function lu_kc_set(service: pointer, account: pointer, key: pointer, secret: pointer) -> int = "lu_kc_set"
+extern function lu_kc_get(service: pointer, account: pointer, key: pointer) -> pointer = "lu_kc_get"
+extern function lu_kc_delete(service: pointer, account: pointer, key: pointer) -> int = "lu_kc_delete"
+extern function lu_kc_status() -> int = "lu_kc_status"
+extern function lu_kc_error() -> pointer = "lu_kc_error"
+extern function lu_kc_available() -> int = "lu_kc_available"
+
+function kc_text(p: pointer) -> pointer {
+  if p == null { return "" }
+  return p
+}
+
+function kc_len(p: pointer) -> int {
+  var n = 0
+  while p[n] != 0 { n += 1 }
+  return n
+}
+
+# "service/account": Windows names the credential by it, the Secret Service labels the item with it
+function kc_key(service: pointer, account: pointer) -> pointer {
+  let s = kc_text(service)
+  let a = kc_text(account)
+  let ns = kc_len(s)
+  let na = kc_len(a)
+  let out = bytes(ns + na + 2)
+  var i = 0
+  while i < ns { out[i] = s[i];  i += 1 }
+  out[ns] = '/'
+  var j = 0
+  while j < na { out[ns + 1 + j] = a[j];  j += 1 }
+  out[ns + na + 1] = 0
+  return out
+}
+
+# Store `secret` for (service, account), replacing what was there. True when it was stored.
+function keychain_set(service: pointer, account: pointer, secret: pointer) -> bool {
+  let k = kc_key(service, account)
+  let r = lu_kc_set(kc_text(service), kc_text(account), k, kc_text(secret))
+  free(k)
+  return r == 0
+}
+
+# The secret stored for (service, account), or null when there is none or the store failed
+# (Keychain.error() tells the two apart: "" when there was simply nothing).
+function keychain_get(service: pointer, account: pointer) -> string {
+  let k = kc_key(service, account)
+  let p = lu_kc_get(kc_text(service), kc_text(account), k)
+  free(k)
+  return p
+}
+
+# Is a secret stored for (service, account)?
+function keychain_has(service: pointer, account: pointer) -> bool {
+  let k = kc_key(service, account)
+  let p = lu_kc_get(kc_text(service), kc_text(account), k)
+  free(k)
+  if p == null { return false }
+  free(p)
+  return true
+}
+
+# Remove the secret for (service, account). True when one was removed; false when there was
+# none (Keychain.error() is then "") or the store failed.
+function keychain_delete(service: pointer, account: pointer) -> bool {
+  let k = kc_key(service, account)
+  let r = lu_kc_delete(kc_text(service), kc_text(account), k)
+  free(k)
+  return r == 0
+}
+
+# Can secrets be stored here at all? Always on macOS and Windows; on Linux when libsecret is
+# installed and a Secret Service answers on the session bus.
+function keychain_available() -> bool { return lu_kc_available() != 0 }
+
+# Why the last Keychain call failed, in the OS's words; "" when it succeeded or simply found
+# nothing.
+function keychain_error() -> string {
+  let m = lu_kc_error()
+  let n = kc_len(m)
+  let out = bytes(n + 1)
+  var i = 0
+  while i < n { out[i] = m[i];  i += 1 }
+  out[n] = 0
+  return out
+}

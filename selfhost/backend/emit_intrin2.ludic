@@ -4,6 +4,7 @@
 
 var g_windowed: bool = false     # headless by default (games read stdin / dump PPM)
 var g_target_win: bool = false   # a Windows target: the header emits emit_win_prelude and the libSystem declares are skipped
+var g_target_linux: bool = false  # a Linux target (--target *linux*, or a Linux host): picks keychain_linux.ll
 
 # the IR that loads stdout (fd 1) or stderr (fd 2) as a FILE*. macOS names them as
 # globals; the UCRT hands them out through a function (see emit_win.ludic).

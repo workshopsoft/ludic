@@ -201,6 +201,9 @@ entry {
   }
   if (target != null) { g_target_win = has_sub(target, "windows") }
   else { g_target_win = host_is_windows() }
+  # Linux picks the OS layers that differ from macOS (Keychain.* over libsecret)
+  if (target != null) { g_target_linux = has_sub(target, "linux") }
+  else { g_target_linux = host_is_linux() }
 
   app_manifest(path)                              # Build.app_name() / app_version(): package.ludic's `app` lines
   i18n_manifest(path)                             # phase 26: a `lang` line and its en.po, before the parse fills rows from it
@@ -367,6 +370,13 @@ entry {
   if g_uses_process {
     if g_target_win { cmd = `{cmd} {join_path(home, "runtime/native/process_win.ll")}` }
     else { cmd = `{cmd} {join_path(home, "runtime/native/process.ll")}` }
+  }
+  # Keychain.* links the OS secret store: Security.framework on macOS, Credential Manager
+  # (advapi32) on Windows, libsecret on Linux - opened with dlopen, so only libdl is linked.
+  if g_uses_keychain {
+    if g_target_win { cmd = `{cmd} {join_path(home, "runtime/native/keychain_win.ll")} -ladvapi32` }
+    else if g_target_linux { cmd = `{cmd} {join_path(home, "runtime/native/keychain_linux.ll")} -ldl` }
+    else { cmd = `{cmd} {join_path(home, "runtime/native/keychain.ll")} -framework Security -framework CoreFoundation` }
   }
   if g_uses_http {
     if g_target_win {

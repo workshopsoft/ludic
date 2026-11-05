@@ -78,7 +78,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
     let objs = split_objs(ll, out)                 # on every core when it can (split.ludic)
     var input = ll
     if objs != "" { input = objs }
-    let linked = shq(`{cc()} -O{split_opt()} {input}{rt_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
+    let linked = shq(`{cc()} -O{split_opt()} {input}{rt_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{keychain_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
     if objs != "" { shell(`rm -f {objs}`) }
     if not linked { return false }
     g_built_natives = native_libs_of(ll)
@@ -108,7 +108,7 @@ function compile_app(src: pointer, out: pointer, mode: int, save: bool) -> bool 
   var input = ll
   if objs != "" { input = objs }
   if g_incr_live { incr_say(`linking {out}`) }
-  let linked = shq(`{cc()} -O{split_opt()} {input} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{rt_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
+  let linked = shq(`{cc()} -O{split_opt()} {input} {cocoa} {audio} -framework Cocoa -Wl,-needed_framework,GameController -Wl,-needed_framework,AVFoundation -Wl,-rpath,@loader_path{rt_link_flags(ll)}{vk_link_flags(ll)}{http_link_flags(ll)}{udp_link_flags(ll)}{process_link_flags(ll)}{keychain_link_flags(ll)}{threads_link_flags(ll)}{native_link_flags(ll)}{pbf} -o {out}`)
   if objs != "" and not g_incr_live { shell(`rm -f {objs}`) }
   if not linked { return false }
   g_built_natives = native_libs_of(ll)
@@ -226,6 +226,15 @@ function udp_link_flags(ll: pointer) -> pointer {
 function process_link_flags(ll: pointer) -> pointer {
   if not shq(`grep -q "call .*@lu_proc_" {ll}`) { return "" }
   return ` {ludic_home()}runtime/native/process.ll`
+}
+
+# A program that uses Keychain.* calls the lu_kc_* layer; link the OS secret store only then, as
+# `ludicc -o` does: Security.framework on macOS, libsecret (dlopen'd) on Linux. Windows links
+# through ludicc, with keychain_win.ll and advapi32.
+function keychain_link_flags(ll: pointer) -> pointer {
+  if not shq(`grep -q "call .*@lu_kc_" {ll}`) { return "" }
+  if not is_darwin() { return ` {ludic_home()}runtime/native/keychain_linux.ll -ldl` }
+  return ` {ludic_home()}runtime/native/keychain.ll -framework Security -framework CoreFoundation`
 }
 
 # A program that calls the lu_crash_* layer (ludic.crash) links crash.ll - the handlers for

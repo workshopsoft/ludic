@@ -412,6 +412,8 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Udp" { g_uses_udp = true }
       # Process.* — any Process method splices the child-process runtime (process.ll / process_win.ll).
       if e.a.kind == E_ID and e.a.s == "Process" { g_uses_process = true }
+      # Keychain.* — any Keychain method splices the secret-store runtime (keychain*.ll per OS).
+      if e.a.kind == E_ID and e.a.s == "Keychain" { g_uses_keychain = true }
       # Time.now_us / Time.sleep_us — the microsecond clock lives in the window layer (window.ludic).
       if e.a.kind == E_ID and e.a.s == "Time" and (e.s == "now_us" or e.s == "sleep_us") { g_uses_win = true }
       # Gfx.set_window / set_retina / scale: the window layer's video settings (window.ludic), no-ops headless
@@ -765,6 +767,15 @@ function host_is_windows() -> bool {
   return os == "Windows_NT"
 }
 
+# a Linux host: /proc/self is there (macOS has no /proc, Windows answers above)
+function host_is_linux() -> bool {
+  if host_is_windows() { return false }
+  let f = file_open("/proc/self/stat", "rb")
+  if f == null { return false }
+  file_close(f)
+  return true
+}
+
 # a path separator: '/' everywhere, '\' too on Windows (argv[0] and %PATH% use it)
 function is_sep(c: int) -> bool { return (c == '/') or (c == 92) }
 
@@ -889,6 +900,7 @@ var g_uses_audio: bool = false    # Audio.* (#22) -> splice audio.ludic; a windo
 var g_uses_http:  bool = false    # Http.* (#6) -> splice http.ludic; links http.ll + Foundation (macOS)
 var g_uses_udp:   bool = false    # Udp.* -> splice udp.ludic; links udp.ll (macOS) / udp_win.ll + ws2_32
 var g_uses_process: bool = false  # Process.* -> splice process.ludic; links process.ll (macOS) / process_win.ll
+var g_uses_keychain: bool = false  # Keychain.* -> splice keychain.ludic; links keychain.ll (macOS) / keychain_win.ll / keychain_linux.ll
 var g_uses_win:   bool = false    # Vk.*, Time.now_us -> splice window.ludic; links rtlib.ll (rtlib_win.ll + win32_window.ll / win_nowin.ll on Windows)
 var g_uses_vk:    bool = false    # Vk.* -> splice vk.ludic (+ generated vk_api.ludic); links vk_thunks.ll + the platform loader
 # issue #64: functions marked @System(Phase) in a prebuilt binary module — the
@@ -1608,6 +1620,13 @@ function maybe_splice_runtime() -> void {
   if g_uses_process {
     cur_dir = ""
     do_import("runtime/native/process.ludic")
+    cur_dir = saved
+  }
+  # Keychain.*: splice the secret-store library. The store is the OS's (keychain.ll over
+  # Security.framework, keychain_win.ll over Credential Manager, keychain_linux.ll over libsecret).
+  if g_uses_keychain {
+    cur_dir = ""
+    do_import("runtime/native/keychain.ludic")
     cur_dir = saved
   }
   # Vk.* draws into the runtime's window, whose size, drawable and clock (gfx_width,
