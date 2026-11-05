@@ -35,8 +35,11 @@ export function r3d_mpc_get(render3d_st: mut Render3dState, name: string) -> flo
   return render3d_st.mpc_vals[r3d_mpc_scalar(render3d_st, name)]
 }
 
-# a primitive's emissive multiplier: its bound scalar, or 1
+# a primitive's emissive multiplier: its bound scalar, or 1; negative for an emission taken from its base colour (Prim.emis_base): the
+# shaders (model.frag, kit.frag) read a negative u_fac_emis as alb * -u_fac_emis
 function mpc_emis(render3d_st: Render3dState, pr: Prim) -> float {
-  if pr.emis_param < 0 or render3d_st.mpc_vals == null { return 1.0 }
-  return render3d_st.mpc_vals[pr.emis_param]
+  var v = 1.0
+  if pr.emis_param >= 0 and render3d_st.mpc_vals != null { v = render3d_st.mpc_vals[pr.emis_param] }
+  if pr.emis_base { return -v }
+  return v
 }

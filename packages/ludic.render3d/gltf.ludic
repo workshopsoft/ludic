@@ -15,6 +15,8 @@ property Prim {
   fac: floats,          # the material's factors, or null (all 1, no emission): base r g b a, roughness, metallic, emissive r g b
   emis_param: int = -1,  # the material parameter collection scalar its emission is multiplied by (mpc.ludic; the glTF material's
                         # extras "emissive_param"), -1 none: Unreal's emissive driven by a collection parameter (a lamp's lens at night)
+  emis_base: bool = false,  # its emission is its base colour times the factor (extras "emissive_from_base": a lightbox sign's printed face lit
+                        # from behind, Unreal's Emissive = BaseColor * Param), not the factor alone
   ext: floats,          # glTF extensions read, or null: clear coat factor and roughness (KHR_materials_clearcoat), the metal/roughness
                         # texture's uv scale u v (KHR_texture_transform: a car paint's flakes are its noise tiled 20 times)
   morph: Morph,         # its morph targets (morph.ludic), or null
@@ -427,6 +429,7 @@ function gltf_factors(render3d_st: mut Render3dState, pr: Prim, mat: Val, has_di
   if value_has(mat, "extras") != 0 and value_has(value_get(mat, "extras"), "emissive_param") != 0 {
     pr.emis_param = r3d_mpc_scalar(render3d_st, value_as_str(value_get(value_get(mat, "extras"), "emissive_param")))
   }
+  if value_has(mat, "extras") != 0 and value_has(value_get(mat, "extras"), "emissive_from_base") != 0 { pr.emis_base = true }
   if render3d_st.gltf_pure == 0 { render3d_st.gltf_pure = tex_solid(render3d_st, 255, 255, 255, 255) }
   if has_base and not has_diff { pr.diff = render3d_st.gltf_pure }
   if (has_m or has_r) and not has_arm { pr.arm = render3d_st.gltf_pure }

@@ -1107,7 +1107,8 @@ void main() {
   col += alb * u_emissive;
 #endif
   if (any(isnan(col))) col = vec3(0.0);
-  col += u_fac_emis;
+  // a negative factor is an emission from the base colour (a lightbox face lit from behind: mpc.ludic mpc_emis)
+  col += (u_fac_emis.x < 0.0) ? alb * -u_fac_emis : u_fac_emis;
 #ifdef TRANSLUCENT
   // Over: the surface is fogged and then laid over what is behind it. Additive: the light it adds is
   // dimmed by the air between it and the eye and adds no fog of its own (applyFog is linear in the

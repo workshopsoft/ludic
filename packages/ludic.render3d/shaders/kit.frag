@@ -526,7 +526,8 @@ void main() {
 #if defined(INTERIOR_MAP) || defined(FACADE)
   col += glow;
 #endif
-  col += u_fac_emis;
+  // a negative factor is an emission from the base colour (a lightbox face lit from behind: mpc.ludic mpc_emis)
+  col += (u_fac_emis.x < 0.0) ? alb * -u_fac_emis : u_fac_emis;
   col = applyFog(col, v_wpos, dist);
   o_color = vec4(sane(col), 1.0);
 #endif
