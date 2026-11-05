@@ -65,11 +65,11 @@ void main() {
   // 1.45x, then x0.78 - was written for conifers and made far broadleaf crowns a brighter, more saturated green than the near mesh.
   // On by default: measured 2026-11-05, off made far crowns pale grey-green, further from the near mesh; the near/far step is the near
   // crown's own self-shadow, which the card does not have. R3D_IMP_GRADE=0 turns it off)
-  if (u_leaf_tr.z > 0.5) {
+  if (u_leaf_tr.z > 0.0) {
     alb = mix(alb, alb * 0.72, far);
     float lum = dot(alb, vec3(0.2126, 0.7152, 0.0722));
-    alb = mix(vec3(lum), alb, 1.45);          // conifer foliage is SATURATED, not grey-green
-    alb *= 0.78;                               // and it is dark: a spruce canopy is not a lawn
+    alb = mix(vec3(lum), alb, u_leaf_tr.z);   // conifer foliage is SATURATED, not grey-green (1.45 by default: R3D_IMP_SAT)
+    alb *= u_leaf_tr.w;                        // and it is dark: a spruce canopy is not a lawn (0.78: R3D_IMP_BRIGHT)
   }
   // the card itself is the caster: look up the shadow a little toward the sun so it does not self-shadow
   float shadow = sunShadow(v_wpos + u_sun_dir * u_radius * 0.7, vec3(0, 1, 0), viewDepth);
