@@ -25,6 +25,7 @@ uniform float u_fog_base;          // the height the fog's density is measured f
 uniform float u_clip_y;          // planar-reflection pass: discard everything below this height
 // Two-sided foliage's transmission (model.frag FOLIAGE, Unreal's TwoSidedBxDF): x 1 off (R3D_FOLIAGE_TRANSMIT=0; a program that never
 // sets it has it on), y the subsurface colour's factor on the leaf's base colour (R3D_FOLIAGE_SS; 0 unset: 1)
+uniform float u_dbg_nrm;     // R3D_DBG_NRM (model.frag)
 uniform float u_fol_dither;  // foliage cut-outs dithered for the temporal resolve (one sample a pixel, no alpha-to-coverage: model.frag)
 uniform vec4 u_leaf_tr;   // x: transmission off, y: subsurface factor, z: the impostors' colour grading's saturation (0: off; R3D_IMP_GRADE=0,
                           // R3D_IMP_SAT), w: its brightness (R3D_IMP_BRIGHT)

@@ -1141,6 +1141,8 @@ void main() {
   o_color = vec4(sane(col), cardAlpha);
 #else
   o_color = vec4(sane(col), meshAlpha);
+  // R3D_DBG_NRM: 1 the shading normal (world, *0.5+0.5), 2 its n.L with the sun (a debug view; off by default)
+  if (u_dbg_nrm > 0.5) o_color = vec4(u_dbg_nrm > 1.5 ? vec3(max(dot(n, u_sun_dir), 0.0)) : n * 0.5 + 0.5, 1.0);
 #endif
 #if defined(FABRIC) && defined(ALPHA_TEST)
   // A hair card writes its own depth, unchanged: a program that may discard after its depth is known is shaded late. Without it, on an
