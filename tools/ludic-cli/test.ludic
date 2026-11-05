@@ -170,7 +170,7 @@ function controller_case(path: pointer, keys: pointer, exp: pointer, label: poin
   if not shq(`LUDIC_HOME={root} LUDIC_MODULES={root}/packages bin/ludicc examples/{path}.ludic > {ll} 2>{tmp_dir()}/gb.err`) {
     bad2(label, capture_line(`grep -i error {tmp_dir()}/gb.err | head -1`)); return
   }
-  if not shq(`{cc()} -O2 {ll} -o {tmp_dir()}/c_{nm} 2>{tmp_dir()}/gb.err`) {
+  if not shq(`{cc()} -O2 {ll}{rt_link_flags(ll)} -o {tmp_dir()}/c_{nm} 2>{tmp_dir()}/gb.err`) {
     bad2(label, capture_line(`grep -i error {tmp_dir()}/gb.err | head -1`)); return
   }
   var got = ""

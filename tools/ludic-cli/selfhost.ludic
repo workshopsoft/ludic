@@ -164,7 +164,6 @@ function line_count(path: pointer) -> pointer {
   return capture_line(`wc -l < {path}`)
 }
 
-
 # ---- selfhost-build: assemble + compile the self-host compiler ---------------
 # usage: ludic-dev selfhost-build [ludicc] [outbin]   (defaults: bin/ludicc, build/selfhost)
 function cmd_selfhost_build(lc: pointer, outbin: pointer) -> int {
@@ -209,7 +208,9 @@ function case_unsafe_flag() -> pointer {
 function game_build_ok(shbin: pointer, game: pointer, outbin: pointer) -> bool {
   let ll = `{outbin}.ll`
   if not shq(`{shbin}{case_unsafe_flag()} {game} > {ll} 2>{tmp_dir()}/gb.err`) { return false }
-  if not shq(`{cc()} -O2 {ll}{threads_link_flags(ll)} -o {outbin} 2>{tmp_dir()}/gb.err`) { return false }
+  # the window layer's helpers (rtlib.ll: Time.now_us, the float helpers) when the program calls them, as
+  # `ludic build --headless` links them - ludic.ui reads the clock since its native text fields
+  if not shq(`{cc()} -O2 {ll}{threads_link_flags(ll)}{rt_link_flags(ll)} -o {outbin} 2>{tmp_dir()}/gb.err`) { return false }
   shell(`rm -f {ll}`)
   return true
 }
