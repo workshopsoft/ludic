@@ -599,6 +599,13 @@ void main() {
   float a = min(d.a * (1.0 + 0.45 * max(lod, 0.0)), 1.0);
   float cov = (a - 0.4) / max(fwidth(a), 1e-4) + 0.5;
   if (cov < 0.02) discard;
+#if defined(FOLIAGE) && !defined(SHADOW_PASS)
+  // With one sample a pixel there is no alpha-to-coverage: a blade thinner than a pixel was kept or cut whole, the same every frame, and
+  // its tip broke into dots floating in the sky (r3 wild_0). Unreal's masked foliage under TAA/TSR: the coverage through DitherTemporalAA,
+  // a different threshold each frame, which the temporal resolve averages into a soft partial blade (u_fol_dither: one sample, and
+  // R3D_FOLIAGE_DITHER not 0)
+  if (u_fol_dither > 0.5 && cov < 0.999 && clamp(cov, 0.0, 1.0) < fract(ign(gl_FragCoord.xy) + u_dither_frame * 0.6180340)) discard;
+#endif
   meshAlpha = clamp(cov, 0.0, 1.0);
 #ifdef FABRIC
   }
