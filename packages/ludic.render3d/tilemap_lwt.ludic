@@ -93,6 +93,7 @@ export function tmm_live(ms: TmMeshes, tm: TileMap) -> void {
 export function tmm_forget(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> void {
   if not ms.live or tx < 0 or tz < 0 or tx >= tm.cols or tz >= tm.rows { return }
   let t = tz * tm.cols + tx
+  if ms.mem[t] != null { free(ms.mem[t]) }
   ms.mem[t] = null
   if ms.slot_of[t] >= 0 { ms.slot_tile[ms.slot_of[t]] = -1 }
   ms.slot_of[t] = -1
@@ -261,7 +262,16 @@ export function tmm_load(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> int {
       if ms.mem[t] == null { ms.slot_of[t] = -2;  ms.no_file += 1;  return -2 }
     }
     let mb = ms.mem[t]
-    if ms.slot_tile[s] >= 0 { ms.slot_of[ms.slot_tile[s]] = -1 }
+    if ms.slot_tile[s] >= 0 {
+      # the tile this slot held lets go of its levels too (made again from its heights when it is wanted back): only the slots' tiles
+      # keep theirs, not every tile ever drawn
+      let old = ms.slot_tile[s]
+      ms.slot_of[old] = -1
+      if old != t and ms.mem[old] != null {
+        free(ms.mem[old])
+        ms.mem[old] = null
+      }
+    }
     for i in 0 .. ms.entries * LWT_ENTRY { ms.tab[s * ms.entries * LWT_ENTRY + i] = lw_get32(mb, LWT_HEAD + i * 4) }
     ms.slot_tile[s] = t
     ms.slot_used[s] = ms.clock

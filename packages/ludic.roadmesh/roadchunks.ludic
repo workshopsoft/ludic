@@ -293,9 +293,23 @@ export function chunk_mesh(layers: []RmLayer, size: double) -> []MeshChunk {
     }
   }
   let out = new []MeshChunk
-  for i in 0 .. len(cs.list) { if cs.list[i].tris > 0 { push(out, cs.list[i]) } }
+  for i in 0 .. len(cs.list) {
+    let c = cs.list[i]
+    if c.tris > 0 { push(out, c) } else { rm_layers_free(c.layers);  free(c) }
+  }
+  free(cs.list)
   sort_chunks(out)
   return out
+}
+# give back chunks a cut made (their layers too) and the list
+export function mesh_chunks_free(cs: []MeshChunk) -> void {
+  if cs == null { return }
+  for i in 0 .. len(cs) {
+    if cs[i] == null { continue }
+    rm_layers_free(cs[i].layers)
+    free(cs[i])
+  }
+  free(cs)
 }
 # by cz, then cx (stable)
 export function sort_chunks(a: []MeshChunk) -> void {
@@ -776,3 +790,7 @@ function lane_add(out: []LaneChunk, keys: Dict, cx: int, cz: int, line: LaneLine
   l.pts = pts
   push(out[i].lines, l)
 }
+
+# a chunk's copies its caller made from a cut (its surface triangles, their kinds) given back when the chunk is dropped
+export function rm_floats_free(f: floats) -> void { if f != null { free(f) } }
+export function rm_bytes_free(b: []byte) -> void { if b != null { free(b) } }

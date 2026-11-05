@@ -209,8 +209,12 @@ function r2(v: double) -> double { return jround(v * 100.0) / 100.0 + 0.0 }
 export function crossing_at(e: NetEdge, plan: CrossPlan, k: int, px: double, pz: double, nx: double, nz: double, stretch: double, width: double) -> RmCrossing {
   let t = taper_at(e.taper, plan.s / jmax(e.length, 0.000000001))
   let sec = e.section
-  let r = offsets_of(sec.right, sec.gutter, sec.curbW, sec.median, t).gutter * stretch
-  let l = offsets_of(sec.left, sec.gutter, sec.curbW, sec.median, t).gutter * stretch
+  let ro = offsets_of(sec.right, sec.gutter, sec.curbW, sec.median, t)
+  let lo = offsets_of(sec.left, sec.gutter, sec.curbW, sec.median, t)
+  let r = ro.gutter * stretch
+  let l = lo.gutter * stretch
+  free(ro)
+  free(lo)
   let c = new RmCrossing
   c.key = `x{plan.seg}_{k}`
   c.seg = plan.seg

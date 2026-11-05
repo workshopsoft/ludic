@@ -1080,6 +1080,10 @@ export function build_road_mesh(sw: Sw, o: MeshOpt, only: Dict) -> RoadMesh {
     for q in 0 .. len(xs) { push(keys, xs[q].key) }
     let ord = order_by_key(keys)
     for q in 0 .. len(ord) { push(mesh.crossings, xs[ord[q]]) }
+    free(count)
+    free(xs)
+    free(keys)
+    free(ord)
   }
   # ---- structures ----
   if k.structured {
@@ -1097,6 +1101,20 @@ export function build_road_mesh(sw: Sw, o: MeshOpt, only: Dict) -> RoadMesh {
   for i in 0 .. len(b.layers) { b.layers[i].slot = b_slot_of(b, b.layers[i].material) }
   if k.full { kerb_distances(b.layers) }
   return mesh
+}
+
+# give back what a build made for its caller alone: the builder's layers and the crossings (not the shared Sw, the paint world's
+# answers or the structures' and lane paint's metadata); a caller that has copied out what it keeps calls it
+export function road_mesh_free(m: RoadMesh) -> void {
+  if m == null { return }
+  builder_free(m.b)
+  m.b = null
+  if m.crossings != null {
+    for i in 0 .. len(m.crossings) { free(m.crossings[i]) }
+    free(m.crossings)
+  }
+  m.crossings = null
+  free(m)
 }
 
 # ---- the distance to the kerb (roadMesh.ts kerbDistances) ---------------------------------------------------------------------------

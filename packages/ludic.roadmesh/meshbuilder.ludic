@@ -30,6 +30,30 @@ const UP_YES: int = 1
 const UP_VEC: int = 2
 const ZIP_TIE: double = 0.05
 
+# give back layers' vertex lists, the layers and the list (their strings stay): what a build made and nothing keeps
+export function rm_layers_free(ls: []RmLayer) -> void {
+  if ls == null { return }
+  for i in 0 .. len(ls) {
+    let l = ls[i]
+    if l == null { continue }
+    if l.positions != null { free(l.positions) }
+    if l.normals != null { free(l.normals) }
+    if l.uvs != null { free(l.uvs) }
+    if l.indices != null { free(l.indices) }
+    if l.levels != null { free(l.levels) }
+    free(l)
+  }
+  free(ls)
+}
+# a builder given back with its layers
+export function builder_free(b: Builder) -> void {
+  if b == null { return }
+  rm_layers_free(b.layers)
+  if b.slotM != null { free(b.slotM) }
+  if b.slotS != null { free(b.slotS) }
+  free(b)
+}
+
 export function builder_new(uv: double) -> Builder {
   let b = new Builder
   b.layers = new []RmLayer
