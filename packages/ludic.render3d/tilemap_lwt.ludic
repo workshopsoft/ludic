@@ -256,7 +256,12 @@ export function tmm_load(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> int {
       for dz in -1 .. 2 { for dx in -1 .. 2 {
         let nx = tx + dx
         let nz = tz + dz
-        if nx >= 0 and nz >= 0 and nx < tm.cols and nz < tm.rows and not tmap_settled(tm, nz * tm.cols + nx) { return -1 }
+        # (the tile itself must be in and settled; a neighbour only when it is in and still held by a live conform: one not in at all is
+        # past the heights' reach, and waiting for it left a tile forgotten by a conform at that edge undrawn for good, the sea showing)
+        if nx >= 0 and nz >= 0 and nx < tm.cols and nz < tm.rows {
+          let nt = nz * tm.cols + nx
+          if (dx == 0 and dz == 0) or tm.slot_of[nt] >= 0 { if not tmap_settled(tm, nt) { return -1 } }
+        }
       } }
       ms.mem[t] = tmb_tile(tm, tx, tz)
       if ms.mem[t] == null { ms.slot_of[t] = -2;  ms.no_file += 1;  return -2 }
