@@ -30,6 +30,7 @@ export property PedType {
   @Ref(PedLooks) look: int = 0
   @Unit("m/s") @Range(0.2, 4) walk_speed: float = 1.4
   @Unit("m/s") @Range(0.5, 12) run_speed: float = 4.6
+  @Unit("m/s") @Range(1, 5) jog_speed: float = 2.2     # a "jog" slot's pace (an easy recreational jog: 2.0-2.8 m/s)
   @Unit("m") @Range(0.1, 1) radius: float = 0.3
   @Ref(PedSchedules) schedule: int = 0
   @Unit("m") @Range(2, 500) wander_min: float = 15.0      # how far the next walk goes
@@ -58,7 +59,7 @@ export open registry PedTypes of PedType as PEDT
 export property PedSlot {
   @Unit("h") @Range(0, 24) from: float = 0.0
   @Unit("h") @Range(0, 24) to: float = 24.0  # to < from runs over midnight
-  @OneOf("walk", "stand", "sit", "shop", "work", "commute") act: string = "walk"
+  @OneOf("walk", "stand", "sit", "shop", "work", "commute", "jog") act: string = "walk"
   anchor: string = ""                        # a scenario tag to go to: "bench", "atm", "" for anywhere
   @Range(0, 100) weight: float = 1.0
   @Unit("s") @Range(1, 7200) min_s: float = 20.0
@@ -112,6 +113,7 @@ export property CrowdSetting {
   @Unit("m") @Range(0, 500) sync_r: float = 140.0      # what a client is sent, around its player
   @Unit("m") @Range(1, 200) witness_r: float = 25.0    # how far a ped sees a crime
   @Range(0, 100) witness_need: float = 1.0              # the weight of witnesses that makes it seen
+  chat_anim: string = ""                                 # the anim key two wanderers stopped for a chat play (a game's graph state: "talk"); "" the idle
 }
 
 @AppendOnly @ByKey

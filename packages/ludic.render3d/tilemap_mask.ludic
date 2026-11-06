@@ -82,6 +82,16 @@ export function tmd_mask_pattern(td: TileDraw, pattern: string) -> void {
   tmk_redraw(td)
 }
 
+# a live map's tiles past its pool (the far ground's) read their classes from these files ({tx} {tz}); "" none. Set before they are built
+# (the far ground's draw is made once, tilemap_far.ludic tmf_new: set it right after)
+export function tmd_mask_file_pattern(td: TileDraw, pattern: string) -> void { td.mask_file_pattern = pattern }
+
+# tile t's mask read again when a patch of it is next built (its classes changed in memory: a live conform)
+export function tmd_mask_forget(td: TileDraw, t: int) -> void {
+  for s in 0 .. td.ms.mslots { if td.mk_tile[s] == t { td.mk_tile[s] = -1;  td.mk_has[s] = 0 } }
+  for k in 0 .. td.fk_n { if td.fk_tile[k] == t { td.fk_tile[k] = -1 } }
+}
+
 # class `c` (0 .. 15) draws (r, g, b), linear. Patches drawn already are made again, a few a frame.
 export function tmd_tone_set(td: TileDraw, c: int, r: float, g: float, b: float) -> void {
   if c < 0 or c >= TMK_TONES { return }
@@ -184,8 +194,19 @@ function tmk_plain(td: TileDraw, v: int) -> floats {
 @alloc_ok("a tile being read: its mask's decode, once")
 function tmk_read(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: int, full: int) -> bool {
   let tm = td.tm
+  if tm.live_mask != null {
+    # a tile in the map's pool reads its live classes; one past it (the far ground's, tilemap_far.ludic: its heights not held) reads its
+    # mask file when the far draw was given its own (tmd_mask_file_pattern), else has none
+    if tm.slot_of[t] >= 0 or td.mask_file_pattern == "" { return tmk_read_live(render3d_st, td, t, slot, full) }
+    return tmk_read_file(render3d_st, td, t, slot, full, td.mask_file_pattern)
+  }
   if td.mask_pattern == "" { return false }
-  let path = Text.replace(Text.replace(td.mask_pattern, "{tx}", string(t % tm.cols)), "{tz}", string(t / tm.cols))
+  return tmk_read_file(render3d_st, td, t, slot, full, td.mask_pattern)
+}
+@alloc_ok("a tile being read: its mask's decode, once")
+function tmk_read_file(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: int, full: int, pattern: string) -> bool {
+  let tm = td.tm
+  let path = Text.replace(Text.replace(pattern, "{tx}", string(t % tm.cols)), "{tz}", string(t / tm.cols))
   var px: []byte = null
   if Fs.exists(path) { px = png_decode_bytes(render3d_st, path, td.mk_scratch) }
   let ch = render3d_st.tex_channels
@@ -196,8 +217,28 @@ function tmk_read(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: in
   if px == null { return false }
   td.mk_scratch = px
   if odd { return false }
+  return tmk_take(render3d_st, td, slot, full, px, render3d_st.tex_channels * (render3d_st.tex_depth / 8))
+}
+
+# tile t's mask from the map's memory (tmap_hold_new's live masks, a live conform's classes) instead of a file: false when its
+# slot has none set
+@alloc_ok("a tile being read: its mask's copy, once")
+function tmk_read_live(render3d_st: mut Render3dState, td: TileDraw, t: int, slot: int, full: int) -> bool {
+  let tm = td.tm
+  let s = tm.slot_of[t]
+  if s < 0 or tm.live_mask_on[s] == 0 { return false }
   let n = tm.res * tm.res
-  let step = ch * bps
+  if td.mk_live == null { td.mk_live = buffer(n) }
+  let o = s * n
+  for i in 0 .. n { td.mk_live[i] = tm.live_mask[o + i] }
+  return tmk_take(render3d_st, td, slot, full, td.mk_live, 1)
+}
+
+# tile mask texels px (`step` bytes a texel, the class the first) into the pool place `full` and slot's coarse grid and lawn
+@alloc_ok("a tile being read: its mask's tables, once")
+function tmk_take(render3d_st: mut Render3dState, td: TileDraw, slot: int, full: int, px: []byte, step: int) -> bool {
+  let tm = td.tm
+  let n = tm.res * tm.res
   if full >= 0 {
     if td.fk_data == null { td.fk_data = buffer(td.fk_n * n) }
     let o = full * n
@@ -366,13 +407,15 @@ export function tmk_colours(render3d_st: mut Render3dState, td: TileDraw, slot: 
 
 # the colour of the corner at texel (ci, cj) of the tile for cells of cs texels into out[o .. o + 3]: the mean tone of the
 # cs x cs texels centred on it (2 x 2 at level 0) from the full mask `fk`, or (fk < 0, far) of the coarse blocks round it;
-# texels no class names wear `plain`
+# texels no class names wear `plain`; its alpha 1 plus the share of sand classes (tmd_sand: lighting.glsl surfaceGround)
 function tmk_corner(td: TileDraw, fk: int, slot: int, ci: int, cj: int, cs: int, plain: floats, out: floats, o: int) -> void {
   let tm = td.tm
   let res = tm.res
   let top = res - 1
   let tone = td.mk_tone
   var r = 0.0;  var g = 0.0;  var bl = 0.0;  var w = 0.0
+  var s = 0.0                                          # the sand classes' texels (tmd_sand)
+  let sc = td.sand_cls
   if fk >= 0 {
     let h = Math.max(cs / 2, 1)
     let i0 = ci - h;  let j0 = cj - h
@@ -381,8 +424,10 @@ function tmk_corner(td: TileDraw, fk: int, slot: int, ci: int, cj: int, cs: int,
       let jj = min(max(j, 0), top)
       for i in i0 .. i0 + 2 * h {
         let ii = min(max(i, 0), top)
-        tmk_tone(td, int(td.fk_data[fo + jj * res + ii]), plain, tone, 0)
+        let k = int(td.fk_data[fo + jj * res + ii])
+        tmk_tone(td, k, plain, tone, 0)
         r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
+        if sc != null and sc[k] != 0 { s += 1.0 }
       }
     }
   } else {
@@ -394,12 +439,14 @@ function tmk_corner(td: TileDraw, fk: int, slot: int, ci: int, cj: int, cs: int,
       let jj = min(max(j, 0), cn - 1)
       for i in bi - hc .. bi + hc {
         let ii = min(max(i, 0), cn - 1)
-        tmk_tone(td, int(td.mk_coarse[slot * cn * cn + jj * cn + ii]), plain, tone, 0)
+        let k = int(td.mk_coarse[slot * cn * cn + jj * cn + ii])
+        tmk_tone(td, k, plain, tone, 0)
         r += tone[0];  g += tone[1];  bl += tone[2];  w += 1.0
+        if sc != null and sc[k] != 0 { s += 1.0 }
       }
     }
   }
-  out[o] = r / w;  out[o + 1] = g / w;  out[o + 2] = bl / w;  out[o + 3] = 1.0
+  out[o] = r / w;  out[o + 1] = g / w;  out[o + 2] = bl / w;  out[o + 3] = 1.0 + s / w   # alpha over 1: the sand's share
 }
 
 @alloc_ok("a message, built only when it is said: a failure, a warning or a debug switch")

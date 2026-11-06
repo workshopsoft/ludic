@@ -16,7 +16,7 @@ export property NetEdge {
   section: Section = null
   # the profile's name ("" for none) and its row (null when the network has none of that name)
   profile: string = ""
-  prof: RoadProfile = null
+  prof: RmRoadProfile = null
   # the rest of network.ts NetEdge the bake reads (the assembled port)
   from: string = ""
   to: string = ""
@@ -59,8 +59,8 @@ export property Net {
   nodes: []NetNode = null
   # the assembled port: the def's forward side, the profiles, the structure rows, and the keys' places
   forward: string = "right"
-  profiles: []RoadProfile = null
-  structures: []Val = null
+  profiles: []RmRoadProfile = null
+  structures: []RmVal = null
   edgeByKey: Dict = null
   nodeByKey: Dict = null
 }
@@ -153,7 +153,7 @@ export function jn_trim(line: []double, s: []double, s0: double, s1: double, cut
 }
 
 # ---- small things the junction files share ---------------------------------------------------------------------------------
-export function is_finite(x: double) -> bool { return x == x and x != INF and x != -INF }
+export function rm_is_finite(x: double) -> bool { return x == x and x != INF and x != -INF }
 
 # a JavaScript number as `${x}` writes it (the numbers the junctions' notes name: metres, never in exponent form)
 export function js_str(x: double) -> string {

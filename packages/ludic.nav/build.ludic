@@ -40,6 +40,35 @@ export function nav_tile_build(nav_st: mut NavState, kind: int, tx: int, tz: int
   return nvc_tile_build(h, tx, tz, g.v, g.nv, g.t, g.nt, g.area, nv_or_none(nav_st, g.cyl, g.nc), g.nc, nv_or_none(nav_st, g.foot, g.nf), g.nf, nv_cfg(nav_st, c))
 }
 
+# the same tile in two halves, for a build on a worker (Job.spawn): nav_tile_make reads only what it is handed - the mesh's handle
+# (nav_mesh_of, its params never change while it lives), the ground, a configuration of the caller's own (nav_config_into) and an
+# empty array - so it may run on any thread; the tile's bytes wait in out (words(4)) until nav_tile_add, on the main thread, puts them
+# in the mesh. The caller keeps g's arrays, cfg and out untouched until the job has landed, and the mesh alive
+export function nav_mesh_of(nav_st: NavState, kind: int) -> pointer { return nv_mesh(nav_st, kind) }
+export function nav_config_into(cfg: []float, c: NavConfig) -> void {
+  cfg[0] = c.cell
+  cfg[1] = c.cell_h
+  cfg[2] = c.height
+  cfg[3] = c.radius
+  cfg[4] = c.climb
+  cfg[5] = c.slope
+  cfg[6] = Math.max(c.detail, 0.9)
+}
+export function nav_tile_make(h: pointer, tx: int, tz: int, g: NavGround, cfg: []float, empty: []float, out: words) -> int {
+  if h == null or not nv_ground_ok(g) or len(cfg) < 7 { return -1 }
+  var cyl = g.cyl
+  if cyl == null or g.nc == 0 { cyl = empty }
+  var foot = g.foot
+  if foot == null or g.nf == 0 { foot = empty }
+  return nvc_tile_make(h, tx, tz, g.v, g.nv, g.t, g.nt, g.area, cyl, g.nc, foot, g.nf, cfg, data_of(out))
+}
+# polys: what nav_tile_make answered (below 1: the tile is only taken out of the mesh). The bytes are the mesh's after
+export function nav_tile_add(nav_st: NavState, kind: int, tx: int, tz: int, out: words, polys: int) -> int {
+  let h = nv_mesh(nav_st, kind)
+  if h == null { return -1 }
+  return nvc_tile_add(h, tx, tz, data_of(out), polys)
+}
+
 # the polygons a kind's mesh has (0: none)
 export function nav_polygons(nav_st: NavState, kind: int) -> int {
   let h = nv_mesh(nav_st, kind)

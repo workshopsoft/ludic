@@ -19,11 +19,11 @@ const T_NUMS: int = 7
 const T_OBJ: int = 8
 const T_PTS: int = 9
 
-export property Val {
+export property RmVal {
   tag: int = 0
   num: double = 0.0
   str: string = ""
-  arr: []Val = null       # an array's items, an object's values
+  arr: []RmVal = null       # an array's items, an object's values
   keys: []string = null   # an object's keys
   nums: []double = null   # f64s, or pts as x, z pairs
   bytes: []byte = null    # tag 10 (the job's): raw bytes
@@ -31,8 +31,8 @@ export property Val {
 
 export property Rec {
   fn: string = ""
-  args: Val = null
-  res: Val = null
+  args: RmVal = null
+  res: RmVal = null
 }
 
 property VReader {
@@ -67,8 +67,8 @@ function vr_s(r: VReader) -> string {
   r.at = r.at + n
   return s
 }
-export function read_val(r: VReader) -> Val {
-  let v = new Val
+export function read_val(r: VReader) -> RmVal {
+  let v = new RmVal
   let t = int(r.b[r.at])
   r.at = r.at + 1
   v.tag = t
@@ -76,7 +76,7 @@ export function read_val(r: VReader) -> Val {
   if t == T_STR { v.str = vr_s(r) }
   if t == T_ARR {
     let n = vr_i(r)
-    v.arr = new []Val
+    v.arr = new []RmVal
     for i in 0 .. n { push(v.arr, read_val(r)) }
   }
   if t == T_NUMS or t == T_PTS {
@@ -93,7 +93,7 @@ export function read_val(r: VReader) -> Val {
   }
   if t == T_OBJ {
     let n = vr_i(r)
-    v.arr = new []Val
+    v.arr = new []RmVal
     v.keys = new []string
     for i in 0 .. n {
       push(v.keys, vr_s(r))
@@ -104,7 +104,7 @@ export function read_val(r: VReader) -> Val {
 }
 
 # a file of one tagged value after a magic and a version (the bake's job): null when it cannot be read
-export function read_val_file(path: string, magic: int) -> Val {
+export function read_val_file(path: string, magic: int) -> RmVal {
   let r = new VReader
   r.b = Fs.read_bytes(path)
   if r.b == null or len(r.b) < 9 { return null }
@@ -133,42 +133,42 @@ export function read_fix(path: string) -> []Rec {
 }
 
 # ---- reading values -------------------------------------------------------------------------------------------------------
-export function v_at(v: Val, i: int) -> Val { return v.arr[i] }
-export function v_len(v: Val) -> int {
+export function v_at(v: RmVal, i: int) -> RmVal { return v.arr[i] }
+export function v_len(v: RmVal) -> int {
   if v.tag == T_ARR or v.tag == T_OBJ { return len(v.arr) }
   if v.tag == T_NUMS { return len(v.nums) }
   if v.tag == T_PTS { return len(v.nums) / 2 }
   return 0
 }
-export function v_num(v: Val) -> double { return v.num }
-export function v_int(v: Val) -> int { return int(v.num) }
-export function v_bool(v: Val) -> bool { return v.tag == T_TRUE }
-export function v_undef(v: Val) -> bool { return v == null or v.tag == T_UNDEF or v.tag == T_NULL }
+export function v_num(v: RmVal) -> double { return v.num }
+export function v_int(v: RmVal) -> int { return int(v.num) }
+export function v_bool(v: RmVal) -> bool { return v.tag == T_TRUE }
+export function v_undef(v: RmVal) -> bool { return v == null or v.tag == T_UNDEF or v.tag == T_NULL }
 # an object's field (null when it has none)
-export function v_get(v: Val, key: string) -> Val {
+export function v_get(v: RmVal, key: string) -> RmVal {
   if v == null or v.tag != T_OBJ { return null }
   for i in 0 .. len(v.keys) { if v.keys[i] == key { return v.arr[i] } }
   return null
 }
-export function v_has(v: Val, key: string) -> bool { return not v_undef(v_get(v, key)) }
-export function v_getn(v: Val, key: string, d: double) -> double {
+export function v_has(v: RmVal, key: string) -> bool { return not v_undef(v_get(v, key)) }
+export function v_getn(v: RmVal, key: string, d: double) -> double {
   let f = v_get(v, key)
   if f == null or f.tag != T_NUM { return d }
   return f.num
 }
-export function v_gets(v: Val, key: string, d: string) -> string {
+export function v_gets(v: RmVal, key: string, d: string) -> string {
   let f = v_get(v, key)
   if f == null or f.tag != T_STR { return d }
   return f.str
 }
 # points (pts, or an empty f64s) as a flat x, z slice; an array of [x, z] arrays too
-export function v_pts(v: Val) -> []double {
+export function v_pts(v: RmVal) -> []double {
   if v.tag == T_PTS or v.tag == T_NUMS { return pts_copy(v.nums) }
   let out = new []double
   if v.tag == T_ARR { for i in 0 .. len(v.arr) { pts_push(out, v.arr[i].nums[0], v.arr[i].nums[1]) } }
   return out
 }
-export function v_nums(v: Val) -> []double {
+export function v_nums(v: RmVal) -> []double {
   if v.tag == T_NUMS or v.tag == T_PTS { return pts_copy(v.nums) }
   return doubles(0)
 }
@@ -229,7 +229,7 @@ export function check_num(c: Check, what: string, got: double, want: double) -> 
   if d > c.worst or d != d { c.worst = d }
   check_fail(c, `{what}: {got}, want {want}`)
 }
-export function check_numv(c: Check, what: string, got: double, want: Val) -> void {
+export function check_numv(c: Check, what: string, got: double, want: RmVal) -> void {
   if want == null or want.tag != T_NUM {
     check_fail(c, `{what}: {got}, want no number`)
     return
@@ -239,14 +239,14 @@ export function check_numv(c: Check, what: string, got: double, want: Val) -> vo
 export function check_int(c: Check, what: string, got: int, want: int) -> void {
   if got != want { check_fail(c, `{what}: {got}, want {want}`) }
 }
-export function check_bool(c: Check, what: string, got: bool, want: Val) -> void {
+export function check_bool(c: Check, what: string, got: bool, want: RmVal) -> void {
   if got != v_bool(want) or not (want.tag == T_TRUE or want.tag == T_FALSE) { check_fail(c, `{what}: {got}, want tag {want.tag}`) }
 }
-export function check_str(c: Check, what: string, got: string, want: Val) -> void {
+export function check_str(c: Check, what: string, got: string, want: RmVal) -> void {
   if want == null or want.tag != T_STR or want.str != got { check_fail(c, `{what}: '{got}'`) }
 }
 # a slice of numbers against f64s or pts (null against undefined or null)
-export function check_nums(c: Check, what: string, got: []double, want: Val) -> void {
+export function check_nums(c: Check, what: string, got: []double, want: RmVal) -> void {
   if got == null {
     if not v_undef(want) { check_fail(c, `{what}: none, want some`) }
     return
@@ -267,7 +267,7 @@ export function check_nums(c: Check, what: string, got: []double, want: Val) -> 
     }
   }
 }
-export function check_ints(c: Check, what: string, got: []int, want: Val) -> void {
+export function check_ints(c: Check, what: string, got: []int, want: RmVal) -> void {
   let w = v_nums(want)
   if len(w) != len(got) {
     check_fail(c, `{what}: {len(got)} numbers, want {len(w)}`)
@@ -288,9 +288,9 @@ export function check_report(c: Check) -> int {
 }
 
 # an array's item as a value, whichever way the array was written (an array of numbers as f64s, of pairs as pts)
-export function v_item(v: Val, i: int) -> Val {
+export function v_item(v: RmVal, i: int) -> RmVal {
   if v.tag == T_ARR or v.tag == T_OBJ { return v.arr[i] }
-  let o = new Val
+  let o = new RmVal
   if v.tag == T_NUMS {
     o.tag = T_NUM
     o.num = v.nums[i]
@@ -305,9 +305,9 @@ export function v_item(v: Val, i: int) -> Val {
   return o
 }
 # argument i of a record (undefined when the call passed fewer)
-export function rarg(r: Rec, i: int) -> Val {
+export function rarg(r: Rec, i: int) -> RmVal {
   if i >= v_len(r.args) {
-    let o = new Val
+    let o = new RmVal
     o.tag = T_UNDEF
     return o
   }

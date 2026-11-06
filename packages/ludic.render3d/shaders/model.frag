@@ -599,6 +599,13 @@ void main() {
   float a = min(d.a * (1.0 + 0.45 * max(lod, 0.0)), 1.0);
   float cov = (a - 0.4) / max(fwidth(a), 1e-4) + 0.5;
   if (cov < 0.02) discard;
+#if defined(FOLIAGE) && !defined(SHADOW_PASS)
+  // With one sample a pixel there is no alpha-to-coverage: a blade thinner than a pixel was kept or cut whole, the same every frame, and
+  // its tip broke into dots floating in the sky (r3 wild_0). Unreal's masked foliage under TAA/TSR: the coverage through DitherTemporalAA,
+  // a different threshold each frame, which the temporal resolve averages into a soft partial blade (u_fol_dither: one sample, and
+  // R3D_FOLIAGE_DITHER not 0)
+  if (u_fol_dither > 0.5 && cov < 0.999 && clamp(cov, 0.0, 1.0) < fract(ign(gl_FragCoord.xy) + u_dither_frame * 0.6180340)) discard;
+#endif
   meshAlpha = clamp(cov, 0.0, 1.0);
 #ifdef FABRIC
   }
@@ -809,6 +816,7 @@ void main() {
     // surfaces' normal maps are not read there (a virtual texture page keeps its normals at every distance)
     if (u_surf_q.w < 0.5) g_surf_flat_at = 120.0;
 #endif
+    g_ground_sand = ground ? clamp(v_col.a - 1.0, 0.0, 1.0) : 0.0;
     if (ground || (u_s2.x > 0.0 && u_surf.y < 0.5)) surfaceGround(u_diff, u_nrm, u_arm, v_wpos, N, base, v_uv, sa, sn, sr);
     else surfaceAtP(u_diff, u_nrm, u_arm, surfMain(), surfPlace(surfMain(), v_wpos, v_uv, v_wpos), N, N, v_wpos, base, sa, sn, sr);
     d.rgb = (u_surf_b.x > 0.5 || ground) ? sa : sa * v_col.rgb;
@@ -1031,8 +1039,33 @@ void main() {
 #endif
 #endif
 #ifdef FOLIAGE
-  // thin-leaf translucency: light leaking through toward the viewer, and a wrapped diffuse
   vec3 v = normalize(u_cam_pos - v_wpos);
+  float sunLeft = sunZone(v_wpos);   // a light zone takes the sun's glow through the leaf and its sheen too
+#ifndef BLADE
+  if (u_leaf_tr.x < 0.5) {
+    // Unreal's Two Sided Foliage shading model (UE 5.8 ShadingModels.ush TwoSidedBxDF, the non-SGGX path), the sun through the leaf:
+    //   half Wrap = 0.5;
+    //   half WrapNoL = saturate( ( -dot(N, AreaLight.DiffuseL) + Wrap ) / Square( 1 + Wrap ) );
+    //   half VoL = dot(V, AreaLight.DiffuseL);
+    //   float Scatter = D_GGX( 0.6*0.6, saturate( -VoL ) );
+    //   Lighting.Transmission = AreaLight.FalloffColor * (AreaLight.Falloff * WrapNoL * Scatter) * SubsurfaceColor;
+    // added under the light's TransmissionShadow (DeferredLightingCommon.ush: LightAccumulator_AddSplit( ..., Lighting.Transmission, ...,
+    // MaskedLightColor * Shadow.TransmissionShadow )). The sky on the leaf's back (BasePassPixelShader.usf GetSkyLighting):
+    //   float3 BackfaceDiffuseLookup = GetEffectiveSkySHDiffuse(-WorldNormal) * ResolvedView.SkyLightColor.rgb;
+    //   OutSubsurfaceLighting += BackfaceDiffuseLookup * SkyVisibility;
+    // and its use: (DiffuseIndirectLighting * DiffuseColorForIndirect + SubsurfaceIndirectLighting * SubsurfaceColor)
+    //   * AOMultiBounce( GBuffer.BaseColor, ShadingOcclusion.DiffOcclusion )
+    // The subsurface colour is the leaf's own base colour times u_leaf_tr.y, as foliage materials feed SubsurfaceColor.
+    // The default lit part (DefaultLitBxDF) is shade() above.
+    vec3 ssCol = alb * ((u_leaf_tr.y > 0.0) ? u_leaf_tr.y : 1.0);
+    float wrapNoL = clamp((-dot(n, u_sun_dir) + 0.5) / (1.5 * 1.5), 0.0, 1.0);
+    float scatter = D_GGX(clamp(-dot(v, u_sun_dir), 0.0, 1.0), 0.6);   // D_GGX(NoH, a) takes a, a2 = 0.6 * 0.6
+    col += u_sun_color * (wrapNoL * scatter) * ssCol * shadow * cloudShadow(v_wpos) * sunLeft;
+    col += skyIrradiance(-n) * ssCol * ueAOMultiBounce(alb, arm.r);
+  } else
+#endif
+  {
+  // thin-leaf translucency: light leaking through toward the viewer, and a wrapped diffuse
   float back = pow(max(dot(-v, u_sun_dir), 0.0), 3.0);
   float wrap = max(dot(N, u_sun_dir) * 0.5 + 0.5, 0.0);
   // Only a thin leaf a few metres away is translucent. A clump card at 200 m is a whole
@@ -1043,9 +1076,9 @@ void main() {
   float thin = 1.0 - smoothstep(60.0, 260.0, dist);
   // a dense crown of cards is not a thin leaf: much less light comes through it
   if (u_model_h > 2.0) thin *= 0.45;
-  float sunLeft = sunZone(v_wpos);   // a light zone takes the sun's glow through the leaf and its sheen too
   col += alb * u_sun_color * (0.24 * back + 0.07 * wrap) * thin * shadow * cloudShadow(v_wpos) * sunLeft;
   col += alb * skyIrradiance(vec3(0, 1, 0)) * 0.12 * arm.r;
+  }
   // ---- leaf sheen ---------------------------------------------------------------------
   // A LEAF IS NOT MATTE. Foliage roughness is pinned to 1.0 just above and grazing Fresnel
   // is switched off, so nothing green in this game has ever had a highlight - and the glint
@@ -1081,7 +1114,8 @@ void main() {
   col += alb * u_emissive;
 #endif
   if (any(isnan(col))) col = vec3(0.0);
-  col += u_fac_emis;
+  // a negative factor is an emission from the base colour (a lightbox face lit from behind: mpc.ludic mpc_emis)
+  col += (u_fac_emis.x < 0.0) ? alb * -u_fac_emis : u_fac_emis;
 #ifdef TRANSLUCENT
   // Over: the surface is fogged and then laid over what is behind it. Additive: the light it adds is
   // dimmed by the air between it and the eye and adds no fog of its own (applyFog is linear in the
@@ -1107,6 +1141,8 @@ void main() {
   o_color = vec4(sane(col), cardAlpha);
 #else
   o_color = vec4(sane(col), meshAlpha);
+  // R3D_DBG_NRM: 1 the shading normal (world, *0.5+0.5), 2 its n.L with the sun (a debug view; off by default)
+  if (u_dbg_nrm > 0.5) o_color = vec4(u_dbg_nrm > 2.5 ? vec3(max(dot(normalize(v_nrm), u_sun_dir), 0.0)) : (u_dbg_nrm > 1.5 ? vec3(max(dot(n, u_sun_dir), 0.0)) : n * 0.5 + 0.5), 1.0);   // 3: the vertex normal's n.L
 #endif
 #if defined(FABRIC) && defined(ALPHA_TEST)
   // A hair card writes its own depth, unchanged: a program that may discard after its depth is known is shaded late. Without it, on an

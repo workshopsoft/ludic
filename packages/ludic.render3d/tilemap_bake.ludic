@@ -46,7 +46,13 @@ export property TmLock {
   rise: float = -1.0                # metres a covered texel inside may rise; below 0: tol
   under: words = null               # 256: 1 for a covered class (a surface is drawn over the ground there), null: none
   hole: words = null                # 256: 1 for a hole class (no ground drawn), null: none
-  bits: []byte = null               # the tile being baked, a texel each (res x res): 0 free, 1 locked, 2 covered edge, 3 covered inside, 4 hole; null when it has no mask
+  carve: words = null               # 256: 1 for a covered class CARVED (tmb_lock_carve): its inside texels are holes in the levels up to
+                                    # carve_lod (the surface drawn over it is all there is: no ground pokes through a cambered road),
+                                    # and covered inside past them; null: none
+  carve_lod: int = 1
+  lod: int = 0                      # the level being cut or written (a carved texel's kind depends on it)
+  bits: []byte = null               # the tile being baked, a texel each (res x res): 0 free, 1 locked, 2 covered edge, 3 covered inside, 4 hole,
+                                    # 6 carved (covered inside of a carved class); null when it has no mask
   scratch: []byte = null            # the decode's buffer, kept
   h0: floats = null                 # a patch's level 0 heights, quantized ((patch_texels + 1)^2)
   here: words = null                # a level being cut: 1 for a level 0 grid point that is a vertex
@@ -99,6 +105,16 @@ export function tmb_lock_under(k: TmLock, classes: []int) -> void {
   }
 }
 
+# the covered classes of lock k whose inside texels are cut out of the drawn ground in the levels 0 .. lod (each 0 .. 255, covered by
+# tmb_lock_under already): the road surface is then the only thing drawn there near the camera, so no ground shows through it
+@alloc_ok("a bake: the lock's table, once")
+export function tmb_lock_carve(k: TmLock, classes: []int, lod: int) -> void {
+  k.carve = words(256)
+  for c in 0 .. 256 { k.carve[c] = 0 }
+  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { k.carve[classes[i]] = 1 } }
+  k.carve_lod = lod
+}
+
 # tile (tx, tz)'s locked texels into k.bits: false (and bits null) when it has no mask or one of another size
 @alloc_ok("a bake: the mask's decode and bits, once a tile")
 export function tmb_lock_read(render3d_st: mut Render3dState, tm: TileMap, k: TmLock, tx: int, tz: int) -> bool {
@@ -115,8 +131,29 @@ export function tmb_lock_read(render3d_st: mut Render3dState, tm: TileMap, k: Tm
     print(`tilemap: {path} is {render3d_st.tex_w} x {render3d_st.tex_h}: the row says {tm.res} x {tm.res}; the tile is baked unlocked`)
     return false
   }
+  return tmb_lock_bits(tm, k, px, ch * bps)
+}
+
+# tile (tx, tz)'s locked texels from the map's live classes (tmap_hold_new's live masks, a live conform's), as tmb_lock_read takes
+# them from a mask file: the live levels (tilemap_lwt.ludic tmm_live) cut with the bake's lock, so a coarse level never lifts the
+# ground over a road, a sidewalk or a pad (unlocked, the levels spanned a street from its kerbs' heights: grass bands through the
+# asphalt, 2026-11-05). false (bits null) when the tile has no live classes yet
+@alloc_ok("a tile's live levels: the lock's bits, once a make")
+export function tmb_lock_live(tm: TileMap, k: TmLock, tx: int, tz: int) -> bool {
+  k.bits = null
+  if tm.live_mask == null { return false }
+  let s = tm.slot_of[tz * tm.cols + tx]
+  if s < 0 or tm.live_mask_on[s] == 0 { return false }
   let n = tm.res * tm.res
-  let step = ch * bps
+  if k.scratch == null or len(k.scratch) < n { k.scratch = buffer(n) }
+  let px = k.scratch
+  for i in 0 .. n { px[i] = tm.live_mask[s * n + i] }
+  return tmb_lock_bits(tm, k, px, 1)
+}
+
+@alloc_ok("a bake: the lock's bits, once a tile")
+function tmb_lock_bits(tm: TileMap, k: TmLock, px: []byte, step: int) -> bool {
+  let n = tm.res * tm.res
   let bits = buffer(n)
   for i in 0 .. n {
     let c = int(px[i * step])
@@ -132,11 +169,12 @@ export function tmb_lock_read(render3d_st: mut Render3dState, tm: TileMap, k: Tm
         for b in j - 1 .. j + 2 {
           for a in i - 1 .. i + 2 {
             let v = bits[b * res + a]
-            if v != 3 and v != 2 { edge = true }       # a hole beside it is not covered ground either
+            if v != 3 and v != 2 and v != 6 { edge = true }       # a hole beside it is not covered ground either (6: carved, covered)
           }
         }
       }
       if edge { bits[j * res + i] = 2 }
+      else if k.carve != null and k.carve[int(px[(j * res + i) * step])] == 1 { bits[j * res + i] = 6 }
     }
   }
   k.bits = bits
@@ -147,9 +185,17 @@ export function tmb_lock_read(render3d_st: mut Render3dState, tm: TileMap, k: Tm
 function tmb_is_locked(tm: TileMap, k: TmLock, px: int, pz: int, i: int, j: int) -> bool {
   return k.bits[(pz * tm.patch_texels + j) * tm.res + px * tm.patch_texels + i] != 0
 }
-# its kind: 0 free, 1 locked, 2 covered edge, 3 covered inside
+# its kind: 0 free, 1 locked, 2 covered edge, 3 covered inside, 4 hole (a carved texel: a hole in the levels to carve_lod, else covered
+# inside)
 function tmb_code(tm: TileMap, k: TmLock, px: int, pz: int, i: int, j: int) -> int {
-  return int(k.bits[(pz * tm.patch_texels + j) * tm.res + px * tm.patch_texels + i])
+  return tmb_kind(k, int(k.bits[(pz * tm.patch_texels + j) * tm.res + px * tm.patch_texels + i]))
+}
+function tmb_kind(k: TmLock, b: int) -> int {
+  if b == 6 {
+    if k.lod <= k.carve_lod { return 4 }
+    return 3
+  }
+  return b
 }
 # does a level that puts a locked texel of kind `code` `d` metres off level 0 (up positive) move it too far?
 function tmb_texel_moves(k: TmLock, code: int, d: float) -> bool {
@@ -226,6 +272,7 @@ function tmb_cell_steep(k: TmLock, n0: int, c: int) -> bool {
 @alloc_ok("a bake: a patch's heights and the cut's tables, made once and kept with the lock")
 function tmb_lock_cut(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int, lod: int) -> bool {
   if k == null or k.bits == null { return false }
+  k.lod = lod
   let pt = tm.patch_texels
   let n0 = pt + 1
   var any = false
@@ -307,8 +354,8 @@ function tmb_emit(k: TmLock, n0: int, x0: int, z0: int, s: int, b: []byte, at: i
 
 # a cell of the mesh, in the split bits' order: counted, and its hole bit set at k.hole_at in b (a cell of one texel that is a hole)
 function tmb_leaf(k: TmLock, x0: int, z0: int, s: int, b: []byte) -> void {
-  if b != null and k.holes and s == 1 and int(k.bits[(k.cz0 + z0) * k.res + k.cx0 + x0]) == 4 { b[k.hole_at + k.nleaf / 8] = b[k.hole_at + k.nleaf / 8] | (1 << (k.nleaf % 8)) }
-  if s == 1 and int(k.bits[(k.cz0 + z0) * k.res + k.cx0 + x0]) == 4 { k.holes = true }
+  if b != null and k.holes and s == 1 and tmb_kind(k, int(k.bits[(k.cz0 + z0) * k.res + k.cx0 + x0])) == 4 { b[k.hole_at + k.nleaf / 8] = b[k.hole_at + k.nleaf / 8] | (1 << (k.nleaf % 8)) }
+  if s == 1 and tmb_kind(k, int(k.bits[(k.cz0 + z0) * k.res + k.cx0 + x0])) == 4 { k.holes = true }
   k.nleaf += 1
 }
 
@@ -318,6 +365,7 @@ function tmb_leaf(k: TmLock, x0: int, z0: int, s: int, b: []byte) -> void {
 # highest height and kind 2. The triangles are not written: the reader fans each cell (lwt_ring), wound as the grid's.
 @alloc_ok("a bake: the table of cells, made once and kept with the lock")
 function tmb_compact_bytes(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz: int, lod: int, b: []byte, at: int, e: int) -> int {
+  k.lod = lod
   let pt = tm.patch_texels
   let n0 = pt + 1
   if k.leaf == null or len(k.leaf) < n0 * n0 { k.leaf = words(n0 * n0) }
@@ -365,7 +413,7 @@ function tmb_compact_bytes(tm: TileMap, k: TmLock, tx: int, tz: int, px: int, pz
   # the triangles the reader will make, for the bake's count
   var nt = 0
   for c in 0 .. len(k.ls) {
-    if k.ls[c] == 1 and int(k.bits[(k.cz0 + k.lz[c]) * k.res + k.cx0 + k.lx[c]]) == 4 { continue }
+    if k.ls[c] == 1 and tmb_kind(k, int(k.bits[(k.cz0 + k.lz[c]) * k.res + k.cx0 + k.lx[c]])) == 4 { continue }
     let n = tmb_ring(k, n0, c)
     for i in 1 .. n - 1 { if tmb_cross(n0, k.ring[0], k.ring[i], k.ring[i + 1]) != 0 { nt += 1 } }
   }

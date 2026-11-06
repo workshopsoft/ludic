@@ -40,20 +40,20 @@ export property StMeta {
   lightZones: []MRow = null
 }
 export property StCtx {
-  opt: Val = null          # StructureOptions
+  opt: RmVal = null          # StructureOptions
   lift: double = 0.02
   skirt: double = 0.0
   matStructure: string = ""
   only: []string = null    # null: every edge
   onlyD: Dict = null       # the assembled port's `only` (null: every edge)
   edges: []StEdge = null
-  rows: []Val = null       # the structure rows
+  rows: []RmVal = null       # the structure rows
   sw: Sw = null
   problems: []string = null
   meta: StMeta = null
   ground: []double = null  # the ground's answers: x, z, y (NaN: none), in the order asked
   gAt: int = 0
-  near: []Val = null       # edgesNear's answers: {p, r, keys}, in the order asked
+  near: []RmVal = null       # edgesNear's answers: {p, r, keys}, in the order asked
   nAt: int = 0
   bad: string = ""         # the first call the answers did not expect
 }
@@ -61,7 +61,7 @@ export property StCtx {
 export function st_ctx_new() -> StCtx {
   let c = new StCtx
   c.edges = new []StEdge
-  c.rows = new []Val
+  c.rows = new []RmVal
   c.problems = new []string
   c.meta = new StMeta
   c.meta.piers = new []MRow
@@ -99,7 +99,7 @@ function r3(v: double) -> double { return jround(v * 1000.0) / 1000.0 }
 function opt_n(c: StCtx, k: string, d: double) -> double { return v_getn(c.opt, k, d) }
 
 # the ground at a point (NaN: none)
-function ground_at(c: StCtx, x: double, z: double) -> double { return ground_y(c.sw.w.ground, x, z) }
+function rm_ground_at(c: StCtx, x: double, z: double) -> double { return ground_y(c.sw.w.ground, x, z) }
 # the edges near a point (network.ts edgesNear): their keys
 function st_edges_near(c: StCtx, x: double, z: double, r: double) -> []string {
   let out = new []string
@@ -132,12 +132,12 @@ function field(c: StCtx, k: string) -> string {
   return k
 }
 # typeof v === 'number' && isFinite(v) ? v : d
-function num_or(v: Val, d: double) -> double {
+function num_or(v: RmVal, d: double) -> double {
   if v == null or v.tag != T_NUM or v.num - v.num != 0.0 { return d }
   return v.num
 }
 # String(v ?? d)
-function str_or(v: Val, d: string) -> string {
+function str_or(v: RmVal, d: string) -> string {
   if v_undef(v) { return d }
   if v.tag == T_STR { return v.str }
   if v.tag == T_NUM { return js_num(v.num) }
@@ -260,7 +260,7 @@ function frame_pt(es: EdgeStations, f: Frame, d: double) -> []double {
 function lowest_ground(c: StCtx, pts: []double) -> double {
   var lo = NAN
   for k in 0 .. len(pts) / 2 {
-    let g = ground_at(c, pts[k * 2], pts[k * 2 + 1])
+    let g = rm_ground_at(c, pts[k * 2], pts[k * 2 + 1])
     if g == g {
       if lo != lo { lo = g } else { lo = jmin(lo, g) }
     }
@@ -620,7 +620,7 @@ function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
   while sf <= sLast + EPS6 {
     let f = frame_at(es, jmin(sf, sLast))
     let p = frame_pt(es, f, 0.0)
-    let g = ground_at(c, p[0], p[1])
+    let g = rm_ground_at(c, p[0], p[1])
     if g == g and f.y + c.lift - deckT <= g + 0.3 { push(supports, jmin(sf, sLast) / scale) }
     sf += 1.0
   }
@@ -920,9 +920,9 @@ function tunnel(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
   for i in 0 .. n {
     let o1 = tube_out(es, R, L, i, 1, wallT)
     let o2 = tube_out(es, R, L, i, -1, wallT)
-    let g1 = ground_at(c, o1[0], o1[1])
-    let g2 = ground_at(c, o2[0], o2[1])
-    let g3 = ground_at(c, st[i].px, st[i].pz)
+    let g1 = rm_ground_at(c, o1[0], o1[1])
+    let g2 = rm_ground_at(c, o2[0], o2[1])
+    let g3 = rm_ground_at(c, st[i].px, st[i].pz)
     let lim = y_r(c, es, i) + roof + wallT + c.skirt
     push(exposed, g1 != g1 or g1 < lim or g2 != g2 or g2 < lim or g3 != g3 or g3 < lim)
   }
@@ -1032,7 +1032,7 @@ function tunnel(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
           var lvl: double = 0.0
           if raised { lvl = sw_lvl_at(c.sw, a.idx, i, side, wk) }
           let walkTop = yr + lvl
-          let g = ground_at(c, p[0], p[1])
+          let g = rm_ground_at(c, p[0], p[1])
           var cut: double = 0.0
           if g == g { cut = g - walkTop }
           let base = walkTop - c.skirt
@@ -1084,7 +1084,7 @@ function tube_out(es: EdgeStations, R: []Outer, L: []Outer, i: int, side: int, w
   return es_at(es, i, double(side) * (d + wallT))
 }
 function tube_foot(c: StCtx, es: EdgeStations, E: []Outer, k: int, r: []double) -> double {
-  var g = ground_at(c, r[0], r[1])
+  var g = rm_ground_at(c, r[0], r[1])
   if g != g { g = y_r(c, es, k) }
   return jmin(E[k].y - c.skirt, g - c.skirt)
 }
@@ -1099,4 +1099,3 @@ export function to_fixed(x: double, d: int) -> string {
   if neg and w != long(0) { return `-{ip}.{fp}` }
   return `{ip}.{fp}`
 }
-

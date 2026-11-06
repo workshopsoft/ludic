@@ -30,6 +30,7 @@ program ConformWindow {
   const WING_CAP: double = 3.1
   const STEEP_FOLLOW: double = 1.5
   const CLAMP_UNDER: double = 0.01
+  const CLAMP_STEP: double = 0.5   # the rise per metre between neighbouring samples past which the clamp takes them for a step (the studio's)
   const DESPIKE: double = 0.3
   const TUBE_COVER: double = 2.0
   const COVER_SKIRT: double = 6.0             # metres over a tube's roof under which no terrain skirt may hang (a level 1 patch's and a margin)
@@ -263,6 +264,11 @@ program ConformWindow {
   function dmin(a: double, b: double) -> double { if a < b { return a };  return b }
   function dmax(a: double, b: double) -> double { if a > b { return a };  return b }
   function dabs(a: double) -> double { if a < 0.0 { return -a };  return a }
+  # the clamp's neighbour n of sample q: on a surface of the same class, no step between them (a rise under stepMax)
+  function clamp_same(top: doubles, has: []byte, scl: []byte, q: int, n: int, stepMax: double) -> bool {
+    if has[n] == 0 or scl[n] != scl[q] { return false }
+    return dabs(top[n] - top[q]) <= stepMax
+  }
   function hyp(x: double, z: double) -> double { return Math.sqrt(x * x + z * z) }
 
   # the height of triangle q (9 numbers from q * 9) of P over (x, z), or -INF when outside it in plan
@@ -1057,20 +1063,45 @@ program ConformWindow {
         heights[t] = dmax(dmin(v, dmin(capAt[t], deckTop[t])), tubeFloor[t])
       }
     }
-    # the hard clamp under the surfaces: no texel but a pad's over the lowest surface sample within its bilinear reach (a texel either way)
-    # less CLAMP_UNDER (the studio's, after the heights)
+    # the hard clamp under the surfaces: no texel but a pad's over any surface sample within its bilinear reach (a texel either way), that
+    # sample's surface carried on along its own slope to the texel's centre, less CLAMP_UNDER (the studio's, after the heights: the
+    # bilinear blend of a plane's values is the plane, so the ground stays under every sample whatever slope it carries; the slope makes
+    # it tight). A sample's slope: its neighbours' on a surface of the same class with no step between (CLAMP_STEP), 0 alone
+    let cgx = doubles(NS)
+    let cgz = doubles(NS)
+    let stepMax = CLAMP_STEP * ST
+    for l in 0 .. SH {
+      for kk in 0 .. SW {
+        let q = l * SW + kk
+        if has[q] == 0 { continue }
+        let xa = kk > 0 and clamp_same(top, has, scl, q, q - 1, stepMax)
+        let xb = kk < SW - 1 and clamp_same(top, has, scl, q, q + 1, stepMax)
+        var g: double = 0.0
+        if xa and xb { g = (top[q + 1] - top[q - 1]) / (2.0 * ST) } else if xa { g = (top[q] - top[q - 1]) / ST } else if xb { g = (top[q + 1] - top[q]) / ST }
+        cgx[q] = g
+        let za = l > 0 and clamp_same(top, has, scl, q, q - SW, stepMax)
+        let zb = l < SH - 1 and clamp_same(top, has, scl, q, q + SW, stepMax)
+        var gz: double = 0.0
+        if za and zb { gz = (top[q + SW] - top[q - SW]) / (2.0 * ST) } else if za { gz = (top[q] - top[q - SW]) / ST } else if zb { gz = (top[q + SW] - top[q]) / ST }
+        cgz[q] = gz
+      }
+    }
     for b in 0 .. h {
       let l0 = SUB * b + SUB / 2 - SUB
       if l0 + 2 * SUB < 0 or l0 >= SH { continue }
+      let lc = SUB * b + SUB / 2
       for a in 0 .. w {
         let t = b * w + a
         if kind[t] == K_PAD { continue }
         let k0 = SUB * a + SUB / 2 - SUB
+        let kc = SUB * a + SUB / 2
         var m: double = INF
         for l in max(0, l0) .. min(SH - 1, l0 + 2 * SUB) + 1 {
           for kk in max(0, k0) .. min(SW - 1, k0 + 2 * SUB) + 1 {
             let at = l * SW + kk
-            if has[at] == 1 and top[at] < m { m = top[at] }
+            if has[at] == 0 { continue }
+            let v: double = top[at] + (cgx[at] * double(kc - kk) + cgz[at] * double(lc - l)) * ST
+            if v < m { m = v }
           }
         }
         if m < INF and heights[t] > m - CLAMP_UNDER { heights[t] = m - CLAMP_UNDER }

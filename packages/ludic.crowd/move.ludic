@@ -72,11 +72,43 @@ function cw_take_place(crowd_st: mut CrowdState, p: CrowdPed, i: int) -> int {
 }
 
 # where a user of scenario i stands: an area's hashed point, else along the facing's right by its place
+# a talk in an area (a court's middle, a bar's door) is a conversation's circle (Kendon's F-formation: everyone on a ring round the
+# shared middle, facing it): the places go round it in the order that keeps the first ones opposite (two face each other, a third
+# makes a T, a fourth a square), on a ring that grows with the room (two 1.3 m apart, six 2.1 m across: friends' personal distance)
+function cw_ring_turn(place: int) -> float {
+  let k = place % 8
+  if k == 1 { return 0.5 }
+  if k == 2 { return 0.25 }
+  if k == 3 { return 0.75 }
+  if k == 4 { return 0.125 }
+  if k == 5 { return 0.625 }
+  if k == 6 { return 0.375 }
+  if k == 7 { return 0.875 }
+  return 0.0
+}
+# only an open area (a court's middle) is ringed: a small one by a wall (a bar's door) may have half its ring in the wall, so its talkers
+# keep their hashed points in it (each still facing its middle, cw_arrive)
+const CW_RING_ROOM: float = 2.0
+function cw_ring_r(crowd_st: CrowdState, i: int) -> float {
+  return Math.min(crowd_st.cw_sn_r[i], 0.45 + 0.1 * float(crowd_st.cw_sn_cap[i]))
+}
 function cw_spot(crowd_st: CrowdState, p: CrowdPed, i: int, place: int) -> void {
   let r = crowd_st.cw_sn_r[i]
   var x = crowd_st.cw_sn_x[i]
   var z = crowd_st.cw_sn_z[i]
-  if r > 0.0 {
+  if r >= CW_RING_ROOM and crowd_st.cw_sn_act[i] == CROWD_TALK and place >= 0 {
+    let a = cw_ring_turn(place) * 6.2831853 + crowd_st.cw_sn_yaw[i]
+    let d = cw_ring_r(crowd_st, i)
+    x += Math.sin(a) * d
+    z += Math.cos(a) * d
+  } else if r > 0.0 and r < CW_RING_ROOM and place >= 0 {
+    # a small area (two smokers at a back door, a bar's door): its places side by side 0.7 m apart across its facing, centred on it -
+    # two hashed points there could be the same spot (two bodies in one)
+    let y = crowd_st.cw_sn_yaw[i]
+    let off = Math.clamp((float(place) - float(crowd_st.cw_sn_cap[i] - 1) * 0.5) * 0.7, -r, r)
+    x += Math.cos(y) * off
+    z -= Math.sin(y) * off
+  } else if r > 0.0 {
     let a = cw_unit(crowd_hash(p.uid, place, 61)) * 6.2831853
     let d = r * Math.sqrt(cw_unit(crowd_hash(p.uid, place, 62)))
     x += Math.sin(a) * d
@@ -141,7 +173,7 @@ function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
   }
   p.act = act
   p.key = crowd_st.cw_sl_anim[s]
-  if act == CROWD_STAND or act == CROWD_SIT or act == CROWD_WORK {
+  if act == CROWD_STAND or act == CROWD_SIT or act == CROWD_WORK or act == CROWD_JOG {
     p.act_t = dur
   }
   if act == CROWD_SHOP { p.act = CROWD_WALK }
@@ -157,7 +189,7 @@ function cw_begin_life(crowd_st: mut CrowdState, p: CrowdPed) -> void {
 function cw_pick_dest(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
   var lo = ty.wander_min
   var hi = ty.wander_max
-  if p.act == CROWD_COMMUTE {
+  if p.act == CROWD_COMMUTE or p.act == CROWD_JOG {
     lo = lo * 3.0
     hi = hi * 3.0
   }
@@ -360,6 +392,12 @@ function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
     p.act = crowd_st.cw_sn_act[p.scn]
     p.key = crowd_st.cw_sn_anim[p.scn]
     p.yaw = crowd_st.cw_sn_yaw[p.scn]
+    if crowd_st.cw_sn_r[p.scn] > 0.0 and p.act == CROWD_TALK {
+      # in the circle: facing its middle
+      let cx = crowd_st.cw_sn_x[p.scn] - p.x
+      let cz = crowd_st.cw_sn_z[p.scn] - p.z
+      if cx * cx + cz * cz > 0.01 { p.yaw = cw_yaw_of(cx, cz) }
+    }
     p.speed = 0.0
     p.act_t = crowd_st.cw_sn_min[p.scn] + (crowd_st.cw_sn_max[p.scn] - crowd_st.cw_sn_min[p.scn]) * cw_roll(p, 24)
     if p.stay > 0.0 {
@@ -379,6 +417,11 @@ function cw_arrive(crowd_st: mut CrowdState, p: CrowdPed, ty: PedType) -> void {
     p.act = CROWD_STAND
     p.speed = 0.0
     p.act_t = CW_DWELL_MIN + (CW_DWELL_MAX - CW_DWELL_MIN) * cw_roll(p, 26)
+    return
+  }
+  # a jogger runs on to another place (the next frame picks it) until its slot's time is out: no stop between legs
+  if p.act == CROWD_JOG and p.act_t > 0.0 {
+    p.has_dest = false
     return
   }
   cw_next_act(crowd_st, p)
@@ -422,11 +465,13 @@ function cw_try_chat(crowd_st: mut CrowdState, p: CrowdPed, row: int, dt: float)
     p.act_t = t
     p.chat_cd = CW_CHAT_CD
     p.chat_with = o.uid
+    p.key = crowd_st.cw_cfg.chat_anim
     o.has_dest = false
     o.act = CROWD_STAND
     o.act_t = t
     o.chat_cd = CW_CHAT_CD
     o.chat_with = p.uid
+    o.key = crowd_st.cw_cfg.chat_anim
     return
   }
 }
@@ -451,7 +496,7 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
     if cw_step_straight(crowd_st, p, row, p.out_x, p.out_z, ty_sp, dt, false) or p.out_t > 4.0 { p.out_on = false }
     return
   }
-  let going = p.act == CROWD_WALK or p.act == CROWD_COMMUTE or (p.scn >= 0 and not p.scn_used)
+  let going = p.act == CROWD_WALK or p.act == CROWD_COMMUTE or p.act == CROWD_JOG or (p.scn >= 0 and not p.scn_used)
   if going {
     if not p.has_dest {
       # a walk to a scenario that lost its way (blocked a second): the place is given up for another to take, and it wanders on
@@ -462,6 +507,11 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
     if not p.has_dest { return }
     var sp = ty.walk_speed * p.pace
     if p.act == CROWD_COMMUTE { sp = sp * 1.2 }
+    if p.act == CROWD_JOG {
+      # its own pace within +-7.5% of the type's (pace is 0.85 .. 1.15): a game plays its jog clip at the speed, so a narrow band
+      sp = ty.jog_speed * (1.0 + (p.pace - 1.0) * 0.5)
+      p.act_t -= dt
+    }
     if p.scn >= 0 and crowd_st.cw_sn_r[p.scn] <= 0.0 and crowd_st.cw_sn_appr[p.scn] > 0.0 {
       # from the front: to the point `approach` ahead of the place while it is behind or beside it (outside the 45 degrees before it), then
       # straight back onto it
@@ -493,12 +543,16 @@ function cw_calm(crowd_st: mut CrowdState, p: CrowdPed, row: int, ty: PedType, d
   if p.chat_with >= 0 {
     # the chat: it stands (the idle state) turned to the other by the body yaw, and gives it up when its time or the other is gone
     let orow = tb_row(crowd_st.cw_tab, p.chat_with)
-    if orow < 0 { p.chat_with = -1 } else {
+    if orow < 0 {
+      p.chat_with = -1
+      p.key = ""
+    } else {
       let o = crowd_st.cw_tab.rec[orow]
       cw_face(p, o.x, o.z, dt)
     }
   }
   if p.act_t > 0.0 { return }
+  if p.chat_with >= 0 { p.key = "" }
   p.chat_with = -1
   # its time at a place that takes getting up from (a bench) is over: it stays on it while it gets up, then goes on with its day
   if p.scn >= 0 and p.scn_used and not p.leaving and crowd_st.cw_sn_leave[p.scn] > 0.0 {

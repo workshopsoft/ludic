@@ -23,6 +23,12 @@ uniform float u_fog_density;
 uniform float u_fog_height_falloff;
 uniform float u_fog_base;          // the height the fog's density is measured from (0 = the world's y = 0)
 uniform float u_clip_y;          // planar-reflection pass: discard everything below this height
+// Two-sided foliage's transmission (model.frag FOLIAGE, Unreal's TwoSidedBxDF): x 1 off (R3D_FOLIAGE_TRANSMIT=0; a program that never
+// sets it has it on), y the subsurface colour's factor on the leaf's base colour (R3D_FOLIAGE_SS; 0 unset: 1)
+uniform float u_dbg_nrm;     // R3D_DBG_NRM (model.frag)
+uniform float u_fol_dither;  // foliage cut-outs dithered for the temporal resolve (one sample a pixel, no alpha-to-coverage: model.frag)
+uniform vec4 u_leaf_tr;   // x: transmission off, y: subsurface factor, z: the impostors' colour grading's saturation (0: off; R3D_IMP_GRADE=0,
+                          // R3D_IMP_SAT), w: its brightness (R3D_IMP_BRIGHT)
 uniform float u_spec_scale;      // 1 for surfaces; foliage crowns get a fraction: needles are
                                  // tiny rough cylinders, not sheets, and a crown of card quads
                                  // seen at grazing angles otherwise mirrors the sky and frosts
@@ -1137,6 +1143,18 @@ uniform vec4 u_s2_e;
 uniform sampler2D u_s2_diff;
 uniform sampler2D u_s2_nrm;
 uniform sampler2D u_s2_arm;
+// the ground's sand (surface.ludic surf_apply_sand; u_s3.x 0: none), as u_surf .. u_surf_e: laid in place of the paving where the
+// vertex colour's alpha is over 1 (tilemap_mask.ludic tmk_corner: 1 plus the share of the sand classes round the vertex; the caller
+// puts it in g_ground_sand)
+uniform vec4 u_s3;
+uniform vec4 u_s3_b;
+uniform vec4 u_s3_c;
+uniform vec4 u_s3_d;
+uniform vec4 u_s3_e;
+uniform sampler2D u_s3_diff;
+uniform sampler2D u_s3_nrm;
+uniform sampler2D u_s3_arm;
+float g_ground_sand = 0.0;
 // The surfaces' shading-cost switches (surface.ludic surf_bind; 0 on, so a program that never sets them has them on): x the parallax
 // marched in as many steps as its reach on screen needs and not at all under half a pixel (R3D_SURF_POM_ADAPT), y two surfaces' each
 // read only where its weight is not 0 (R3D_SURF_ALT_SKIP), z the anti-tiling's second tap read only where it shows (R3D_SURF_ANTI_SKIP),
@@ -1391,8 +1409,37 @@ void gslopeRock(SurfP B, vec3 qb, vec3 qbx, vec3 qby, vec3 N, vec3 nG, vec3 wp, 
   arm = mix(arm, rr, k);
 }
 
+// The sand over the paving's share (u_s3, g_ground_sand): its edge the vertex share's half-way line broken by a noise a metre or two
+// across (a beach frays into a path, never a straight seam); the wet band at the waterline darker and smoother (wet sand's water film:
+// about half the albedo and a glossy sheen from the sea's level to a metre or so above it, drying out over the next metre).
+void groundSand(SurfP A, vec3 qs, vec3 qsx, vec3 qsy, vec3 N, vec3 wp, vec3 dpx, vec3 dpy, vec3 col, inout vec3 a2, inout vec3 n2, inout vec3 r2) {
+  if (u_s3.x <= 0.0 || g_ground_sand <= 0.0) return;
+  vec2 wm = wp.xz + vec2(A.a.z, A.a.w) * A.a.x;
+  float e = surfNoise(wm * 0.45, 1024.0) * 0.7 + surfNoise(wm * 2.1 + 3.0, 1024.0) * 0.3 - 0.5;
+  float v = g_ground_sand + e * 0.35;
+  float ws = smoothstep(0.44, 0.56, v);   // no derivative here: the caller's branch is not uniform
+  if (g_ground_sand >= 0.999) ws = 1.0;
+  if (ws <= 0.0) return;
+  SurfP S = SurfP(u_s3, u_s3_b, u_s3_c, u_s3_d, u_s3_e);
+  vec3 a3, n3, r3;
+  surfaceAtPd(u_s3_diff, u_s3_nrm, u_s3_arm, S, qs, qsx, qsy, N, N, wp, dpx, dpy, col, a3, n3, r3);
+  // macro: a slow drift between paler, sun-bleached and warmer sand, so the tile does not read over a wide beach
+  float m = surfNoise(wm / 37.0 + 17.0, 1024.0) * 0.65 + surfNoise(wm / 9.0 + 5.0, 1024.0) * 0.35;
+  a3 *= mix(vec3(1.06, 1.05, 1.02), vec3(0.93, 0.9, 0.84), m);
+  float wet = 1.0 - smoothstep(0.35, 1.4, wp.y + (surfNoise(wm * 0.3 + 9.0, 1024.0) - 0.5) * 0.5);
+  a3 *= mix(vec3(1.0), vec3(0.55, 0.53, 0.5), wet);
+  r3.g = mix(r3.g, r3.g * 0.35, wet);
+  n3 = normalize(mix(n3, N, 0.5 * wet));
+  a2 = mix(a2, a3, ws);
+  n2 = normalize(mix(n2, n3, ws));
+  r2 = mix(r2, r3, ws);
+}
+
 void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec3 col, vec2 uv, out vec3 alb, out vec3 n, out vec3 arm) {
   SurfP A = surfMain(), B = surfSecond();
+  SurfP S3 = SurfP(u_s3, u_s3_b, u_s3_c, u_s3_d, u_s3_e);
+  vec3 qs = surfPlace(S3, wp, uv, wp);
+  vec3 qsx = dFdx(qs), qsy = dFdy(qs);
   vec3 a1 = vec3(0.0), n1 = N, r1 = vec3(0.0), a2 = vec3(0.0), n2 = N, r2 = vec3(0.0);
   vec3 qa = surfPlace(A, wp, uv, wp), qb = surfPlace(B, wp, uv, wp);
   vec3 qax = dFdx(qa), qay = dFdy(qa), qbx = dFdx(qb), qby = dFdy(qb);
@@ -1422,6 +1469,7 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     if (all2 || w > 0.0) surfaceAtPd(d, nm, am, A, qa, qax, qay, N, N, wp, dpx, dpy, col, a1, n1, r1);
     if (A.e.y == 0.0 && B.e.y == 0.0 && w > 0.0) lawnMacro(wp.xz + vec2(A.a.z, A.a.w) * A.a.x, wp.y, length(u_cam_pos - wp), N, a1, n1, r1);
     if (all2 || w < 1.0) surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, col2, a2, n2, r2);
+    if (w < 1.0) groundSand(A, qs, qsx, qsy, N, wp, dpx, dpy, col, a2, n2, r2);
     vec3 mixed = mix(a2, a1, w);
     alb = mix(mixed, mixed * vec3(0.55, 0.5, 0.42), soil * 0.7);
     n = normalize(mix(n2, n1, w));
@@ -1437,6 +1485,7 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
   if (all2 || w > 0.0) surfaceAtPd(d, nm, am, A, qa, qax, qay, N, N, wp, dpx, dpy, col, a1, n1, r1);
   if (B.e.y == 0.0 && w > 0.0) lawnMacro(wp.xz + vec2(A.a.z, A.a.w) * A.a.x, wp.y, length(u_cam_pos - wp), N, a1, n1, r1);
   if (all2 || w < 1.0) surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, col2, a2, n2, r2);
+  if (B.e.y == 0.0 && w < 1.0) groundSand(A, qs, qsx, qsy, N, wp, dpx, dpy, col, a2, n2, r2);
   alb = mix(a2, a1, w);
   n = normalize(mix(n2, n1, w));
   arm = mix(r2, r1, w);

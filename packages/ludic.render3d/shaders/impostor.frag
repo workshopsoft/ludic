@@ -61,10 +61,16 @@ void main() {
   // also pulling the colour out of it. Darken without desaturating: the same factor on
   // all three channels, and a touch of saturation put back, because the thing that makes
   // a far tree line read as forest rather than as a wash is that it is still GREEN.
-  alb = mix(alb, alb * 0.72, far);
-  float lum = dot(alb, vec3(0.2126, 0.7152, 0.0722));
-  alb = mix(vec3(lum), alb, 1.45);          // conifer foliage is SATURATED, not grey-green
-  alb *= 0.78;                               // and it is dark: a spruce canopy is not a lawn
+  // (Unreal's impostor material shades the baked base colour as the mesh's own; this grading - darker with distance, saturation pushed
+  // 1.45x, then x0.78 - was written for conifers and made far broadleaf crowns a brighter, more saturated green than the near mesh.
+  // On by default: measured 2026-11-05, off made far crowns pale grey-green, further from the near mesh; the near/far step is the near
+  // crown's own self-shadow, which the card does not have. R3D_IMP_GRADE=0 turns it off)
+  if (u_leaf_tr.z > 0.0) {
+    alb = mix(alb, alb * 0.72, far);
+    float lum = dot(alb, vec3(0.2126, 0.7152, 0.0722));
+    alb = mix(vec3(lum), alb, u_leaf_tr.z);   // conifer foliage is SATURATED, not grey-green (1.15 by default, env.ludic: R3D_IMP_SAT)
+    alb *= u_leaf_tr.w;                        // and it is dark: a spruce canopy is not a lawn (0.88: R3D_IMP_BRIGHT)
+  }
   // the card itself is the caster: look up the shadow a little toward the sun so it does not self-shadow
   float shadow = sunShadow(v_wpos + u_sun_dir * u_radius * 0.7, vec3(0, 1, 0), viewDepth);
   // crowns are dense: darken toward the centre of the card as a cheap interior occlusion
@@ -72,8 +78,24 @@ void main() {
   // ground contact: the lowest part of anything sitting on the ground is occluded by it
   // (a boulder's underside, a trunk's base); without it a far boulder is a sticker on the grass
   interior *= mix(0.55, 1.0, smoothstep(0.0, 0.3, v_uv.y));
-  vec3 col = shade(v_wpos, n, alb, 0.85, 0.0, clamp(nn.a, 0.0, 1.0) * 0.8 * interior, shadow * interior, viewDepth);
-  col += alb * skyIrradiance(vec3(0, 1, 0)) * 0.06;
+  // the bake (bake.frag) writes the occlusion as arm.r x 0.49 (1 marks a surface's alternative): decoded as oimp.frag does, or every
+  // card took half its own sky light (a far crown near black against its near mesh)
+  float aoB = clamp(nn.a / 0.49, 0.0, 1.0);
+  vec3 col = shade(v_wpos, n, alb, 0.85, 0.0, aoB * 0.8 * interior, shadow * interior, viewDepth);
+  if (u_leaf_tr.x < 0.5) {
+    // the crown's leaves through Unreal's Two Sided Foliage, as the near mesh (model.frag FOLIAGE; UE 5.8 ShadingModels.ush TwoSidedBxDF:
+    // WrapNoL = saturate( ( -dot(N, L) + Wrap ) / Square( 1 + Wrap ) ), Wrap 0.5; Scatter = D_GGX( 0.6*0.6, saturate( -VoL ) );
+    // Transmission = Falloff * WrapNoL * Scatter * SubsurfaceColor; the sky on the back: GetEffectiveSkySHDiffuse(-WorldNormal) x
+    // SubsurfaceColor x AOMultiBounce(BaseColor, DiffOcclusion), BasePassPixelShader.usf)
+    vec3 vI = normalize(u_cam_pos - v_wpos);
+    vec3 ssCol = alb * ((u_leaf_tr.y > 0.0) ? u_leaf_tr.y : 1.0);
+    float wrapNoL = clamp((-dot(n, u_sun_dir) + 0.5) / (1.5 * 1.5), 0.0, 1.0);
+    float scatter = D_GGX(clamp(-dot(vI, u_sun_dir), 0.0, 1.0), 0.6);
+    col += u_sun_color * (wrapNoL * scatter) * ssCol * shadow * cloudShadow(v_wpos) * sunZone(v_wpos);
+    col += skyIrradiance(-n) * ssCol * ueAOMultiBounce(alb, aoB * 0.8 * interior);
+  } else {
+    col += alb * skyIrradiance(vec3(0, 1, 0)) * 0.06;
+  }
   col = applyFog(col, v_wpos, dist);
   o_color = vec4(sane(col), a.a);
 #endif

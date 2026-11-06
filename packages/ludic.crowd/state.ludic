@@ -89,6 +89,7 @@ export const CROWD_COMMUTE: int = 5
 export const CROWD_USE: int = 6          # at a scenario
 export const CROWD_WAIT: int = 7         # at a crossing, for the light
 export const CROWD_PHONE: int = 8        # on the phone to the police
+export const CROWD_JOG: int = 10         # out for a run (a schedule's "jog"): wanders at the type's jog_speed, leg after leg, for the slot's time
 
 export const CROWD_HOST: int = 0         # authoritative: runs the population
 export const CROWD_CLIENT: int = 1       # a copy of the host's, from crowd_sync_in

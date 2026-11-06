@@ -31,7 +31,9 @@ export function pt_key(x: double, z: double) -> string { return `{double_bits(x)
 export function ground_y(g: Ground, x: double, z: double) -> double {
   if g == null or g.kind == 0 { return NAN }
   if g.kind == 2 {
-    let i = Dict.get_or(g.ptsK, pt_key(x, z), -1)
+    let pk = pt_key(x, z)
+    let i = Dict.get_or(g.ptsK, pk, -1)
+    free(pk)
     if i < 0 {
       g.miss += 1
       return NAN
@@ -40,7 +42,9 @@ export function ground_y(g: Ground, x: double, z: double) -> double {
   }
   let tx = int(Math.floor((x - g.originX) / g.tileSize))
   let tz = int(Math.floor((z - g.originZ) / g.tileSize))
-  let hi = Dict.get_or(g.tiles, tile_key(tx, tz), -2)
+  let hk = tile_key(tx, tz)
+  let hi = Dict.get_or(g.tiles, hk, -2)
+  free(hk)
   if hi == -2 { return NAN }
   if hi < 0 {
     g.miss += 1
@@ -71,7 +75,9 @@ function g_at(g: Ground, home: []byte, tx: int, tz: int, ix: int, iz: int) -> do
   let res = g.res
   let cx = floor_div(ix, res)
   let cz = floor_div(iz, res)
-  let ti = Dict.get_or(g.tiles, tile_key(cx, cz), -2)
+  let tk = tile_key(cx, cz)
+  let ti = Dict.get_or(g.tiles, tk, -2)
+  free(tk)
   if ti >= 0 { return u16_at(g.data[ti], (iz - cz * res) * res + (ix - cx * res)) }
   if ti == -1 { g.miss += 1 }
   let jz = max(0, min(res - 1, iz - tz * res))
@@ -100,7 +106,7 @@ export property CrossPlan {
   node: string = ""
   s: double = 0.0
 }
-export property Crossing {
+export property RmCrossing {
   key: string = ""
   seg: string = ""
   node: string = ""
@@ -206,12 +212,16 @@ export function edge_of(net: Net, key: string) -> NetEdge {
 # Math.round(v * 100) / 100 + 0
 function r2(v: double) -> double { return jround(v * 100.0) / 100.0 + 0.0 }
 
-export function crossing_at(e: NetEdge, plan: CrossPlan, k: int, px: double, pz: double, nx: double, nz: double, stretch: double, width: double) -> Crossing {
+export function crossing_at(e: NetEdge, plan: CrossPlan, k: int, px: double, pz: double, nx: double, nz: double, stretch: double, width: double) -> RmCrossing {
   let t = taper_at(e.taper, plan.s / jmax(e.length, 0.000000001))
   let sec = e.section
-  let r = offsets_of(sec.right, sec.gutter, sec.curbW, sec.median, t).gutter * stretch
-  let l = offsets_of(sec.left, sec.gutter, sec.curbW, sec.median, t).gutter * stretch
-  let c = new Crossing
+  let ro = offsets_of(sec.right, sec.gutter, sec.curbW, sec.median, t)
+  let lo = offsets_of(sec.left, sec.gutter, sec.curbW, sec.median, t)
+  let r = ro.gutter * stretch
+  let l = lo.gutter * stretch
+  free(ro)
+  free(lo)
+  let c = new RmCrossing
   c.key = `x{plan.seg}_{k}`
   c.seg = plan.seg
   c.node = plan.node
@@ -293,18 +303,24 @@ property SbJob {
   opt: JOpt = null
   edge: [][]int = null        # by node: (edge idx, out) pairs
   need: [][]double = null     # by node: each end's setback
+  least: [][]double = null    # by node: each end's least setback
 }
 function sb_node(i: int, j: SbJob) -> void {
   let jn = junction_of(j.net.nodes[i], j.opt, true, fn settled_none, 0)
   let e = new []int
   let d = new []double
+  let l = new []double
   for k in 0 .. len(jn.ends) {
     push(e, jn.ends[k].edge.idx)
     push(e, isel(jn.ends[k].out, 1, 0))
     push(d, jn.ends[k].setback)
+    var least = jn.ends[k].setback
+    if jn.ends[k].least >= 0.0 { least = jn.ends[k].least }
+    push(l, least)
   }
   j.edge[i] = e
   j.need[i] = d
+  j.least[i] = l
 }
 export function setbacks_par(net: Net, opt: JOpt) -> Setbacks {
   let nn = len(net.nodes)
@@ -313,43 +329,40 @@ export function setbacks_par(net: Net, opt: JOpt) -> Setbacks {
   j.opt = opt
   j.edge = new [][]int
   j.need = new [][]double
+  j.least = new [][]double
   for i in 0 .. nn {
     push(j.edge, null)
     push(j.need, null)
+    push(j.least, null)
   }
   Job.parallel_for(nn, fn sb_node, j)
   let ne = len(net.edges)
   let nf = doubles(ne)
   let nt = doubles(ne)
+  let lf = doubles(ne)
+  let lt = doubles(ne)
   for i in 0 .. ne {
     nf[i] = 0.0
     nt[i] = 0.0
+    lf[i] = 0.0
+    lt[i] = 0.0
   }
   for q in 0 .. nn {
     let e = j.edge[q]
     let d = j.need[q]
+    let l = j.least[q]
     for k in 0 .. len(d) {
       let x = e[k * 2]
-      if e[k * 2 + 1] == 1 { nf[x] = jmax(nf[x], d[k]) } else { nt[x] = jmax(nt[x], d[k]) }
+      if e[k * 2 + 1] == 1 {
+        nf[x] = jmax(nf[x], d[k])
+        lf[x] = jmax(lf[x], l[k])
+      } else {
+        nt[x] = jmax(nt[x], d[k])
+        lt[x] = jmax(lt[x], l[k])
+      }
     }
   }
-  let o = new Setbacks
-  o.from = doubles(ne)
-  o.to = doubles(ne)
-  for i in 0 .. ne {
-    let e = net.edges[i]
-    let room = jmax(0.0, e.length - MIN_STRIP)
-    if nf[i] + nt[i] <= room + 0.000000001 {
-      o.from[i] = nf[i]
-      o.to[i] = nt[i]
-      continue
-    }
-    var f: double = 0.0
-    if nf[i] + nt[i] > 0.000000001 { f = room / (nf[i] + nt[i]) }
-    o.from[i] = nf[i] * f
-    o.to[i] = nt[i] * f
-  }
-  return o
+  return settle_setbacks(net, opt, null, nf, nt, lf, lt)
 }
 
 # ---- network.ts edgesNear: the edges whose centre line passes within r of p (their indices; the order does not matter to the
@@ -378,6 +391,8 @@ function grid_build(w: RWorld) -> void {
             at = len(w.gridL)
             Dict.set(w.grid, k, at)
             push(w.gridL, new []int)
+          } else {
+            free(k)
           }
           push(w.gridL[at], q)
           push(w.gridL[at], i)
@@ -392,7 +407,9 @@ export function edges_near(w: RWorld, px: double, pz: double, r: double) -> []in
   let seen = Dict.new()
   for cx in int(Math.floor((px - r) / CELL)) .. int(Math.floor((px + r) / CELL)) + 1 {
     for cz in int(Math.floor((pz - r) / CELL)) .. int(Math.floor((pz + r) / CELL)) + 1 {
-      let at = Dict.get_or(w.grid, tile_key(cx, cz), -1)
+      let gk = tile_key(cx, cz)
+      let at = Dict.get_or(w.grid, gk, -1)
+      free(gk)
       if at < 0 { continue }
       let L = w.gridL[at]
       for m in 0 .. len(L) / 2 {
@@ -903,7 +920,6 @@ export function sw_bulb(sw: Sw, n: NetNode) -> [][]double {
       }
       let sR = dsel(e0.out, 1.0, -1.0)
       let ends = new [][]double
-      let g = doubles(4)
       for k in 0 .. 4 {
         let p = es_at(es, i, sR * lv_of(rO, k))
         let q = es_at(es, i, -sR * lv_of(lO, k))
@@ -913,9 +929,8 @@ export function sw_bulb(sw: Sw, n: NetNode) -> [][]double {
         pq[2] = q[0]
         pq[3] = q[1]
         push(ends, pq)
-        g[k] = (lv_of(rO, k) - rO.gutter + lv_of(lO, k) - lO.gutter) / 2.0
       }
-      out = bulb_rails(n.x, n.z, e0.ux, e0.uz, j.radius, ends, g)
+      out = bulb_rails(n.x, n.z, e0.ux, e0.uz, j.radius, ends, j.entry)
     }
   }
   sw.bulbs[n.idx] = out

@@ -173,7 +173,7 @@ function refine(A: ArmSide, B: ArmSide, da: double, db: double, s0: double, t0: 
     if dabs(det) < 0.000000000001 { break }
     let ds = (fx * j22 - fz * j12) / det
     let dt = (j11 * fz - j21 * fx) / det
-    if not is_finite(ds) or not is_finite(dt) { break }
+    if not rm_is_finite(ds) or not rm_is_finite(dt) { break }
     let f = jmin(1.0, 1.0 / jmax(jmax(dabs(ds), dabs(dt)), 0.000000000001))
     s = jmax(0.0, jmin(A.len, s - ds * f))
     t = jmax(0.0, jmin(B.len, t - dt * f))

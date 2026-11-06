@@ -412,7 +412,7 @@ extern function thr_atomic_add(p: pointer, delta: int) -> int = "thr_atomic_add"
 extern function thr_cas(p: pointer, expect: int, next: int) -> int = "thr_cas"
 extern function thr_load(p: pointer) -> int = "thr_load"
 extern function thr_store(p: pointer, v: int) = "thr_store"
-
+extern function thr_bg_run(work: pointer, i: int, ctx: pointer, flag: pointer) -> int = "thr_bg_run"
 
 function sy_init(rt_jobs_st: mut RtJobsState) -> void {
   if rt_jobs_st.sy_ready { return }
@@ -580,3 +580,13 @@ function sync_cpu_count() -> int { return thr_cpu_count() }
 function job_parallel_for(count: int, work: pointer, ctx: pointer) -> void { thr_parallel_for(count, work, ctx) }
 # true on a Job.parallel_for worker thread
 function job_is_worker() -> bool { return thr_is_worker() == 1 }
+
+# ---- Job.spawn (a background thread: work that runs while the frames go on) ----------------------------------------------------------
+# `work(i, ctx)` queued on one of the background threads (threads.ll thr_bg_run: two, started on first use); the call returns at once.
+# When work returns, flag[0] is set to 1 (flag: a words of its own, cleared to 0 here): poll it with Job.landed(flag) and take the
+# results on the main thread (GTA V's streaming: workers load and build, the main thread installs). The rule is parallel_for's: the work
+# computes on what ctx points at and writes only there - it never reads or changes the world, a list or a registry the main thread uses
+# meanwhile, never spawns or despawns. False when the queue is full (256 waiting): try again a later frame.
+function job_spawn(work: pointer, i: int, ctx: pointer, flag: words) -> bool { return thr_bg_run(work, i, ctx, data_of(flag)) == 1 }
+# has the work spawned with this flag returned (its results are all written)?
+function job_landed(flag: words) -> bool { return thr_load(data_of(flag)) == 1 }

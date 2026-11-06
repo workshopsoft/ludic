@@ -335,6 +335,84 @@ program TileLockTest {
     expect(fh > 0)
   }
 
+  test "a carved class: its inside texels are left out of the levels to carve_lod, drawn past them, and its edges always drawn" (render3d_st: mut Render3dState) {
+    let tm = open(render3d_st)
+    let k = lock_of(render3d_st)
+    let us = new []int
+    push(us, 3);  push(us, 4)
+    tmb_lock_under(k, us)
+    let cs = new []int
+    push(cs, 3)                                # the road
+    tmb_lock_carve(k, cs, 1)
+    bake(render3d_st, tm, "carve", k)
+    let cls = classes(render3d_st)
+    let ms = tmm_new(tm, 1)
+    let s = tmm_load(ms, tm, 0, 0)
+    expect(s >= 0)
+    let size = tmap_patch_size(tm)
+    var carved = 0
+    var near_drawn = 0
+    var far_missed = 0
+    var missed = 0
+    for pz in 0 .. 2 {
+      for px in 0 .. 2 {
+        for lod in 0 .. tm.lod_max + 1 {
+          expect(tmm_patch(ms, tm, s, 0, 0, px, pz, lod, 0.0))
+          let hit = words(64 * 64)
+          for q in 0 .. 64 * 64 { hit[q] = 0 }
+          var t = 0
+          var nsk = ms.nv - ms.np
+          if not ms.locked {
+            var n1 = 2
+            while n1 * n1 + 4 * (n1 - 1) < ms.nv { n1 += 1 }
+            nsk = n1 * n1
+          }
+          while t + 2 < ms.ni {
+            let i0 = ms.ibuf[t];  let i1 = ms.ibuf[t + 1];  let i2 = ms.ibuf[t + 2]
+            t += 3
+            if i0 >= nsk or i1 >= nsk or i2 >= nsk { continue }
+            let tex = size / 64.0
+            let x0 = (ms.vbuf[i0 * 8] + size * 0.5) / tex;  let z0 = (ms.vbuf[i0 * 8 + 2] + size * 0.5) / tex
+            let x1 = (ms.vbuf[i1 * 8] + size * 0.5) / tex;  let z1 = (ms.vbuf[i1 * 8 + 2] + size * 0.5) / tex
+            let x2 = (ms.vbuf[i2 * 8] + size * 0.5) / tex;  let z2 = (ms.vbuf[i2 * 8 + 2] + size * 0.5) / tex
+            let d = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2)
+            if d == 0.0 { continue }
+            for j in max(int(Math.floor(Math.min(z0, Math.min(z1, z2)))), 0) .. min(int(Math.ceil(Math.max(z0, Math.max(z1, z2)))), 64) {
+              for i in max(int(Math.floor(Math.min(x0, Math.min(x1, x2)))), 0) .. min(int(Math.ceil(Math.max(x0, Math.max(x1, x2)))), 64) {
+                let u = float(i) + 0.5;  let v = float(j) + 0.5
+                let w0 = ((z1 - z2) * (u - x2) + (x2 - x1) * (v - z2)) / d
+                let w1 = ((z2 - z0) * (u - x2) + (x0 - x2) * (v - z2)) / d
+                if w0 >= -0.000001 and w1 >= -0.000001 and 1.0 - w0 - w1 >= -0.000001 { hit[j * 64 + i] = 1 }
+              }
+            }
+          }
+          for j in 0 .. 64 {
+            for i in 0 .. 64 {
+              let gi = px * 64 + i
+              let gj = pz * 64 + j
+              # carved: a road texel whose eight neighbours are road or sidewalk (covered), not on the tile's border
+              var inside = int(cls[gj * 128 + gi]) == 3 and gi > 0 and gj > 0 and gi < 127 and gj < 127
+              if inside {
+                for b in gj - 1 .. gj + 2 { for a in gi - 1 .. gi + 2 { let c = int(cls[b * 128 + a]);  if c != 3 and c != 4 { inside = false } } }
+              }
+              if inside and lod <= 1 {
+                carved += 1
+                if hit[j * 64 + i] == 1 { near_drawn += 1 }
+              } else if inside {
+                if hit[j * 64 + i] == 0 { far_missed += 1 }
+              } else if hit[j * 64 + i] == 0 { missed += 1 }
+            }
+          }
+        }
+      }
+    }
+    print(`  carve: {carved} carved texel levels, {near_drawn} drawn near, {far_missed} missed far, {missed} other texels missed`)
+    expect(carved > 0)
+    expect_eq(near_drawn, 0)
+    expect_eq(far_missed, 0)
+    expect_eq(missed, 0)
+  }
+
   test "a locked level's vertices take land-use tones like the plain grid's" (render3d_st: mut Render3dState) {
     let tm = open(render3d_st)
     bake(render3d_st, tm, "tones", lock_of(render3d_st))

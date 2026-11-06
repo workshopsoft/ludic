@@ -43,6 +43,7 @@ export property TmMeshes {
   slot_tile: words = null           # the tile whose table a slot holds, -1 free
   slot_used: words = null
   slot_of: words = null             # per tile: its slot, -1 not read, -2 no usable file
+  tried: words = null               # per tile: the clock it last could not be read (its heights or a neighbour's not in yet)
   tab: words = null                 # mslots x entries x LWT_ENTRY
   entries: int = 0                  # table entries a tile: patches^2 x levels
   clock: int = 0
@@ -72,6 +73,85 @@ export property TmMeshes {
   no_file: int = 0
   reads: int = 0
   uv_per_tile: float = 1.0
+  # live levels (tmm_live): a tile's file made in memory from its height tiles (tilemap_bake.ludic tmb_tile) when first wanted, not read
+  # from disk: no bake (a studio's view of rows being edited)
+  live: bool = false
+  mem: [][]byte = null              # per tile: its levels' bytes, made in memory (null: not made)
+  mbuf: []byte = null               # the bytes a patch is read from now (live), or null (the file)
+  mpos: int = 0
+  lock: TmLock = null              # the live levels' LOD lock (tmm_live_lock): its bits from the live classes, null: unlocked
+  # live levels made on the background workers (tmm_live_async): the jobs, and per tile a count of its forgets (a job started before
+  # one is stale when it lands)
+  async: bool = false
+  jobs: []TmJob = null
+  gen: words = null
+  job_us: long = 0                  # the frames' share of the jobs (their snapshots), all time
+  jobs_done: int = 0
+}
+
+# A live tile's levels made on a background worker (Job.spawn): the frame that first wants the tile copies its heights and its eight
+# neighbours' (the conform and the pool change the map's own meanwhile) and its live classes into a job, and answers "not yet" (-1)
+# until a frame finds the job landed and takes its bytes. The cut (tmb_tile_locked, 50 to 350 ms a tile on the island) never runs on
+# a frame: driving fast, a new tile's cut was the hitch (2026-11-05)
+export property TmJob {
+  busy: bool = false
+  t: int = -1
+  tx: int = 0
+  tz: int = 0
+  gen: int = 0
+  tm: TileMap = null                # the snapshot: the map's numbers, nine tiles' heights in its own nine slots
+  k: TmLock = null                  # the lock's copy (its class tables the lock's, read only; its scratch and bits its own), or null
+  mask: []byte = null               # the tile's live classes, copied
+  locked: bool = false              # the job cuts with the lock (the tile had live classes)
+  out: []byte = null                # the levels' bytes, once landed (null: the tile has none)
+  flag: words = words(1)
+}
+
+# the levels made in memory from the height tiles instead of read from baked files (the height tile and its neighbours must be in the
+# map's cache: tmap_ensure round the camera)
+export function tmm_live(ms: TmMeshes, tm: TileMap) -> void {
+  ms.live = true
+  ms.mem = new [][]byte
+  for i in 0 .. tm.cols * tm.rows { push(ms.mem, null) }
+}
+
+# the live levels cut with a LOD lock (tilemap_bake.ludic TmLock: tmb_lock_new, tmb_lock_under), its bits read from the map's live
+# classes each time a tile's levels are made
+export function tmm_live_lock(ms: TmMeshes, k: TmLock) -> void { ms.lock = k }
+
+# the live levels made on `n` background workers' jobs at once (0: on the frame, as before)
+@alloc_ok("the live levels' jobs: made once a map")
+export function tmm_live_async(ms: TmMeshes, tm: TileMap, n: int) -> void {
+  ms.async = n > 0
+  ms.jobs = new []TmJob
+  for i in 0 .. n { push(ms.jobs, new TmJob) }
+  ms.gen = words(tm.cols * tm.rows)
+  for i in 0 .. tm.cols * tm.rows { ms.gen[i] = 0 }
+}
+
+# a tile's levels made again (its heights changed): the next draw makes them from the height tiles
+export function tmm_forget(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> void {
+  if not ms.live or tx < 0 or tz < 0 or tx >= tm.cols or tz >= tm.rows { return }
+  let t = tz * tm.cols + tx
+  if ms.gen != null { ms.gen[t] = ms.gen[t] + 1 }
+  if ms.mem[t] != null { free(ms.mem[t]) }
+  ms.mem[t] = null
+  if ms.slot_of[t] >= 0 { ms.slot_tile[ms.slot_of[t]] = -1 }
+  ms.slot_of[t] = -1
+}
+
+# n bytes into dst: from the live bytes at the read place, or the open file
+function tmm_src_read(ms: TmMeshes, f: pointer, dst: []byte, n: int) -> int {
+  if ms.mbuf == null { return file_read(f, data_of(dst), n) }
+  let k = min(n, len(ms.mbuf) - ms.mpos)
+  if k <= 0 { return 0 }
+  for i in 0 .. k { dst[i] = ms.mbuf[ms.mpos + i] }
+  ms.mpos += k
+  return k
+}
+function tmm_src_close(ms: TmMeshes, f: pointer) -> void {
+  if ms.mbuf == null and f != null { file_close(f) }
+  ms.mbuf = null
 }
 
 function lwt_entries(tm: TileMap) -> int { return tm.patches * tm.patches * (tm.lod_max + 1) }
@@ -105,7 +185,8 @@ export function tmm_new(tm: TileMap, slots: int) -> TmMeshes {
   ms.slot_tile = words(ms.mslots);  ms.slot_used = words(ms.mslots)
   for s in 0 .. ms.mslots { ms.slot_tile[s] = -1;  ms.slot_used[s] = 0 }
   ms.slot_of = words(tm.cols * tm.rows)
-  for t in 0 .. tm.cols * tm.rows { ms.slot_of[t] = -1 }
+  ms.tried = words(tm.cols * tm.rows)
+  for t in 0 .. tm.cols * tm.rows { ms.slot_of[t] = -1;  ms.tried[t] = -1 }
   ms.tab = words(ms.mslots * ms.entries * LWT_ENTRY)
   let c0 = tm.patch_texels
   ms.raw = buffer(lwt_locked_max(c0))
@@ -195,6 +276,116 @@ function lwt_topology(c: int, idx: words) -> int {
   return k
 }
 
+# the job making tile t's levels, or -1
+function tmm_job_of(ms: TmMeshes, t: int) -> int {
+  for i in 0 .. len(ms.jobs) { if ms.jobs[i].busy and ms.jobs[i].t == t { return i } }
+  return -1
+}
+
+# the jobs that landed: their bytes to their tiles (a tile forgotten since its job started: the bytes freed, it is made again)
+export function tmm_jobs_land(ms: TmMeshes, tm: TileMap) -> void {
+  if not ms.async { return }
+  for i in 0 .. len(ms.jobs) {
+    let j = ms.jobs[i]
+    if not j.busy or not Job.landed(j.flag) { continue }
+    j.busy = false
+    ms.jobs_done += 1
+    if j.gen != ms.gen[j.t] or ms.mem[j.t] != null {
+      if j.out != null { free(j.out) }
+    } else if j.out == null {
+      ms.slot_of[j.t] = -2
+      ms.no_file += 1
+    } else {
+      ms.mem[j.t] = j.out
+    }
+    j.out = null
+  }
+}
+
+# the worker's half: the levels cut from the job's own snapshot (it reads and writes the job alone)
+function tmm_job_run(i: int, j: TmJob) -> void {
+  if j.locked {
+    if j.k.bits != null { free(j.k.bits) }
+    j.k.bits = null
+    tmb_lock_bits(j.tm, j.k, j.mask, 1)
+    j.out = tmb_tile_locked(j.tm, j.tx, j.tz, j.k)
+  } else {
+    j.out = tmb_tile(j.tm, j.tx, j.tz)
+  }
+}
+
+# a job for tile (tx, tz) on a free worker slot: false when none is free (asked again next frame)
+@alloc_ok("the live levels' jobs: a job's snapshot buffers, made once a job and kept")
+function tmm_job_start(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> bool {
+  var q = -1
+  for i in 0 .. len(ms.jobs) { if not ms.jobs[i].busy { q = i;  break } }
+  if q < 0 { return false }
+  let t0 = Time.now_us()
+  let j = ms.jobs[q]
+  let n = tm.res * tm.res
+  if j.tm == null or j.tm.res != tm.res or len(j.tm.slot_of) != tm.cols * tm.rows {
+    let c = new TileMap
+    c.res = tm.res
+    c.slots = 9
+    c.data = buffer(9 * n * 2)
+    c.slot_of = words(tm.cols * tm.rows)
+    j.tm = c
+    j.mask = buffer(n)
+  }
+  let c = j.tm
+  c.pattern = tm.pattern
+  c.tile_size = tm.tile_size;  c.cols = tm.cols;  c.rows = tm.rows
+  c.origin_x = tm.origin_x;  c.origin_z = tm.origin_z
+  c.h_min = tm.h_min;  c.h_max = tm.h_max;  c.h_off = tm.h_off
+  c.texel = tm.texel;  c.step = tm.step;  c.base = tm.base
+  c.patch_texels = tm.patch_texels;  c.patches = tm.patches;  c.lod_max = tm.lod_max
+  for i in 0 .. tm.cols * tm.rows { c.slot_of[i] = -1 }
+  var k = 0
+  for dz in -1 .. 2 {
+    for dx in -1 .. 2 {
+      let nx = tx + dx
+      let nz = tz + dz
+      if nx >= 0 and nz >= 0 and nx < tm.cols and nz < tm.rows {
+        let nt = nz * tm.cols + nx
+        let o = tm.slot_of[nt]
+        if o >= 0 {
+          mem_copy(mem_off(data_of(c.data), k * n * 2), mem_off(data_of(tm.data), o * n * 2), n * 2)
+          c.slot_of[nt] = k
+        } else {
+          c.slot_of[nt] = o
+        }
+      }
+      k += 1
+    }
+  }
+  # the lock: its class tables shared, its numbers copied, its bits made on the worker from the tile's live classes
+  j.locked = false
+  if ms.lock != null and tm.live_mask != null {
+    let s = tm.slot_of[tz * tm.cols + tx]
+    if s >= 0 and tm.live_mask_on[s] != 0 {
+      if j.k == null { j.k = new TmLock;  j.k.lx = new []int;  j.k.lz = new []int;  j.k.ls = new []int }
+      j.k.on = ms.lock.on;  j.k.under = ms.lock.under;  j.k.hole = ms.lock.hole;  j.k.carve = ms.lock.carve;  j.k.carve_lod = ms.lock.carve_lod
+      j.k.tol = ms.lock.tol;  j.k.sink = ms.lock.sink;  j.k.rise = ms.lock.rise
+      mem_copy(data_of(j.mask), mem_off(data_of(tm.live_mask), s * n), n)
+      j.locked = true
+    }
+  }
+  j.t = tz * tm.cols + tx
+  j.tx = tx
+  j.tz = tz
+  j.gen = ms.gen[j.t]
+  j.out = null
+  j.busy = true
+  ms.job_us += Time.now_us() - t0
+  if not Job.spawn(fn tmm_job_run, 0, j, j.flag) {
+    tmm_job_run(0, j)                              # (the queue full: made here)
+    j.busy = false
+    if j.out == null { ms.slot_of[j.t] = -2;  ms.no_file += 1 } else { ms.mem[j.t] = j.out }
+    j.out = null
+  }
+  return true
+}
+
 # Tile (tx, tz)'s table read into the pool: its slot; -2 when it has no file or one baked for other numbers (known from
 # now on, so it is asked for once); -1 when the pool holds nothing it may let go of (a tile wanted this frame stays).
 # A load: the header and table are read here.
@@ -210,6 +401,42 @@ export function tmm_load(ms: TmMeshes, tm: TileMap, tx: int, tz: int) -> int {
     if ms.slot_used[k] != ms.clock and (s < 0 or ms.slot_used[k] < ms.slot_used[s]) { s = k }
   }
   if s < 0 { return -1 }
+  if ms.live {
+    if ms.mem[t] == null {
+      # (the tile and its neighbours' heights must be in: not yet, asked again next frame)
+      for dz in -1 .. 2 { for dx in -1 .. 2 {
+        let nx = tx + dx
+        let nz = tz + dz
+        # (the tile itself must be in and settled; a neighbour only when it is in and still held by a live conform: one not in at all is
+        # past the heights' reach, and waiting for it left a tile forgotten by a conform at that edge undrawn for good, the sea showing)
+        if nx >= 0 and nz >= 0 and nx < tm.cols and nz < tm.rows {
+          let nt = nz * tm.cols + nx
+          if (dx == 0 and dz == 0) or tm.slot_of[nt] >= 0 { if not tmap_settled(tm, nt) { return -1 } }
+        }
+      } }
+      if ms.async {
+        # on a worker: a job for it already out answers "not yet"; else one is started (when one is free)
+        tmm_jobs_land(ms, tm)
+        if ms.mem[t] == null {
+          if ms.slot_of[t] == -2 { return -2 }
+          if tmm_job_of(ms, t) < 0 { tmm_job_start(ms, tm, tx, tz) }
+          return -1
+        }
+      } else {
+        if ms.lock != null and tmb_lock_live(tm, ms.lock, tx, tz) { ms.mem[t] = tmb_tile_locked(tm, tx, tz, ms.lock) } else { ms.mem[t] = tmb_tile(tm, tx, tz) }
+        if ms.mem[t] == null { ms.slot_of[t] = -2;  ms.no_file += 1;  return -2 }
+      }
+    }
+    let mb = ms.mem[t]
+    # (the tile this slot held keeps its levels: the far ground reads tiles whose heights are no longer in, and levels freed here could
+    # not be made again there - their patches stayed undrawn, the sea showing through. Only tmm_forget, a conform's, frees them)
+    if ms.slot_tile[s] >= 0 { ms.slot_of[ms.slot_tile[s]] = -1 }
+    for i in 0 .. ms.entries * LWT_ENTRY { ms.tab[s * ms.entries * LWT_ENTRY + i] = lw_get32(mb, LWT_HEAD + i * 4) }
+    ms.slot_tile[s] = t
+    ms.slot_used[s] = ms.clock
+    ms.slot_of[t] = s
+    return s
+  }
   let path = tmap_mesh_path(tm, tx, tz)
   let f = file_open(path, "rb")
   if f == null { free(path);  ms.slot_of[t] = -2;  ms.no_file += 1;  return -2 }
@@ -248,17 +475,24 @@ export function tmm_patch(ms: TmMeshes, tm: TileMap, slot: int, tx: int, tz: int
   let c = tm.patch_texels >> lod
   let n1 = c + 1
   let at = ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY]
-  let path = tmap_mesh_path(tm, tx, tz)
-  let f = file_open(path, "rb")
-  free(path)
-  if f == null { return false }
-  file_seek(f, at, 0)
+  var f: pointer = null
+  if ms.live {
+    ms.mbuf = ms.mem[tz * tm.cols + tx]
+    if ms.mbuf == null { return false }
+    ms.mpos = at
+  } else {
+    let path = tmap_mesh_path(tm, tx, tz)
+    f = file_open(path, "rb")
+    free(path)
+    if f == null { return false }
+    file_seek(f, at, 0)
+  }
   let kind = ms.tab[(slot * ms.entries + lwt_entry(tm, px, pz, lod)) * LWT_ENTRY + 3]
   if kind == 2 { return tmm_compact_patch(ms, tm, f, tx, tz, px, pz, lod, lift) }
   if kind == 1 { return tmm_locked_patch(ms, tm, f, tx, tz, px, pz, lod, lift) }
   ms.locked = false
-  let got = file_read(f, data_of(ms.raw), n1 * n1 * 4)
-  file_close(f)
+  let got = tmm_src_read(ms, f, ms.raw, n1 * n1 * 4)
+  tmm_src_close(ms, f)
   if got != n1 * n1 * 4 { return false }
   ms.reads += 1
   let size = tmap_patch_size(tm)
@@ -296,14 +530,14 @@ export function tmm_patch(ms: TmMeshes, tm: TileMap, slot: int, tx: int, tz: int
 function tmm_locked_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: int, px: int, pz: int, lod: int, lift: float) -> bool {
   let c0 = tm.patch_texels
   let raw = ms.raw
-  var got = file_read(f, data_of(raw), 12)
+  var got = tmm_src_read(ms, f, raw, 12)
   let nv = lw_get32(raw, 0)
   let nt = lw_get32(raw, 4)
   let np = lw_get32(raw, 8)
-  if got != 12 or nv < 3 or nv > (c0 + 1) * (c0 + 1) or np < 4 or np > 4 * c0 or nt < 1 or (nt + 2 * np) > lwt_locked_tris(c0) { file_close(f);  return false }
+  if got != 12 or nv < 3 or nv > (c0 + 1) * (c0 + 1) or np < 4 or np > 4 * c0 or nt < 1 or (nt + 2 * np) > lwt_locked_tris(c0) { tmm_src_close(ms, f);  return false }
   let body = nv * 8 + nt * 12 + np * 4
-  got = file_read(f, data_of(raw), body)
-  file_close(f)
+  got = tmm_src_read(ms, f, raw, body)
+  tmm_src_close(ms, f)
   if got != body { return false }
   ms.reads += 1
   let size = tmap_patch_size(tm)
@@ -367,16 +601,16 @@ function tmm_compact_patch(ms: TmMeshes, tm: TileMap, f: pointer, tx: int, tz: i
   let c0 = tm.patch_texels
   let n0 = c0 + 1
   let raw = ms.raw
-  var got = file_read(f, data_of(raw), 12)
+  var got = tmm_src_read(ms, f, raw, 12)
   let nv = lw_get32(raw, 0)
   let nbits = lw_get32(raw, 4)
   let nhole = lw_get32(raw, 8)
-  if got != 12 or nv < 4 or nv > n0 * n0 or nbits < 0 or nbits > c0 * c0 or nhole < 0 or nhole > c0 * c0 { file_close(f);  return false }
+  if got != 12 or nv < 4 or nv > n0 * n0 or nbits < 0 or nbits > c0 * c0 or nhole < 0 or nhole > c0 * c0 { tmm_src_close(ms, f);  return false }
   let bb = lwt_bits_bytes(nbits)
   let hb = lwt_bits_bytes(nhole)
   let body = bb + hb + nv * 4
-  got = file_read(f, data_of(raw), body)
-  file_close(f)
+  got = tmm_src_read(ms, f, raw, body)
+  tmm_src_close(ms, f)
   if got != body { return false }
   ms.reads += 1
   # the cells: the level's own, split depth first as the bits say (a stack in cx/cz/cs from the top: the last pushed is next)

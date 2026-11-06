@@ -225,7 +225,7 @@ namespace Udp {
   alias ip_text(ip) = udp_ip_text
 }
 namespace Process {
-  alias spawn(path, args) = process_spawn
+  alias spawn (path, args) = process_spawn
   alias poll(handle) = process_poll
   alias kill(handle) = process_kill
   alias free(handle) = process_free
@@ -244,8 +244,8 @@ namespace World {
   alias has() = world_has
   alias count() = world_count
   alias size() = world_size
-  alias spawn() = world_spawn
-  alias despawn() = world_despawn  # #84 — despawn an entity by id (runs @OnDespawn + frees)
+  alias spawn () = world_spawn
+  alias despawn () = world_despawn  # #84 — despawn an entity by id (runs @OnDespawn + frees)
   alias save() = world_save
   alias load() = world_load
   alias prop_id() = world_prop_id
@@ -297,7 +297,7 @@ namespace Regex {
   alias replace(text, pattern, replacement) = regex_replace
   alias group(match, n) = regex_group
   alias group_count(match) = regex_group_count
-  alias start(match, n) = regex_start
+  alias start (match, n) = regex_start
   alias end(match, n) = regex_end
   alias ok(match) = regex_ok
 }
@@ -331,7 +331,7 @@ namespace Decimal {
   alias str(d) = decimal_str
 }
 namespace Dict {
-  alias new() = dict_new
+  alias new () = dict_new
   alias set(d, key, value) = dict_set
   alias get(d, key) = dict_get
   alias get_or(d, key, fallback) = dict_get_or
@@ -342,7 +342,7 @@ namespace Dict {
   alias keys(d) = dict_keys
 }
 namespace Set {
-  alias new() = set_new
+  alias new () = set_new
   alias add(s, key) = set_add
   alias has(s, key) = set_has
   alias remove(s, key) = set_remove
@@ -355,7 +355,7 @@ namespace Job {
   alias run(kind, arg) = job_run
   alias fulfill(handle, value) = job_fulfill
   alias fail(handle, error) = job_fail
-  alias cancel(handle) = job_cancel
+  alias cancel (handle) = job_cancel
   alias pump(budget) = job_pump
   alias done(handle) = job_done
   alias ok(handle) = job_ok
@@ -366,6 +366,8 @@ namespace Job {
   alias pending() = job_pending
   alias free(handle) = job_free
   alias is_worker() = job_is_worker
+  alias spawn (work, i, ctx, flag) = job_spawn
+  alias landed(flag) = job_landed
 }
 namespace Promise {
   alias all(handles) = prom_all
@@ -470,13 +472,13 @@ namespace Reflect {
   alias set(entity, prop, field, value) = world_set
   alias has(entity, prop) = world_has
   alias kind(entity) = world_kind
-  alias model(name) = world_model_id
+  alias model (name) = world_model_id
   # #44 — serialize an entity to a value tree and apply one back (reflect_io.ludic)
   alias serialize(entity) = reflect_serialize
   alias apply(entity, value) = reflect_apply
 }
 namespace Value {
-  alias null() = value_null
+  alias null () = value_null
   alias int(n) = value_int
   alias fixed(f) = value_fixed
   alias float(x) = value_float
@@ -499,7 +501,7 @@ namespace Value {
   alias free(value) = value_free
   alias clear(value) = value_clear
   alias num_text(value) = value_num_text
-  alias become(value, tag) = value_become
+  alias become (value, tag) = value_become
   alias be_int(value, n) = value_be_int
   alias be_float(value, x) = value_be_float
   alias be_str(value, s) = value_be_str
@@ -559,7 +561,7 @@ namespace Tiled {
   alias prop_type(container, name) = tiled_prop_type
   alias load_types(path) = tiled_load_types
   alias template(path) = tiled_read_template
-  alias spawn(map, object, model) = tiled_spawn_object
+  alias spawn (map, object, model) = tiled_spawn_object
   alias spawn_layer(map, layer, model) = tiled_spawn_layer
   # P5 (#73): orientation coords + image/group-layer accessors
   alias cell_x(map, x, y) = tmap_cell_sx

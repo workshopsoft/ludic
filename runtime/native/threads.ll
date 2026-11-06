@@ -298,3 +298,126 @@ entry:
   store atomic i32 %v, ptr %p release, align 4
   ret void
 }
+
+; ---- the background queue (Job.spawn): work that runs WHILE the frames go on -------------------------------------------------------
+;
+;   thr_bg_run(fn, i, ctx, flag) -> i32   queue fn(i, ctx) on a background thread; when it returns, *flag (an i32) is set to 1
+;                                         (an atomic release store: the caller polls it with thr_load). 1 queued, 0 the queue is full
+;
+; B_THREADS dedicated threads (started on the first call, parked between jobs) take jobs in order from a ring of B_CAP. A background
+; thread is a worker (thr_is_worker 1): a parallel_for it starts runs inline, and spawn / despawn stop the program there. The job
+; computes on what it was handed and writes its own results (GTA V's streaming workers: the main thread only installs them)
+
+@B_ready = internal global i32 0
+@B_lock  = internal global ptr null
+@B_cond  = internal global ptr null
+@B_head  = internal global i32 0          ; under @B_lock
+@B_tail  = internal global i32 0
+@B_fn    = internal global [256 x ptr] zeroinitializer
+@B_ctx   = internal global [256 x ptr] zeroinitializer
+@B_flag  = internal global [256 x ptr] zeroinitializer
+@B_i     = internal global [256 x i32] zeroinitializer
+
+define internal ptr @b_worker(ptr %arg) {
+entry:
+  store i32 1, ptr @T_worker
+  %lk = load ptr, ptr @B_lock
+  %cv = load ptr, ptr @B_cond
+  br label %park
+park:
+  %l0 = call i32 @pthread_mutex_lock(ptr %lk)
+  br label %check
+check:
+  %h = load i32, ptr @B_head
+  %t = load i32, ptr @B_tail
+  %empty = icmp eq i32 %h, %t
+  br i1 %empty, label %sleep, label %take
+sleep:
+  %w0 = call i32 @pthread_cond_wait(ptr %cv, ptr %lk)
+  br label %check
+take:
+  %ix = and i32 %h, 255
+  %ix64 = zext i32 %ix to i64
+  %pf = getelementptr [256 x ptr], ptr @B_fn, i64 0, i64 %ix64
+  %pc = getelementptr [256 x ptr], ptr @B_ctx, i64 0, i64 %ix64
+  %pg = getelementptr [256 x ptr], ptr @B_flag, i64 0, i64 %ix64
+  %pi = getelementptr [256 x i32], ptr @B_i, i64 0, i64 %ix64
+  %fn = load ptr, ptr %pf
+  %ctx = load ptr, ptr %pc
+  %flag = load ptr, ptr %pg
+  %i = load i32, ptr %pi
+  %h1 = add i32 %h, 1
+  store i32 %h1, ptr @B_head
+  %u0 = call i32 @pthread_mutex_unlock(ptr %lk)
+  call void %fn(i32 %i, ptr %ctx)
+  %fz = icmp eq ptr %flag, null
+  br i1 %fz, label %park, label %mark
+mark:
+  store atomic i32 1, ptr %flag release, align 4
+  br label %park
+}
+
+define internal void @b_init() {
+entry:
+  %r = load i32, ptr @B_ready
+  %have = icmp ne i32 %r, 0
+  br i1 %have, label %out, label %make
+make:
+  %lk = call ptr @malloc(i64 128)
+  %cv = call ptr @malloc(i64 128)
+  %i0 = call i32 @pthread_mutex_init(ptr %lk, ptr null)
+  %i1 = call i32 @pthread_cond_init(ptr %cv, ptr null)
+  store ptr %lk, ptr @B_lock
+  store ptr %cv, ptr @B_cond
+  %tid = alloca i64
+  %c0 = call i32 @pthread_create(ptr %tid, ptr null, ptr @b_worker, ptr null)
+  %t0 = load i64, ptr %tid
+  %t0p = inttoptr i64 %t0 to ptr
+  %d0 = call i32 @pthread_detach(ptr %t0p)
+  %c1 = call i32 @pthread_create(ptr %tid, ptr null, ptr @b_worker, ptr null)
+  %t1 = load i64, ptr %tid
+  %t1p = inttoptr i64 %t1 to ptr
+  %d1 = call i32 @pthread_detach(ptr %t1p)
+  store i32 1, ptr @B_ready
+  br label %out
+out:
+  ret void
+}
+
+define i32 @thr_bg_run(ptr %fn, i32 %i, ptr %ctx, ptr %flag) {
+entry:
+  call void @b_init()
+  %lk = load ptr, ptr @B_lock
+  %cv = load ptr, ptr @B_cond
+  %l0 = call i32 @pthread_mutex_lock(ptr %lk)
+  %h = load i32, ptr @B_head
+  %t = load i32, ptr @B_tail
+  %used = sub i32 %t, %h
+  %full = icmp sge i32 %used, 256
+  br i1 %full, label %refuse, label %put
+refuse:
+  %u0 = call i32 @pthread_mutex_unlock(ptr %lk)
+  ret i32 0
+put:
+  %ix = and i32 %t, 255
+  %ix64 = zext i32 %ix to i64
+  %pf = getelementptr [256 x ptr], ptr @B_fn, i64 0, i64 %ix64
+  %pc = getelementptr [256 x ptr], ptr @B_ctx, i64 0, i64 %ix64
+  %pg = getelementptr [256 x ptr], ptr @B_flag, i64 0, i64 %ix64
+  %pi = getelementptr [256 x i32], ptr @B_i, i64 0, i64 %ix64
+  store ptr %fn, ptr %pf
+  store ptr %ctx, ptr %pc
+  store ptr %flag, ptr %pg
+  store i32 %i, ptr %pi
+  %fz = icmp eq ptr %flag, null
+  br i1 %fz, label %go, label %clear
+clear:
+  store atomic i32 0, ptr %flag release, align 4
+  br label %go
+go:
+  %t1 = add i32 %t, 1
+  store i32 %t1, ptr @B_tail
+  %b0 = call i32 @pthread_cond_broadcast(ptr %cv)
+  %u1 = call i32 @pthread_mutex_unlock(ptr %lk)
+  ret i32 1
+}

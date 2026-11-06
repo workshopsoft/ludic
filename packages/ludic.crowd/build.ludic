@@ -12,6 +12,7 @@ function cw_act_code(s: string) -> int {
   if s == "shop" { return CROWD_SHOP }
   if s == "work" { return CROWD_WORK }
   if s == "commute" { return CROWD_COMMUTE }
+  if s == "jog" { return CROWD_JOG }
   if s == "use" { return CROWD_USE }
   if s == "wait" { return CROWD_WAIT }
   if s == "talk" { return CROWD_TALK }

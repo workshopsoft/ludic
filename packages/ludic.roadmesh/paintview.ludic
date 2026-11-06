@@ -16,6 +16,8 @@ export property PEdge {
   length: double = 0.0
   s: []double = null
   line: []double = null
+  fromDeg: int = 0         # how many roads meet at its from node and at its to node (the turn arrows' junctions)
+  toDeg: int = 0
 }
 
 # an edge's strip: per station p (x, z), n (x, z), k, s, y (7 numbers), and the offsets on each side (median, lanes, road on the
@@ -103,7 +105,7 @@ export function w_junction(w: PaintWorld, ni: int) -> PJunction {
 }
 
 # ---- a world from tagged values (the fixtures' and the job's) ------------------------------------------------------------
-export function pedge_of(v: Val) -> PEdge {
+export function pedge_of(v: RmVal) -> PEdge {
   let e = new PEdge
   e.key = v_gets(v, "key", "")
   e.profile = v_gets(v, "profile", "")
@@ -122,7 +124,7 @@ export function pedge_of(v: Val) -> PEdge {
 }
 
 # edges: [PEdge values]; nodes: [{key, edges: [keys]}] (or null); dump: {width, stations, junctions, laid, crossings} as lists of {key, v}
-export function world_of(forward: string, edges: Val, nodes: Val, dump: Val) -> PaintWorld {
+export function world_of(forward: string, edges: RmVal, nodes: RmVal, dump: RmVal) -> PaintWorld {
   let w = new PaintWorld
   w.forward = forward
   w.edges = new []PEdge

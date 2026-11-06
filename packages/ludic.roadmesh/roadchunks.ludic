@@ -6,7 +6,7 @@
 export property MeshChunk {
   cx: int = 0
   cz: int = 0
-  layers: []Layer = null
+  layers: []RmLayer = null
   tris: int = 0
 }
 
@@ -76,18 +76,21 @@ property ChunkSet {
 function chunk_of(cs: ChunkSet, cx: int, cz: int) -> MeshChunk {
   let k = `{cx},{cz}`
   let i = Dict.get_or(cs.keys, k, -1)
-  if i >= 0 { return cs.list[i] }
+  if i >= 0 {
+    free(k)
+    return cs.list[i]
+  }
   let c = new MeshChunk
   c.cx = cx
   c.cz = cz
-  c.layers = new []Layer
+  c.layers = new []RmLayer
   Dict.set(cs.keys, k, len(cs.list))
   push(cs.list, c)
   return c
 }
-function chunk_layer(c: MeshChunk, src: Layer) -> Layer {
+function chunk_layer(c: MeshChunk, src: RmLayer) -> RmLayer {
   for i in 0 .. len(c.layers) { if c.layers[i].material == src.material { return c.layers[i] } }
-  let l = new Layer
+  let l = new RmLayer
   l.material = src.material
   l.slot = src.slot
   l.positions = new []double
@@ -98,14 +101,14 @@ function chunk_layer(c: MeshChunk, src: Layer) -> Layer {
   push(c.layers, l)
   return l
 }
-function nrm_push(l: Layer, nx: double, ny: double, nz: double) -> void {
+function nrm_push(l: RmLayer, nx: double, ny: double, nz: double) -> void {
   var nl = hypot3(nx, ny, nz)
   if nl == 0.0 or nl != nl { nl = 1.0 }
   push(l.normals, nx / nl)
   push(l.normals, ny / nl)
   push(l.normals, nz / nl)
 }
-function emit(c: MeshChunk, src: Layer, poly: []CV, level: int) -> void {
+function emit(c: MeshChunk, src: RmLayer, poly: []CV, level: int) -> void {
   let l = chunk_layer(c, src)
   let n = len(poly)
   for i in 1 .. n - 1 {
@@ -168,7 +171,7 @@ function hi_of(v: double, c0: int, c1: int, size: double) -> int {
 }
 function min3d(a: double, b: double, c: double) -> double { return jmin(jmin(a, b), c) }
 function max3d(a: double, b: double, c: double) -> double { return jmax(jmax(a, b), c) }
-function cv_of(src: Layer, i: int, size: double) -> CV {
+function cv_of(src: RmLayer, i: int, size: double) -> CV {
   let v = new CV
   v.px = snap(src.positions[i * 3], size)
   v.py = src.positions[i * 3 + 1]
@@ -183,7 +186,7 @@ function cv_of(src: Layer, i: int, size: double) -> CV {
 function fdiv(x: double, size: double) -> int { return int(Math.floor(x / size)) }
 
 # chunkMesh: the layers cut into chunks of `size` metres, sorted by cz then cx (only chunks with triangles)
-export function chunk_mesh(layers: []Layer, size: double) -> []MeshChunk {
+export function chunk_mesh(layers: []RmLayer, size: double) -> []MeshChunk {
   let cs = new ChunkSet
   cs.size = size
   cs.keys = Dict.new()
@@ -293,9 +296,23 @@ export function chunk_mesh(layers: []Layer, size: double) -> []MeshChunk {
     }
   }
   let out = new []MeshChunk
-  for i in 0 .. len(cs.list) { if cs.list[i].tris > 0 { push(out, cs.list[i]) } }
+  for i in 0 .. len(cs.list) {
+    let c = cs.list[i]
+    if c.tris > 0 { push(out, c) } else { rm_layers_free(c.layers);  free(c) }
+  }
+  free(cs.list)
   sort_chunks(out)
   return out
+}
+# give back chunks a cut made (their layers too) and the list
+export function mesh_chunks_free(cs: []MeshChunk) -> void {
+  if cs == null { return }
+  for i in 0 .. len(cs) {
+    if cs[i] == null { continue }
+    rm_layers_free(cs[i].layers)
+    free(cs[i])
+  }
+  free(cs)
 }
 # by cz, then cx (stable)
 export function sort_chunks(a: []MeshChunk) -> void {
@@ -324,7 +341,7 @@ function floor_div_i(a: int, b: int) -> int {
 }
 
 # lodCells: the coarse mesh cut at the chunk lines, a piece for exactly the chunks of `fine`, grouped into LOD cells
-export function lod_cells(coarse: []Layer, fine: []MeshChunk, chunk: double, lod: double) -> []LodCell { return lod_cells_of(chunk_mesh(coarse, chunk), fine, chunk, lod) }
+export function lod_cells(coarse: []RmLayer, fine: []MeshChunk, chunk: double, lod: double) -> []LodCell { return lod_cells_of(chunk_mesh(coarse, chunk), fine, chunk, lod) }
 # the same over the coarse mesh's chunks already cut
 export function lod_cells_of(pieces: []MeshChunk, fine: []MeshChunk, chunk: double, lod: double) -> []LodCell {
   let per = int(jround(lod / chunk))
@@ -340,7 +357,7 @@ export function lod_cells_of(pieces: []MeshChunk, fine: []MeshChunk, chunk: doub
       p = new MeshChunk
       p.cx = f.cx
       p.cz = f.cz
-      p.layers = new []Layer
+      p.layers = new []RmLayer
       for k in 0 .. len(f.layers) {
         if f.layers[k].slot == "marking" { continue }
         push(p.layers, f.layers[k])
@@ -378,10 +395,10 @@ export function lod_cells_of(pieces: []MeshChunk, fine: []MeshChunk, chunk: doub
 }
 
 # farCells: the far mesh's kept layers cut at the cells' lines, one piece a cell of `cells`
-export function far_cells(far: []Layer, cells: []LodCell, lod: double) -> []MeshChunk { return far_cells_of(far_chunks(far, lod), cells) }
+export function far_cells(far: []RmLayer, cells: []LodCell, lod: double) -> []MeshChunk { return far_cells_of(far_chunks(far, lod), cells) }
 # the far mesh's kept layers cut at the cells' lines
-export function far_chunks(far: []Layer, lod: double) -> []MeshChunk {
-  let layers = new []Layer
+export function far_chunks(far: []RmLayer, lod: double) -> []MeshChunk {
+  let layers = new []RmLayer
   for i in 0 .. len(far) {
     let s = far[i].slot
     if s != "curb" and s != "skirt" and s != "marking" { push(layers, far[i]) }
@@ -473,7 +490,7 @@ export property Soup {
   positions: []double = null
   indices: []int = null
 }
-export function layer_order(layers: []Layer) -> []int {
+export function layer_order(layers: []RmLayer) -> []int {
   let keys = new []string
   for i in 0 .. len(layers) { push(keys, layers[i].material) }
   return order_by_key(keys)
@@ -776,3 +793,7 @@ function lane_add(out: []LaneChunk, keys: Dict, cx: int, cz: int, line: LaneLine
   l.pts = pts
   push(out[i].lines, l)
 }
+
+# a chunk's copies its caller made from a cut (its surface triangles, their kinds) given back when the chunk is dropped
+export function rm_floats_free(f: floats) -> void { if f != null { free(f) } }
+export function rm_bytes_free(b: []byte) -> void { if b != null { free(b) } }

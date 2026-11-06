@@ -120,62 +120,97 @@ function signed_from(a: double, mouth: double) -> double {
   return t
 }
 
-# the rails of a strict turning circle (bulbRails): `ends` per level (rx, rz, lx, lz), `gutter` per level
-export function bulb_rails(nx0: double, nz0: double, ux: double, uz: double, radius: double, ends: [][]double, gutter: []double) -> [][]double {
+# one side of a strict turning circle (bulbRails' side): its entry curve's radius e and centre (cx, cz), the curve's start angle and
+# sweep, the circle's angle where it ends and its distance there: [e, cx, cz, a0, sweep, t, at]
+function bulb_side(nx0: double, nz0: double, radius: double, entry: double, reach: double, sx: double, sz: double, px: double, pz: double) -> []double {
+  let wx = px - nx0
+  let wz = pz - nz0
+  let ws = wx * sx + wz * sz
+  let den = 2.0 * (ws - radius)
+  var e = jmax(entry, reach + 0.1)
+  if den != 0.0 {
+    let q = (radius * radius - (wx * wx + wz * wz)) / den
+    if q >= reach + 0.1 { e = q }
+  }
+  let cx = px + sx * e
+  let cz = pz + sz * e
+  var cl = hypot2(cx - nx0, cz - nz0)
+  if cl == 0.0 { cl = 1.0 }
+  let a0 = jatan2(-sz, -sx)
+  var sweep = jatan2((nz0 - cz) / cl, (nx0 - cx) / cl) - a0
+  while sweep > SW_PI { sweep -= 2.0 * SW_PI }
+  while sweep <= -SW_PI { sweep += 2.0 * SW_PI }
+  let out = doubles(7)
+  out[0] = e
+  out[1] = cx
+  out[2] = cz
+  out[3] = a0
+  out[4] = sweep
+  out[5] = jatan2((cz - nz0) / cl, (cx - nx0) / cl)
+  out[6] = cl - e
+  return out
+}
+
+function bulb_arc_pts(pts: []double, S: []double, d: double, count: int, back: bool) -> void {
+  let tmp = new []double
+  for q in 1 .. count + 1 {
+    let a = S[3] + (S[4] * double(q)) / double(count)
+    pts_push(tmp, S[1] + jcos(a) * (S[0] - d), S[2] + jsin(a) * (S[0] - d))
+  }
+  let m = len(tmp) / 2
+  for i in 0 .. m {
+    var k = i
+    if back { k = m - 1 - i }
+    pts_push(pts, tmp[k * 2], tmp[k * 2 + 1])
+  }
+}
+
+function bulb_steps(sw: double, step: double, least: double) -> int {
+  return int(jmax(least, Math.ceil(dabs(sw) / step)))
+}
+
+# the rails of a strict turning circle (bulbRails): `ends` per level (rx, rz, lx, lz), `entry` the junction's entry radius. The road's
+# kerb, an entry curve tangent to it at the strip's end reversing into the circle round the node, the circle the long way round, the other
+# side's curve; every other line concentric with the gutter's
+export function bulb_rails(nx0: double, nz0: double, ux: double, uz: double, radius: double, ends: [][]double, entry: double) -> [][]double {
+  let r0x = ends[0][0]
+  let r0z = ends[0][1]
+  let l0x = ends[0][2]
+  let l0z = ends[0][3]
+  let ex = l0x - r0x
+  let ez = l0z - r0z
+  var el = hypot2(ex, ez)
+  if el == 0.0 { el = 1.0 }
+  var reach: double = 0.0
+  for k in 0 .. len(ends) {
+    reach = jmax(reach, jmax(hypot2(ends[k][0] - r0x, ends[k][1] - r0z), hypot2(ends[k][2] - l0x, ends[k][3] - l0z)))
+  }
+  let R = bulb_side(nx0, nz0, radius, entry, reach, -ex / el, -ez / el, r0x, r0z)
+  let L = bulb_side(nx0, nz0, radius, entry, reach, ex / el, ez / el, l0x, l0z)
   let mouth = jatan2(uz, ux)
+  let circ = norm_from(L[5], mouth) - norm_from(R[5], mouth)
+  let nr = bulb_steps(R[4], SW_PI / 16.0, 2.0)
+  let nl = bulb_steps(L[4], SW_PI / 16.0, 2.0)
+  let nc = bulb_steps(circ, SW_PI / 24.0, 8.0)
   let out = new [][]double
   for k in 0 .. len(ends) {
-    let rx = ends[k][0]
-    let rz = ends[k][1]
-    let lx = ends[k][2]
-    let lz = ends[k][3]
-    let target = radius + jmax(0.0, gutter[k])
-    let ar = jatan2(rz - nz0, rx - nx0)
-    let al = jatan2(lz - nz0, lx - nx0)
-    let rr = hypot2(rx - nx0, rz - nz0)
-    let rl = hypot2(lx - nx0, lz - nz0)
-    var a0 = ar
-    var a1 = al
-    var t0 = norm_from(a0, mouth)
-    var t1 = norm_from(a1, mouth)
-    if t0 > SW_PI {
-      let u0 = 2.0 * SW_PI - t0
-      let u1 = 2.0 * SW_PI - t1
-      t0 = u0
-      t1 = u1
-      a0 = mouth - t0
-      a1 = mouth - t1
-    } else {
-      a0 = mouth + t0
-      a1 = mouth + t1
-    }
-    if not (t0 <= SW_PI and t1 >= SW_PI) {
-      let sr = signed_from(ar, mouth)
-      let sl = signed_from(al, mouth)
-      var dir: double = 1.0
-      if dabs(sr) > EPS6 { dir = jsign(sr) } else if dabs(sl) > EPS6 { dir = -jsign(sl) }
-      var T1 = dir * sl
-      if T1 <= EPS9 { T1 += 2.0 * SW_PI }
-      t0 = jmax(0.0, dir * sr)
-      t1 = T1
-      a0 = mouth + dir * t0
-      a1 = mouth + dir * t1
-    }
-    let steps: double = 32.0
-    let ease = (40.0 * SW_PI) / 180.0
+    let rkx = ends[k][0]
+    let rkz = ends[k][1]
+    let lkx = ends[k][2]
+    let lkz = ends[k][3]
+    let dR = hypot2(rkx - r0x, rkz - r0z)
+    let dL = hypot2(lkx - l0x, lkz - l0z)
     let pts = new []double
-    pts_push(pts, rx, rz)
-    for s in 1 .. 32 {
-      let a = a0 + ((a1 - a0) * double(s)) / steps
-      let from0 = dabs(a - a0)
-      let from1 = dabs(a1 - a)
-      let w0 = jmin(1.0, from0 / ease)
-      let w1 = jmin(1.0, from1 / ease)
-      var rad = rl + (target - rl) * smooth(w1)
-      if from0 < from1 { rad = rr + (target - rr) * smooth(w0) }
+    pts_push(pts, rkx, rkz)
+    bulb_arc_pts(pts, R, dR, nr, false)
+    for q in 1 .. nc {
+      let f = double(q) / double(nc)
+      let a = R[5] + circ * f
+      let rad = R[6] + (L[6] - R[6]) * smooth(f) + dR + (dL - dR) * smooth(f)
       pts_push(pts, nx0 + jcos(a) * rad, nz0 + jsin(a) * rad)
     }
-    pts_push(pts, lx, lz)
+    bulb_arc_pts(pts, L, dL, nl, true)
+    pts_push(pts, lkx, lkz)
     push(out, pts)
   }
   return out
@@ -292,4 +327,3 @@ export function to_fixed2(x: double) -> string {
   if neg and w != long(0) { return `-{ip}.{f}` }
   return `{ip}.{f}`
 }
-

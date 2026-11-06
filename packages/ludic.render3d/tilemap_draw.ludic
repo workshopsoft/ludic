@@ -21,6 +21,8 @@
 # ============================================================================
 numbers float
 
+const TMD_RETRY: int = 60             # frames before a patch whose build failed is tried again
+
 export property TmPatch {
   tile: int = -1                     # the tile it is of (tz * cols + tx) while it holds a mesh
   px: int = 0
@@ -33,6 +35,8 @@ export property TmPatch {
   coloured: bool = false             # ... with the land use's vertex colours (attribute 7)
   rvt_lu: int = -1                   # the lawn texture and colouring its RVT pages were drawn with (rvt.ludic)
   rvt_col: bool = false
+  failed: int = -1                   # the frame (ms.clock) its last build failed (its tile's levels not readable yet), -1 none: asked again
+                                     # TMD_RETRY frames on (a live conform drops a tile's levels; a patch built in that gap kept no mesh for good)
 }
 
 export property TileDraw {
@@ -48,15 +52,19 @@ export property TileDraw {
   oz: float = 0.0
   # the land-use mask and its tones (tilemap_mask.ludic)
   mask_pattern: string = ""          # the mask tiles ({tx} {tz}); "" none
+  mask_file_pattern: string = ""     # a live map's tiles past its pool: their mask files (tmd_mask_file_pattern), "" none
   tones: floats = null               # 8 x r g b, linear
   surf_green: string = ""            # the surfaces laid over the ground (tmd_surfaces; surface.ludic surf_apply_ground): where the
   surf_paved: string = ""            # tone is green, and elsewhere; "" for the plain tones
+  surf_sand: string = ""             # the sand laid over the sand classes (tmd_sand), "" none
+  sand_cls: words = null             # 256: 1 where a class is sand
   tone_on: words = null              # 1 where a class has a tone
   mk_tile: words = null              # per mesh slot: the tile its coarse grid is of, -1 none read
   lu_tex: words = null               # per mesh slot: its tile's lawn coverage (tmk_lawn), 0 none
   lu_a: []byte = null                # tmk_lawn's working texels, res x res each
   lu_b: []byte = null
   mk_has: words = null               # per mesh slot: 1 when that tile has a mask
+  mk_live: []byte = null             # a live mask's texels (tmk_read_live), res x res, made once
   mk_coarse: []byte = null           # per mesh slot: the majority class of each mk_cf x mk_cf block
   mk_cf: int = 8
   mk_fine: int = 0                   # the coarsest level that reads the full texels
@@ -108,9 +116,19 @@ function tmd_release(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch) -
   if p.held { gpu_mesh_free(render3d_st, p.mesh);  p.held = false;  td.frees += 1 }
   p.lod = -1
   p.tile = -1
+  p.failed = -1
 }
 
 # the whole ground let go (a map swap, the end): every level, then every patch's records
+# tile t's drawn patches let go (its heights changed: a live conform): they are built again from its new levels; without this a tile
+# read back into the same mesh slot kept the patches of its old heights
+export function tmd_tile_forget(render3d_st: mut Render3dState, td: TileDraw, t: int) -> void {
+  for i in 0 .. len(td.patches) {
+    let p = td.patches[i]
+    if p.tile == t { tmd_release(render3d_st, td, p) }
+  }
+}
+
 export function tmd_free(render3d_st: mut Render3dState, td: TileDraw) -> void {
   for i in 0 .. len(td.patches) {
     let p = td.patches[i]
@@ -168,7 +186,7 @@ function tmd_fill(render3d_st: mut Render3dState, td: TileDraw, p: TmPatch, colo
   let pr = p.model.prims[0]
   pr.verts = ms.nv
   pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
-  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved) }
+  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved);  surf_apply_sand(render3d_st.surf_lib, pr, td.surf_sand) }
   p.model.tris = ms.ni / 3
   p.held = true
   p.coloured = coloured
@@ -181,7 +199,7 @@ function tmd_model_of(render3d_st: Render3dState, td: TileDraw, m: Mesh, nv: int
   pr.mesh = m
   pr.verts = nv
   pr.diff = render3d_st.gltf_pure;  pr.nrm = render3d_st.gltf_flat;  pr.arm = render3d_st.gltf_pure
-  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved) }
+  if td.surf_green != "" { surf_apply_ground(render3d_st.surf_lib, pr, td.surf_green, td.surf_paved);  surf_apply_sand(render3d_st.surf_lib, pr, td.surf_sand) }
   pr.fac = floats(9)
   for k in 0 .. 9 { pr.fac[k] = td.fac[k] }
   let model = new Model
@@ -258,17 +276,21 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
       if s >= 0 and tmap_tile_dist(tm, tx, tz, cam_x, cam_z) <= radius { ms.slot_used[s] = ms.clock }
     }
   }
-  for n in 0 .. td.tile_budget {
+  # (a tile that cannot be read yet - its heights or a neighbour's still held by a live conform - is passed over this frame and the next
+  # nearest tried: stopping at it starved every other tile, and a live re-conform's ring of forgotten tiles stayed undrawn)
+  var loaded = 0
+  for n in 0 .. td.tile_budget * 4 {
+    if loaded >= td.tile_budget { break }
     var bx = -1;  var bz = -1;  var bd = 1000000000.0
     for tz in tz0 .. tz1 + 1 {
       for tx in tx0 .. tx1 + 1 {
-        if ms.slot_of[tz * tm.cols + tx] != -1 { continue }
+        if ms.slot_of[tz * tm.cols + tx] != -1 or ms.tried[tz * tm.cols + tx] == ms.clock { continue }
         let d = tmap_tile_dist(tm, tx, tz, cam_x, cam_z)
         if d <= radius and d < bd { bx = tx;  bz = tz;  bd = d }
       }
     }
     if bx < 0 { break }
-    if tmm_load(ms, tm, bx, bz) == -1 { break }
+    if tmm_load(ms, tm, bx, bz) == -1 { ms.tried[bz * tm.cols + bx] = ms.clock } else { loaded += 1 }
   }
   # what a mesh slot holds now: patches of a tile that left are let go, patches out of range too, the rest stood
   let pp = tm.patches * tm.patches
@@ -295,7 +317,7 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
         let p = td.patches[s * pp + k]
         let d = tmd_dist(tm, tmap_patch_cx(tm, t % tm.cols, k % tm.patches), tmap_patch_cz(tm, t / tm.cols, k / tm.patches), cam_x, cam_z)
         if d > radius or d >= bd { continue }
-        if tmd_lod_want(render3d_st, td, s, k, d, cam_x, cam_y, cam_z) == p.lod { continue }
+        if tmd_lod_want(render3d_st, td, s, k, d, cam_x, cam_y, cam_z) == p.lod and (p.failed < 0 or ms.clock - p.failed < TMD_RETRY) { continue }
         bi = s * pp + k;  bd = d
       }
     }
@@ -305,7 +327,7 @@ export function tmd_frame(render3d_st: mut Render3dState, td: TileDraw, cam_x: f
     let p = td.patches[bi]
     p.tile = ms.slot_tile[s];  p.px = k % tm.patches;  p.pz = k / tm.patches
     let want = tmd_lod_want(render3d_st, td, s, k, bd, cam_x, cam_y, cam_z)
-    if not tmd_build(render3d_st, td, p, s, want) { p.lod = want }      # unreadable: no mesh, and not asked for again every frame
+    if tmd_build(render3d_st, td, p, s, want) { p.failed = -1 } else { p.lod = want;  p.failed = ms.clock }   # unreadable: no mesh, asked again TMD_RETRY frames on
   }
   if r3d_env_has(render3d_st, "R3D_TERRAIN_LODS") and render3d_st.ac_frame == Text.to_int(r3d_env(render3d_st, "R3D_TERRAIN_LODS")) { tmd_lods_say(td) }
 }
@@ -353,5 +375,17 @@ function tmd_lod_want(render3d_st: mut Render3dState, td: TileDraw, s: int, k: i
 export function tmd_surfaces(td: TileDraw, green: string, paved: string) -> void {
   td.surf_green = green
   td.surf_paved = paved
+  tmk_redraw(td)
+}
+
+# the ground's sand: surface `key` from the renderer's library over the classes `classes` (a beach, a sea bed) in place of the
+# paving, its share a vertex's (the vertex colour's alpha over 1: tilemap_mask tmk_corner) blended with a noisy edge by
+# lighting.glsl surfaceGround; "" none. Patches drawn already are made again.
+@alloc_ok("a map being opened: the class table, once")
+export function tmd_sand(td: TileDraw, key: string, classes: []int) -> void {
+  td.surf_sand = key
+  if td.sand_cls == null { td.sand_cls = words(256) }
+  for c in 0 .. 256 { td.sand_cls[c] = 0 }
+  for i in 0 .. len(classes) { if classes[i] >= 0 and classes[i] < 256 { td.sand_cls[classes[i]] = 1 } }
   tmk_redraw(td)
 }
