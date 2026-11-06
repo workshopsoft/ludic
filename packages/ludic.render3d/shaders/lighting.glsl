@@ -1401,7 +1401,9 @@ void lawnLook(sampler2D d, SurfP A, vec2 wm, vec2 dx, vec2 dy, float dist, inout
   // (5-6 m patches carry it at 30-60 m, where a grazing view squeezes the depth; the warm cast: an LA lawn's yellow-green, not a
   // golf green's blue-green)
   float c = surfNoise(wm / 5.5 + 41.0, 1024.0) * 0.5 + surfNoise(wm / 2.0 + 19.0, 1024.0) * 0.3 + surfNoise(wm / 0.6 + 3.0, 1024.0) * 0.2;
-  vec3 tint = mix(vec3(0.70, 0.80, 0.74), vec3(1.28, 1.16, 0.70), smoothstep(0.22, 0.78, c)) * vec3(1.06, 1.0, 0.84);
+  // (measured against a sunlit LA Bermuda lawn photo, 2026-11-06: a lawn's blue is a third of its green, not a tenth - the dry blades,
+  // the sheen and the soil between them grey it - so the thin side pales toward grey-yellow rather than saturating)
+  vec3 tint = mix(vec3(0.74, 0.82, 0.80), vec3(1.22, 1.14, 0.92), smoothstep(0.22, 0.78, c)) * vec3(1.03, 1.0, 0.96);
   alb *= mix(vec3(1.0), tint, min(0.9 * s, 1.0));
   // dry patches: the region's dryness (150 m), the patches (8 m, 2.5 m, 0.6 m), the grass's height its own detail
   float region = surfNoise(wm / 150.0 + 61.0, 1024.0);

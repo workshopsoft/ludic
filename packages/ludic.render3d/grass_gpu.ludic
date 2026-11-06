@@ -14,15 +14,17 @@ const GG_BANDS: int = 3
 const GG_PRM: int = 168      # grass_cull.comp's Params in words: 84 of its own, 84 of the previous frame's HZB (occlusion.ludic occ_inst_params)
 # band 0 is the kind's rows_near out to its band_near, band 1 rows_mid to band_mid, band 2 rows_far
 
+# (a mown lawn's dense short blades filled band 0's old 16384 and band 1's 49152 within a few metres, and the cull dropped the rest in
+# whatever order the threads ran: the near sward came out sparse; 2026-11-06 doubled, 19 MB of records in all)
 function gg_cap(b: int) -> int {
-  if b == 0 { return 16384 }
-  if b == 1 { return 49152 }
+  if b == 0 { return 32768 }
+  if b == 1 { return 98304 }
   return 163840
 }
 function gg_base(b: int) -> int {
   if b == 0 { return 0 }
-  if b == 1 { return 16384 }
-  return 65536
+  if b == 1 { return 32768 }
+  return 131072
 }
 
 # once, after grass_init: the programs, the buffers and the three instanced blades
