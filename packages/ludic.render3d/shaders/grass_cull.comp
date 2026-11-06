@@ -165,6 +165,8 @@ float bladeDensity(vec2 xz) {
   vec2 i0 = floor(f);
   vec2 a = f - i0;
   ivec2 i = ivec2(i0);
+  // a game's own growth (grass_live.ludic, clr.y 1): its texel, nearest - a lawn's blades end at its edge, not half a texel past it
+  if (pr.clr.y > 0.5) return densTexel(ivec2(floor((xz - pr.bd.xy) / pr.bd.z)), side);
   float lo = mix(densTexel(i, side), densTexel(i + ivec2(1, 0), side), a.x);
   float hi = mix(densTexel(i + ivec2(0, 1), side), densTexel(i + ivec2(1, 1), side), a.x);
   return mix(lo, hi, a.y);

@@ -1,0 +1,76 @@
+# ============================================================================
+# grass_live.ludic — the GPU blades over a game's own ground (a game with no terrain heightfield: OccuTown's live
+# tiles). The game hands in a window round the camera, in render coordinates: the ground's height on a grid
+# (its conformed tiles' tmap_height) and where blades grow on a finer one (its lawns' classes, 0 or 255). The cull
+# (grass_cull.comp) then reads them as it reads the terrain's: the heights as its u_height (its ts the window's
+# centre and half), the normals rebuilt from them, the growth as the painted density read NEAREST (clr.y 1), so
+# a lawn's blades stop at its texel's edge, not half a texel out over a kerb. grass_live_off lets it go.
+# ============================================================================
+
+# the window: h (hs x hs floats, row z, ht metres a texel) from corner (hx, hz); the growth (ms x ms bytes, one a
+# texel, row z, mt metres a texel) from corner (mx, mz). Made into the GPU's texture and buffer at once.
+@alloc_ok("the game's lawn window, re-made when the camera has moved metres: its textures and buffer replaced")
+export function grass_live_window(render3d_st: mut Render3dState, hx: float, hz: float, ht: float, hs: int, h: floats, mx: float, mz: float, mt: float, ms: int, m: []byte) -> void {
+  # a plate world (the game draws its own ground: r3d_plate_mode) never made the blades at start-up: made here, once
+  if render3d_st.grass_prog == 0 and render3d_st.r3d_plate { grass_init(render3d_st) }
+  if not render3d_st.gg_on { return }
+  # the normals: central differences, x and z of the unit normal (the cull rebuilds y)
+  let nm = floats(hs * hs * 2)
+  for j in 0 .. hs {
+    for i in 0 .. hs {
+      let gx = (h[j * hs + min(i + 1, hs - 1)] - h[j * hs + max(i - 1, 0)]) / (2.0 * ht)
+      let gz = (h[min(j + 1, hs - 1) * hs + i] - h[max(j - 1, 0) * hs + i]) / (2.0 * ht)
+      let l = Math.sqrt(gx * gx + gz * gz + 1.0)
+      nm[(j * hs + i) * 2] = -gx / l
+      nm[(j * hs + i) * 2 + 1] = -gz / l
+    }
+  }
+  if render3d_st.gl_htex != 0 and render3d_st.gl_hs != hs { gpu_tex_free(render3d_st, render3d_st.gl_htex);  gpu_tex_free(render3d_st, render3d_st.gl_ntex);  render3d_st.gl_htex = 0;  render3d_st.gl_ntex = 0 }
+  if render3d_st.gl_htex == 0 {
+    render3d_st.gl_htex = tex_target(render3d_st, hs, hs, GPU_R32F, GPU_RED, GPU_FLOAT, GPU_LINEAR)
+    render3d_st.gl_ntex = tex_target(render3d_st, hs, hs, GPU_RG16F, GPU_RG, GPU_FLOAT, GPU_LINEAR)
+  }
+  gpu_tex_fill(render3d_st, render3d_st.gl_htex, GPU_R32F, hs, hs, GPU_RED, GPU_FLOAT, data_of(h))
+  gpu_tex_fill(render3d_st, render3d_st.gl_ntex, GPU_RG16F, hs, hs, GPU_RG, GPU_FLOAT, data_of(nm))
+  free(nm)
+  # the growth, four texels a word
+  let nw = (ms * ms + 3) / 4
+  if render3d_st.gl_mwin == null or len(render3d_st.gl_mwin) != nw { render3d_st.gl_mwin = words(nw) }
+  for k in 0 .. nw {
+    var w = 0
+    for b in 0 .. 4 {
+      let t = k * 4 + b
+      if t < ms * ms { w = w | (int(m[t]) << (b * 8)) }
+    }
+    render3d_st.gl_mwin[k] = w
+  }
+  if render3d_st.gl_buf == 0 { render3d_st.gl_buf = gpu_buffer_new(render3d_st) }
+  gpu_buffer_upload(render3d_st, render3d_st.gl_buf, nw * 4, data_of(render3d_st.gl_mwin), GPU_DYNAMIC)
+  render3d_st.gl_hx = hx;  render3d_st.gl_hz = hz;  render3d_st.gl_ht = ht;  render3d_st.gl_hs = hs
+  render3d_st.gl_mx = mx;  render3d_st.gl_mz = mz;  render3d_st.gl_mt = mt;  render3d_st.gl_ms = ms
+  if render3d_st.gl_h == null or len(render3d_st.gl_h) != hs * hs { render3d_st.gl_h = floats(hs * hs) }
+  for k in 0 .. hs * hs { render3d_st.gl_h[k] = h[k] }
+  render3d_st.gl_on = true
+}
+
+# no window: the blades are the terrain's again (or none)
+export function grass_live_off(render3d_st: mut Render3dState) -> void { render3d_st.gl_on = false }
+
+# the window's ground height at render (x, z), nearest texel, clamped to the window (the tiles' frustum test)
+function grass_live_height(render3d_st: Render3dState, x: float, z: float) -> float {
+  let n = render3d_st.gl_hs
+  let i = min(max(int((x - render3d_st.gl_hx) / render3d_st.gl_ht), 0), n - 1)
+  let j = min(max(int((z - render3d_st.gl_hz) / render3d_st.gl_ht), 0), n - 1)
+  return render3d_st.gl_h[j * n + i]
+}
+
+# grass_cull.comp's Params and inputs from the window, over the terrain's (gg_cull_frame)
+function grass_live_params(render3d_st: Render3dState, pr: words) -> void {
+  let half = render3d_st.gl_ht * float(render3d_st.gl_hs) * 0.5
+  pr[30] = float_bits(0.0)                                   # no photograph
+  pr[31] = float_bits(0.0)                                   # no page pool
+  pr[32] = float_bits(render3d_st.gl_hx + half);  pr[33] = float_bits(render3d_st.gl_hz + half);  pr[34] = float_bits(half)
+  pr[51] = float_bits(float(render3d_st.gl_hs))
+  pr[72] = float_bits(render3d_st.gl_mx);  pr[73] = float_bits(render3d_st.gl_mz);  pr[74] = float_bits(render3d_st.gl_mt);  pr[75] = float_bits(float(render3d_st.gl_ms))
+  pr[81] = float_bits(1.0)                                   # the growth read nearest
+}

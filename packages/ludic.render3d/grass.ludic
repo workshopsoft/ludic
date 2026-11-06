@@ -213,7 +213,7 @@ function grass_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_
   }
 }
 
-function grass_live(render3d_st: Render3dState) -> bool { return not render3d_st.grass_env_off and (render3d_st.grass_on or render3d_st.grass_force) and render3d_st.grass_prog != 0 }
+function grass_live(render3d_st: Render3dState) -> bool { return not render3d_st.grass_env_off and (render3d_st.grass_on or render3d_st.grass_force or render3d_st.gl_on) and render3d_st.grass_prog != 0 }
 
 function grass_draw(render3d_st: mut Render3dState) -> void {
   if not grass_live(render3d_st) or render3d_st.ter_reflect { return }
@@ -264,6 +264,7 @@ function grass_bind(render3d_st: mut Render3dState, p: int) -> void {
   var orthotex = render3d_st.ter_ortho_tex
   var oon = 1.0
   if orthotex == 0 { orthotex = render3d_st.ter_height_tex;  oon = 0.0 }
+  if orthotex == 0 and render3d_st.gl_on { orthotex = render3d_st.gl_htex }
   r3d_bind_2d(render3d_st, p, "u_ortho", 4, orthotex)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_ortho_on"), oon)
   var lake = -100000.0

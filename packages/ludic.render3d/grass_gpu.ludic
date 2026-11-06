@@ -103,7 +103,9 @@ function gg_tiles(render3d_st: mut Render3dState, size: int, d_min: float, d_max
       let dc = Math.sqrt(dx * dx + dz * dz)
       let dnear = Math.max(dc - corner_r, 0.0)
       if dc < d_min or not (dnear < d_max) or render3d_st.gg_n >= GG_TILES { continue }
-      if not cam_sphere_visible(render3d_st, ox + half, terrain_height(render3d_st, ox + half, oz + half), oz + half, corner_r + 6.0) { continue }
+      var gy = 0.0
+      if render3d_st.gl_on { gy = grass_live_height(render3d_st, ox + half, oz + half) } else { gy = terrain_height(render3d_st, ox + half, oz + half) }
+      if not cam_sphere_visible(render3d_st, ox + half, gy, oz + half, corner_r + 6.0) { continue }
       let per = grass_count_at(render3d_st, dnear)
       var total = per * cells * cells
       if total > 65535 { total = 65535 }
@@ -144,6 +146,11 @@ function gg_cull_frame(render3d_st: mut Render3dState) -> void {
   let texs = render3d_st.gg_texs
   texs[0] = render3d_st.ter_height_tex;  texs[1] = render3d_st.ter_ortho_tex;  texs[2] = render3d_st.ter_normal_tex
   gg_page_texs(render3d_st, texs)
+  if render3d_st.gl_on {
+    # a game's own ground (grass_live.ludic): its heights, normals and growth over the terrain's
+    texs[0] = render3d_st.gl_htex;  texs[1] = render3d_st.gl_htex;  texs[2] = render3d_st.gl_ntex
+    bufs[3] = render3d_st.gl_buf
+  }
   gpu_dispatch_tex(render3d_st, render3d_st.gg_cull, data_of(pr), GG_PRM * 4, bufs, texs, (render3d_st.gg_max + 63) / 64, render3d_st.gg_n)
 }
 
@@ -179,6 +186,7 @@ function gg_params(render3d_st: mut Render3dState) -> words {
   pr[48] = float_bits(float(render3d_st.tt_n));  pr[49] = float_bits(float(TT_TEX));  pr[50] = float_bits(float(render3d_st.tt_oside));  pr[51] = float_bits(float(TERRAIN_RES))
   gb_params(render3d_st, pr)
   gg_clear_params(render3d_st, pr)
+  if render3d_st.gl_on { grass_live_params(render3d_st, pr) }
   # the main view's occlusion against last frame's HZB (occlusion.ludic, R3D_GRASS_OCCLUSION): grass is drawn in the main view alone
   occ_inst_params(render3d_st, pr, 84, occ_inst_live(render3d_st, OCC_INST_GRASS))
   return pr
