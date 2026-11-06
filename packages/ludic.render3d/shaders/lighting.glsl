@@ -1353,6 +1353,14 @@ SurfP surfSecond() { return SurfP(u_s2, u_s2_b, u_s2_c, u_s2_d, u_s2_e); }
 // detail relax to their means (the Landscape's far material: R3D_TERRAIN_FAR_SIMPLE's idea), so nothing shimmers. The soil is sandier
 // at low ground (the beach towns) and darker where the lush noise is high. The weights are functions of the WORLD place alone.
 // wm: world metres of the pixel (x, z), wy its height; alb, n, arm: the lawn scan's; N the geometric normal.
+// The bare soil's weight at world metres wm, 0..1: a patch noise at 13, 3.1 and 0.8 m, drier ground (the 71/23/7 m noise) a little
+// more bare. KEEP IN STEP with grass_cull.comp's lawnBareW (the lawn's GPU blades thin over it, so soil shows where they do).
+float lawnBareW(vec2 wm) {
+  float big = surfNoise(wm / 71.0, 1024.0) * 0.55 + surfNoise(wm / 23.0 + 5.0, 1024.0) * 0.3 + surfNoise(wm / 7.0 + 11.0, 1024.0) * 0.15;
+  float dry = smoothstep(0.40, 0.70, big);
+  float s = surfNoise(wm / 13.0 + 31.0, 1024.0) * 0.55 + surfNoise(wm / 3.1 + 7.0, 1024.0) * 0.3 + surfNoise(wm / 0.8 + 3.0, 1024.0) * 0.15;
+  return smoothstep(0.68, 0.84, s + 0.05 * dry);
+}
 void lawnMacro(vec2 wm, float wy, float dist, vec3 N, inout vec3 alb, inout vec3 n, inout vec3 arm) {
   float big = surfNoise(wm / 71.0, 1024.0) * 0.55 + surfNoise(wm / 23.0 + 5.0, 1024.0) * 0.3 + surfNoise(wm / 7.0 + 11.0, 1024.0) * 0.15;
   float dry = smoothstep(0.40, 0.70, big);
@@ -1364,11 +1372,11 @@ void lawnMacro(vec2 wm, float wy, float dist, vec3 N, inout vec3 alb, inout vec3
   float det = mix(arm.b * 2.0, 0.945, far);                          // the soil's luminance detail (mean 0.945)
   float hG = mix(clamp(l / 0.16, 0.0, 1.0) * 0.8, 0.4, far);        // the blades' height
   float hS = mix(clamp(det * 0.5, 0.0, 1.0), 0.47, far);             // the soil's: stones high, crumbs low
-  float s = surfNoise(wm / 13.0 + 31.0, 1024.0) * 0.55 + surfNoise(wm / 3.1 + 7.0, 1024.0) * 0.3 + surfNoise(wm / 0.8 + 3.0, 1024.0) * 0.15;
-  float wS = smoothstep(0.62, 0.82, s + 0.05 * dry);
+  float wS = lawnBareW(wm);
   float wg = clamp(mix(-1.0, 1.0, 1.0 - wS) + hG, 0.0001, 1.0);
   float ws = clamp(mix(-1.0, 1.0, wS) + hS, 0.0001, 1.0);
-  float bare = 0.0 * ws / (wg + ws);  // soil patches disabled (weight 0)
+  // the soil patches: on with the lawn's look (R3D_LAWN_LOOK, u_surf_q2.z 0); the GPU blades thin over the same weight (grass_cull.comp)
+  float bare = (u_surf_q2.z < 0.5 ? 1.0 : 0.0) * ws / (wg + ws);
   float sand = 1.0 - smoothstep(6.0, 18.0, wy);
   vec3 soilC = mix(vec3(0.15, 0.098, 0.05), vec3(0.24, 0.19, 0.125), sand * 0.85);
   soilC *= mix(1.0, 0.72, wet) * mix(1.0, 1.18, dry);

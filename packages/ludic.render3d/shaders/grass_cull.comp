@@ -171,6 +171,21 @@ float bladeDensity(vec2 xz) {
   float hi = mix(densTexel(i + ivec2(0, 1), side), densTexel(i + ivec2(1, 1), side), a.x);
   return mix(lo, hi, a.y);
 }
+// lighting.glsl's surfHash, surfNoise and lawnBareW, KEEP IN STEP: a game's lawn (clr.y 1) thins its blades over the ground's bare
+// soil patches, its world metres the blade's render xz plus the ground surface's origin offset (clr.zw, grass_live_params)
+float surfHash(vec2 c, float per) { c = mod(c, per); return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }
+float surfNoise(vec2 x, float per) {
+  vec2 i = floor(x), f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(surfHash(i, per), surfHash(i + vec2(1.0, 0.0), per), f.x),
+             mix(surfHash(i + vec2(0.0, 1.0), per), surfHash(i + vec2(1.0, 1.0), per), f.x), f.y);
+}
+float lawnBareW(vec2 wm) {
+  float big = surfNoise(wm / 71.0, 1024.0) * 0.55 + surfNoise(wm / 23.0 + 5.0, 1024.0) * 0.3 + surfNoise(wm / 7.0 + 11.0, 1024.0) * 0.15;
+  float dry = smoothstep(0.40, 0.70, big);
+  float s = surfNoise(wm / 13.0 + 31.0, 1024.0) * 0.55 + surfNoise(wm / 3.1 + 7.0, 1024.0) * 0.3 + surfNoise(wm / 0.8 + 3.0, 1024.0) * 0.15;
+  return smoothstep(0.68, 0.84, s + 0.05 * dry);
+}
 // today's rules, where no density is painted: the slope, the water's margin, the snow line, the photograph
 // (grass_rule_at in grass_density.ludic is this on the CPU, for the migration that paints them: keep in step)
 float bladeRules(vec2 xz, vec2 huv, float y, vec3 gn) {
@@ -291,6 +306,7 @@ void main() {
   float h3 = bladeHash(ci, j, 2), h4 = bladeHash(ci, j, 3);
   // where it grows: the map's painted density when it has one, else the rules; the hashes stay procedural
   float ok = pr.bd.w > 0.5 ? bladeDensity(xz) : bladeRules(xz, huv, ht.r, gn);
+  if (pr.clr.y > 0.5) ok *= 1.0 - 0.92 * lawnBareW(xz + pr.clr.zw);
   // and trodden where the game's clearings say: a camp's ring, a prop's footprint, a cabin's floor
   if (pr.clr.x > 0.5 && h4 <= ok) ok *= clearAt(xz);
   if (h4 > ok) return;
