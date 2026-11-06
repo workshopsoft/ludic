@@ -627,7 +627,9 @@ void main() {
   if (u_micro_p.x > 0.0) sm.xyz = microSkin(sm.xyz, mc);
   mat3 tbn = normalFrame(N, v_wpos, v_uv);
   n = normalize(tbn * sm.xyz);
-  arm = texture(u_arm, v_uv).rgb;
+  vec4 armA = texture(u_arm, v_uv);
+  arm = armA.rgb;
+  g_emisMask = armA.a;
 #if defined(EYE) || defined(SSS_SPLIT)
   if (head) arm.g = hm.a;
 #endif
@@ -1125,7 +1127,7 @@ void main() {
 #endif
   if (any(isnan(col))) col = vec3(0.0);
   // a negative factor is an emission from the base colour (a lightbox face lit from behind: mpc.ludic mpc_emis)
-  col += (u_fac_emis.x < 0.0) ? alb * -u_fac_emis : u_fac_emis;
+  col += (u_fac_emis.x < 0.0) ? alb * -u_fac_emis * g_emisMask : u_fac_emis;
 #ifdef TRANSLUCENT
   // Over: the surface is fogged and then laid over what is behind it. Additive: the light it adds is
   // dimmed by the air between it and the eye and adds no fog of its own (applyFog is linear in the

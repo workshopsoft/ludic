@@ -440,6 +440,9 @@ vec3 clCol(int i) { return i == 0 ? u_cl_col0 : (i == 1 ? u_cl_col1 : u_cl_col2)
 // a dielectric's reflectance at normal incidence: 0.04, Unreal's Specular 0.5 (0.08 x Specular). A material that keys its own
 // specular sets it before shade() (the jeans: spec_basic_intensity times the weave; a MetaHuman's skin: model.frag)
 float g_dielF0 = 0.04;
+// a base-colour emission's mask (model.frag: the ARM map's alpha on the plain path; a map with no alpha reads 1): which texels of a lit
+// surface glow - a far facade card's lit windows (game src/bld: kit.py bakes the card pages' ORM alpha)
+float g_emisMask = 1.0;
 
 // A material's bent normal (Unreal's BentNormal custom output; a MetaHuman head's T_MH_BentNormal_AO, model.frag), set before shade():
 // its world direction and the surface's base colour (the occlusion's multi-bounce is the base colour's, not the split's white)
