@@ -166,3 +166,19 @@ export function model_finish(model: Model, corners: floats) -> void { model_box_
 
 # a texture from a PNG file, for a model made in code (srgb for colour, not for normals or ARM); 0 when it will not load
 export function model_texture(render3d_st: mut Render3dState, path: string, srgb: bool) -> int { return tex_load(render3d_st, path, srgb) }
+
+# a game's own buffers given back (a merge's arrays once their model holds them on the GPU, a file's bytes once read): a game reaches
+# no raw memory, so these are its way to free what floats(), words(), Fs.read_bytes and its lists of them made
+export function model_floats_free(f: floats) -> void { if f != null { free(f) } }
+export function model_words_free(w: words) -> void { if w != null { free(w) } }
+export function model_bytes_free(b: []byte) -> void { if b != null { free(b) } }
+export function model_floats_list_free(l: []floats) -> void {
+  if l == null { return }
+  for i in 0 .. len(l) { if l[i] != null { free(l[i]) } }
+  free(l)
+}
+export function model_words_list_free(l: []words) -> void {
+  if l == null { return }
+  for i in 0 .. len(l) { if l[i] != null { free(l[i]) } }
+  free(l)
+}
