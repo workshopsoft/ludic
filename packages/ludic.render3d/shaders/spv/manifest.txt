@@ -4782,7 +4782,7 @@ T 5185652e u_ue_lph 24
 S 5185652e u_ue_ls 25
 T 5185652e u_ue_lsh 26
 P ec5c1020 fullscreen.vert ue_skylight.frag #define SL_CAPTURE;
-B ec5c1020 frag 1 2976
+B ec5c1020 frag 1 3004
 U ec5c1020 frag u_cascade_vp 0 mat4 6 64
 U ec5c1020 frag u_cascade_split 384 float 6 16
 U ec5c1020 frag u_cascade_range 480 float 6 16
@@ -4901,6 +4901,8 @@ U ec5c1020 frag uf_end 2944 float 1 0
 U ec5c1020 frag uf_sky_dist 2948 float 1 0
 U ec5c1020 frag sl_lower_color 2960 vec3 1 0
 U ec5c1020 frag sl_lower_on 2972 float 1 0
+U ec5c1020 frag sl_clouds 2976 float 1 0
+U ec5c1020 frag u_disc_col 2992 vec3 1 0
 T ec5c1020 sl_src 2
 T ec5c1020 sl_src2 3
 T ec5c1020 u_brdf 4
@@ -4917,18 +4919,19 @@ T ec5c1020 u_s3_arm 14
 T ec5c1020 u_s3_diff 15
 T ec5c1020 u_s3_nrm 16
 T ec5c1020 u_shadow 17
-T ec5c1020 u_tershadow 18
-T ec5c1020 u_tershadow_aux 19
-T ec5c1020 u_ts_height 20
-S ec5c1020 u_ue_lg_data 21
-S ec5c1020 u_ue_lg_num 22
-S ec5c1020 u_ue_lights 23
-S ec5c1020 u_ue_lp 24
-T ec5c1020 u_ue_lph 25
-S ec5c1020 u_ue_ls 26
-T ec5c1020 u_ue_lsh 27
-T ec5c1020 ua_skyview 28
-T ec5c1020 uf_distant 29
+T ec5c1020 u_sky 18
+T ec5c1020 u_tershadow 19
+T ec5c1020 u_tershadow_aux 20
+T ec5c1020 u_ts_height 21
+S ec5c1020 u_ue_lg_data 22
+S ec5c1020 u_ue_lg_num 23
+S ec5c1020 u_ue_lights 24
+S ec5c1020 u_ue_lp 25
+T ec5c1020 u_ue_lph 26
+S ec5c1020 u_ue_ls 27
+T ec5c1020 u_ue_lsh 28
+T ec5c1020 ua_skyview 29
+T ec5c1020 uf_distant 30
 P 60eaee22 fullscreen.vert ue_skylight.frag #define SL_DOWNSAMPLE;
 B 60eaee22 frag 1 2736
 U 60eaee22 frag u_cascade_vp 0 mat4 6 64
@@ -5047,18 +5050,19 @@ T 60eaee22 u_s3_arm 14
 T 60eaee22 u_s3_diff 15
 T 60eaee22 u_s3_nrm 16
 T 60eaee22 u_shadow 17
-T 60eaee22 u_tershadow 18
-T 60eaee22 u_tershadow_aux 19
-T 60eaee22 u_ts_height 20
-S 60eaee22 u_ue_lg_data 21
-S 60eaee22 u_ue_lg_num 22
-S 60eaee22 u_ue_lights 23
-S 60eaee22 u_ue_lp 24
-T 60eaee22 u_ue_lph 25
-S 60eaee22 u_ue_ls 26
-T 60eaee22 u_ue_lsh 27
-T 60eaee22 ua_skyview 28
-T 60eaee22 uf_distant 29
+T 60eaee22 u_sky 18
+T 60eaee22 u_tershadow 19
+T 60eaee22 u_tershadow_aux 20
+T 60eaee22 u_ts_height 21
+S 60eaee22 u_ue_lg_data 22
+S 60eaee22 u_ue_lg_num 23
+S 60eaee22 u_ue_lights 24
+S 60eaee22 u_ue_lp 25
+T 60eaee22 u_ue_lph 26
+S 60eaee22 u_ue_ls 27
+T 60eaee22 u_ue_lsh 28
+T 60eaee22 ua_skyview 29
+T 60eaee22 uf_distant 30
 P 0a7028c2 fullscreen.vert ue_skylight.frag #define SL_FILTER;
 B 0a7028c2 frag 1 2736
 U 0a7028c2 frag u_cascade_vp 0 mat4 6 64
@@ -5177,18 +5181,19 @@ T 0a7028c2 u_s3_arm 14
 T 0a7028c2 u_s3_diff 15
 T 0a7028c2 u_s3_nrm 16
 T 0a7028c2 u_shadow 17
-T 0a7028c2 u_tershadow 18
-T 0a7028c2 u_tershadow_aux 19
-T 0a7028c2 u_ts_height 20
-S 0a7028c2 u_ue_lg_data 21
-S 0a7028c2 u_ue_lg_num 22
-S 0a7028c2 u_ue_lights 23
-S 0a7028c2 u_ue_lp 24
-T 0a7028c2 u_ue_lph 25
-S 0a7028c2 u_ue_ls 26
-T 0a7028c2 u_ue_lsh 27
-T 0a7028c2 ua_skyview 28
-T 0a7028c2 uf_distant 29
+T 0a7028c2 u_sky 18
+T 0a7028c2 u_tershadow 19
+T 0a7028c2 u_tershadow_aux 20
+T 0a7028c2 u_ts_height 21
+S 0a7028c2 u_ue_lg_data 22
+S 0a7028c2 u_ue_lg_num 23
+S 0a7028c2 u_ue_lights 24
+S 0a7028c2 u_ue_lp 25
+T 0a7028c2 u_ue_lph 26
+S 0a7028c2 u_ue_ls 27
+T 0a7028c2 u_ue_lsh 28
+T 0a7028c2 ua_skyview 29
+T 0a7028c2 uf_distant 30
 P 0c01b029 fullscreen.vert ue_skylight.frag #define SL_SH;
 B 0c01b029 frag 1 2736
 U 0c01b029 frag u_cascade_vp 0 mat4 6 64
@@ -5307,18 +5312,19 @@ T 0c01b029 u_s3_arm 14
 T 0c01b029 u_s3_diff 15
 T 0c01b029 u_s3_nrm 16
 T 0c01b029 u_shadow 17
-T 0c01b029 u_tershadow 18
-T 0c01b029 u_tershadow_aux 19
-T 0c01b029 u_ts_height 20
-S 0c01b029 u_ue_lg_data 21
-S 0c01b029 u_ue_lg_num 22
-S 0c01b029 u_ue_lights 23
-S 0c01b029 u_ue_lp 24
-T 0c01b029 u_ue_lph 25
-S 0c01b029 u_ue_ls 26
-T 0c01b029 u_ue_lsh 27
-T 0c01b029 ua_skyview 28
-T 0c01b029 uf_distant 29
+T 0c01b029 u_sky 18
+T 0c01b029 u_tershadow 19
+T 0c01b029 u_tershadow_aux 20
+T 0c01b029 u_ts_height 21
+S 0c01b029 u_ue_lg_data 22
+S 0c01b029 u_ue_lg_num 23
+S 0c01b029 u_ue_lights 24
+S 0c01b029 u_ue_lp 25
+T 0c01b029 u_ue_lph 26
+S 0c01b029 u_ue_ls 27
+T 0c01b029 u_ue_lsh 28
+T 0c01b029 ua_skyview 29
+T 0c01b029 uf_distant 30
 P d39e7116 fullscreen.vert ue_volfog.frag #define VF_INTEGRATE;
 B d39e7116 frag 1 2876
 U d39e7116 frag u_cascade_vp 0 mat4 6 64

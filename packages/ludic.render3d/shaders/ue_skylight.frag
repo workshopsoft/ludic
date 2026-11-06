@@ -85,6 +85,31 @@ uniform float uf_end;
 uniform float uf_sky_dist;
 uniform vec3 sl_lower_color;       // LowerHemisphereColor
 uniform float sl_lower_on;         // bLowerHemisphereIsBlack
+// the clouds (Unreal's capture State 1 renders the volumetric clouds into the sky light, SkyLightComponent bCaptureClouds): ours are
+// sky.frag's photograph clouds over the atmosphere, laid on the capture the same way, so a cloudy sky lights the world grey-white
+// as Unreal's does, not by the clear atmosphere's blue alone (sl_clouds 0: R3D_SKYLIGHT_CLOUDS=0 or R3D_SKY_CLOUDS=0)
+uniform float sl_clouds;
+uniform sampler2D u_sky;
+uniform vec2 u_sky_rot;
+uniform vec3 u_disc_col;
+vec2 slSkyUV(vec3 d) {
+  vec3 r = vec3(u_sky_rot.y * d.x + u_sky_rot.x * d.z, d.y, -u_sky_rot.x * d.x + u_sky_rot.y * d.z);
+  return vec2(atan(r.x, -r.z) / (2.0 * SL_PI) + 0.5, acos(clamp(r.y, -1.0, 1.0)) / SL_PI);
+}
+// sky.frag's cloud composite (keep the two the same)
+vec3 slClouds(vec3 atm, vec3 dir) {
+  if (sl_clouds < 0.5 || dir.y <= -0.02) return atm;
+  vec3 raw = textureLod(u_sky, slSkyUV(dir), 0.0).rgb;
+  float mx = max(raw.r, max(raw.g, raw.b));
+  float sat = (mx - min(raw.r, min(raw.g, raw.b))) / max(mx, 1e-4);
+  float rl = dot(raw, vec3(0.2126, 0.7152, 0.0722));
+  float bl = max(dot(textureLod(u_sky, slSkyUV(dir), 6.0).rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+  float cl = (1.0 - smoothstep(0.16, 0.40, sat)) * smoothstep(-0.02, 0.06, dir.y);
+  float al = dot(atm, vec3(0.2126, 0.7152, 0.0722));
+  vec3 sunTint = u_disc_col / max(max(u_disc_col.r, max(u_disc_col.g, u_disc_col.b)), 1e-4);
+  vec3 cloudCol = vec3(al * clamp(rl / bl, 0.7, 2.6) * 1.35) * mix(vec3(1.0), sunTint, 0.35);
+  return mix(atm, cloudCol, cl);
+}
 float slNearest(vec3 ro, vec3 rd, float r) {
   float b = 2.0 * dot(rd, ro);
   float c = dot(ro, ro) - r * r;
@@ -157,7 +182,7 @@ void main() {
 #ifdef SL_CAPTURE
   vec3 dUe = normalize(slCubemapVector(slScaledUVs(), int(sl_face)));
   vec3 dOurs = vec3(dUe.x, dUe.z, dUe.y);
-  vec3 L = slSky(dUe);
+  vec3 L = slClouds(slSky(dUe), dOurs);
   vec4 fog = slHeightFog(dOurs);
   L = L * fog.a + fog.rgb;
   // ApplyLowerHemisphereColorPS: below the horizon (Unreal's N.z < 0) the solid colour by its coverage (alpha 1: all of it)

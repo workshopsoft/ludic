@@ -185,6 +185,17 @@ function ue_sl_faces(render3d_st: mut Render3dState, sl: UeSkyLight, f0: int, f1
   ue_sky_bind(render3d_st, p)
   r3d_bind_2d(render3d_st, p, "uf_distant", 2, render3d_st.ue_distant.color)
   ue_fog_params(render3d_st, p)
+  # the clouds into the capture (ue_skylight.frag slClouds): sky.frag's photograph, its rotation and the sun's tint
+  var clouds = 0.0
+  if render3d_st.sky_tex > 0 { clouds = 1.0 }
+  if r3d_env_has(render3d_st, "R3D_SKY_CLOUDS") and r3d_env(render3d_st, "R3D_SKY_CLOUDS") == "0" { clouds = 0.0 }
+  if r3d_env_has(render3d_st, "R3D_SKYLIGHT_CLOUDS") and r3d_env(render3d_st, "R3D_SKYLIGHT_CLOUDS") == "0" { clouds = 0.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "sl_clouds"), clouds)
+  if clouds > 0.0 {
+    r3d_bind_2d(render3d_st, p, "u_sky", 3, render3d_st.sky_tex)
+    sky_bind_rot(render3d_st, p)
+    u_v3(render3d_st, gpu_uniform(render3d_st, p, "u_disc_col"), render3d_st.sky_disc_col)
+  }
   var on = 0.0
   if sl.lower_hemisphere_is_black { on = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "sl_lower_on"), on)
