@@ -59,6 +59,7 @@ vec2 skyUV(vec3 d) {
 // (Sampling the terrain's own albedo would be better still and wants a texture bound to every
 // program; that is phase 60's, where the terrain materials are being reworked anyway.)
 uniform vec3 u_ground_alb;       // the low ground: meadow and forest
+uniform float u_bounce;          // 1: shade()'s own bounce off the ground; 0 while the sky light's lower hemisphere is the ground's (ue_skylight.ludic)
 uniform vec3 u_ground_alb_hi;    // above the treeline: rock, scree, snow
 uniform float u_ground_hi_y;     // the height they cross at (world units)
 uniform float u_ground_hi_w;     // over how many metres
@@ -817,7 +818,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   vec3 specIBL = pre * (Fr * brdf.x + brdf.y) * u_spec_scale * skyK;
   // one bounce off the sunlit ground onto whatever faces it (a warm fill from below)
   vec3 groundAlb = groundAlbAt(wpos.y) * 0.55;
-  vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI * sunK + irr * skyK) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5;
+  vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI * sunK + irr * skyK) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5 * u_bounce;
   vec3 zoneAmb = kdi * albedo * lzAmb.rgb * lz;
   if (lz > 0.0 && u_zl_n > 0) zoneAmb += kdi * zoneLamps(wpos, n, albedo) * lz;
   // specular occlusion from ao

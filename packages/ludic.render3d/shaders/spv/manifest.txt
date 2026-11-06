@@ -19,6 +19,7 @@ U 2ee6d2e3 frag u_leaf_tr 752 vec4 1 0
 U 2ee6d2e3 frag u_spec_scale 768 float 1 0
 U 2ee6d2e3 frag u_sky_rot 776 vec2 1 0
 U 2ee6d2e3 frag u_ground_alb 784 vec3 1 0
+U 2ee6d2e3 frag u_bounce 796 float 1 0
 U 2ee6d2e3 frag u_ground_alb_hi 800 vec3 1 0
 U 2ee6d2e3 frag u_ground_hi_y 812 float 1 0
 U 2ee6d2e3 frag u_ground_hi_w 816 float 1 0
@@ -151,6 +152,7 @@ U f64cfec2 frag u_leaf_tr 752 vec4 1 0
 U f64cfec2 frag u_spec_scale 768 float 1 0
 U f64cfec2 frag u_sky_rot 776 vec2 1 0
 U f64cfec2 frag u_ground_alb 784 vec3 1 0
+U f64cfec2 frag u_bounce 796 float 1 0
 U f64cfec2 frag u_ground_alb_hi 800 vec3 1 0
 U f64cfec2 frag u_ground_hi_y 812 float 1 0
 U f64cfec2 frag u_ground_hi_w 816 float 1 0
@@ -274,6 +276,7 @@ U 9d3e2ddd frag u_leaf_tr 752 vec4 1 0
 U 9d3e2ddd frag u_spec_scale 768 float 1 0
 U 9d3e2ddd frag u_sky_rot 776 vec2 1 0
 U 9d3e2ddd frag u_ground_alb 784 vec3 1 0
+U 9d3e2ddd frag u_bounce 796 float 1 0
 U 9d3e2ddd frag u_ground_alb_hi 800 vec3 1 0
 U 9d3e2ddd frag u_ground_hi_y 812 float 1 0
 U 9d3e2ddd frag u_ground_hi_w 816 float 1 0
@@ -398,6 +401,7 @@ U c57b4f14 frag u_leaf_tr 752 vec4 1 0
 U c57b4f14 frag u_spec_scale 768 float 1 0
 U c57b4f14 frag u_sky_rot 776 vec2 1 0
 U c57b4f14 frag u_ground_alb 784 vec3 1 0
+U c57b4f14 frag u_bounce 796 float 1 0
 U c57b4f14 frag u_ground_alb_hi 800 vec3 1 0
 U c57b4f14 frag u_ground_hi_y 812 float 1 0
 U c57b4f14 frag u_ground_hi_w 816 float 1 0
@@ -522,6 +526,7 @@ U 99f4d2a9 frag u_leaf_tr 752 vec4 1 0
 U 99f4d2a9 frag u_spec_scale 768 float 1 0
 U 99f4d2a9 frag u_sky_rot 776 vec2 1 0
 U 99f4d2a9 frag u_ground_alb 784 vec3 1 0
+U 99f4d2a9 frag u_bounce 796 float 1 0
 U 99f4d2a9 frag u_ground_alb_hi 800 vec3 1 0
 U 99f4d2a9 frag u_ground_hi_y 812 float 1 0
 U 99f4d2a9 frag u_ground_hi_w 816 float 1 0
@@ -653,6 +658,7 @@ U 5161e6ba frag u_leaf_tr 752 vec4 1 0
 U 5161e6ba frag u_spec_scale 768 float 1 0
 U 5161e6ba frag u_sky_rot 776 vec2 1 0
 U 5161e6ba frag u_ground_alb 784 vec3 1 0
+U 5161e6ba frag u_bounce 796 float 1 0
 U 5161e6ba frag u_ground_alb_hi 800 vec3 1 0
 U 5161e6ba frag u_ground_hi_y 812 float 1 0
 U 5161e6ba frag u_ground_hi_w 816 float 1 0
@@ -781,6 +787,7 @@ U 65858d5d frag u_leaf_tr 752 vec4 1 0
 U 65858d5d frag u_spec_scale 768 float 1 0
 U 65858d5d frag u_sky_rot 776 vec2 1 0
 U 65858d5d frag u_ground_alb 784 vec3 1 0
+U 65858d5d frag u_bounce 796 float 1 0
 U 65858d5d frag u_ground_alb_hi 800 vec3 1 0
 U 65858d5d frag u_ground_hi_y 812 float 1 0
 U 65858d5d frag u_ground_hi_w 816 float 1 0
@@ -902,6 +909,7 @@ U 5b8c3ae8 frag u_leaf_tr 752 vec4 1 0
 U 5b8c3ae8 frag u_spec_scale 768 float 1 0
 U 5b8c3ae8 frag u_sky_rot 776 vec2 1 0
 U 5b8c3ae8 frag u_ground_alb 784 vec3 1 0
+U 5b8c3ae8 frag u_bounce 796 float 1 0
 U 5b8c3ae8 frag u_ground_alb_hi 800 vec3 1 0
 U 5b8c3ae8 frag u_ground_hi_y 812 float 1 0
 U 5b8c3ae8 frag u_ground_hi_w 816 float 1 0
@@ -1025,6 +1033,7 @@ U 4be7acd9 frag u_leaf_tr 752 vec4 1 0
 U 4be7acd9 frag u_spec_scale 768 float 1 0
 U 4be7acd9 frag u_sky_rot 776 vec2 1 0
 U 4be7acd9 frag u_ground_alb 784 vec3 1 0
+U 4be7acd9 frag u_bounce 796 float 1 0
 U 4be7acd9 frag u_ground_alb_hi 800 vec3 1 0
 U 4be7acd9 frag u_ground_hi_y 812 float 1 0
 U 4be7acd9 frag u_ground_hi_w 816 float 1 0
@@ -1159,6 +1168,7 @@ U c60a9a25 frag u_leaf_tr 752 vec4 1 0
 U c60a9a25 frag u_spec_scale 768 float 1 0
 U c60a9a25 frag u_sky_rot 776 vec2 1 0
 U c60a9a25 frag u_ground_alb 784 vec3 1 0
+U c60a9a25 frag u_bounce 796 float 1 0
 U c60a9a25 frag u_ground_alb_hi 800 vec3 1 0
 U c60a9a25 frag u_ground_hi_y 812 float 1 0
 U c60a9a25 frag u_ground_hi_w 816 float 1 0
@@ -1282,6 +1292,7 @@ U 858f5089 frag u_leaf_tr 752 vec4 1 0
 U 858f5089 frag u_spec_scale 768 float 1 0
 U 858f5089 frag u_sky_rot 776 vec2 1 0
 U 858f5089 frag u_ground_alb 784 vec3 1 0
+U 858f5089 frag u_bounce 796 float 1 0
 U 858f5089 frag u_ground_alb_hi 800 vec3 1 0
 U 858f5089 frag u_ground_hi_y 812 float 1 0
 U 858f5089 frag u_ground_hi_w 816 float 1 0
@@ -1403,6 +1414,7 @@ U e18e40c9 frag u_leaf_tr 752 vec4 1 0
 U e18e40c9 frag u_spec_scale 768 float 1 0
 U e18e40c9 frag u_sky_rot 776 vec2 1 0
 U e18e40c9 frag u_ground_alb 784 vec3 1 0
+U e18e40c9 frag u_bounce 796 float 1 0
 U e18e40c9 frag u_ground_alb_hi 800 vec3 1 0
 U e18e40c9 frag u_ground_hi_y 812 float 1 0
 U e18e40c9 frag u_ground_hi_w 816 float 1 0
@@ -1526,6 +1538,7 @@ U 638623c2 frag u_leaf_tr 752 vec4 1 0
 U 638623c2 frag u_spec_scale 768 float 1 0
 U 638623c2 frag u_sky_rot 776 vec2 1 0
 U 638623c2 frag u_ground_alb 784 vec3 1 0
+U 638623c2 frag u_bounce 796 float 1 0
 U 638623c2 frag u_ground_alb_hi 800 vec3 1 0
 U 638623c2 frag u_ground_hi_y 812 float 1 0
 U 638623c2 frag u_ground_hi_w 816 float 1 0
@@ -1651,6 +1664,7 @@ U 4cf96468 frag u_leaf_tr 752 vec4 1 0
 U 4cf96468 frag u_spec_scale 768 float 1 0
 U 4cf96468 frag u_sky_rot 776 vec2 1 0
 U 4cf96468 frag u_ground_alb 784 vec3 1 0
+U 4cf96468 frag u_bounce 796 float 1 0
 U 4cf96468 frag u_ground_alb_hi 800 vec3 1 0
 U 4cf96468 frag u_ground_hi_y 812 float 1 0
 U 4cf96468 frag u_ground_hi_w 816 float 1 0
@@ -1778,6 +1792,7 @@ U 428caa3a frag u_leaf_tr 752 vec4 1 0
 U 428caa3a frag u_spec_scale 768 float 1 0
 U 428caa3a frag u_sky_rot 776 vec2 1 0
 U 428caa3a frag u_ground_alb 784 vec3 1 0
+U 428caa3a frag u_bounce 796 float 1 0
 U 428caa3a frag u_ground_alb_hi 800 vec3 1 0
 U 428caa3a frag u_ground_hi_y 812 float 1 0
 U 428caa3a frag u_ground_hi_w 816 float 1 0
@@ -1923,6 +1938,7 @@ U 3e4b62f9 frag u_leaf_tr 752 vec4 1 0
 U 3e4b62f9 frag u_spec_scale 768 float 1 0
 U 3e4b62f9 frag u_sky_rot 776 vec2 1 0
 U 3e4b62f9 frag u_ground_alb 784 vec3 1 0
+U 3e4b62f9 frag u_bounce 796 float 1 0
 U 3e4b62f9 frag u_ground_alb_hi 800 vec3 1 0
 U 3e4b62f9 frag u_ground_hi_y 812 float 1 0
 U 3e4b62f9 frag u_ground_hi_w 816 float 1 0
@@ -2047,6 +2063,7 @@ U 676965ab frag u_leaf_tr 752 vec4 1 0
 U 676965ab frag u_spec_scale 768 float 1 0
 U 676965ab frag u_sky_rot 776 vec2 1 0
 U 676965ab frag u_ground_alb 784 vec3 1 0
+U 676965ab frag u_bounce 796 float 1 0
 U 676965ab frag u_ground_alb_hi 800 vec3 1 0
 U 676965ab frag u_ground_hi_y 812 float 1 0
 U 676965ab frag u_ground_hi_w 816 float 1 0
@@ -2138,6 +2155,7 @@ U 676965ab frag u_gi 2964 float 1 0
 U 676965ab frag u_use_hzb 2968 float 1 0
 U 676965ab frag u_pk 2976 vec4 1 0
 U 676965ab frag u_full 2992 vec2 1 0
+U 676965ab frag u_ao_sun_ratio 3000 float 1 0
 U 676965ab frag u_ao_q 3008 vec3 1 0
 T 676965ab u_brdf 2
 T 676965ab u_depth 3
@@ -2186,6 +2204,7 @@ U f4dc83f0 frag u_leaf_tr 752 vec4 1 0
 U f4dc83f0 frag u_spec_scale 768 float 1 0
 U f4dc83f0 frag u_sky_rot 776 vec2 1 0
 U f4dc83f0 frag u_ground_alb 784 vec3 1 0
+U f4dc83f0 frag u_bounce 796 float 1 0
 U f4dc83f0 frag u_ground_alb_hi 800 vec3 1 0
 U f4dc83f0 frag u_ground_hi_y 812 float 1 0
 U f4dc83f0 frag u_ground_hi_w 816 float 1 0
@@ -2316,6 +2335,7 @@ U 9d2e76a1 frag u_leaf_tr 752 vec4 1 0
 U 9d2e76a1 frag u_spec_scale 768 float 1 0
 U 9d2e76a1 frag u_sky_rot 776 vec2 1 0
 U 9d2e76a1 frag u_ground_alb 784 vec3 1 0
+U 9d2e76a1 frag u_bounce 796 float 1 0
 U 9d2e76a1 frag u_ground_alb_hi 800 vec3 1 0
 U 9d2e76a1 frag u_ground_hi_y 812 float 1 0
 U 9d2e76a1 frag u_ground_hi_w 816 float 1 0
@@ -2455,6 +2475,7 @@ U 1fc8ce3d frag u_leaf_tr 752 vec4 1 0
 U 1fc8ce3d frag u_spec_scale 768 float 1 0
 U 1fc8ce3d frag u_sky_rot 776 vec2 1 0
 U 1fc8ce3d frag u_ground_alb 784 vec3 1 0
+U 1fc8ce3d frag u_bounce 796 float 1 0
 U 1fc8ce3d frag u_ground_alb_hi 800 vec3 1 0
 U 1fc8ce3d frag u_ground_hi_y 812 float 1 0
 U 1fc8ce3d frag u_ground_hi_w 816 float 1 0
@@ -2600,6 +2621,7 @@ U 7a99acdb frag u_leaf_tr 752 vec4 1 0
 U 7a99acdb frag u_spec_scale 768 float 1 0
 U 7a99acdb frag u_sky_rot 776 vec2 1 0
 U 7a99acdb frag u_ground_alb 784 vec3 1 0
+U 7a99acdb frag u_bounce 796 float 1 0
 U 7a99acdb frag u_ground_alb_hi 800 vec3 1 0
 U 7a99acdb frag u_ground_hi_y 812 float 1 0
 U 7a99acdb frag u_ground_hi_w 816 float 1 0
@@ -2745,6 +2767,7 @@ U 94b3c82a frag u_leaf_tr 752 vec4 1 0
 U 94b3c82a frag u_spec_scale 768 float 1 0
 U 94b3c82a frag u_sky_rot 776 vec2 1 0
 U 94b3c82a frag u_ground_alb 784 vec3 1 0
+U 94b3c82a frag u_bounce 796 float 1 0
 U 94b3c82a frag u_ground_alb_hi 800 vec3 1 0
 U 94b3c82a frag u_ground_hi_y 812 float 1 0
 U 94b3c82a frag u_ground_hi_w 816 float 1 0
@@ -2890,6 +2913,7 @@ U 6902b9b4 frag u_leaf_tr 752 vec4 1 0
 U 6902b9b4 frag u_spec_scale 768 float 1 0
 U 6902b9b4 frag u_sky_rot 776 vec2 1 0
 U 6902b9b4 frag u_ground_alb 784 vec3 1 0
+U 6902b9b4 frag u_bounce 796 float 1 0
 U 6902b9b4 frag u_ground_alb_hi 800 vec3 1 0
 U 6902b9b4 frag u_ground_hi_y 812 float 1 0
 U 6902b9b4 frag u_ground_hi_w 816 float 1 0
@@ -3035,6 +3059,7 @@ U b09e6ad1 frag u_leaf_tr 752 vec4 1 0
 U b09e6ad1 frag u_spec_scale 768 float 1 0
 U b09e6ad1 frag u_sky_rot 776 vec2 1 0
 U b09e6ad1 frag u_ground_alb 784 vec3 1 0
+U b09e6ad1 frag u_bounce 796 float 1 0
 U b09e6ad1 frag u_ground_alb_hi 800 vec3 1 0
 U b09e6ad1 frag u_ground_hi_y 812 float 1 0
 U b09e6ad1 frag u_ground_hi_w 816 float 1 0
@@ -3180,6 +3205,7 @@ U 0145af19 frag u_leaf_tr 752 vec4 1 0
 U 0145af19 frag u_spec_scale 768 float 1 0
 U 0145af19 frag u_sky_rot 776 vec2 1 0
 U 0145af19 frag u_ground_alb 784 vec3 1 0
+U 0145af19 frag u_bounce 796 float 1 0
 U 0145af19 frag u_ground_alb_hi 800 vec3 1 0
 U 0145af19 frag u_ground_hi_y 812 float 1 0
 U 0145af19 frag u_ground_hi_w 816 float 1 0
@@ -3308,6 +3334,7 @@ U 2714db33 frag u_leaf_tr 752 vec4 1 0
 U 2714db33 frag u_spec_scale 768 float 1 0
 U 2714db33 frag u_sky_rot 776 vec2 1 0
 U 2714db33 frag u_ground_alb 784 vec3 1 0
+U 2714db33 frag u_bounce 796 float 1 0
 U 2714db33 frag u_ground_alb_hi 800 vec3 1 0
 U 2714db33 frag u_ground_hi_y 812 float 1 0
 U 2714db33 frag u_ground_hi_w 816 float 1 0
@@ -3445,6 +3472,7 @@ U ae9e1f28 frag u_leaf_tr 752 vec4 1 0
 U ae9e1f28 frag u_spec_scale 768 float 1 0
 U ae9e1f28 frag u_sky_rot 776 vec2 1 0
 U ae9e1f28 frag u_ground_alb 784 vec3 1 0
+U ae9e1f28 frag u_bounce 796 float 1 0
 U ae9e1f28 frag u_ground_alb_hi 800 vec3 1 0
 U ae9e1f28 frag u_ground_hi_y 812 float 1 0
 U ae9e1f28 frag u_ground_hi_w 816 float 1 0
@@ -3575,6 +3603,7 @@ U 1837ffc4 frag u_leaf_tr 752 vec4 1 0
 U 1837ffc4 frag u_spec_scale 768 float 1 0
 U 1837ffc4 frag u_sky_rot 776 vec2 1 0
 U 1837ffc4 frag u_ground_alb 784 vec3 1 0
+U 1837ffc4 frag u_bounce 796 float 1 0
 U 1837ffc4 frag u_ground_alb_hi 800 vec3 1 0
 U 1837ffc4 frag u_ground_hi_y 812 float 1 0
 U 1837ffc4 frag u_ground_hi_w 816 float 1 0
@@ -3703,6 +3732,7 @@ U 10f784d6 frag u_leaf_tr 752 vec4 1 0
 U 10f784d6 frag u_spec_scale 768 float 1 0
 U 10f784d6 frag u_sky_rot 776 vec2 1 0
 U 10f784d6 frag u_ground_alb 784 vec3 1 0
+U 10f784d6 frag u_bounce 796 float 1 0
 U 10f784d6 frag u_ground_alb_hi 800 vec3 1 0
 U 10f784d6 frag u_ground_hi_y 812 float 1 0
 U 10f784d6 frag u_ground_hi_w 816 float 1 0
@@ -3828,6 +3858,7 @@ U 9aff37a2 frag u_leaf_tr 752 vec4 1 0
 U 9aff37a2 frag u_spec_scale 768 float 1 0
 U 9aff37a2 frag u_sky_rot 776 vec2 1 0
 U 9aff37a2 frag u_ground_alb 784 vec3 1 0
+U 9aff37a2 frag u_bounce 796 float 1 0
 U 9aff37a2 frag u_ground_alb_hi 800 vec3 1 0
 U 9aff37a2 frag u_ground_hi_y 812 float 1 0
 U 9aff37a2 frag u_ground_hi_w 816 float 1 0
@@ -3952,6 +3983,7 @@ U 7cf3f83a frag u_leaf_tr 752 vec4 1 0
 U 7cf3f83a frag u_spec_scale 768 float 1 0
 U 7cf3f83a frag u_sky_rot 776 vec2 1 0
 U 7cf3f83a frag u_ground_alb 784 vec3 1 0
+U 7cf3f83a frag u_bounce 796 float 1 0
 U 7cf3f83a frag u_ground_alb_hi 800 vec3 1 0
 U 7cf3f83a frag u_ground_hi_y 812 float 1 0
 U 7cf3f83a frag u_ground_hi_w 816 float 1 0
@@ -4088,6 +4120,7 @@ U 36185975 frag u_leaf_tr 752 vec4 1 0
 U 36185975 frag u_spec_scale 768 float 1 0
 U 36185975 frag u_sky_rot 776 vec2 1 0
 U 36185975 frag u_ground_alb 784 vec3 1 0
+U 36185975 frag u_bounce 796 float 1 0
 U 36185975 frag u_ground_alb_hi 800 vec3 1 0
 U 36185975 frag u_ground_hi_y 812 float 1 0
 U 36185975 frag u_ground_hi_w 816 float 1 0
@@ -4224,6 +4257,7 @@ U 22a9f6a8 frag u_leaf_tr 752 vec4 1 0
 U 22a9f6a8 frag u_spec_scale 768 float 1 0
 U 22a9f6a8 frag u_sky_rot 776 vec2 1 0
 U 22a9f6a8 frag u_ground_alb 784 vec3 1 0
+U 22a9f6a8 frag u_bounce 796 float 1 0
 U 22a9f6a8 frag u_ground_alb_hi 800 vec3 1 0
 U 22a9f6a8 frag u_ground_hi_y 812 float 1 0
 U 22a9f6a8 frag u_ground_hi_w 816 float 1 0
@@ -4368,6 +4402,7 @@ U abb56d53 frag u_leaf_tr 752 vec4 1 0
 U abb56d53 frag u_spec_scale 768 float 1 0
 U abb56d53 frag u_sky_rot 776 vec2 1 0
 U abb56d53 frag u_ground_alb 784 vec3 1 0
+U abb56d53 frag u_bounce 796 float 1 0
 U abb56d53 frag u_ground_alb_hi 800 vec3 1 0
 U abb56d53 frag u_ground_hi_y 812 float 1 0
 U abb56d53 frag u_ground_hi_w 816 float 1 0
@@ -4513,6 +4548,7 @@ U 0689247f frag u_leaf_tr 752 vec4 1 0
 U 0689247f frag u_spec_scale 768 float 1 0
 U 0689247f frag u_sky_rot 776 vec2 1 0
 U 0689247f frag u_ground_alb 784 vec3 1 0
+U 0689247f frag u_bounce 796 float 1 0
 U 0689247f frag u_ground_alb_hi 800 vec3 1 0
 U 0689247f frag u_ground_hi_y 812 float 1 0
 U 0689247f frag u_ground_hi_w 816 float 1 0
@@ -4635,6 +4671,7 @@ U 5185652e frag u_leaf_tr 752 vec4 1 0
 U 5185652e frag u_spec_scale 768 float 1 0
 U 5185652e frag u_sky_rot 776 vec2 1 0
 U 5185652e frag u_ground_alb 784 vec3 1 0
+U 5185652e frag u_bounce 796 float 1 0
 U 5185652e frag u_ground_alb_hi 800 vec3 1 0
 U 5185652e frag u_ground_hi_y 812 float 1 0
 U 5185652e frag u_ground_hi_w 816 float 1 0
@@ -4763,6 +4800,7 @@ U ec5c1020 frag u_leaf_tr 752 vec4 1 0
 U ec5c1020 frag u_spec_scale 768 float 1 0
 U ec5c1020 frag u_sky_rot 776 vec2 1 0
 U ec5c1020 frag u_ground_alb 784 vec3 1 0
+U ec5c1020 frag u_bounce 796 float 1 0
 U ec5c1020 frag u_ground_alb_hi 800 vec3 1 0
 U ec5c1020 frag u_ground_hi_y 812 float 1 0
 U ec5c1020 frag u_ground_hi_w 816 float 1 0
@@ -4910,6 +4948,7 @@ U 60eaee22 frag u_leaf_tr 752 vec4 1 0
 U 60eaee22 frag u_spec_scale 768 float 1 0
 U 60eaee22 frag u_sky_rot 776 vec2 1 0
 U 60eaee22 frag u_ground_alb 784 vec3 1 0
+U 60eaee22 frag u_bounce 796 float 1 0
 U 60eaee22 frag u_ground_alb_hi 800 vec3 1 0
 U 60eaee22 frag u_ground_hi_y 812 float 1 0
 U 60eaee22 frag u_ground_hi_w 816 float 1 0
@@ -5039,6 +5078,7 @@ U 0a7028c2 frag u_leaf_tr 752 vec4 1 0
 U 0a7028c2 frag u_spec_scale 768 float 1 0
 U 0a7028c2 frag u_sky_rot 776 vec2 1 0
 U 0a7028c2 frag u_ground_alb 784 vec3 1 0
+U 0a7028c2 frag u_bounce 796 float 1 0
 U 0a7028c2 frag u_ground_alb_hi 800 vec3 1 0
 U 0a7028c2 frag u_ground_hi_y 812 float 1 0
 U 0a7028c2 frag u_ground_hi_w 816 float 1 0
@@ -5168,6 +5208,7 @@ U 0c01b029 frag u_leaf_tr 752 vec4 1 0
 U 0c01b029 frag u_spec_scale 768 float 1 0
 U 0c01b029 frag u_sky_rot 776 vec2 1 0
 U 0c01b029 frag u_ground_alb 784 vec3 1 0
+U 0c01b029 frag u_bounce 796 float 1 0
 U 0c01b029 frag u_ground_alb_hi 800 vec3 1 0
 U 0c01b029 frag u_ground_hi_y 812 float 1 0
 U 0c01b029 frag u_ground_hi_w 816 float 1 0
@@ -5297,6 +5338,7 @@ U d39e7116 frag u_leaf_tr 752 vec4 1 0
 U d39e7116 frag u_spec_scale 768 float 1 0
 U d39e7116 frag u_sky_rot 776 vec2 1 0
 U d39e7116 frag u_ground_alb 784 vec3 1 0
+U d39e7116 frag u_bounce 796 float 1 0
 U d39e7116 frag u_ground_alb_hi 800 vec3 1 0
 U d39e7116 frag u_ground_hi_y 812 float 1 0
 U d39e7116 frag u_ground_hi_w 816 float 1 0
@@ -5435,6 +5477,7 @@ U 1d59230d frag u_leaf_tr 752 vec4 1 0
 U 1d59230d frag u_spec_scale 768 float 1 0
 U 1d59230d frag u_sky_rot 776 vec2 1 0
 U 1d59230d frag u_ground_alb 784 vec3 1 0
+U 1d59230d frag u_bounce 796 float 1 0
 U 1d59230d frag u_ground_alb_hi 800 vec3 1 0
 U 1d59230d frag u_ground_hi_y 812 float 1 0
 U 1d59230d frag u_ground_hi_w 816 float 1 0
@@ -5590,6 +5633,7 @@ U d85d5f09 frag u_leaf_tr 752 vec4 1 0
 U d85d5f09 frag u_spec_scale 768 float 1 0
 U d85d5f09 frag u_sky_rot 776 vec2 1 0
 U d85d5f09 frag u_ground_alb 784 vec3 1 0
+U d85d5f09 frag u_bounce 796 float 1 0
 U d85d5f09 frag u_ground_alb_hi 800 vec3 1 0
 U d85d5f09 frag u_ground_hi_y 812 float 1 0
 U d85d5f09 frag u_ground_hi_w 816 float 1 0
@@ -5728,6 +5772,7 @@ U 10c62079 frag u_leaf_tr 752 vec4 1 0
 U 10c62079 frag u_spec_scale 768 float 1 0
 U 10c62079 frag u_sky_rot 776 vec2 1 0
 U 10c62079 frag u_ground_alb 784 vec3 1 0
+U 10c62079 frag u_bounce 796 float 1 0
 U 10c62079 frag u_ground_alb_hi 800 vec3 1 0
 U 10c62079 frag u_ground_hi_y 812 float 1 0
 U 10c62079 frag u_ground_hi_w 816 float 1 0
@@ -5866,6 +5911,7 @@ U 85cabfdc frag u_leaf_tr 752 vec4 1 0
 U 85cabfdc frag u_spec_scale 768 float 1 0
 U 85cabfdc frag u_sky_rot 776 vec2 1 0
 U 85cabfdc frag u_ground_alb 784 vec3 1 0
+U 85cabfdc frag u_bounce 796 float 1 0
 U 85cabfdc frag u_ground_alb_hi 800 vec3 1 0
 U 85cabfdc frag u_ground_hi_y 812 float 1 0
 U 85cabfdc frag u_ground_hi_w 816 float 1 0
@@ -6021,6 +6067,7 @@ U dd28137d frag u_leaf_tr 752 vec4 1 0
 U dd28137d frag u_spec_scale 768 float 1 0
 U dd28137d frag u_sky_rot 776 vec2 1 0
 U dd28137d frag u_ground_alb 784 vec3 1 0
+U dd28137d frag u_bounce 796 float 1 0
 U dd28137d frag u_ground_alb_hi 800 vec3 1 0
 U dd28137d frag u_ground_hi_y 812 float 1 0
 U dd28137d frag u_ground_hi_w 816 float 1 0
@@ -6159,6 +6206,7 @@ U c9092d50 frag u_leaf_tr 752 vec4 1 0
 U c9092d50 frag u_spec_scale 768 float 1 0
 U c9092d50 frag u_sky_rot 776 vec2 1 0
 U c9092d50 frag u_ground_alb 784 vec3 1 0
+U c9092d50 frag u_bounce 796 float 1 0
 U c9092d50 frag u_ground_alb_hi 800 vec3 1 0
 U c9092d50 frag u_ground_hi_y 812 float 1 0
 U c9092d50 frag u_ground_hi_w 816 float 1 0
@@ -6298,6 +6346,7 @@ U 3a53d463 frag u_leaf_tr 752 vec4 1 0
 U 3a53d463 frag u_spec_scale 768 float 1 0
 U 3a53d463 frag u_sky_rot 776 vec2 1 0
 U 3a53d463 frag u_ground_alb 784 vec3 1 0
+U 3a53d463 frag u_bounce 796 float 1 0
 U 3a53d463 frag u_ground_alb_hi 800 vec3 1 0
 U 3a53d463 frag u_ground_hi_y 812 float 1 0
 U 3a53d463 frag u_ground_hi_w 816 float 1 0
@@ -6437,6 +6486,7 @@ U f25c1efa frag u_leaf_tr 752 vec4 1 0
 U f25c1efa frag u_spec_scale 768 float 1 0
 U f25c1efa frag u_sky_rot 776 vec2 1 0
 U f25c1efa frag u_ground_alb 784 vec3 1 0
+U f25c1efa frag u_bounce 796 float 1 0
 U f25c1efa frag u_ground_alb_hi 800 vec3 1 0
 U f25c1efa frag u_ground_hi_y 812 float 1 0
 U f25c1efa frag u_ground_hi_w 816 float 1 0
@@ -6574,6 +6624,7 @@ U 57d4c705 frag u_leaf_tr 752 vec4 1 0
 U 57d4c705 frag u_spec_scale 768 float 1 0
 U 57d4c705 frag u_sky_rot 776 vec2 1 0
 U 57d4c705 frag u_ground_alb 784 vec3 1 0
+U 57d4c705 frag u_bounce 796 float 1 0
 U 57d4c705 frag u_ground_alb_hi 800 vec3 1 0
 U 57d4c705 frag u_ground_hi_y 812 float 1 0
 U 57d4c705 frag u_ground_hi_w 816 float 1 0
@@ -6699,6 +6750,7 @@ U a45356c7 frag u_leaf_tr 752 vec4 1 0
 U a45356c7 frag u_spec_scale 768 float 1 0
 U a45356c7 frag u_sky_rot 776 vec2 1 0
 U a45356c7 frag u_ground_alb 784 vec3 1 0
+U a45356c7 frag u_bounce 796 float 1 0
 U a45356c7 frag u_ground_alb_hi 800 vec3 1 0
 U a45356c7 frag u_ground_hi_y 812 float 1 0
 U a45356c7 frag u_ground_hi_w 816 float 1 0
@@ -6822,6 +6874,7 @@ U 4a8e9f28 frag u_leaf_tr 752 vec4 1 0
 U 4a8e9f28 frag u_spec_scale 768 float 1 0
 U 4a8e9f28 frag u_sky_rot 776 vec2 1 0
 U 4a8e9f28 frag u_ground_alb 784 vec3 1 0
+U 4a8e9f28 frag u_bounce 796 float 1 0
 U 4a8e9f28 frag u_ground_alb_hi 800 vec3 1 0
 U 4a8e9f28 frag u_ground_hi_y 812 float 1 0
 U 4a8e9f28 frag u_ground_hi_w 816 float 1 0
@@ -6946,6 +6999,7 @@ U 3a1797ab frag u_leaf_tr 752 vec4 1 0
 U 3a1797ab frag u_spec_scale 768 float 1 0
 U 3a1797ab frag u_sky_rot 776 vec2 1 0
 U 3a1797ab frag u_ground_alb 784 vec3 1 0
+U 3a1797ab frag u_bounce 796 float 1 0
 U 3a1797ab frag u_ground_alb_hi 800 vec3 1 0
 U 3a1797ab frag u_ground_hi_y 812 float 1 0
 U 3a1797ab frag u_ground_hi_w 816 float 1 0
@@ -7070,6 +7124,7 @@ U 725523d9 frag u_leaf_tr 752 vec4 1 0
 U 725523d9 frag u_spec_scale 768 float 1 0
 U 725523d9 frag u_sky_rot 776 vec2 1 0
 U 725523d9 frag u_ground_alb 784 vec3 1 0
+U 725523d9 frag u_bounce 796 float 1 0
 U 725523d9 frag u_ground_alb_hi 800 vec3 1 0
 U 725523d9 frag u_ground_hi_y 812 float 1 0
 U 725523d9 frag u_ground_hi_w 816 float 1 0
@@ -7226,6 +7281,7 @@ U a4683767 frag u_leaf_tr 752 vec4 1 0
 U a4683767 frag u_spec_scale 768 float 1 0
 U a4683767 frag u_sky_rot 776 vec2 1 0
 U a4683767 frag u_ground_alb 784 vec3 1 0
+U a4683767 frag u_bounce 796 float 1 0
 U a4683767 frag u_ground_alb_hi 800 vec3 1 0
 U a4683767 frag u_ground_hi_y 812 float 1 0
 U a4683767 frag u_ground_hi_w 816 float 1 0
@@ -7385,6 +7441,7 @@ U 74258189 frag u_leaf_tr 752 vec4 1 0
 U 74258189 frag u_spec_scale 768 float 1 0
 U 74258189 frag u_sky_rot 776 vec2 1 0
 U 74258189 frag u_ground_alb 784 vec3 1 0
+U 74258189 frag u_bounce 796 float 1 0
 U 74258189 frag u_ground_alb_hi 800 vec3 1 0
 U 74258189 frag u_ground_hi_y 812 float 1 0
 U 74258189 frag u_ground_hi_w 816 float 1 0
@@ -7539,6 +7596,7 @@ U d48d6a48 frag u_leaf_tr 752 vec4 1 0
 U d48d6a48 frag u_spec_scale 768 float 1 0
 U d48d6a48 frag u_sky_rot 776 vec2 1 0
 U d48d6a48 frag u_ground_alb 784 vec3 1 0
+U d48d6a48 frag u_bounce 796 float 1 0
 U d48d6a48 frag u_ground_alb_hi 800 vec3 1 0
 U d48d6a48 frag u_ground_hi_y 812 float 1 0
 U d48d6a48 frag u_ground_hi_w 816 float 1 0
@@ -7746,6 +7804,7 @@ U cb13f3c6 frag u_leaf_tr 752 vec4 1 0
 U cb13f3c6 frag u_spec_scale 768 float 1 0
 U cb13f3c6 frag u_sky_rot 776 vec2 1 0
 U cb13f3c6 frag u_ground_alb 784 vec3 1 0
+U cb13f3c6 frag u_bounce 796 float 1 0
 U cb13f3c6 frag u_ground_alb_hi 800 vec3 1 0
 U cb13f3c6 frag u_ground_hi_y 812 float 1 0
 U cb13f3c6 frag u_ground_hi_w 816 float 1 0
@@ -7954,6 +8013,7 @@ U b8cff226 frag u_leaf_tr 752 vec4 1 0
 U b8cff226 frag u_spec_scale 768 float 1 0
 U b8cff226 frag u_sky_rot 776 vec2 1 0
 U b8cff226 frag u_ground_alb 784 vec3 1 0
+U b8cff226 frag u_bounce 796 float 1 0
 U b8cff226 frag u_ground_alb_hi 800 vec3 1 0
 U b8cff226 frag u_ground_hi_y 812 float 1 0
 U b8cff226 frag u_ground_hi_w 816 float 1 0
@@ -8142,6 +8202,7 @@ U 3733fc38 frag u_leaf_tr 752 vec4 1 0
 U 3733fc38 frag u_spec_scale 768 float 1 0
 U 3733fc38 frag u_sky_rot 776 vec2 1 0
 U 3733fc38 frag u_ground_alb 784 vec3 1 0
+U 3733fc38 frag u_bounce 796 float 1 0
 U 3733fc38 frag u_ground_alb_hi 800 vec3 1 0
 U 3733fc38 frag u_ground_hi_y 812 float 1 0
 U 3733fc38 frag u_ground_hi_w 816 float 1 0
@@ -8282,6 +8343,7 @@ U 4d4fa91b frag u_leaf_tr 752 vec4 1 0
 U 4d4fa91b frag u_spec_scale 768 float 1 0
 U 4d4fa91b frag u_sky_rot 776 vec2 1 0
 U 4d4fa91b frag u_ground_alb 784 vec3 1 0
+U 4d4fa91b frag u_bounce 796 float 1 0
 U 4d4fa91b frag u_ground_alb_hi 800 vec3 1 0
 U 4d4fa91b frag u_ground_hi_y 812 float 1 0
 U 4d4fa91b frag u_ground_hi_w 816 float 1 0
@@ -8431,6 +8493,7 @@ U 9dce3246 frag u_leaf_tr 752 vec4 1 0
 U 9dce3246 frag u_spec_scale 768 float 1 0
 U 9dce3246 frag u_sky_rot 776 vec2 1 0
 U 9dce3246 frag u_ground_alb 784 vec3 1 0
+U 9dce3246 frag u_bounce 796 float 1 0
 U 9dce3246 frag u_ground_alb_hi 800 vec3 1 0
 U 9dce3246 frag u_ground_hi_y 812 float 1 0
 U 9dce3246 frag u_ground_hi_w 816 float 1 0
@@ -8579,6 +8642,7 @@ U 439a2253 frag u_leaf_tr 752 vec4 1 0
 U 439a2253 frag u_spec_scale 768 float 1 0
 U 439a2253 frag u_sky_rot 776 vec2 1 0
 U 439a2253 frag u_ground_alb 784 vec3 1 0
+U 439a2253 frag u_bounce 796 float 1 0
 U 439a2253 frag u_ground_alb_hi 800 vec3 1 0
 U 439a2253 frag u_ground_hi_y 812 float 1 0
 U 439a2253 frag u_ground_hi_w 816 float 1 0
@@ -8727,6 +8791,7 @@ U 86f427b0 frag u_leaf_tr 752 vec4 1 0
 U 86f427b0 frag u_spec_scale 768 float 1 0
 U 86f427b0 frag u_sky_rot 776 vec2 1 0
 U 86f427b0 frag u_ground_alb 784 vec3 1 0
+U 86f427b0 frag u_bounce 796 float 1 0
 U 86f427b0 frag u_ground_alb_hi 800 vec3 1 0
 U 86f427b0 frag u_ground_hi_y 812 float 1 0
 U 86f427b0 frag u_ground_hi_w 816 float 1 0
@@ -8875,6 +8940,7 @@ U bfa15301 frag u_leaf_tr 752 vec4 1 0
 U bfa15301 frag u_spec_scale 768 float 1 0
 U bfa15301 frag u_sky_rot 776 vec2 1 0
 U bfa15301 frag u_ground_alb 784 vec3 1 0
+U bfa15301 frag u_bounce 796 float 1 0
 U bfa15301 frag u_ground_alb_hi 800 vec3 1 0
 U bfa15301 frag u_ground_hi_y 812 float 1 0
 U bfa15301 frag u_ground_hi_w 816 float 1 0
@@ -9021,6 +9087,7 @@ U 266d2401 frag u_leaf_tr 752 vec4 1 0
 U 266d2401 frag u_spec_scale 768 float 1 0
 U 266d2401 frag u_sky_rot 776 vec2 1 0
 U 266d2401 frag u_ground_alb 784 vec3 1 0
+U 266d2401 frag u_bounce 796 float 1 0
 U 266d2401 frag u_ground_alb_hi 800 vec3 1 0
 U 266d2401 frag u_ground_hi_y 812 float 1 0
 U 266d2401 frag u_ground_hi_w 816 float 1 0
@@ -9167,6 +9234,7 @@ U 01089da8 frag u_leaf_tr 752 vec4 1 0
 U 01089da8 frag u_spec_scale 768 float 1 0
 U 01089da8 frag u_sky_rot 776 vec2 1 0
 U 01089da8 frag u_ground_alb 784 vec3 1 0
+U 01089da8 frag u_bounce 796 float 1 0
 U 01089da8 frag u_ground_alb_hi 800 vec3 1 0
 U 01089da8 frag u_ground_hi_y 812 float 1 0
 U 01089da8 frag u_ground_hi_w 816 float 1 0
@@ -9356,6 +9424,7 @@ U 254e7887 frag u_leaf_tr 752 vec4 1 0
 U 254e7887 frag u_spec_scale 768 float 1 0
 U 254e7887 frag u_sky_rot 776 vec2 1 0
 U 254e7887 frag u_ground_alb 784 vec3 1 0
+U 254e7887 frag u_bounce 796 float 1 0
 U 254e7887 frag u_ground_alb_hi 800 vec3 1 0
 U 254e7887 frag u_ground_hi_y 812 float 1 0
 U 254e7887 frag u_ground_hi_w 816 float 1 0
@@ -9541,6 +9610,7 @@ U 1ce5c5d1 frag u_leaf_tr 752 vec4 1 0
 U 1ce5c5d1 frag u_spec_scale 768 float 1 0
 U 1ce5c5d1 frag u_sky_rot 776 vec2 1 0
 U 1ce5c5d1 frag u_ground_alb 784 vec3 1 0
+U 1ce5c5d1 frag u_bounce 796 float 1 0
 U 1ce5c5d1 frag u_ground_alb_hi 800 vec3 1 0
 U 1ce5c5d1 frag u_ground_hi_y 812 float 1 0
 U 1ce5c5d1 frag u_ground_hi_w 816 float 1 0
@@ -9725,6 +9795,7 @@ U 5e70d731 frag u_leaf_tr 752 vec4 1 0
 U 5e70d731 frag u_spec_scale 768 float 1 0
 U 5e70d731 frag u_sky_rot 776 vec2 1 0
 U 5e70d731 frag u_ground_alb 784 vec3 1 0
+U 5e70d731 frag u_bounce 796 float 1 0
 U 5e70d731 frag u_ground_alb_hi 800 vec3 1 0
 U 5e70d731 frag u_ground_hi_y 812 float 1 0
 U 5e70d731 frag u_ground_hi_w 816 float 1 0
@@ -9911,6 +9982,7 @@ U f4a2b586 frag u_leaf_tr 752 vec4 1 0
 U f4a2b586 frag u_spec_scale 768 float 1 0
 U f4a2b586 frag u_sky_rot 776 vec2 1 0
 U f4a2b586 frag u_ground_alb 784 vec3 1 0
+U f4a2b586 frag u_bounce 796 float 1 0
 U f4a2b586 frag u_ground_alb_hi 800 vec3 1 0
 U f4a2b586 frag u_ground_hi_y 812 float 1 0
 U f4a2b586 frag u_ground_hi_w 816 float 1 0
@@ -10105,6 +10177,7 @@ U b4587cd4 frag u_leaf_tr 752 vec4 1 0
 U b4587cd4 frag u_spec_scale 768 float 1 0
 U b4587cd4 frag u_sky_rot 776 vec2 1 0
 U b4587cd4 frag u_ground_alb 784 vec3 1 0
+U b4587cd4 frag u_bounce 796 float 1 0
 U b4587cd4 frag u_ground_alb_hi 800 vec3 1 0
 U b4587cd4 frag u_ground_hi_y 812 float 1 0
 U b4587cd4 frag u_ground_hi_w 816 float 1 0
@@ -10290,6 +10363,7 @@ U 4dda406a frag u_leaf_tr 752 vec4 1 0
 U 4dda406a frag u_spec_scale 768 float 1 0
 U 4dda406a frag u_sky_rot 776 vec2 1 0
 U 4dda406a frag u_ground_alb 784 vec3 1 0
+U 4dda406a frag u_bounce 796 float 1 0
 U 4dda406a frag u_ground_alb_hi 800 vec3 1 0
 U 4dda406a frag u_ground_hi_y 812 float 1 0
 U 4dda406a frag u_ground_hi_w 816 float 1 0
@@ -10474,6 +10548,7 @@ U b603a056 frag u_leaf_tr 752 vec4 1 0
 U b603a056 frag u_spec_scale 768 float 1 0
 U b603a056 frag u_sky_rot 776 vec2 1 0
 U b603a056 frag u_ground_alb 784 vec3 1 0
+U b603a056 frag u_bounce 796 float 1 0
 U b603a056 frag u_ground_alb_hi 800 vec3 1 0
 U b603a056 frag u_ground_hi_y 812 float 1 0
 U b603a056 frag u_ground_hi_w 816 float 1 0
@@ -10658,6 +10733,7 @@ U 3b183d8f frag u_leaf_tr 752 vec4 1 0
 U 3b183d8f frag u_spec_scale 768 float 1 0
 U 3b183d8f frag u_sky_rot 776 vec2 1 0
 U 3b183d8f frag u_ground_alb 784 vec3 1 0
+U 3b183d8f frag u_bounce 796 float 1 0
 U 3b183d8f frag u_ground_alb_hi 800 vec3 1 0
 U 3b183d8f frag u_ground_hi_y 812 float 1 0
 U 3b183d8f frag u_ground_hi_w 816 float 1 0
@@ -10842,6 +10918,7 @@ U 79b77ed9 frag u_leaf_tr 752 vec4 1 0
 U 79b77ed9 frag u_spec_scale 768 float 1 0
 U 79b77ed9 frag u_sky_rot 776 vec2 1 0
 U 79b77ed9 frag u_ground_alb 784 vec3 1 0
+U 79b77ed9 frag u_bounce 796 float 1 0
 U 79b77ed9 frag u_ground_alb_hi 800 vec3 1 0
 U 79b77ed9 frag u_ground_hi_y 812 float 1 0
 U 79b77ed9 frag u_ground_hi_w 816 float 1 0
@@ -11027,6 +11104,7 @@ U b9fc2041 frag u_leaf_tr 752 vec4 1 0
 U b9fc2041 frag u_spec_scale 768 float 1 0
 U b9fc2041 frag u_sky_rot 776 vec2 1 0
 U b9fc2041 frag u_ground_alb 784 vec3 1 0
+U b9fc2041 frag u_bounce 796 float 1 0
 U b9fc2041 frag u_ground_alb_hi 800 vec3 1 0
 U b9fc2041 frag u_ground_hi_y 812 float 1 0
 U b9fc2041 frag u_ground_hi_w 816 float 1 0
@@ -11216,6 +11294,7 @@ U f34dce08 frag u_leaf_tr 752 vec4 1 0
 U f34dce08 frag u_spec_scale 768 float 1 0
 U f34dce08 frag u_sky_rot 776 vec2 1 0
 U f34dce08 frag u_ground_alb 784 vec3 1 0
+U f34dce08 frag u_bounce 796 float 1 0
 U f34dce08 frag u_ground_alb_hi 800 vec3 1 0
 U f34dce08 frag u_ground_hi_y 812 float 1 0
 U f34dce08 frag u_ground_hi_w 816 float 1 0
@@ -11363,6 +11442,7 @@ U 512004a1 frag u_leaf_tr 752 vec4 1 0
 U 512004a1 frag u_spec_scale 768 float 1 0
 U 512004a1 frag u_sky_rot 776 vec2 1 0
 U 512004a1 frag u_ground_alb 784 vec3 1 0
+U 512004a1 frag u_bounce 796 float 1 0
 U 512004a1 frag u_ground_alb_hi 800 vec3 1 0
 U 512004a1 frag u_ground_hi_y 812 float 1 0
 U 512004a1 frag u_ground_hi_w 816 float 1 0
@@ -11510,6 +11590,7 @@ U b964507f frag u_leaf_tr 752 vec4 1 0
 U b964507f frag u_spec_scale 768 float 1 0
 U b964507f frag u_sky_rot 776 vec2 1 0
 U b964507f frag u_ground_alb 784 vec3 1 0
+U b964507f frag u_bounce 796 float 1 0
 U b964507f frag u_ground_alb_hi 800 vec3 1 0
 U b964507f frag u_ground_hi_y 812 float 1 0
 U b964507f frag u_ground_hi_w 816 float 1 0
@@ -11640,6 +11721,7 @@ U 1b654972 frag u_leaf_tr 752 vec4 1 0
 U 1b654972 frag u_spec_scale 768 float 1 0
 U 1b654972 frag u_sky_rot 776 vec2 1 0
 U 1b654972 frag u_ground_alb 784 vec3 1 0
+U 1b654972 frag u_bounce 796 float 1 0
 U 1b654972 frag u_ground_alb_hi 800 vec3 1 0
 U 1b654972 frag u_ground_hi_y 812 float 1 0
 U 1b654972 frag u_ground_hi_w 816 float 1 0
@@ -11768,6 +11850,7 @@ U e86f78e8 frag u_leaf_tr 752 vec4 1 0
 U e86f78e8 frag u_spec_scale 768 float 1 0
 U e86f78e8 frag u_sky_rot 776 vec2 1 0
 U e86f78e8 frag u_ground_alb 784 vec3 1 0
+U e86f78e8 frag u_bounce 796 float 1 0
 U e86f78e8 frag u_ground_alb_hi 800 vec3 1 0
 U e86f78e8 frag u_ground_hi_y 812 float 1 0
 U e86f78e8 frag u_ground_hi_w 816 float 1 0
@@ -11908,6 +11991,7 @@ U 1fde9cd2 frag u_leaf_tr 752 vec4 1 0
 U 1fde9cd2 frag u_spec_scale 768 float 1 0
 U 1fde9cd2 frag u_sky_rot 776 vec2 1 0
 U 1fde9cd2 frag u_ground_alb 784 vec3 1 0
+U 1fde9cd2 frag u_bounce 796 float 1 0
 U 1fde9cd2 frag u_ground_alb_hi 800 vec3 1 0
 U 1fde9cd2 frag u_ground_hi_y 812 float 1 0
 U 1fde9cd2 frag u_ground_hi_w 816 float 1 0
@@ -12094,6 +12178,7 @@ U 62a3b8e3 frag u_leaf_tr 752 vec4 1 0
 U 62a3b8e3 frag u_spec_scale 768 float 1 0
 U 62a3b8e3 frag u_sky_rot 776 vec2 1 0
 U 62a3b8e3 frag u_ground_alb 784 vec3 1 0
+U 62a3b8e3 frag u_bounce 796 float 1 0
 U 62a3b8e3 frag u_ground_alb_hi 800 vec3 1 0
 U 62a3b8e3 frag u_ground_hi_y 812 float 1 0
 U 62a3b8e3 frag u_ground_hi_w 816 float 1 0
@@ -12278,6 +12363,7 @@ U 375ca855 frag u_leaf_tr 752 vec4 1 0
 U 375ca855 frag u_spec_scale 768 float 1 0
 U 375ca855 frag u_sky_rot 776 vec2 1 0
 U 375ca855 frag u_ground_alb 784 vec3 1 0
+U 375ca855 frag u_bounce 796 float 1 0
 U 375ca855 frag u_ground_alb_hi 800 vec3 1 0
 U 375ca855 frag u_ground_hi_y 812 float 1 0
 U 375ca855 frag u_ground_hi_w 816 float 1 0
@@ -12458,6 +12544,7 @@ U a5ad521e frag u_leaf_tr 752 vec4 1 0
 U a5ad521e frag u_spec_scale 768 float 1 0
 U a5ad521e frag u_sky_rot 776 vec2 1 0
 U a5ad521e frag u_ground_alb 784 vec3 1 0
+U a5ad521e frag u_bounce 796 float 1 0
 U a5ad521e frag u_ground_alb_hi 800 vec3 1 0
 U a5ad521e frag u_ground_hi_y 812 float 1 0
 U a5ad521e frag u_ground_hi_w 816 float 1 0
@@ -12640,6 +12727,7 @@ U c01c40c4 frag u_leaf_tr 752 vec4 1 0
 U c01c40c4 frag u_spec_scale 768 float 1 0
 U c01c40c4 frag u_sky_rot 776 vec2 1 0
 U c01c40c4 frag u_ground_alb 784 vec3 1 0
+U c01c40c4 frag u_bounce 796 float 1 0
 U c01c40c4 frag u_ground_alb_hi 800 vec3 1 0
 U c01c40c4 frag u_ground_hi_y 812 float 1 0
 U c01c40c4 frag u_ground_hi_w 816 float 1 0
@@ -12820,6 +12908,7 @@ U 6d5ca03e frag u_leaf_tr 752 vec4 1 0
 U 6d5ca03e frag u_spec_scale 768 float 1 0
 U 6d5ca03e frag u_sky_rot 776 vec2 1 0
 U 6d5ca03e frag u_ground_alb 784 vec3 1 0
+U 6d5ca03e frag u_bounce 796 float 1 0
 U 6d5ca03e frag u_ground_alb_hi 800 vec3 1 0
 U 6d5ca03e frag u_ground_hi_y 812 float 1 0
 U 6d5ca03e frag u_ground_hi_w 816 float 1 0
@@ -13002,6 +13091,7 @@ U 30b20cc2 frag u_leaf_tr 752 vec4 1 0
 U 30b20cc2 frag u_spec_scale 768 float 1 0
 U 30b20cc2 frag u_sky_rot 776 vec2 1 0
 U 30b20cc2 frag u_ground_alb 784 vec3 1 0
+U 30b20cc2 frag u_bounce 796 float 1 0
 U 30b20cc2 frag u_ground_alb_hi 800 vec3 1 0
 U 30b20cc2 frag u_ground_hi_y 812 float 1 0
 U 30b20cc2 frag u_ground_hi_w 816 float 1 0
@@ -13184,6 +13274,7 @@ U 6ff28bc6 frag u_leaf_tr 752 vec4 1 0
 U 6ff28bc6 frag u_spec_scale 768 float 1 0
 U 6ff28bc6 frag u_sky_rot 776 vec2 1 0
 U 6ff28bc6 frag u_ground_alb 784 vec3 1 0
+U 6ff28bc6 frag u_bounce 796 float 1 0
 U 6ff28bc6 frag u_ground_alb_hi 800 vec3 1 0
 U 6ff28bc6 frag u_ground_hi_y 812 float 1 0
 U 6ff28bc6 frag u_ground_hi_w 816 float 1 0
@@ -13372,6 +13463,7 @@ U 1df3d080 frag u_leaf_tr 752 vec4 1 0
 U 1df3d080 frag u_spec_scale 768 float 1 0
 U 1df3d080 frag u_sky_rot 776 vec2 1 0
 U 1df3d080 frag u_ground_alb 784 vec3 1 0
+U 1df3d080 frag u_bounce 796 float 1 0
 U 1df3d080 frag u_ground_alb_hi 800 vec3 1 0
 U 1df3d080 frag u_ground_hi_y 812 float 1 0
 U 1df3d080 frag u_ground_hi_w 816 float 1 0
@@ -13514,6 +13606,7 @@ U 93e7e791 frag u_leaf_tr 752 vec4 1 0
 U 93e7e791 frag u_spec_scale 768 float 1 0
 U 93e7e791 frag u_sky_rot 776 vec2 1 0
 U 93e7e791 frag u_ground_alb 784 vec3 1 0
+U 93e7e791 frag u_bounce 796 float 1 0
 U 93e7e791 frag u_ground_alb_hi 800 vec3 1 0
 U 93e7e791 frag u_ground_hi_y 812 float 1 0
 U 93e7e791 frag u_ground_hi_w 816 float 1 0
@@ -13701,6 +13794,7 @@ U 6a86b069 frag u_leaf_tr 752 vec4 1 0
 U 6a86b069 frag u_spec_scale 768 float 1 0
 U 6a86b069 frag u_sky_rot 776 vec2 1 0
 U 6a86b069 frag u_ground_alb 784 vec3 1 0
+U 6a86b069 frag u_bounce 796 float 1 0
 U 6a86b069 frag u_ground_alb_hi 800 vec3 1 0
 U 6a86b069 frag u_ground_hi_y 812 float 1 0
 U 6a86b069 frag u_ground_hi_w 816 float 1 0
@@ -13878,6 +13972,7 @@ U c852b292 frag u_leaf_tr 752 vec4 1 0
 U c852b292 frag u_spec_scale 768 float 1 0
 U c852b292 frag u_sky_rot 776 vec2 1 0
 U c852b292 frag u_ground_alb 784 vec3 1 0
+U c852b292 frag u_bounce 796 float 1 0
 U c852b292 frag u_ground_alb_hi 800 vec3 1 0
 U c852b292 frag u_ground_hi_y 812 float 1 0
 U c852b292 frag u_ground_hi_w 816 float 1 0
@@ -14017,6 +14112,7 @@ U 988f39cb frag u_leaf_tr 752 vec4 1 0
 U 988f39cb frag u_spec_scale 768 float 1 0
 U 988f39cb frag u_sky_rot 776 vec2 1 0
 U 988f39cb frag u_ground_alb 784 vec3 1 0
+U 988f39cb frag u_bounce 796 float 1 0
 U 988f39cb frag u_ground_alb_hi 800 vec3 1 0
 U 988f39cb frag u_ground_hi_y 812 float 1 0
 U 988f39cb frag u_ground_hi_w 816 float 1 0
@@ -14157,6 +14253,7 @@ U 9068df1c frag u_leaf_tr 752 vec4 1 0
 U 9068df1c frag u_spec_scale 768 float 1 0
 U 9068df1c frag u_sky_rot 776 vec2 1 0
 U 9068df1c frag u_ground_alb 784 vec3 1 0
+U 9068df1c frag u_bounce 796 float 1 0
 U 9068df1c frag u_ground_alb_hi 800 vec3 1 0
 U 9068df1c frag u_ground_hi_y 812 float 1 0
 U 9068df1c frag u_ground_hi_w 816 float 1 0
@@ -14298,6 +14395,7 @@ U e9b6300c frag u_leaf_tr 752 vec4 1 0
 U e9b6300c frag u_spec_scale 768 float 1 0
 U e9b6300c frag u_sky_rot 776 vec2 1 0
 U e9b6300c frag u_ground_alb 784 vec3 1 0
+U e9b6300c frag u_bounce 796 float 1 0
 U e9b6300c frag u_ground_alb_hi 800 vec3 1 0
 U e9b6300c frag u_ground_hi_y 812 float 1 0
 U e9b6300c frag u_ground_hi_w 816 float 1 0
@@ -14438,6 +14536,7 @@ U b79a1f4e frag u_leaf_tr 752 vec4 1 0
 U b79a1f4e frag u_spec_scale 768 float 1 0
 U b79a1f4e frag u_sky_rot 776 vec2 1 0
 U b79a1f4e frag u_ground_alb 784 vec3 1 0
+U b79a1f4e frag u_bounce 796 float 1 0
 U b79a1f4e frag u_ground_alb_hi 800 vec3 1 0
 U b79a1f4e frag u_ground_hi_y 812 float 1 0
 U b79a1f4e frag u_ground_hi_w 816 float 1 0
@@ -14578,6 +14677,7 @@ U a64015f2 frag u_leaf_tr 752 vec4 1 0
 U a64015f2 frag u_spec_scale 768 float 1 0
 U a64015f2 frag u_sky_rot 776 vec2 1 0
 U a64015f2 frag u_ground_alb 784 vec3 1 0
+U a64015f2 frag u_bounce 796 float 1 0
 U a64015f2 frag u_ground_alb_hi 800 vec3 1 0
 U a64015f2 frag u_ground_hi_y 812 float 1 0
 U a64015f2 frag u_ground_hi_w 816 float 1 0
@@ -14718,6 +14818,7 @@ U 3dae7948 frag u_leaf_tr 752 vec4 1 0
 U 3dae7948 frag u_spec_scale 768 float 1 0
 U 3dae7948 frag u_sky_rot 776 vec2 1 0
 U 3dae7948 frag u_ground_alb 784 vec3 1 0
+U 3dae7948 frag u_bounce 796 float 1 0
 U 3dae7948 frag u_ground_alb_hi 800 vec3 1 0
 U 3dae7948 frag u_ground_hi_y 812 float 1 0
 U 3dae7948 frag u_ground_hi_w 816 float 1 0
@@ -14859,6 +14960,7 @@ U 968cb6f2 frag u_leaf_tr 752 vec4 1 0
 U 968cb6f2 frag u_spec_scale 768 float 1 0
 U 968cb6f2 frag u_sky_rot 776 vec2 1 0
 U 968cb6f2 frag u_ground_alb 784 vec3 1 0
+U 968cb6f2 frag u_bounce 796 float 1 0
 U 968cb6f2 frag u_ground_alb_hi 800 vec3 1 0
 U 968cb6f2 frag u_ground_hi_y 812 float 1 0
 U 968cb6f2 frag u_ground_hi_w 816 float 1 0
@@ -15004,6 +15106,7 @@ U 3c21e837 frag u_leaf_tr 752 vec4 1 0
 U 3c21e837 frag u_spec_scale 768 float 1 0
 U 3c21e837 frag u_sky_rot 776 vec2 1 0
 U 3c21e837 frag u_ground_alb 784 vec3 1 0
+U 3c21e837 frag u_bounce 796 float 1 0
 U 3c21e837 frag u_ground_alb_hi 800 vec3 1 0
 U 3c21e837 frag u_ground_hi_y 812 float 1 0
 U 3c21e837 frag u_ground_hi_w 816 float 1 0
@@ -15148,6 +15251,7 @@ U c29f32c1 frag u_leaf_tr 752 vec4 1 0
 U c29f32c1 frag u_spec_scale 768 float 1 0
 U c29f32c1 frag u_sky_rot 776 vec2 1 0
 U c29f32c1 frag u_ground_alb 784 vec3 1 0
+U c29f32c1 frag u_bounce 796 float 1 0
 U c29f32c1 frag u_ground_alb_hi 800 vec3 1 0
 U c29f32c1 frag u_ground_hi_y 812 float 1 0
 U c29f32c1 frag u_ground_hi_w 816 float 1 0
@@ -15286,6 +15390,7 @@ U ad79dbcc frag u_leaf_tr 752 vec4 1 0
 U ad79dbcc frag u_spec_scale 768 float 1 0
 U ad79dbcc frag u_sky_rot 776 vec2 1 0
 U ad79dbcc frag u_ground_alb 784 vec3 1 0
+U ad79dbcc frag u_bounce 796 float 1 0
 U ad79dbcc frag u_ground_alb_hi 800 vec3 1 0
 U ad79dbcc frag u_ground_hi_y 812 float 1 0
 U ad79dbcc frag u_ground_hi_w 816 float 1 0
@@ -15466,6 +15571,7 @@ U 199f24e0 frag u_leaf_tr 752 vec4 1 0
 U 199f24e0 frag u_spec_scale 768 float 1 0
 U 199f24e0 frag u_sky_rot 776 vec2 1 0
 U 199f24e0 frag u_ground_alb 784 vec3 1 0
+U 199f24e0 frag u_bounce 796 float 1 0
 U 199f24e0 frag u_ground_alb_hi 800 vec3 1 0
 U 199f24e0 frag u_ground_hi_y 812 float 1 0
 U 199f24e0 frag u_ground_hi_w 816 float 1 0
@@ -15650,6 +15756,7 @@ U d11bf269 frag u_leaf_tr 752 vec4 1 0
 U d11bf269 frag u_spec_scale 768 float 1 0
 U d11bf269 frag u_sky_rot 776 vec2 1 0
 U d11bf269 frag u_ground_alb 784 vec3 1 0
+U d11bf269 frag u_bounce 796 float 1 0
 U d11bf269 frag u_ground_alb_hi 800 vec3 1 0
 U d11bf269 frag u_ground_hi_y 812 float 1 0
 U d11bf269 frag u_ground_hi_w 816 float 1 0
@@ -15832,6 +15939,7 @@ U 85a6512f frag u_leaf_tr 752 vec4 1 0
 U 85a6512f frag u_spec_scale 768 float 1 0
 U 85a6512f frag u_sky_rot 776 vec2 1 0
 U 85a6512f frag u_ground_alb 784 vec3 1 0
+U 85a6512f frag u_bounce 796 float 1 0
 U 85a6512f frag u_ground_alb_hi 800 vec3 1 0
 U 85a6512f frag u_ground_hi_y 812 float 1 0
 U 85a6512f frag u_ground_hi_w 816 float 1 0
@@ -16010,6 +16118,7 @@ U 766773b0 frag u_leaf_tr 752 vec4 1 0
 U 766773b0 frag u_spec_scale 768 float 1 0
 U 766773b0 frag u_sky_rot 776 vec2 1 0
 U 766773b0 frag u_ground_alb 784 vec3 1 0
+U 766773b0 frag u_bounce 796 float 1 0
 U 766773b0 frag u_ground_alb_hi 800 vec3 1 0
 U 766773b0 frag u_ground_hi_y 812 float 1 0
 U 766773b0 frag u_ground_hi_w 816 float 1 0
@@ -16148,6 +16257,7 @@ U 44bab06c frag u_leaf_tr 752 vec4 1 0
 U 44bab06c frag u_spec_scale 768 float 1 0
 U 44bab06c frag u_sky_rot 776 vec2 1 0
 U 44bab06c frag u_ground_alb 784 vec3 1 0
+U 44bab06c frag u_bounce 796 float 1 0
 U 44bab06c frag u_ground_alb_hi 800 vec3 1 0
 U 44bab06c frag u_ground_hi_y 812 float 1 0
 U 44bab06c frag u_ground_hi_w 816 float 1 0
@@ -16290,6 +16400,7 @@ U 5dc5bbe5 frag u_leaf_tr 752 vec4 1 0
 U 5dc5bbe5 frag u_spec_scale 768 float 1 0
 U 5dc5bbe5 frag u_sky_rot 776 vec2 1 0
 U 5dc5bbe5 frag u_ground_alb 784 vec3 1 0
+U 5dc5bbe5 frag u_bounce 796 float 1 0
 U 5dc5bbe5 frag u_ground_alb_hi 800 vec3 1 0
 U 5dc5bbe5 frag u_ground_hi_y 812 float 1 0
 U 5dc5bbe5 frag u_ground_hi_w 816 float 1 0
@@ -16432,6 +16543,7 @@ U eb833073 frag u_leaf_tr 752 vec4 1 0
 U eb833073 frag u_spec_scale 768 float 1 0
 U eb833073 frag u_sky_rot 776 vec2 1 0
 U eb833073 frag u_ground_alb 784 vec3 1 0
+U eb833073 frag u_bounce 796 float 1 0
 U eb833073 frag u_ground_alb_hi 800 vec3 1 0
 U eb833073 frag u_ground_hi_y 812 float 1 0
 U eb833073 frag u_ground_hi_w 816 float 1 0
@@ -16569,6 +16681,7 @@ U 2e2908c8 frag u_leaf_tr 752 vec4 1 0
 U 2e2908c8 frag u_spec_scale 768 float 1 0
 U 2e2908c8 frag u_sky_rot 776 vec2 1 0
 U 2e2908c8 frag u_ground_alb 784 vec3 1 0
+U 2e2908c8 frag u_bounce 796 float 1 0
 U 2e2908c8 frag u_ground_alb_hi 800 vec3 1 0
 U 2e2908c8 frag u_ground_hi_y 812 float 1 0
 U 2e2908c8 frag u_ground_hi_w 816 float 1 0
@@ -16740,6 +16853,7 @@ U 1f95f31b frag u_leaf_tr 752 vec4 1 0
 U 1f95f31b frag u_spec_scale 768 float 1 0
 U 1f95f31b frag u_sky_rot 776 vec2 1 0
 U 1f95f31b frag u_ground_alb 784 vec3 1 0
+U 1f95f31b frag u_bounce 796 float 1 0
 U 1f95f31b frag u_ground_alb_hi 800 vec3 1 0
 U 1f95f31b frag u_ground_hi_y 812 float 1 0
 U 1f95f31b frag u_ground_hi_w 816 float 1 0
@@ -16911,6 +17025,7 @@ U f4382918 frag u_leaf_tr 752 vec4 1 0
 U f4382918 frag u_spec_scale 768 float 1 0
 U f4382918 frag u_sky_rot 776 vec2 1 0
 U f4382918 frag u_ground_alb 784 vec3 1 0
+U f4382918 frag u_bounce 796 float 1 0
 U f4382918 frag u_ground_alb_hi 800 vec3 1 0
 U f4382918 frag u_ground_hi_y 812 float 1 0
 U f4382918 frag u_ground_hi_w 816 float 1 0
@@ -17082,6 +17197,7 @@ U f2952361 frag u_leaf_tr 752 vec4 1 0
 U f2952361 frag u_spec_scale 768 float 1 0
 U f2952361 frag u_sky_rot 776 vec2 1 0
 U f2952361 frag u_ground_alb 784 vec3 1 0
+U f2952361 frag u_bounce 796 float 1 0
 U f2952361 frag u_ground_alb_hi 800 vec3 1 0
 U f2952361 frag u_ground_hi_y 812 float 1 0
 U f2952361 frag u_ground_hi_w 816 float 1 0
@@ -17253,6 +17369,7 @@ U a0f2dbac frag u_leaf_tr 752 vec4 1 0
 U a0f2dbac frag u_spec_scale 768 float 1 0
 U a0f2dbac frag u_sky_rot 776 vec2 1 0
 U a0f2dbac frag u_ground_alb 784 vec3 1 0
+U a0f2dbac frag u_bounce 796 float 1 0
 U a0f2dbac frag u_ground_alb_hi 800 vec3 1 0
 U a0f2dbac frag u_ground_hi_y 812 float 1 0
 U a0f2dbac frag u_ground_hi_w 816 float 1 0
@@ -17424,6 +17541,7 @@ U 5e4589a1 frag u_leaf_tr 752 vec4 1 0
 U 5e4589a1 frag u_spec_scale 768 float 1 0
 U 5e4589a1 frag u_sky_rot 776 vec2 1 0
 U 5e4589a1 frag u_ground_alb 784 vec3 1 0
+U 5e4589a1 frag u_bounce 796 float 1 0
 U 5e4589a1 frag u_ground_alb_hi 800 vec3 1 0
 U 5e4589a1 frag u_ground_hi_y 812 float 1 0
 U 5e4589a1 frag u_ground_hi_w 816 float 1 0
@@ -17595,6 +17713,7 @@ U bf3151c8 frag u_leaf_tr 752 vec4 1 0
 U bf3151c8 frag u_spec_scale 768 float 1 0
 U bf3151c8 frag u_sky_rot 776 vec2 1 0
 U bf3151c8 frag u_ground_alb 784 vec3 1 0
+U bf3151c8 frag u_bounce 796 float 1 0
 U bf3151c8 frag u_ground_alb_hi 800 vec3 1 0
 U bf3151c8 frag u_ground_hi_y 812 float 1 0
 U bf3151c8 frag u_ground_hi_w 816 float 1 0
@@ -17733,6 +17852,7 @@ U 46e2325c frag u_leaf_tr 752 vec4 1 0
 U 46e2325c frag u_spec_scale 768 float 1 0
 U 46e2325c frag u_sky_rot 776 vec2 1 0
 U 46e2325c frag u_ground_alb 784 vec3 1 0
+U 46e2325c frag u_bounce 796 float 1 0
 U 46e2325c frag u_ground_alb_hi 800 vec3 1 0
 U 46e2325c frag u_ground_hi_y 812 float 1 0
 U 46e2325c frag u_ground_hi_w 816 float 1 0
@@ -17891,6 +18011,7 @@ U 1ebf3a80 frag u_leaf_tr 752 vec4 1 0
 U 1ebf3a80 frag u_spec_scale 768 float 1 0
 U 1ebf3a80 frag u_sky_rot 776 vec2 1 0
 U 1ebf3a80 frag u_ground_alb 784 vec3 1 0
+U 1ebf3a80 frag u_bounce 796 float 1 0
 U 1ebf3a80 frag u_ground_alb_hi 800 vec3 1 0
 U 1ebf3a80 frag u_ground_hi_y 812 float 1 0
 U 1ebf3a80 frag u_ground_hi_w 816 float 1 0
@@ -18048,6 +18169,7 @@ U c321afe6 frag u_leaf_tr 752 vec4 1 0
 U c321afe6 frag u_spec_scale 768 float 1 0
 U c321afe6 frag u_sky_rot 776 vec2 1 0
 U c321afe6 frag u_ground_alb 784 vec3 1 0
+U c321afe6 frag u_bounce 796 float 1 0
 U c321afe6 frag u_ground_alb_hi 800 vec3 1 0
 U c321afe6 frag u_ground_hi_y 812 float 1 0
 U c321afe6 frag u_ground_hi_w 816 float 1 0
@@ -18205,6 +18327,7 @@ U 69b0f9cd frag u_leaf_tr 752 vec4 1 0
 U 69b0f9cd frag u_spec_scale 768 float 1 0
 U 69b0f9cd frag u_sky_rot 776 vec2 1 0
 U 69b0f9cd frag u_ground_alb 784 vec3 1 0
+U 69b0f9cd frag u_bounce 796 float 1 0
 U 69b0f9cd frag u_ground_alb_hi 800 vec3 1 0
 U 69b0f9cd frag u_ground_hi_y 812 float 1 0
 U 69b0f9cd frag u_ground_hi_w 816 float 1 0
@@ -18347,6 +18470,7 @@ U b20fdcb5 frag u_leaf_tr 752 vec4 1 0
 U b20fdcb5 frag u_spec_scale 768 float 1 0
 U b20fdcb5 frag u_sky_rot 776 vec2 1 0
 U b20fdcb5 frag u_ground_alb 784 vec3 1 0
+U b20fdcb5 frag u_bounce 796 float 1 0
 U b20fdcb5 frag u_ground_alb_hi 800 vec3 1 0
 U b20fdcb5 frag u_ground_hi_y 812 float 1 0
 U b20fdcb5 frag u_ground_hi_w 816 float 1 0
@@ -18532,6 +18656,7 @@ U 7a775c12 frag u_leaf_tr 752 vec4 1 0
 U 7a775c12 frag u_spec_scale 768 float 1 0
 U 7a775c12 frag u_sky_rot 776 vec2 1 0
 U 7a775c12 frag u_ground_alb 784 vec3 1 0
+U 7a775c12 frag u_bounce 796 float 1 0
 U 7a775c12 frag u_ground_alb_hi 800 vec3 1 0
 U 7a775c12 frag u_ground_hi_y 812 float 1 0
 U 7a775c12 frag u_ground_hi_w 816 float 1 0
@@ -18679,6 +18804,7 @@ U 52a2400e frag u_leaf_tr 752 vec4 1 0
 U 52a2400e frag u_spec_scale 768 float 1 0
 U 52a2400e frag u_sky_rot 776 vec2 1 0
 U 52a2400e frag u_ground_alb 784 vec3 1 0
+U 52a2400e frag u_bounce 796 float 1 0
 U 52a2400e frag u_ground_alb_hi 800 vec3 1 0
 U 52a2400e frag u_ground_hi_y 812 float 1 0
 U 52a2400e frag u_ground_hi_w 816 float 1 0
@@ -18830,6 +18956,7 @@ U 8cf75a7f frag u_leaf_tr 752 vec4 1 0
 U 8cf75a7f frag u_spec_scale 768 float 1 0
 U 8cf75a7f frag u_sky_rot 776 vec2 1 0
 U 8cf75a7f frag u_ground_alb 784 vec3 1 0
+U 8cf75a7f frag u_bounce 796 float 1 0
 U 8cf75a7f frag u_ground_alb_hi 800 vec3 1 0
 U 8cf75a7f frag u_ground_hi_y 812 float 1 0
 U 8cf75a7f frag u_ground_hi_w 816 float 1 0
@@ -18986,6 +19113,7 @@ U 98187d81 frag u_leaf_tr 752 vec4 1 0
 U 98187d81 frag u_spec_scale 768 float 1 0
 U 98187d81 frag u_sky_rot 776 vec2 1 0
 U 98187d81 frag u_ground_alb 784 vec3 1 0
+U 98187d81 frag u_bounce 796 float 1 0
 U 98187d81 frag u_ground_alb_hi 800 vec3 1 0
 U 98187d81 frag u_ground_hi_y 812 float 1 0
 U 98187d81 frag u_ground_hi_w 816 float 1 0
@@ -19142,6 +19270,7 @@ U a69b9291 frag u_leaf_tr 752 vec4 1 0
 U a69b9291 frag u_spec_scale 768 float 1 0
 U a69b9291 frag u_sky_rot 776 vec2 1 0
 U a69b9291 frag u_ground_alb 784 vec3 1 0
+U a69b9291 frag u_bounce 796 float 1 0
 U a69b9291 frag u_ground_alb_hi 800 vec3 1 0
 U a69b9291 frag u_ground_hi_y 812 float 1 0
 U a69b9291 frag u_ground_hi_w 816 float 1 0
@@ -19289,6 +19418,7 @@ U 2cf25bde frag u_leaf_tr 752 vec4 1 0
 U 2cf25bde frag u_spec_scale 768 float 1 0
 U 2cf25bde frag u_sky_rot 776 vec2 1 0
 U 2cf25bde frag u_ground_alb 784 vec3 1 0
+U 2cf25bde frag u_bounce 796 float 1 0
 U 2cf25bde frag u_ground_alb_hi 800 vec3 1 0
 U 2cf25bde frag u_ground_hi_y 812 float 1 0
 U 2cf25bde frag u_ground_hi_w 816 float 1 0
@@ -19445,6 +19575,7 @@ U f9937a6d frag u_leaf_tr 752 vec4 1 0
 U f9937a6d frag u_spec_scale 768 float 1 0
 U f9937a6d frag u_sky_rot 776 vec2 1 0
 U f9937a6d frag u_ground_alb 784 vec3 1 0
+U f9937a6d frag u_bounce 796 float 1 0
 U f9937a6d frag u_ground_alb_hi 800 vec3 1 0
 U f9937a6d frag u_ground_hi_y 812 float 1 0
 U f9937a6d frag u_ground_hi_w 816 float 1 0
@@ -19584,6 +19715,7 @@ U ff7742fc frag u_leaf_tr 752 vec4 1 0
 U ff7742fc frag u_spec_scale 768 float 1 0
 U ff7742fc frag u_sky_rot 776 vec2 1 0
 U ff7742fc frag u_ground_alb 784 vec3 1 0
+U ff7742fc frag u_bounce 796 float 1 0
 U ff7742fc frag u_ground_alb_hi 800 vec3 1 0
 U ff7742fc frag u_ground_hi_y 812 float 1 0
 U ff7742fc frag u_ground_hi_w 816 float 1 0
@@ -19719,6 +19851,7 @@ U f20a00b0 frag u_leaf_tr 752 vec4 1 0
 U f20a00b0 frag u_spec_scale 768 float 1 0
 U f20a00b0 frag u_sky_rot 776 vec2 1 0
 U f20a00b0 frag u_ground_alb 784 vec3 1 0
+U f20a00b0 frag u_bounce 796 float 1 0
 U f20a00b0 frag u_ground_alb_hi 800 vec3 1 0
 U f20a00b0 frag u_ground_hi_y 812 float 1 0
 U f20a00b0 frag u_ground_hi_w 816 float 1 0
@@ -19856,6 +19989,7 @@ U 14b79603 frag u_leaf_tr 752 vec4 1 0
 U 14b79603 frag u_spec_scale 768 float 1 0
 U 14b79603 frag u_sky_rot 776 vec2 1 0
 U 14b79603 frag u_ground_alb 784 vec3 1 0
+U 14b79603 frag u_bounce 796 float 1 0
 U 14b79603 frag u_ground_alb_hi 800 vec3 1 0
 U 14b79603 frag u_ground_hi_y 812 float 1 0
 U 14b79603 frag u_ground_hi_w 816 float 1 0
@@ -19999,6 +20133,7 @@ U 13aad06c frag u_leaf_tr 752 vec4 1 0
 U 13aad06c frag u_spec_scale 768 float 1 0
 U 13aad06c frag u_sky_rot 776 vec2 1 0
 U 13aad06c frag u_ground_alb 784 vec3 1 0
+U 13aad06c frag u_bounce 796 float 1 0
 U 13aad06c frag u_ground_alb_hi 800 vec3 1 0
 U 13aad06c frag u_ground_hi_y 812 float 1 0
 U 13aad06c frag u_ground_hi_w 816 float 1 0
@@ -20144,6 +20279,7 @@ U 874fe6bc frag u_leaf_tr 752 vec4 1 0
 U 874fe6bc frag u_spec_scale 768 float 1 0
 U 874fe6bc frag u_sky_rot 776 vec2 1 0
 U 874fe6bc frag u_ground_alb 784 vec3 1 0
+U 874fe6bc frag u_bounce 796 float 1 0
 U 874fe6bc frag u_ground_alb_hi 800 vec3 1 0
 U 874fe6bc frag u_ground_hi_y 812 float 1 0
 U 874fe6bc frag u_ground_hi_w 816 float 1 0
@@ -20287,6 +20423,7 @@ U 5177d2e2 frag u_leaf_tr 752 vec4 1 0
 U 5177d2e2 frag u_spec_scale 768 float 1 0
 U 5177d2e2 frag u_sky_rot 776 vec2 1 0
 U 5177d2e2 frag u_ground_alb 784 vec3 1 0
+U 5177d2e2 frag u_bounce 796 float 1 0
 U 5177d2e2 frag u_ground_alb_hi 800 vec3 1 0
 U 5177d2e2 frag u_ground_hi_y 812 float 1 0
 U 5177d2e2 frag u_ground_hi_w 816 float 1 0
@@ -20430,6 +20567,7 @@ U e4b8ded2 frag u_leaf_tr 752 vec4 1 0
 U e4b8ded2 frag u_spec_scale 768 float 1 0
 U e4b8ded2 frag u_sky_rot 776 vec2 1 0
 U e4b8ded2 frag u_ground_alb 784 vec3 1 0
+U e4b8ded2 frag u_bounce 796 float 1 0
 U e4b8ded2 frag u_ground_alb_hi 800 vec3 1 0
 U e4b8ded2 frag u_ground_hi_y 812 float 1 0
 U e4b8ded2 frag u_ground_hi_w 816 float 1 0
@@ -20580,6 +20718,7 @@ U 8019e0b9 frag u_leaf_tr 752 vec4 1 0
 U 8019e0b9 frag u_spec_scale 768 float 1 0
 U 8019e0b9 frag u_sky_rot 776 vec2 1 0
 U 8019e0b9 frag u_ground_alb 784 vec3 1 0
+U 8019e0b9 frag u_bounce 796 float 1 0
 U 8019e0b9 frag u_ground_alb_hi 800 vec3 1 0
 U 8019e0b9 frag u_ground_hi_y 812 float 1 0
 U 8019e0b9 frag u_ground_hi_w 816 float 1 0
@@ -20730,6 +20869,7 @@ U ee78f427 frag u_leaf_tr 752 vec4 1 0
 U ee78f427 frag u_spec_scale 768 float 1 0
 U ee78f427 frag u_sky_rot 776 vec2 1 0
 U ee78f427 frag u_ground_alb 784 vec3 1 0
+U ee78f427 frag u_bounce 796 float 1 0
 U ee78f427 frag u_ground_alb_hi 800 vec3 1 0
 U ee78f427 frag u_ground_hi_y 812 float 1 0
 U ee78f427 frag u_ground_hi_w 816 float 1 0
@@ -20878,6 +21018,7 @@ U 0054494b frag u_leaf_tr 752 vec4 1 0
 U 0054494b frag u_spec_scale 768 float 1 0
 U 0054494b frag u_sky_rot 776 vec2 1 0
 U 0054494b frag u_ground_alb 784 vec3 1 0
+U 0054494b frag u_bounce 796 float 1 0
 U 0054494b frag u_ground_alb_hi 800 vec3 1 0
 U 0054494b frag u_ground_hi_y 812 float 1 0
 U 0054494b frag u_ground_hi_w 816 float 1 0
@@ -21026,6 +21167,7 @@ U b56a9535 frag u_leaf_tr 752 vec4 1 0
 U b56a9535 frag u_spec_scale 768 float 1 0
 U b56a9535 frag u_sky_rot 776 vec2 1 0
 U b56a9535 frag u_ground_alb 784 vec3 1 0
+U b56a9535 frag u_bounce 796 float 1 0
 U b56a9535 frag u_ground_alb_hi 800 vec3 1 0
 U b56a9535 frag u_ground_hi_y 812 float 1 0
 U b56a9535 frag u_ground_hi_w 816 float 1 0
@@ -21171,6 +21313,7 @@ U 55514512 frag u_leaf_tr 752 vec4 1 0
 U 55514512 frag u_spec_scale 768 float 1 0
 U 55514512 frag u_sky_rot 776 vec2 1 0
 U 55514512 frag u_ground_alb 784 vec3 1 0
+U 55514512 frag u_bounce 796 float 1 0
 U 55514512 frag u_ground_alb_hi 800 vec3 1 0
 U 55514512 frag u_ground_hi_y 812 float 1 0
 U 55514512 frag u_ground_hi_w 816 float 1 0
@@ -21315,6 +21458,7 @@ U fcc1042e frag u_leaf_tr 752 vec4 1 0
 U fcc1042e frag u_spec_scale 768 float 1 0
 U fcc1042e frag u_sky_rot 776 vec2 1 0
 U fcc1042e frag u_ground_alb 784 vec3 1 0
+U fcc1042e frag u_bounce 796 float 1 0
 U fcc1042e frag u_ground_alb_hi 800 vec3 1 0
 U fcc1042e frag u_ground_hi_y 812 float 1 0
 U fcc1042e frag u_ground_hi_w 816 float 1 0
@@ -21472,6 +21616,7 @@ U fcf235c8 frag u_leaf_tr 752 vec4 1 0
 U fcf235c8 frag u_spec_scale 768 float 1 0
 U fcf235c8 frag u_sky_rot 776 vec2 1 0
 U fcf235c8 frag u_ground_alb 784 vec3 1 0
+U fcf235c8 frag u_bounce 796 float 1 0
 U fcf235c8 frag u_ground_alb_hi 800 vec3 1 0
 U fcf235c8 frag u_ground_hi_y 812 float 1 0
 U fcf235c8 frag u_ground_hi_w 816 float 1 0
@@ -21608,6 +21753,7 @@ U 75aabf3d frag u_leaf_tr 752 vec4 1 0
 U 75aabf3d frag u_spec_scale 768 float 1 0
 U 75aabf3d frag u_sky_rot 776 vec2 1 0
 U 75aabf3d frag u_ground_alb 784 vec3 1 0
+U 75aabf3d frag u_bounce 796 float 1 0
 U 75aabf3d frag u_ground_alb_hi 800 vec3 1 0
 U 75aabf3d frag u_ground_hi_y 812 float 1 0
 U 75aabf3d frag u_ground_hi_w 816 float 1 0
@@ -21734,6 +21880,7 @@ U 870d1033 frag u_leaf_tr 752 vec4 1 0
 U 870d1033 frag u_spec_scale 768 float 1 0
 U 870d1033 frag u_sky_rot 776 vec2 1 0
 U 870d1033 frag u_ground_alb 784 vec3 1 0
+U 870d1033 frag u_bounce 796 float 1 0
 U 870d1033 frag u_ground_alb_hi 800 vec3 1 0
 U 870d1033 frag u_ground_hi_y 812 float 1 0
 U 870d1033 frag u_ground_hi_w 816 float 1 0
@@ -21872,6 +22019,7 @@ U 339fddc9 frag u_leaf_tr 752 vec4 1 0
 U 339fddc9 frag u_spec_scale 768 float 1 0
 U 339fddc9 frag u_sky_rot 776 vec2 1 0
 U 339fddc9 frag u_ground_alb 784 vec3 1 0
+U 339fddc9 frag u_bounce 796 float 1 0
 U 339fddc9 frag u_ground_alb_hi 800 vec3 1 0
 U 339fddc9 frag u_ground_hi_y 812 float 1 0
 U 339fddc9 frag u_ground_hi_w 816 float 1 0
@@ -22035,6 +22183,7 @@ U c0548d95 frag u_leaf_tr 752 vec4 1 0
 U c0548d95 frag u_spec_scale 768 float 1 0
 U c0548d95 frag u_sky_rot 776 vec2 1 0
 U c0548d95 frag u_ground_alb 784 vec3 1 0
+U c0548d95 frag u_bounce 796 float 1 0
 U c0548d95 frag u_ground_alb_hi 800 vec3 1 0
 U c0548d95 frag u_ground_hi_y 812 float 1 0
 U c0548d95 frag u_ground_hi_w 816 float 1 0
@@ -22201,6 +22350,7 @@ U e635df33 frag u_leaf_tr 752 vec4 1 0
 U e635df33 frag u_spec_scale 768 float 1 0
 U e635df33 frag u_sky_rot 776 vec2 1 0
 U e635df33 frag u_ground_alb 784 vec3 1 0
+U e635df33 frag u_bounce 796 float 1 0
 U e635df33 frag u_ground_alb_hi 800 vec3 1 0
 U e635df33 frag u_ground_hi_y 812 float 1 0
 U e635df33 frag u_ground_hi_w 816 float 1 0
@@ -22363,6 +22513,7 @@ U 7b87e0f2 frag u_leaf_tr 752 vec4 1 0
 U 7b87e0f2 frag u_spec_scale 768 float 1 0
 U 7b87e0f2 frag u_sky_rot 776 vec2 1 0
 U 7b87e0f2 frag u_ground_alb 784 vec3 1 0
+U 7b87e0f2 frag u_bounce 796 float 1 0
 U 7b87e0f2 frag u_ground_alb_hi 800 vec3 1 0
 U 7b87e0f2 frag u_ground_hi_y 812 float 1 0
 U 7b87e0f2 frag u_ground_hi_w 816 float 1 0
@@ -22526,6 +22677,7 @@ U eaac0f64 frag u_leaf_tr 752 vec4 1 0
 U eaac0f64 frag u_spec_scale 768 float 1 0
 U eaac0f64 frag u_sky_rot 776 vec2 1 0
 U eaac0f64 frag u_ground_alb 784 vec3 1 0
+U eaac0f64 frag u_bounce 796 float 1 0
 U eaac0f64 frag u_ground_alb_hi 800 vec3 1 0
 U eaac0f64 frag u_ground_hi_y 812 float 1 0
 U eaac0f64 frag u_ground_hi_w 816 float 1 0
@@ -22667,6 +22819,7 @@ U 8d250542 frag u_leaf_tr 752 vec4 1 0
 U 8d250542 frag u_spec_scale 768 float 1 0
 U 8d250542 frag u_sky_rot 776 vec2 1 0
 U 8d250542 frag u_ground_alb 784 vec3 1 0
+U 8d250542 frag u_bounce 796 float 1 0
 U 8d250542 frag u_ground_alb_hi 800 vec3 1 0
 U 8d250542 frag u_ground_hi_y 812 float 1 0
 U 8d250542 frag u_ground_hi_w 816 float 1 0
@@ -22812,6 +22965,7 @@ U 4ed1fa9d frag u_leaf_tr 752 vec4 1 0
 U 4ed1fa9d frag u_spec_scale 768 float 1 0
 U 4ed1fa9d frag u_sky_rot 776 vec2 1 0
 U 4ed1fa9d frag u_ground_alb 784 vec3 1 0
+U 4ed1fa9d frag u_bounce 796 float 1 0
 U 4ed1fa9d frag u_ground_alb_hi 800 vec3 1 0
 U 4ed1fa9d frag u_ground_hi_y 812 float 1 0
 U 4ed1fa9d frag u_ground_hi_w 816 float 1 0
@@ -22937,6 +23091,7 @@ U 4e2a2d71 frag u_leaf_tr 752 vec4 1 0
 U 4e2a2d71 frag u_spec_scale 768 float 1 0
 U 4e2a2d71 frag u_sky_rot 776 vec2 1 0
 U 4e2a2d71 frag u_ground_alb 784 vec3 1 0
+U 4e2a2d71 frag u_bounce 796 float 1 0
 U 4e2a2d71 frag u_ground_alb_hi 800 vec3 1 0
 U 4e2a2d71 frag u_ground_hi_y 812 float 1 0
 U 4e2a2d71 frag u_ground_hi_w 816 float 1 0

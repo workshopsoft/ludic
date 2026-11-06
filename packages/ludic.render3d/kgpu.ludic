@@ -69,6 +69,7 @@ export property KGpu {
   p_depth: int = 0,         # kit.frag DEPTH_ONLY: the kits' depth prepass (R3D_KIT_PREPASS, kgpu_draw_depth)
   p_depth_fac: int = 0,     # kit.frag FACADE DEPTH_ONLY: a box kit's, with its party walls' discard
   pre_on: bool = true,      # R3D_KIT_PREPASS (on unless 0)
+  opt_retune: float = 1.0,  # kit.frag u_kit_opt.w: R3D_KIT_RETUNE (normal fade 60..250 m, wall roughness floor 0.5; on unless 0)
   opt_mesh: float = 1.0,    # kit.frag u_kit_opt (kgpu_bind_opt): R3D_KIT_SKIP_MESHMAPS, R3D_KIT_GLASS_SKIP, R3D_KIT_FAR_SIMPLE (1 on unless 0)
   opt_glass: float = 1.0,
   opt_far: float = 1.0,
@@ -316,6 +317,8 @@ function kgpu_read_opts(render3d_st: mut Render3dState, g: KGpu) -> void {
   if kgpu_env_off(render3d_st, "R3D_KIT_SKIP_MESHMAPS") { g.opt_mesh = 0.0 }
   if kgpu_env_off(render3d_st, "R3D_KIT_GLASS_SKIP") { g.opt_glass = 0.0 }
   if kgpu_env_off(render3d_st, "R3D_KIT_FAR_SIMPLE") { g.opt_far = 0.0 }
+  g.opt_retune = 1.0
+  if kgpu_env_off(render3d_st, "R3D_KIT_RETUNE") { g.opt_retune = 0.0 }
 }
 function kgpu_env_off(render3d_st: mut Render3dState, name: string) -> bool {
   return r3d_env_has(render3d_st, name) and r3d_env(render3d_st, name) == "0"
@@ -326,7 +329,7 @@ function kgpu_env_off(render3d_st: mut Render3dState, name: string) -> bool {
 # past 120 m, where the shader lays the geometric normal anyway; the streaks' sub-pixel noise at its mean there). The first two and the
 # normal map's skip change no pixel; the noise's mean is the one documented far-distance change. The card bake never sets it (all off).
 function kgpu_bind_opt(render3d_st: mut Render3dState, g: KGpu, p: int) -> void {
-  u_f4(render3d_st, gpu_ul(render3d_st, p, UL_KIT_OPT), g.opt_mesh, g.opt_glass, g.opt_far, 0.0)
+  u_f4(render3d_st, gpu_ul(render3d_st, p, UL_KIT_OPT), g.opt_mesh, g.opt_glass, g.opt_far, g.opt_retune)
 }
 
 # an identity instance for the impostor bake, in this file's layout

@@ -33,8 +33,12 @@ uniform vec2 u_storey;           // a line every x metres up the walls from the 
 // mean). Unreal keeps such work apart by material quality and distance (MaterialShared.h EMaterialQualityLevel; the static switches a
 // material compiles out); here a branch on a uniform, or on a pixel's own state where the quad agrees (quadAll)
 uniform vec4 u_kit_opt;
-// where the normal is the geometric one whatever the maps say: main()'s smoothstep(30.0, 120.0, dist) leaves nothing of them from here on
-const float KIT_FLAT_AT = 120.0;
+// where the normal is the geometric one whatever the maps say: main()'s smoothstep(KIT_NFADE0, KIT_FLAT_AT, dist) leaves nothing of them from here on
+// R3D_KIT_RETUNE (u_kit_opt.w, on unless 0): the normal map fades over 60..250 m, not 30..120 (30 m flattened every wall across a
+// street), and a wall's roughness floor is 0.5 (UE's brick, concrete, render sit at 0.6..0.9: at 0.35 the walls read as plastic in sun)
+#define KIT_FLAT_AT (u_kit_opt.w > 0.5 ? 250.0 : 120.0)
+#define KIT_NFADE0 (u_kit_opt.w > 0.5 ? 60.0 : 30.0)
+#define KIT_ROUGH_MIN (u_kit_opt.w > 0.5 ? 0.5 : 0.35)
 // R3D_KIT_FAR_SIMPLE: this pixel is past KIT_FLAT_AT (set by main before facadeAt and weathering read it; never in the card bake)
 bool g_kit_far = false;
 
@@ -436,10 +440,10 @@ void main() {
     }
     vec3 arm = texture(u_arm, v_uv).rgb;
     arm.gb *= vec2(1.0) - u_fac_mr_inv;
-    n = normalize(mix(n, N, smoothstep(30.0, 120.0, dist)));
+    n = normalize(mix(n, N, smoothstep(KIT_NFADE0, KIT_FLAT_AT, dist)));
     alb = d.rgb * v_tint.rgb * (0.92 + 0.16 * fract(v_seed * 7.13));
     alb *= 1.0 - 0.45 * storeyLine(v_h, v_top, N.y);
-    roughF = clamp(arm.g * u_rough_scale, 0.35, 1.0);
+    roughF = clamp(arm.g * u_rough_scale, KIT_ROUGH_MIN, 1.0);
     ao = arm.r;
   }
   float shadow = sunShadow(v_wpos, N, viewDepth);
@@ -464,8 +468,8 @@ void main() {
     // the storey's line is a soft band on a textured wall (a string course's shade), not a painted stripe
     alb = sa * (1.0 - 0.18 * storeyLine(v_h, v_top, N.y));
     alb = mix(alb, alb * vec3(0.30, 0.28, 0.26), weathering(v_h, v_top, N.y, v_lpos + off, v_seed));
-    n = normalize(mix(sn, N, smoothstep(30.0, 120.0, dist)));
-    roughF = clamp(sr.g * (1.0 - u_fac_mr_inv.x) * u_rough_scale, 0.35, 1.0);
+    n = normalize(mix(sn, N, smoothstep(KIT_NFADE0, KIT_FLAT_AT, dist)));
+    roughF = clamp(sr.g * (1.0 - u_fac_mr_inv.x) * u_rough_scale, KIT_ROUGH_MIN, 1.0);
     ao = sr.r;
   }
 #ifdef FACADE

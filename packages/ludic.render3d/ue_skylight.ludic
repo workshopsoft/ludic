@@ -30,7 +30,12 @@ property UeSkyLight {
   lower_hemisphere_color_r: float = 0.0,      # LowerHemisphereColor
   lower_hemisphere_color_g: float = 0.0,
   lower_hemisphere_color_b: float = 0.0,
-  capture_interval: int = 1                   # frames between captures (Unreal: time-sliced over a few frames)
+  capture_interval: int = 1,                  # frames between captures (Unreal: time-sliced over a few frames)
+  # ours, off by default (R3D_UE_SKYLIGHT_GROUND=0 forces it off): the lower hemisphere's colour (with lower_hemisphere_is_black, as Unreal
+  # takes LowerHemisphereColor) made each capture from the sunlit ground's reflected light, ground albedo x sun x its height / pi x this:
+  # what an artist sets LowerHemisphereColor to by hand for a day, kept right through the day. Shaded facades took no light from below
+  # (only lighting.glsl's own bounce, which is switched off while this is on: u_bounce)
+  lower_from_ground: float = 0.0
 }
 
 @alloc_ok("made once per resource and kept for its life (a texture, program, sampler, view, layout or memory block is created when first asked for)")
@@ -41,6 +46,12 @@ export function r3d_sky_light(render3d_st: mut Render3dState) -> UeSkyLight {
 export function r3d_ue_skylight(render3d_st: mut Render3dState, on: bool) -> void {
   render3d_st.ue_sl_on = 0
   if on { render3d_st.ue_sl_on = 1 }
+}
+# the lower hemisphere made from the ground (UeSkyLight.lower_from_ground): on, the sky light's own, not the env's switch off
+export function ue_sl_ground_on(render3d_st: mut Render3dState, sl: UeSkyLight) -> bool {
+  if sl == null or not sl.lower_hemisphere_is_black or sl.lower_from_ground <= 0.0 { return false }
+  if r3d_env_has(render3d_st, "R3D_UE_SKYLIGHT_GROUND") and r3d_env(render3d_st, "R3D_UE_SKYLIGHT_GROUND") == "0" { return false }
+  return ue_skylight_on(render3d_st)
 }
 function ue_skylight_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.ue_sl_on < 0 {
@@ -177,7 +188,12 @@ function ue_sl_faces(render3d_st: mut Render3dState, sl: UeSkyLight, f0: int, f1
   var on = 0.0
   if sl.lower_hemisphere_is_black { on = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "sl_lower_on"), on)
-  u_f3(render3d_st, gpu_uniform(render3d_st, p, "sl_lower_color"), sl.lower_hemisphere_color_r, sl.lower_hemisphere_color_g, sl.lower_hemisphere_color_b)
+  if ue_sl_ground_on(render3d_st, sl) {
+    let sy = Math.max(render3d_st.sun_dir[1], 0.0) / 3.14159265 * sl.lower_from_ground
+    u_f3(render3d_st, gpu_uniform(render3d_st, p, "sl_lower_color"), render3d_st.r3d_ground_alb_r * render3d_st.sun_color[0] * sy, render3d_st.r3d_ground_alb_g * render3d_st.sun_color[1] * sy, render3d_st.r3d_ground_alb_b * render3d_st.sun_color[2] * sy)
+  } else {
+    u_f3(render3d_st, gpu_uniform(render3d_st, p, "sl_lower_color"), sl.lower_hemisphere_color_r, sl.lower_hemisphere_color_g, sl.lower_hemisphere_color_b)
+  }
   for f in f0 .. f1 { ue_sl_face_draw(render3d_st, p, render3d_st.ue_sl_cap_fb, 0, f) }
 }
 # the mips, each from the one above: odd mips into the second array, even into the first, the other one bound to read

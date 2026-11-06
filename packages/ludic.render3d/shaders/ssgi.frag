@@ -20,6 +20,8 @@ uniform sampler2D u_hzb;    // the furthest depth at half size (ao_hzb.frag), as
 uniform float u_use_hzb;    // the taps read it, as Unreal's (R3D_UE_AO_HZB=0: the full frame's depth)
 uniform vec4 u_pk;          // 1 / proj[0][0], 1 / proj[1][1], proj[2][0], proj[2][1]: a position from a distance
 uniform vec2 u_full;        // the frame's size, in pixels
+uniform float u_ao_sun_ratio; // the sun's light on a face square to it over the indirect light (post.ludic): the AO darkens the indirect
+                              // share alone (0: the old whole-frame multiplier, R3D_UE_AO_INDIRECT=0)
 uniform vec3 u_ao_q;        // Unreal's AO shader quality (post.ludic post_ao_quality): x the directions (3 or 6), y the steps, z its quad blur
 // A sample must be behind the surface by more than this much of its sideways distance from the pixel (the tangent of the
 // angle, 0.4 about 22 degrees) before it counts as occluded. The pixel's normal is its triangle's, so a ground of 1 m
@@ -171,6 +173,7 @@ void main() {
     cao = 1.0 - u_contact * cao / float(CS);
     ao = min(ao, clamp(cao, 0.0, 1.0));
   }
+  float sunVis = 1.0;                                  // the sun's contact shadow, kept apart: it darkens the sun's light, not the sky's
   // ---- SUN CONTACT SHADOW -------------------------------------------------------------
   // Unreal's ContactShadows (DeferredLightingCommon.ush ShadowRayCast): a short ray from the
   // pixel toward the light through the scene depth, a few steps from a jittered start; a step
@@ -195,8 +198,26 @@ void main() {
         if (dz > 0.002 * dist && dz < thick) { hit = 1.0 - tt * tt; break; }
       }
       float fadeC = 1.0 - smoothstep(50.0, 80.0, dist);
-      ao = min(ao, 1.0 - u_contact_sun * hit * fadeC);
+      sunVis = 1.0 - u_contact_sun * hit * fadeC;
     }
+  }
+  // ---- the occlusion on the indirect light alone ----------------------------------------
+  // Unreal's forward shading applies its screen-space AO to the indirect diffuse and specular (BasePassPixelShader: the
+  // AmbientOcclusionTexture into the sky's and the indirect's occlusion), never to the sun. This pass runs after the frame is lit
+  // and the tonemap multiplies the lit colour by its output, so it answers the multiplier that does the same: the pixel's sun share
+  // (its sun angle times the cascades' shadow, over the sky's light) takes the sun's contact shadow, the rest the occlusion. Before,
+  // a sunlit wall's corner and a kerb's foot in full sun went as dark as in shade: the street looked dull and flat (2026-11-06)
+  if (u_ao_sun_ratio > 0.0) {
+    mat3 Rv = mat3(u_view);
+    vec3 Nw = transpose(Rv) * N;
+    vec3 Pw = transpose(Rv) * (P - u_view[3].xyz);
+    float sunL = max(dot(Nw, u_sun_dir), 0.0);
+    float vis = sunL > 0.0 ? sunShadowCheap(Pw, Nw, -P.z) : 0.0;
+    float direct = sunL * vis * u_ao_sun_ratio;
+    float ind = 1.0 / (1.0 + direct);
+    ao = ind * clamp(ao, 0.0, 1.0) + (1.0 - ind) * sunVis;
+  } else {
+    ao = min(ao, sunVis);
   }
   float fade = smoothstep(120.0, 350.0, -P.z);
   ao = mix(clamp(ao, 0.0, 1.0), 1.0, fade);

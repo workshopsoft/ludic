@@ -360,6 +360,12 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   if csun > 0.0 {
     u_mat4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_view"), render3d_st.cam_view)
     u_v3(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_sun_dir"), render3d_st.sun_dir)
+    # the AO on the indirect light alone (ssgi.frag): the sun's share from its height (a clear day's sun over its sky, about four to
+    # one on a face square to it; nothing at night, when the moon's light is the sky's), the cascades bound for its shadow
+    var ratio = 4.0 * Math.clamp((render3d_st.sun_dir[1] + 0.05) / 0.3, 0.0, 1.0)
+    if r3d_env_has(render3d_st, "R3D_UE_AO_INDIRECT") and r3d_env(render3d_st, "R3D_UE_AO_INDIRECT") == "0" { ratio = 0.0 }
+    u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_ao_sun_ratio"), ratio)
+    if ratio > 0.0 { shadow_bind(render3d_st, render3d_st.post_p_ao) }
   }
   mesh_draw(render3d_st, render3d_st.post_fs)
   prof_split(render3d_st, "SSAO/GI: blur")
