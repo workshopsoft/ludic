@@ -120,6 +120,7 @@ vec3 sunColour(vec3 dir) {
 // ComputeViewData: up from the planet, forward the camera's), plus the sun's disc (GetLightDiskLuminance) through the transmittance
 // LUT, times SkyLuminanceFactor. Our directions map to Unreal's planet frame as (x, z, y); kilometres.
 uniform float ua_on;
+uniform float u_sky_clouds;      // the photograph's clouds over the atmosphere (R3D_SKY_CLOUDS=0: none)
 uniform sampler2D ua_skyview;
 uniform sampler2D ua_trans;
 uniform vec4 ua_skyview_size;          // SkyViewLutSizeAndInvSize
@@ -202,7 +203,26 @@ void main() {
   // the photograph's sky dims with the day (daylight.ludic); the night adds its own
   col *= u_ibl_scale;
   if (u_disc_on > 0.5) col += sunColour(dir);
-  if (ua_on > 0.5) col = uaSkyLuminance(dir);
+  if (ua_on > 0.5) {
+    vec3 atm = uaSkyLuminance(dir);
+    // the photograph's clouds over the atmosphere: a cloud is the photograph's grey-white (its blue sky is saturated), above the
+    // horizon; its brightness the atmosphere's here times how much brighter than its blurred surroundings the photograph is, its hue
+    // the sun's (white at noon, warm low)
+    float cl = 0.0;
+    if (u_sky_clouds > 0.5 && dir.y > -0.02) {
+      vec3 raw = textureLod(u_sky, skyUV(dir), 0.0).rgb;
+      float mx = max(raw.r, max(raw.g, raw.b));
+      float sat = (mx - min(raw.r, min(raw.g, raw.b))) / max(mx, 1e-4);
+      float rl = dot(raw, vec3(0.2126, 0.7152, 0.0722));
+      float bl = max(dot(textureLod(u_sky, skyUV(dir), 6.0).rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+      cl = (1.0 - smoothstep(0.16, 0.40, sat)) * smoothstep(-0.02, 0.06, dir.y);
+      float al = dot(atm, vec3(0.2126, 0.7152, 0.0722));
+      vec3 sunTint = u_disc_col / max(max(u_disc_col.r, max(u_disc_col.g, u_disc_col.b)), 1e-4);
+      vec3 cloudCol = vec3(al * clamp(rl / bl, 0.7, 2.6) * 1.35) * mix(vec3(1.0), sunTint, 0.35);
+      atm = mix(atm, cloudCol, cl);
+    }
+    col = atm;
+  }
   float night = 1.0 - smoothstep(0.0, 0.45, u_daylight);
   if (night > 0.0) {
     vec3 nightCol = mix(vec3(0.012, 0.016, 0.034), vec3(0.003, 0.004, 0.010), clamp(dir.y, 0.0, 1.0));

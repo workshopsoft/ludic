@@ -304,6 +304,11 @@ function ue_sky_bind(render3d_st: mut Render3dState, prog: int) -> void {
   var on = 0.0
   if ue_sky_on(render3d_st) and render3d_st.ue_sky_view != null and render3d_st.ue_sky_frame != null { on = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "ua_on"), on)
+  # the photograph's clouds laid over the atmosphere (sky.frag: Unreal draws its own volumetric clouds there; these are the CC0
+  # photograph's, relit to the hour); R3D_SKY_CLOUDS=0 leaves the clear atmosphere
+  var clouds = 1.0
+  if r3d_env_has(render3d_st, "R3D_SKY_CLOUDS") and r3d_env(render3d_st, "R3D_SKY_CLOUDS") == "0" { clouds = 0.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_sky_clouds"), clouds)
   if on < 0.5 { return }
   let s = r3d_sky_atmosphere(render3d_st)
   let f = render3d_st.ue_sky_frame

@@ -1773,7 +1773,7 @@ T 4cf96468 u_ue_lph 24
 S 4cf96468 u_ue_ls 25
 T 4cf96468 u_ue_lsh 26
 P 428caa3a fullscreen.vert sky.frag 
-B 428caa3a frag 1 3004
+B 428caa3a frag 1 3020
 U 428caa3a frag u_cascade_vp 0 mat4 6 64
 U 428caa3a frag u_cascade_split 384 float 6 16
 U 428caa3a frag u_cascade_range 480 float 6 16
@@ -1882,15 +1882,16 @@ U 428caa3a frag u_disc_dir 2832 vec3 1 0
 U 428caa3a frag u_disc_col 2848 vec3 1 0
 U 428caa3a frag u_sun_hdri 2864 vec3 1 0
 U 428caa3a frag ua_on 2876 float 1 0
-U 428caa3a frag ua_skyview_size 2880 vec4 1 0
-U 428caa3a frag ua_radii_s 2896 vec2 1 0
-U 428caa3a frag ua_view_height 2904 float 1 0
-U 428caa3a frag ua_ref0 2912 vec3 1 0
-U 428caa3a frag ua_ref1 2928 vec3 1 0
-U 428caa3a frag ua_ref2 2944 vec3 1 0
-U 428caa3a frag ua_sun_ue 2960 vec3 1 0
-U 428caa3a frag ua_disc 2976 vec4 1 0
-U 428caa3a frag ua_sky_factor 2992 vec3 1 0
+U 428caa3a frag u_sky_clouds 2880 float 1 0
+U 428caa3a frag ua_skyview_size 2896 vec4 1 0
+U 428caa3a frag ua_radii_s 2912 vec2 1 0
+U 428caa3a frag ua_view_height 2920 float 1 0
+U 428caa3a frag ua_ref0 2928 vec3 1 0
+U 428caa3a frag ua_ref1 2944 vec3 1 0
+U 428caa3a frag ua_ref2 2960 vec3 1 0
+U 428caa3a frag ua_sun_ue 2976 vec3 1 0
+U 428caa3a frag ua_disc 2992 vec4 1 0
+U 428caa3a frag ua_sky_factor 3008 vec3 1 0
 T 428caa3a u_brdf 2
 T 428caa3a u_hairsh 3
 T 428caa3a u_hs_front 4
