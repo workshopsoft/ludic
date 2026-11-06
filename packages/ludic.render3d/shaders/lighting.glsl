@@ -1503,6 +1503,14 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     // as a pixel; a soil line a few centimetres wide on the lawn's side of it, where the grass thins at its edge
     float c = texture(u_lu, uv - u_lu_on.yz).r;
     float e = surfNoise(wp.xz * 3.0 + vec2(A.a.z, A.a.w) * A.a.x, 1024.0) - 0.5;
+    // R3D_LAWN_LOOK (u_surf_q2.z 0): a lawn's edge is ragged - the grass creeps over the paving's edge and dies back from it in
+    // tufts a hand to a forearm across, not a ruled line: the noise at two more scales (a 0.6 m and a 0.15 m lattice), +-0.15 of the
+    // coverage's 1 m texel's ramp, so the edge wanders a dozen centimetres either way
+    if (u_surf_q2.z < 0.5) {
+      vec2 we = wp.xz + vec2(A.a.z, A.a.w) * A.a.x;
+      e = e * 0.35 + (surfNoise(we * 1.7 + 23.0, 1024.0) - 0.5) * 0.4 + (surfNoise(we * 6.5 + 7.0, 1024.0) - 0.5) * 0.25;
+      e *= 2.6 * (1.0 + u_surf_q2.w);
+    }
     float v = c + e * 0.06;
     float aa = max(fwidth(v), 1e-4);
     w = smoothstep(0.5 - aa, 0.5 + aa, v);

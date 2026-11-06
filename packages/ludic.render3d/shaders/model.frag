@@ -907,7 +907,12 @@ void main() {
   // A fern or a clump stands IN the sward, and its low leaves see the sky through it no more than the
   // blades beside them do. Its own occlusion map knows nothing of the grass around it, so by night -
   // when the sky's light is nearly all the light there is - it stood out lit against the meadow.
-  if (u_model_h <= 2.0) arm.r *= mix(0.35, 1.0, smoothstep(0.0, 0.9, v_lh));
+  // (a mown lawn's sprigs, world/lawn.ludic, stand under 0.3 m: their sward is their own height, so the ramp runs up the model's
+  // height - at 0.9 m a 6 cm blade's tip read as the sward's dark foot)
+  if (u_model_h <= 2.0) arm.r *= mix(0.35, 1.0, smoothstep(0.0, u_model_h < 0.3 ? max(u_model_h, 0.03) : 0.9, v_lh));
+  // and their normals bent to the ground's up (Ghost of Tsushima's grass, Unreal's grass normal from the landscape): a sprig's cards
+  // stand on edge, lit edge-on they drew near black against the sunlit ground they are part of
+  if (u_model_h > 0.0 && u_model_h < 0.3) n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.75));
 #endif
   // The quake made visible. A turning aspen leaf shows its pale, almost white underside, so
   // the crown does not merely move - it GLITTERS, leaf by leaf, and that is what reads at a
@@ -960,6 +965,11 @@ void main() {
   // a surface (a road, a wall, a lot's edge: the static ground) by Unreal's 3x3 gather PCF in the near cascades, four fetches for the
   // disc's eight (R3D_SURF_SHADOW_PCF3, u_surf_q2.y; lighting.glsl sunShadowQ)
   float shadow = sunShadowQ(v_wpos, N, viewDepth, u_surf.x > 0.0 && u_surf_q2.y < 0.5);
+#if defined(FOLIAGE)
+  // ground cover under 0.3 m (a mown lawn's sprigs) stands within a shadow texel of the ground: biased along its own normal it read
+  // the ground as its caster and drew black (the blades' fix, above): looked up a hand's width up, along the ground's up
+  if (u_model_h > 0.0 && u_model_h < 0.3) shadow = sunShadow(v_wpos + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), viewDepth);
+#endif
 #else
   float shadow = sunShadow(v_wpos, N, viewDepth);
 #endif
