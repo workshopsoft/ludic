@@ -177,6 +177,24 @@ function tmb_lock_bits(tm: TileMap, k: TmLock, px: []byte, step: int) -> bool {
       else if k.carve != null and k.carve[int(px[(j * res + i) * step])] == 1 { bits[j * res + i] = 6 }
     }
   }
+  # a free texel beside a covered one holds its height too (strict, tol): a game may class a surface's edge texels as the ground beside
+  # them (they show past the surface's own edge), and a coarse level must still not lift that ground over the surface
+  if k.under != null {
+    for j in 0 .. res {
+      for i in 0 .. res {
+        if bits[j * res + i] != 0 { continue }
+        var near = false
+        for b in max(j - 1, 0) .. min(j + 2, res) {
+          for a in max(i - 1, 0) .. min(i + 2, res) {
+            let v = bits[b * res + a]
+            if v == 2 or v == 3 or v == 6 { near = true }
+          }
+        }
+        if near { bits[j * res + i] = 7 }
+      }
+    }
+    for t in 0 .. n { if bits[t] == 7 { bits[t] = 1 } }
+  }
   k.bits = bits
   return true
 }
