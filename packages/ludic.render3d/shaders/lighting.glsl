@@ -1359,7 +1359,7 @@ float lawnBareW(vec2 wm) {
   float big = surfNoise(wm / 71.0, 1024.0) * 0.55 + surfNoise(wm / 23.0 + 5.0, 1024.0) * 0.3 + surfNoise(wm / 7.0 + 11.0, 1024.0) * 0.15;
   float dry = smoothstep(0.40, 0.70, big);
   float s = surfNoise(wm / 13.0 + 31.0, 1024.0) * 0.55 + surfNoise(wm / 3.1 + 7.0, 1024.0) * 0.3 + surfNoise(wm / 0.8 + 3.0, 1024.0) * 0.15;
-  return smoothstep(0.68, 0.84, s + 0.05 * dry);
+  return smoothstep(0.60, 0.78, s + 0.05 * dry);   // ~15-20 % of a lawn thin to bare (2026-11-06)
 }
 void lawnMacro(vec2 wm, float wy, float dist, vec3 N, inout vec3 alb, inout vec3 n, inout vec3 arm) {
   float big = surfNoise(wm / 71.0, 1024.0) * 0.55 + surfNoise(wm / 23.0 + 5.0, 1024.0) * 0.3 + surfNoise(wm / 7.0 + 11.0, 1024.0) * 0.15;
