@@ -164,12 +164,13 @@ export function model_add_prim(render3d_st: mut Render3dState, model: Model, v: 
 # the last primitive added lit by a material parameter collection scalar (mpc.ludic), its emission its base colour times its factor's
 # emissive r g b times that scalar - the glTF extras "emissive_param" + "emissive_from_base" for a primitive made in code (a building's lit
 # windows on "night_lamps")
-export function model_prim_lit_by(render3d_st: mut Render3dState, model: Model, param: string) -> void {
+# (from_base false: its emission is the factor's colour alone, masked by its ARM alpha - a lamp's light in a far window, not the glass)
+export function model_prim_lit_by(render3d_st: mut Render3dState, model: Model, param: string, from_base: bool) -> void {
   let n = len(model.prims)
   if n == 0 { return }
   let pr = model.prims[n - 1]
   pr.emis_param = r3d_mpc_scalar(render3d_st, param)
-  pr.emis_base = true
+  pr.emis_base = from_base
 }
 
 # its bounds from two corners (8 numbers a corner, as a vertex: only the positions are read)
