@@ -1378,6 +1378,46 @@ void lawnMacro(vec2 wm, float wy, float dist, vec3 N, inout vec3 alb, inout vec3
   arm.b = 0.0;
   n = normalize(mix(n, N, 0.35 * bare));
 }
+// The lawn's look past arm's reach (R3D_LAWN_LOOK=0 off: u_surf_q2.z 1; R3D_LAWN_VAR its strength, u_surf_q2.w + 1). A photographed lawn
+// tile mips to its mean a few metres out, so a park read as a flat green card. What a real lawn shows there, as Unreal's landscape
+// materials build it: (1) distance blend - the same scan again at 9x and 37x its tile, its luminance over the scan's mean multiplied in
+// from ~6 m out (the clumps and tufts a pixel there still resolves); (2) clumping - a metre-scale mottle of darker lush tufts and paler
+// thin ones, hue as well as brightness (lush blue-green, thin yellow-green); (3) dry patches - an LA lawn's sun-burnt straw, the share
+// set by a slow regional noise (some lawns lush, some patchy), height-blended against the grass's own detail (LB_HeightBlend) so the
+// edge frays along the blades. Every tap is a textureGrad on derivatives the caller took before its branch.
+void lawnLook(sampler2D d, SurfP A, vec2 wm, vec2 dx, vec2 dy, float dist, inout vec3 alb, inout vec3 arm) {
+  if (u_surf_q2.z > 0.5) return;
+  float s = 1.0 + u_surf_q2.w;
+  const vec3 L = vec3(0.2126, 0.7152, 0.0722);
+  float ml = max(dot(textureLod(d, vec2(0.5), 16.0).rgb, L), 1e-3);
+  float t = max(A.a.x, 0.1);
+  float s1 = 1.0 / (t * 9.1), s2 = 1.0 / (t * 37.3);
+  float f1 = dot(textureGrad(d, wm * s1, dx * s1, dy * s1).rgb, L) / ml;
+  float f2 = dot(textureGrad(d, wm * s2 + 0.37, dx * s2, dy * s2).rgb, L) / ml;
+  float k = smoothstep(5.0, 28.0, dist) * s;
+  alb *= mix(1.0, clamp(1.0 + (f1 - 1.0) * 2.2, 0.4, 1.8), min(k, 1.0));
+  alb *= mix(1.0, clamp(1.0 + (f2 - 1.0) * 1.6, 0.6, 1.45), min(k * 0.55, 1.0));
+  // clumps: a mottle 1-3 m across, lush (deeper, bluer) against thin (paler, yellower)
+  // (5-6 m patches carry it at 30-60 m, where a grazing view squeezes the depth; the warm cast: an LA lawn's yellow-green, not a
+  // golf green's blue-green)
+  float c = surfNoise(wm / 5.5 + 41.0, 1024.0) * 0.5 + surfNoise(wm / 2.0 + 19.0, 1024.0) * 0.3 + surfNoise(wm / 0.6 + 3.0, 1024.0) * 0.2;
+  vec3 tint = mix(vec3(0.70, 0.80, 0.74), vec3(1.28, 1.16, 0.70), smoothstep(0.22, 0.78, c)) * vec3(1.06, 1.0, 0.84);
+  alb *= mix(vec3(1.0), tint, min(0.9 * s, 1.0));
+  // dry patches: the region's dryness (150 m), the patches (8 m, 2.5 m, 0.6 m), the grass's height its own detail
+  float region = surfNoise(wm / 150.0 + 61.0, 1024.0);
+  float p = surfNoise(wm / 8.0 + 77.0, 1024.0) * 0.6 + surfNoise(wm / 2.5 + 13.0, 1024.0) * 0.28 + surfNoise(wm / 0.6 + 5.0, 1024.0) * 0.12;
+  float share = mix(0.12, 0.4, smoothstep(0.3, 0.75, region)) * s;     // the share of ground gone to straw
+  float wd = smoothstep(1.0 - share - 0.08, 1.0 - share + 0.08, p);
+  float l = dot(alb, L);
+  float hG = clamp(l / (ml * 1.2), 0.0, 1.0) * 0.7;
+  float hD = clamp(f1 * 0.5, 0.0, 1.0) * 0.6;
+  float wg = clamp(mix(-1.0, 1.0, 1.0 - wd) + hG, 0.0001, 1.0);
+  float ws = clamp(mix(-1.0, 1.0, wd) + hD, 0.0001, 1.0);
+  float dry = ws / (wg + ws) * step(0.001, share);
+  vec3 straw = vec3(0.23, 0.18, 0.085) * clamp(l / ml, 0.55, 1.5);
+  alb = mix(alb, straw, dry);
+  arm.g = mix(arm.g, max(arm.g, 0.9), dry);
+}
 // The ground's rock by slope (tilemap_mask.ludic tmd_slope_blend_set; surface.ludic binds it, R3D_GSLOPE=0 off): Unreal's landscape
 // auto-material - a slope mask from the pixel's world normal (the grass's normal map included) over a band, x .. y of 1 - normal y -
 // height-blended against the grass as MaterialExpressionLandscapeLayerBlend.cpp's LB_HeightBlend does it: each layer's weight
@@ -1468,7 +1508,10 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     w = smoothstep(0.5 - aa, 0.5 + aa, v);
     float soil = w * (1.0 - smoothstep(0.5, 0.56 + aa, v));
     if (all2 || w > 0.0) surfaceAtPd(d, nm, am, A, qa, qax, qay, N, N, wp, dpx, dpy, col, a1, n1, r1);
-    if (A.e.y == 0.0 && B.e.y == 0.0 && w > 0.0) lawnMacro(wp.xz + vec2(A.a.z, A.a.w) * A.a.x, wp.y, length(u_cam_pos - wp), N, a1, n1, r1);
+    if (A.e.y == 0.0 && B.e.y == 0.0 && w > 0.0) {
+      lawnMacro(wp.xz + vec2(A.a.z, A.a.w) * A.a.x, wp.y, length(u_cam_pos - wp), N, a1, n1, r1);
+      lawnLook(d, A, wp.xz + vec2(A.a.z, A.a.w) * A.a.x, dpx.xz, dpy.xz, length(u_cam_pos - wp), a1, r1);
+    }
     if (all2 || w < 1.0) surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, col2, a2, n2, r2);
     if (w < 1.0) groundSand(A, qs, qsx, qsy, N, wp, dpx, dpy, col, a2, n2, r2);
     vec3 mixed = mix(a2, a1, w);
@@ -1484,7 +1527,10 @@ void surfaceGround(sampler2D d, sampler2D nm, sampler2D am, vec3 wp, vec3 N, vec
     w = smoothstep(0.036, 0.044, green + e * 0.012);
   }
   if (all2 || w > 0.0) surfaceAtPd(d, nm, am, A, qa, qax, qay, N, N, wp, dpx, dpy, col, a1, n1, r1);
-  if (B.e.y == 0.0 && w > 0.0) lawnMacro(wp.xz + vec2(A.a.z, A.a.w) * A.a.x, wp.y, length(u_cam_pos - wp), N, a1, n1, r1);
+  if (B.e.y == 0.0 && w > 0.0) {
+    lawnMacro(wp.xz + vec2(A.a.z, A.a.w) * A.a.x, wp.y, length(u_cam_pos - wp), N, a1, n1, r1);
+    lawnLook(d, A, wp.xz + vec2(A.a.z, A.a.w) * A.a.x, dpx.xz, dpy.xz, length(u_cam_pos - wp), a1, r1);
+  }
   if (all2 || w < 1.0) surfaceAtPd(u_s2_diff, u_s2_nrm, u_s2_arm, B, qb, qbx, qby, N, N, wp, dpx, dpy, col2, a2, n2, r2);
   if (B.e.y == 0.0 && w < 1.0) groundSand(A, qs, qsx, qsy, N, wp, dpx, dpy, col, a2, n2, r2);
   alb = mix(a2, a1, w);
