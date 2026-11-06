@@ -107,3 +107,62 @@ function model_set_arrays(render3d_st: mut Render3dState, m: Model, v: floats, c
   model_box_of(m, v, nv)
   return true
 }
+
+# A model of several primitives made in code, each its own material (a building chunk's walls, trims, glass and roofs: textured):
+# model_new_empty, then model_add_prim a material, then model_finish with its bounds. A primitive's v: 8 numbers a vertex (position,
+# normal, uv), c: 4 (multiplied into its base colour) or null; diff / nrm / arm: its textures (0: plain white, flat normal, plain ARM);
+# fac: base r g b a, roughness, metallic, emissive r g b (9), or null for all 1 and no emission. The arrays are copied to the GPU.
+@alloc_ok("a model made by the program that asks for it: a load, not a frame")
+export function model_new_empty(radius: float, height: float) -> Model {
+  let model = new Model
+  model.prims = new []Prim
+  model.tris = 0
+  model.radius = radius
+  model.height = height
+  return model
+}
+
+@alloc_ok("a model made by the program that asks for it: a load, not a frame")
+export function model_add_prim(render3d_st: mut Render3dState, model: Model, v: floats, c: floats, nv: int, ix: words, ni: int, name: string, diff: int, nrm: int, arm: int, fac: floats) -> void {
+  if nv <= 0 or ni <= 0 { return }
+  if render3d_st.gltf_white == 0 {
+    render3d_st.gltf_white = tex_solid(render3d_st, 200, 200, 200, 255)
+    render3d_st.gltf_flat = tex_solid(render3d_st, 128, 128, 255, 255)
+  }
+  if render3d_st.gltf_pure == 0 { render3d_st.gltf_pure = tex_solid(render3d_st, 255, 255, 255, 255) }
+  let m = gpu_mesh_new(render3d_st)
+  gpu_mesh_vertices(render3d_st, m, data_of(v), nv * 32, GPU_STATIC)
+  gpu_mesh_attr(render3d_st, m, 0, 3, GPU_F32, 32, 0, false)
+  gpu_mesh_attr(render3d_st, m, 1, 3, GPU_F32, 32, 12, false)
+  gpu_mesh_attr(render3d_st, m, 2, 2, GPU_F32, 32, 24, false)
+  if c != null {
+    gpu_mesh_vertices(render3d_st, m, data_of(c), nv * 16, GPU_STATIC)
+    gpu_mesh_attr(render3d_st, m, 7, 4, GPU_F32, 16, 0, false)
+  }
+  gpu_mesh_indices(render3d_st, m, data_of(ix), ni * 4, 4)
+  m.count = ni
+  gpu_mesh_done(render3d_st, m)
+  let pr = new Prim
+  pr.mesh = m
+  pr.verts = nv
+  pr.skin4 = true
+  # (`name` is not kept: model_release frees a primitive's name as its own copy, and a caller's string is not one)
+  pr.diff = render3d_st.gltf_pure
+  pr.nrm = render3d_st.gltf_flat
+  pr.arm = render3d_st.gltf_pure
+  if diff != 0 { pr.diff = diff }
+  if nrm != 0 { pr.nrm = nrm }
+  if arm != 0 { pr.arm = arm }
+  pr.fac = floats(9)
+  for k in 0 .. 9 { pr.fac[k] = 1.0 }
+  for k in 5 .. 9 { pr.fac[k] = 0.0 }
+  if fac != null { for k in 0 .. 9 { pr.fac[k] = fac[k] } }
+  push(model.prims, pr)
+  model.tris += ni / 3
+}
+
+# its bounds from two corners (8 numbers a corner, as a vertex: only the positions are read)
+export function model_finish(model: Model, corners: floats) -> void { model_box_of(model, corners, 2) }
+
+# a texture from a PNG file, for a model made in code (srgb for colour, not for normals or ARM); 0 when it will not load
+export function model_texture(render3d_st: mut Render3dState, path: string, srgb: bool) -> int { return tex_load(render3d_st, path, srgb) }
