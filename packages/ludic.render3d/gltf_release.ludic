@@ -92,6 +92,7 @@ function model_release(render3d_st: mut Render3dState, m: Model) -> void {
       if pr.morph != null { morph_free(pr.morph);  pr.morph = null }
       if pr.fac != null { free(pr.fac) }
       if pr.ext != null { free(pr.ext) }
+      if pr.room != null { free(pr.room) }
       if pr.fab != null { free(pr.fab) }
       if pr.eye != null { free(pr.eye) }
       if pr.hmap != 0 { gltf_tex_unref(render3d_st, pr.hmap);  pr.hmap = 0 }

@@ -281,6 +281,78 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
   return mat3(T * invmax, B * invmax, N);
 }
 
+#if !defined(FOLIAGE) && !defined(EYE) && !defined(FABRIC) && !defined(SSS_SPLIT) && !defined(CARD) && !defined(SHADOW_PASS) && !defined(EQ_PASS) && !defined(FLOWER) && !defined(BLADE) && !defined(RVT_WRITE) && !defined(TRANSLUCENT)
+// A window's room (model_prim_room): the glass's uvs name one room tile of an atlas (u_room.y across, u_room.z down; each tile its room's
+// five faces in a 3 x 2 block: row 0 the left wall, the back wall, the right wall; row 1 the ceiling, the floor), and where on that room's
+// front the pane is. The view ray is traced through the room's box behind the glass, as Unreal's InteriorCubemap traces it (the camera
+// vector in the surface's own frame, a ray-box intersection, the box's face looked up), here into a face atlas cut from the same room
+// photographs (tools/bld/fetch_interiors.py projects each indoor HDRI onto the box's faces from the room's middle, so this lookup and
+// that projection are one mapping). The front's size is the glass's own: world metres per uv from the screen derivatives (planar panes:
+// constant over a pane), so a 1.2 m window that shows 0.33 of its room's front opens on a 3.6 m room. x the depth (m), 0 off; w the
+// faces' inset (a share of a face: their border texels continue the projection, so no seam bleeds in at a face's edge).
+uniform vec4 u_room;
+// kit.frag imiHit: the ray from (px, py, 0) heading d (z into the room) out of the box: x the face, y z its uv, w the distance
+vec4 roomHit(vec3 room, float px, float py, vec3 d) {
+  float t = 1.0e9;
+  int face = 4;
+  if (d.z > 1e-6) t = room.z / d.z;
+  if (d.x > 1e-6) { float tx = (room.x - px) / d.x; if (tx < t) { t = tx; face = 1; } }
+  else if (d.x < -1e-6) { float tx = -px / d.x; if (tx < t) { t = tx; face = 0; } }
+  if (d.y > 1e-6) { float ty = (room.y - py) / d.y; if (ty < t) { t = ty; face = 3; } }
+  else if (d.y < -1e-6) { float ty = -py / d.y; if (ty < t) { t = ty; face = 2; } }
+  vec3 h = vec3(px + d.x * t, py + d.y * t, d.z * t);
+  vec2 uv;
+  if (face == 4) uv = vec2(h.x / room.x, h.y / room.y);
+  else if (face == 0 || face == 1) uv = vec2(1.0 - h.z / room.z, h.y / room.y);
+  else uv = vec2(h.x / room.x, 1.0 - h.z / room.z);
+  return vec4(float(face), clamp(uv, 0.0, 1.0), t);
+}
+// the atlas uv the pane's point shows, and its gradients for the lookup (the pane's own, scaled to the face and to how much farther the
+// hit is than the glass); false when there is no room to trace (a pane seen edge on, a degenerate frame): the pane's uv as it is
+bool roomUv(vec2 uv, vec3 N, out vec2 auv, out vec2 gx, out vec2 gy) {
+  vec2 tiles = u_room.yz;
+  vec3 dp1 = dFdx(v_wpos), dp2 = dFdy(v_wpos);
+  vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
+  float det = duv1.x * duv2.y - duv1.y * duv2.x;
+  auv = uv;  gx = duv1;  gy = duv2;
+  if (abs(det) < 1e-24) return false;
+  vec3 Tu = (dp1 * duv2.y - dp2 * duv1.y) / det;   // dP/du
+  vec3 Tv = (dp2 * duv1.x - dp1 * duv2.x) / det;   // dP/dv
+  float lu = length(Tu), lv = length(Tv);
+  if (lu < 1e-6 || lv < 1e-6) return false;
+  vec2 cell = floor(uv * tiles);
+  vec2 loc = clamp(uv * tiles - cell, 0.0, 1.0);
+  // up the room: v runs down the glass in a glTF atlas (its rows from the image top), so the front's y is 1 - v there
+  vec3 ex = Tu / lu, ey = Tv / lv;
+  if (ey.y < 0.0) { ey = -ey;  loc.y = 1.0 - loc.y; }
+  vec3 room = vec3(lu / tiles.x, lv / tiles.y, u_room.x);
+  // the room's column in its row (the row is its kind, the kit's choice) by the room's place: the front's corner in the world, on a
+  // half-metre grid (every pane of one window shares it), so a module repeated along a street opens on different rooms (kit.frag
+  // imiHash's per-cell choice; one kit module baked one room into every copy of it)
+  vec3 org = v_wpos - ex * (loc.x * room.x) - ey * (loc.y * room.y);
+  uvec3 oq = uvec3(ivec3(floor(org * 2.0 + 0.5)) + ivec3(1 << 20));
+  uint hh = oq.x * 73856093u ^ oq.y * 19349663u ^ oq.z * 83492791u;
+  hh = (hh ^ (hh >> 16u)) * 0x45d9f3bu;
+  hh ^= hh >> 16u;
+  cell.x = mod(cell.x + float(hh % uint(tiles.x)), tiles.x);
+  vec3 ray = v_wpos - u_cam_pos;
+  float dc = length(ray);
+  ray /= max(dc, 1e-6);
+  vec3 d = vec3(dot(ray, ex), dot(ray, ey), -dot(ray, N));
+  if (d.z < 0.02) return false;
+  vec4 hit = roomHit(room, loc.x * room.x, loc.y * room.y, d);
+  int face = int(hit.x + 0.5);
+  vec2 fc = face == 0 ? vec2(0.0, 0.0) : face == 4 ? vec2(1.0, 0.0) : face == 1 ? vec2(2.0, 0.0) : face == 3 ? vec2(0.0, 1.0) : vec2(1.0, 1.0);
+  float e = u_room.w;
+  vec2 q = vec2(e) + vec2(hit.y, 1.0 - hit.z) * (1.0 - 2.0 * e);   // (the face's uv y up; the atlas's rows from the top)
+  auv = vec2((cell.x + (fc.x + q.x) / 3.0) / tiles.x, (cell.y + (fc.y + q.y) / 2.0) / tiles.y);
+  float far_ = (dc + hit.w) / max(dc, 1e-3);
+  vec2 sc = vec2(1.0 / 3.0, 0.5) * far_;
+  gx = duv1 * sc;  gy = duv2 * sc;
+  return true;
+}
+#endif
+
 // A normal map's frame. glTF's uvs run down the image (v 0 its top row) and its normal maps are green up (OpenGL's), so the map's +y
 // is the surface's -dp/dv: the cotangent frame's B, along +v, read every glTF map's green upside down (a face's horizontal creases,
 // its neck's rings and its eyelids, lit from the wrong side)
@@ -570,7 +642,17 @@ void main() {
   n = normalize(N + side * (fract(v_uv.x) * 2.0 - 1.0) * 0.7);
   arm = vec3(0.9, 0.7, 0.0);
 #else
+#if !defined(FOLIAGE) && !defined(EYE) && !defined(FABRIC) && !defined(SSS_SPLIT) && !defined(CARD) && !defined(SHADOW_PASS) && !defined(EQ_PASS) && !defined(FLOWER) && !defined(BLADE) && !defined(RVT_WRITE) && !defined(TRANSLUCENT)
+  vec4 d;
+  {
+    vec2 auv, rgx, rgy;
+    if (u_room.x > 0.0 && roomUv(v_uv, normalize(v_nrm), auv, rgx, rgy)) d = textureGrad(u_diff, auv, rgx, rgy);
+    else d = texture(u_diff, v_uv);
+  }
+  d *= (vec4(1.0) - u_fac_base_inv) * v_col;
+#else
   vec4 d = texture(u_diff, v_uv) * (vec4(1.0) - u_fac_base_inv) * v_col;
+#endif
 #ifdef TRANSLUCENT
   // the texture's alpha, the material's base alpha and the vertex colour's, times the actor's
   meshAlpha = d.a * u_tr.x;

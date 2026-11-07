@@ -154,7 +154,8 @@ let UL_NAMES: []string = [
   "u_dither_frame", "u_shadow_tan_max", "u_head_on", "u_headmap", "u_fol_h", "u_follicle", "u_fol_b", "u_fol_m", "u_fol_on",
   "u_micro_p", "u_micro", "u_micro_mask", "u_micro_m", "u_micro_r", "u_bent_p", "u_bent", "u_sss_u",
   "u_gslope", "u_gslope_c",
-  "u_s3", "u_s3_b", "u_s3_c", "u_s3_d", "u_s3_e", "u_s3_diff", "u_s3_nrm", "u_s3_arm"
+  "u_s3", "u_s3_b", "u_s3_c", "u_s3_d", "u_s3_e", "u_s3_diff", "u_s3_nrm", "u_s3_arm",
+  "u_room"
 ]
 const UL_FAC_COAT: int = 0
 const UL_MR_SCALE: int = 1
@@ -213,7 +214,8 @@ const UL_S3: int = 61                   # the ground's sand (surface.ludic surf_
 const UL_S3_DIFF: int = 66
 const UL_S3_NRM: int = 67
 const UL_S3_ARM: int = 68
-const UL_N: int = 69
+const UL_ROOM: int = 69
+const UL_N: int = 70
 
 function gpu_ul_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.gpu_ul_on < 0 {
