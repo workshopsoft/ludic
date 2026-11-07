@@ -1,0 +1,465 @@
+# deflate.ludic - DEFLATE compression (RFC 1951) for `ludic pack`: the writer's half of runtime/native/inflate.ludic, so a pack's
+# entries can be stored compressed and the game inflates them with the decoder it already carries. Written in Ludic for the reason
+# the inflater is: zlib is not on every machine a toolchain runs on, and a pack is written by `ludic pack` alone.
+#
+# The shape is zlib's at its middle levels: LZ77 over a 32 KB window found through hash chains (three-byte hashes, DZ_CHAIN links
+# followed at most, a match of DZ_NICE ends the search), one step of lazy matching (a match is held a byte to see whether the next
+# position starts a longer one), and blocks of DZ_SYMS symbols, each written with its own Huffman codes (dynamic, RFC 3.2.7) or
+# stored as it is when that is shorter. Code lengths are limited to 15 (7 for the code-length code) by halving the counts and
+# building again: rare, and a few bytes in a block, never wrong.
+#
+#   dz_compress(src, n) -> a new buffer of the raw DEFLATE stream (dz_len bytes), or null when the stream would not fit
+
+const DZ_WSIZE: int = 32768
+const DZ_WMASK: int = 32767
+const DZ_HSIZE: int = 65536
+const DZ_HMASK: int = 65535
+const DZ_MAXM: int = 258
+const DZ_CHAIN: int = 64            # hash-chain links followed for one match
+const DZ_NICE: int = 128            # a match this long ends the search
+const DZ_LAZY: int = 32             # a match this long is taken at once, not held for the next position's
+const DZ_FAR3: int = 4096           # a three-byte match further back than this costs more than its literals
+const DZ_SYMS: int = 16384          # symbols a block gathers before it is written
+
+var dz_len: int = 0
+
+property Deflater {
+  src: pointer = null
+  n: int = 0
+  out: pointer = null
+  cap: int = 0
+  at: int = 0
+  bb: int = 0                       # bits not yet written, least significant first
+  bc: int = 0
+  over: bool = false                # the output reached its capacity
+  head: words = null                # per hash: the latest position + 1 with it (0: none)
+  prev: words = null                # per position in the window: the one before it with its hash + 1
+  sl: words = null                  # the block's symbols: a literal's byte, or a match's length
+  sd: words = null                  # ... and the match's distance (0: a literal)
+  ns: int = 0
+  blk_at: int = 0                   # the block's first byte of input
+  blk_n: int = 0                    # the bytes its symbols cover
+  lf: words = null                  # literal/length counts (286)
+  df: words = null                  # distance counts (30)
+  ll: words = null                  # lengths and codes (bit-reversed) of the three alphabets
+  lc: words = null
+  dl: words = null
+  dc: words = null
+  cl: words = null
+  cc: words = null
+  lencode: words = null             # a match length (3..258) -> its length code (0..28)
+  dcode: words = null               # a distance (1..32768) -> its distance code (0..29)
+  lbase: words = null
+  lext: words = null
+  dbase: words = null
+  dext: words = null
+  # the code builder's scratch
+  hs: words = null
+  hf: words = null
+  hw: words = null
+  hp: words = null
+  hd: words = null
+  rle: words = null                 # the code lengths run-length coded: per entry (symbol << 8) | extra bits' value
+  nrle: int = 0
+}
+
+function dz_new(src: pointer, n: int, out: pointer, cap: int) -> Deflater {
+  let z = new Deflater
+  z.src = src;  z.n = n;  z.out = out;  z.cap = cap
+  z.head = words(DZ_HSIZE)
+  z.prev = words(DZ_WSIZE)
+  for i in 0 .. DZ_HSIZE { z.head[i] = 0 }
+  for i in 0 .. DZ_WSIZE { z.prev[i] = 0 }
+  z.sl = words(DZ_SYMS);  z.sd = words(DZ_SYMS)
+  z.lf = words(286);  z.df = words(30)
+  z.ll = words(286);  z.lc = words(286);  z.dl = words(30);  z.dc = words(30);  z.cl = words(19);  z.cc = words(19)
+  z.hs = words(286);  z.hf = words(286);  z.hw = words(572);  z.hp = words(572);  z.hd = words(572)
+  z.rle = words(320)
+  for i in 0 .. 286 { z.lf[i] = 0 }
+  for i in 0 .. 30 { z.df[i] = 0 }
+  # RFC 1951 3.2.5
+  z.lbase = words(29);  z.lext = words(29)
+  for c in 0 .. 29 {
+    if c < 8 { z.lbase[c] = 3 + c;  z.lext[c] = 0 }
+    else if c == 28 { z.lbase[c] = 258;  z.lext[c] = 0 }
+    else {
+      let e = (c - 4) / 4
+      z.lext[c] = e
+      z.lbase[c] = 3 + (((1 << e) - 1) << 2) + 4 + (c - 4 - e * 4) * (1 << e)
+    }
+  }
+  z.dbase = words(30);  z.dext = words(30)
+  for c in 0 .. 30 {
+    if c < 4 { z.dbase[c] = 1 + c;  z.dext[c] = 0 }
+    else {
+      let e = (c - 2) / 2
+      z.dext[c] = e
+      z.dbase[c] = 1 + ((1 << e) << 1) + (c - 2 - e * 2) * (1 << e)
+    }
+  }
+  z.lencode = words(259)
+  for c in 0 .. 28 {
+    var l = z.lbase[c]
+    while l < z.lbase[c] + (1 << z.lext[c]) and l <= 258 { z.lencode[l] = c;  l += 1 }
+  }
+  z.lencode[258] = 28
+  z.dcode = words(DZ_WSIZE + 1)
+  for c in 0 .. 30 {
+    var d = z.dbase[c]
+    while d < z.dbase[c] + (1 << z.dext[c]) and d <= DZ_WSIZE { z.dcode[d] = c;  d += 1 }
+  }
+  return z
+}
+
+function dz_dcode(z: Deflater, d: int) -> int { return z.dcode[d] }
+
+# ---- bits -------------------------------------------------------------------------------------------------------------------
+
+function dz_put(z: Deflater, v: int, nbits: int) -> void {
+  z.bb = z.bb | (v << z.bc)
+  z.bc += nbits
+  while z.bc >= 8 {
+    if z.at >= z.cap { z.over = true;  z.bc = 0;  z.bb = 0;  return }
+    z.out[z.at] = z.bb & 255
+    z.at += 1
+    z.bb = z.bb >> 8
+    z.bc -= 8
+  }
+}
+
+function dz_align(z: Deflater) -> void {
+  if z.bc > 0 { dz_put(z, 0, 8 - z.bc) }
+}
+
+# ---- Huffman code lengths, limited to maxbits ----------------------------------------------------------------------------------
+
+# lens[0 .. n) from freq[0 .. n): a Huffman code no longer than maxbits, with at least two codes (a single code is incomplete, which
+# a strict decoder refuses)
+function dz_lengths(z: Deflater, freq: words, n: int, maxbits: int, lens: words) -> void {
+  for i in 0 .. n { lens[i] = 0 }
+  var m = 0
+  for i in 0 .. n {
+    if freq[i] > 0 { z.hs[m] = i;  z.hf[m] = freq[i];  m += 1 }
+  }
+  if m == 0 { lens[0] = 1;  lens[1] = 1;  return }
+  if m == 1 {
+    let s = z.hs[0]
+    lens[s] = 1
+    if s == 0 { lens[1] = 1 } else { lens[0] = 1 }
+    return
+  }
+  var done = false
+  while not done {
+    # leaves by count, rising (insertion sort: a few hundred at most)
+    for i in 1 .. m {
+      let s = z.hs[i];  let f = z.hf[i]
+      var j = i - 1
+      while j >= 0 and z.hf[j] > f { z.hs[j + 1] = z.hs[j];  z.hf[j + 1] = z.hf[j];  j -= 1 }
+      z.hs[j + 1] = s;  z.hf[j + 1] = f
+    }
+    # two queues: the leaves, then the inner nodes in the order they are made (their weights rise too)
+    for i in 0 .. m { z.hw[i] = z.hf[i] }
+    var li = 0
+    var ni = m
+    var nk = m
+    while nk < 2 * m - 1 {
+      var a = 0
+      if li < m and (ni >= nk or z.hw[li] <= z.hw[ni]) { a = li;  li += 1 } else { a = ni;  ni += 1 }
+      var b = 0
+      if li < m and (ni >= nk or z.hw[li] <= z.hw[ni]) { b = li;  li += 1 } else { b = ni;  ni += 1 }
+      z.hw[nk] = z.hw[a] + z.hw[b]
+      z.hp[a] = nk;  z.hp[b] = nk
+      nk += 1
+    }
+    let root = 2 * m - 2
+    z.hd[root] = 0
+    var k = root - 1
+    var deepest = 0
+    while k >= 0 {
+      z.hd[k] = z.hd[z.hp[k]] + 1
+      if k < m and z.hd[k] > deepest { deepest = z.hd[k] }
+      k -= 1
+    }
+    if deepest <= maxbits {
+      for i in 0 .. m { lens[z.hs[i]] = z.hd[i] }
+      done = true
+    } else {
+      for i in 0 .. m { z.hf[i] = (z.hf[i] >> 1) | 1 }     # flatter counts, a shallower tree
+    }
+  }
+}
+
+# canonical codes (RFC 3.2.2) of lens[0 .. n), each bit-reversed: DEFLATE sends a code's top bit first in a stream filled from the bottom
+function dz_codes(lens: words, n: int, codes: words) -> void {
+  let count = words(16)
+  let next = words(16)
+  for i in 0 .. 16 { count[i] = 0 }
+  for i in 0 .. n { count[lens[i]] += 1 }
+  count[0] = 0
+  var code = 0
+  next[0] = 0
+  for b in 1 .. 16 {
+    code = (code + count[b - 1]) << 1
+    next[b] = code
+  }
+  for i in 0 .. n {
+    let l = lens[i]
+    codes[i] = 0
+    if l > 0 {
+      let c = next[l]
+      next[l] += 1
+      var r = 0
+      for b in 0 .. l { r = (r << 1) | ((c >> b) & 1) }
+      codes[i] = r
+    }
+  }
+  free(count)
+  free(next)
+}
+
+# ---- a block --------------------------------------------------------------------------------------------------------------------
+
+# the literal/length and distance lengths run-length coded (RFC 3.2.7: 16 repeats the last 3-6 times, 17 and 18 a run of zeros)
+function dz_rle(z: Deflater, hlit: int, hdist: int) -> void {
+  let all = words(hlit + hdist)
+  for i in 0 .. hlit { all[i] = z.ll[i] }
+  for i in 0 .. hdist { all[hlit + i] = z.dl[i] }
+  let n = hlit + hdist
+  z.nrle = 0
+  var i = 0
+  while i < n {
+    let v = all[i]
+    var run = 1
+    while i + run < n and all[i + run] == v { run += 1 }
+    var left = run
+    if v == 0 {
+      while left >= 11 { let r = min(left, 138);  z.rle[z.nrle] = (18 << 8) | (r - 11);  z.nrle += 1;  left -= r }
+      if left >= 3 { z.rle[z.nrle] = (17 << 8) | (left - 3);  z.nrle += 1;  left = 0 }
+    } else {
+      z.rle[z.nrle] = v << 8;  z.nrle += 1;  left -= 1
+      while left >= 3 { let r = min(left, 6);  z.rle[z.nrle] = (16 << 8) | (r - 3);  z.nrle += 1;  left -= r }
+    }
+    while left > 0 { z.rle[z.nrle] = v << 8;  z.nrle += 1;  left -= 1 }
+    i += run
+  }
+  free(all)
+}
+
+function dz_cl_extra(sym: int) -> int {
+  if sym == 16 { return 2 }
+  if sym == 17 { return 3 }
+  if sym == 18 { return 7 }
+  return 0
+}
+
+# the block of the symbols gathered: Huffman coded, or stored when that is no longer; `last` marks the stream's final block
+function dz_block(z: Deflater, last: bool) -> void {
+  z.lf[256] += 1                                      # the block's end
+  dz_lengths(z, z.lf, 286, 15, z.ll)
+  dz_lengths(z, z.df, 30, 15, z.dl)
+  var hlit = 286
+  while hlit > 257 and z.ll[hlit - 1] == 0 { hlit -= 1 }
+  var hdist = 30
+  while hdist > 1 and z.dl[hdist - 1] == 0 { hdist -= 1 }
+  dz_rle(z, hlit, hdist)
+  let cf = words(19)
+  for i in 0 .. 19 { cf[i] = 0 }
+  for i in 0 .. z.nrle { cf[z.rle[i] >> 8] += 1 }
+  dz_lengths(z, cf, 19, 7, z.cl)
+  let order = "@AB08796:5;4<3=2>1?"                   # 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 (biased by '0')
+  var hclen = 19
+  while hclen > 4 and z.cl[order[hclen - 1] - 48] == 0 { hclen -= 1 }
+  # its cost both ways, in bits
+  var dyn = 3 + 14 + 3 * hclen
+  for i in 0 .. 19 { dyn += cf[i] * (z.cl[i] + dz_cl_extra(i)) }
+  for s in 0 .. 286 {
+    if z.lf[s] > 0 {
+      var e = 0
+      if s > 256 { e = z.lext[s - 257] }
+      dyn += z.lf[s] * (z.ll[s] + e)
+    }
+  }
+  for s in 0 .. 30 { if z.df[s] > 0 { dyn += z.df[s] * (z.dl[s] + z.dext[s]) } }
+  let nstored = max(1, (z.blk_n + 65534) / 65535)
+  let stored = 8 * z.blk_n + nstored * 40 + 8
+  if stored <= dyn {
+    var at = z.blk_at
+    var left = z.blk_n
+    var k = 0
+    while k < nstored {
+      let take = min(left, 65535)
+      var fin = 0
+      if last and k == nstored - 1 { fin = 1 }
+      dz_put(z, fin, 1)
+      dz_put(z, 0, 2)
+      dz_align(z)
+      dz_put(z, take & 255, 8);  dz_put(z, take >> 8, 8)
+      dz_put(z, (take ^ 65535) & 255, 8);  dz_put(z, (take ^ 65535) >> 8, 8)
+      if z.at + take > z.cap { z.over = true;  return }
+      for j in 0 .. take { z.out[z.at + j] = z.src[at + j] }
+      z.at += take
+      at += take
+      left -= take
+      k += 1
+    }
+  } else {
+    dz_codes(z.ll, 286, z.lc)
+    dz_codes(z.dl, 30, z.dc)
+    dz_codes(z.cl, 19, z.cc)
+    var fin = 0
+    if last { fin = 1 }
+    dz_put(z, fin, 1)
+    dz_put(z, 2, 2)
+    dz_put(z, hlit - 257, 5)
+    dz_put(z, hdist - 1, 5)
+    dz_put(z, hclen - 4, 4)
+    for i in 0 .. hclen { dz_put(z, z.cl[order[i] - 48], 3) }
+    for i in 0 .. z.nrle {
+      let s = z.rle[i] >> 8
+      dz_put(z, z.cc[s], z.cl[s])
+      let e = dz_cl_extra(s)
+      if e > 0 { dz_put(z, z.rle[i] & 255, e) }
+    }
+    for i in 0 .. z.ns {
+      let d = z.sd[i]
+      if d == 0 {
+        let b = z.sl[i]
+        dz_put(z, z.lc[b], z.ll[b])
+      } else {
+        let len = z.sl[i]
+        let c = z.lencode[len]
+        dz_put(z, z.lc[257 + c], z.ll[257 + c])
+        if z.lext[c] > 0 { dz_put(z, len - z.lbase[c], z.lext[c]) }
+        let dcd = dz_dcode(z, d)
+        dz_put(z, z.dc[dcd], z.dl[dcd])
+        if z.dext[dcd] > 0 { dz_put(z, d - z.dbase[dcd], z.dext[dcd]) }
+      }
+    }
+    dz_put(z, z.lc[256], z.ll[256])
+  }
+  free(cf)
+  z.blk_at += z.blk_n
+  z.blk_n = 0
+  z.ns = 0
+  for i in 0 .. 286 { z.lf[i] = 0 }
+  for i in 0 .. 30 { z.df[i] = 0 }
+}
+
+function dz_lit(z: Deflater, b: int) -> void {
+  z.sl[z.ns] = b;  z.sd[z.ns] = 0;  z.ns += 1
+  z.lf[b] += 1
+  z.blk_n += 1
+  if z.ns == DZ_SYMS { dz_block(z, false) }
+}
+
+function dz_match(z: Deflater, len: int, d: int) -> void {
+  z.sl[z.ns] = len;  z.sd[z.ns] = d;  z.ns += 1
+  z.lf[257 + z.lencode[len]] += 1
+  z.df[dz_dcode(z, d)] += 1
+  z.blk_n += len
+  if z.ns == DZ_SYMS { dz_block(z, false) }
+}
+
+# ---- matching -----------------------------------------------------------------------------------------------------------------
+
+function dz_hash(s: pointer, i: int) -> int { return ((s[i] << 10) ^ (s[i + 1] << 5) ^ s[i + 2]) & DZ_HMASK }
+
+# position i into its hash chain; the chain's previous head (+ 1), or 0
+function dz_insert(z: Deflater, i: int) -> int {
+  if i + 2 >= z.n { return 0 }
+  let h = dz_hash(z.src, i)
+  let was = z.head[h]
+  z.prev[i & DZ_WMASK] = was
+  z.head[h] = i + 1
+  return was
+}
+
+var dz_best_d: int = 0
+
+# the longest match for position i along the chain from cand (+ 1), at least 3 long (else 0); its distance in dz_best_d
+function dz_find(z: Deflater, i: int, cand0: int) -> int {
+  let s = z.src
+  let maxlen = min(DZ_MAXM, z.n - i)
+  if maxlen < 3 { return 0 }
+  var best = 2
+  var bestd = 0
+  var cand = cand0
+  var chain = DZ_CHAIN
+  let lo = i - DZ_WSIZE
+  while cand > 0 and chain > 0 {
+    let p = cand - 1
+    if p < lo { chain = 0;  continue }
+    if s[p + best] == s[i + best] and s[p] == s[i] and s[p + 1] == s[i + 1] {
+      var l = 2
+      while l < maxlen and s[p + l] == s[i + l] { l += 1 }
+      if l > best {
+        best = l
+        bestd = i - p
+        if l >= DZ_NICE or l >= maxlen { chain = 0;  continue }
+      }
+    }
+    cand = z.prev[p & DZ_WMASK]
+    chain -= 1
+  }
+  if best < 3 or (best == 3 and bestd > DZ_FAR3) { return 0 }
+  dz_best_d = bestd
+  return best
+}
+
+# src's n bytes as a raw DEFLATE stream, into a new buffer of dz_len bytes; null when it would not fit in n plus the stored
+# blocks' framing (it never needs more)
+function dz_compress(src: pointer, n: int) -> pointer {
+  dz_len = 0
+  let cap = n + (n / 65535 + 2) * 8 + 1024
+  let out = bytes(cap)
+  let z = dz_new(src, n, out, cap)
+  var i = 0
+  var held = false
+  var hlen = 0
+  var hd = 0
+  while i < n {
+    let cand = dz_insert(z, i)
+    var len = 0
+    if cand > 0 { len = dz_find(z, i, cand) }
+    let d = dz_best_d
+    if held {
+      if len > hlen {
+        dz_lit(z, src[i - 1])                       # the held match loses to this one: its first byte goes as a literal
+        if len >= DZ_LAZY {
+          dz_match(z, len, d)
+          for k in 1 .. len { dz_insert(z, i + k) }
+          i += len
+          held = false
+        } else {
+          hlen = len;  hd = d
+          i += 1
+        }
+      } else {
+        dz_match(z, hlen, hd)                       # the held match, from i - 1; i is in its chain already
+        for k in 1 .. hlen - 1 { dz_insert(z, i + k) }
+        i = i - 1 + hlen
+        held = false
+      }
+    } else if len >= DZ_LAZY {
+      dz_match(z, len, d)
+      for k in 1 .. len { dz_insert(z, i + k) }
+      i += len
+    } else if len >= 3 {
+      held = true;  hlen = len;  hd = d
+      i += 1
+    } else {
+      dz_lit(z, src[i])
+      i += 1
+    }
+    if z.over { i = n }
+  }
+  if held and not z.over { dz_match(z, hlen, hd) }
+  if not z.over { dz_block(z, true) }
+  if not z.over { dz_align(z) }
+  if z.over {
+    free(out)
+    return null
+  }
+  dz_len = z.at
+  return out
+}

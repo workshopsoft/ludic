@@ -30,6 +30,7 @@ program Ludic {
   import "pkg_remove.ludic"
   import "assets.ludic"
   import "packignore.ludic"
+  import "deflate.ludic"
   import "pack.ludic"
   import "bundle.ludic"
   import "symbols.ludic"

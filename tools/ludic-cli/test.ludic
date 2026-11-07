@@ -266,6 +266,11 @@ function pack_roundtrip_case() -> void {
   shell(`rm -rf {work} && mkdir -p {work}/assets/sub {work}/ship`)
   write_file(`{work}/assets/a.txt`, "alpha")
   write_file(`{work}/assets/sub/b.txt`, "beta")
+  # big enough and repetitive enough that `ludic pack` stores it compressed: read back through the inflater, its own length
+  var big = ""
+  var k = 0
+  while k < 400 { big = big + "gamma delta ";  k += 1 }
+  write_file(`{work}/assets/big.txt`, big + "end")
   write_file(`{work}/game.ludic`, pack_probe_src())
 
   if not shq(`cd {work} && {root}/bin/ludic pack --out ship/game.lpak assets > pack.out 2>&1`) {
@@ -283,8 +288,11 @@ function pack_roundtrip_case() -> void {
   shell(`rm -rf {work}/assets`)
   # run from somewhere with no relation to the project at all
   let got = s_trim(capture(`cd / && {work}/ship/probe 2>&1`))
-  if got != "alpha|beta|1|5|0|alpha|1|4|0" {
-    bad2(lbl, `read back [{got}], wanted [alpha|beta|1|5|0|alpha|1|4|0]`);  return
+  if not shq(`cd {work} && {root}/bin/ludic pack --list ship/game.lpak > /dev/null && grep -q "(1 compressed)" pack.out`) {
+    bad2(lbl, `the big file was not stored compressed: {capture_line(`tail -1 {work}/pack.out`)}`);  return
+  }
+  if got != "alpha|beta|1|5|0|alpha|1|4|0|4803|4803|gamma delta |end" {
+    bad2(lbl, `read back [{got}], wanted [alpha|beta|1|5|0|alpha|1|4|0|4803|4803|gamma delta |end]`);  return
   }
   ok(lbl)
 }
@@ -302,7 +310,11 @@ function pack_probe_src() -> pointer {
   # is the file the filesystem would open: read, found, sized; one that climbs out of the pack's names is still a miss
   s = s + "    var c = Fs.read_text(\"assets/sub/../a.txt\")" + nl()
   s = s + "    if c == null { c = \"MISS\" }" + nl()
-  s = s + "    print(`{a}|{b}|{string(Fs.exists(\"assets/a.txt\"))}|{string(Fs.size(\"assets/a.txt\"))}|{string(Fs.exists(\"assets/gone.txt\"))}|{c}|{string(Fs.exists(\"assets/sub/./b.txt\"))}|{string(Fs.size(\"assets//sub/../sub/b.txt\"))}|{string(Fs.exists(\"assets/../a.txt\"))}`)" + nl()
+  # a compressed entry: its own length from Fs.size and from the text read, its first and last bytes
+  s = s + "    var g = Fs.read_text(\"assets/big.txt\")" + nl()
+  s = s + "    if g == null { g = \"MISS\" }" + nl()
+  s = s + "    let gl = Text.length(g)" + nl()
+  s = s + "    print(`{a}|{b}|{string(Fs.exists(\"assets/a.txt\"))}|{string(Fs.size(\"assets/a.txt\"))}|{string(Fs.exists(\"assets/gone.txt\"))}|{c}|{string(Fs.exists(\"assets/sub/./b.txt\"))}|{string(Fs.size(\"assets//sub/../sub/b.txt\"))}|{string(Fs.exists(\"assets/../a.txt\"))}|{string(Fs.size(\"assets/big.txt\"))}|{string(gl)}|{Text.slice(g, 0, 12)}|{Text.slice(g, gl - 3, gl)}`)" + nl()
   s = s + "  }" + nl()
   s = s + "}" + nl()
   return s

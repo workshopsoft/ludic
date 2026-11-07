@@ -24,9 +24,12 @@
 #
 # The pack is mmap'd, never read into memory: 165 MB of textures and terrain
 # costs one syscall at boot and pages in only what the game actually touches.
-# Entries are stored, not compressed — PNG, JPEG and glTF binary are already
-# compressed, and a decompressor on the load path would spend CPU to make the
-# file no smaller.
+# An entry is stored as it is, or (version 2) as a raw DEFLATE stream when
+# `ludic pack` found that saves a tenth of it: the maps' tables, a world's job
+# files, models' geometry, a texture's BC7 blocks. PNG, JPEG and audio are
+# compressed already and stay as they are. A compressed entry is inflated as it
+# is opened (runtime/native/inflate.ludic, the decoder a game carries for its
+# PNGs) into a memory stream of its own; a stored one is read where it lies.
 #
 # ---- the format -------------------------------------------------------------
 #
@@ -34,16 +37,18 @@
 # (tools/ludic-cli/pack.ludic), which is the only thing that produces one.
 #
 #   offset  0   "LPAK"                 magic
-#           4   version                1
+#           4   version                2 (1: the same without the last two fields)
 #           8   count                  number of entries
 #          12   names                  absolute offset of the name heap
 #          16   data                   absolute offset of the first blob
 #          20   reserved x 3           zero
-#          32   entries[count], 16 bytes each, SORTED by name (strcmp order):
+#          32   entries[count], 24 bytes each (16 in version 1), SORTED by name (strcmp order):
 #                  0  name offset      absolute, NUL-terminated
 #                  4  data offset      absolute
-#                  8  data length
-#                 12  FNV-1a hash of the blob
+#                  8  data length      the bytes in the pack
+#                 12  FNV-1a hash      of the file's own bytes (version 1: of the blob, the same thing)
+#                 16  raw length       the file's own length (= data length when stored)
+#                 20  codec            0 stored, 1 raw DEFLATE (RFC 1951)
 #
 # Sorted names are what make the lookup a binary search rather than a scan, and
 # `ludic pack` sorts because the runtime is entitled to assume it.
@@ -108,6 +113,9 @@ function emit_pak_prelude() -> void {
   emith("@.pak_home  = private unnamed_addr constant [5 x i8] c\"HOME\\00\"\n")
   emith("@.pak_sldot = private unnamed_addr constant [3 x i8] c\"/.\\00\"\n")   # lp_pak_find: a path to canonicalise
   emith("@.pak_slsl  = private unnamed_addr constant [3 x i8] c\"//\\00\"\n")
+  emith("@.pak_wp    = private unnamed_addr constant [4 x i8] c\"w+b\\00\"\n")   # a memory stream of its own for an inflated entry
+  emith("@L_pak_z    = internal global ptr null\n")      # the inflate context compressed entries are opened with, made at the first
+  emith("@L_pak_zlock = internal global i32 0\n")        # ... and the lock that lets one thread at a time use it
 
   # up to 16 packs may be mounted (a game ships its core and a pack a kind of data: art, maps, people, sound ...); the base pointer of
   # each mapping, in mount order
@@ -206,18 +214,24 @@ function emit_pak_lookup() -> void {
   emith("same:\n  ret ptr %p\n}\n")
 
   # binary search one pack's sorted entry table; null when the name is not in it
+  # %outlen is three i32: the blob's length in the pack, the file's own length, its codec (0 stored, 1 deflate)
   emith("define ptr @lp_pak_find1(ptr %base, ptr %name, ptr %outlen) {\n")
   emith("entry:\n  %cntp = getelementptr i8, ptr %base, i32 8\n  %cnt = load i32, ptr %cntp\n")
+  emith("  %verp = getelementptr i8, ptr %base, i32 4\n  %ver = load i32, ptr %verp\n  %v1 = icmp eq i32 %ver, 1\n  %stride = select i1 %v1, i32 16, i32 24\n")
   emith("  %lop = alloca i32\n  %hip = alloca i32\n  store i32 0, ptr %lop\n  %h0 = sub i32 %cnt, 1\n  store i32 %h0, ptr %hip\n  br label %loop\n")
   emith("loop:\n  %lo = load i32, ptr %lop\n  %hi = load i32, ptr %hip\n  %fin = icmp sgt i32 %lo, %hi\n  br i1 %fin, label %miss, label %mid\n")
-  emith("mid:\n  %sum = add i32 %lo, %hi\n  %m = sdiv i32 %sum, 2\n  %eo = mul i32 %m, 16\n  %eo2 = add i32 %eo, 32\n  %ep = getelementptr i8, ptr %base, i32 %eo2\n")
+  emith("mid:\n  %sum = add i32 %lo, %hi\n  %m = sdiv i32 %sum, 2\n  %eo = mul i32 %m, %stride\n  %eo2 = add i32 %eo, 32\n  %ep = getelementptr i8, ptr %base, i32 %eo2\n")
   emith("  %noff = load i32, ptr %ep\n  %nptr = getelementptr i8, ptr %base, i32 %noff\n  %c = call i32 @strcmp(ptr %nptr, ptr %name)\n")
   emith("  %iseq = icmp eq i32 %c, 0\n  br i1 %iseq, label %hit, label %cmp\n")
   emith("cmp:\n  %lt = icmp slt i32 %c, 0\n  br i1 %lt, label %goup, label %godn\n")
   emith("goup:\n  %m1 = add i32 %m, 1\n  store i32 %m1, ptr %lop\n  br label %loop\n")
   emith("godn:\n  %m2 = sub i32 %m, 1\n  store i32 %m2, ptr %hip\n  br label %loop\n")
   emith("hit:\n  %dop = getelementptr i8, ptr %ep, i32 4\n  %doff = load i32, ptr %dop\n  %dlp = getelementptr i8, ptr %ep, i32 8\n  %dlen = load i32, ptr %dlp\n")
-  emith("  store i32 %dlen, ptr %outlen\n  %dp = getelementptr i8, ptr %base, i32 %doff\n  ret ptr %dp\n")
+  emith("  store i32 %dlen, ptr %outlen\n  %dp = getelementptr i8, ptr %base, i32 %doff\n")
+  emith("  %orp = getelementptr i8, ptr %outlen, i32 4\n  %ocp = getelementptr i8, ptr %outlen, i32 8\n  br i1 %v1, label %hit1, label %hit2\n")
+  emith("hit1:\n  store i32 %dlen, ptr %orp\n  store i32 0, ptr %ocp\n  ret ptr %dp\n")
+  emith("hit2:\n  %rlp = getelementptr i8, ptr %ep, i32 16\n  %rlen = load i32, ptr %rlp\n  %cdp = getelementptr i8, ptr %ep, i32 20\n  %cd = load i32, ptr %cdp\n")
+  emith("  store i32 %rlen, ptr %orp\n  store i32 %cd, ptr %ocp\n  ret ptr %dp\n")
   emith("miss:\n  ret ptr null\n}\n")
 
   # search every mounted pack, last mounted first, so a pack listed later in
@@ -245,13 +259,13 @@ function emit_pak_lookup() -> void {
   # Fs.exists / Fs.size ask the packs before they ask the filesystem, so a game
   # that guards a load with Fs.exists (the sound layer does) still finds it
   emith("define i32 @lp_pak_has(ptr %path) {\n")
-  emith("entry:\n  %lp = alloca i32\n  store i32 0, ptr %lp\n  %b = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
+  emith("entry:\n  %lp = alloca [3 x i32]\n  store i32 0, ptr %lp\n  %b = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
   emith("  %hit = icmp ne ptr %b, null\n  %r = select i1 %hit, i32 1, i32 0\n  ret i32 %r\n}\n")
 
   emith("define i32 @lp_pak_bytes(ptr %path) {\n")
-  emith("entry:\n  %lp = alloca i32\n  store i32 0, ptr %lp\n  %b = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
+  emith("entry:\n  %lp = alloca [3 x i32]\n  store i32 0, ptr %lp\n  %b = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
   emith("  %hit = icmp ne ptr %b, null\n  br i1 %hit, label %yes, label %no\n")
-  emith("yes:\n  %l = load i32, ptr %lp\n  ret i32 %l\n")
+  emith("yes:\n  %lrp = getelementptr i8, ptr %lp, i32 4\n  %l = load i32, ptr %lrp\n  ret i32 %l\n")       # the file's own length
   emith("no:\n  ret i32 -1\n}\n")
 }
 
@@ -263,10 +277,43 @@ function emit_pak_lookup() -> void {
 function emit_pak_open() -> void {
   emith("define ptr @lp_pak_open(ptr %path, ptr %mode) {\n")
   emith("entry:\n  %m0 = load i8, ptr %mode\n  %m0i = zext i8 %m0 to i32\n  %isr = icmp eq i32 %m0i, 114\n  br i1 %isr, label %try, label %real\n")
-  emith("try:\n  %lp = alloca i32\n  store i32 0, ptr %lp\n  %blob = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
+  emith("try:\n  %lp = alloca [3 x i32]\n  store i32 0, ptr %lp\n  %blob = call ptr @lp_pak_find(ptr %path, ptr %lp)\n")
   emith("  %hit = icmp ne ptr %blob, null\n  br i1 %hit, label %mem, label %real\n")
-  emith("mem:\n  %len = load i32, ptr %lp\n  %lz = zext i32 %len to i64\n  %f = call ptr @fmemopen(ptr %blob, i64 %lz, ptr @.pak_rb)\n  ret ptr %f\n")
+  emith("mem:\n  %len = load i32, ptr %lp\n  %cdp = getelementptr i8, ptr %lp, i32 8\n  %cd = load i32, ptr %cdp\n  %stored = icmp eq i32 %cd, 0\n  br i1 %stored, label %asis, label %packed\n")
+  emith("asis:\n  %lz = zext i32 %len to i64\n  %f = call ptr @fmemopen(ptr %blob, i64 %lz, ptr @.pak_rb)\n  ret ptr %f\n")
+  emith("packed:\n  %rlp = getelementptr i8, ptr %lp, i32 4\n  %rl = load i32, ptr %rlp\n  %pf = call ptr @lp_pak_inflated(ptr %blob, i32 %len, i32 %rl, i32 %cd)\n  ret ptr %pf\n")
   emith("real:\n  %rf = call ptr @fopen(ptr %path, ptr %mode)\n  ret ptr %rf\n}\n")
+  emit_pak_inflated()
+}
+
+# A compressed entry opened: inflated (runtime/native/inflate.ludic's z_inflate_in, one context for the program, one thread at a
+# time through it) into a buffer of its own length, then handed to a memory stream the C library owns and frees at fclose - so
+# fread/fseek/ftell above see the file's own bytes, and closing it lets them go as closing any file does. On Windows fmemopen is a
+# delete-on-close temporary holding a copy (emit_win.ludic), elsewhere fmemopen(NULL, n, "w+b") is a buffer of its own written once
+# and rewound. A program that does not carry the inflater (a plain tool that never decodes a PNG) cannot open a compressed entry:
+# null, as for a file that is not there.
+function emit_pak_inflated() -> void {
+  emith("define internal ptr @lp_pak_inflated(ptr %blob, i32 %len, i32 %rl, i32 %cd) {\n")
+  let has_inflate = find_fn("z_inflate_in") != null and find_fn("z_inflate_new") != null
+  if not has_inflate {
+    emith("entry:\n  ret ptr null\n}\n")
+    return
+  }
+  emith("entry:\n  %isdef = icmp eq i32 %cd, 1\n  %some = icmp sgt i32 %rl, 0\n  %go = and i1 %isdef, %some\n  br i1 %go, label %alloc, label %no\n")
+  emith("alloc:\n  %r64 = zext i32 %rl to i64\n  %buf = call ptr @malloc(i64 %r64)\n  %nob = icmp eq ptr %buf, null\n  br i1 %nob, label %no, label %lock\n")
+  emith("lock:\n  %was = atomicrmw xchg ptr @L_pak_zlock, i32 1 acquire\n  %busy = icmp ne i32 %was, 0\n  br i1 %busy, label %lock, label %ctx\n")
+  emith("ctx:\n  %z0 = load ptr, ptr @L_pak_z\n  %noz = icmp eq ptr %z0, null\n  br i1 %noz, label %mkz, label %inf\n")
+  emith("mkz:\n  %zn = call ptr @fn_z_inflate_new()\n  store ptr %zn, ptr @L_pak_z\n  br label %inf\n")
+  emith("inf:\n  %z = load ptr, ptr @L_pak_z\n  %got = call i32 @fn_z_inflate_in(ptr %z, ptr %blob, i32 %len, ptr %buf, i32 %rl)\n")
+  emith("  store atomic i32 0, ptr @L_pak_zlock release, align 4\n  %ok = icmp eq i32 %got, %rl\n  br i1 %ok, label %stream, label %bad\n")
+  if g_target_win {
+    emith("stream:\n  %f = call ptr @fmemopen(ptr %buf, i64 %r64, ptr @.pak_rb)\n  call void @free(ptr %buf)\n  ret ptr %f\n")
+  } else {
+    emith("stream:\n  %f = call ptr @fmemopen(ptr null, i64 %r64, ptr @.pak_wp)\n  %nof = icmp eq ptr %f, null\n  br i1 %nof, label %bad, label %fill\n")
+    emith("fill:\n  %w = call i64 @fwrite(ptr %buf, i64 1, i64 %r64, ptr %f)\n  %sk = call i32 @fseek(ptr %f, i64 0, i32 0)\n  call void @free(ptr %buf)\n  ret ptr %f\n")
+  }
+  emith("bad:\n  call void @free(ptr %buf)\n  ret ptr null\n")
+  emith("no:\n  ret ptr null\n}\n")
 }
 
 # ---- boot -------------------------------------------------------------------
@@ -352,9 +399,10 @@ function emit_pak_boot() -> void {
   if g_windowed {
     emith("define void @lp_pak_splash_go() {\n")
     emith("entry:\n  %sp = load ptr, ptr @L_pak_splash\n  %none = icmp eq ptr %sp, null\n  br i1 %none, label %out, label %find\n")
-    emith("find:\n  %lp = alloca i32\n  store i32 0, ptr %lp\n  %blob = call ptr @lp_pak_find(ptr %sp, ptr %lp)\n")
+    emith("find:\n  %lp = alloca [3 x i32]\n  store i32 0, ptr %lp\n  %blob = call ptr @lp_pak_find(ptr %sp, ptr %lp)\n")
     emith("  %miss = icmp eq ptr %blob, null\n  br i1 %miss, label %out, label %show\n")
-    emith("show:\n  %len = load i32, ptr %lp\n  %bg = load i32, ptr @L_pak_splashbg\n")
+    emith("show:\n  %spc = getelementptr i8, ptr %lp, i32 8\n  %spcd = load i32, ptr %spc\n  %sps = icmp eq i32 %spcd, 0\n  br i1 %sps, label %show2, label %out\n")   # a splash is stored: `ludic pack` never compresses an image
+    emith("show2:\n  %len = load i32, ptr %lp\n  %bg = load i32, ptr @L_pak_splashbg\n")
     emith("  call void @splash_show(ptr %blob, i32 %len, i32 %bg)\n  br label %out\n")
     emith("out:\n  ret void\n}\n")
 

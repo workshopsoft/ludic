@@ -360,6 +360,7 @@ function p_primary() -> Node {
       return n
     }
     if (t.text == "text_of") { g_uses_bytes = true }
+    if (t.text == "file_open") { g_uses_inflate = true }   # a read may come out of a pack's compressed entry (emit_pak.ludic)
     let n = node(E_ID); n.s = t.text; pi += 1; return n
   }
   if is_op("(") { pi += 1; skipnl(); let e = expr(); skipnl(); eat_op(")"); return e }
@@ -375,6 +376,7 @@ function p_postfix() -> Node {
       if e.a.kind == E_ID and e.a.s == "Regex" { g_uses_regex = true }   # splice the regex runtime on demand
       if e.a.kind == E_ID and e.a.s == "Random" { g_uses_rng = true }   # splice the seeded random numbers on demand
       if e.a.kind == E_ID and e.a.s == "Fs" and (e.s == "read_bytes" or e.s == "write_bytes") { g_uses_bytes = true }
+      if e.a.kind == E_ID and e.a.s == "Fs" { g_uses_inflate = true }   # Fs.read_* may come out of a pack's compressed entry: splice the inflater
       if e.a.kind == E_ID and e.a.s == "Build" and e.s == "schema_hash" { g_uses_schema_hash = true }   # the schema hashed after the checker
       if e.a.kind == E_ID and (e.a.s == "BigInt" or e.a.s == "Decimal") { g_uses_bignum = true }   # splice the bignum runtime on demand
       if e.a.kind == E_ID and (e.a.s == "Dict" or e.a.s == "Set") { g_uses_dict = true }   # splice the hash-table runtime on demand
@@ -874,6 +876,7 @@ var g_uses_rng: bool = false      # Random.* -> splice the seeded random numbers
 var g_rt_wants: []pointer = new []pointer   # bare names a spliced runtime answers (rng_*, seed, value_*, json_*)
 var g_uses_xml: bool = false      # Xml.* -> splice the XML reader (Tiled #67)
 var g_uses_base64: bool = false   # Base64.* -> splice the base64 codec + inflate (Tiled #67)
+var g_uses_inflate: bool = false  # file_open / Fs.* -> splice the inflater: a pack's compressed entry is inflated as it is opened
 var g_uses_tiled: bool = false    # Tiled.* -> splice the Tiled map runtime (#69)
 var g_uses_atlas: bool = false    # Sprite.sheet/cell/… or Assets.* -> splice the spritesheet/atlas runtime (#81)
 var g_uses_reflect_io: bool = false  # Reflect.serialize/apply -> splice the reflection serializer
@@ -963,9 +966,41 @@ function is_registered_namespace(name: pointer) -> bool {
   return false
 }
 
-function already_loaded(full: pointer) -> bool {
+# a path with its "." and "x/.." segments taken out: one file named two ways ("runtime/native/inflate.ludic" spliced by the compiler,
+# "tools/x/../../runtime/native/inflate.ludic" imported by hand) is one file, loaded once
+function canon_import_path(p: pointer) -> pointer {
+  let parts = new []pointer
+  var np = 0                                       # the segments kept: parts[0 .. np)
+  var seg = ""
   var i = 0
-  while i < len(loaded_paths) { if (loaded_paths[i] == full) { return true };  i += 1 }
+  let n = len(p)
+  while i <= n {
+    if i == n or p[i] == '/' {
+      if seg == ".." and np > 0 and parts[np - 1] != ".." and parts[np - 1] != "" { np -= 1 }
+      else if seg != "." {
+        if np < len(parts) { parts[np] = seg } else { push(parts, seg) }
+        np += 1
+      }
+      seg = ""
+    } else {
+      seg = seg + p[i..i + 1]
+    }
+    i += 1
+  }
+  var out = ""
+  var k = 0
+  while k < np {
+    if k > 0 { out = out + "/" }
+    out = out + parts[k]
+    k += 1
+  }
+  return out
+}
+
+function already_loaded(full: pointer) -> bool {
+  let c = canon_import_path(full)
+  var i = 0
+  while i < len(loaded_paths) { if (loaded_paths[i] == full) or (canon_import_path(loaded_paths[i]) == c) { return true };  i += 1 }
   return false
 }
 
@@ -1529,6 +1564,12 @@ function maybe_splice_runtime() -> void {
   # Base64.* (#67) — base64 codec; pull in the DEFLATE inflater alongside it, so
   # a plain tool can run the full base64 -> zlib/gzip decode chain (inflate.ludic
   # is self-contained; do_import dedupes when a game already linked it via core).
+  # file_open / Fs.*: a packed file may be a compressed entry, inflated as it is opened (emit_pak.ludic lp_pak_inflated)
+  if g_uses_inflate {
+    cur_dir = ""
+    do_import("runtime/native/inflate.ludic")
+    cur_dir = saved
+  }
   if g_uses_base64 {
     cur_dir = ""
     do_import("runtime/native/inflate.ludic")
@@ -1734,6 +1775,7 @@ function parse_program() -> void {
   g_rt_wants = new []pointer
   g_uses_xml = false
   g_uses_base64 = false
+  g_uses_inflate = false
   g_uses_tiled = false
   g_uses_atlas = false
   g_uses_fx = false

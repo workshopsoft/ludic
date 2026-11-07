@@ -60,9 +60,13 @@ sharing one identifier is a class of bug that looks like haunting.
 ## The asset pack
 
 `ludic pack` writes a `.lpak`: a header, an entry table sorted by name, a name
-heap and the blobs. Entries are **stored, not compressed** - PNG, JPEG and glTF
-binary arrive compressed already, and a decompressor on the load path would
-spend CPU to make the file no smaller.
+heap and the blobs. An entry is **compressed when that saves a tenth of it**
+(DEFLATE, the stream a PNG holds): maps' tables, a world's job files, models'
+geometry, a texture's BC7 blocks. PNG, JPEG and audio arrive compressed already
+and are stored as they are. A compressed entry is inflated as it is opened, by
+the decoder the game already carries for its PNGs (a few hundred MB a second);
+a stored one is read where it lies. `ludic pack --store` writes every entry as
+it is.
 
 Nothing about how the game is written changes. This line:
 
@@ -83,7 +87,7 @@ startup and pages in only what the game touches.
 
 ```bash
 ludic pack --list build/pine-woods.lpak     # what is in it
-ludic pack --verify build/pine-woods.lpak   # re-hash every entry
+ludic pack --verify build/pine-woods.lpak   # re-hash every entry (a compressed one inflated first)
 ```
 
 ### Keeping things out: `.packignore`
