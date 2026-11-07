@@ -13,8 +13,8 @@ function dds_u32(b: []byte, o: int) -> int { return b[o] | (b[o + 1] << 8) | (b[
 # the .dds a .png may have beside it, or "" when the path is not a .png
 function dds_path_of(path: string) -> string {
   let n = len(path)
-  if n < 5 or path[n - 4 .. n] != ".png" { return "" }
-  return path[0 .. n - 4] + ".dds"
+  if n < 5 or path[n - 4..n] != ".png" { return "" }
+  return path[0..n - 4] + ".dds"
 }
 
 # Load the .dds at `path` as a texture (srgb: colour, sampled as sRGB), or 0
@@ -47,13 +47,22 @@ function tex_load_dds_bytes(render3d_st: mut Render3dState, b: []byte, srgb: boo
 function tex_load_dds_bytes__t(render3d_st: mut Render3dState, b: []byte, srgb: bool) -> int { return tex_load_dds_at(render3d_st, b, 0, srgb) }
 # a .dds that starts `at` bytes into b (a baked file's payload, baked_tex.ludic)
 function tex_load_dds_at(render3d_st: mut Render3dState, b: []byte, at0: int, srgb: bool) -> int {
-  if len(b) < at0 + 148 or b[at0] != 68 or b[at0 + 1] != 68 or b[at0 + 2] != 83 or b[at0 + 3] != 32 { return 0 }
-  if b[at0 + 84] != 68 or b[at0 + 85] != 88 or b[at0 + 86] != 49 or b[at0 + 87] != 48 { return 0 }      # "DX10"
-  let h = dds_u32(b, at0 + 12)
-  let w = dds_u32(b, at0 + 16)
-  var levels = dds_u32(b, at0 + 28)
+  if b == null or len(b) < at0 + 148 { return 0 }
+  return tex_load_dds_ptr(render3d_st, mem_off(data_of(b), at0), len(b) - at0, srgb)
+}
+
+function dds_p32(p: pointer, o: int) -> int { return p[o] | (p[o + 1] << 8) | (p[o + 2] << 16) | (p[o + 3] << 24) }
+
+# a .dds of n bytes at p (a file read whole, or an image a .glb embeds as a .dds: gltf_texture_bv), or 0 when it is not one this
+# reads (DX10, BC7, BC5 or BC4, its whole mip chain)
+function tex_load_dds_ptr(render3d_st: mut Render3dState, p: pointer, n: int, srgb: bool) -> int {
+  if n < 148 or p[0] != 68 or p[1] != 68 or p[2] != 83 or p[3] != 32 { return 0 }
+  if p[84] != 68 or p[85] != 88 or p[86] != 49 or p[87] != 48 { return 0 }      # "DX10"
+  let h = dds_p32(p, 12)
+  let w = dds_p32(p, 16)
+  var levels = dds_p32(p, 28)
   if levels < 1 { levels = 1 }
-  let dxgi = dds_u32(b, at0 + 128)
+  let dxgi = dds_p32(p, 128)
   var ifmt = 0
   var block = 16
   if dxgi == DDS_BC7 or dxgi == DDS_BC7_SRGB { ifmt = R3D_BC7;  if srgb { ifmt = R3D_BC7_SRGB } }
@@ -67,13 +76,13 @@ function tex_load_dds_at(render3d_st: mut Render3dState, b: []byte, at0: int, sr
     at += max((max(w >> l, 1) + 3) / 4, 1) * max((max(h >> l, 1) + 3) / 4, 1) * block
   }
   offs[levels] = at
-  if at0 + 148 + at > len(b) {
+  if 148 + at > n {
     free(offs)
     return 0
   }
   let id = gpu_tex_new(render3d_st)
   gpu_tex_bind(render3d_st, GPU_TEX2D, id)
-  let ok = gpu_tex_compressed(render3d_st, ifmt, w, h, levels, mem_off(data_of(b), at0 + 148), offs)
+  let ok = gpu_tex_compressed(render3d_st, ifmt, w, h, levels, mem_off(p, 148), offs)
   free(offs)
   if not ok {
     gpu_tex_free(render3d_st, id)

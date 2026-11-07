@@ -178,6 +178,27 @@ export function model_finish(model: Model, corners: floats) -> void { model_box_
 
 # a texture from a PNG file, for a model made in code (srgb for colour, not for normals or ARM); 0 when it will not load
 export function model_texture(render3d_st: mut Render3dState, path: string, srgb: bool) -> int { return tex_load(render3d_st, path, srgb) }
+# whether model_texture(path) has something to load: the PNG, or what a shipped build carries in its place - the .dds beside it
+# (texture_dds.ludic) or a cut-out padded at build time (baked_tex.ludic). A pack may hold only those, so a "is this map there"
+# question about a texture is asked here, not of Fs.exists
+@alloc_ok("a load: the names asked after, made and let go")
+export function model_texture_exists(path: string) -> bool {
+  if Fs.exists(path) { return true }
+  var ok = false
+  let d = dds_path_of(path)
+  if len(d) > 0 {
+    ok = Fs.exists(d)
+    free(d)
+  }
+  if not ok {
+    let b = baked_tex_path(path, "cutouts", ".bc7")
+    if b != "" {
+      ok = Fs.exists(b)
+      free(b)
+    }
+  }
+  return ok
+}
 
 # a game's own buffers given back (a merge's arrays once their model holds them on the GPU, a file's bytes once read): a game reaches
 # no raw memory, so these are its way to free what floats(), words(), Fs.read_bytes and its lists of them made

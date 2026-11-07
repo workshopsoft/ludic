@@ -163,6 +163,7 @@ function png_unfilter(raw: pointer, cur: int, prev: int, stride: int, fbpp: int,
 
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 function png_decode(render3d_st: mut Render3dState, path: pointer) -> pointer {
+  if not render3d_st.tex_log_gpu { tex_log(render3d_st, "cpu", path, false, 0, false, false) }
   let bk = baked_png(render3d_st, path)               # a build that baked it (baked_tex.ludic)
   if bk != null { return bk }
   let pre = tex_pf_take(render3d_st, path)
@@ -434,6 +435,25 @@ function tex_upload_cov(render3d_st: mut Render3dState, px: pointer, ifmt: int, 
   return ok
 }
 
+# R3D_TEX_LOG=1: a line for every image a load reads, and how, so a build can tell which PNGs go to the GPU as they are (and could be
+# shipped as a .dds) and which are read for their samples (a height, a mask: they stay PNGs):
+#   texlog gpu <path> srgb dilate cov dds     tex_load_ex: a file's texture (dds 1 when a .dds beside it was taken)
+#   texlog mem <file>#<bufferView> srgb dilate cov 0   gltf_texture_bv: an image inside a .glb (every use, the cached ones too)
+#   texlog cpu <path>                         png_decode for its samples (png_decode_bytes, the terrain's heights, an overlay)
+@alloc_ok("a load: one line about it")
+function tex_log(render3d_st: mut Render3dState, kind: string, path: string, srgb: bool, dilate: int, cov: bool, dds: bool) -> void {
+  if render3d_st.tex_log_on < 0 {
+    render3d_st.tex_log_on = 0
+    if r3d_env_has(render3d_st, "R3D_TEX_LOG") and r3d_env(render3d_st, "R3D_TEX_LOG") == "1" { render3d_st.tex_log_on = 1 }
+  }
+  if render3d_st.tex_log_on == 0 { return }
+  if kind == "cpu" { print(`texlog cpu {path}`);  return }
+  var s = 0;  if srgb { s = 1 }
+  var c = 0;  if cov { c = 1 }
+  var d = 0;  if dds { d = 1 }
+  print(`texlog {kind} {path} {s} {dilate} {c} {d}`)
+}
+
 # Load a PNG as a mipmapped, anisotropic texture (0 on failure). srgb for albedo.
 @alloc_ok("loading a model, a texture or a font: a load, not a frame (a guest loading a teammate's look is one)")
 function tex_load(render3d_st: mut Render3dState, path: pointer, srgb: bool) -> int { return tex_load_ex(render3d_st, path, srgb, 0) }
@@ -461,6 +481,7 @@ function tex_load_ex__t(render3d_st: mut Render3dState, path: pointer, srgb: boo
       free(dds)                                 # made for this question ("" is a literal)
     }
     if t != 0 {
+      tex_log(render3d_st, "gpu", path, srgb, dilate, cov, true)
       tex_note_size(render3d_st, t)
       return t
     }
@@ -468,11 +489,15 @@ function tex_load_ex__t(render3d_st: mut Render3dState, path: pointer, srgb: boo
   if dilate > 0 and not cov {
     let cut = baked_cutout(render3d_st, path, srgb)   # padded and compressed at build time
     if cut != 0 {
+      tex_log(render3d_st, "gpu", path, srgb, dilate, cov, true)
       tex_note_size(render3d_st, cut)
       return cut
     }
   }
+  tex_log(render3d_st, "gpu", path, srgb, dilate, cov, false)
+  render3d_st.tex_log_gpu = true
   let px = png_decode(render3d_st, path)
+  render3d_st.tex_log_gpu = false
   if px == null { return 0 }
   if dilate > 0 { tex_dilate(render3d_st, px, 60, dilate) }
   let id = tex_upload(render3d_st, px, srgb, true)

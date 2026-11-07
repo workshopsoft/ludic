@@ -1,0 +1,68 @@
+# tex_ship_test.ludic - a texture shipped as the GPU takes it: model_texture_exists sees a map whose PNG a pack left out for its
+# .dds, tex_load_dds_ptr refuses what is not a whole BC7/BC5/BC4 chain before it touches the device (an image a .glb embeds as a
+# .dds comes through it), and the load log is off unless asked for. No device: every refusal returns before the upload.
+import "ludic.render3d/r3d.ludic"
+program TexShipTest {
+  numbers float
+  function links_runtime() -> bool { return Input.key_pressed(0) }
+
+  function put32(b: []byte, at: int, v: int) -> void {
+    b[at] = v & 255
+    b[at + 1] = (v >> 8) & 255
+    b[at + 2] = (v >> 16) & 255
+    b[at + 3] = (v >> 24) & 255
+  }
+
+  # a DX10 .dds header for a w x h BC7 texture of `levels` mips, and room for `blocks` bytes after it
+  function dds(w: int, h: int, levels: int, blocks: int) -> []byte {
+    let b = buffer(148 + blocks)
+    for i in 0 .. 148 + blocks { b[i] = 0 }
+    b[0] = 68;  b[1] = 68;  b[2] = 83;  b[3] = 32                  # "DDS "
+    put32(b, 12, h)
+    put32(b, 16, w)
+    put32(b, 28, levels)
+    b[84] = 68;  b[85] = 88;  b[86] = 49;  b[87] = 48             # "DX10"
+    put32(b, 128, 98)                                              # BC7_UNORM
+    return b
+  }
+
+  test "a map is there when its PNG is, or only the .dds a shipped build put in its place" (render3d_st: mut Render3dState) {
+    let dir = Os.temp_dir() + "/r3d_tex_ship"
+    Fs.mkdir(dir)
+    expect(Fs.write_text(dir + "/both.png", "png"))
+    expect(Fs.write_text(dir + "/both.dds", "dds"))
+    expect(Fs.write_text(dir + "/shipped.dds", "dds"))
+    expect(model_texture_exists(dir + "/both.png"))
+    expect(model_texture_exists(dir + "/shipped.png"))
+    expect(not model_texture_exists(dir + "/missing.png"))
+    # a .dds answers only for a .png's name: another file is asked after as it is
+    expect(not model_texture_exists(dir + "/shipped.jpg"))
+    expect(not Fs.exists(dir + "/shipped.png"))
+  }
+
+  test "a .dds is refused when it is not a whole BC7, BC5 or BC4 chain, before the device" (render3d_st: mut Render3dState) {
+    # 8x8: 4 levels (8, 4, 2, 1), 4 + 1 + 1 + 1 blocks of 16 bytes (tex_load_dds_bytes reads through tex_load_dds_ptr, the path an
+    # image a .glb embeds as a .dds takes)
+    expect_eq(tex_load_dds_bytes(render3d_st, dds(8, 8, 3, 7 * 16), true), 0)    # a level missing: the chain is made at build time
+    expect_eq(tex_load_dds_bytes(render3d_st, dds(8, 8, 4, 6 * 16), true), 0)    # cut short of its last block
+    let notdds = dds(8, 8, 4, 7 * 16)
+    notdds[0] = 80                                  # "PDS ": a PNG's bytes go the PNG way
+    expect_eq(tex_load_dds_bytes(render3d_st, notdds, true), 0)
+    let dx9 = dds(8, 8, 4, 7 * 16)
+    dx9[84] = 68;  dx9[85] = 88;  dx9[86] = 84;  dx9[87] = 53   # "DXT5": only the DX10 form is taken
+    expect_eq(tex_load_dds_bytes(render3d_st, dx9, true), 0)
+    let odd = dds(8, 8, 4, 7 * 16)
+    put32(odd, 128, 71)                             # BC1: not one this reads
+    expect_eq(tex_load_dds_bytes(render3d_st, odd, true), 0)
+    let head = buffer(100)
+    for i in 0 .. 100 { head[i] = 0 }
+    head[0] = 68;  head[1] = 68;  head[2] = 83;  head[3] = 32
+    expect_eq(tex_load_dds_bytes(render3d_st, head, true), 0)                    # shorter than a header
+  }
+
+  test "the load log is off unless R3D_TEX_LOG=1" (render3d_st: mut Render3dState) {
+    expect_eq(render3d_st.tex_log_on, -1)
+    tex_log(render3d_st, "cpu", "assets/x.png", false, 0, false, false)
+    expect_eq(render3d_st.tex_log_on, 0)
+  }
+}

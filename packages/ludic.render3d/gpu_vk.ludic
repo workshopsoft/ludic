@@ -536,6 +536,12 @@ function gvk_mem_new(render3d_st: mut Render3dState, req: bytes, want: int, imag
     push(render3d_st.gvk_al_blk, -1);  push(render3d_st.gvk_al_mem, zero);  push(render3d_st.gvk_al_off, 0);  push(render3d_st.gvk_al_len, 0);  push(render3d_st.gvk_al_map, null)
     push(render3d_st.gvk_al_tag, 0)
     a = len(render3d_st.gvk_al_blk) - 1
+    # every id may come back to the spare list at once: its room keeps up with them here, where an id is made, so the free that
+    # pushes it never grows the list (a long island run had freed more than the 4096 it once was capped at, 2026-11-07)
+    if len(render3d_st.gvk_al_blk) > render3d_st.gvk_al_room {
+      render3d_st.gvk_al_room = max(GVK_LIST_ROOM, render3d_st.gvk_al_room * 2)
+      gvk_room_int(render3d_st.gvk_al_spare, render3d_st.gvk_al_room)
+    }
   }
   var len_ = size
   if blk >= 0 { len_ = span }                 # what the block gives back when it is freed
@@ -593,7 +599,7 @@ function gvk_mem_free(render3d_st: mut Render3dState, a: int) -> void {
     }
   }
   render3d_st.gvk_al_len[a] = 0;  render3d_st.gvk_al_mem[a] = zero;  render3d_st.gvk_al_map[a] = null;  render3d_st.gvk_al_blk[a] = -1
-  @alloc_ok("within the spare ids' room made at start-up (@max 4096)")
+  @alloc_ok("within the spare ids' room, kept as large as the ids made (gvk_mem_new)")
   push(render3d_st.gvk_al_spare, a)
 }
 function gvk_mem_id(x: long) -> int { return int(x) }
@@ -1070,6 +1076,7 @@ function gvk_startup_state(render3d_st: mut Render3dState) -> void {
   gvk_room_int(render3d_st.gvk_fr_off, GVK_LIST_ROOM)
   gvk_room_int(render3d_st.gvk_fr_len, GVK_LIST_ROOM)
   gvk_room_int(render3d_st.gvk_al_spare, GVK_LIST_ROOM)
+  render3d_st.gvk_al_room = GVK_LIST_ROOM
   gvk_room_int(render3d_st.gvk_tex_spare, GVK_LIST_ROOM)
   gvk_room_int(render3d_st.gvk_buf_spare, GVK_LIST_ROOM)
   gvk_room_int(render3d_st.gvk_buf_gpu, 4 * GVK_LIST_ROOM)

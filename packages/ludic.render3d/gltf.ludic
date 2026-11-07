@@ -196,6 +196,7 @@ function gltf_texture_bv(render3d_st: mut Render3dState, bv: int, srgb: bool) ->
   if render3d_st.gltf_cutout { dil = 24 }
   var cv = 0                                      # (a cut-out keeping its coverage down its mips is another texture: tex_cov_begin)
   if dil > 0 and render3d_st.tex_cov_cutouts and render3d_st.tex_cov_on { cv = 1 }
+  if render3d_st.tex_log_on != 0 { tex_log(render3d_st, "mem", `{render3d_st.gltf_doc_key}#{bv}`, srgb, dil, cv == 1, false) }
   let key = `png#{n}#{gltf_bytes_hash(buf, n)}#{srgb}#{dil}#{cv}`
   var i = 0
   while i < render3d_st.gltf_tex_n {
@@ -207,7 +208,19 @@ function gltf_texture_bv(render3d_st: mut Render3dState, bv: int, srgb: bool) ->
     }
     i += 1
   }
-  let id = tex_load_png_mem(render3d_st, buf, n, key, srgb, dil)
+  # an image the bundler stored as a .dds (BC7, its mips made and a cut-out's edges padded at build time) goes to the GPU as it is
+  var id = 0
+  if n > 4 and buf[0] == 68 and buf[1] == 68 and buf[2] == 83 and buf[3] == 32 {
+    let was = render3d_st.gvk_tag
+    if was == VKM_OTHER { render3d_st.gvk_tag = VKM_TEXTURE }
+    if render3d_st.gvk_has_bc { id = tex_load_dds_ptr(render3d_st, buf, n, srgb) }
+    render3d_st.gvk_tag = was
+    if id == 0 { print(`gltf: {render3d_st.gltf_doc_key} image bufferView {bv} is a .dds this GPU cannot take`) }
+    free(buf)
+    if id != 0 { tex_note_size(render3d_st, id) }
+  } else {
+    id = tex_load_png_mem(render3d_st, buf, n, key, srgb, dil)
+  }
   if id != 0 { gltf_tex_add(render3d_st, key, id, 1) } else { free(key) }
   return id
 }
