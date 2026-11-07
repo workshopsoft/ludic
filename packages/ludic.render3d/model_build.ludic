@@ -176,14 +176,14 @@ export function model_prim_lit_by(render3d_st: mut Render3dState, model: Model, 
 # the last primitive added is a window's glass with a room behind it (model.frag u_room: the view traced through the room's box, Unreal's
 # InteriorCubemap): its texture an atlas of rooms `across` x `down`, each tile a room's five faces in a 3 x 2 block (left, back, right
 # wall; ceiling, floor), its uvs the room tile and where on the room's front the pane is; `depth` the room's depth (m), `inset` the share
-# of a face its border texels take
-export function model_prim_room(model: Model, depth: float, across: float, down: float, inset: float) -> void {
+# of a face its border texels take, `front_w` x `front_h` the room's front (m: a tile's uvs span it)
+export function model_prim_room(model: Model, depth: float, across: float, down: float, inset: float, front_w: float, front_h: float) -> void {
   let n = len(model.prims)
   if n == 0 { return }
   let pr = model.prims[n - 1]
   if pr.room != null { free(pr.room) }
-  let r = floats(4)
-  r[0] = depth;  r[1] = across;  r[2] = down;  r[3] = inset
+  let r = floats(6)
+  r[0] = depth;  r[1] = across;  r[2] = down;  r[3] = inset;  r[4] = front_w;  r[5] = front_h
   pr.room = r
 }
 

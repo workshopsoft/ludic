@@ -287,10 +287,11 @@ mat3 cotangentFrame(vec3 N, vec3 p, vec2 uv) {
 // front the pane is. The view ray is traced through the room's box behind the glass, as Unreal's InteriorCubemap traces it (the camera
 // vector in the surface's own frame, a ray-box intersection, the box's face looked up), here into a face atlas cut from the same room
 // photographs (tools/bld/fetch_interiors.py projects each indoor HDRI onto the box's faces from the room's middle, so this lookup and
-// that projection are one mapping). The front's size is the glass's own: world metres per uv from the screen derivatives (planar panes:
-// constant over a pane), so a 1.2 m window that shows 0.33 of its room's front opens on a 3.6 m room. x the depth (m), 0 off; w the
-// faces' inset (a share of a face: their border texels continue the projection, so no seam bleeds in at a face's edge).
+// that projection are one mapping). x the depth (m), 0 off; w the faces' inset (a share of a face: their border texels continue the
+// projection, so no seam bleeds in at a face's edge). u_room_f: the room's front, width and height (m): a tile's uvs span it, the
+// pane's are its share of it (a 1.2 m window shows a third of a 3.6 m room).
 uniform vec4 u_room;
+uniform vec2 u_room_f;
 // kit.frag imiHit: the ray from (px, py, 0) heading d (z into the room) out of the box: x the face, y z its uv, w the distance
 vec4 roomHit(vec3 room, float px, float py, vec3 d) {
   float t = 1.0e9;
@@ -311,26 +312,29 @@ vec4 roomHit(vec3 room, float px, float py, vec3 d) {
 // hit is than the glass); false when there is no room to trace (a pane seen edge on, a degenerate frame): the pane's uv as it is
 bool roomUv(vec2 uv, vec3 N, out vec2 auv, out vec2 gx, out vec2 gy) {
   vec2 tiles = u_room.yz;
-  vec3 dp1 = dFdx(v_wpos), dp2 = dFdy(v_wpos);
   vec2 duv1 = dFdx(uv), duv2 = dFdy(uv);
-  float det = duv1.x * duv2.y - duv1.y * duv2.x;
   auv = uv;  gx = duv1;  gy = duv2;
-  if (abs(det) < 1e-24) return false;
-  vec3 Tu = (dp1 * duv2.y - dp2 * duv1.y) / det;   // dP/du
-  vec3 Tv = (dp2 * duv1.x - dp1 * duv2.x) / det;   // dP/dv
-  float lu = length(Tu), lv = length(Tv);
-  if (lu < 1e-6 || lv < 1e-6) return false;
+  // the room's frame from the glass's normal and the world's up, not from the screen derivatives: thousands of metres from the origin
+  // those are a few per cent off in fp32, which moved a room's corner by decimetres within one pane (a pane split into two or four
+  // rooms) and turned a far pane's room upside down. The derivatives give only which way u and v run along it
+  vec3 up = vec3(0.0, 1.0, 0.0);
+  vec3 ex = cross(up, N);
+  float lx = length(ex);
+  if (lx < 0.2) return false;   // (a pane lying flat: no room behind it)
+  ex /= lx;
+  vec3 ey = normalize(up - N * dot(up, N));
+  vec3 dp1 = dFdx(v_wpos), dp2 = dFdy(v_wpos);
+  if (dot(dp1, ex) * duv1.x + dot(dp2, ex) * duv2.x < 0.0) ex = -ex;
+  bool vDown = dot(dp1, ey) * duv1.y + dot(dp2, ey) * duv2.y < 0.0;
   vec2 cell = floor(uv * tiles);
   vec2 loc = clamp(uv * tiles - cell, 0.0, 1.0);
-  // up the room: v runs down the glass in a glTF atlas (its rows from the image top), so the front's y is 1 - v there
-  vec3 ex = Tu / lu, ey = Tv / lv;
-  if (ey.y < 0.0) { ey = -ey;  loc.y = 1.0 - loc.y; }
-  vec3 room = vec3(lu / tiles.x, lv / tiles.y, u_room.x);
+  if (vDown) loc.y = 1.0 - loc.y;   // (a glTF atlas's v runs down the glass)
+  vec3 room = vec3(u_room_f.x, u_room_f.y, u_room.x);
   // the room's column in its row (the row is its kind, the kit's choice) by the room's place: the front's corner in the world, on a
-  // half-metre grid (every pane of one window shares it), so a module repeated along a street opens on different rooms (kit.frag
+  // metre grid (every pane of one window shares it), so a module repeated along a street opens on different rooms (kit.frag
   // imiHash's per-cell choice; one kit module baked one room into every copy of it)
   vec3 org = v_wpos - ex * (loc.x * room.x) - ey * (loc.y * room.y);
-  uvec3 oq = uvec3(ivec3(floor(org * 2.0 + 0.5)) + ivec3(1 << 20));
+  uvec3 oq = uvec3(ivec3(floor(org + 0.5)) + ivec3(1 << 20));
   uint hh = oq.x * 73856093u ^ oq.y * 19349663u ^ oq.z * 83492791u;
   hh = (hh ^ (hh >> 16u)) * 0x45d9f3bu;
   hh ^= hh >> 16u;
