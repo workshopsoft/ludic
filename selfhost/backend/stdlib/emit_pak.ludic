@@ -109,11 +109,12 @@ function emit_pak_prelude() -> void {
   emith("@.pak_sldot = private unnamed_addr constant [3 x i8] c\"/.\\00\"\n")   # lp_pak_find: a path to canonicalise
   emith("@.pak_slsl  = private unnamed_addr constant [3 x i8] c\"//\\00\"\n")
 
-  # up to 8 packs may be mounted; the base pointer of each mapping, in mount order
-  emith("@L_pak_base = internal global [8 x ptr] zeroinitializer\n")
+  # up to 16 packs may be mounted (a game ships its core and a pack a kind of data: art, maps, people, sound ...); the base pointer of
+  # each mapping, in mount order
+  emith("@L_pak_base = internal global [16 x ptr] zeroinitializer\n")
   emith("@L_pak_n    = internal global i32 0\n")
-  emith("@L_pak_len  = internal global [8 x i64] zeroinitializer\n")   # each mapping's length, for unmount
-  emith("@L_pak_path = internal global [8 x ptr] zeroinitializer\n")   # and the path it was mounted from
+  emith("@L_pak_len  = internal global [16 x i64] zeroinitializer\n")   # each mapping's length, for unmount
+  emith("@L_pak_path = internal global [16 x ptr] zeroinitializer\n")   # and the path it was mounted from
   # the splash, named by packs.index and served out of the pack like any asset
   emith("@L_pak_splash   = internal global ptr null\n")
   emith("@L_pak_splashbg = internal global i32 0\n")
@@ -152,7 +153,7 @@ function emit_pak_prelude() -> void {
 # reason is the kind of thing that runs a game out of them.
 function emit_pak_mount() -> void {
   emith("define i32 @lp_pak_mount(ptr %path) {\n")
-  emith("entry:\n  %n = load i32, ptr @L_pak_n\n  %full = icmp sge i32 %n, 8\n  br i1 %full, label %no, label %op\n")
+  emith("entry:\n  %n = load i32, ptr @L_pak_n\n  %full = icmp sge i32 %n, 16\n  br i1 %full, label %no, label %op\n")
   # O_RDONLY = 0
   emith("op:\n  %fd = call i32 (ptr, i32, ...) @open(ptr %path, i32 0)\n  %bad = icmp slt i32 %fd, 0\n  br i1 %bad, label %no, label %sz\n")
   # SEEK_END = 2; a pack is at least a header
@@ -162,10 +163,10 @@ function emit_pak_mount() -> void {
   emith("  %mbad = icmp eq ptr %base, inttoptr (i64 -1 to ptr)\n  br i1 %mbad, label %clo, label %chk\n")
   # "LPAK" read as a little-endian i32
   emith("chk:\n  %m = load i32, ptr %base\n  %okm = icmp eq i32 %m, 1262571596\n  br i1 %okm, label %keep, label %clo\n")
-  emith("keep:\n  %slot = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %n\n  store ptr %base, ptr %slot\n")
+  emith("keep:\n  %slot = getelementptr [16 x ptr], ptr @L_pak_base, i32 0, i32 %n\n  store ptr %base, ptr %slot\n")
   # its length and path too, so Fs.unmount can find it and give the mapping back
-  emith("  %lslot = getelementptr [8 x i64], ptr @L_pak_len, i32 0, i32 %n\n  store i64 %end, ptr %lslot\n")
-  emith("  %pcopy = call ptr @lp_fs_strdup(ptr %path)\n  %pslot = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %n\n  store ptr %pcopy, ptr %pslot\n")
+  emith("  %lslot = getelementptr [16 x i64], ptr @L_pak_len, i32 0, i32 %n\n  store i64 %end, ptr %lslot\n")
+  emith("  %pcopy = call ptr @lp_fs_strdup(ptr %path)\n  %pslot = getelementptr [16 x ptr], ptr @L_pak_path, i32 0, i32 %n\n  store ptr %pcopy, ptr %pslot\n")
   emith("  %n1 = add i32 %n, 1\n  store i32 %n1, ptr @L_pak_n\n  %c1 = call i32 @close(i32 %fd)\n  ret i32 1\n")
   emith("clo:\n  %c2 = call i32 @close(i32 %fd)\n  ret i32 0\n")
   emith("no:\n  ret i32 0\n}\n")
@@ -178,18 +179,18 @@ function emit_pak_unmount() -> void {
   emith("define i32 @lp_pak_unmount(ptr %path) {\n")
   emith("entry:\n  %n = load i32, ptr @L_pak_n\n  %ip = alloca i32\n  store i32 0, ptr %ip\n  br label %find\n")
   emith("find:\n  %i = load i32, ptr %ip\n  %end = icmp sge i32 %i, %n\n  br i1 %end, label %no, label %cmp\n")
-  emith("cmp:\n  %pp = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %i\n  %p = load ptr, ptr %pp\n  %isnull = icmp eq ptr %p, null\n  br i1 %isnull, label %next, label %str\n")
+  emith("cmp:\n  %pp = getelementptr [16 x ptr], ptr @L_pak_path, i32 0, i32 %i\n  %p = load ptr, ptr %pp\n  %isnull = icmp eq ptr %p, null\n  br i1 %isnull, label %next, label %str\n")
   emith("str:\n  %c = call i32 @strcmp(ptr %p, ptr %path)\n  %same = icmp eq i32 %c, 0\n  br i1 %same, label %drop, label %next\n")
   emith("next:\n  %i1 = add i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %find\n")
-  emith("drop:\n  %bp = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %i\n  %base = load ptr, ptr %bp\n  %lp = getelementptr [8 x i64], ptr @L_pak_len, i32 0, i32 %i\n  %len = load i64, ptr %lp\n")
+  emith("drop:\n  %bp = getelementptr [16 x ptr], ptr @L_pak_base, i32 0, i32 %i\n  %base = load ptr, ptr %bp\n  %lp = getelementptr [16 x i64], ptr @L_pak_len, i32 0, i32 %i\n  %len = load i64, ptr %lp\n")
   if g_target_win { emith("  %u = call i32 @UnmapViewOfFile(ptr %base)\n") } else { emith("  %u = call i32 @munmap(ptr %base, i64 %len)\n") }
   emith("  call void @lp_free(ptr %p)\n  %jp = alloca i32\n  store i32 %i, ptr %jp\n  br label %shift\n")
   emith("shift:\n  %j = load i32, ptr %jp\n  %j1 = add i32 %j, 1\n  %more = icmp slt i32 %j1, %n\n  br i1 %more, label %mv, label %done\n")
-  emith("mv:\n  %sb = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %j1\n  %vb = load ptr, ptr %sb\n  %db = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %j\n  store ptr %vb, ptr %db\n")
-  emith("  %sl = getelementptr [8 x i64], ptr @L_pak_len, i32 0, i32 %j1\n  %vl = load i64, ptr %sl\n  %dl = getelementptr [8 x i64], ptr @L_pak_len, i32 0, i32 %j\n  store i64 %vl, ptr %dl\n")
-  emith("  %sp = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %j1\n  %vp = load ptr, ptr %sp\n  %dp = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %j\n  store ptr %vp, ptr %dp\n")
+  emith("mv:\n  %sb = getelementptr [16 x ptr], ptr @L_pak_base, i32 0, i32 %j1\n  %vb = load ptr, ptr %sb\n  %db = getelementptr [16 x ptr], ptr @L_pak_base, i32 0, i32 %j\n  store ptr %vb, ptr %db\n")
+  emith("  %sl = getelementptr [16 x i64], ptr @L_pak_len, i32 0, i32 %j1\n  %vl = load i64, ptr %sl\n  %dl = getelementptr [16 x i64], ptr @L_pak_len, i32 0, i32 %j\n  store i64 %vl, ptr %dl\n")
+  emith("  %sp = getelementptr [16 x ptr], ptr @L_pak_path, i32 0, i32 %j1\n  %vp = load ptr, ptr %sp\n  %dp = getelementptr [16 x ptr], ptr @L_pak_path, i32 0, i32 %j\n  store ptr %vp, ptr %dp\n")
   emith("  store i32 %j1, ptr %jp\n  br label %shift\n")
-  emith("done:\n  %n1 = sub i32 %n, 1\n  store i32 %n1, ptr @L_pak_n\n  %last = getelementptr [8 x ptr], ptr @L_pak_path, i32 0, i32 %n1\n  store ptr null, ptr %last\n  ret i32 1\n")
+  emith("done:\n  %n1 = sub i32 %n, 1\n  store i32 %n1, ptr @L_pak_n\n  %last = getelementptr [16 x ptr], ptr @L_pak_path, i32 0, i32 %n1\n  store ptr null, ptr %last\n  ret i32 1\n")
   emith("no:\n  ret i32 0\n}\n")
 }
 
@@ -235,7 +236,7 @@ function emit_pak_lookup() -> void {
   emith("entry:\n  %np = load i32, ptr @L_pak_n\n")
   emith("  %ip = alloca i32\n  %i0 = sub i32 %np, 1\n  store i32 %i0, ptr %ip\n  br label %loop\n")
   emith("loop:\n  %i = load i32, ptr %ip\n  %done = icmp slt i32 %i, 0\n  br i1 %done, label %miss, label %body\n")
-  emith("body:\n  %slot = getelementptr [8 x ptr], ptr @L_pak_base, i32 0, i32 %i\n  %base = load ptr, ptr %slot\n")
+  emith("body:\n  %slot = getelementptr [16 x ptr], ptr @L_pak_base, i32 0, i32 %i\n  %base = load ptr, ptr %slot\n")
   emith("  %r = call ptr @lp_pak_find1(ptr %base, ptr %p, ptr %outlen)\n  %hit = icmp ne ptr %r, null\n  br i1 %hit, label %got, label %next\n")
   emith("got:\n  ret ptr %r\n")
   emith("next:\n  %i1 = sub i32 %i, 1\n  store i32 %i1, ptr %ip\n  br label %loop\n")

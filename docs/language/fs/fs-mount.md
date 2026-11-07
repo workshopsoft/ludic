@@ -11,4 +11,4 @@ ns: Fs
 member: mount
 ---
 
-Maps a <code>.lpak</code> or <code>.lmap</code> pack at run time. Its entries are searched before the packs listed in <code>packs.index</code>. Returns <code>true</code> when it was mounted; <code>false</code> when the file cannot be opened, is not a pack, or eight packs are already mounted.
+Maps a <code>.lpak</code> or <code>.lmap</code> pack at run time. Its entries are searched before the packs listed in <code>packs.index</code>. Returns <code>true</code> when it was mounted; <code>false</code> when the file cannot be opened, is not a pack, or sixteen packs are already mounted.
