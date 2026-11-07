@@ -45,6 +45,20 @@ port AudioFiles { cache_dir: fn() -> string }            # "" (the default): a p
 | `aud_wav_seconds(path, fallback)` | a PCM WAV's length from its header, for re-triggering a loop before it ends |
 | `aud_last_gain()`, `aud_last_pitch()`, `aud_last_pan()`, `aud_emitted()` | what the last shot handed the runtime: the only thing a headless test can hear |
 
+## Variants, voices and loops
+
+A runtime voice restarts when fired again, so a sound a game repeats is a bank entry of several takes, each loaded into a few voices
+(`voices.ludic`): `aud_sound_load(bank, audio_st, name, paths, nvoice)`, then `aud_sound_at(bank, audio_st, ch, s, x, z, range, gain, jitter)`
+picks a take other than the last, on the voice that rested longest, with a pitch spread of +-jitter. `aud_sound_flat` is the same at the
+ear. Headless each voice gets a stand-in handle (`AUD_HEADLESS_BASE` up) so a game's own headless proof still counts what it would have
+played. `aud_sound_handle(bank, s, v, k)` is one voice to hold on to.
+
+A loop (`loops.ludic`) is asked for every frame with the gain it should have: `aud_loop(audio_st, ch, h, gain, pitch, pan)` /
+`aud_loop_at(..., x, z, range, gain, pitch)` start it once audible (`Audio.loop_at`), move it without a restart while it stays so
+(`Audio.set_at`: a restarted loop clicks), and stop it when it falls silent or its channel is muted. `aud_loops_live` counts them.
+
+The runtime holds 512 voices (`AUDIO_CAP`), each as float PCM in memory: a game's beds want mono and a modest rate.
+
 ## The pack
 
 `Audio.load` takes a real filesystem path - it bottoms out in AVAudioPlayer's

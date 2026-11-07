@@ -181,6 +181,10 @@ namespace Audio {
   # stereo position. Audio.volume / Audio.pitch stay global (they are the options
   # screen); this is the per-voice one, and it is what distance attenuation is built on.
   alias play_at(id, gain, pitch, pan) = audio_play_at
+  # Audio.loop_at(id, gain:, pitch:, pan:) starts a looping voice (or moves one already looping);
+  # Audio.set_at moves a playing voice with no restart: engines, crowds, surf
+  alias loop_at(id, gain, pitch, pan) = audio_loop_at
+  alias set_at(id, gain, pitch, pan) = audio_set_at
   alias stop(id) = audio_stop
   alias stop_music() = audio_stop_music
   alias stop_all() = audio_stop_all

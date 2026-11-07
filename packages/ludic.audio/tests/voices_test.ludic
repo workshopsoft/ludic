@@ -1,0 +1,101 @@
+# voices_test.ludic - a sound's variants never repeat back to back, its voices take turns, a place
+# gives the gain and pan, out of earshot uses no voice, and a loop starts once, moves, and stops
+import "ludic.audio"
+program VoicesTest {
+  numbers float
+  function t_x() -> float { return 0.0 }
+  bind AudioListener { x: fn t_x, z: fn t_x }
+
+  function three_by_two(bank: mut AudioBank) -> int {
+    let s = aud_sound_new(bank, "step", 3, 2)
+    for v in 0 .. 3 { for k in 0 .. 2 { aud_sound_set(bank, s, v, k, 100 + v * 10 + k) } }
+    return s
+  }
+
+  test "a variant is never the one just played, and every variant comes up" (bank: mut AudioBank) {
+    let s = three_by_two(bank)
+    var seen = [0, 0, 0]
+    var last = -1
+    for i in 0 .. 60 {
+      let h = aud_sound_next(bank, s)
+      let v = (h - 100) / 10
+      expect(v != last)
+      seen[v] = seen[v] + 1
+      last = v
+    }
+    expect(seen[0] > 5 and seen[1] > 5 and seen[2] > 5)
+  }
+
+  test "the voices of a sound take turns" (bank: mut AudioBank) {
+    let s = three_by_two(bank)
+    let a = aud_sound_next(bank, s) % 10
+    let b = aud_sound_next(bank, s) % 10
+    let c = aud_sound_next(bank, s) % 10
+    expect(a != b)
+    expect_eq(a, c)
+  }
+
+  test "one variant is fine, a name finds its sound, and an unknown sound plays nothing" (bank: mut AudioBank) {
+    let s = aud_sound_new(bank, "horn", 1, 1)
+    aud_sound_set(bank, s, 0, 0, 42)
+    expect_eq(aud_sound_next(bank, s), 42)
+    expect_eq(aud_sound_next(bank, s), 42)
+    expect_eq(aud_sound_find(bank, "horn"), s)
+    expect_eq(aud_sound_find(bank, "nope"), -1)
+    expect_eq(aud_sound_next(bank, 9), 0)
+  }
+
+  test "a sound at a place is panned and quieter far off; out of earshot it uses no voice" (bank: mut AudioBank, audio_st: mut AudioState) {
+    let s = three_by_two(bank)
+    expect(aud_sound_at(bank, audio_st, AUD_CH_EFFECTS, s, 40.0, 0.0, 100.0, 1.0, 0.0))
+    expect(aud_last_pan(audio_st) > 0.5)
+    expect(aud_last_gain(audio_st) < 0.5)
+    let before = aud_sound_last_variant(bank, s)
+    expect(not aud_sound_at(bank, audio_st, AUD_CH_EFFECTS, s, 400.0, 0.0, 100.0, 1.0, 0.0))
+    expect_eq(aud_sound_last_variant(bank, s), before)
+  }
+
+  test "the pitch spread stays inside the jitter" (bank: mut AudioBank, audio_st: mut AudioState) {
+    let s = three_by_two(bank)
+    for i in 0 .. 40 {
+      aud_sound_flat(bank, audio_st, AUD_CH_EFFECTS, s, 1.0, 0.05)
+      expect(aud_last_pitch(audio_st) >= 0.95 and aud_last_pitch(audio_st) <= 1.05)
+    }
+  }
+
+  test "a loop starts once, is moved while audible, and stops when it falls silent" (audio_st: mut AudioState) {
+    aud_loop(audio_st, AUD_CH_EFFECTS, 7, 0.5, 1.2, 0.0)
+    expect(aud_loop_playing(audio_st, 7))
+    expect_eq(aud_loops_live(audio_st), 1)
+    aud_loop(audio_st, AUD_CH_EFFECTS, 7, 0.3, 1.4, 0.2)
+    expect_eq(aud_loops_live(audio_st), 1)
+    expect_near(aud_last_pitch(audio_st), 1.4, 0.0001)
+    aud_loop(audio_st, AUD_CH_EFFECTS, 7, 0.0, 1.0, 0.0)
+    expect(not aud_loop_playing(audio_st, 7))
+    expect_eq(aud_loops_live(audio_st), 0)
+    aud_loop_at(audio_st, AUD_CH_AMBIENT, 9, 500.0, 0.0, 100.0, 1.0, 1.0)
+    expect(not aud_loop_playing(audio_st, 9))
+  }
+
+  test "a loop on a muted channel gives its voice back" (audio_st: mut AudioState) {
+    aud_loop(audio_st, AUD_CH_AMBIENT, 5, 0.8, 1.0, 0.0)
+    aud_channel_set(audio_st, AUD_CH_AMBIENT, 0.0)
+    aud_loop(audio_st, AUD_CH_AMBIENT, 5, 0.8, 1.0, 0.0)
+    expect(not aud_loop_playing(audio_st, 5))
+  }
+
+  test "headless every voice of a loaded sound has a stand-in handle of its own" (bank: mut AudioBank, audio_st: mut AudioState) {
+    let p = Os.temp_dir() + "/ludic-audio-voices.wav"
+    Fs.write_text(p, "RIFF")
+    let s = aud_sound_load(bank, audio_st, "x", [p, p], 3)
+    var seen = new []int
+    for v in 0 .. 2 {
+      for k in 0 .. 3 {
+        let h = aud_sound_handle(bank, s, v, k)
+        expect(h >= AUD_HEADLESS_BASE)
+        for i in 0 .. len(seen) { expect(seen[i] != h) }
+        push(seen, h)
+      }
+    }
+  }
+}

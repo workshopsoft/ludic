@@ -1,0 +1,131 @@
+# voices.ludic - a sound is several recorded variants, each loaded into a few voices. A runtime voice
+# restarts when fired again, so one handle per sound machine-guns a rifle into one long click and
+# cuts a footstep off with the next; variants keep the tenth step from being the first again.
+# A sound s, variant v, voice k is handle vh[first[s] + v * nvoice[s] + k].
+export state AudioBank {
+  snd_name: []string = new []string
+  snd_first: []int = new []int
+  snd_nvar: []int = new []int
+  snd_nvoice: []int = new []int
+  snd_cursor: []int = new []int      # the next voice, round robin over all of a sound's voices
+  snd_last: []int = new []int        # the variant played last (-1: none yet)
+  vh: []int = new []int
+  rng: int = 4242
+}
+
+# a new sound of nvar variants x nvoice voices, every handle 0 until set: its index
+export function aud_sound_new(bank: mut AudioBank, name: string, nvar: int, nvoice: int) -> int {
+  let s = len(bank.snd_name)
+  push(bank.snd_name, keep(name))
+  push(bank.snd_first, len(bank.vh))
+  push(bank.snd_nvar, Math.max(nvar, 1))
+  push(bank.snd_nvoice, Math.max(nvoice, 1))
+  push(bank.snd_cursor, 0)
+  push(bank.snd_last, -1)
+  for i in 0 .. Math.max(nvar, 1) * Math.max(nvoice, 1) { push(bank.vh, 0) }
+  return s
+}
+
+export function aud_sound_set(bank: mut AudioBank, s: int, v: int, k: int, h: int) -> void {
+  if s < 0 or s >= len(bank.snd_name) { return }
+  if v < 0 or v >= bank.snd_nvar[s] or k < 0 or k >= bank.snd_nvoice[s] { return }
+  bank.vh[bank.snd_first[s] + v * bank.snd_nvoice[s] + k] = h
+}
+
+# a sound's variants from files, each loaded nvoice times: the index. Headless nothing loads, and each voice gets a stand-in handle
+# (AUD_HEADLESS_BASE up: the runtime's Audio.* is a no-op there) so a game's own headless run still counts what it would have played
+export const AUD_HEADLESS_BASE: int = 100000
+export function aud_sound_load(bank: mut AudioBank, audio_st: mut AudioState, name: string, paths: []string, nvoice: int) -> int {
+  let s = aud_sound_new(bank, name, len(paths), nvoice)
+  for v in 0 .. len(paths) {
+    for k in 0 .. Math.max(nvoice, 1) {
+      var h = aud_load(audio_st, paths[v])
+      if h == 0 and not is_windowed() and Fs.exists(paths[v]) { h = AUD_HEADLESS_BASE + bank.snd_first[s] + v * bank.snd_nvoice[s] + k }
+      aud_sound_set(bank, s, v, k, h)
+    }
+  }
+  return s
+}
+
+# one voice of one variant, for a voice the game holds on to (a car's engine loop in a slot of its own): 0 when there is none
+export function aud_sound_handle(bank: AudioBank, s: int, v: int, k: int) -> int {
+  if s < 0 or s >= len(bank.snd_name) { return 0 }
+  if v < 0 or v >= bank.snd_nvar[s] or k < 0 or k >= bank.snd_nvoice[s] { return 0 }
+  return bank.vh[bank.snd_first[s] + v * bank.snd_nvoice[s] + k]
+}
+export function aud_sound_voices(bank: AudioBank, s: int) -> int {
+  if s < 0 or s >= len(bank.snd_name) { return 0 }
+  return bank.snd_nvoice[s]
+}
+
+# a sound by name, -1 when there is none
+export function aud_sound_find(bank: AudioBank, name: string) -> int {
+  for s in 0 .. len(bank.snd_name) { if bank.snd_name[s] == name { return s } }
+  return -1
+}
+
+export function aud_sound_count(bank: AudioBank) -> int { return len(bank.snd_name) }
+export function aud_sound_variants(bank: AudioBank, s: int) -> int {
+  if s < 0 or s >= len(bank.snd_name) { return 0 }
+  return bank.snd_nvar[s]
+}
+
+# The handle for the next play: a variant other than the last (when there are two or more), on the
+# voice that has rested longest. 0 for no sound.
+export function aud_sound_next(bank: mut AudioBank, s: int) -> int {
+  if s < 0 or s >= len(bank.snd_name) { return 0 }
+  let nv = bank.snd_nvar[s]
+  var v = 0
+  if nv > 1 {
+    v = aud_bank_rand(bank) % (nv - 1)
+    if v >= bank.snd_last[s] and bank.snd_last[s] >= 0 { v += 1 }
+  }
+  bank.snd_last[s] = v
+  let k = bank.snd_cursor[s] % bank.snd_nvoice[s]
+  bank.snd_cursor[s] = (k + 1) % bank.snd_nvoice[s]
+  return bank.vh[bank.snd_first[s] + v * bank.snd_nvoice[s] + k]
+}
+
+# the variant aud_sound_next picked last (-1: none yet)
+export function aud_sound_last_variant(bank: AudioBank, s: int) -> int {
+  if s < 0 or s >= len(bank.snd_name) { return -1 }
+  return bank.snd_last[s]
+}
+
+# 0 .. 1, from the bank's own generator: the same run picks the same variants
+export function aud_bank_unit(bank: mut AudioBank) -> float { return float(aud_bank_rand(bank) % 10000) / 10000.0 }
+
+# the ZX81 Lehmer generator (x * 75 mod 65537): 32-bit safe, a period of 65536, plenty for picking takes
+function aud_bank_rand(bank: mut AudioBank) -> int {
+  var x = (bank.rng * 75) % 65537
+  if x == 0 { x = 4242 }
+  bank.rng = x
+  return x
+}
+
+# A sound at a place, on a channel, heard within range: the next variant and voice, the place's gain,
+# pan and air, a little pitch spread (jitter 0.03 is +-3%) so a repeat is never the same twice.
+# False when out of earshot (no voice used).
+export function aud_sound_at(bank: mut AudioBank, audio_st: mut AudioState, ch: int, s: int, x: float, z: float, range: float, gain: float, jitter: float) -> bool {
+  let g = aud_gain_at(x, z, range)
+  if g <= 0.0 { return false }
+  let h = aud_sound_next(bank, s)
+  if h == 0 and is_windowed() { return false }
+  let spread = 1.0 + (aud_bank_unit(bank) * 2.0 - 1.0) * jitter
+  aud_emit_on(audio_st, ch, aud_or_test(h), g * gain, aud_pitch_at(g) * spread, aud_pan_at(x, z))
+  return true
+}
+
+# A sound with no place: the player's own (their gun, their steps in first person) or the interface.
+export function aud_sound_flat(bank: mut AudioBank, audio_st: mut AudioState, ch: int, s: int, gain: float, jitter: float) -> void {
+  let h = aud_sound_next(bank, s)
+  if h == 0 and is_windowed() { return }
+  let spread = 1.0 + (aud_bank_unit(bank) * 2.0 - 1.0) * jitter
+  aud_emit_on(audio_st, ch, aud_or_test(h), gain, spread, 0.0)
+}
+
+# headless every handle is 0 and nothing plays, but a test still reads what WOULD have been emitted
+function aud_or_test(h: int) -> int {
+  if h == 0 { return -1 }
+  return h
+}

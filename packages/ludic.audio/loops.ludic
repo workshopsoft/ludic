@@ -1,0 +1,45 @@
+# loops.ludic - a voice that loops while it is wanted: an engine, the surf, a crowd. Asked for every
+# frame with the gain it should have now; started when it first becomes audible, moved (never
+# restarted: a restarted loop clicks) while it stays so, and stopped when it falls silent.
+const AUD_LOOP_FLOOR: float = 0.004   # below this a loop is silence and gives its voice back
+
+export function aud_loop(audio_st: mut AudioState, ch: int, h: int, gain: float, pitch: float, pan: float) -> void {
+  if h == 0 { return }
+  if h >= AUD_HEADLESS_BASE and is_windowed() { return }
+  var slot = h
+  if h >= AUD_HEADLESS_BASE { slot = h - AUD_HEADLESS_BASE + 1024 }
+  while len(audio_st.loop_on) <= slot { push(audio_st.loop_on, 0) }
+  let g = gain * aud_channel(audio_st, ch)
+  if g < AUD_LOOP_FLOOR {
+    if audio_st.loop_on[slot] != 0 {
+      audio_st.loop_on[slot] = 0
+      audio_st.loops_live -= 1
+      Audio.stop(h)
+    }
+    return
+  }
+  audio_st.last_gain = g
+  audio_st.last_pitch = pitch
+  audio_st.last_pan = pan
+  if audio_st.loop_on[slot] == 0 {
+    audio_st.loop_on[slot] = 1
+    audio_st.loops_live += 1
+    Audio.loop_at(h, fixed(Math.clamp(g, 0.0, 1.0)), fixed(pitch), fixed(Math.clamp(pan, -1.0, 1.0)))
+  } else {
+    Audio.set_at(h, fixed(Math.clamp(g, 0.0, 1.0)), fixed(pitch), fixed(Math.clamp(pan, -1.0, 1.0)))
+  }
+}
+
+# a loop at a place: its gain, pan and air from where it is
+export function aud_loop_at(audio_st: mut AudioState, ch: int, h: int, x: float, z: float, range: float, gain: float, pitch: float) -> void {
+  let g = aud_gain_at(x, z, range)
+  aud_loop(audio_st, ch, h, g * gain, pitch * aud_pitch_at(g), aud_pan_at(x, z))
+}
+
+export function aud_loop_stop(audio_st: mut AudioState, h: int) -> void { aud_loop(audio_st, AUD_CH_EFFECTS, h, 0.0, 1.0, 0.0) }
+export function aud_loop_playing(audio_st: AudioState, h: int) -> bool {
+  var slot = h
+  if h >= AUD_HEADLESS_BASE { slot = h - AUD_HEADLESS_BASE + 1024 }
+  return h > 0 and slot < len(audio_st.loop_on) and audio_st.loop_on[slot] != 0
+}
+export function aud_loops_live(audio_st: AudioState) -> int { return audio_st.loops_live }
