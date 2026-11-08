@@ -30,6 +30,7 @@ declare i32 @pthread_cond_init(ptr, ptr)
 declare i32 @pthread_cond_wait(ptr, ptr)
 declare i32 @pthread_cond_broadcast(ptr)
 declare i64 @sysconf(i32)
+declare i32 @uname(ptr)
 declare ptr @malloc(i64)
 
 @T_worker = thread_local global i32 0
@@ -48,8 +49,17 @@ declare ptr @malloc(i64)
 
 define i32 @thr_cpu_count() {
 entry:
-  ; _SC_NPROCESSORS_ONLN is 58 on macOS
-  %n = call i64 @sysconf(i32 58)
+  ; _SC_NPROCESSORS_ONLN is 58 on macOS and 84 on Linux (glibc's 58 is _SC_POLL, which answers 1: a Linux pool started no worker).
+  ; One file serves both, so the system is asked its name: struct utsname begins with sysname on both ("Darwin", "Linux"), and
+  ; 4096 bytes hold either layout (macOS's 5 x 256, glibc's 6 x 65).
+  %u = alloca [4096 x i8], align 8
+  %ur = call i32 @uname(ptr %u)
+  %c0 = load i8, ptr %u
+  %lin = icmp eq i8 %c0, 76
+  %ok = icmp eq i32 %ur, 0
+  %islin = and i1 %ok, %lin
+  %key = select i1 %islin, i32 84, i32 58
+  %n = call i64 @sysconf(i32 %key)
   %n32 = trunc i64 %n to i32
   %lo = icmp slt i32 %n32, 1
   %a = select i1 %lo, i32 1, i32 %n32
