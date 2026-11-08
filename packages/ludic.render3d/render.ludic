@@ -140,6 +140,7 @@ function r3d_env_flags(render3d_st: mut Render3dState) -> void {
   render3d_st.grass_env_off = r3d_env_has(render3d_st, "R3D_NOBLADES")
   render3d_st.sc_skip_card = r3d_env_has(render3d_st, "R3D_NOCARDS")
   render3d_st.sc_dbg_lod = r3d_env_has(render3d_st, "R3D_LODDBG")
+  if r3d_env_has(render3d_st, "R3D_TEX_MAX") { render3d_st.tex_max_size = max(Text.to_int(r3d_env(render3d_st, "R3D_TEX_MAX")), 0) }
   if r3d_env_has(render3d_st, "R3D_ANISO") {
     let a = Text.to_int(r3d_env(render3d_st, "R3D_ANISO"))
     render3d_st.tex_anisotropy = 1.0

@@ -80,9 +80,15 @@ function tex_load_dds_ptr(render3d_st: mut Render3dState, p: pointer, n: int, sr
     free(offs)
     return 0
   }
+  # the texture size cap (r3d_set_tex_max): the levels above it are never uploaded, the chain starts at the first that fits
+  var skip = 0
+  let cap = render3d_st.tex_max_size
+  if cap > 0 { while skip < levels - 1 and max(w >> skip, h >> skip) > cap { skip += 1 } }
+  let base = offs[skip]
+  if skip > 0 { for l in 0 .. levels - skip + 1 { offs[l] = offs[l + skip] - base } }
   let id = gpu_tex_new(render3d_st)
   gpu_tex_bind(render3d_st, GPU_TEX2D, id)
-  let ok = gpu_tex_compressed(render3d_st, ifmt, w, h, levels, mem_off(p, 148), offs)
+  let ok = gpu_tex_compressed(render3d_st, ifmt, max(w >> skip, 1), max(h >> skip, 1), levels - skip, mem_off(p, 148 + base), offs)
   free(offs)
   if not ok {
     gpu_tex_free(render3d_st, id)
@@ -93,7 +99,7 @@ function tex_load_dds_ptr(render3d_st: mut Render3dState, p: pointer, n: int, sr
   gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAG_FILTER, GPU_LINEAR)
   gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
   gpu_tex_paramf(render3d_st, GPU_TEX2D, GPU_TEXTURE_MAX_ANISOTROPY_EXT, render3d_st.tex_anisotropy)
-  render3d_st.tex_w = w
-  render3d_st.tex_h = h
+  render3d_st.tex_w = max(w >> skip, 1)
+  render3d_st.tex_h = max(h >> skip, 1)
   return id
 }

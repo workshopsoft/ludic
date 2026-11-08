@@ -37,6 +37,15 @@ function r3d_set_anisotropy(render3d_st: mut Render3dState, level: int) -> void 
   if keep > 0 { gpu_tex_bind(render3d_st, GPU_TEX2D, keep) }
 }
 
+# The largest side a texture is uploaded at, in pixels (0: no cap): a .dds's levels above it are never uploaded, so a 4096 colour
+# map under a 1024 cap costs a sixteenth of the memory. Read at load, so it applies to textures loaded after the call (a settings
+# screen's texture quality takes effect on the next start). R3D_TEX_MAX wins over the setting.
+function r3d_set_tex_max(render3d_st: mut Render3dState, px: int) -> void {
+  var v = px
+  if r3d_env_has(render3d_st, "R3D_TEX_MAX") { v = Text.to_int(r3d_env(render3d_st, "R3D_TEX_MAX")) }
+  render3d_st.tex_max_size = max(v, 0)
+}
+
 @alloc_ok("a load: a file read whole, kept or freed by its caller")
 # A path with "dir/../" in it (a glTF's texture "../kits/x.png" under its own folder) collapsed, as the filesystem collapses it, so an
 # asset pack finds it too: a pack's names are clean, and its lookup takes the path as it is given. Null when there is none to collapse
