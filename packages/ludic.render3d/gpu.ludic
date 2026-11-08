@@ -480,6 +480,7 @@ function gpu_feature_implemented(f: int) -> bool { return f == GF_VULKAN or f ==
 const GPU_F32: int = 1
 const GPU_U8: int = 2
 const GPU_U16: int = 3
+const GPU_I8: int = 4               # signed bytes; normalised, -127 .. 127 read as -1 .. 1 (a packed normal, UE's FPackedNormal)
 const GPU_STATIC: int = 0
 const GPU_DYNAMIC: int = 1
 const GPU_STREAM: int = 2
@@ -490,10 +491,11 @@ const GPU_MAX_VBUFS: int = 8
 function gpu_gl_type(t: int) -> int {
   if t == GPU_U8 { return GPU_UNSIGNED_BYTE }
   if t == GPU_U16 { return GPU_UNSIGNED_SHORT }
+  if t == GPU_I8 { return 0x1400 }    # GL_BYTE
   return GPU_FLOAT
 }
 function gpu_type_bytes(t: int) -> int {
-  if t == GPU_U8 { return 1 }
+  if t == GPU_U8 or t == GPU_I8 { return 1 }
   if t == GPU_U16 { return 2 }
   return 4
 }

@@ -393,6 +393,8 @@ function gvk_zero_vbuf_get(render3d_st: mut Render3dState) -> int {
 }
 
 function gvk_attr_format(comps: int, type: int, normalized: int) -> int {
+  # a packed normal: four signed bytes read as -1 .. 1 (a vec3 input takes the first three)
+  if type == GPU_I8 { return VK_FORMAT_R8G8B8A8_SNORM }
   if type == GPU_U8 {
     if normalized == 1 { if comps == 4 { return VK_FORMAT_R8G8B8A8_UNORM };  if comps == 3 { return VK_FORMAT_R8G8B8_UNORM };  if comps == 2 { return VK_FORMAT_R8G8_UNORM };  return VK_FORMAT_R8_UNORM }
     # not normalised, read by a float input (a_joints is a vec4): OpenGL converts the integer to a

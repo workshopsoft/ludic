@@ -11,7 +11,8 @@ property Prim {
   nrm:  int = 0,
   arm:  int = 0,
   verts: int = 0,       # vertices in the mesh (each attribute buffer holds this many)
-  name: string,         # the material's name (a part to tint: "hk_jacket")
+  packed: bool = false,  # its vertices in the packed layout (model_add_prim: mb_upload_packed), not 8 floats; model_set_arrays will not refill it
+  name: string,        # the material's name (a part to tint: "hk_jacket")
   fac: floats,          # the material's factors, or null (all 1, no emission): base r g b a, roughness, metallic, emissive r g b
   emis_param: int = -1,  # the material parameter collection scalar its emission is multiplied by (mpc.ludic; the glTF material's
                         # extras "emissive_param"), -1 none: Unreal's emissive driven by a collection parameter (a lamp's lens at night)
