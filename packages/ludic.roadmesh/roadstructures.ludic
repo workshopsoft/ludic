@@ -56,6 +56,22 @@ export property StCtx {
   near: []RmVal = null       # edgesNear's answers: {p, r, keys}, in the order asked
   nAt: int = 0
   bad: string = ""         # the first call the answers did not expect
+  kit: StKit = null        # the structure options' kit (opt.kit), read once (st_kit)
+  kitRead: bool = false
+}
+
+# a kit piece (roadStructures.ts KitPiece): its corners in a unit frame (x across, y up 0..1, z along), triangles, materials, module length
+export property StPiece {
+  v: []double = null
+  t: []int = null
+  m: []int = null
+  len: double = 15.0
+}
+export property StKit {
+  mats: []string = null
+  pier: StPiece = null
+  parapet: StPiece = null
+  tube: StPiece = null
 }
 
 export function st_ctx_new() -> StCtx {
@@ -376,6 +392,150 @@ property Foot {
   g: double = 0.0
 }
 
+# a value's numbers: an f64 array's, or an array of numbers'
+function rv_nums(v: RmVal) -> []double {
+  let out = new []double
+  if v == null { return out }
+  if v.nums != null and len(v.nums) > 0 {
+    for i in 0 .. len(v.nums) { push(out, v.nums[i]) }
+    return out
+  }
+  if v.arr != null { for i in 0 .. len(v.arr) { push(out, v.arr[i].num) } }
+  return out
+}
+function rv_piece(v: RmVal) -> StPiece {
+  if v_undef(v) { return null }
+  let p = new StPiece
+  p.v = rv_nums(v_get(v, "v"))
+  p.t = new []int
+  let t = rv_nums(v_get(v, "t"))
+  for i in 0 .. len(t) { push(p.t, int(t[i])) }
+  p.m = new []int
+  let m = rv_nums(v_get(v, "m"))
+  for i in 0 .. len(m) { push(p.m, int(m[i])) }
+  p.len = v_getn(v, "len", 15.0)
+  return p
+}
+# the options' kit (null: none)
+function st_kit(c: StCtx) -> StKit {
+  if c.kitRead { return c.kit }
+  c.kitRead = true
+  let k = v_get(c.opt, "kit")
+  if v_undef(k) { return null }
+  let kit = new StKit
+  kit.mats = new []string
+  let ms = v_get(k, "mats")
+  if ms != null and ms.arr != null { for i in 0 .. len(ms.arr) { push(kit.mats, ms.arr[i].str) } }
+  kit.pier = rv_piece(v_get(k, "pier"))
+  kit.parapet = rv_piece(v_get(k, "parapet"))
+  kit.tube = rv_piece(v_get(k, "tube"))
+  c.kit = kit
+  return kit
+}
+
+# kit piece `k` fitted into a pier's box (roadStructures.ts kitBox): x (-0.5 .. 0.5) across from corner 0 to corner 3, z (-0.5 .. 0.5)
+# along from corner 0 to corner 1, y (0 .. 1) from `foot` to the tops bilinear between the corners. A straight spline mesh (UE 5.8
+# SplineMeshSceneProxyDesc.cpp) scaled to the box, sheared to the deck's underside
+function kit_box(b: Builder, kit: StKit, k: StPiece, corners: []double, foot: double, tops: []double) -> void {
+  let c0x = corners[0]
+  let c0z = corners[1]
+  let c1x = corners[2]
+  let c1z = corners[3]
+  let c2x = corners[4]
+  let c2z = corners[5]
+  let c3x = corners[6]
+  let c3z = corners[7]
+  let ax = c3x - c0x
+  let az = c3z - c0z
+  let lx = c1x - c0x
+  let lz = c1z - c0z
+  let flip = -az * lx + ax * lz < 0.0
+  let nv = len(k.v) / 3
+  let P = doubles(nv * 3)
+  for j in 0 .. nv {
+    let x = k.v[j * 3] + 0.5
+    let y = k.v[j * 3 + 1]
+    let a = k.v[j * 3 + 2] + 0.5
+    let w0 = (1.0 - a) * (1.0 - x)
+    let w1 = a * (1.0 - x)
+    let w2 = a * x
+    let w3 = (1.0 - a) * x
+    let top = tops[0] * w0 + tops[1] * w1 + tops[2] * w2 + tops[3] * w3
+    P[j * 3] = c0x * w0 + c1x * w1 + c2x * w2 + c3x * w3
+    P[j * 3 + 1] = foot + y * (top - foot)
+    P[j * 3 + 2] = c0z * w0 + c1z * w1 + c2z * w2 + c3z * w3
+  }
+  kit_tris(b, kit, k, P, flip)
+}
+
+# kit piece `k` laid along a band as modules of about its length, bent along it (roadStructures.ts kitBand): x 0 on line `A`, 1 on line
+# `B`, y from the bottoms (`yA` under A, `yB` under B, between them across) up to `top`, z along the module on the band's middle line
+function kit_band(b: Builder, kit: StKit, k: StPiece, A: []double, B: []double, yA: []double, yB: []double, top: []double) -> void {
+  let n = len(yA)
+  if n < 2 { return }
+  let s = doubles(n)
+  s[0] = 0.0
+  for i in 1 .. n {
+    let mx = (A[i * 2] + B[i * 2]) / 2.0 - (A[i * 2 - 2] + B[i * 2 - 2]) / 2.0
+    let mz = (A[i * 2 + 1] + B[i * 2 + 1]) / 2.0 - (A[i * 2 - 1] + B[i * 2 - 1]) / 2.0
+    s[i] = s[i - 1] + hypot2(mx, mz)
+  }
+  let L = s[n - 1]
+  if not (L > 0.000001) { return }
+  let mods = isel(jround(L / k.len) > 1.0, int(jround(L / k.len)), 1)
+  let Lm = L / double(mods)
+  let nv = len(k.v) / 3
+  for q in 0 .. mods {
+    let P = doubles(nv * 3)
+    var flip = false
+    for j in 0 .. nv {
+      let x = k.v[j * 3]
+      let y = k.v[j * 3 + 1]
+      let S = (double(q) + k.v[j * 3 + 2]) * Lm
+      var i = 0
+      while i < n - 2 and s[i + 1] < S { i += 1 }
+      let seg = s[i + 1] - s[i]
+      let t = dsel(seg > 0.0, (S - s[i]) / seg, 0.0)
+      let ox = A[i * 2] + (A[i * 2 + 2] - A[i * 2]) * t
+      let oz = A[i * 2 + 1] + (A[i * 2 + 3] - A[i * 2 + 1]) * t
+      let ix = B[i * 2] + (B[i * 2 + 2] - B[i * 2]) * t
+      let iz = B[i * 2 + 1] + (B[i * 2 + 3] - B[i * 2 + 1]) * t
+      let ya = yA[i] + (yA[i + 1] - yA[i]) * t
+      let yb = yB[i] + (yB[i + 1] - yB[i]) * t
+      let yt = top[i] + (top[i + 1] - top[i]) * t
+      let base = ya + (yb - ya) * x
+      P[j * 3] = ox + (ix - ox) * x
+      P[j * 3 + 1] = base + y * (yt - base)
+      P[j * 3 + 2] = oz + (iz - oz) * x
+      if j == 0 {
+        let ax = ix - ox
+        let az = iz - oz
+        let lx = A[i * 2 + 2] - A[i * 2]
+        let lz = A[i * 2 + 3] - A[i * 2 + 1]
+        flip = -az * lx + ax * lz < 0.0
+      }
+    }
+    kit_tris(b, kit, k, P, flip)
+  }
+}
+
+# a piece's triangles at the corners P, each in its material (slotted with the structure)
+function kit_tris(b: Builder, kit: StKit, k: StPiece, P: []double, flip: bool) -> void {
+  for j in 0 .. len(k.m) {
+    let m = kit.mats[k.m[j]]
+    b_slot(b, m, "structure")
+    let A = k.t[j * 3]
+    var B = k.t[j * 3 + 1]
+    var C = k.t[j * 3 + 2]
+    if flip {
+      let t = B
+      B = C
+      C = t
+    }
+    b_tri(b, m, P[A * 3], P[A * 3 + 1], P[A * 3 + 2], P[B * 3], P[B * 3 + 1], P[B * 3 + 2], P[C * 3], P[C * 3 + 1], P[C * 3 + 2], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, UP_NO, 0.0, 0.0, 0.0)
+  }
+}
+
 function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
   let m = c.matStructure
   b_slot(b, m, "structure")
@@ -393,6 +553,7 @@ function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
   }
   let scale = es.grade.scale
   let tP = opt_n(c, "parapetThick", 0.3)
+  let kit = st_kit(c)
   let deckT = row.deckT
   let H = row.parapet
   let half = row.deckW / 2.0
@@ -432,8 +593,10 @@ function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
       let oz = sd * st[i].nz
       let ui = st[i].y + c.lift - deckT
       let ui1 = st[i + 1].y + c.lift - deckT
-      wall(b, m, pts[i * 2], pts[i * 2 + 1], pts[i * 2 + 2], pts[i * 2 + 3], ui, E[i].y + H, ui1, E[i + 1].y + H, ox, 0.0, oz)
-      if H > 0.0 {
+      let kitP = H > 0.0 and kit != null and kit.parapet != null
+      let hp = dsel(kitP, 0.0, H)
+      wall(b, m, pts[i * 2], pts[i * 2 + 1], pts[i * 2 + 2], pts[i * 2 + 3], ui, E[i].y + hp, ui1, E[i + 1].y + hp, ox, 0.0, oz)
+      if H > 0.0 and not kitP {
         wall(b, m, inner[i * 2], inner[i * 2 + 1], inner[i * 2 + 2], inner[i * 2 + 3], E[i].y, E[i].y + H, E[i + 1].y, E[i + 1].y + H, -ox, 0.0, -oz)
         b_quad(b, m, inner[i * 2], E[i].y + H, inner[i * 2 + 1], inner[i * 2 + 2], E[i + 1].y + H, inner[i * 2 + 3], pts[i * 2 + 2], E[i + 1].y + H, pts[i * 2 + 3], pts[i * 2], E[i].y + H, pts[i * 2 + 1], 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, UP_YES, 0.0, 0.0, 0.0)
       }
@@ -442,6 +605,27 @@ function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
       let q = es_at(es, i + 1, R[i + 1].d)
       let p = es_at(es, i, R[i].d)
       b_quad(b, m, a[0], ui, a[1], d[0], ui1, d[1], q[0], ui1, q[1], p[0], ui, p[1], 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, UP_VEC, 0.0, -1.0, 0.0)
+    }
+  }
+  if H > 0.0 and kit != null and kit.parapet != null {
+    for pass in 0 .. 2 {
+      let side = isel(pass == 0, 1, -1)
+      let sd = double(side)
+      var E = L
+      if side == 1 { E = R }
+      let kp = new []double
+      let ki = new []double
+      let ky = new []double
+      let kt = new []double
+      for i in 0 .. n {
+        let p = es_at(es, i, sd * E[i].d)
+        pts_push(kp, p[0], p[1])
+        let q = es_at(es, i, sd * (E[i].d - tP))
+        pts_push(ki, q[0], q[1])
+        push(ky, E[i].y)
+        push(kt, E[i].y + H)
+      }
+      kit_band(b, kit, kit.parapet, kp, ki, ky, ky, kt)
     }
   }
   for pass in 0 .. 2 {
@@ -597,7 +781,7 @@ function deck(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
     tops[1] = ub
     tops[2] = ub
     tops[3] = ua
-    box_sides(b, m, corners, foot, tops)
+    if kit != null and kit.pier != null { kit_box(b, kit, kit.pier, corners, foot, tops) } else { box_sides(b, m, corners, foot, tops) }
     let pc = frame_pt(es, f, centre)
     let pm = mrow()
     ms(pm, "edge", e.key)
@@ -894,7 +1078,27 @@ function tunnel(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
   let L = new []Outer
   for i in 0 .. n { push(R, outer(c, e, es, i, 1, 0.0)) }
   for i in 0 .. n { push(L, outer(c, e, es, i, -1, 0.0)) }
+  let kit = st_kit(c)
+  let kitT = kit != null and kit.tube != null
+  if kitT {
+    let ka = new []double
+    let kb = new []double
+    let ya = new []double
+    let yb = new []double
+    let yt = new []double
+    for i in 0 .. n {
+      let p = es_at(es, i, -L[i].d)
+      pts_push(ka, p[0], p[1])
+      let q = es_at(es, i, R[i].d)
+      pts_push(kb, q[0], q[1])
+      push(ya, L[i].y - c.skirt)
+      push(yb, R[i].y - c.skirt)
+      push(yt, y_r(c, es, i) + roof)
+    }
+    kit_band(b, kit, kit.tube, ka, kb, ya, yb, yt)
+  }
   for pass in 0 .. 2 {
+    if kitT { continue }
     var E = L
     var sd: double = -1.0
     if pass == 0 {
@@ -908,6 +1112,7 @@ function tunnel(b: Builder, c: StCtx, e: StEdge, es: EdgeStations) -> void {
     }
   }
   for i in 0 .. n - 1 {
+    if kitT { continue }
     let a = es_at(es, i, -L[i].d)
     let d = es_at(es, i + 1, -L[i + 1].d)
     let q = es_at(es, i + 1, R[i + 1].d)
