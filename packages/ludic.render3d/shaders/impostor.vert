@@ -25,8 +25,10 @@ void main() {
 #endif
   vec3 right = vec3(-toCam.z, 0.0, toCam.x);
   float yaw = atan(i_rot.x, i_rot.y);
-  // angle of the viewer around the (rotated) tree, in tile units
-  float ang = atan(toCam.x, -toCam.z) - yaw;
+  // angle of the viewer around the (rotated) tree, in tile units. The mesh turns a point by (x' = c x + s z, z' = -s x + c z)
+  // (model.vert), which takes atan(x, -z) to atan(x, -z) - yaw: the viewer's angle in the tree's own frame is the world one PLUS
+  // the yaw (it was minus: every turned tree's card showed the tree from 2 yaw off and the tree swung round when its mesh came in)
+  float ang = atan(toCam.x, -toCam.z) + yaw;
   float t = floor(fract(ang / 6.2831853) * u_tiles + 0.5);
   v_tile = mod(t, u_tiles);
   v_yaw = yaw;
