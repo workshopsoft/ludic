@@ -66,12 +66,15 @@ export property StPiece {
   t: []int = null
   m: []int = null
   len: double = 15.0
+  on: string = "rail"      # a track's: the carriageway material it is laid on
+  h: double = 0.2          # a track's: its y 1 over the bed
 }
 export property StKit {
   mats: []string = null
   pier: StPiece = null
   parapet: StPiece = null
   tube: StPiece = null
+  track: StPiece = null
 }
 
 export function st_ctx_new() -> StCtx {
@@ -414,13 +417,20 @@ function rv_piece(v: RmVal) -> StPiece {
   let m = rv_nums(v_get(v, "m"))
   for i in 0 .. len(m) { push(p.m, int(m[i])) }
   p.len = v_getn(v, "len", 15.0)
+  p.on = v_gets(v, "on", "rail")
+  p.h = v_getn(v, "h", 0.2)
   return p
 }
 # the options' kit (null: none)
 function st_kit(c: StCtx) -> StKit {
   if c.kitRead { return c.kit }
   c.kitRead = true
-  let k = v_get(c.opt, "kit")
+  c.kit = kit_read(c.opt)
+  return c.kit
+}
+# structure options' kit (roadStructures.ts RoadKit; null: none)
+export function kit_read(opt: RmVal) -> StKit {
+  let k = v_get(opt, "kit")
   if v_undef(k) { return null }
   let kit = new StKit
   kit.mats = new []string
@@ -429,7 +439,7 @@ function st_kit(c: StCtx) -> StKit {
   kit.pier = rv_piece(v_get(k, "pier"))
   kit.parapet = rv_piece(v_get(k, "parapet"))
   kit.tube = rv_piece(v_get(k, "tube"))
-  c.kit = kit
+  kit.track = rv_piece(v_get(k, "track"))
   return kit
 }
 
@@ -470,7 +480,7 @@ function kit_box(b: Builder, kit: StKit, k: StPiece, corners: []double, foot: do
 
 # kit piece `k` laid along a band as modules of about its length, bent along it (roadStructures.ts kitBand): x 0 on line `A`, 1 on line
 # `B`, y from the bottoms (`yA` under A, `yB` under B, between them across) up to `top`, z along the module on the band's middle line
-function kit_band(b: Builder, kit: StKit, k: StPiece, A: []double, B: []double, yA: []double, yB: []double, top: []double) -> void {
+export function kit_band(b: Builder, kit: StKit, k: StPiece, A: []double, B: []double, yA: []double, yB: []double, top: []double) -> void {
   let n = len(yA)
   if n < 2 { return }
   let s = doubles(n)

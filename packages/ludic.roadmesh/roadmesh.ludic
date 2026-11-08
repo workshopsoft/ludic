@@ -123,6 +123,14 @@ function rail_of_es(es: EdgeStations, c: int, side: int) -> []double {
   }
   return out
 }
+# the options' kit when it has a track laid on carriageways of material `mat` (null: none). Read for each such edge (a railway's few):
+# nothing is kept on the options, which the live mode's jobs share
+function mesh_kit_track(o: MeshOpt, mat: string) -> StKit {
+  if o.structures == null { return null }
+  let t = v_get(v_get(o.structures, "kit"), "track")
+  if v_undef(t) or v_gets(t, "on", "rail") != mat { return null }
+  return kit_read(o.structures)
+}
 function ys_of(es: EdgeStations, lift: double, extra: double) -> []double {
   let out = doubles(len(es.st))
   for i in 0 .. len(es.st) { out[i] = (es.st[i].y + lift) + extra }
@@ -353,6 +361,14 @@ function edge_strips(k: Mk, idx: int) -> void {
     stairs(b, es, sec.steps, mat, lift, ch, run)
   } else if not (k.full and o.medians and sec.median > 0.01) or flush_median(k.pw.edges[idx], o.planted, o.areas) {
     b_strip(b, sec.mat.road, rail_of_es(es, 0, -1), ys_of(es, lift, 0.0), rail_of_es(es, 0, 1), ys_of(es, lift, 0.0), true)
+    # a railway's track from the kit on its bed (roadMesh.ts: roadStructures RoadKit.track, bent along the bed as a spline mesh is)
+    if k.full {
+      let kit = mesh_kit_track(o, sec.mat.road)
+      if kit != null and kit.track != null {
+        let yb = ys_of(es, lift, 0.0)
+        kit_band(b, kit, kit.track, rail_of_es(es, 0, -1), rail_of_es(es, 0, 1), yb, yb, ys_of(es, lift, kit.track.h))
+      }
+    }
   } else {
     var barrier = false
     var pkind = ""
