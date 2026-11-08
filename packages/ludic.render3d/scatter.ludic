@@ -101,6 +101,17 @@ property Layer {
   g_dst:    int = 0,
   g_cmds:   int = 0,
   g_counts: int = 0,
+  # instances each bucket holds (grown, never shrunk: a streamed layer's refill only uploads its list) and the impostor it was set up for
+  g_cap:    int = 0,
+  g_imp:    Impostor,
+  # LOD0 only, the casters' cull (layer_gpu_casters): every instance in the sun's reach, by cascade (buckets 0 .. 3), packed into g_cdst
+  # by scatter_cull.comp with the radius threshold, drawn from g_ccmds; redone when the view, the list or the cascades' reach changed
+  g_cdst:   int = 0,
+  g_ccmds:  int = 0,
+  g_ccnt:   int = 0,
+  g_cgen:   int = -1,
+  g_csig:   float = 0.0,
+  g_cdirty: bool = true,
   # the main view's occlusion (scatter_occl.comp, R3D_SCATTER_OCCLUSION): this frame's main-view draws take records 29 .. 45, and the
   # bounds it tests per unit of scale (every level's and the impostor's: radius about the axis, bottom, top)
   g_occ:    bool = false,
@@ -641,6 +652,7 @@ function layer_ss_level(render3d_st: Render3dState, l: Layer, d: float, s: float
 function layer_set_impostor(render3d_st: mut Render3dState, l: Layer, im: Impostor) -> void {
   l.imp = im
   if im != null { im.users += 1 }
+  l.view_gen = -1                      # its buckets made again (the GPU cull's impostor bucket, the CPU split's far one)
   scatter_attach(render3d_st, render3d_st.sc_card, l.imp_buf)
   fog_impostor(render3d_st, l)
 }
@@ -667,6 +679,15 @@ function scatter_begin_frame(render3d_st: mut Render3dState) -> void {
       if l.n_lods > 1 and l.imp != null {
         layer_update(render3d_st, l)
         layer_gpu_occl(render3d_st, l, occ)
+      } else if render3d_st.sc_lod0 and not (l.grass and sc_grass_replaced(render3d_st)) and layer_gpu_eligible(render3d_st, l) {
+        # LOD0 only: the streamed, one-level and impostor-less layers the GPU culls too
+        layer_update(render3d_st, l)
+        layer_gpu_occl(render3d_st, l, occ)
+      }
+      # LOD0 only: their casters' cull too (on last frame's cascades: a cascade that moved is culled again at its draw)
+      if render3d_st.sc_lod0 and l.g_on and l.casts and render3d_st.sh_split != null and shadow_cast_mode(render3d_st) == 1 {
+        cast_band_reaches(render3d_st, 0.0, 0.0, l.model.height)
+        if render3d_st.sc_cast_all != 1 { layer_gpu_casters(render3d_st, l) }
       }
     }
   }
@@ -685,7 +706,12 @@ const SC_REC_VIEW: int = 29           # the main view's occlusion-culled copy of
 const SC_OCC_MARGIN: float = 0.5      # metres round a layer's bounds in the occlusion test: the wind's sway, a crown's droop
 
 function layer_gpu_eligible(render3d_st: Render3dState, l: Layer) -> bool {
-  if l.n_lods < 2 or l.n_lods > 4 or l.imp == null or l.streamed or l.flower or l.blade or l.count == 0 { return false }
+  if l.n_lods > 4 or l.flower or l.blade or l.count == 0 { return false }
+  if render3d_st.sc_lod0 {
+    # LOD0 only: a streamed layer (refilled by the game as the camera moves), a layer of one level and one with no impostor (its
+    # levels end at their distances, or the last runs out to the cull) are culled here too
+    if l.n_lods < 1 or l.card { return false }
+  } else if l.n_lods < 2 or l.imp == null or l.streamed { return false }
   return layer_arena_ok(render3d_st, l)
 }
 
@@ -804,15 +830,39 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
       render3d_st.sc_occ_prog = gpu_compute(render3d_st, "scatter_occl", 4)
     }
   }
-  if render3d_st.sc_cull_prog == 0 or not layer_gpu_eligible(render3d_st, l) { return false }
+  if render3d_st.sc_cull_prog == 0 or not layer_gpu_eligible(render3d_st, l) {
+    # (back on the CPU path, an emptied list among them: its draws must not read the records of the list it had)
+    l.g_on = false
+    return false
+  }
   if l.g_on and l.g_n == l.count { return true }
   if l.g_src == 0 {
     l.g_src = gpu_buffer_new(render3d_st);  l.g_dst = gpu_buffer_new(render3d_st);  l.g_cmds = gpu_buffer_new(render3d_st);  l.g_counts = gpu_buffer_new(render3d_st)
     gpu_buffer_gpu_owned(render3d_st, l.g_dst);  gpu_buffer_gpu_owned(render3d_st, l.g_cmds);  gpu_buffer_gpu_owned(render3d_st, l.g_counts)
   }
+  # the buckets and records are made again only when the list outgrew them (a streamed layer's room grows by half again, up to its
+  # capacity) or the impostor changed; a refill is its list uploaded, the filled part only
+  if l.g_cap < l.count or l.g_imp != l.imp {
+    var cap = Math.max(l.g_cap, l.count)
+    if l.g_cap < l.count and render3d_st.sc_lod0 { cap = min(max(l.count + l.count / 2, 256), l.cap) }
+    if cap < l.count { cap = l.count }
+    layer_gpu_setup(render3d_st, l, cap)
+  }
+  gpu_buffer_upload(render3d_st, l.g_src, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  # the card casts every instance, as on the CPU path (layer_grid_build uploads this there)
+  l.n_sh = l.count
+  gpu_buffer_upload(render3d_st, l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  l.g_n = l.count
+  l.g_on = true
+  l.g_cdirty = true
+  return true
+}
+
+# a GPU layer's buckets (cap instances each), merged meshes, bounds and records
+function layer_gpu_setup(render3d_st: mut Render3dState, l: Layer, cap: int) -> void {
   let n = l.n_lods
-  let cap = l.count
-  gpu_buffer_upload(render3d_st, l.g_src, cap * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  # the list's room, once (a refill then fills it in place)
+  gpu_buffer_upload(render3d_st, l.g_src, cap * INST_FLOATS * 4, null, GPU_STATIC)
   # the buckets, then the main view's visible region (scatter_occl.comp: every level's visible ones, cap at most in all)
   gpu_buffer_upload(render3d_st, l.g_dst, (n + 2) * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
   if l.g_arena == null { layer_arena_build(render3d_st, l) }
@@ -824,7 +874,7 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
     let m = l.lods[k]
     hr = Math.max(hr, m.radius);  y0 = Math.min(y0, m.ymin);  y1 = Math.max(y1, m.ymin + m.height)
   }
-  hr = Math.max(hr, l.imp.radius);  y1 = Math.max(y1, l.imp.height)
+  if l.imp != null { hr = Math.max(hr, l.imp.radius);  y1 = Math.max(y1, l.imp.height) }
   l.g_hr = hr * 1.1;  l.g_y0 = y0;  l.g_y1 = y1
   let n_mat = len(l.g_arena)
   let rec = render3d_st.sc_gpu_rec
@@ -851,12 +901,26 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
   let zeros = render3d_st.sc_gpu_zeros
   for i in 0 .. 16 { zeros[i] = 0 }
   gpu_buffer_upload(render3d_st, l.g_counts, 64, data_of(zeros), GPU_DYNAMIC)
-  # the card casts every instance, as on the CPU path (layer_grid_build uploads this there)
-  l.n_sh = l.count
-  gpu_buffer_upload(render3d_st, l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
-  l.g_n = l.count
-  l.g_on = true
-  return true
+  # LOD0 only: the casters' buckets (one per cascade reach, layer_gpu_casters), each material's records drawing its shadow level's range
+  if render3d_st.sc_lod0 {
+    if l.g_cdst == 0 {
+      l.g_cdst = gpu_buffer_new(render3d_st);  l.g_ccmds = gpu_buffer_new(render3d_st);  l.g_ccnt = gpu_buffer_new(render3d_st)
+      gpu_buffer_gpu_owned(render3d_st, l.g_cdst);  gpu_buffer_gpu_owned(render3d_st, l.g_ccmds);  gpu_buffer_gpu_owned(render3d_st, l.g_ccnt)
+    }
+    gpu_buffer_upload(render3d_st, l.g_cdst, 4 * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
+    let s = min(2, n - 1)
+    for i in 0 .. SC_RECS * 5 { rec[i] = 0 }
+    for j in 0 .. n_mat {
+      for k in 0 .. 4 {
+        let r = (j * 4 + k) * 5
+        rec[r] = l.lods[s].prims[j].mesh.count;  rec[r + 2] = l.g_first[j * 4 + s];  rec[r + 3] = l.g_base[j * 4 + s];  rec[r + 4] = k * cap
+      }
+    }
+    gpu_buffer_upload(render3d_st, l.g_ccmds, SC_RECS * SC_REC_W, data_of(rec), GPU_DYNAMIC)
+    gpu_buffer_upload(render3d_st, l.g_ccnt, 64, data_of(zeros), GPU_DYNAMIC)
+  }
+  l.g_cap = cap
+  l.g_imp = l.imp
 }
 
 # the dispatch for the view as it stands: frustum, camera, distances, the layer's shape
@@ -866,7 +930,8 @@ function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
   pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(r3d_reach(render3d_st, l.cull))
   for k in 0 .. l.n_lods { pr[20 + k] = float_bits(l.lod_dist[k]);  pr[24 + k] = len(l.lods[k].prims) }
-  pr[28] = l.count;  pr[29] = l.count;  pr[30] = l.n_lods;  pr[31] = 1
+  pr[28] = l.count;  pr[29] = l.g_cap;  pr[30] = l.n_lods;  pr[31] = 0
+  if l.imp != null { pr[31] = 1 }
   # as layer_grid_gather pads a cell: the tallest instance, plus a margin
   pr[32] = float_bits(l.lods[0].height * 2.0);  pr[33] = float_bits(4.0)
   # the screen-size cull (layer_ss_reach: metres per unit of scale, 0 none) and the bounds' centre height per unit of scale
@@ -883,11 +948,12 @@ function layer_gpu_occl(render3d_st: mut Render3dState, l: Layer, live: bool) ->
   l.g_occ = false
   if not live or not l.g_on or l.grounded or render3d_st.sc_occ_prog == 0 { return }
   let n = l.n_lods
-  let cap = l.count
+  let cap = l.g_cap
   let groups = ((n + 1) * cap + 63) / 64
   if groups > 65535 { return }
   let pr = render3d_st.sc_occ_pr
-  pr[0] = 0;  pr[1] = cap;  pr[2] = n;  pr[3] = 1
+  pr[0] = 0;  pr[1] = cap;  pr[2] = n;  pr[3] = 0
+  if l.imp != null { pr[3] = 1 }
   for k in 0 .. 4 { pr[4 + k] = 0 }
   for k in 0 .. n { pr[4 + k] = len(l.lods[k].prims) }
   pr[8] = float_bits(l.g_hr);  pr[9] = float_bits(l.g_y0);  pr[10] = float_bits(l.g_y1);  pr[11] = float_bits(SC_OCC_MARGIN)
@@ -1101,6 +1167,8 @@ function layer_ss_dist(render3d_st: Render3dState, l: Layer, src: floats, o: int
 function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
   if render3d_st.sc_freeze { return }
   if l.view_gen == render3d_st.sc_view_gen { return }
+  # a list the game refilled (it empties the layer, adds, and sets view_gen -1) is uploaded again, whatever its count
+  if l.view_gen < 0 { l.g_n = -1 }
   l.view_gen = render3d_st.sc_view_gen
   if layer_gpu_prepare(render3d_st, l) { layer_gpu_cull(render3d_st, l);  return }
   let t_lu = clock_now_us()
@@ -1252,7 +1320,7 @@ function cast_band_reaches(render3d_st: mut Render3dState, dmin: float, dmax: fl
 # no cheap stand-in to cast from, so without this its shadow simply began at the near
 # distance — which is the crown shadow that appeared as you walked up to a tree.
 function layer_draw_near(render3d_st: mut Render3dState, l: Layer, shadow: bool, light_vp: floats, full: bool) -> void {
-  if l.n_lods > 1 and l.g_on and not shadow {
+  if l.g_on and not shadow {
     # one draw per material covering all of its levels (the merged meshes); over the prepass,
     # the levels it drew with the equal test and the ones past it alpha-tested as before
     let m = sc_prepass_levels(render3d_st, l)
@@ -1352,7 +1420,11 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
       prim_factors(render3d_st, p, pr)
       if not shadow { gpu_ul_bind_2d(render3d_st, p, UL_NRM, 1, pr.nrm);  gpu_ul_bind_2d(render3d_st, p, UL_ARM, 2, pr.arm) }
     }
-    if render3d_st.sc_ind_base >= 0 { gpu_draw_mesh_indirect(render3d_st, pr.mesh, l.g_cmds, (layer_view_rec(render3d_st, l, shadow) + render3d_st.sc_ind_base + i * render3d_st.sc_ind_stride) * SC_REC_W, render3d_st.sc_ind_n, 0, 0) }
+    if render3d_st.sc_ind_base >= 0 {
+      var cmds = l.g_cmds
+      if render3d_st.sc_ind_cmds > 0 { cmds = render3d_st.sc_ind_cmds }
+      gpu_draw_mesh_indirect(render3d_st, pr.mesh, cmds, (layer_view_rec(render3d_st, l, shadow) + render3d_st.sc_ind_base + i * render3d_st.sc_ind_stride) * SC_REC_W, render3d_st.sc_ind_n, 0, 0)
+    }
     else { mesh_draw_instanced(render3d_st, pr.mesh, cnt) }
   }
   gpu_alpha_to_coverage(render3d_st, false)
@@ -1466,7 +1538,7 @@ function scatter_draw_depth(render3d_st: mut Render3dState) -> void {
     if render3d_st.r3d_no_trees and l.imp != null { continue }
     layer_update(render3d_st, l)
     let m = sc_prepass_levels(render3d_st, l)
-    if l.n_lods > 1 and l.g_on {
+    if l.g_on {
       if m > 0 {
         render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = m
         layer_draw_depth(render3d_st, l, l.g_model, l.g_dst, 1)
@@ -1526,6 +1598,7 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
     # (Mass's instanced tier, bCastShadows false: seen, never cast. Its skip sat in scatter_draw, so such a layer cast and was not drawn)
     if not l.casts { continue }
     layer_update(render3d_st, l)
+    if l.g_on and render3d_st.sc_lod0 { layer_gpu_draw_casters(render3d_st, l, light_vp);  continue }
     if l.imp != null {
       # the impostor casts only into the far cascades: every tree on the map was drawn as a card
       # into the near two as well, whose receivers (within 60 m) are shaded by the near trees'
@@ -1566,6 +1639,64 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
     else { layer_draw_near(render3d_st, l, true, light_vp, true) }
   }
   prof_cpu_mark(render3d_st, "shadow scatter")
+}
+
+# LOD0 only, a GPU layer's casters, with no per-instance work on the CPU: as layer_casters_make bands them (Unreal's whole-scene
+# shadow gathers its subjects by the cascade's own volume, ShadowSetup.cpp, never the view's frustum; r.Shadow.RadiusThreshold drops
+# the small ones), scatter_cull.comp packs every instance with no frustum test into four buckets, the first three by cascades 0 .. 2's
+# reach and the last by the farthest's, the radius threshold as its screen-size test (r <= t x d is d >= (r0 / t) x scale). A cascade
+# draws the buckets up to its own. An impostor layer casts its card past the near cascades, as before. A spot light's shadow, the
+# light's cull off (R3D_UE_SHADOW_LIGHT_CULL=0) and R3D_CAST_ALL cast the camera's buckets instead.
+function layer_gpu_draw_casters(render3d_st: mut Render3dState, l: Layer, light_vp: floats) -> void {
+  let c = render3d_st.sh_cascade
+  if l.imp != null and c >= SC_IMP_CAST_CASCADE and not render3d_st.sh_local { layer_draw_shadow(render3d_st, l, light_vp);  return }
+  cast_band_reaches(render3d_st, 0.0, 0.0, l.model.height)       # (sc_cast_all read, sc_cast_k kept for this view)
+  if render3d_st.sh_local or render3d_st.sh_split == null or render3d_st.sc_cast_all == 1 or shadow_cast_mode(render3d_st) != 1 {
+    render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = l.n_lods
+    layer_draw_model(render3d_st, l, l.g_model, l.g_dst, 1, false, true, light_vp)
+    render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1
+    return
+  }
+  layer_gpu_casters(render3d_st, l)
+  render3d_st.sc_ind_cmds = l.g_ccmds
+  render3d_st.sc_ind_base = 0;  render3d_st.sc_ind_n = min(c, 3) + 1
+  layer_draw_model(render3d_st, l, l.g_model_sh, l.g_cdst, 1, false, true, light_vp)
+  render3d_st.sc_ind_cmds = 0
+  render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1
+}
+# the casters' cull, when the view, the list or a cascade's reach moved
+function layer_gpu_casters(render3d_st: mut Render3dState, l: Layer) -> void {
+  let pr = render3d_st.sc_gpu_pr
+  for i in 0 .. 36 { pr[i] = 0 }
+  let reach = Math.max(Math.min(l.model.height * 6.0, 40.0), 8.0) + render3d_st.sh_cast_slack
+  let hh = l.model.height * 0.5
+  let r0 = Math.sqrt(l.model.radius * l.model.radius + hh * hh)
+  # layer_casters_in's band (its distance less the radius, in 3-D) measured here flat from the centre: a little wider, never narrower
+  let pad = r0 * 2.0 + 2.0
+  let k = render3d_st.sc_cast_k
+  var far = 0.0
+  var sig = 0.0
+  let nc = shadow_ue_count(render3d_st)
+  for b in 0 .. 4 {
+    var split = render3d_st.sh_split[min(b, nc - 1)]
+    if b == 3 { for j in 3 .. nc { split = Math.max(split, render3d_st.sh_split[j]) } }
+    far = Math.max(far, split * k + reach + pad)
+    pr[20 + b] = float_bits(far);  pr[24 + b] = len(l.g_arena)
+    sig += far
+  }
+  if l.g_cgen == render3d_st.sc_view_gen and not l.g_cdirty and Math.abs(sig - l.g_csig) < 1.0 { return }
+  l.g_cgen = render3d_st.sc_view_gen;  l.g_cdirty = false;  l.g_csig = sig
+  pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2])
+  pr[28] = l.count;  pr[29] = l.g_cap;  pr[30] = 4;  pr[31] = 0
+  # the radius threshold (actor.ludic ac_caster_small: Unreal's 0.01, R3D_SHADOW_RADIUS_THRESHOLD), as layer_casters_make reads it
+  if render3d_st.ac_sh_rt < 0.0 {
+    render3d_st.ac_sh_rt = 0.01
+    if r3d_env_has(render3d_st, "R3D_SHADOW_RADIUS_THRESHOLD") { render3d_st.ac_sh_rt = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_SHADOW_RADIUS_THRESHOLD")), 0.0) }
+  }
+  if render3d_st.ac_sh_rt > 0.0 { pr[34] = float_bits(r0 / render3d_st.ac_sh_rt);  pr[35] = float_bits(hh) }
+  let bufs = render3d_st.sc_gpu_bufs
+  bufs[0] = l.g_src;  bufs[1] = l.g_cdst;  bufs[2] = l.g_ccmds;  bufs[3] = l.g_ccnt
+  gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 144, bufs, 1)
 }
 
 # A streamed layer with no impostor (a street's lamps, benches, bins and signs) cast every instance in reach into every cascade: 46k
@@ -1861,6 +1992,7 @@ function sc_free_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
     gpu_buffer_free(render3d_st, l.g_src);  gpu_buffer_free(render3d_st, l.g_dst)
     gpu_buffer_free(render3d_st, l.g_cmds);  gpu_buffer_free(render3d_st, l.g_counts)
   }
+  if l.g_cdst != 0 { gpu_buffer_free(render3d_st, l.g_cdst);  gpu_buffer_free(render3d_st, l.g_ccmds);  gpu_buffer_free(render3d_st, l.g_ccnt) }
   if l.g_arena != null {
     for k in 0 .. len(l.g_arena) {
       mesh_release(render3d_st, l.g_arena[k].mesh)
