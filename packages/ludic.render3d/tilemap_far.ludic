@@ -3,8 +3,16 @@
 # within a far radius is ONE actor, its patches at their coarsest baked level merged into one mesh, so the ground reaches as far
 # as a game draws its far proxies without an actor a patch (a 4 km radius of 128 m patches is three thousand). A tile's far mesh
 # holds exactly the patches the near draw does not hold now (a patch the near draw has not built yet included), so the two never
-# overlap and nothing is missing at the seam; it is made again when that set changes, a few tiles a frame, nearest first. Its land
-# use is the near draw's (the same masks, tones, steep tone and tint).
+# overlap and nothing is missing at the seam; it is made again when that set changes, nearest first: a tile whose mesh lacks a patch
+# the near draw no longer holds (a hole: the near draw let it go) on the same frame, up to `hole_budget` tiles, the others (the near
+# draw took a patch the far mesh still has: drawn twice, never missing) `budget` tiles a frame. Its land use is the near draw's (the
+# same masks, tones, steep tone and tint).
+#
+# The far tiles' tables (src.ms) are a pool as big as the reach: the tiles within reach are marked wanted each frame, so a tile that
+# left gives its table to one that came in. A tile whose table cannot be read YET (tmm_load -1: the pool full of wanted tiles, or its
+# levels still being made) is asked again a few frames on; only a tile with no file at all (-2) is never asked again. (Before
+# 2026-11-08 the pool's clock never moved: once as many tiles as it holds had been seen, every new tile in reach was taken for one
+# with no file and the ground past the near disc went missing for good wherever the player went next.)
 #
 #   let far = tmf_new(render3d_st, td, 4000.0)       # after tmd_new and the tones
 #   each frame, after tmd_frame:  tmf_frame(render3d_st, far, cam_x, cam_z)
@@ -23,6 +31,7 @@ export property TmFar {
   held: bool = false                 # the mesh holds buffers
   built: bool = false                # made for the near draw's holdings in `near` (else made again)
   none: bool = false                 # the tile has no baked file: never asked again
+  wait: int = 0                      # its table could not be read yet (tmm_load -1): not asked again before this frame (f.clock)
   nheld: int = 0                     # how many of its patches the near draw held when it was built
   used: int = 0                      # the frame it was last wanted
   cx: float = 0.0                    # where its actor stands (world), and its cull radius
@@ -41,13 +50,21 @@ export property TileFar {
   vb: floats = null                  # the merged mesh being made: vertices (TM_VERT floats), colours (4), indices
   cb: floats = null
   ib: words = null
-  budget: int = 2                    # tiles made again a frame
+  budget: int = 2                    # tiles made again a frame (the near draw took patches: the far mesh draws them twice meanwhile)
+  hole_budget: int = 8               # tiles with a hole (the near draw let a patch go the far mesh lacks, or never built) made again a frame, first
   clock: int = 0
   ox: float = 0.0
   oz: float = 0.0
   shown: int = 0                     # far tiles on the stage now
   builds: int = 0
+  waits: int = 0                     # builds put off: the tile's table not readable yet
+  build_us: long = 0                 # the time the builds took, all time
 }
+
+const TMF_WAIT_FRAMES: int = 8         # a tile whose table cannot be read yet is asked again this many frames on
+const TMF_BUILT: int = 1
+const TMF_WAIT: int = 0
+const TMF_NONE: int = -1
 
 # the far ground over near draw `td`'s map out to `radius` metres from the camera
 @alloc_ok("a map being opened: the far tiles' records, made once")
@@ -128,6 +145,18 @@ function tmf_current(f: TileFar, s: int) -> bool {
   return true
 }
 
+# does slot s's mesh lack ground nothing else draws: never built, or a patch the near draw held when it was built and holds no more?
+function tmf_holed(f: TileFar, s: int) -> bool {
+  let q = f.slots[s]
+  if not q.built { return true }
+  if q.nheld == 0 { return false }
+  let pp = f.td.tm.patches * f.td.tm.patches
+  for k in 0 .. pp {
+    if f.near[s * pp + k] == 1 and not tmf_near_holds(f, q.tile, k) { return true }
+  }
+  return false
+}
+
 # room for `nv` more vertices and `ni` more indices past (v, i) in the merged buffers, grown by doubling (and kept)
 @alloc_ok("the far ground's merged buffers growing to the largest tile, once")
 function tmf_room(f: TileFar, v: int, nv: int, i: int, ni: int) -> void {
@@ -149,10 +178,10 @@ function tmf_room(f: TileFar, v: int, nv: int, i: int, ni: int) -> void {
   }
 }
 
-# slot s's tile made again: every patch the near draw does not hold, at its coarsest level, into one mesh on one actor; false when
-# the tile's file cannot be read
+# slot s's tile made again: every patch the near draw does not hold, at its coarsest level, into one mesh on one actor. TMF_BUILT;
+# TMF_WAIT when its table cannot be read yet (asked again); TMF_NONE when the tile has no file (never asked again)
 @alloc_ok("a far tile made again: its actor taken from the stage's spares, the mask reader's buffers made the first time")
-function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> bool {
+function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> int {
   let td = f.td
   let src = f.src
   let tm = td.tm
@@ -166,7 +195,8 @@ function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> bool {
   for c in 0 .. 3 { src.steep_color[c] = td.steep_color[c] }
   src.slope_class = td.slope_class            # tmd_slope_blend_set: the rock class drawn plain, the shader laying the rock by slope
   let ts = tmm_load(src.ms, tm, tx, tz)
-  if ts < 0 { return false }
+  if ts == -1 { return TMF_WAIT }
+  if ts < 0 { return TMF_NONE }
   # the tile's height range at that level: its actor's cull sphere and the height its vertices are given from
   var y0 = 1000000000.0
   var y1 = -1000000000.0
@@ -215,7 +245,7 @@ function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> bool {
     # the near draw holds the whole tile
     if q.actor != null { actor_release(render3d_st, q.actor);  q.actor = null;  f.shown -= 1 }
     if q.held { gpu_mesh_free(render3d_st, q.mesh);  q.held = false }
-    return true
+    return TMF_BUILT
   }
   tmf_fill(render3d_st, f, q, nv, ni)
   if q.actor == null {
@@ -228,7 +258,7 @@ function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> bool {
   q.cx = cx;  q.cz = cz;  q.lift = lift;  q.radius = r
   actor_place(q.actor, cx - f.ox, lift, cz - f.oz, 0.0)
   f.builds += 1
-  return true
+  return TMF_BUILT
 }
 
 # the merged buffers into slot q's mesh (the near draw's layout: position, normal, uv, and the land use's colour)
@@ -271,7 +301,9 @@ function tmf_fill(render3d_st: mut Render3dState, f: TileFar, q: TmFar, nv: int,
 export function tmf_frame(render3d_st: mut Render3dState, f: TileFar, cam_x: float, cam_z: float) -> void {
   let td = f.td
   let tm = td.tm
+  let sms = f.src.ms
   f.clock += 1
+  sms.clock += 1                       # the tables' pool: the tiles within reach marked wanted below, the others free to go
   let dox = td.ox - f.ox
   let doz = td.oz - f.oz
   f.ox = td.ox;  f.oz = td.oz
@@ -303,10 +335,12 @@ export function tmf_frame(render3d_st: mut Render3dState, f: TileFar, cam_x: flo
         if q.tile >= 0 { f.slot_of[q.tile] = -1 }
         q.tile = t
         q.none = false
+        q.wait = 0
         f.slot_of[t] = take
         held = take
       }
       f.slots[held].used = f.clock
+      if sms.slot_of[t] >= 0 { sms.slot_used[sms.slot_of[t]] = sms.clock }
     }
   }
   # the slots no tile within reach wants let go
@@ -318,23 +352,62 @@ export function tmf_frame(render3d_st: mut Render3dState, f: TileFar, cam_x: flo
       q.tile = -1
     }
   }
-  # the nearest stale ones made again
-  for n in 0 .. f.budget {
+  # the nearest stale ones made again: those with a hole first (this frame, so the near draw's let-go patches never leave the sea
+  # showing), then the others
+  let t0 = Time.now_us()
+  var holes = 0
+  var others = 0
+  var tries = 0
+  while holes < f.hole_budget or others < f.budget {
     var bi = -1
     var bd = 1000000000.0
+    var bh = false
     for s in 0 .. len(f.slots) {
       let q = f.slots[s]
-      if q.tile < 0 or q.none { continue }
+      if q.tile < 0 or q.none or q.wait > f.clock { continue }
       let d = tmap_tile_dist(tm, q.tile % tm.cols, q.tile / tm.cols, cam_x, cam_z)
-      if d >= bd { continue }
+      # (a hole outranks any other; among the same kind the nearest)
+      if bh and d >= bd { continue }
       if tmf_current(f, s) { continue }
-      bi = s;  bd = d
+      let h = holes < f.hole_budget and tmf_holed(f, s)
+      if not h and others >= f.budget { continue }
+      if not h and (bh or d >= bd) { continue }
+      bi = s;  bd = d;  bh = h
     }
     if bi < 0 { break }
-    if not tmf_build(render3d_st, f, bi) {
-      let q = f.slots[bi]
+    if bh { holes += 1 } else { others += 1 }
+    tries += 1
+    if tries > f.hole_budget + f.budget { break }
+    let r = tmf_build(render3d_st, f, bi)
+    let q = f.slots[bi]
+    if r == TMF_WAIT { q.wait = f.clock + TMF_WAIT_FRAMES;  f.waits += 1 }
+    if r == TMF_NONE {
       tmf_release(render3d_st, f, q)
       q.none = true
     }
   }
+  f.build_us += Time.now_us() - t0
+}
+
+# the far ground's books for a dev probe: slots holding a tile whose mesh is not what the near draw's holdings ask for, and of those
+# the ones with a hole (ground nothing draws), the ones waiting for their table, and the tiles with no file
+export function tmf_stale(f: TileFar) -> int {
+  var n = 0
+  for s in 0 .. len(f.slots) { if f.slots[s].tile >= 0 and not f.slots[s].none and not tmf_current(f, s) { n += 1 } }
+  return n
+}
+export function tmf_holes(f: TileFar) -> int {
+  var n = 0
+  for s in 0 .. len(f.slots) { if f.slots[s].tile >= 0 and not f.slots[s].none and not tmf_current(f, s) and tmf_holed(f, s) { n += 1 } }
+  return n
+}
+export function tmf_nones(f: TileFar) -> int {
+  var n = 0
+  for s in 0 .. len(f.slots) { if f.slots[s].tile >= 0 and f.slots[s].none { n += 1 } }
+  return n
+}
+export function tmf_held(f: TileFar) -> int {
+  var n = 0
+  for s in 0 .. len(f.slots) { if f.slots[s].tile >= 0 { n += 1 } }
+  return n
 }

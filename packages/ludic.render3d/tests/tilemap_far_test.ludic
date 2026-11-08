@@ -42,4 +42,38 @@ program TileFarTest {
     tmf_free(render3d_st, f)
     tmd_free(render3d_st, td)
   }
+
+  test "a slot never built has a hole (made first); one waiting for its table is not asked again before its frame" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    let f = tmf_new(render3d_st, td, 400.0)
+    f.slots[0].tile = 1
+    f.slot_of[1] = 0
+    expect(tmf_holed(f, 0))
+    expect_eq(tmf_stale(f), 1)
+    expect_eq(tmf_holes(f), 1)
+    # built with the near draw holding nothing: no hole, current
+    f.slots[0].built = true
+    f.slots[0].nheld = 0
+    expect(not tmf_holed(f, 0))
+    expect_eq(tmf_stale(f), 0)
+    # built while the near draw held its patch, which it holds no more: a hole
+    f.slots[0].nheld = 1
+    f.near[0] = 1
+    expect(tmf_holed(f, 0))
+    f.slots[0].tile = -1
+    f.slot_of[1] = -1
+    tmf_free(render3d_st, f)
+    tmd_free(render3d_st, td)
+  }
+
+  test "the tables' pool follows the reach: its clock moves every frame, so a tile that left gives its table up" (render3d_st: mut Render3dState) {
+    let td = open(render3d_st)
+    let f = tmf_new(render3d_st, td, 400.0)
+    let c0 = f.src.ms.clock
+    tmf_frame(render3d_st, f, 0.0, 0.0)
+    tmf_frame(render3d_st, f, 0.0, 0.0)
+    expect_eq(f.src.ms.clock, c0 + 2)
+    tmf_free(render3d_st, f)
+    tmd_free(render3d_st, td)
+  }
 }
