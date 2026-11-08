@@ -330,6 +330,7 @@ function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
     last.row = r
   }
   a.row = -1
+  render3d_st.ac_gen += 1
 }
 
 # back on the stage (an actor kept across a world swap)
@@ -338,6 +339,7 @@ function actor_keep(render3d_st: mut Render3dState, a: Actor) -> void {
   if a.stc { stc_keep(render3d_st, a);  return }
   if a.tpa { tpa_keep(render3d_st, a);  return }
   a.row = len(render3d_st.ac_actors)
+  render3d_st.ac_gen += 1
   @alloc_ok("within the stage's room made at start-up (@max 2048)")
   push(render3d_st.ac_actors, a)
   ac_grid_out(a, false)
@@ -1203,6 +1205,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
   # (the moving phase over a cached cascade: the frame's moving actors alone, ac_moving_gather; else the pass's columns, ac_pass_actors)
   var walk = pl
   if render3d_st.ac_mov_ok and render3d_st.sh_phase == SH_PHASE_DYN and not render3d_st.sh_local { walk = list }
+  if render3d_st.ac_cell_pass == 0 and ac_fast_on(render3d_st) { walk = ac_fast_casters(render3d_st, light_vp) }
   ac_lvp(render3d_st, render3d_st.ac_sh, light_vp)
   ac_lvp(render3d_st, render3d_st.ac_sh_cut, light_vp)
   ac_dither_frame(render3d_st, render3d_st.ac_sh_cut)
@@ -1260,6 +1263,86 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     render3d_st.ac_cc_actors = 0;  render3d_st.ac_cc_draws = 0;  render3d_st.ac_cc_skinned = 0;  render3d_st.ac_cc_cut = 0
   }
   prof_cpu_mark(render3d_st, "shadow actors")
+}
+# The casters' fast path (R3D_ACTOR_FASTPATH=1), as Unreal gathers a light's shadow subjects from bounds it keeps per primitive rather
+# than from the primitives themselves (ShadowSetup.cpp GatherShadowPrimitives): the stage is classified once a frame (ac_fast_classify:
+# whether each casts, still or moving, its light sphere and fog radius, in flat arrays), and each casters pass scans those arrays into
+# a list of the actors that may cast (stage order, no sort), which its own loops then test in full as before. A rejection repeats the
+# full test's own tests on the same values, so what is drawn is the same.
+function ac_fast_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.acf_on < 0 {
+    render3d_st.acf_on = 0
+    if r3d_env_has(render3d_st, "R3D_ACTOR_FASTPATH") and r3d_env(render3d_st, "R3D_ACTOR_FASTPATH") == "1" { render3d_st.acf_on = 1 }
+  }
+  return render3d_st.acf_on == 1
+}
+@alloc_ok("the classification grows to the stage's peak once")
+function ac_fast_classify(render3d_st: mut Render3dState) -> void {
+  let l = render3d_st.ac_actors
+  let n = len(l)
+  if render3d_st.acf_f == null or len(render3d_st.acf_k) < n {
+    var cap = 4096
+    while cap < n { cap = cap * 2 }
+    render3d_st.acf_f = floats(cap * 5)
+    render3d_st.acf_k = words(cap)
+    if render3d_st.acf_list == null { render3d_st.acf_list = new []Actor }
+  }
+  let f = render3d_st.acf_f
+  let k = render3d_st.acf_k
+  for i in 0 .. n {
+    let a = l[i]
+    var c = 0
+    if a == null or a.model == null { c = 0 }
+    else if a.leader != null { c = 3 }
+    else if a.casts and (a.visible or a.cast_hidden) and not (a.blend != 0 and not a.blend_casts) {
+      c = 2
+      if a.still { c = 1 }
+      var fr = a.radius * a.scale
+      if fr <= 0.0 { fr = 20.0 }
+      let o = i * 5
+      f[o] = a.x;  f[o + 2] = a.z;  f[o + 4] = fr
+      f[o + 1] = a.y;  f[o + 3] = 0.0
+      if a.radius != 0.0 {
+        let hh = a.model.height * 0.5 * a.scale
+        f[o + 1] = a.y + hh
+        f[o + 3] = Math.max(a.radius * a.scale, hh) * 1.5
+      }
+    }
+    k[i] = c
+  }
+  render3d_st.acf_n = n
+  render3d_st.acf_gen = render3d_st.ac_gen
+  render3d_st.acf_frame = render3d_st.gvk_frame_no
+}
+@alloc_ok("the pass list grows to its peak once")
+function ac_fast_casters(render3d_st: mut Render3dState, light_vp: floats) -> []Actor {
+  let l = render3d_st.ac_actors
+  if render3d_st.acf_frame != render3d_st.gvk_frame_no or render3d_st.acf_gen != render3d_st.ac_gen or render3d_st.acf_n != len(l) { ac_fast_classify(render3d_st) }
+  let out = render3d_st.acf_list
+  List.clear(out)
+  let f = render3d_st.acf_f
+  let k = render3d_st.acf_k
+  let local = render3d_st.sh_local
+  let ph = render3d_st.sh_phase
+  let dyn = not local and ph == SH_PHASE_DYN and render3d_st.sc_dyn_cull
+  for i in 0 .. render3d_st.acf_n {
+    let c = k[i]
+    if c == 0 { continue }
+    if c != 3 {
+      if not local {
+        if (ph == SH_PHASE_STATIC or ph == SH_PHASE_EXTRA) and c != 1 { continue }
+        if ph == SH_PHASE_DYN and c != 2 { continue }
+      }
+      let o = i * 5
+      let r = f[o + 3]
+      if r > 0.0 {
+        if not ac_in_light(render3d_st, light_vp, f[o], f[o + 1], f[o + 2], r) { continue }
+        if dyn and not ac_in_light(render3d_st, render3d_st.sc_dyn_vp, f[o], f[o + 1], f[o + 2], r) { continue }
+      }
+    }
+    push(out, l[i])
+  }
+  return out
 }
 # the still actors are the cache's (its static phase), the rest are drawn over it (the moving phase); a local light draws both
 function ac_phase_skips(render3d_st: Render3dState, a: Actor) -> bool {
