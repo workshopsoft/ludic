@@ -63,3 +63,15 @@ export function layer_chunks_regrid(l: Layer) -> void {
   l.gcell = 0.0
   l.view_gen = -1
 }
+
+# n instances from `off` taken out of the layer's list, the rest moved down over them (two copies through the scratch: one copy may not
+# overlap itself): a game's cell slab leaving a streamed layer (layer_gpu_stream) without a per-instance loop
+export function layer_cut(l: Layer, off: int, n: int) -> void {
+  if n <= 0 or off < 0 or off + n > l.count { return }
+  let tail = l.count - off - n
+  if tail > 0 {
+    mem_copy(data_of(l.scratch), mem_off(data_of(l.inst), (off + n) * INST_FLOATS * 4), tail * INST_FLOATS * 4)
+    mem_copy(mem_off(data_of(l.inst), off * INST_FLOATS * 4), data_of(l.scratch), tail * INST_FLOATS * 4)
+  }
+  l.count -= n
+}
