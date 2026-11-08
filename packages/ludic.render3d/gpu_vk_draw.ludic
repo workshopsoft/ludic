@@ -1421,6 +1421,7 @@ function gvk_att_load(render3d_st: Render3dState, depth: bool) -> int {
 function gvk_att_store(render3d_st: Render3dState, depth: bool) -> int { return VK_ATTACHMENT_STORE_OP_STORE }
 function gvk_pass_begin(render3d_st: mut Render3dState, rec: words, rec_o: int) -> void {
   if render3d_st.gvk_in_pass { return }
+  render3d_st.gvk_sf_ok = false                # a new pass (and with it, maybe a new command buffer): nothing known bound
   let cb = gvk_frame_cb_raw(render3d_st)
   gvk_pass_collect(render3d_st, render3d_st.gvk_fb_cur, rec, rec_o)
   gvk_pass_no_compressed(render3d_st)
@@ -1532,6 +1533,21 @@ function gvk_tex_h(render3d_st: Render3dState, tex: int) -> int { return render3
 # viewport and scissor for the draw; OpenGL's rows count from the bottom and so do a Vulkan
 # target's here (no y flip), so both pass straight through
 function gvk_set_view(render3d_st: mut Render3dState, cb: pointer) -> void {
+  if gvk_sf(render3d_st) and render3d_st.gvk_sf_ok {
+    let vv = render3d_st.gvk_vp
+    let ss = render3d_st.gvk_sc
+    var sc_same = render3d_st.gvk_sf_sc0 == ss[0]
+    if sc_same and ss[0] == 1 { sc_same = render3d_st.gvk_sf_sc1 == ss[1] and render3d_st.gvk_sf_sc2 == ss[2] and render3d_st.gvk_sf_sc3 == ss[3] and render3d_st.gvk_sf_sc4 == ss[4] }
+    if sc_same and ss[0] != 1 { sc_same = render3d_st.gvk_sf_sc3 == render3d_st.gvk_pass_w and render3d_st.gvk_sf_sc4 == render3d_st.gvk_pass_h }
+    if sc_same and render3d_st.gvk_sf_vp0 == vv[0] and render3d_st.gvk_sf_vp1 == vv[1] and render3d_st.gvk_sf_vp2 == vv[2] and render3d_st.gvk_sf_vp3 == vv[3] { return }
+  }
+  render3d_st.gvk_sf_vp0 = render3d_st.gvk_vp[0];  render3d_st.gvk_sf_vp1 = render3d_st.gvk_vp[1];  render3d_st.gvk_sf_vp2 = render3d_st.gvk_vp[2];  render3d_st.gvk_sf_vp3 = render3d_st.gvk_vp[3]
+  render3d_st.gvk_sf_sc0 = render3d_st.gvk_sc[0]
+  if render3d_st.gvk_sc[0] == 1 {
+    render3d_st.gvk_sf_sc1 = render3d_st.gvk_sc[1];  render3d_st.gvk_sf_sc2 = render3d_st.gvk_sc[2];  render3d_st.gvk_sf_sc3 = render3d_st.gvk_sc[3];  render3d_st.gvk_sf_sc4 = render3d_st.gvk_sc[4]
+  } else {
+    render3d_st.gvk_sf_sc3 = render3d_st.gvk_pass_w;  render3d_st.gvk_sf_sc4 = render3d_st.gvk_pass_h
+  }
   let vp = gvk_tmp(render3d_st, VkViewport_sizeof)
   Vk.zero(vp, VkViewport_sizeof)
   Vk.put_i32(vp, VkViewport_x, float_bits(float(render3d_st.gvk_vp[0])))
@@ -1554,6 +1570,19 @@ function gvk_set_view(render3d_st: mut Render3dState, cb: pointer) -> void {
   Vk.cmd_set_scissor(cb, 0, 1, sc)
 }
 
+# R3D_VK_STATE_FILTER (off unless 1; one profile run, 2026-11-08, showed Vulkan recording 16.0/21.4/10.3 % of CPU work before and
+# 16.2/17.7/11.9 % with it on (city street / towers at night / Vela woods): within noise, so off by default): a draw records only the state that differs from what this pass already bound - the pipeline,
+# the viewport and scissor, the vertex and index buffers - as UE's RHI command list caches its pending state and skips a set of the
+# same value (FVulkanPendingGfxState::SetGfxPipeline / SetStreamSource, VulkanPendingState.h). On MoltenVK every vkCmd* is a heap
+# object made at record and freed at reset, so a skipped command saves its make, its replay and its free. Forgotten at each pass
+# begin (gvk_pass_begin), so a new pass or command buffer binds everything once again.
+function gvk_sf(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_sf_on < 0 {
+    render3d_st.gvk_sf_on = 0
+    if r3d_env_has(render3d_st, "R3D_VK_STATE_FILTER") and r3d_env(render3d_st, "R3D_VK_STATE_FILTER") == "1" { render3d_st.gvk_sf_on = 1 }
+  }
+  return render3d_st.gvk_sf_on == 1
+}
 # R3D_VK_SKIP_REBIND (on unless 0): what is already bound is not bound again - a texture on its unit (gpu_tex_bind), a draw's
 # descriptor set (gvk_bind_set)
 function gvk_skip_rebind(render3d_st: mut Render3dState) -> bool {
@@ -1612,8 +1641,11 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
   }
   var t1: long = 0
   if prof { t1 = clock_now_us();  render3d_st.gvk_us_pipe = render3d_st.gvk_us_pipe + (t1 - t0) }
-  Vk.cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe)
+  let sf = gvk_sf(render3d_st)
+  if not (sf and render3d_st.gvk_sf_ok and render3d_st.gvk_sf_pipe == pipe) { Vk.cmd_bind_pipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pipe) }
+  render3d_st.gvk_sf_pipe = pipe
   gvk_set_view(render3d_st, cb)
+  if not render3d_st.gvk_sf_ok { render3d_st.gvk_sf_vbn = -1;  render3d_st.gvk_sf_it = -1;  render3d_st.gvk_sf_ok = true }
   let set = gvk_draw_set(render3d_st, p, tx, tx_w, tx_cap)
   if set == 0 { return }
   if prof { render3d_st.gvk_us_set = render3d_st.gvk_us_set + (clock_now_us() - t1) }
@@ -1649,7 +1681,22 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
       render3d_st.gvk_buf_used[zb] = render3d_st.gvk_frame_no
       nbd += 1
     }
-    if nbd > 0 { Vk.cmd_bind_vertex_buffers(cb, 0, nbd, bufs, offs) }
+    if nbd > 0 {
+      # the same buffers as the last draw of this pass: not bound again (R3D_VK_STATE_FILTER; up to four, more always bind)
+      var h0: long = 0
+      var h1: long = 0
+      var h2: long = 0
+      var h3: long = 0
+      if nbd > 0 { h0 = Vk.get_i64(bufs, 0) }
+      if nbd > 1 { h1 = Vk.get_i64(bufs, 8) }
+      if nbd > 2 { h2 = Vk.get_i64(bufs, 16) }
+      if nbd > 3 { h3 = Vk.get_i64(bufs, 24) }
+      let vb_same = sf and nbd <= 4 and render3d_st.gvk_sf_vbn == nbd and render3d_st.gvk_sf_vb0 == h0 and render3d_st.gvk_sf_vb1 == h1 and render3d_st.gvk_sf_vb2 == h2 and render3d_st.gvk_sf_vb3 == h3
+      if not vb_same { Vk.cmd_bind_vertex_buffers(cb, 0, nbd, bufs, offs) }
+      render3d_st.gvk_sf_vbn = nbd
+      if nbd > 4 { render3d_st.gvk_sf_vbn = -1 }
+      render3d_st.gvk_sf_vb0 = h0;  render3d_st.gvk_sf_vb1 = h1;  render3d_st.gvk_sf_vb2 = h2;  render3d_st.gvk_sf_vb3 = h3
+    }
   }
   var n = count
   if n == 0 and m != null { n = m.count }
@@ -1663,7 +1710,9 @@ function gvk_draw(render3d_st: mut Render3dState, p: int, m: Mesh, st: GvkState,
     let zero: long = 0
     var itype = VK_INDEX_TYPE_UINT32
     if m.itype == GPU_UNSIGNED_SHORT { itype = VK_INDEX_TYPE_UINT16 }
-    Vk.cmd_bind_index_buffer(cb, render3d_st.gvk_buf[m.ebo], zero, itype)
+    let ibh = render3d_st.gvk_buf[m.ebo]
+    if not (sf and render3d_st.gvk_sf_it == itype and render3d_st.gvk_sf_ib == ibh) { Vk.cmd_bind_index_buffer(cb, ibh, zero, itype) }
+    render3d_st.gvk_sf_ib = ibh;  render3d_st.gvk_sf_it = itype
     render3d_st.gvk_buf_used[m.ebo] = render3d_st.gvk_frame_no
     if render3d_st.gvk_ind_buf > 0 {
       # the draws are records in a buffer (gvk_draw_indirect_now); the GPU may have written them
