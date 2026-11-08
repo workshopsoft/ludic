@@ -117,7 +117,8 @@ property Layer {
   lod_buf:  words,
   n_lod:    words,
   lvl:      words,             # scratch: the level chosen per gathered instance
-  lod_ss:   floats             # each level's screen size (layer_lod_screen_sizes), or null: the levels are chosen by lod_dist
+  lod_ss:   floats,            # each level's screen size (layer_lod_screen_sizes), or null: the levels are chosen by lod_dist
+  imp_auto: bool = false       # LOD0 only (r3d_lod0_only): an impostor from level 0 is wanted (scatter_lod0_impostors)
 }
 
 # the procedural models' one layout: position, normal, uv, interleaved at 32 bytes
@@ -509,23 +510,87 @@ function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
 
 # Give a layer a LOD chain. `dists` (float bits) are the outer distances of each level;
 # the last one becomes the layer's `near` so the impostor (if any) starts there.
+# Under LOD0 only (r3d_lod0_only) every level is level 0's model, the chain's length and buckets kept so every path (the GPU cull, the
+# casters, the prepass) runs as before; the levels past sc_lod0_imp_at end where it does, so its impostor (the game's, else one baked from
+# level 0 at the next frame) takes over there. A chain whose level there is open (0: it ran out to the cull) stays level 0 to the cull.
 @alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
 function layer_set_lods(render3d_st: mut Render3dState, l: Layer, models: []Model, dists: floats) -> void {
   l.lods = models
   l.n_lods = len(models)
   l.lod_dist = floats(l.n_lods);  l.lod_card = words(l.n_lods);  l.lod_buf = words(l.n_lods);  l.n_lod = words(l.n_lods)
+  # (in place: the list is the layer's from here, freed with it, scatter_clear_all)
+  if render3d_st.sc_lod0 { for k in 1 .. l.n_lods { models[k] = models[0] } }
+  let at = min(render3d_st.sc_lod0_imp_at, l.n_lods - 1)
   for k in 0 .. l.n_lods {
     l.lod_dist[k] = dists[k];  l.lod_card[k] = 0;  l.n_lod[k] = 0
+    if render3d_st.sc_lod0 and k > at and dists[at] != 0.0 { l.lod_dist[k] = dists[at] }
     l.lod_buf[k] = gpu_buffer_new(render3d_st)
-    let m = models[k]
+    let m = l.lods[k]
     for i in 0 .. len(m.prims) { scatter_attach(render3d_st, m.prims[i].mesh, l.lod_buf[k]) }
   }
-  l.model = models[0]
-  l.near = dists[l.n_lods - 1]
+  l.model = l.lods[0]
+  l.near = l.lod_dist[l.n_lods - 1]
   if l.lvl == null { l.lvl = words(l.cap) }
+  if render3d_st.sc_lod0 and l.near != 0.0 and l.imp == null and not l.imp_auto {
+    l.imp_auto = true
+    render3d_st.sc_lod0_want += 1
+  }
 }
+# LOD0 only: from here every layer's levels are its first, and its far instances an impostor baked from it (a game turns it on before it
+# makes its layers). `imp_at`: the old level whose outer distance the impostor starts at (0 the first level's, 1 the second's).
+export function r3d_lod0_only(render3d_st: mut Render3dState, on: bool, imp_at: int) -> void {
+  render3d_st.sc_lod0 = on
+  render3d_st.sc_lod0_imp_at = max(imp_at, 0)
+}
+# the layers that asked for an impostor from level 0 (layer_set_lods under LOD0 only) and were given none by the game since: one baked
+# (or the one already baked from that model, whoever asked for it), before the frame's first pass
+@alloc_ok("a layer's impostor baked once, when it is first drawn")
+function scatter_lod0_impostors(render3d_st: mut Render3dState) -> void {
+  if render3d_st.sc_lod0_want == 0 or render3d_st.sc_layers == null { return }
+  render3d_st.sc_lod0_want = 0
+  for i in 0 .. len(render3d_st.sc_layers) {
+    let l = render3d_st.sc_layers[i]
+    if not l.imp_auto { continue }
+    l.imp_auto = false
+    if l.imp != null or l.blade or l.near == 0.0 or l.model == null { continue }
+    var m0 = l.model
+    if l.n_lods > 0 { m0 = l.lods[0] }
+    var im: Impostor = null
+    if render3d_st.imp_kept != null { for j in 0 .. len(render3d_st.imp_kept) { if im == null and render3d_st.imp_kept[j].model == m0 { im = render3d_st.imp_kept[j] } } }
+    if im == null {
+      let was = render3d_st.sc_bake_flower
+      render3d_st.sc_bake_flower = l.flower
+      render3d_st.sc_lod0_keys += 1
+      im = impostor_shared(render3d_st, `lod0#{render3d_st.sc_lod0_keys}`, m0, SC_LOD0_IMP_TILES, 512, 1024, l.near)
+      render3d_st.sc_bake_flower = was
+    }
+    layer_set_impostor(render3d_st, l, im)
+  }
+}
+# LOD0 only: a layer with no levels (one model) drawn as its impostor past `near` metres, the impostor baked from its model at the next
+# frame (none when the game gives it one first). Off LOD0 only, nothing changes.
+export function layer_impostor_past(render3d_st: mut Render3dState, l: Layer, near: float) -> void {
+  if not render3d_st.sc_lod0 or l == null or l.imp != null or near <= 0.0 { return }
+  l.near = near
+  # (a chain chosen by screen size, every distance open: its levels, all level 0 now, end where the impostor starts)
+  for k in 0 .. l.n_lods { if l.lod_dist[k] == 0.0 or l.lod_dist[k] > near { l.lod_dist[k] = near } }
+  if l.lod_ss != null { l.lod_ss = null }
+  if not l.imp_auto { l.imp_auto = true;  render3d_st.sc_lod0_want += 1 }
+}
+# LOD0 only: a layer with no distances of its own (one model, or levels chosen by screen size) drawn as its impostor past the distance
+# its model is still SC_LOD0_IMP_PX lines tall on a 1080-line screen at the default view (camera.ludic: 42 degrees), within
+# SC_LOD0_IMP_MIN .. SC_LOD0_IMP_MAX metres: a bench's card from 50 m, a 6 m lamp's from 66 m, a 12 m tree's from 120 m
+const SC_LOD0_IMP_PX: float = 128.0
+const SC_LOD0_IMP_MIN: float = 50.0
+const SC_LOD0_IMP_MAX: float = 120.0
+export function layer_impostor_auto(render3d_st: mut Render3dState, l: Layer) -> void {
+  if not render3d_st.sc_lod0 or l == null or l.model == null { return }
+  let size = Math.max(l.model.height, 2.0 * l.model.radius)
+  layer_impostor_past(render3d_st, l, Math.clamp(size * (IMP_PX_PER_M * 0.5) / SC_LOD0_IMP_PX, SC_LOD0_IMP_MIN, SC_LOD0_IMP_MAX))
+}
+const SC_LOD0_IMP_TILES: int = 12      # an auto impostor's views round its axis (the game's own trees and palms bake twelve)
 # mark level k as the layer's crossed card (drawn with the card program and its atlas)
-function layer_lod_card(l: Layer, k: int) -> void { l.lod_card[k] = 1 }
+function layer_lod_card(l: Layer, k: int) -> void { if l.lods[k] != l.lods[0] or k == 0 { l.lod_card[k] = 1 } }   # (never a level LOD0 only made level 0)
 
 # Unreal's automatic LOD screen sizes (StaticMesh.cpp FStaticMeshRenderData::ResolveSectionInfo): level 0 is 2.0 (LOD0ScreenSize); a
 # level below it whose reduction strayed `dev` metres at most from the source (its MaxDeviation) is drawn once that error is under
@@ -539,7 +604,7 @@ const SC_UE_REF_MULT: float = 0.8888889    # max(P[0][0], P[1][1]) / 2 of that r
 @alloc_ok("start-up: a layer's level table, made once when its levels are given")
 function layer_lod_screen_sizes(render3d_st: mut Render3dState, l: Layer, dev: []float) -> void {
   let n = l.n_lods
-  if n < 2 { return }
+  if n < 2 or render3d_st.sc_lod0 { return }       # (LOD0 only: the levels are one model, its impostor by distance)
   if l.lod_ss == null { l.lod_ss = floats(n) }
   let r = layer_bound_r(l)
   var pe = SC_UE_PIXEL_ERROR
@@ -591,6 +656,7 @@ function scatter_begin_frame(render3d_st: mut Render3dState) -> void {
     v3_copy(render3d_st.sc_view_pos, render3d_st.cam_pos)
     v3_copy(render3d_st.sc_view_fwd, render3d_st.cam_fwd)
   }
+  scatter_lod0_impostors(render3d_st)
   # GPU-culled layers dispatch before the first pass of the frame, so no pass is split for it; their main-view occlusion every frame
   # after the walk (scatter_occl.comp: the HZB changes each frame even while the view stands still)
   if render3d_st.sc_layers != null {
@@ -651,6 +717,12 @@ function layer_arena_ok(render3d_st: Render3dState, l: Layer) -> bool {
   return true
 }
 
+# the earlier level whose model level k is (LOD0 only makes every level the first's), -1 none: its range is shared, not copied again
+function layer_lod_dup(l: Layer, k: int) -> int {
+  for d in 0 .. k { if l.lods[d] == l.lods[k] { return d } }
+  return -1
+}
+
 @alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function layer_arena_build(render3d_st: mut Render3dState, l: Layer) -> void {
   let n_mat = len(l.lods[0].prims)
@@ -662,6 +734,8 @@ function layer_arena_build(render3d_st: mut Render3dState, l: Layer) -> void {
     var ni = 0
     for k in 0 .. l.n_lods {
       let pr = l.lods[k].prims[j]
+      let dup = layer_lod_dup(l, k)
+      if dup >= 0 { l.g_first[j * 4 + k] = l.g_first[j * 4 + dup];  l.g_base[j * 4 + k] = l.g_base[j * 4 + dup];  continue }
       l.g_first[j * 4 + k] = ni;  l.g_base[j * 4 + k] = nv
       nv += pr.verts;  ni += pr.mesh.count
     }
@@ -671,6 +745,7 @@ function layer_arena_build(render3d_st: mut Render3dState, l: Layer) -> void {
       let comps = p0.mesh.attrs[a * GPU_ATTR_W + 1]
       let vb = bytes(nv * comps * 4 + 8)
       for k in 0 .. l.n_lods {
+        if layer_lod_dup(l, k) >= 0 { continue }
         let pr = l.lods[k].prims[j]
         mem_copy(mem_off(vb, l.g_base[j * 4 + k] * comps * 4), gpu_buffer_map(render3d_st, pr.mesh.attrs[a * GPU_ATTR_W]), pr.verts * comps * 4)
       }
@@ -685,6 +760,7 @@ function layer_arena_build(render3d_st: mut Render3dState, l: Layer) -> void {
       let cb = bytes(nv * 4 + 8)
       for i in 0 .. nv * 4 { cb[i] = 255 }
       for k in 0 .. l.n_lods {
+        if layer_lod_dup(l, k) >= 0 { continue }
         let pr = l.lods[k].prims[j]
         if pr.mesh.n_attrs > 7 and pr.mesh.attrs[7 * GPU_ATTR_W + 1] != 0 { mem_copy(mem_off(cb, l.g_base[j * 4 + k] * 4), gpu_buffer_map(render3d_st, pr.mesh.attrs[7 * GPU_ATTR_W]), pr.verts * 4) }
       }
@@ -694,6 +770,7 @@ function layer_arena_build(render3d_st: mut Render3dState, l: Layer) -> void {
     }
     let ib = bytes(ni * 2 + 8)
     for k in 0 .. l.n_lods {
+      if layer_lod_dup(l, k) >= 0 { continue }
       let pm = l.lods[k].prims[j].mesh
       mem_copy(mem_off(ib, l.g_first[j * 4 + k] * 2), gpu_buffer_map(render3d_st, pm.ebo), pm.count * 2)
     }
@@ -1000,6 +1077,7 @@ function layer_bound_r(l: Layer) -> float {
 # metres per unit of instance scale past which an instance of l covers less than S of the screen (0: no screen-size cull)
 function layer_ss_reach(render3d_st: mut Render3dState, l: Layer) -> float {
   let s = sc_ss_min(render3d_st)
+  if render3d_st.sc_lod0 { return 0.0 }          # LOD0 only: nothing small is dropped; far it is the impostor
   if s <= 0.0 or render3d_st.cam_proj == null or l.model == null { return 0.0 }
   let m = Math.max(0.5 * Math.abs(render3d_st.cam_proj[0]), 0.5 * Math.abs(render3d_st.cam_proj[5]))
   return m * layer_bound_r(l) / (s * 0.5)
@@ -1472,6 +1550,13 @@ function scatter_draw_casters(render3d_st: mut Render3dState, light_vp: floats) 
         render3d_st.sc_ind_base = -1;  render3d_st.sc_ind_n = 1;  render3d_st.sc_ind_stride = 4
       } else if l.n_lods > 2 {
         for k in 0 .. 3 { layer_draw_model(render3d_st, l, l.lods[2], l.lod_buf[k], l.n_lod[k], false, true, light_vp) }
+      } else if render3d_st.sc_lod0 and render3d_st.sh_cascade < SC_IMP_CAST_CASCADE {
+        # LOD0 only gave a layer of one or two levels its impostor (layer_set_lods, layer_impostor_past): its mesh still casts into the
+        # near cascades, as it did before it had one
+        if l.streamed and sc_cast_cull_on(render3d_st) {
+          if render3d_st.sh_cascade == 0 { layer_casters_make(render3d_st, l) }
+          layer_draw_casters_in(render3d_st, l, light_vp)
+        } else { layer_draw_near(render3d_st, l, true, light_vp, true) }
       }
     }
     else if l.streamed and sc_cast_cull_on(render3d_st) {
