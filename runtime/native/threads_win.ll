@@ -284,6 +284,11 @@ entry:
 
 ; ---- the background queue (Job.spawn): as threads.ll's, over SRW locks and condition variables -------------------------------------
 
+; the allocation fence's job arena hooks (emit_fence_ir.ludic emit_fence_jobs): a background thread marks itself a job's, and a job's
+; scratch is given back when it returns. extern_weak: a program built without the fence has neither (null), and they are skipped
+declare extern_weak void @lp_job_begin()
+declare extern_weak void @lp_job_end()
+
 @B_ready = internal global i32 0
 @B_lock  = internal global ptr null
 @B_cond  = internal global ptr null
@@ -297,6 +302,12 @@ entry:
 define internal i32 @b_worker(ptr %arg) {
 entry:
   store i32 1, ptr @T_worker
+  %jbh = icmp ne ptr @lp_job_begin, null
+  br i1 %jbh, label %jbeg, label %jbegun
+jbeg:
+  call void @lp_job_begin()
+  br label %jbegun
+jbegun:
   %lk = load ptr, ptr @B_lock
   %cv = load ptr, ptr @B_cond
   br label %park
@@ -327,6 +338,12 @@ take:
   store i32 %h1, ptr @B_head
   call void @ReleaseSRWLockExclusive(ptr %lk)
   call void %fn(i32 %i, ptr %ctx)
+  %jeh = icmp ne ptr @lp_job_end, null
+  br i1 %jeh, label %jend, label %jended
+jend:
+  call void @lp_job_end()
+  br label %jended
+jended:
   %fz = icmp eq ptr %flag, null
   br i1 %fz, label %park, label %mark
 mark:

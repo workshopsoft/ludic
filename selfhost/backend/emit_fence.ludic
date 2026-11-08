@@ -241,6 +241,7 @@ function emit_fence_runtime() -> void {
   emit_fence_globals()
   emit_fence_entry()
   emit_fence_table()
+  emit_fence_jobs()
   emit_fence_control()
   emit_fence_report()
   emit_fence_frame()

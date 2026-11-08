@@ -110,7 +110,11 @@ export function read_val_file(path: string, magic: int) -> RmVal {
   if r.b == null or len(r.b) < 9 { return null }
   if vr_i(r) != magic { return null }
   if vr_i(r) != 1 { return null }
-  return read_val(r)
+  let v = read_val(r)
+  # every value is a copy (numbers, text, bytes): the file's bytes go back now (the island's road job held its 116 MB for the whole run)
+  free(r.b)
+  r.b = null
+  return v
 }
 
 # a fixture file's records (null when it cannot be read)
