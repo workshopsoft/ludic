@@ -983,8 +983,45 @@ function ac_caster_small(render3d_st: mut Render3dState, a: Actor) -> bool {
   return r2 <= t * t * (dx * dx + dy * dy + dz * dz)
 }
 
+# R3D_SHADOW_STATIC_CACHE (on by default; 0: every pass walks the whole stage, as before): the still actors' depth is the cached
+# cascades' (shadow_cache.ludic, drawn only when a cascade's window moved or a still caster in it changed), so over a cached layer
+# only the moving casters are drawn - and only they need be walked. Gathered once a frame, ahead of the moving phase, instead of
+# every cached cascade walking every actor on the stage twice (gather, draw) and once more to restore its shadow levels.
+function ac_static_cache_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ac_mov_on < 0 {
+    render3d_st.ac_mov_on = 1
+    if r3d_env_has(render3d_st, "R3D_SHADOW_STATIC_CACHE") and r3d_env(render3d_st, "R3D_SHADOW_STATIC_CACHE") == "0" { render3d_st.ac_mov_on = 0 }
+  }
+  return render3d_st.ac_mov_on == 1
+}
+@alloc_ok("the moving list grows to the stage's moving actors once, then keeps its room (cleared, never freed)")
+function ac_moving_gather(render3d_st: mut Render3dState) -> void {
+  render3d_st.ac_mov_ok = false
+  if render3d_st.ac_actors == null or not ac_static_cache_on(render3d_st) { return }
+  if render3d_st.ac_mov == null { render3d_st.ac_mov = new []Actor }
+  let m = render3d_st.ac_mov
+  List.clear(m)
+  let l = render3d_st.ac_actors
+  for i in 0 .. len(l) {
+    let a = l[i]
+    if a != null and not a.still { push(m, a) }
+  }
+  render3d_st.ac_mov_ok = true
+}
+# the moving phase is over: the list is not walked again until the next gather (an actor may be released before then)
+function ac_moving_done(render3d_st: mut Render3dState) -> void {
+  render3d_st.ac_mov_ok = false
+  if render3d_st.ac_mov != null { List.clear(render3d_st.ac_mov) }
+}
+# the actors a casters pass walks: the frame's moving ones over a cached layer, else the whole stage
+function ac_caster_list(render3d_st: Render3dState) -> []Actor {
+  if render3d_st.ac_mov_ok and render3d_st.sh_phase == SH_PHASE_DYN and not render3d_st.sh_local { return render3d_st.ac_mov }
+  return render3d_st.ac_actors
+}
+
 function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
   if render3d_st.ac_actors == null { return }
+  let list = ac_caster_list(render3d_st)
   ac_cell_open(render3d_st)
   ac_lvp(render3d_st, render3d_st.ac_sh, light_vp)
   ac_lvp(render3d_st, render3d_st.ac_sh_cut, light_vp)
@@ -1003,8 +1040,8 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
   if render3d_st.sh_phase == SH_PHASE_EXTRA { slot = AI_VEL_SLOT }       # a cache's extra subjects (a few): each drawn on its own
   if not render3d_st.sh_local and slot < AI_VEL_SLOT and ai_on(render3d_st) {      # (the last slot is the motion pass's)
     ai_begin(render3d_st)
-    for i in 0 .. len(render3d_st.ac_actors) {
-      let a = render3d_st.ac_actors[i]
+    for i in 0 .. len(list) {
+      let a = list[i]
       if ac_phase_skips(render3d_st, a) { continue }
       if ai_plain(render3d_st, a) {
         let c = ac_casts(render3d_st, a, light_vp)
@@ -1021,8 +1058,8 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
       ai_draw(render3d_st, true)
     }
   }
-  for i in 0 .. len(render3d_st.ac_actors) {
-    let a = render3d_st.ac_actors[i]
+  for i in 0 .. len(list) {
+    let a = list[i]
     if grouped and ai_grouped(render3d_st, a) { continue }
     if ac_phase_skips(render3d_st, a) { continue }
     if gathered and a.vis_stamp == render3d_st.ai_stamp {
@@ -1037,7 +1074,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     if ac_proxy_figure(render3d_st, a) { actor_draw_proxy(render3d_st, a) } else { actor_draw_one(render3d_st, a, ap, true) }
   }
   ac_cell_close(render3d_st)
-  ac_shadow_lod_restore(render3d_st)
+  ac_shadow_lod_restore(render3d_st, list)
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at {
     print(`actor census, cascade {render3d_st.sh_cascade}: {render3d_st.ac_cc_actors} actors cast {render3d_st.ac_cc_draws} draws ({render3d_st.ac_cc_skinned} of them skinned, {render3d_st.ac_cc_cut} cutout)`)
     render3d_st.ac_cc_actors = 0;  render3d_st.ac_cc_draws = 0;  render3d_st.ac_cc_skinned = 0;  render3d_st.ac_cc_cut = 0
@@ -1127,9 +1164,9 @@ function ac_shadow_lod(render3d_st: mut Render3dState, a: Actor, d: float) -> vo
   a.model = a.sh_lods[j]
 }
 # every caster back on the model the view draws, after a cascade's actors
-function ac_shadow_lod_restore(render3d_st: mut Render3dState) -> void {
-  for i in 0 .. len(render3d_st.ac_actors) {
-    let a = render3d_st.ac_actors[i]
+function ac_shadow_lod_restore(render3d_st: mut Render3dState, l: []Actor) -> void {
+  for i in 0 .. len(l) {
+    let a = l[i]
     if a.sh_keep != null { a.model = a.sh_keep;  a.sh_keep = null }
   }
 }
