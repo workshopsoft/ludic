@@ -75,3 +75,16 @@ export function layer_cut(l: Layer, off: int, n: int) -> void {
   }
   l.count -= n
 }
+
+# Many slabs leaving a streamed layer at once (a game's cells past reach as the camera crosses a cell line): the kept slabs after the
+# first gone are gathered into the scratch one block each (layer_stage: n instances from `off` to the scratch's `at`), then put back
+# over the gap in one copy (layer_unstage: the scratch's first n to the list's `off`, the list then ending there). A copy a slab.
+export function layer_stage(l: Layer, at: int, off: int, n: int) -> void {
+  if n <= 0 or at < 0 or off < 0 or off + n > l.count or at + n > l.have { return }
+  mem_copy(mem_off(data_of(l.scratch), at * INST_FLOATS * 4), mem_off(data_of(l.inst), off * INST_FLOATS * 4), n * INST_FLOATS * 4)
+}
+export function layer_unstage(l: Layer, off: int, n: int) -> void {
+  if off < 0 or n < 0 or off + n > l.have { return }
+  if n > 0 { mem_copy(mem_off(data_of(l.inst), off * INST_FLOATS * 4), data_of(l.scratch), n * INST_FLOATS * 4) }
+  l.count = off + n
+}
