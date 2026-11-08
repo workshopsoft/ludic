@@ -137,16 +137,40 @@ function occ_bounds(a: Actor, b: floats) -> void {
 
 # whether actor a is tested this frame, its box into b: worth a test and in view, and the near plane does not cut its box (cut: visible,
 # untested - Unreal's NearClippingPlane.PlaneDot against BoxPushOut). Asked with occ_live off: the actors' own view test, not last frame's result
-function occ_candidate(render3d_st: Render3dState, a: Actor, b: floats) -> bool {
+# On the HZB path (one dispatch tests every box: a box costs next to nothing) the bar is the actor bar (R3D_ACTOR_OCCLUSION_MIN_TRIS, 200),
+# not the queries' 1000, so the street's cars, people and props behind a building are skipped too; an actor under the queries' bar only
+# while half the slots are free (n), so the static bucket's and the terrain's boxes after it are never crowded out. A box within
+# OCC_NEAR_KEEP of the camera is kept untested: the result read is two frames old, and a car or a passer-by coming round the corner
+# beside the player would show late. R3D_ACTOR_OCCLUSION=0 tests no actor (the static bucket and the terrain keep theirs).
+const OCC_NEAR_KEEP: float = 4.0
+const OCC_ACTOR_TRIS: int = 200
+function occ_actors_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.occ_actors < 0 {
+    render3d_st.occ_actors = 1
+    if r3d_env_has(render3d_st, "R3D_ACTOR_OCCLUSION") and r3d_env(render3d_st, "R3D_ACTOR_OCCLUSION") == "0" { render3d_st.occ_actors = 0 }
+    render3d_st.occ_actor_tris = OCC_ACTOR_TRIS
+    if r3d_env_has(render3d_st, "R3D_ACTOR_OCCLUSION_MIN_TRIS") { render3d_st.occ_actor_tris = Text.to_int(r3d_env(render3d_st, "R3D_ACTOR_OCCLUSION_MIN_TRIS")) }
+  }
+  return render3d_st.occ_actors == 1
+}
+function occ_candidate(render3d_st: mut Render3dState, a: Actor, b: floats, n: int) -> bool {
   if a.leader != null or a.blend != 0 or a.shell or a.strands or a.model == null { return false }
-  if a.occ_hx <= 0.0 and a.model.tris < render3d_st.occ_min_tris { return false }
+  if not occ_actors_on(render3d_st) { return false }
+  if a.occ_hx <= 0.0 and a.model.tris < render3d_st.occ_min_tris {
+    if not render3d_st.occ_hzb or a.model.tris < render3d_st.occ_actor_tris or n >= OCC_MAX / 2 { return false }
+  }
   if not ac_visible(render3d_st, a, false) { return false }
   occ_bounds(a, b)
   let f = render3d_st.cam_fwd
   let cp = render3d_st.cam_pos
   let d = (b[0] - cp[0]) * f[0] + (b[1] - cp[1]) * f[1] + (b[2] - cp[2]) * f[2] - render3d_st.cam_near
   let push = b[3] * Math.abs(f[0]) + b[4] * Math.abs(f[1]) + b[5] * Math.abs(f[2])
-  return d > push
+  if d <= push { return false }
+  # near the camera: the box's nearest point within OCC_NEAR_KEEP
+  let dx = Math.max(Math.abs(b[0] - cp[0]) - b[3], 0.0)
+  let dy = Math.max(Math.abs(b[1] - cp[1]) - b[4], 0.0)
+  let dz = Math.max(Math.abs(b[2] - cp[2]) - b[5], 0.0)
+  return dx * dx + dy * dy + dz * dz > OCC_NEAR_KEEP * OCC_NEAR_KEEP
 }
 
 # The tests, after the opaque scene and in its pass: every actor worth one that is in view, each box drawn into its own query
@@ -168,7 +192,7 @@ function occ_pass(render3d_st: mut Render3dState) -> void {
   var n = 0
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if n >= OCC_MAX or not occ_candidate(render3d_st, a, b) { continue }
+    if n >= OCC_MAX or not occ_candidate(render3d_st, a, b, n) { continue }
     u_f3(render3d_st, l_c, b[0], b[1], b[2])
     u_f3(render3d_st, l_e, b[3], b[4], b[5])
     render3d_st.gvk_occ_q = n
@@ -309,7 +333,7 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
   var n = 0
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if n >= OCC_MAX or not occ_candidate(render3d_st, a, b) { continue }
+    if n >= OCC_MAX or not occ_candidate(render3d_st, a, b, n) { continue }
     for k in 0 .. 3 { box[n * 8 + k] = b[k];  box[n * 8 + 4 + k] = b[3 + k] }
     box[n * 8 + 3] = 0.0;  box[n * 8 + 7] = 0.0
     render3d_st.occ_list[n] = a
