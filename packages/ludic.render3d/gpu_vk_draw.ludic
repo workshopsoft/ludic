@@ -243,7 +243,7 @@ function gvk_dispatch_tex(render3d_st: mut Render3dState, c: int, params: pointe
   if r != VK_SUCCESS { gvk_fail(render3d_st, "vkAllocateDescriptorSets (compute)", r);  return }
   let set = Vk.get_i64(sets, 0)
   let at = gvk_ring_put(render3d_st, params, n_params)
-  if at < 0 { print("r3d: vulkan: the frame's uniform ring is full");  return }
+  if at < 0 { return }
   let ww = VkWriteDescriptorSet_sizeof
   let bw = VkDescriptorBufferInfo_sizeof
   let iw = VkDescriptorImageInfo_sizeof
@@ -862,7 +862,11 @@ function gvk_ring_bytes(render3d_st: Render3dState) -> int {
 function gvk_ring_grow(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_ring_full = false
   gvk_frame_wait(render3d_st)
-  let half = gvk_ring_bytes(render3d_st) * 2
+  # twice the size, or more when the frame that ran out asked for more than that: one lost frame, not one for each doubling
+  var half = gvk_ring_bytes(render3d_st) * 2
+  let need = gvk_ring_bytes(render3d_st) + render3d_st.gvk_ring_want
+  while half < need { half = half * 2 }
+  render3d_st.gvk_ring_want = 0
   gvk_buf_release(render3d_st, render3d_st.gvk_ring_buf)
   if not gvk_buf_reserve(render3d_st, render3d_st.gvk_ring_buf, half * 2) { return }
   render3d_st.gvk_ring_half = half
@@ -936,7 +940,13 @@ function gvk_frame_reset(render3d_st: mut Render3dState) -> void {
 # a block into the ring; its offset, or -1 when the frame has used the whole ring
 function gvk_ring_put(render3d_st: mut Render3dState, blk: pointer, n: int) -> int {
   let at = (render3d_st.gvk_ring_off + render3d_st.gvk_ring_align - 1) / render3d_st.gvk_ring_align * render3d_st.gvk_ring_align
-  if at + n > render3d_st.gvk_ring_end { render3d_st.gvk_ring_full = true;  return -1 }
+  if at + n > render3d_st.gvk_ring_end {
+    # said once a frame (each block that did not fit was a line: 1,500 of them on a frame of the island on an RTX 3070 Ti)
+    if not render3d_st.gvk_ring_full { print("r3d: vulkan: the frame's uniform ring is full: its other draws are lost this frame") }
+    render3d_st.gvk_ring_full = true
+    render3d_st.gvk_ring_want += n + render3d_st.gvk_ring_align
+    return -1
+  }
   mem_copy(mem_off(render3d_st.gvk_buf_map[render3d_st.gvk_ring_buf], at), blk, n)
   render3d_st.gvk_ring_off = at + n
   let used = render3d_st.gvk_ring_off - (render3d_st.gvk_ring_end - gvk_ring_bytes(render3d_st))
@@ -1102,12 +1112,12 @@ function gvk_draw_set(render3d_st: mut Render3dState, p: int, tx: words, tx_w: i
   if render3d_st.gvk_prog_dirty[p] == 1 or render3d_st.gvk_ub_frame[p] != render3d_st.gvk_frame_no {
     if render3d_st.gvk_ublk_v[p] != null and v.vblock > 0 {
       let at = gvk_ring_put(render3d_st, render3d_st.gvk_ublk_v[p], v.vblock)
-      if at < 0 { print("r3d: vulkan: the frame's uniform ring is full");  return zero }
+      if at < 0 { return zero }
       render3d_st.gvk_ub_offv[p] = at
     }
     if render3d_st.gvk_ublk_f[p] != null and v.fblock > 0 {
       let at = gvk_ring_put(render3d_st, render3d_st.gvk_ublk_f[p], v.fblock)
-      if at < 0 { print("r3d: vulkan: the frame's uniform ring is full");  return zero }
+      if at < 0 { return zero }
       render3d_st.gvk_ub_offf[p] = at
     }
     render3d_st.gvk_ub_frame[p] = render3d_st.gvk_frame_no
