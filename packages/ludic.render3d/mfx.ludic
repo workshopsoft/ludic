@@ -52,6 +52,9 @@ const MFX_ST_OBJECTS: int = 1000311001     # VkExportMetalObjectsInfoEXT
 const MFX_ST_DEVICE: int = 1000311002      # VkExportMetalDeviceInfoEXT
 const MFX_ST_QUEUE: int = 1000311003       # VkExportMetalCommandQueueInfoEXT
 const MFX_ST_TEXTURE: int = 1000311006     # VkExportMetalTextureInfoEXT
+const MFX_ST_OBJECT_CREATE: int = 1000311000  # VkExportMetalObjectCreateInfoEXT
+const MFX_ST_SHARED_EVENT: int = 1000311010   # VkExportMetalSharedEventInfoEXT
+const MFX_EXPORT_SHARED_EVENT: int = 32       # VK_EXPORT_METAL_OBJECT_TYPE_METAL_SHARED_EVENT_BIT_EXT
 
 # the mode when the game says none: auto on a Mac whose device has MetalFX, off elsewhere
 function mfx_default_mode(render3d_st: Render3dState) -> int {
@@ -105,7 +108,49 @@ function mfx_init(render3d_st: mut Render3dState) -> void {
   if render3d_st.mfx_dev == null or render3d_st.mfx_queue == null { return }
   render3d_st.mfx_ok = Vk.mfx_supports(render3d_st.mfx_dev) == 1
   if render3d_st.mfx_ok { render3d_st.mfx_max_scale = float_from_bits(Vk.mfx_max_scale(render3d_st.mfx_dev)) }
+  if render3d_st.mfx_ok { mfx_ev_init(render3d_st) }
   mfx_say_probe(render3d_st)
+}
+# With async submits (MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS=0, gpu_vk.ludic gvk_no_command_pooling) MoltenVK commits the frame's
+# first part to the queue on its own thread, so commit order no longer puts it before the scaler. The scaler then goes to a
+# queue of its own, and a timeline semaphore orders the two: the split submit signals 2N, the scaler's command buffer waits on
+# its MTLSharedEvent (VkExportMetalSharedEventInfoEXT) for 2N and signals 2N + 1, the next Vulkan submit waits for 2N + 1
+# (gvk_submit_sems). A wait on the same queue for a buffer committed after it would never end, hence the second queue.
+@alloc_ok("start-up: the device, its tables, the programs, the passes and the world's first textures are made once, before play")
+function mfx_ev_init(render3d_st: mut Render3dState) -> void {
+  if not (Os.has_env("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS") and Os.env("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS") == "0") { return }
+  let ec = bytes(24)                                       # VkExportMetalObjectCreateInfoEXT { sType, pNext, exportObjectType }
+  Vk.zero(ec, 24)
+  Vk.put_i32(ec, 0, MFX_ST_OBJECT_CREATE)
+  Vk.put_i32(ec, 16, MFX_EXPORT_SHARED_EVENT)
+  let tc = bytes(VkSemaphoreTypeCreateInfo_sizeof)
+  Vk.zero(tc, VkSemaphoreTypeCreateInfo_sizeof)
+  Vk.put_i32(tc, VkSemaphoreTypeCreateInfo_sType, VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO)
+  Vk.put_ptr(tc, VkSemaphoreTypeCreateInfo_pNext, ec)
+  Vk.put_i32(tc, VkSemaphoreTypeCreateInfo_semaphoreType, VK_SEMAPHORE_TYPE_TIMELINE)
+  Vk.put_i64(tc, VkSemaphoreTypeCreateInfo_initialValue, 0)
+  let sci = bytes(VkSemaphoreCreateInfo_sizeof)
+  Vk.zero(sci, VkSemaphoreCreateInfo_sizeof)
+  Vk.put_i32(sci, VkSemaphoreCreateInfo_sType, VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO)
+  Vk.put_ptr(sci, VkSemaphoreCreateInfo_pNext, tc)
+  render3d_st.mfx_tl = bytes(8)
+  Vk.zero(render3d_st.mfx_tl, 8)
+  let r = Vk.create_semaphore(render3d_st.gvk_dev, sci, render3d_st.gvk_ac, Vk.at(render3d_st.mfx_tl, 0))
+  free(sci);  free(tc);  free(ec)
+  if r != VK_SUCCESS or Vk.get_i64(render3d_st.mfx_tl, 0) == 0 { render3d_st.mfx_tl = null;  mfx_say_failed("timeline semaphore");  return }
+  # VkExportMetalSharedEventInfoEXT { sType, pNext, semaphore, event, mtlSharedEvent }
+  Vk.zero(render3d_st.mfx_obj, 56)
+  Vk.put_i32(render3d_st.mfx_obj, 0, MFX_ST_SHARED_EVENT)
+  Vk.put_i64(render3d_st.mfx_obj, 16, Vk.get_i64(render3d_st.mfx_tl, 0))
+  mfx_call_export(render3d_st)
+  render3d_st.mfx_ev = Vk.get_ptr(render3d_st.mfx_obj, 32)
+  render3d_st.mfx_q2 = Vk.mfx_queue_new(render3d_st.mfx_dev)
+  if render3d_st.mfx_ev == null or render3d_st.mfx_q2 == null {
+    # without them the scaler would race the queue thread (black frames): MetalFX off
+    mfx_say_failed("MTLSharedEvent export");  render3d_st.mfx_ok = false
+    return
+  }
+  render3d_st.mfx_ev_on = true
 }
 function mfx_ask(render3d_st: mut Render3dState, stype: int) -> void {
   Vk.zero(render3d_st.mfx_obj, 56)
@@ -222,7 +267,10 @@ function mfx_eval(render3d_st: mut Render3dState) -> int {
     # without this frame's motion there is nothing to reproject the history by: drop it
     render3d_st.mfx_reset = true
   }
-  if not gvk_frame_split(render3d_st) { render3d_st.mfx_eval_ok = false;  return render3d_st.post_hdr.color }
+  if render3d_st.mfx_ev_on { render3d_st.mfx_tl_n += 2;  render3d_st.gvk_tl_sig = render3d_st.mfx_tl_n }
+  let split = gvk_frame_split(render3d_st)
+  render3d_st.gvk_tl_sig = 0
+  if not split { render3d_st.mfx_eval_ok = false;  return render3d_st.post_hdr.color }
   render3d_st.mfx_split_now = true
   let color = mfx_texture(render3d_st, render3d_st.post_hdr.color)
   let depth = mfx_texture(render3d_st, render3d_st.post_hdr.depth)
@@ -244,7 +292,13 @@ function mfx_eval(render3d_st: mut Render3dState) -> int {
   # a cut (taa_motion_pass sets gsl_reset with taa_reset; taa_reset alone is also set on every frame TAA did not resolve)
   var reset = 0
   if render3d_st.mfx_reset or render3d_st.gsl_reset { reset = 1 }
-  let ok = Vk.mfx_encode(render3d_st.mfx_scaler, render3d_st.mfx_queue, color, depth, motion, out, float_bits(jx), float_bits(jy), float_bits(mx), float_bits(my), reset, 1)
+  var ok = 0
+  if render3d_st.mfx_ev_on {
+    ok = Vk.mfx_encode_ev(render3d_st.mfx_scaler, render3d_st.mfx_q2, color, depth, motion, out, float_bits(jx), float_bits(jy), float_bits(mx), float_bits(my), reset, 1, render3d_st.mfx_ev, render3d_st.mfx_tl_n, render3d_st.mfx_tl_n + 1)
+    if ok == 1 { render3d_st.gvk_tl_wait = render3d_st.mfx_tl_n + 1 }
+  } else {
+    ok = Vk.mfx_encode(render3d_st.mfx_scaler, render3d_st.mfx_queue, color, depth, motion, out, float_bits(jx), float_bits(jy), float_bits(mx), float_bits(my), reset, 1)
+  }
   render3d_st.mfx_reset = false
   render3d_st.gsl_reset = false
   render3d_st.mfx_eval_ok = ok == 1
@@ -277,6 +331,14 @@ function mfx_time_collect(render3d_st: mut Render3dState) -> void {
 # after the device is idle
 function mfx_free(render3d_st: mut Render3dState) -> void {
   render3d_st.mfx_scaler = null
+  if render3d_st.mfx_q2 != null { Vk.mfx_release(render3d_st.mfx_q2);  render3d_st.mfx_q2 = null }
+  if render3d_st.mfx_tl != null {
+    let sem = Vk.get_i64(render3d_st.mfx_tl, 0)
+    if sem != 0 { Vk.destroy_semaphore(render3d_st.gvk_dev, sem, render3d_st.gvk_ac) }
+    render3d_st.mfx_tl = null
+  }
+  render3d_st.mfx_ev = null
+  render3d_st.mfx_ev_on = false
   if render3d_st.mfx_keep == null { return }
   for i in 0 .. len(render3d_st.mfx_keep) { if render3d_st.mfx_keep[i] != null { Vk.mfx_release(render3d_st.mfx_keep[i]);  render3d_st.mfx_keep[i] = null } }
 }

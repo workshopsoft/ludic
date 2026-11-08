@@ -45,6 +45,10 @@ extern function vk_mfx_release(obj: pointer) = "lmfx_release"
 extern function vk_mfx_usage(scaler: pointer, which: int) -> int = "lmfx_usage"
 extern function vk_mfx_tex_info(tex: pointer, which: int) -> int = "lmfx_tex_info"
 extern function vk_mfx_encode(scaler: pointer, queue: pointer, color: pointer, depth: pointer, motion: pointer, output: pointer, jx: int, jy: int, mx: int, my: int, reset: int, reversed: int) -> int = "lmfx_encode"
+# the scaler on a queue of its own (Vk.mfx_queue_new: [MTLDevice newCommandQueue]), its command buffer waiting on an
+# MTLSharedEvent (a Vulkan timeline semaphore's, exported) for `wait` before the scaler and signalling `signal` after it
+extern function vk_mfx_queue_new(mtl_device: pointer) -> pointer = "lmfx_queue_new"
+extern function vk_mfx_encode_ev(scaler: pointer, queue: pointer, color: pointer, depth: pointer, motion: pointer, output: pointer, jx: int, jy: int, mx: int, my: int, reset: int, reversed: int, event: pointer, wait: long, signal: long) -> int = "lmfx_encode_ev"
 # the scaler's last command buffer kept in slot 0..7, and its GPU time in ns once done (-1 still running, -2 none)
 extern function vk_mfx_hold(slot: int) = "lmfx_hold"
 extern function vk_mfx_slot_ns(slot: int) -> long = "lmfx_slot_ns"
