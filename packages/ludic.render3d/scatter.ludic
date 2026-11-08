@@ -101,6 +101,12 @@ property Layer {
   g_dst:    int = 0,
   g_cmds:   int = 0,
   g_counts: int = 0,
+  g_cap:    int = 0,           # instances each bucket holds (the count when set up; a stream's cap, so its cells come and go without a rebuild)
+  # a streamed layer culled on the GPU (layer_gpu_stream: a game's grass cells): its instances change only when a cell comes or goes
+  # (layer_stream_changed re-uploads them), scatter_cull.comp tests them in parallel, each with its own cull distance in g_band0 .. g_band1
+  g_stream: bool = false,
+  g_band0:  float = 0.0,
+  g_band1:  float = 0.0,
   # the main view's occlusion (scatter_occl.comp, R3D_SCATTER_OCCLUSION): this frame's main-view draws take records 29 .. 45, and the
   # bounds it tests per unit of scale (every level's and the impostor's: radius about the axis, bottom, top)
   g_occ:    bool = false,
@@ -685,7 +691,9 @@ const SC_REC_VIEW: int = 29           # the main view's occlusion-culled copy of
 const SC_OCC_MARGIN: float = 0.5      # metres round a layer's bounds in the occlusion test: the wind's sway, a crown's droop
 
 function layer_gpu_eligible(render3d_st: Render3dState, l: Layer) -> bool {
-  if l.n_lods < 2 or l.n_lods > 4 or l.imp == null or l.streamed or l.flower or l.blade or l.count == 0 { return false }
+  if l.n_lods < 2 or l.n_lods > 4 or l.imp == null or l.flower or l.blade { return false }
+  if l.streamed and not l.g_stream { return false }
+  if l.count == 0 and not (l.g_stream and l.g_on) { return false }
   return layer_arena_ok(render3d_st, l)
 }
 
@@ -806,13 +814,21 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
   }
   if render3d_st.sc_cull_prog == 0 or not layer_gpu_eligible(render3d_st, l) { return false }
   if l.g_on and l.g_n == l.count { return true }
+  # a GPU stream's cells came or went: its instances again, nothing else (its buckets are its cap's)
+  if l.g_on and l.g_stream {
+    if l.count > 0 { gpu_buffer_upload(render3d_st, l.g_src, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC) }
+    l.g_n = l.count
+    return true
+  }
   if l.g_src == 0 {
     l.g_src = gpu_buffer_new(render3d_st);  l.g_dst = gpu_buffer_new(render3d_st);  l.g_cmds = gpu_buffer_new(render3d_st);  l.g_counts = gpu_buffer_new(render3d_st)
     gpu_buffer_gpu_owned(render3d_st, l.g_dst);  gpu_buffer_gpu_owned(render3d_st, l.g_cmds);  gpu_buffer_gpu_owned(render3d_st, l.g_counts)
   }
   let n = l.n_lods
-  let cap = l.count
-  gpu_buffer_upload(render3d_st, l.g_src, cap * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  var cap = l.count
+  if l.g_stream { cap = l.cap }
+  l.g_cap = cap
+  gpu_buffer_upload(render3d_st, l.g_src, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
   # the buckets, then the main view's visible region (scatter_occl.comp: every level's visible ones, cap at most in all)
   gpu_buffer_upload(render3d_st, l.g_dst, (n + 2) * cap * INST_FLOATS * 4, null, GPU_DYNAMIC)
   if l.g_arena == null { layer_arena_build(render3d_st, l) }
@@ -851,9 +867,11 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
   let zeros = render3d_st.sc_gpu_zeros
   for i in 0 .. 16 { zeros[i] = 0 }
   gpu_buffer_upload(render3d_st, l.g_counts, 64, data_of(zeros), GPU_DYNAMIC)
-  # the card casts every instance, as on the CPU path (layer_grid_build uploads this there)
-  l.n_sh = l.count
-  gpu_buffer_upload(render3d_st, l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  # the card casts every instance, as on the CPU path (layer_grid_build uploads this there); a GPU stream casts none
+  if not l.g_stream {
+    l.n_sh = l.count
+    gpu_buffer_upload(render3d_st, l.sh_buf, l.count * INST_FLOATS * 4, data_of(l.inst), GPU_STATIC)
+  }
   l.g_n = l.count
   l.g_on = true
   return true
@@ -862,19 +880,46 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
 # the dispatch for the view as it stands: frustum, camera, distances, the layer's shape
 function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
   let pr = render3d_st.sc_gpu_pr
-  for i in 0 .. 36 { pr[i] = 0 }
+  for i in 0 .. 40 { pr[i] = 0 }
   if render3d_st.cam_planes != null { for i in 0 .. 16 { pr[i] = float_bits(render3d_st.cam_planes[i]) } }
   pr[16] = float_bits(render3d_st.cam_pos[0]);  pr[17] = float_bits(render3d_st.cam_pos[1]);  pr[18] = float_bits(render3d_st.cam_pos[2]);  pr[19] = float_bits(r3d_reach(render3d_st, l.cull))
   for k in 0 .. l.n_lods { pr[20 + k] = float_bits(l.lod_dist[k]);  pr[24 + k] = len(l.lods[k].prims) }
-  pr[28] = l.count;  pr[29] = l.count;  pr[30] = l.n_lods;  pr[31] = 1
+  pr[28] = l.count;  pr[29] = l.g_cap;  pr[30] = l.n_lods;  pr[31] = 1
   # as layer_grid_gather pads a cell: the tallest instance, plus a margin
   pr[32] = float_bits(l.lods[0].height * 2.0);  pr[33] = float_bits(4.0)
   # the screen-size cull (layer_ss_reach: metres per unit of scale, 0 none) and the bounds' centre height per unit of scale
   pr[34] = float_bits(layer_ss_reach(render3d_st, l));  pr[35] = float_bits(l.model.height * 0.5)
   let bufs = render3d_st.sc_gpu_bufs
   bufs[0] = l.g_src;  bufs[1] = l.g_dst;  bufs[2] = l.g_cmds;  bufs[3] = l.g_counts
-  gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 144, bufs, 1)
+  if not l.g_stream {
+    gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 160, bufs, 1)
+    return
+  }
+  # a GPU stream: counts zeroed, a thread an instance (its own cull distance in the band), the draw records from the counts
+  pr[37] = float_bits(l.g_band0);  pr[38] = float_bits(l.g_band1)
+  pr[36] = 1
+  gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 160, bufs, 1)
+  pr[36] = 2
+  gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 160, bufs, max((l.count + 63) / 64, 1))
+  pr[36] = 3
+  gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 160, bufs, 1)
 }
+
+# a streamed layer (its instances a game's cells, already in render coordinates) culled on the GPU wherever the trees are: the game puts
+# every instance of its cells in once and calls layer_stream_changed when a cell comes or goes; each frame the view moved costs a dispatch,
+# nothing a cell. Each instance is dropped past its own cull distance, between band0 and band1 metres (from its seed): the edge thins.
+export function layer_gpu_stream(l: Layer, band0: float, band1: float) -> void {
+  l.g_stream = true
+  l.g_band0 = band0
+  l.g_band1 = band1
+}
+# a streamed layer's instances changed (a cell came or went, the origin moved): uploaded again before the next draw
+export function layer_stream_changed(l: Layer) -> void {
+  l.g_n = -1
+  l.view_gen = -1
+}
+# the layer is culled on the GPU (layer_gpu_stream took): its instances are not worked out on the CPU per view
+export function layer_gpu_live(l: Layer) -> bool { return l.g_on }
 
 # The main view's occlusion of a GPU layer, every frame after its walk (scatter_occl.comp, R3D_SCATTER_OCCLUSION; occlusion.ludic): its
 # buckets' survivors tested against last frame's HZB, the visible ones copied after the buckets and the main view's records 29 .. 45 written.
@@ -883,7 +928,7 @@ function layer_gpu_occl(render3d_st: mut Render3dState, l: Layer, live: bool) ->
   l.g_occ = false
   if not live or not l.g_on or l.grounded or render3d_st.sc_occ_prog == 0 { return }
   let n = l.n_lods
-  let cap = l.count
+  let cap = l.g_cap
   let groups = ((n + 1) * cap + 63) / 64
   if groups > 65535 { return }
   let pr = render3d_st.sc_occ_pr
