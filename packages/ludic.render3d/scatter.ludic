@@ -677,6 +677,10 @@ function scatter_begin_frame(render3d_st: mut Render3dState) -> void {
     v3_copy(render3d_st.sc_view_pos, render3d_st.cam_pos)
     v3_copy(render3d_st.sc_view_fwd, render3d_st.cam_fwd)
   }
+  # the cast band's camera height over the ground (cast_band_reaches) is this frame's: kept for a whole view it was the ground under the
+  # camera at whichever caster first asked, so a view held still while the ground streamed in kept the height of no ground, and which
+  # caster asked first (the actors' fast path asks fewer) changed the shadows
+  render3d_st.sc_cast_gen = -1
   scatter_lod0_impostors(render3d_st)
   # GPU-culled layers dispatch before the first pass of the frame, so no pass is split for it; their main-view occlusion every frame
   # after the walk (scatter_occl.comp: the HZB changes each frame even while the view stands still)
