@@ -161,8 +161,8 @@ vec3 windowLight(float a) {
   float occ = 0.45 + 1.1 * wlHash(vec2(b, 5.0));
   if (wlHash(vec2(w * 1.618 + slot * 7.0, b + slot * 13.0)) >= u_winlit.z * occ) return vec3(0.0);
   float k = wlHash(vec2(w + slot * 3.0, b + 91.0));
-  vec3 c = (k < 0.12) ? vec3(0.27, 0.31, 0.38) : mix(vec3(0.45, 0.30, 0.14), vec3(0.47, 0.36, 0.21), (k - 0.12) / 0.88);
-  return c * (0.6 + 0.7 * wlHash(vec2(w + slot * 5.0, b + 3.0))) * u_winlit.x;
+  vec3 c = (k < 0.12) ? vec3(0.26, 0.30, 0.38) : mix(vec3(0.46, 0.25, 0.08), vec3(0.45, 0.32, 0.15), (k - 0.12) / 0.88);
+  return c * (0.5 + 0.6 * wlHash(vec2(w + slot * 5.0, b + 3.0))) * u_winlit.x;
 }
 #ifndef ACTOR_INST
 uniform float u_emissive;     // self-lit (a flame): albedo added back after shading
