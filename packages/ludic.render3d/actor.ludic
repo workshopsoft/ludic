@@ -511,13 +511,13 @@ property AcCol {
   ylo:   float = 0.0,
   yhi:   float = 0.0,
   reach: float = 0.0,
-  @max(32768) l: []Actor = null
+  @max(131072) l: []Actor = null
 }
 property AcGrid {
   @max(16384) cols: []AcCol = null,
   hash: words = null,                    # (column key + 1, its index) pairs, open addressing
-  @max(32768) rest: []Actor = null,
-  @max(32768) pass: []Actor = null
+  @max(131072) rest: []Actor = null,
+  @max(131072) pass: []Actor = null
 }
 const AC_GRID_H: int = 32768
 @alloc_ok("the grid, made once")
