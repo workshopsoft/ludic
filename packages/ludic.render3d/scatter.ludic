@@ -117,6 +117,7 @@ property Layer {
   g_stream: bool = false,
   g_band0:  float = 0.0,
   g_band1:  float = 0.0,
+  g_thin:   float = 0.0,   # density scaling past this (m): a hash-chosen share kept and scaled up (layer_gpu_thin); 0 none
   # the main view's occlusion (scatter_occl.comp, R3D_SCATTER_OCCLUSION): this frame's main-view draws take records 29 .. 45, and the
   # bounds it tests per unit of scale (every level's and the impostor's: radius about the axis, bottom, top)
   g_occ:    bool = false,
@@ -960,7 +961,7 @@ function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
     return
   }
   # a GPU stream: counts zeroed, a thread an instance (its own cull distance in the band), the draw records from the counts
-  pr[37] = float_bits(l.g_band0);  pr[38] = float_bits(l.g_band1)
+  pr[37] = float_bits(l.g_band0);  pr[38] = float_bits(l.g_band1);  pr[39] = float_bits(l.g_thin)
   pr[36] = 1
   gpu_dispatch(render3d_st, render3d_st.sc_cull_prog, data_of(pr), 160, bufs, 1)
   pr[36] = 2
@@ -977,6 +978,9 @@ export function layer_gpu_stream(l: Layer, band0: float, band1: float) -> void {
   l.g_band0 = band0
   l.g_band1 = band1
 }
+# a streamed layer's density scaling (Unreal's foliage density scaling): past `at` metres it keeps (at / d)^2 of its instances, a quarter at
+# least, each chosen by a hash of its seed, and draws each kept one bigger by the inverse square root so the ground stays as covered; 0 off
+export function layer_gpu_thin(l: Layer, at: float) -> void { l.g_thin = max(at, 0.0) }
 # a streamed layer's instances changed (a cell came or went, the origin moved): uploaded again before the next draw
 export function layer_stream_changed(l: Layer) -> void {
   l.g_n = -1

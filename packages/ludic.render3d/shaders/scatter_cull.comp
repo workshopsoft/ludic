@@ -16,7 +16,9 @@
 // A streamed layer (layer_gpu_stream: a game's grass cells, ~190 000 instances) runs it in parallel instead (pr.mode != 0): mode 1 zeroes the
 // counts (one group), mode 2 tests a thread an instance and packs the survivors by atomic counts (order free: alpha-tested cover), mode 3
 // writes the draw records (one group). Each instance of such a layer has its own cull distance in [band.x, band.y], from its seed (the
-// edge thins instead of a ring popping: Unreal's per-instance fade between StartCullDistance and EndCullDistance).
+// edge thins instead of a ring popping: Unreal's per-instance fade between StartCullDistance and EndCullDistance). Past pr.thin metres such
+// a layer keeps (thin / d)^2 of its instances (a quarter at least, from a second hash of the seed), each kept one scaled by the inverse
+// square root so the ground covered stays the same (Unreal's foliage density scaling, grass.DensityScale / FoliageType scalability).
 layout(local_size_x = 64) in;
 
 layout(set = 0, binding = 0) uniform Params {
@@ -35,7 +37,7 @@ layout(set = 0, binding = 0) uniform Params {
   uint mode;          // 0 the serial walk (thread 0 of one group), 1 .. 3 the parallel passes
   float band0;        // per-instance cull band (m): start and end, 0 0 none
   float band1;
-  float pad2;
+  float thin;         // a streamed layer's density scaling (layer_gpu_thin): past this (m) a hash-chosen share kept, scaled up; 0 none
 } pr;
 
 layout(set = 0, binding = 1) readonly buffer Src { float src[]; };
@@ -118,10 +120,24 @@ void main() {
     uint o = t * 8u;
     uint lv = level_of(o, c2, op);
     if (lv > n) { return; }
+    float sc = 1.0;
+    if (pr.thin > 0.0) {
+      float tx = src[o] - pr.cam.x;
+      float tz = src[o + 2u] - pr.cam.z;
+      float td2 = tx * tx + tz * tz;
+      float t2 = pr.thin * pr.thin;
+      if (td2 > t2) {
+        float keep = max(t2 / td2, 0.25);
+        float h2 = fract(sin(src[o + 6u] * 37.719 + 3.31) * 43758.5453);
+        if (h2 >= keep) { return; }
+        sc = inversesqrt(keep);
+      }
+    }
     uint at = atomicAdd(counts[lv], 1u);
     if (at >= pr.cap) { return; }
     uint q = (lv * pr.cap + at) * 8u;
     for (uint k = 0u; k < 8u; k++) { dst[q + k] = src[o + k]; }
+    dst[q + 3u] = src[o + 3u] * sc;
     return;
   }
   if (gl_GlobalInvocationID.x != 0u) { return; }
