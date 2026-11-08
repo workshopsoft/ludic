@@ -66,7 +66,8 @@ function gvk_no_command_pooling() -> void {
   # timeline semaphore's MTLSharedEvent instead of commit order (mfx.ludic mfx_ev_init). Off until a proof run under load shows
   # no black frame and no hang.
   if Os.has_env("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS") { return }
-  if not (Os.has_env("R3D_MVK_ASYNC_SUBMIT") and Os.env("R3D_MVK_ASYNC_SUBMIT") == "1") { return }
+  # (on by default since 2026-11-08: the scaler waits on the frame's timeline semaphore, so the queue thread cannot race it; =0 back to sync)
+  if Os.has_env("R3D_MVK_ASYNC_SUBMIT") and Os.env("R3D_MVK_ASYNC_SUBMIT") == "0" { return }
   Os.set_env("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0")
 }
 
