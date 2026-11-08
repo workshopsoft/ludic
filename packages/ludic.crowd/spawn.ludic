@@ -153,6 +153,9 @@ function cw_ped_clear(p: CrowdPed) -> void {
   p.leaving = false
   p.stay = 0.0
   p.last_scn = -1
+  p.home = -2
+  p.work = -2
+  p.role = 0
   p.out_on = false
   p.lead = -1
   p.member = 0

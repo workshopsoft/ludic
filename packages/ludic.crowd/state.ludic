@@ -173,6 +173,9 @@ export property CrowdPed {
   out_x: float = 0.0
   out_t: float = 0.0              # seconds it has been stepping out (it gives up after 4: something stands there)
   out_z: float = 0.0
+  home: int = -2                 # its own home scenario (-2 not chosen yet, -1 none): the rows' "home" anchor
+  work: int = -2                 # its day place (work, school; its home for one who stays): the rows' "work" anchor
+  role: int = 0                  # 0 works, 1 school, 2 stays home (chosen with the places)
   last_scn: int = -1             # the scenario it last used (its next is another: a sitter who got up does not sit down there again)
   stay: float = 0.0              # seconds it stays at the scenario crowd_use sent it to (0: the scenario's own time)
   lead: int = -1                 # handle of its group's leader, -1 the leader or alone
@@ -234,6 +237,12 @@ export state CrowdState {
   cw_role: int = 0
   cw_seed: int = 1
   cw_hour: float = 12.0
+  cw_homes: bool = true                         # own homes and day places (the game turns it off: OCCUTOWN_FB_HOMES=0): home/work anchors then are plain tags
+  cw_n_home: int = 0                            # peds by what they do (counted when an act is chosen): home, work, school, other anchored
+  cw_n_work: int = 0
+  cw_n_school: int = 0
+  cw_n_leisure: int = 0
+  cw_n_commute: int = 0
   cw_day: int = 0
   cw_dice: Rng = null
   cw_facts: Queue<CrowdFact> = cw_facts__new()

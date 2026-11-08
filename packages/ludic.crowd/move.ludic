@@ -134,6 +134,48 @@ function cw_slot_open(crowd_st: CrowdState, k: int, hour: float) -> bool {
   return cw_in_hours(hour, crowd_st.cw_sl_from[k], crowd_st.cw_sl_to[k])
 }
 
+# a tag's place in the interned list, none made (frame code): -1 for one nothing has
+function cw_find_tag(crowd_st: CrowdState, tag: string) -> int {
+  for i in 0 .. len(crowd_st.cw_tags) { if crowd_st.cw_tags[i] == tag { return i } }
+  return -1
+}
+# the nearest scenario of tag `name` within r of the ped; -1 none
+function cw_near_named(crowd_st: CrowdState, p: CrowdPed, name: string, r: float) -> int {
+  let t = cw_find_tag(crowd_st, name)
+  if t < 0 { return -1 }
+  return cw_scenario_near(crowd_st, p.x, p.z, r, t, crowd_st.cw_hour, -1)
+}
+
+# once, with the first act: the ped's home (lean walls, benches, windows round its first place: the roster is made round its homes)
+# and its day place by role, seeded by its uid: 60% work (cafes, kiosks, smokers' doors, vending), 15% school (courts), 25% stay home
+function cw_choose_places(crowd_st: mut CrowdState, p: CrowdPed) -> void {
+  if p.home != -2 { return }
+  let h = crowd_hash(p.uid, 1, 91) % 3
+  var home = -1
+  for k in 0 .. 3 {
+    if home >= 0 { break }
+    let m = (h + k) % 3
+    if m == 0 { home = cw_near_named(crowd_st, p, "lean", 250.0) } else if m == 1 { home = cw_near_named(crowd_st, p, "bench", 250.0) } else { home = cw_near_named(crowd_st, p, "window", 250.0) }
+  }
+  p.home = home
+  let u = float(crowd_hash(p.uid, 7, 92) & 1023) / 1024.0
+  if u < 0.60 { p.role = 0 } else if u < 0.75 { p.role = 1 } else { p.role = 2 }
+  p.work = -1
+  if p.role == 0 {
+    let w = crowd_hash(p.uid, 2, 91) % 4
+    for k in 0 .. 4 {
+      if p.work >= 0 { break }
+      let m = (w + k) % 4
+      if m == 0 { p.work = cw_near_named(crowd_st, p, "cafe", 500.0) } else if m == 1 { p.work = cw_near_named(crowd_st, p, "kiosk", 500.0) } else if m == 2 { p.work = cw_near_named(crowd_st, p, "smoke", 500.0) } else { p.work = cw_near_named(crowd_st, p, "vending", 500.0) }
+    }
+  }
+  if p.role == 1 {
+    p.work = cw_near_named(crowd_st, p, "court", 500.0)
+    if p.work < 0 { p.work = cw_near_named(crowd_st, p, "bench", 500.0) }
+  }
+  if p.work < 0 { p.work = p.home }
+}
+
 # what to do next: a slot of the ped's schedule that covers the hour, by weight; then where
 function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
   cw_leave_scenario(crowd_st, p)
@@ -164,8 +206,25 @@ function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
   var act = crowd_st.cw_sl_act[s]
   let dur = crowd_st.cw_sl_min[s] + (crowd_st.cw_sl_max[s] - crowd_st.cw_sl_min[s]) * cw_roll(p, 22)
   let tag = crowd_st.cw_sl_tag[s]
+  if act == CROWD_COMMUTE { crowd_st.cw_n_commute += 1 }
   if tag >= 0 {
-    let i = cw_scenario_near(crowd_st, p.x, p.z, 80.0, tag, hour, p.last_scn)          # never straight back to the one just left
+    var i = -1
+    var own = false
+    if crowd_st.cw_homes and (crowd_st.cw_tags[tag] == "home" or crowd_st.cw_tags[tag] == "work") {
+      cw_choose_places(crowd_st, p)
+      own = true
+      if crowd_st.cw_tags[tag] == "home" {
+        i = p.home
+        crowd_st.cw_n_home += 1
+      } else {
+        i = p.work
+        if p.role == 1 { crowd_st.cw_n_school += 1 } else if p.role == 0 { crowd_st.cw_n_work += 1 } else { crowd_st.cw_n_home += 1 }
+      }
+    } else {
+      i = cw_scenario_near(crowd_st, p.x, p.z, 80.0, tag, hour, p.last_scn)          # never straight back to the one just left
+      crowd_st.cw_n_leisure += 1
+    }
+    if own and i < 0 { i = cw_scenario_near(crowd_st, p.x, p.z, 80.0, tag, hour, p.last_scn) }          # never straight back to the one just left
     if i >= 0 {
       crowd_st.cw_sn_use[i] += 1
       p.scn = i
