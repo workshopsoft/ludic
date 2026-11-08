@@ -413,7 +413,9 @@ const AC_CELL_W: int = 6                # an entry: the pass, the cell's x, y, z
 function ac_cell_open(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_cell_state == 0 {
     render3d_st.ac_cell_state = 1
-    if r3d_env_has(render3d_st, "R3D_CELL_CULL") and r3d_env(render3d_st, "R3D_CELL_CULL") == "0" { render3d_st.ac_cell_state = 2 } else { ac_cell_init(render3d_st) }
+    # off by default (2026-11-08: its per-pass column lists, heap-sorted in every cascade, took the casters' CPU from 3 to 12 ms);
+    # R3D_CELL_CULL=1 turns it on to work on it
+    if r3d_env_has(render3d_st, "R3D_CELL_CULL") and r3d_env(render3d_st, "R3D_CELL_CULL") == "1" { ac_cell_init(render3d_st) } else { render3d_st.ac_cell_state = 2 }
   }
   render3d_st.ac_cell_pass = 0
   if render3d_st.ac_cell_state != 1 { return }
