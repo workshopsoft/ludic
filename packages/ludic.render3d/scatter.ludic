@@ -541,6 +541,7 @@ function layer_set_lods(render3d_st: mut Render3dState, l: Layer, models: []Mode
   for k in 0 .. l.n_lods {
     l.lod_dist[k] = dists[k];  l.lod_card[k] = 0;  l.n_lod[k] = 0
     if render3d_st.sc_lod0 and k > at and dists[at] != 0.0 { l.lod_dist[k] = dists[at] }
+    if render3d_st.sc_lod0 { l.lod_dist[k] = l.lod_dist[k] * render3d_st.sc_lod0_imp_scale }
     l.lod_buf[k] = gpu_buffer_new(render3d_st)
     let m = l.lods[k]
     for i in 0 .. len(m.prims) { scatter_attach(render3d_st, m.prims[i].mesh, l.lod_buf[k]) }
@@ -558,6 +559,8 @@ function layer_set_lods(render3d_st: mut Render3dState, l: Layer, models: []Mode
 export function r3d_lod0_only(render3d_st: mut Render3dState, on: bool, imp_at: int) -> void {
   render3d_st.sc_lod0 = on
   render3d_st.sc_lod0_imp_at = max(imp_at, 0)
+  # R3D_LOD0_IMP_SCALE=<k>: every switch to the impostor k times as far (0.5: half as near; an experiment's knob)
+  if r3d_env_has(render3d_st, "R3D_LOD0_IMP_SCALE") { render3d_st.sc_lod0_imp_scale = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_LOD0_IMP_SCALE")), 0.1, 4.0) }
 }
 # the layers that asked for an impostor from level 0 (layer_set_lods under LOD0 only) and were given none by the game since: one baked
 # (or the one already baked from that model, whoever asked for it), before the frame's first pass
@@ -603,7 +606,7 @@ const SC_LOD0_IMP_MAX: float = 120.0
 export function layer_impostor_auto(render3d_st: mut Render3dState, l: Layer) -> void {
   if not render3d_st.sc_lod0 or l == null or l.model == null { return }
   let size = Math.max(l.model.height, 2.0 * l.model.radius)
-  layer_impostor_past(render3d_st, l, Math.clamp(size * (IMP_PX_PER_M * 0.5) / SC_LOD0_IMP_PX, SC_LOD0_IMP_MIN, SC_LOD0_IMP_MAX))
+  layer_impostor_past(render3d_st, l, Math.clamp(size * (IMP_PX_PER_M * 0.5) / SC_LOD0_IMP_PX, SC_LOD0_IMP_MIN, SC_LOD0_IMP_MAX) * render3d_st.sc_lod0_imp_scale)
 }
 const SC_LOD0_IMP_TILES: int = 12      # an auto impostor's views round its axis (the game's own trees and palms bake twelve)
 # mark level k as the layer's crossed card (drawn with the card program and its atlas)
