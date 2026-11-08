@@ -31,6 +31,7 @@ function cw_tag(crowd_st: mut CrowdState, tag: string, make: bool) -> int {
 # the game's schedules and types, read once (at reset)
 function cw_prepare_static(crowd_st: mut CrowdState) -> void {
   List.clear(crowd_st.cw_sl_from)
+  List.clear(crowd_st.cw_sl_days)
   List.clear(crowd_st.cw_sl_to)
   List.clear(crowd_st.cw_sl_act)
   List.clear(crowd_st.cw_sl_tag)
@@ -47,6 +48,9 @@ function cw_prepare_static(crowd_st: mut CrowdState) -> void {
     push(crowd_st.cw_schn, len(sl))
     for i in 0 .. len(sl) {
       push(crowd_st.cw_sl_from, sl[i].from)
+      var dc = 0
+      if sl[i].days == "weekday" { dc = 1 } else if sl[i].days == "weekend" { dc = 2 }
+      push(crowd_st.cw_sl_days, dc)
       push(crowd_st.cw_sl_to, sl[i].to)
       push(crowd_st.cw_sl_act, cw_act_code(sl[i].act))
       push(crowd_st.cw_sl_tag, cw_tag(crowd_st, sl[i].anchor, true))

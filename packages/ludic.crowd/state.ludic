@@ -8,6 +8,7 @@ export port CrowdWorld {
   player_x: fn(int) -> float = fn cw_zero1
   player_z: fn(int) -> float = fn cw_zero1
   hour: fn() -> float = fn cw_noon
+  day: fn() -> int = fn cw_weekday           # 0 weekday (Mon-Fri), 1 weekend (Sat, Sun): the schedule's days
   seed: fn() -> int = fn cw_seed_one
   active: fn(float, float) -> bool = fn cw_yes2            # simulated here (ludic.zones, through the game)
   spawn_ok: fn(float, float) -> bool = fn cw_yes2          # a person may appear here: not in any player's view
@@ -46,6 +47,7 @@ function cw_first(i: int) -> bool { return true }
 function cw_zero1(i: int) -> float { return 0.0 }
 function cw_zero2(x: float, z: float) -> float { return 0.0 }
 function cw_noon() -> float { return 12.0 }
+function cw_weekday() -> int { return 0 }
 function cw_seed_one() -> int { return 1 }
 function cw_yes2(x: float, z: float) -> bool { return true }
 function cw_no2(x: float, z: float) -> bool { return false }
@@ -232,6 +234,7 @@ export state CrowdState {
   cw_role: int = 0
   cw_seed: int = 1
   cw_hour: float = 12.0
+  cw_day: int = 0
   cw_dice: Rng = null
   cw_facts: Queue<CrowdFact> = cw_facts__new()
   cw_err: string = ""
@@ -309,6 +312,7 @@ export state CrowdState {
   cw_tags: []string = new []string           # the scenario tags, interned: a tag is its place here
   # schedules, flattened
   cw_sl_from: []float = new []float
+  cw_sl_days: []int = new []int                # 0 every day, 1 weekdays, 2 weekends
   cw_sl_to: []float = new []float
   cw_sl_act: []int = new []int
   cw_sl_tag: []int = new []int

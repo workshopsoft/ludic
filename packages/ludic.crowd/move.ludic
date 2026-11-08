@@ -21,6 +21,7 @@ function cw_sense(crowd_st: mut CrowdState) -> void {
   }
   crowd_st.cw_pl_n = k
   crowd_st.cw_hour = CrowdWorld.hour()
+  crowd_st.cw_day = CrowdWorld.day()
 }
 
 function cw_roll(p: CrowdPed, salt: int) -> float {
@@ -125,6 +126,14 @@ function cw_spot(crowd_st: CrowdState, p: CrowdPed, i: int, place: int) -> void 
 
 # ---- the schedule -----------------------------------------------------------------------------
 
+# is slot k open at the hour, on today's kind of day (rows without a day: every day)
+function cw_slot_open(crowd_st: CrowdState, k: int, hour: float) -> bool {
+  let d = crowd_st.cw_sl_days[k]
+  if d == 1 and crowd_st.cw_day != 0 { return false }
+  if d == 2 and crowd_st.cw_day != 1 { return false }
+  return cw_in_hours(hour, crowd_st.cw_sl_from[k], crowd_st.cw_sl_to[k])
+}
+
 # what to do next: a slot of the ped's schedule that covers the hour, by weight; then where
 function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
   cw_leave_scenario(crowd_st, p)
@@ -140,13 +149,13 @@ function cw_next_act(crowd_st: mut CrowdState, p: CrowdPed) -> void {
   var tot = 0.0
   let hour = crowd_st.cw_hour
   for i in 0 .. n {
-    if cw_in_hours(hour, crowd_st.cw_sl_from[o + i], crowd_st.cw_sl_to[o + i]) { tot += crowd_st.cw_sl_w[o + i] }
+    if cw_slot_open(crowd_st, o + i, hour) { tot += crowd_st.cw_sl_w[o + i] }
   }
   if tot <= 0.0 { return }
   var target = cw_roll(p, 21) * tot
   var s = -1
   for i in 0 .. n {
-    if not cw_in_hours(hour, crowd_st.cw_sl_from[o + i], crowd_st.cw_sl_to[o + i]) { continue }
+    if not cw_slot_open(crowd_st, o + i, hour) { continue }
     s = o + i
     target -= crowd_st.cw_sl_w[o + i]
     if target < 0.0 { break }

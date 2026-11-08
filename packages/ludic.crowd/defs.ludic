@@ -64,6 +64,7 @@ export property PedSlot {
   @Range(0, 100) weight: float = 1.0
   @Unit("s") @Range(1, 7200) min_s: float = 20.0
   @Unit("s") @Range(1, 7200) max_s: float = 90.0
+  @OneOf("every", "weekday", "weekend") days: string = "every"   # the days it is open: rows without `days` run every day
   anim: string = ""                          # a state of the type's ludic.anim graph to play for this (data; the graph owns the clips)
 }
 
