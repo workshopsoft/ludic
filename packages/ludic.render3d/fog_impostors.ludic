@@ -13,7 +13,14 @@ function fog_needs_cards(render3d_st: Render3dState, l: Layer) -> bool {
 function fog_impostor(render3d_st: mut Render3dState, l: Layer) -> void {
   let im = l.imp
   if im == null or im.model == null { return }
-  let want = fog_needs_cards(render3d_st, l)
+  var want = fog_needs_cards(render3d_st, l)
+  # an impostor other layers draw too is let go only when none of them shows a card
+  if not want and im.users > 1 {
+    for i in 0 .. len(render3d_st.sc_layers) {
+      let o = render3d_st.sc_layers[i]
+      if o.imp == im and fog_needs_cards(render3d_st, o) { want = true }
+    }
+  }
   if not want and im.albedo != 0 {
     gpu_tex_free(render3d_st, im.albedo);  gpu_tex_free(render3d_st, im.normal)
     im.albedo = 0;  im.normal = 0

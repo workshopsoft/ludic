@@ -20,7 +20,9 @@ property Impostor {
   src_path: string = "",   # its bake file, where the game names one (bake_load.ludic): what a fog opening reads
   src_key: string = "",
   src_version: int = 0,
-  src_ok: bool = false     # its atlases came from that bake, so a re-open reads it rather than painting
+  src_ok: bool = false,    # its atlases came from that bake, so a re-open reads it rather than painting
+  users: int = 0,          # the layers drawing it (layer_set_impostor): one impostor may carry many layers, freed with the last
+  key: string = ""         # its name in the shared bakes (impostor_shared), "" for one a caller keeps itself
 }
 property Layer {
   full_said: bool = false,   # layer_full_say has said it filled
@@ -383,6 +385,54 @@ function impostor_bake__t(render3d_st: mut Render3dState, model: Model, tiles: i
   return im
 }
 
+# The reference screen a far card is sized for: 2160 lines at the camera's default 42-degree view (camera.ludic). A model `h` metres
+# tall seen `d` metres away covers h * IMP_PX_PER_M / d of those lines (2160 / (2 tan 21°) = 2813).
+const IMP_PX_PER_M: float = 2813.0
+const IMP_MIN_TH: int = 64
+
+# The tile height a card needs where it takes over: the lines the model covers on the reference screen at `far` (its layer's last
+# level ends there, so a card is never seen nearer), rounded up to a power of two, from IMP_MIN_TH up to the caller's `th`.
+# A 15 m tree taking over at 120 m covers 352 lines: 512, not 1024; a 1 m grass clump at 40 m covers 70: 128.
+export function impostor_tile_h(height: float, far: float, th: int) -> int {
+  if far <= 0.0 or height <= 0.0 { return th }
+  let need = height * IMP_PX_PER_M / far
+  var t = th
+  while t / 2 >= IMP_MIN_TH and float(t / 2) >= need { t = t / 2 }
+  return t
+}
+
+# An impostor baked once for every layer that asks by the same `key` (a game names it by the model's file and node: the lots, the street
+# props and the forests each placed the same tree looks and baked each its own atlases, 2026-11-07: 1.8 GB of the island's 7.7 GB of
+# video memory). Its tiles are `tw` x `th` at most, made smaller for `far` (impostor_tile_h); the first ask's model is the one baked.
+export function impostor_shared(render3d_st: mut Render3dState, key: string, model: Model, tiles: int, tw: int, th: int, far: float) -> Impostor {
+  if render3d_st.imp_kept != null {
+    for i in 0 .. len(render3d_st.imp_kept) { if render3d_st.imp_kept[i].key == key { return render3d_st.imp_kept[i] } }
+  }
+  let h = impostor_tile_h(model.height, far, th)
+  let w = Math.max(tw * h / th, 1)
+  return impostor_shared_bake(render3d_st, key, model, tiles, w, h)
+}
+@alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
+function impostor_shared_bake(render3d_st: mut Render3dState, key: string, model: Model, tiles: int, tw: int, th: int) -> Impostor {
+  let im = impostor_bake(render3d_st, model, tiles, tw, th)
+  im.key = key
+  if render3d_st.imp_kept == null { render3d_st.imp_kept = new []Impostor }
+  push(render3d_st.imp_kept, im)
+  return im
+}
+# an impostor let go leaves the shared bakes, so a later ask bakes it afresh
+function impostor_forget(render3d_st: mut Render3dState, im: Impostor) -> void {
+  if render3d_st.imp_kept == null or len(im.key) == 0 { return }
+  let kept = render3d_st.imp_kept
+  for i in 0 .. len(kept) {
+    if kept[i] == im {
+      kept[i] = kept[len(kept) - 1]
+      List.pop(kept)
+      return
+    }
+  }
+}
+
 # the atlases drawn from the model: at the bake, and again when a fog that let them go opens
 @alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function impostor_paint(render3d_st: mut Render3dState, im: Impostor) -> void {
@@ -525,6 +575,7 @@ function layer_ss_level(render3d_st: Render3dState, l: Layer, d: float, s: float
 
 function layer_set_impostor(render3d_st: mut Render3dState, l: Layer, im: Impostor) -> void {
   l.imp = im
+  if im != null { im.users += 1 }
   scatter_attach(render3d_st, render3d_st.sc_card, l.imp_buf)
   fog_impostor(render3d_st, l)
 }
@@ -1677,8 +1728,14 @@ function scatter_clear_all(render3d_st: mut Render3dState) -> void {
     if l.lvl != null { free(l.lvl) }
     sc_free_gpu_cull(render3d_st, l)
     if l.imp != null {
-      if l.imp.albedo != 0 { gpu_tex_free(render3d_st, l.imp.albedo);  gpu_tex_free(render3d_st, l.imp.normal) }
-      free(l.imp)
+      # an impostor several layers draw (impostor_shared, or a game's own cache handed to many) goes with the last of them
+      l.imp.users -= 1
+      if l.imp.users <= 0 {
+        impostor_forget(render3d_st, l.imp)
+        if l.imp.albedo != 0 { gpu_tex_free(render3d_st, l.imp.albedo);  gpu_tex_free(render3d_st, l.imp.normal) }
+        free(l.imp)
+      }
+      l.imp = null
     }
     # its levels' list was handed over (layer_set_lods); the models in it are the loader's
     if l.lods != null { free(l.lods) }
