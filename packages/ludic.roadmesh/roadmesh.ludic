@@ -750,6 +750,14 @@ function node_mesh(k: Mk, n: NetNode, only: Dict) -> void {
       fux = (nbx - q.px) / dl
       fuz = (nbz - q.pz) / dl
     }
+    # a railway's bed under the kit's track ends square at its buffer stop (roadMesh.ts): only its end's skirt
+    if k.full and es != null and hasNb and mesh_kit_track(o, sec0.mat.road) != null {
+      let line = new []double
+      pts_append(line, es_at(es, ie, sR * e.r.walk))
+      pts_append(line, es_at(es, ie, -sR * e.l.walk))
+      node_skirt(k, c, line)
+      return
+    }
     let caps = new [][]double
     for lv in 0 .. 4 {
       let r = lv_of(e.r, lv)
