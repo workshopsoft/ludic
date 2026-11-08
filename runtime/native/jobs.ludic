@@ -590,3 +590,13 @@ function job_is_worker() -> bool { return thr_is_worker() == 1 }
 function job_spawn(work: pointer, i: int, ctx: pointer, flag: words) -> bool { return thr_bg_run(work, i, ctx, data_of(flag)) == 1 }
 # has the work spawned with this flag returned (its results are all written)?
 function job_landed(flag: words) -> bool { return thr_load(data_of(flag)) == 1 }
+# Inside Job.spawn work: every allocation from here is the job's own arena, given back whole when the work returns - not only the
+# scratch the compiler can prove dies (a library's returned arrays dropped with no free, a cache rebuilt each call). Turn it off before
+# making what the main thread takes (those allocations are the heap's again), and copy out anything made while it was on that the
+# results point at. True when it took: only a background job's thread with arenas on (R3D_JOB_ARENA_MB not 0, not Windows yet).
+extern function lp_job_all(on: int) -> int = "lp_job_all"
+function job_arena_all(on: bool) -> bool {
+  var v = 0
+  if on { v = 1 }
+  return lp_job_all(v) == 1
+}

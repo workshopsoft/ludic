@@ -372,6 +372,7 @@ namespace Job {
   alias is_worker() = job_is_worker
   alias spawn (work, i, ctx, flag) = job_spawn
   alias landed(flag) = job_landed
+  alias arena_all(on) = job_arena_all
 }
 namespace Promise {
   alias all(handles) = prom_all

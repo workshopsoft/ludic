@@ -288,6 +288,19 @@ entry:
 ; scratch is given back when it returns. extern_weak: a program built without the fence has neither (null), and they are skipped
 declare extern_weak void @lp_job_begin()
 declare extern_weak void @lp_job_end()
+declare extern_weak i32 @lp_job_all_f(i32)
+
+; Job.arena_all (jobs.ludic): the fence's switch when the program has one (0 otherwise: a job's allocations stay on the heap)
+define i32 @lp_job_all(i32 %on) {
+entry:
+  %has = icmp ne ptr @lp_job_all_f, null
+  br i1 %has, label %call, label %none
+call:
+  %r = call i32 @lp_job_all_f(i32 %on)
+  ret i32 %r
+none:
+  ret i32 0
+}
 
 @B_ready = internal global i32 0
 @B_lock  = internal global ptr null
