@@ -62,7 +62,9 @@ function gvk_no_command_pooling() -> void {
   # That races MetalFX (mfx.ludic): the scaler's own command buffer is committed to the queue straight after the frame's first part is
   # submitted, and when the queue thread has not encoded that part yet (the machine under load) the scaler runs first, on a frame not
   # drawn: a black frame on screen, 6 to 11 in 300 under eight busy cores, none in 600 with synchronous submits. So synchronous
-  # stays, MetalFX being on by default; R3D_MVK_ASYNC_SUBMIT=1 asks for the queue thread (only with R3D_METALFX=0, or the black frames).
+  # stays by default; R3D_MVK_ASYNC_SUBMIT=1 asks for the queue thread, and with it MetalFX runs on a queue of its own, ordered by a
+  # timeline semaphore's MTLSharedEvent instead of commit order (mfx.ludic mfx_ev_init). Off until a proof run under load shows
+  # no black frame and no hang.
   if Os.has_env("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS") { return }
   if not (Os.has_env("R3D_MVK_ASYNC_SUBMIT") and Os.env("R3D_MVK_ASYNC_SUBMIT") == "1") { return }
   Os.set_env("MVK_CONFIG_SYNCHRONOUS_QUEUE_SUBMITS", "0")
@@ -730,20 +732,59 @@ function gvk_once_end(render3d_st: mut Render3dState, cb: pointer) -> bool {
 # semaphore as a wait at COLOR_ATTACHMENT_OUTPUT | TRANSFER; FVulkanViewport::Present adds the image's RenderingDoneSemaphores
 # as its signal, which vkQueuePresentKHR waits on: VulkanSwapChain.cpp FVulkanSwapChain::Present)
 function gvk_submit_sems(render3d_st: mut Render3dState, si: pointer, wait: long, signal: long) -> void {
-  if wait != 0 {
-    let ws = gvk_tmp(render3d_st, 8)
-    Vk.put_i64(ws, 0, wait)
-    let st = gvk_tmp(render3d_st, 4)
-    Vk.put_i32(st, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT)
-    Vk.put_i32(si, VkSubmitInfo_waitSemaphoreCount, 1)
+  # MetalFX's ordering with async submits (mfx.ludic mfx_ev_init): the split before the scaler signals mfx_tl to 2N, and the
+  # submit after it waits for 2N + 1 at every stage; the new command buffer the split began opens with a full barrier
+  # (gvk_bq_external), so everything after the wait in submission order is after the scaler too
+  let tw = render3d_st.gvk_tl_wait
+  let ts = render3d_st.gvk_tl_sig
+  render3d_st.gvk_tl_wait = 0
+  render3d_st.gvk_tl_sig = 0
+  var tl: long = 0
+  if (tw != 0 or ts != 0) and render3d_st.mfx_tl != null { tl = Vk.get_i64(render3d_st.mfx_tl, 0) }
+  var nw = 0
+  if wait != 0 { nw += 1 }
+  if tl != 0 and tw != 0 { nw += 1 }
+  var ns = 0
+  if signal != 0 { ns += 1 }
+  if tl != 0 and ts != 0 { ns += 1 }
+  let wv = gvk_tmp(render3d_st, 16)
+  let sv = gvk_tmp(render3d_st, 16)
+  if nw > 0 {
+    let ws = gvk_tmp(render3d_st, 16)
+    let st = gvk_tmp(render3d_st, 8)
+    var i = 0
+    if wait != 0 {
+      Vk.put_i64(ws, 0, wait)
+      Vk.put_i32(st, 0, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT)
+      Vk.put_i64(wv, 0, 0)
+      i = 1
+    }
+    if tl != 0 and tw != 0 {
+      Vk.put_i64(ws, i * 8, tl)
+      Vk.put_i32(st, i * 4, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)
+      Vk.put_i64(wv, i * 8, tw)
+    }
+    Vk.put_i32(si, VkSubmitInfo_waitSemaphoreCount, nw)
     Vk.put_ptr(si, VkSubmitInfo_pWaitSemaphores, ws)
     Vk.put_ptr(si, VkSubmitInfo_pWaitDstStageMask, st)
   }
-  if signal != 0 {
-    let ss = gvk_tmp(render3d_st, 8)
-    Vk.put_i64(ss, 0, signal)
-    Vk.put_i32(si, VkSubmitInfo_signalSemaphoreCount, 1)
+  if ns > 0 {
+    let ss = gvk_tmp(render3d_st, 16)
+    var j = 0
+    if signal != 0 { Vk.put_i64(ss, 0, signal);  Vk.put_i64(sv, 0, 0);  j = 1 }
+    if tl != 0 and ts != 0 { Vk.put_i64(ss, j * 8, tl);  Vk.put_i64(sv, j * 8, ts) }
+    Vk.put_i32(si, VkSubmitInfo_signalSemaphoreCount, ns)
     Vk.put_ptr(si, VkSubmitInfo_pSignalSemaphores, ss)
+  }
+  if tl != 0 {
+    let tsi = gvk_tmp(render3d_st, VkTimelineSemaphoreSubmitInfo_sizeof)
+    Vk.zero(tsi, VkTimelineSemaphoreSubmitInfo_sizeof)
+    Vk.put_i32(tsi, VkTimelineSemaphoreSubmitInfo_sType, VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO)
+    Vk.put_i32(tsi, VkTimelineSemaphoreSubmitInfo_waitSemaphoreValueCount, nw)
+    Vk.put_ptr(tsi, VkTimelineSemaphoreSubmitInfo_pWaitSemaphoreValues, wv)
+    Vk.put_i32(tsi, VkTimelineSemaphoreSubmitInfo_signalSemaphoreValueCount, ns)
+    Vk.put_ptr(tsi, VkTimelineSemaphoreSubmitInfo_pSignalSemaphoreValues, sv)
+    Vk.put_ptr(si, VkSubmitInfo_pNext, tsi)
   }
 }
 function gvk_once_end_sems(render3d_st: mut Render3dState, cb: pointer, wait: long, signal: long) -> bool {
@@ -837,6 +878,7 @@ function gvk_frame_split(render3d_st: mut Render3dState) -> bool {
   Vk.put_i32(si, VkSubmitInfo_commandBufferCount, 1)
   Vk.put_ptr(si, VkSubmitInfo_pCommandBuffers, cbs)
   let none: long = 0
+  gvk_submit_sems(render3d_st, si, none, none)
   r = Vk.queue_submit(render3d_st.gvk_queue, 1, si, none)
   if r != VK_SUCCESS { return gvk_fail(render3d_st, "vkQueueSubmit", r) }
   if render3d_st.gvk_split_cbs == null or render3d_st.gvk_split_n >= len(render3d_st.gvk_split_cbs) { return gvk_fail(render3d_st, "gvk_frame_split: more splits than kept", 0) }

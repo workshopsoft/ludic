@@ -436,6 +436,14 @@ define void @lmfx_hold(i32 %i) {
 entry:
   ret void
 }
+define ptr @lmfx_queue_new(ptr %dev) {
+entry:
+  ret ptr null
+}
+define i32 @lmfx_encode_ev(ptr %sc, ptr %queue, ptr %color, ptr %depth, ptr %motion, ptr %output, i32 %jx, i32 %jy, i32 %mx, i32 %my, i32 %reset, i32 %reversed, ptr %ev, i64 %wait, i64 %signal) {
+entry:
+  ret i32 0
+}
 define i64 @lmfx_slot_ns(i32 %i) {
 entry:
   ret i64 -2

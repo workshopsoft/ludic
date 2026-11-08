@@ -541,6 +541,9 @@ declare ptr @objc_msgSend(ptr, ptr, ...)
 @.mfx_s_cb = private unnamed_addr constant [14 x i8] c"commandBuffer\00"
 @.mfx_s_encode = private unnamed_addr constant [23 x i8] c"encodeToCommandBuffer:\00"
 @.mfx_s_commit = private unnamed_addr constant [7 x i8] c"commit\00"
+@.mfx_s_newq = private unnamed_addr constant [16 x i8] c"newCommandQueue\00"
+@.mfx_s_evwait = private unnamed_addr constant [26 x i8] c"encodeWaitForEvent:value:\00"
+@.mfx_s_evsig = private unnamed_addr constant [25 x i8] c"encodeSignalEvent:value:\00"
 @.mfx_s_cusage = private unnamed_addr constant [18 x i8] c"colorTextureUsage\00"
 @.mfx_s_dusage = private unnamed_addr constant [18 x i8] c"depthTextureUsage\00"
 @.mfx_s_musage = private unnamed_addr constant [19 x i8] c"motionTextureUsage\00"
@@ -695,6 +698,23 @@ entry:
 ; the renderer's own queue and committed - after the Vulkan work before it, before the work after it
 define i32 @lmfx_encode(ptr %sc, ptr %queue, ptr %color, ptr %depth, ptr %motion, ptr %output, i32 %jx, i32 %jy, i32 %mx, i32 %my, i32 %reset, i32 %reversed) {
 entry:
+  %r = call i32 @lmfx_encode_ev(ptr %sc, ptr %queue, ptr %color, ptr %depth, ptr %motion, ptr %output, i32 %jx, i32 %jy, i32 %mx, i32 %my, i32 %reset, i32 %reversed, ptr null, i64 0, i64 0)
+  ret i32 %r
+}
+
+; A queue of the scaler's own ([MTLDevice newCommandQueue], retained; null if none), for lmfx_encode_ev.
+define ptr @lmfx_queue_new(ptr %dev) {
+entry:
+  %s = call ptr @sel_registerName(ptr @.mfx_s_newq)
+  %q = call ptr (ptr, ptr) @objc_msgSend(ptr %dev, ptr %s)
+  ret ptr %q
+}
+
+; lmfx_encode on a queue of its own, ordered by an MTLSharedEvent (a Vulkan timeline semaphore's, VK_EXT_metal_objects):
+; the command buffer waits for `wait` (the frame's first part done, signalled by its Vulkan submit) before the scaler and
+; signals `signal` after it (the Vulkan submit of the rest waits on it). A null event: lmfx_encode, in commit order alone.
+define i32 @lmfx_encode_ev(ptr %sc, ptr %queue, ptr %color, ptr %depth, ptr %motion, ptr %output, i32 %jx, i32 %jy, i32 %mx, i32 %my, i32 %reset, i32 %reversed, ptr %ev, i64 %wait, i64 %signal) {
+entry:
   call void @lmfx_set_p(ptr %sc, ptr @.mfx_s_color, ptr %color)
   call void @lmfx_set_p(ptr %sc, ptr @.mfx_s_depth, ptr %depth)
   call void @lmfx_set_p(ptr %sc, ptr @.mfx_s_motion, ptr %motion)
@@ -710,8 +730,21 @@ entry:
   %ok = icmp ne ptr %cb, null
   br i1 %ok, label %go, label %fail
 go:
+  %hasev = icmp ne ptr %ev, null
+  br i1 %hasev, label %evwait, label %enc
+evwait:
+  %sw = call ptr @sel_registerName(ptr @.mfx_s_evwait)
+  call void (ptr, ptr, ptr, i64) @objc_msgSend(ptr %cb, ptr %sw, ptr %ev, i64 %wait)
+  br label %enc
+enc:
   %se = call ptr @sel_registerName(ptr @.mfx_s_encode)
   call void (ptr, ptr, ptr) @objc_msgSend(ptr %sc, ptr %se, ptr %cb)
+  br i1 %hasev, label %evsig, label %commit
+evsig:
+  %sg = call ptr @sel_registerName(ptr @.mfx_s_evsig)
+  call void (ptr, ptr, ptr, i64) @objc_msgSend(ptr %cb, ptr %sg, ptr %ev, i64 %signal)
+  br label %commit
+commit:
   %sm = call ptr @sel_registerName(ptr @.mfx_s_commit)
   call void (ptr, ptr) @objc_msgSend(ptr %cb, ptr %sm)
   store ptr %cb, ptr @lmfx_last
