@@ -33,6 +33,10 @@ property Actor {
   row:     int = -1,       # where it stands in ac_actors, so it leaves in O(1); -1 off the stage
   cutout:  bool = false,   # alpha-tested (a flame's cards)
   emissive: float = 0.0,       # float bits: self-lit strength
+  # a building with lit windows (model.frag windowLight): its own seed, in (0, 1]; 0 none. Its windows' vertices carry theirs in COLOR_0's
+  # alpha. Unreal's per-instance random / custom data (InstancedStaticMeshComponent.h PerInstanceSMCustomData), per instance in the
+  # instanced draw (actor_inst.ludic), a uniform on its own
+  wseed: float = 0.0,
   # Blended (actor_blend.ludic): 0 opaque (the passes above), ACTOR_ALPHA laid over the scene, ACTOR_ADD
   # added to it. A blended actor is drawn after the opaque scene, sorted far to near, depth-tested and
   # writing no depth, and casts no shadow unless blend_casts.
@@ -140,6 +144,8 @@ property AcProg {
   l_rough:  int = -1,
   l_clit:   int = -1,
   l_emis:   int = -1,
+  l_wseed:  int = -1,          # u_wseed (an actor drawn on its own: Actor.wseed)
+  l_winlit: int = -1,          # u_winlit (the scene's window lights)
   l_view:   int = -1,
   l_proj:   int = -1,
   l_out:    int = -1,
@@ -167,6 +173,7 @@ function ac_prog_new(render3d_st: mut Render3dState, vs: string, fs: string, def
   a.l_model = gpu_uniform(render3d_st, p, "u_model");  a.l_skin = gpu_uniform(render3d_st, p, "u_skinned");  a.l_lvp = gpu_uniform(render3d_st, p, "u_light_vp")
   a.l_bones = gpu_uniform(render3d_st, p, "u_bones[0]");  if a.l_bones < 0 { a.l_bones = gpu_uniform(render3d_st, p, "u_bones") }
   a.l_tint = gpu_uniform(render3d_st, p, "u_tint");  a.l_rough = gpu_ul(render3d_st, p, UL_ROUGH_SCALE);  a.l_emis = gpu_uniform(render3d_st, p, "u_emissive")
+  a.l_wseed = gpu_uniform(render3d_st, p, "u_wseed");  a.l_winlit = gpu_uniform(render3d_st, p, "u_winlit")
   a.l_view = gpu_ul(render3d_st, p, UL_VIEW);  a.l_proj = gpu_ul(render3d_st, p, UL_PROJ);  a.l_mh = gpu_uniform(render3d_st, p, "u_model_h")
   a.l_out = gpu_uniform(render3d_st, p, "u_outline");  a.l_ocol = gpu_uniform(render3d_st, p, "u_outline_col")
   a.l_tr = gpu_uniform(render3d_st, p, "u_tr")
@@ -375,6 +382,7 @@ function ac_bind_scene(render3d_st: mut Render3dState, ap: AcProg) -> void {
   shadow_bind(render3d_st, p)
   fog_bind(render3d_st, p)
   charlight_bind(render3d_st, p)
+  u_f4(render3d_st, ap.l_winlit, render3d_st.win_lit, render3d_st.win_hour, render3d_st.win_share, 0.0)
   # a hair card's dithered opacity (model.frag FABRIC mode 3): a new pattern each frame for the temporal resolve to average
   u_f(render3d_st, gpu_ul(render3d_st, p, UL_DITHER_FRAME), float(render3d_st.ac_frame % 64))
   strands_bind_shadow(render3d_st, p)
@@ -424,6 +432,7 @@ function actor_draw_one(render3d_st: mut Render3dState, a: Actor, ap: AcProg, sh
   ac_bind_pose(render3d_st, a, ap)
   if not shadow {
     u_f(render3d_st, ap.l_emis, a.emissive)
+    u_f(render3d_st, ap.l_wseed, a.wseed)
     u_f(render3d_st, ap.l_rough, a.rough)
     u_f(render3d_st, ap.l_clit, a.char_lit)
   }

@@ -24,6 +24,8 @@ layout(location = 9) in vec4 i_te;
 // x: the first row of the instance's palette in u_ai_bones (actor_inst.ludic ai_palette), three rows a joint: Unreal's instanced
 // skinned mesh reads each instance's own bone data the same way (Components/InstancedSkinnedMeshComponent.h)
 layout(location = 12) in vec4 i_bo;
+// z: the building's window seed (Actor.wseed: model.frag windowLight), the same at every vertex of an instance
+out float v_wseed;
 readonly buffer u_ai_bones { vec4 ai_bones[]; };
 out vec4 v_te;
 // one influence: weight w of joint j's three rows (from palette row `base` of BUF), added in
@@ -144,6 +146,7 @@ void main() {
 #ifdef ACTOR_INST
   mat4 m = transpose(mat4(i_m0, i_m1, i_m2, vec4(0.0, 0.0, 0.0, 1.0)));
   v_te = i_te;
+  v_wseed = i_bo.z;
 #else
   mat4 m = u_model;
 #endif

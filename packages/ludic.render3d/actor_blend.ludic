@@ -163,6 +163,7 @@ function ac_blend_bind(render3d_st: mut Render3dState, a: Actor, ap: AcProg) -> 
   u_mat4(render3d_st, ap.l_model, a.mat)
   ac_bind_pose(render3d_st, a, ap)
   u_f(render3d_st, ap.l_emis, a.emissive)
+  u_f(render3d_st, ap.l_wseed, a.wseed)
   u_f(render3d_st, ap.l_rough, a.rough)
   var unlit = 0.0
   if a.unlit { unlit = 1.0 }

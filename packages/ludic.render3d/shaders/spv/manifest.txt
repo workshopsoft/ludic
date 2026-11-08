@@ -7584,7 +7584,7 @@ U d48d6a48 vert u_radius 4408 float 1 0
 U d48d6a48 vert u_px 4412 float 1 0
 U d48d6a48 vert u_dbg 4416 int 1 0
 U d48d6a48 vert u_gk_ortho 4432 vec4 1 0
-B d48d6a48 frag 1 3104
+B d48d6a48 frag 1 3120
 U d48d6a48 frag u_cascade_vp 0 mat4 6 64
 U d48d6a48 frag u_cascade_split 384 float 6 16
 U d48d6a48 frag u_cascade_range 480 float 6 16
@@ -7690,21 +7690,23 @@ U d48d6a48 frag u_fac_emis 2784 vec3 1 0
 U d48d6a48 frag u_view 2800 mat4 1 0
 U d48d6a48 frag u_tint 2864 vec3 1 0
 U d48d6a48 frag u_rough_scale 2876 float 1 0
-U d48d6a48 frag u_emissive 2880 float 1 0
-U d48d6a48 frag u_blade_base 2896 vec3 1 0
-U d48d6a48 frag u_blade_tip 2912 vec3 1 0
-U d48d6a48 frag u_blade_cols 2924 float 1 0
-U d48d6a48 frag u_blade_tex_on 2928 float 1 0
-U d48d6a48 frag u_gk_seed 2944 vec4 1 0
-U d48d6a48 frag u_gk_look 2960 vec4 1 0
-U d48d6a48 frag u_gk_mat 2976 vec4 1 0
-U d48d6a48 frag u_gk_forb_a 2992 vec4 1 0
-U d48d6a48 frag u_gk_forb_b 3008 vec4 1 0
-U d48d6a48 frag u_gk_forb_c 3024 vec4 1 0
-U d48d6a48 frag u_micro_p 3040 vec4 1 0
-U d48d6a48 frag u_bent_p 3056 vec4 1 0
-U d48d6a48 frag u_micro_m 3072 vec4 1 0
-U d48d6a48 frag u_micro_r 3088 vec4 1 0
+U d48d6a48 frag u_winlit 2880 vec4 1 0
+U d48d6a48 frag u_wseed 2896 float 1 0
+U d48d6a48 frag u_emissive 2900 float 1 0
+U d48d6a48 frag u_blade_base 2912 vec3 1 0
+U d48d6a48 frag u_blade_tip 2928 vec3 1 0
+U d48d6a48 frag u_blade_cols 2940 float 1 0
+U d48d6a48 frag u_blade_tex_on 2944 float 1 0
+U d48d6a48 frag u_gk_seed 2960 vec4 1 0
+U d48d6a48 frag u_gk_look 2976 vec4 1 0
+U d48d6a48 frag u_gk_mat 2992 vec4 1 0
+U d48d6a48 frag u_gk_forb_a 3008 vec4 1 0
+U d48d6a48 frag u_gk_forb_b 3024 vec4 1 0
+U d48d6a48 frag u_gk_forb_c 3040 vec4 1 0
+U d48d6a48 frag u_micro_p 3056 vec4 1 0
+U d48d6a48 frag u_bent_p 3072 vec4 1 0
+U d48d6a48 frag u_micro_m 3088 vec4 1 0
+U d48d6a48 frag u_micro_r 3104 vec4 1 0
 T d48d6a48 u_arm 2
 T d48d6a48 u_bent 3
 T d48d6a48 u_blade_tex 4
@@ -7792,7 +7794,7 @@ U cb13f3c6 vert u_gk_ground 416 vec4 1 0
 U cb13f3c6 vert u_gk_ortho 432 vec4 1 0
 I cb13f3c6 a_pos 0 vec3
 I cb13f3c6 a_uv 2 vec2
-B cb13f3c6 frag 1 3104
+B cb13f3c6 frag 1 3120
 U cb13f3c6 frag u_cascade_vp 0 mat4 6 64
 U cb13f3c6 frag u_cascade_split 384 float 6 16
 U cb13f3c6 frag u_cascade_range 480 float 6 16
@@ -7898,21 +7900,23 @@ U cb13f3c6 frag u_fac_emis 2784 vec3 1 0
 U cb13f3c6 frag u_view 2800 mat4 1 0
 U cb13f3c6 frag u_tint 2864 vec3 1 0
 U cb13f3c6 frag u_rough_scale 2876 float 1 0
-U cb13f3c6 frag u_emissive 2880 float 1 0
-U cb13f3c6 frag u_blade_base 2896 vec3 1 0
-U cb13f3c6 frag u_blade_tip 2912 vec3 1 0
-U cb13f3c6 frag u_blade_cols 2924 float 1 0
-U cb13f3c6 frag u_blade_tex_on 2928 float 1 0
-U cb13f3c6 frag u_gk_seed 2944 vec4 1 0
-U cb13f3c6 frag u_gk_look 2960 vec4 1 0
-U cb13f3c6 frag u_gk_mat 2976 vec4 1 0
-U cb13f3c6 frag u_gk_forb_a 2992 vec4 1 0
-U cb13f3c6 frag u_gk_forb_b 3008 vec4 1 0
-U cb13f3c6 frag u_gk_forb_c 3024 vec4 1 0
-U cb13f3c6 frag u_micro_p 3040 vec4 1 0
-U cb13f3c6 frag u_bent_p 3056 vec4 1 0
-U cb13f3c6 frag u_micro_m 3072 vec4 1 0
-U cb13f3c6 frag u_micro_r 3088 vec4 1 0
+U cb13f3c6 frag u_winlit 2880 vec4 1 0
+U cb13f3c6 frag u_wseed 2896 float 1 0
+U cb13f3c6 frag u_emissive 2900 float 1 0
+U cb13f3c6 frag u_blade_base 2912 vec3 1 0
+U cb13f3c6 frag u_blade_tip 2928 vec3 1 0
+U cb13f3c6 frag u_blade_cols 2940 float 1 0
+U cb13f3c6 frag u_blade_tex_on 2944 float 1 0
+U cb13f3c6 frag u_gk_seed 2960 vec4 1 0
+U cb13f3c6 frag u_gk_look 2976 vec4 1 0
+U cb13f3c6 frag u_gk_mat 2992 vec4 1 0
+U cb13f3c6 frag u_gk_forb_a 3008 vec4 1 0
+U cb13f3c6 frag u_gk_forb_b 3024 vec4 1 0
+U cb13f3c6 frag u_gk_forb_c 3040 vec4 1 0
+U cb13f3c6 frag u_micro_p 3056 vec4 1 0
+U cb13f3c6 frag u_bent_p 3072 vec4 1 0
+U cb13f3c6 frag u_micro_m 3088 vec4 1 0
+U cb13f3c6 frag u_micro_r 3104 vec4 1 0
 T cb13f3c6 u_arm 2
 T cb13f3c6 u_bent 3
 T cb13f3c6 u_blade_tex 4
@@ -8001,7 +8005,7 @@ U b8cff226 vert u_gk_ground 4512 vec4 1 0
 U b8cff226 vert u_gk_ortho 4528 vec4 1 0
 I b8cff226 a_pos 0 vec3
 I b8cff226 a_uv 2 vec2
-B b8cff226 frag 1 3104
+B b8cff226 frag 1 3120
 U b8cff226 frag u_cascade_vp 0 mat4 6 64
 U b8cff226 frag u_cascade_split 384 float 6 16
 U b8cff226 frag u_cascade_range 480 float 6 16
@@ -8107,21 +8111,23 @@ U b8cff226 frag u_fac_emis 2784 vec3 1 0
 U b8cff226 frag u_view 2800 mat4 1 0
 U b8cff226 frag u_tint 2864 vec3 1 0
 U b8cff226 frag u_rough_scale 2876 float 1 0
-U b8cff226 frag u_emissive 2880 float 1 0
-U b8cff226 frag u_blade_base 2896 vec3 1 0
-U b8cff226 frag u_blade_tip 2912 vec3 1 0
-U b8cff226 frag u_blade_cols 2924 float 1 0
-U b8cff226 frag u_blade_tex_on 2928 float 1 0
-U b8cff226 frag u_gk_seed 2944 vec4 1 0
-U b8cff226 frag u_gk_look 2960 vec4 1 0
-U b8cff226 frag u_gk_mat 2976 vec4 1 0
-U b8cff226 frag u_gk_forb_a 2992 vec4 1 0
-U b8cff226 frag u_gk_forb_b 3008 vec4 1 0
-U b8cff226 frag u_gk_forb_c 3024 vec4 1 0
-U b8cff226 frag u_micro_p 3040 vec4 1 0
-U b8cff226 frag u_bent_p 3056 vec4 1 0
-U b8cff226 frag u_micro_m 3072 vec4 1 0
-U b8cff226 frag u_micro_r 3088 vec4 1 0
+U b8cff226 frag u_winlit 2880 vec4 1 0
+U b8cff226 frag u_wseed 2896 float 1 0
+U b8cff226 frag u_emissive 2900 float 1 0
+U b8cff226 frag u_blade_base 2912 vec3 1 0
+U b8cff226 frag u_blade_tip 2928 vec3 1 0
+U b8cff226 frag u_blade_cols 2940 float 1 0
+U b8cff226 frag u_blade_tex_on 2944 float 1 0
+U b8cff226 frag u_gk_seed 2960 vec4 1 0
+U b8cff226 frag u_gk_look 2976 vec4 1 0
+U b8cff226 frag u_gk_mat 2992 vec4 1 0
+U b8cff226 frag u_gk_forb_a 3008 vec4 1 0
+U b8cff226 frag u_gk_forb_b 3024 vec4 1 0
+U b8cff226 frag u_gk_forb_c 3040 vec4 1 0
+U b8cff226 frag u_micro_p 3056 vec4 1 0
+U b8cff226 frag u_bent_p 3072 vec4 1 0
+U b8cff226 frag u_micro_m 3088 vec4 1 0
+U b8cff226 frag u_micro_r 3104 vec4 1 0
 T b8cff226 u_arm 2
 T b8cff226 u_bent 3
 T b8cff226 u_blade_tex 4
@@ -9222,7 +9228,7 @@ I 01089da8 i_pos 3 vec4
 I 01089da8 a_nrm 1 vec3
 I 01089da8 a_uv 2 vec2
 I 01089da8 a_col 7 vec4
-B 01089da8 frag 1 3152
+B 01089da8 frag 1 3168
 U 01089da8 frag u_cascade_vp 0 mat4 6 64
 U 01089da8 frag u_cascade_split 384 float 6 16
 U 01089da8 frag u_cascade_range 480 float 6 16
@@ -9333,11 +9339,13 @@ U 01089da8 frag u_fac_emis 2976 vec3 1 0
 U 01089da8 frag u_view 2992 mat4 1 0
 U 01089da8 frag u_tint 3056 vec3 1 0
 U 01089da8 frag u_rough_scale 3068 float 1 0
-U 01089da8 frag u_emissive 3072 float 1 0
-U 01089da8 frag u_micro_p 3088 vec4 1 0
-U 01089da8 frag u_bent_p 3104 vec4 1 0
-U 01089da8 frag u_micro_m 3120 vec4 1 0
-U 01089da8 frag u_micro_r 3136 vec4 1 0
+U 01089da8 frag u_winlit 3072 vec4 1 0
+U 01089da8 frag u_wseed 3088 float 1 0
+U 01089da8 frag u_emissive 3092 float 1 0
+U 01089da8 frag u_micro_p 3104 vec4 1 0
+U 01089da8 frag u_bent_p 3120 vec4 1 0
+U 01089da8 frag u_micro_m 3136 vec4 1 0
+U 01089da8 frag u_micro_r 3152 vec4 1 0
 T 01089da8 u_arm 2
 T 01089da8 u_bent 3
 T 01089da8 u_blade_tex 4
@@ -9412,7 +9420,7 @@ I 254e7887 i_pos 3 vec4
 I 254e7887 a_nrm 1 vec3
 I 254e7887 a_uv 2 vec2
 I 254e7887 a_col 7 vec4
-B 254e7887 frag 1 2960
+B 254e7887 frag 1 2976
 U 254e7887 frag u_cascade_vp 0 mat4 6 64
 U 254e7887 frag u_cascade_split 384 float 6 16
 U 254e7887 frag u_cascade_range 480 float 6 16
@@ -9518,12 +9526,14 @@ U 254e7887 frag u_fac_emis 2784 vec3 1 0
 U 254e7887 frag u_view 2800 mat4 1 0
 U 254e7887 frag u_tint 2864 vec3 1 0
 U 254e7887 frag u_rough_scale 2876 float 1 0
-U 254e7887 frag u_emissive 2880 float 1 0
-U 254e7887 frag u_cull 2884 float 1 0
-U 254e7887 frag u_micro_p 2896 vec4 1 0
-U 254e7887 frag u_bent_p 2912 vec4 1 0
-U 254e7887 frag u_micro_m 2928 vec4 1 0
-U 254e7887 frag u_micro_r 2944 vec4 1 0
+U 254e7887 frag u_winlit 2880 vec4 1 0
+U 254e7887 frag u_wseed 2896 float 1 0
+U 254e7887 frag u_emissive 2900 float 1 0
+U 254e7887 frag u_cull 2904 float 1 0
+U 254e7887 frag u_micro_p 2912 vec4 1 0
+U 254e7887 frag u_bent_p 2928 vec4 1 0
+U 254e7887 frag u_micro_m 2944 vec4 1 0
+U 254e7887 frag u_micro_r 2960 vec4 1 0
 T 254e7887 u_arm 2
 T 254e7887 u_bent 3
 T 254e7887 u_blade_tex 4
@@ -9598,7 +9608,7 @@ I 1ce5c5d1 i_pos 3 vec4
 I 1ce5c5d1 a_nrm 1 vec3
 I 1ce5c5d1 a_uv 2 vec2
 I 1ce5c5d1 a_col 7 vec4
-B 1ce5c5d1 frag 1 2960
+B 1ce5c5d1 frag 1 2976
 U 1ce5c5d1 frag u_cascade_vp 0 mat4 6 64
 U 1ce5c5d1 frag u_cascade_split 384 float 6 16
 U 1ce5c5d1 frag u_cascade_range 480 float 6 16
@@ -9704,11 +9714,13 @@ U 1ce5c5d1 frag u_fac_emis 2784 vec3 1 0
 U 1ce5c5d1 frag u_view 2800 mat4 1 0
 U 1ce5c5d1 frag u_tint 2864 vec3 1 0
 U 1ce5c5d1 frag u_rough_scale 2876 float 1 0
-U 1ce5c5d1 frag u_emissive 2880 float 1 0
-U 1ce5c5d1 frag u_micro_p 2896 vec4 1 0
-U 1ce5c5d1 frag u_bent_p 2912 vec4 1 0
-U 1ce5c5d1 frag u_micro_m 2928 vec4 1 0
-U 1ce5c5d1 frag u_micro_r 2944 vec4 1 0
+U 1ce5c5d1 frag u_winlit 2880 vec4 1 0
+U 1ce5c5d1 frag u_wseed 2896 float 1 0
+U 1ce5c5d1 frag u_emissive 2900 float 1 0
+U 1ce5c5d1 frag u_micro_p 2912 vec4 1 0
+U 1ce5c5d1 frag u_bent_p 2928 vec4 1 0
+U 1ce5c5d1 frag u_micro_m 2944 vec4 1 0
+U 1ce5c5d1 frag u_micro_r 2960 vec4 1 0
 T 1ce5c5d1 u_arm 2
 T 1ce5c5d1 u_bent 3
 T 1ce5c5d1 u_blade_tex 4
@@ -9783,7 +9795,7 @@ I 5e70d731 i_pos 3 vec4
 I 5e70d731 a_nrm 1 vec3
 I 5e70d731 a_uv 2 vec2
 I 5e70d731 a_col 7 vec4
-B 5e70d731 frag 1 2960
+B 5e70d731 frag 1 2976
 U 5e70d731 frag u_cascade_vp 0 mat4 6 64
 U 5e70d731 frag u_cascade_split 384 float 6 16
 U 5e70d731 frag u_cascade_range 480 float 6 16
@@ -9889,11 +9901,13 @@ U 5e70d731 frag u_fac_emis 2784 vec3 1 0
 U 5e70d731 frag u_view 2800 mat4 1 0
 U 5e70d731 frag u_tint 2864 vec3 1 0
 U 5e70d731 frag u_rough_scale 2876 float 1 0
-U 5e70d731 frag u_emissive 2880 float 1 0
-U 5e70d731 frag u_micro_p 2896 vec4 1 0
-U 5e70d731 frag u_bent_p 2912 vec4 1 0
-U 5e70d731 frag u_micro_m 2928 vec4 1 0
-U 5e70d731 frag u_micro_r 2944 vec4 1 0
+U 5e70d731 frag u_winlit 2880 vec4 1 0
+U 5e70d731 frag u_wseed 2896 float 1 0
+U 5e70d731 frag u_emissive 2900 float 1 0
+U 5e70d731 frag u_micro_p 2912 vec4 1 0
+U 5e70d731 frag u_bent_p 2928 vec4 1 0
+U 5e70d731 frag u_micro_m 2944 vec4 1 0
+U 5e70d731 frag u_micro_r 2960 vec4 1 0
 T 5e70d731 u_arm 2
 T 5e70d731 u_bent 3
 T 5e70d731 u_blade_tex 4
@@ -9970,7 +9984,7 @@ I f4a2b586 i_pos 3 vec4
 I f4a2b586 a_nrm 1 vec3
 I f4a2b586 a_uv 2 vec2
 I f4a2b586 a_col 7 vec4
-B f4a2b586 frag 1 3104
+B f4a2b586 frag 1 3120
 U f4a2b586 frag u_cascade_vp 0 mat4 6 64
 U f4a2b586 frag u_cascade_split 384 float 6 16
 U f4a2b586 frag u_cascade_range 480 float 6 16
@@ -10076,21 +10090,23 @@ U f4a2b586 frag u_fac_emis 2784 vec3 1 0
 U f4a2b586 frag u_view 2800 mat4 1 0
 U f4a2b586 frag u_tint 2864 vec3 1 0
 U f4a2b586 frag u_rough_scale 2876 float 1 0
-U f4a2b586 frag u_emissive 2880 float 1 0
-U f4a2b586 frag u_blade_base 2896 vec3 1 0
-U f4a2b586 frag u_blade_tip 2912 vec3 1 0
-U f4a2b586 frag u_blade_cols 2924 float 1 0
-U f4a2b586 frag u_blade_tex_on 2928 float 1 0
-U f4a2b586 frag u_gk_seed 2944 vec4 1 0
-U f4a2b586 frag u_gk_look 2960 vec4 1 0
-U f4a2b586 frag u_gk_mat 2976 vec4 1 0
-U f4a2b586 frag u_gk_forb_a 2992 vec4 1 0
-U f4a2b586 frag u_gk_forb_b 3008 vec4 1 0
-U f4a2b586 frag u_gk_forb_c 3024 vec4 1 0
-U f4a2b586 frag u_micro_p 3040 vec4 1 0
-U f4a2b586 frag u_bent_p 3056 vec4 1 0
-U f4a2b586 frag u_micro_m 3072 vec4 1 0
-U f4a2b586 frag u_micro_r 3088 vec4 1 0
+U f4a2b586 frag u_winlit 2880 vec4 1 0
+U f4a2b586 frag u_wseed 2896 float 1 0
+U f4a2b586 frag u_emissive 2900 float 1 0
+U f4a2b586 frag u_blade_base 2912 vec3 1 0
+U f4a2b586 frag u_blade_tip 2928 vec3 1 0
+U f4a2b586 frag u_blade_cols 2940 float 1 0
+U f4a2b586 frag u_blade_tex_on 2944 float 1 0
+U f4a2b586 frag u_gk_seed 2960 vec4 1 0
+U f4a2b586 frag u_gk_look 2976 vec4 1 0
+U f4a2b586 frag u_gk_mat 2992 vec4 1 0
+U f4a2b586 frag u_gk_forb_a 3008 vec4 1 0
+U f4a2b586 frag u_gk_forb_b 3024 vec4 1 0
+U f4a2b586 frag u_gk_forb_c 3040 vec4 1 0
+U f4a2b586 frag u_micro_p 3056 vec4 1 0
+U f4a2b586 frag u_bent_p 3072 vec4 1 0
+U f4a2b586 frag u_micro_m 3088 vec4 1 0
+U f4a2b586 frag u_micro_r 3104 vec4 1 0
 T f4a2b586 u_arm 2
 T f4a2b586 u_bent 3
 T f4a2b586 u_blade_tex 4
@@ -10165,7 +10181,7 @@ I b4587cd4 i_pos 3 vec4
 I b4587cd4 a_nrm 1 vec3
 I b4587cd4 a_uv 2 vec2
 I b4587cd4 a_col 7 vec4
-B b4587cd4 frag 1 2960
+B b4587cd4 frag 1 2976
 U b4587cd4 frag u_cascade_vp 0 mat4 6 64
 U b4587cd4 frag u_cascade_split 384 float 6 16
 U b4587cd4 frag u_cascade_range 480 float 6 16
@@ -10271,12 +10287,14 @@ U b4587cd4 frag u_fac_emis 2784 vec3 1 0
 U b4587cd4 frag u_view 2800 mat4 1 0
 U b4587cd4 frag u_tint 2864 vec3 1 0
 U b4587cd4 frag u_rough_scale 2876 float 1 0
-U b4587cd4 frag u_emissive 2880 float 1 0
-U b4587cd4 frag u_cull 2884 float 1 0
-U b4587cd4 frag u_micro_p 2896 vec4 1 0
-U b4587cd4 frag u_bent_p 2912 vec4 1 0
-U b4587cd4 frag u_micro_m 2928 vec4 1 0
-U b4587cd4 frag u_micro_r 2944 vec4 1 0
+U b4587cd4 frag u_winlit 2880 vec4 1 0
+U b4587cd4 frag u_wseed 2896 float 1 0
+U b4587cd4 frag u_emissive 2900 float 1 0
+U b4587cd4 frag u_cull 2904 float 1 0
+U b4587cd4 frag u_micro_p 2912 vec4 1 0
+U b4587cd4 frag u_bent_p 2928 vec4 1 0
+U b4587cd4 frag u_micro_m 2944 vec4 1 0
+U b4587cd4 frag u_micro_r 2960 vec4 1 0
 T b4587cd4 u_arm 2
 T b4587cd4 u_bent 3
 T b4587cd4 u_blade_tex 4
@@ -10351,7 +10369,7 @@ I 4dda406a i_pos 3 vec4
 I 4dda406a a_nrm 1 vec3
 I 4dda406a a_uv 2 vec2
 I 4dda406a a_col 7 vec4
-B 4dda406a frag 1 2960
+B 4dda406a frag 1 2976
 U 4dda406a frag u_cascade_vp 0 mat4 6 64
 U 4dda406a frag u_cascade_split 384 float 6 16
 U 4dda406a frag u_cascade_range 480 float 6 16
@@ -10457,11 +10475,13 @@ U 4dda406a frag u_fac_emis 2784 vec3 1 0
 U 4dda406a frag u_view 2800 mat4 1 0
 U 4dda406a frag u_tint 2864 vec3 1 0
 U 4dda406a frag u_rough_scale 2876 float 1 0
-U 4dda406a frag u_emissive 2880 float 1 0
-U 4dda406a frag u_micro_p 2896 vec4 1 0
-U 4dda406a frag u_bent_p 2912 vec4 1 0
-U 4dda406a frag u_micro_m 2928 vec4 1 0
-U 4dda406a frag u_micro_r 2944 vec4 1 0
+U 4dda406a frag u_winlit 2880 vec4 1 0
+U 4dda406a frag u_wseed 2896 float 1 0
+U 4dda406a frag u_emissive 2900 float 1 0
+U 4dda406a frag u_micro_p 2912 vec4 1 0
+U 4dda406a frag u_bent_p 2928 vec4 1 0
+U 4dda406a frag u_micro_m 2944 vec4 1 0
+U 4dda406a frag u_micro_r 2960 vec4 1 0
 T 4dda406a u_arm 2
 T 4dda406a u_bent 3
 T 4dda406a u_blade_tex 4
@@ -10536,7 +10556,7 @@ I b603a056 i_pos 3 vec4
 I b603a056 a_nrm 1 vec3
 I b603a056 a_uv 2 vec2
 I b603a056 a_col 7 vec4
-B b603a056 frag 1 2960
+B b603a056 frag 1 2976
 U b603a056 frag u_cascade_vp 0 mat4 6 64
 U b603a056 frag u_cascade_split 384 float 6 16
 U b603a056 frag u_cascade_range 480 float 6 16
@@ -10642,11 +10662,13 @@ U b603a056 frag u_fac_emis 2784 vec3 1 0
 U b603a056 frag u_view 2800 mat4 1 0
 U b603a056 frag u_tint 2864 vec3 1 0
 U b603a056 frag u_rough_scale 2876 float 1 0
-U b603a056 frag u_emissive 2880 float 1 0
-U b603a056 frag u_micro_p 2896 vec4 1 0
-U b603a056 frag u_bent_p 2912 vec4 1 0
-U b603a056 frag u_micro_m 2928 vec4 1 0
-U b603a056 frag u_micro_r 2944 vec4 1 0
+U b603a056 frag u_winlit 2880 vec4 1 0
+U b603a056 frag u_wseed 2896 float 1 0
+U b603a056 frag u_emissive 2900 float 1 0
+U b603a056 frag u_micro_p 2912 vec4 1 0
+U b603a056 frag u_bent_p 2928 vec4 1 0
+U b603a056 frag u_micro_m 2944 vec4 1 0
+U b603a056 frag u_micro_r 2960 vec4 1 0
 T b603a056 u_arm 2
 T b603a056 u_bent 3
 T b603a056 u_blade_tex 4
@@ -10721,7 +10743,7 @@ I 3b183d8f i_pos 3 vec4
 I 3b183d8f a_nrm 1 vec3
 I 3b183d8f a_uv 2 vec2
 I 3b183d8f a_col 7 vec4
-B 3b183d8f frag 1 2960
+B 3b183d8f frag 1 2976
 U 3b183d8f frag u_cascade_vp 0 mat4 6 64
 U 3b183d8f frag u_cascade_split 384 float 6 16
 U 3b183d8f frag u_cascade_range 480 float 6 16
@@ -10827,11 +10849,13 @@ U 3b183d8f frag u_fac_emis 2784 vec3 1 0
 U 3b183d8f frag u_view 2800 mat4 1 0
 U 3b183d8f frag u_tint 2864 vec3 1 0
 U 3b183d8f frag u_rough_scale 2876 float 1 0
-U 3b183d8f frag u_emissive 2880 float 1 0
-U 3b183d8f frag u_micro_p 2896 vec4 1 0
-U 3b183d8f frag u_bent_p 2912 vec4 1 0
-U 3b183d8f frag u_micro_m 2928 vec4 1 0
-U 3b183d8f frag u_micro_r 2944 vec4 1 0
+U 3b183d8f frag u_winlit 2880 vec4 1 0
+U 3b183d8f frag u_wseed 2896 float 1 0
+U 3b183d8f frag u_emissive 2900 float 1 0
+U 3b183d8f frag u_micro_p 2912 vec4 1 0
+U 3b183d8f frag u_bent_p 2928 vec4 1 0
+U 3b183d8f frag u_micro_m 2944 vec4 1 0
+U 3b183d8f frag u_micro_r 2960 vec4 1 0
 T 3b183d8f u_arm 2
 T 3b183d8f u_bent 3
 T 3b183d8f u_blade_tex 4
@@ -10906,7 +10930,7 @@ I 79b77ed9 i_pos 3 vec4
 I 79b77ed9 a_nrm 1 vec3
 I 79b77ed9 a_uv 2 vec2
 I 79b77ed9 a_col 7 vec4
-B 79b77ed9 frag 1 2960
+B 79b77ed9 frag 1 2976
 U 79b77ed9 frag u_cascade_vp 0 mat4 6 64
 U 79b77ed9 frag u_cascade_split 384 float 6 16
 U 79b77ed9 frag u_cascade_range 480 float 6 16
@@ -11012,12 +11036,14 @@ U 79b77ed9 frag u_fac_emis 2784 vec3 1 0
 U 79b77ed9 frag u_view 2800 mat4 1 0
 U 79b77ed9 frag u_tint 2864 vec3 1 0
 U 79b77ed9 frag u_rough_scale 2876 float 1 0
-U 79b77ed9 frag u_emissive 2880 float 1 0
-U 79b77ed9 frag u_cull 2884 float 1 0
-U 79b77ed9 frag u_micro_p 2896 vec4 1 0
-U 79b77ed9 frag u_bent_p 2912 vec4 1 0
-U 79b77ed9 frag u_micro_m 2928 vec4 1 0
-U 79b77ed9 frag u_micro_r 2944 vec4 1 0
+U 79b77ed9 frag u_winlit 2880 vec4 1 0
+U 79b77ed9 frag u_wseed 2896 float 1 0
+U 79b77ed9 frag u_emissive 2900 float 1 0
+U 79b77ed9 frag u_cull 2904 float 1 0
+U 79b77ed9 frag u_micro_p 2912 vec4 1 0
+U 79b77ed9 frag u_bent_p 2928 vec4 1 0
+U 79b77ed9 frag u_micro_m 2944 vec4 1 0
+U 79b77ed9 frag u_micro_r 2960 vec4 1 0
 T 79b77ed9 u_arm 2
 T 79b77ed9 u_bent 3
 T 79b77ed9 u_blade_tex 4
@@ -11092,7 +11118,7 @@ I b9fc2041 i_pos 3 vec4
 I b9fc2041 a_nrm 1 vec3
 I b9fc2041 a_uv 2 vec2
 I b9fc2041 a_col 7 vec4
-B b9fc2041 frag 1 3152
+B b9fc2041 frag 1 3168
 U b9fc2041 frag u_cascade_vp 0 mat4 6 64
 U b9fc2041 frag u_cascade_split 384 float 6 16
 U b9fc2041 frag u_cascade_range 480 float 6 16
@@ -11203,11 +11229,13 @@ U b9fc2041 frag u_fac_emis 2976 vec3 1 0
 U b9fc2041 frag u_view 2992 mat4 1 0
 U b9fc2041 frag u_tint 3056 vec3 1 0
 U b9fc2041 frag u_rough_scale 3068 float 1 0
-U b9fc2041 frag u_emissive 3072 float 1 0
-U b9fc2041 frag u_micro_p 3088 vec4 1 0
-U b9fc2041 frag u_bent_p 3104 vec4 1 0
-U b9fc2041 frag u_micro_m 3120 vec4 1 0
-U b9fc2041 frag u_micro_r 3136 vec4 1 0
+U b9fc2041 frag u_winlit 3072 vec4 1 0
+U b9fc2041 frag u_wseed 3088 float 1 0
+U b9fc2041 frag u_emissive 3092 float 1 0
+U b9fc2041 frag u_micro_p 3104 vec4 1 0
+U b9fc2041 frag u_bent_p 3120 vec4 1 0
+U b9fc2041 frag u_micro_m 3136 vec4 1 0
+U b9fc2041 frag u_micro_r 3152 vec4 1 0
 T b9fc2041 u_arm 2
 T b9fc2041 u_bent 3
 T b9fc2041 u_blade_tex 4
@@ -11979,7 +12007,7 @@ I 1fde9cd2 a_pos 0 vec3
 I 1fde9cd2 a_nrm 1 vec3
 I 1fde9cd2 a_uv 2 vec2
 I 1fde9cd2 a_col 7 vec4
-B 1fde9cd2 frag 1 3152
+B 1fde9cd2 frag 1 3168
 U 1fde9cd2 frag u_cascade_vp 0 mat4 6 64
 U 1fde9cd2 frag u_cascade_split 384 float 6 16
 U 1fde9cd2 frag u_cascade_range 480 float 6 16
@@ -12090,11 +12118,13 @@ U 1fde9cd2 frag u_fac_emis 2976 vec3 1 0
 U 1fde9cd2 frag u_view 2992 mat4 1 0
 U 1fde9cd2 frag u_tint 3056 vec3 1 0
 U 1fde9cd2 frag u_rough_scale 3068 float 1 0
-U 1fde9cd2 frag u_emissive 3072 float 1 0
-U 1fde9cd2 frag u_micro_p 3088 vec4 1 0
-U 1fde9cd2 frag u_bent_p 3104 vec4 1 0
-U 1fde9cd2 frag u_micro_m 3120 vec4 1 0
-U 1fde9cd2 frag u_micro_r 3136 vec4 1 0
+U 1fde9cd2 frag u_winlit 3072 vec4 1 0
+U 1fde9cd2 frag u_wseed 3088 float 1 0
+U 1fde9cd2 frag u_emissive 3092 float 1 0
+U 1fde9cd2 frag u_micro_p 3104 vec4 1 0
+U 1fde9cd2 frag u_bent_p 3120 vec4 1 0
+U 1fde9cd2 frag u_micro_m 3136 vec4 1 0
+U 1fde9cd2 frag u_micro_r 3152 vec4 1 0
 S 1fde9cd2 u_ai_bones 2
 S 1fde9cd2 u_ai_pbones 3
 T 1fde9cd2 u_arm 4
@@ -12166,7 +12196,7 @@ I 62a3b8e3 a_pos 0 vec3
 I 62a3b8e3 a_nrm 1 vec3
 I 62a3b8e3 a_uv 2 vec2
 I 62a3b8e3 a_col 7 vec4
-B 62a3b8e3 frag 1 3136
+B 62a3b8e3 frag 1 3152
 U 62a3b8e3 frag u_cascade_vp 0 mat4 6 64
 U 62a3b8e3 frag u_cascade_split 384 float 6 16
 U 62a3b8e3 frag u_cascade_range 480 float 6 16
@@ -12276,10 +12306,11 @@ U 62a3b8e3 frag u_fac_coat 2960 vec2 1 0
 U 62a3b8e3 frag u_fac_emis 2976 vec3 1 0
 U 62a3b8e3 frag u_view 2992 mat4 1 0
 U 62a3b8e3 frag u_rough_scale 3056 float 1 0
-U 62a3b8e3 frag u_micro_p 3072 vec4 1 0
-U 62a3b8e3 frag u_bent_p 3088 vec4 1 0
-U 62a3b8e3 frag u_micro_m 3104 vec4 1 0
-U 62a3b8e3 frag u_micro_r 3120 vec4 1 0
+U 62a3b8e3 frag u_winlit 3072 vec4 1 0
+U 62a3b8e3 frag u_micro_p 3088 vec4 1 0
+U 62a3b8e3 frag u_bent_p 3104 vec4 1 0
+U 62a3b8e3 frag u_micro_m 3120 vec4 1 0
+U 62a3b8e3 frag u_micro_r 3136 vec4 1 0
 S 62a3b8e3 u_ai_bones 2
 S 62a3b8e3 u_ai_pbones 3
 T 62a3b8e3 u_arm 4
@@ -12351,7 +12382,7 @@ I 375ca855 a_pos 0 vec3
 I 375ca855 a_nrm 1 vec3
 I 375ca855 a_uv 2 vec2
 I 375ca855 a_col 7 vec4
-B 375ca855 frag 1 3136
+B 375ca855 frag 1 3152
 U 375ca855 frag u_cascade_vp 0 mat4 6 64
 U 375ca855 frag u_cascade_split 384 float 6 16
 U 375ca855 frag u_cascade_range 480 float 6 16
@@ -12461,10 +12492,11 @@ U 375ca855 frag u_fac_coat 2960 vec2 1 0
 U 375ca855 frag u_fac_emis 2976 vec3 1 0
 U 375ca855 frag u_view 2992 mat4 1 0
 U 375ca855 frag u_rough_scale 3056 float 1 0
-U 375ca855 frag u_micro_p 3072 vec4 1 0
-U 375ca855 frag u_bent_p 3088 vec4 1 0
-U 375ca855 frag u_micro_m 3104 vec4 1 0
-U 375ca855 frag u_micro_r 3120 vec4 1 0
+U 375ca855 frag u_winlit 3072 vec4 1 0
+U 375ca855 frag u_micro_p 3088 vec4 1 0
+U 375ca855 frag u_bent_p 3104 vec4 1 0
+U 375ca855 frag u_micro_m 3120 vec4 1 0
+U 375ca855 frag u_micro_r 3136 vec4 1 0
 S 375ca855 u_ai_bones 2
 S 375ca855 u_ai_pbones 3
 T 375ca855 u_arm 4
@@ -12532,7 +12564,7 @@ I a5ad521e a_pos 0 vec3
 I a5ad521e a_nrm 1 vec3
 I a5ad521e a_uv 2 vec2
 I a5ad521e a_col 7 vec4
-B a5ad521e frag 1 3152
+B a5ad521e frag 1 3168
 U a5ad521e frag u_cascade_vp 0 mat4 6 64
 U a5ad521e frag u_cascade_split 384 float 6 16
 U a5ad521e frag u_cascade_range 480 float 6 16
@@ -12643,11 +12675,13 @@ U a5ad521e frag u_fac_emis 2976 vec3 1 0
 U a5ad521e frag u_view 2992 mat4 1 0
 U a5ad521e frag u_tint 3056 vec3 1 0
 U a5ad521e frag u_rough_scale 3068 float 1 0
-U a5ad521e frag u_emissive 3072 float 1 0
-U a5ad521e frag u_micro_p 3088 vec4 1 0
-U a5ad521e frag u_bent_p 3104 vec4 1 0
-U a5ad521e frag u_micro_m 3120 vec4 1 0
-U a5ad521e frag u_micro_r 3136 vec4 1 0
+U a5ad521e frag u_winlit 3072 vec4 1 0
+U a5ad521e frag u_wseed 3088 float 1 0
+U a5ad521e frag u_emissive 3092 float 1 0
+U a5ad521e frag u_micro_p 3104 vec4 1 0
+U a5ad521e frag u_bent_p 3120 vec4 1 0
+U a5ad521e frag u_micro_m 3136 vec4 1 0
+U a5ad521e frag u_micro_r 3152 vec4 1 0
 S a5ad521e u_ai_bones 2
 S a5ad521e u_ai_pbones 3
 T a5ad521e u_arm 4
@@ -12715,7 +12749,7 @@ I c01c40c4 a_pos 0 vec3
 I c01c40c4 a_nrm 1 vec3
 I c01c40c4 a_uv 2 vec2
 I c01c40c4 a_col 7 vec4
-B c01c40c4 frag 1 3056
+B c01c40c4 frag 1 3072
 U c01c40c4 frag u_cascade_vp 0 mat4 6 64
 U c01c40c4 frag u_cascade_split 384 float 6 16
 U c01c40c4 frag u_cascade_range 480 float 6 16
@@ -12821,14 +12855,16 @@ U c01c40c4 frag u_fac_emis 2784 vec3 1 0
 U c01c40c4 frag u_view 2800 mat4 1 0
 U c01c40c4 frag u_tint 2864 vec3 1 0
 U c01c40c4 frag u_rough_scale 2876 float 1 0
-U c01c40c4 frag u_emissive 2880 float 1 0
-U c01c40c4 frag u_tr 2896 vec4 1 0
-U c01c40c4 frag u_inv_vp 2912 mat4 1 0
-U c01c40c4 frag u_screen 2976 vec2 1 0
-U c01c40c4 frag u_micro_p 2992 vec4 1 0
-U c01c40c4 frag u_bent_p 3008 vec4 1 0
-U c01c40c4 frag u_micro_m 3024 vec4 1 0
-U c01c40c4 frag u_micro_r 3040 vec4 1 0
+U c01c40c4 frag u_winlit 2880 vec4 1 0
+U c01c40c4 frag u_wseed 2896 float 1 0
+U c01c40c4 frag u_emissive 2900 float 1 0
+U c01c40c4 frag u_tr 2912 vec4 1 0
+U c01c40c4 frag u_inv_vp 2928 mat4 1 0
+U c01c40c4 frag u_screen 2992 vec2 1 0
+U c01c40c4 frag u_micro_p 3008 vec4 1 0
+U c01c40c4 frag u_bent_p 3024 vec4 1 0
+U c01c40c4 frag u_micro_m 3040 vec4 1 0
+U c01c40c4 frag u_micro_r 3056 vec4 1 0
 S c01c40c4 u_ai_bones 2
 S c01c40c4 u_ai_pbones 3
 T c01c40c4 u_arm 4
@@ -12896,7 +12932,7 @@ I 6d5ca03e a_pos 0 vec3
 I 6d5ca03e a_nrm 1 vec3
 I 6d5ca03e a_uv 2 vec2
 I 6d5ca03e a_col 7 vec4
-B 6d5ca03e frag 1 3392
+B 6d5ca03e frag 1 3408
 U 6d5ca03e frag u_cascade_vp 0 mat4 6 64
 U 6d5ca03e frag u_cascade_split 384 float 6 16
 U 6d5ca03e frag u_cascade_range 480 float 6 16
@@ -13006,12 +13042,14 @@ U 6d5ca03e frag u_fac_emis 2944 vec3 1 0
 U 6d5ca03e frag u_view 2960 mat4 1 0
 U 6d5ca03e frag u_tint 3024 vec3 1 0
 U 6d5ca03e frag u_rough_scale 3036 float 1 0
-U 6d5ca03e frag u_emissive 3040 float 1 0
-U 6d5ca03e frag u_fp 3056 vec4 17 16
-U 6d5ca03e frag u_micro_p 3328 vec4 1 0
-U 6d5ca03e frag u_bent_p 3344 vec4 1 0
-U 6d5ca03e frag u_micro_m 3360 vec4 1 0
-U 6d5ca03e frag u_micro_r 3376 vec4 1 0
+U 6d5ca03e frag u_winlit 3040 vec4 1 0
+U 6d5ca03e frag u_wseed 3056 float 1 0
+U 6d5ca03e frag u_emissive 3060 float 1 0
+U 6d5ca03e frag u_fp 3072 vec4 17 16
+U 6d5ca03e frag u_micro_p 3344 vec4 1 0
+U 6d5ca03e frag u_bent_p 3360 vec4 1 0
+U 6d5ca03e frag u_micro_m 3376 vec4 1 0
+U 6d5ca03e frag u_micro_r 3392 vec4 1 0
 S 6d5ca03e u_ai_bones 2
 S 6d5ca03e u_ai_pbones 3
 T 6d5ca03e u_arm 4
@@ -13079,7 +13117,7 @@ I 30b20cc2 a_pos 0 vec3
 I 30b20cc2 a_nrm 1 vec3
 I 30b20cc2 a_uv 2 vec2
 I 30b20cc2 a_col 7 vec4
-B 30b20cc2 frag 1 3392
+B 30b20cc2 frag 1 3408
 U 30b20cc2 frag u_cascade_vp 0 mat4 6 64
 U 30b20cc2 frag u_cascade_split 384 float 6 16
 U 30b20cc2 frag u_cascade_range 480 float 6 16
@@ -13189,12 +13227,14 @@ U 30b20cc2 frag u_fac_emis 2944 vec3 1 0
 U 30b20cc2 frag u_view 2960 mat4 1 0
 U 30b20cc2 frag u_tint 3024 vec3 1 0
 U 30b20cc2 frag u_rough_scale 3036 float 1 0
-U 30b20cc2 frag u_emissive 3040 float 1 0
-U 30b20cc2 frag u_fp 3056 vec4 17 16
-U 30b20cc2 frag u_micro_p 3328 vec4 1 0
-U 30b20cc2 frag u_bent_p 3344 vec4 1 0
-U 30b20cc2 frag u_micro_m 3360 vec4 1 0
-U 30b20cc2 frag u_micro_r 3376 vec4 1 0
+U 30b20cc2 frag u_winlit 3040 vec4 1 0
+U 30b20cc2 frag u_wseed 3056 float 1 0
+U 30b20cc2 frag u_emissive 3060 float 1 0
+U 30b20cc2 frag u_fp 3072 vec4 17 16
+U 30b20cc2 frag u_micro_p 3344 vec4 1 0
+U 30b20cc2 frag u_bent_p 3360 vec4 1 0
+U 30b20cc2 frag u_micro_m 3376 vec4 1 0
+U 30b20cc2 frag u_micro_r 3392 vec4 1 0
 S 30b20cc2 u_ai_bones 2
 S 30b20cc2 u_ai_pbones 3
 T 30b20cc2 u_arm 4
@@ -13262,7 +13302,7 @@ I 6ff28bc6 a_pos 0 vec3
 I 6ff28bc6 a_nrm 1 vec3
 I 6ff28bc6 a_uv 2 vec2
 I 6ff28bc6 a_col 7 vec4
-B 6ff28bc6 frag 1 3216
+B 6ff28bc6 frag 1 3232
 U 6ff28bc6 frag u_cascade_vp 0 mat4 6 64
 U 6ff28bc6 frag u_cascade_split 384 float 6 16
 U 6ff28bc6 frag u_cascade_range 480 float 6 16
@@ -13377,13 +13417,15 @@ U 6ff28bc6 frag u_fol_on 3008 float 1 0
 U 6ff28bc6 frag u_view 3024 mat4 1 0
 U 6ff28bc6 frag u_tint 3088 vec3 1 0
 U 6ff28bc6 frag u_rough_scale 3100 float 1 0
-U 6ff28bc6 frag u_emissive 3104 float 1 0
-U 6ff28bc6 frag u_eye 3120 vec4 1 0
-U 6ff28bc6 frag u_eye2 3136 vec4 1 0
-U 6ff28bc6 frag u_micro_p 3152 vec4 1 0
-U 6ff28bc6 frag u_bent_p 3168 vec4 1 0
-U 6ff28bc6 frag u_micro_m 3184 vec4 1 0
-U 6ff28bc6 frag u_micro_r 3200 vec4 1 0
+U 6ff28bc6 frag u_winlit 3104 vec4 1 0
+U 6ff28bc6 frag u_wseed 3120 float 1 0
+U 6ff28bc6 frag u_emissive 3124 float 1 0
+U 6ff28bc6 frag u_eye 3136 vec4 1 0
+U 6ff28bc6 frag u_eye2 3152 vec4 1 0
+U 6ff28bc6 frag u_micro_p 3168 vec4 1 0
+U 6ff28bc6 frag u_bent_p 3184 vec4 1 0
+U 6ff28bc6 frag u_micro_m 3200 vec4 1 0
+U 6ff28bc6 frag u_micro_r 3216 vec4 1 0
 S 6ff28bc6 u_ai_bones 2
 S 6ff28bc6 u_ai_pbones 3
 T 6ff28bc6 u_arm 4
@@ -13594,7 +13636,7 @@ I 93e7e791 a_pos 0 vec3
 I 93e7e791 a_nrm 1 vec3
 I 93e7e791 a_uv 2 vec2
 I 93e7e791 a_col 7 vec4
-B 93e7e791 frag 1 3184
+B 93e7e791 frag 1 3200
 U 93e7e791 frag u_cascade_vp 0 mat4 6 64
 U 93e7e791 frag u_cascade_split 384 float 6 16
 U 93e7e791 frag u_cascade_range 480 float 6 16
@@ -13710,11 +13752,13 @@ U 93e7e791 frag u_fol_on 3008 float 1 0
 U 93e7e791 frag u_view 3024 mat4 1 0
 U 93e7e791 frag u_tint 3088 vec3 1 0
 U 93e7e791 frag u_rough_scale 3100 float 1 0
-U 93e7e791 frag u_emissive 3104 float 1 0
-U 93e7e791 frag u_micro_p 3120 vec4 1 0
-U 93e7e791 frag u_bent_p 3136 vec4 1 0
-U 93e7e791 frag u_micro_m 3152 vec4 1 0
-U 93e7e791 frag u_micro_r 3168 vec4 1 0
+U 93e7e791 frag u_winlit 3104 vec4 1 0
+U 93e7e791 frag u_wseed 3120 float 1 0
+U 93e7e791 frag u_emissive 3124 float 1 0
+U 93e7e791 frag u_micro_p 3136 vec4 1 0
+U 93e7e791 frag u_bent_p 3152 vec4 1 0
+U 93e7e791 frag u_micro_m 3168 vec4 1 0
+U 93e7e791 frag u_micro_r 3184 vec4 1 0
 S 93e7e791 u_ai_bones 2
 S 93e7e791 u_ai_pbones 3
 T 93e7e791 u_arm 4
@@ -13782,7 +13826,7 @@ I 6a86b069 a_pos 0 vec3
 I 6a86b069 a_nrm 1 vec3
 I 6a86b069 a_uv 2 vec2
 I 6a86b069 a_col 7 vec4
-B 6a86b069 frag 1 2960
+B 6a86b069 frag 1 2976
 U 6a86b069 frag u_cascade_vp 0 mat4 6 64
 U 6a86b069 frag u_cascade_split 384 float 6 16
 U 6a86b069 frag u_cascade_range 480 float 6 16
@@ -13888,11 +13932,13 @@ U 6a86b069 frag u_fac_emis 2784 vec3 1 0
 U 6a86b069 frag u_view 2800 mat4 1 0
 U 6a86b069 frag u_tint 2864 vec3 1 0
 U 6a86b069 frag u_rough_scale 2876 float 1 0
-U 6a86b069 frag u_emissive 2880 float 1 0
-U 6a86b069 frag u_micro_p 2896 vec4 1 0
-U 6a86b069 frag u_bent_p 2912 vec4 1 0
-U 6a86b069 frag u_micro_m 2928 vec4 1 0
-U 6a86b069 frag u_micro_r 2944 vec4 1 0
+U 6a86b069 frag u_winlit 2880 vec4 1 0
+U 6a86b069 frag u_wseed 2896 float 1 0
+U 6a86b069 frag u_emissive 2900 float 1 0
+U 6a86b069 frag u_micro_p 2912 vec4 1 0
+U 6a86b069 frag u_bent_p 2928 vec4 1 0
+U 6a86b069 frag u_micro_m 2944 vec4 1 0
+U 6a86b069 frag u_micro_r 2960 vec4 1 0
 S 6a86b069 u_ai_bones 2
 S 6a86b069 u_ai_pbones 3
 T 6a86b069 u_arm 4
@@ -15378,7 +15424,7 @@ I ad79dbcc a_pos 0 vec3
 I ad79dbcc a_nrm 1 vec3
 I ad79dbcc a_uv 2 vec2
 I ad79dbcc a_col 7 vec4
-B ad79dbcc frag 1 3152
+B ad79dbcc frag 1 3168
 U ad79dbcc frag u_cascade_vp 0 mat4 6 64
 U ad79dbcc frag u_cascade_split 384 float 6 16
 U ad79dbcc frag u_cascade_range 480 float 6 16
@@ -15489,11 +15535,13 @@ U ad79dbcc frag u_fac_emis 2976 vec3 1 0
 U ad79dbcc frag u_view 2992 mat4 1 0
 U ad79dbcc frag u_tint 3056 vec3 1 0
 U ad79dbcc frag u_rough_scale 3068 float 1 0
-U ad79dbcc frag u_emissive 3072 float 1 0
-U ad79dbcc frag u_micro_p 3088 vec4 1 0
-U ad79dbcc frag u_bent_p 3104 vec4 1 0
-U ad79dbcc frag u_micro_m 3120 vec4 1 0
-U ad79dbcc frag u_micro_r 3136 vec4 1 0
+U ad79dbcc frag u_winlit 3072 vec4 1 0
+U ad79dbcc frag u_wseed 3088 float 1 0
+U ad79dbcc frag u_emissive 3092 float 1 0
+U ad79dbcc frag u_micro_p 3104 vec4 1 0
+U ad79dbcc frag u_bent_p 3120 vec4 1 0
+U ad79dbcc frag u_micro_m 3136 vec4 1 0
+U ad79dbcc frag u_micro_r 3152 vec4 1 0
 S ad79dbcc u_ai_bones 2
 S ad79dbcc u_ai_pbones 3
 T ad79dbcc u_arm 4
@@ -15559,7 +15607,7 @@ I 199f24e0 a_pos 0 vec3
 I 199f24e0 a_nrm 1 vec3
 I 199f24e0 a_uv 2 vec2
 I 199f24e0 a_col 7 vec4
-B 199f24e0 frag 1 3152
+B 199f24e0 frag 1 3168
 U 199f24e0 frag u_cascade_vp 0 mat4 6 64
 U 199f24e0 frag u_cascade_split 384 float 6 16
 U 199f24e0 frag u_cascade_range 480 float 6 16
@@ -15670,11 +15718,13 @@ U 199f24e0 frag u_fac_emis 2976 vec3 1 0
 U 199f24e0 frag u_view 2992 mat4 1 0
 U 199f24e0 frag u_tint 3056 vec3 1 0
 U 199f24e0 frag u_rough_scale 3068 float 1 0
-U 199f24e0 frag u_emissive 3072 float 1 0
-U 199f24e0 frag u_micro_p 3088 vec4 1 0
-U 199f24e0 frag u_bent_p 3104 vec4 1 0
-U 199f24e0 frag u_micro_m 3120 vec4 1 0
-U 199f24e0 frag u_micro_r 3136 vec4 1 0
+U 199f24e0 frag u_winlit 3072 vec4 1 0
+U 199f24e0 frag u_wseed 3088 float 1 0
+U 199f24e0 frag u_emissive 3092 float 1 0
+U 199f24e0 frag u_micro_p 3104 vec4 1 0
+U 199f24e0 frag u_bent_p 3120 vec4 1 0
+U 199f24e0 frag u_micro_m 3136 vec4 1 0
+U 199f24e0 frag u_micro_r 3152 vec4 1 0
 S 199f24e0 u_ai_bones 2
 S 199f24e0 u_ai_pbones 3
 T 199f24e0 u_arm 4
@@ -15744,7 +15794,7 @@ I d11bf269 a_pos 0 vec3
 I d11bf269 a_nrm 1 vec3
 I d11bf269 a_uv 2 vec2
 I d11bf269 a_col 7 vec4
-B d11bf269 frag 1 3136
+B d11bf269 frag 1 3152
 U d11bf269 frag u_cascade_vp 0 mat4 6 64
 U d11bf269 frag u_cascade_split 384 float 6 16
 U d11bf269 frag u_cascade_range 480 float 6 16
@@ -15854,10 +15904,11 @@ U d11bf269 frag u_fac_coat 2960 vec2 1 0
 U d11bf269 frag u_fac_emis 2976 vec3 1 0
 U d11bf269 frag u_view 2992 mat4 1 0
 U d11bf269 frag u_rough_scale 3056 float 1 0
-U d11bf269 frag u_micro_p 3072 vec4 1 0
-U d11bf269 frag u_bent_p 3088 vec4 1 0
-U d11bf269 frag u_micro_m 3104 vec4 1 0
-U d11bf269 frag u_micro_r 3120 vec4 1 0
+U d11bf269 frag u_winlit 3072 vec4 1 0
+U d11bf269 frag u_micro_p 3088 vec4 1 0
+U d11bf269 frag u_bent_p 3104 vec4 1 0
+U d11bf269 frag u_micro_m 3120 vec4 1 0
+U d11bf269 frag u_micro_r 3136 vec4 1 0
 S d11bf269 u_ai_bones 2
 S d11bf269 u_ai_pbones 3
 T d11bf269 u_arm 4
@@ -15927,7 +15978,7 @@ I 85a6512f a_pos 0 vec3
 I 85a6512f a_nrm 1 vec3
 I 85a6512f a_uv 2 vec2
 I 85a6512f a_col 7 vec4
-B 85a6512f frag 1 3136
+B 85a6512f frag 1 3152
 U 85a6512f frag u_cascade_vp 0 mat4 6 64
 U 85a6512f frag u_cascade_split 384 float 6 16
 U 85a6512f frag u_cascade_range 480 float 6 16
@@ -16037,10 +16088,11 @@ U 85a6512f frag u_fac_coat 2960 vec2 1 0
 U 85a6512f frag u_fac_emis 2976 vec3 1 0
 U 85a6512f frag u_view 2992 mat4 1 0
 U 85a6512f frag u_rough_scale 3056 float 1 0
-U 85a6512f frag u_micro_p 3072 vec4 1 0
-U 85a6512f frag u_bent_p 3088 vec4 1 0
-U 85a6512f frag u_micro_m 3104 vec4 1 0
-U 85a6512f frag u_micro_r 3120 vec4 1 0
+U 85a6512f frag u_winlit 3072 vec4 1 0
+U 85a6512f frag u_micro_p 3088 vec4 1 0
+U 85a6512f frag u_bent_p 3104 vec4 1 0
+U 85a6512f frag u_micro_m 3120 vec4 1 0
+U 85a6512f frag u_micro_r 3136 vec4 1 0
 S 85a6512f u_ai_bones 2
 S 85a6512f u_ai_pbones 3
 T 85a6512f u_arm 4
@@ -18458,7 +18510,7 @@ I b20fdcb5 i_ground 6 vec4
 I b20fdcb5 a_pos 0 vec3
 I b20fdcb5 i_tint 5 vec4
 I b20fdcb5 a_uv 2 vec2
-B b20fdcb5 frag 1 3104
+B b20fdcb5 frag 1 3120
 U b20fdcb5 frag u_cascade_vp 0 mat4 6 64
 U b20fdcb5 frag u_cascade_split 384 float 6 16
 U b20fdcb5 frag u_cascade_range 480 float 6 16
@@ -18564,21 +18616,23 @@ U b20fdcb5 frag u_fac_emis 2784 vec3 1 0
 U b20fdcb5 frag u_view 2800 mat4 1 0
 U b20fdcb5 frag u_tint 2864 vec3 1 0
 U b20fdcb5 frag u_rough_scale 2876 float 1 0
-U b20fdcb5 frag u_emissive 2880 float 1 0
-U b20fdcb5 frag u_blade_base 2896 vec3 1 0
-U b20fdcb5 frag u_blade_tip 2912 vec3 1 0
-U b20fdcb5 frag u_blade_cols 2924 float 1 0
-U b20fdcb5 frag u_blade_tex_on 2928 float 1 0
-U b20fdcb5 frag u_gk_seed 2944 vec4 1 0
-U b20fdcb5 frag u_gk_look 2960 vec4 1 0
-U b20fdcb5 frag u_gk_mat 2976 vec4 1 0
-U b20fdcb5 frag u_gk_forb_a 2992 vec4 1 0
-U b20fdcb5 frag u_gk_forb_b 3008 vec4 1 0
-U b20fdcb5 frag u_gk_forb_c 3024 vec4 1 0
-U b20fdcb5 frag u_micro_p 3040 vec4 1 0
-U b20fdcb5 frag u_bent_p 3056 vec4 1 0
-U b20fdcb5 frag u_micro_m 3072 vec4 1 0
-U b20fdcb5 frag u_micro_r 3088 vec4 1 0
+U b20fdcb5 frag u_winlit 2880 vec4 1 0
+U b20fdcb5 frag u_wseed 2896 float 1 0
+U b20fdcb5 frag u_emissive 2900 float 1 0
+U b20fdcb5 frag u_blade_base 2912 vec3 1 0
+U b20fdcb5 frag u_blade_tip 2928 vec3 1 0
+U b20fdcb5 frag u_blade_cols 2940 float 1 0
+U b20fdcb5 frag u_blade_tex_on 2944 float 1 0
+U b20fdcb5 frag u_gk_seed 2960 vec4 1 0
+U b20fdcb5 frag u_gk_look 2976 vec4 1 0
+U b20fdcb5 frag u_gk_mat 2992 vec4 1 0
+U b20fdcb5 frag u_gk_forb_a 3008 vec4 1 0
+U b20fdcb5 frag u_gk_forb_b 3024 vec4 1 0
+U b20fdcb5 frag u_gk_forb_c 3040 vec4 1 0
+U b20fdcb5 frag u_micro_p 3056 vec4 1 0
+U b20fdcb5 frag u_bent_p 3072 vec4 1 0
+U b20fdcb5 frag u_micro_m 3088 vec4 1 0
+U b20fdcb5 frag u_micro_r 3104 vec4 1 0
 T b20fdcb5 u_arm 2
 T b20fdcb5 u_bent 3
 T b20fdcb5 u_blade_tex 4

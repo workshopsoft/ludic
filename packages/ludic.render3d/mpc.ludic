@@ -43,3 +43,13 @@ function mpc_emis(render3d_st: Render3dState, pr: Prim) -> float {
   if pr.emis_base { return -v }
   return v
 }
+
+# A city's lit windows by night (model.frag windowLight): Unreal drives a building material's window emissive from collection scalars of
+# its time of day and the instance's random; here three scene values the game sets each frame: the light's strength (the night's,
+# 0 by day: no window lit), the hour (0 .. 24, each window's on and off stretches keyed to it) and the share of windows lit now (the
+# game's curve over the night). Read by every actor program (ac_bind_scene); a building actor's own seed is Actor.wseed
+export function r3d_window_lights(render3d_st: mut Render3dState, strength: float, hour: float, share: float) -> void {
+  render3d_st.win_lit = Math.max(strength, 0.0)
+  render3d_st.win_hour = hour
+  render3d_st.win_share = Math.clamp(share, 0.0, 1.0)
+}

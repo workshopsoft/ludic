@@ -331,6 +331,7 @@ function terrain_pass_draw(render3d_st: mut Render3dState) -> void {
     if not tpa_in_view(render3d_st, a, true) { continue }
     u_mat4(render3d_st, ap.l_model, a.mat)
     u_f(render3d_st, ap.l_emis, a.emissive)
+    u_f(render3d_st, ap.l_wseed, a.wseed)
     u_f(render3d_st, ap.l_rough, a.rough)
     u_f(render3d_st, ap.l_clit, a.char_lit)
     u_v3(render3d_st, ap.l_tint, a.tint)

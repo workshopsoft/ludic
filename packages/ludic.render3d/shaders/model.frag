@@ -129,6 +129,41 @@ in vec4 v_te;                 // an instanced actor's own tint and glow (skin.ve
 uniform vec3 u_tint;
 #endif
 uniform float u_rough_scale;
+// A building's windows lit at night, as an Unreal city lights its instanced buildings' windows: an emissive the material builds from a
+// vertex mask, per-instance random data (InstancedStaticMeshComponent.h PerInstanceSMCustomData / the PerInstanceRandom node) and
+// collection scalars of the time of day, into the same exposure and bloom as every other light. A window's vertices carry its seed in
+// COLOR_0's alpha (1 .. 254 / 255; 0 and 1 none: a mesh's plain white is no window; OccuTown's tools/bld/cartoon/windows.py finds
+// them); the building its own (Actor.wseed, k / 4096,
+// 0 an actor with no windows). u_winlit (r3d_window_lights): x the light's strength (0 by day), y the hours since noon (0 .. 24: a
+// window's stretches turn over at noon, when none is lit), z the share of windows lit now.
+// Each window keeps its state for its own stretch (1.5 .. 4 h) offset by its own phase, and is lit when its draw for the stretch falls
+// under the share times its building's occupancy: so they come on one by one as the share rises at dusk and go out one by one after
+// midnight, none flickering. Most are warm lamps (2700 .. 3300 K), a few cool (a screen, a tube), each a little brighter or dimmer.
+uniform vec4 u_winlit;
+#ifdef ACTOR_INST
+in float v_wseed;
+#else
+uniform float u_wseed;
+#define v_wseed u_wseed
+#endif
+float wlHash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+vec3 windowLight(float a) {
+  float w = floor(a * 255.0 + 0.5);
+  if (v_wseed <= 0.0 || u_winlit.x <= 0.0 || w < 0.5 || w > 254.5) return vec3(0.0);
+  float b = floor(v_wseed * 4096.0 + 0.5);
+  float per = 1.5 + 2.5 * wlHash(vec2(w, b));
+  float t = u_winlit.y / per + wlHash(vec2(w + 311.0, b + 17.0));
+  float slot = floor(t);
+  float occ = 0.45 + 1.1 * wlHash(vec2(b, 5.0));
+  if (wlHash(vec2(w * 1.618 + slot * 7.0, b + slot * 13.0)) >= u_winlit.z * occ) return vec3(0.0);
+  float k = wlHash(vec2(w + slot * 3.0, b + 91.0));
+  vec3 c = (k < 0.12) ? vec3(0.27, 0.31, 0.38) : mix(vec3(0.45, 0.30, 0.14), vec3(0.47, 0.36, 0.21), (k - 0.12) / 0.88);
+  return c * (0.6 + 0.7 * wlHash(vec2(w + slot * 5.0, b + 3.0))) * u_winlit.x;
+}
 #ifndef ACTOR_INST
 uniform float u_emissive;     // self-lit (a flame): albedo added back after shading
 #endif
@@ -1122,6 +1157,7 @@ void main() {
   // vertices (alpha 1) by the instance's glow, as a merged mesh's material reads a vertex colour mask times per-instance data
   // (InstancedStaticMeshComponent.h PerInstanceSMCustomData). A mesh without COLOR_0 reads white: glows whole, as before
   col += alb * u_emissive * vaGlow(v_col.a);
+  col += windowLight(v_col.a);
 #else
   col += alb * u_emissive;
 #endif

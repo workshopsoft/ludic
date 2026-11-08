@@ -448,6 +448,7 @@ function static_chunks_draw(render3d_st: mut Render3dState) -> void {
         last_a = a
         u_mat4(render3d_st, ap.l_model, a.mat)
         u_f(render3d_st, ap.l_emis, a.emissive)
+        u_f(render3d_st, ap.l_wseed, a.wseed)
         u_f(render3d_st, ap.l_rough, a.rough)
         u_f(render3d_st, ap.l_clit, a.char_lit)
         gpu_cull(render3d_st, a.one_sided)

@@ -22,7 +22,8 @@
 # a frame's first palette, so the one last frame wrote is still whole and its rows are where last frame put them (Actor.ai_pboff).
 const AI_MAX: int = 16384             # instances a pass; past it, actors are drawn on their own (a city's buildings, an actor each)
 const AI_FIRST: int = 2048            # the instances a pass's buffer is made for; it grows to what a frame asks (gvk_buf_reserve)
-# three rows of the model matrix, the tint and the glow, the palette's first row (skinned) and last frame's (the motion pass), then last
+# three rows of the model matrix, the tint and the glow, the palette's first row (skinned), last frame's (the motion pass) and the
+# building's window seed (Actor.wseed), then last
 # frame's model matrix as three rows (the motion pass)
 const AI_FLOATS: int = 32
 const AI_PASSES: int = 10             # the main view, then a cascade each (shadow.ludic's up to five), then a cached cascade's rebuild each, then the motion pass
@@ -188,7 +189,7 @@ function ai_build(render3d_st: mut Render3dState, pass: int) -> bool {
     f[o + 12] = a.tint[0];  f[o + 13] = a.tint[1];  f[o + 14] = a.tint[2];  f[o + 15] = a.emissive
     f[o + 16] = 0.0
     if m.skin != null { f[o + 16] = float(a.ai_boff) }
-    f[o + 17] = 0.0;  f[o + 18] = 0.0;  f[o + 19] = 0.0
+    f[o + 17] = 0.0;  f[o + 18] = a.wseed;  f[o + 19] = 0.0
     if pass == AI_VEL_SLOT {
       if m.skin != null { f[o + 17] = float(a.ai_pboff) }
       let pt = a.prev_mat
