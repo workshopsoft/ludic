@@ -391,6 +391,100 @@ function ac_bind_scene(render3d_st: mut Render3dState, ap: AcProg) -> void {
   u_f(render3d_st, gpu_ul(render3d_st, p, UL_DITHER_FRAME), float(render3d_st.ac_frame % 64))
   strands_bind_shadow(render3d_st, p)
 }
+# The still actors' cull cells, as Unreal culls its static scene a cell at a time rather than a primitive at a time: a still actor
+# (Actor.still: a building chunk, a far ground block, a lot's or a road's piece) falls in a cell of AC_CELL metres by its test sphere's
+# middle and a size class by its radius; a pass answers each cell once, by the one sphere that holds every such actor's spheres (the
+# fog wall and the view's sides for the view, the fog and the light's box for a cascade). A cell wholly out puts its actors out with
+# no test of their own; one in leaves each to its own. Only inside an actor pass (ac_cell_open / ac_cell_close: actor_draw,
+# actor_draw_casters), whose camera and light are the cells'. The cell is found from the actor's place each test, so a moved one is
+# simply in another. R3D_CELL_CULL=0 turns it off.
+const AC_CELL: float = 64.0
+const AC_CELL_HALF: float = 55.5        # half the cell's diagonal (64 x sqrt(3) / 2 = 55.43)
+const AC_CELL_N: int = 4096             # the table's entries (a hash of the cell; a clash just answers again)
+const AC_CELL_W: int = 6                # an entry: the pass, the cell's x, y, z, the size class, the answer (1 in, 2 out)
+function ac_cell_open(render3d_st: mut Render3dState) -> void {
+  if render3d_st.ac_cell_state == 0 {
+    render3d_st.ac_cell_state = 1
+    if r3d_env_has(render3d_st, "R3D_CELL_CULL") and r3d_env(render3d_st, "R3D_CELL_CULL") == "0" { render3d_st.ac_cell_state = 2 } else { ac_cell_init(render3d_st) }
+  }
+  render3d_st.ac_cell_pass = 0
+  if render3d_st.ac_cell_state != 1 { return }
+  render3d_st.ac_cell_seq += 1
+  render3d_st.ac_cell_pass = render3d_st.ac_cell_seq
+}
+@alloc_ok("the cell table, made once")
+function ac_cell_init(render3d_st: mut Render3dState) -> void {
+  render3d_st.ac_cell = words(AC_CELL_N * AC_CELL_W)
+  for i in 0 .. AC_CELL_N * AC_CELL_W { render3d_st.ac_cell[i] = 0 }
+}
+function ac_cell_close(render3d_st: mut Render3dState) -> void { render3d_st.ac_cell_pass = 0 }
+# the table entry of still actor a's cell this pass (its answer at + 5: 0 not yet given), its test sphere's middle cy and reach r;
+# -1 when it has none (outside a pass, moving, a part, too large for a class)
+function ac_cell_entry(render3d_st: mut Render3dState, a: Actor, cy: float, r: float, shadow: bool) -> int {
+  let pass = render3d_st.ac_cell_pass
+  if pass == 0 or r <= 0.0 { return -1 }
+  var k = 0
+  var big = 16.0
+  while big < 2.0 * r and k < 3 { k += 1;  big = big * 4.0 }
+  if big < 2.0 * r { return -1 }
+  let cx = int(Math.floor(a.x / AC_CELL))
+  let cyi = int(Math.floor(cy / AC_CELL))
+  let cz = int(Math.floor(a.z / AC_CELL))
+  var stamp = pass * 2
+  if shadow { stamp += 1 }
+  var h = (cx * 7919 + cyi * 104729 + cz * 1299709 + k * 31) % AC_CELL_N
+  if h < 0 { h += AC_CELL_N }
+  let t = render3d_st.ac_cell
+  let i = h * AC_CELL_W
+  if t[i] != stamp or t[i + 1] != cx or t[i + 2] != cyi or t[i + 3] != cz or t[i + 4] != k {
+    t[i] = stamp;  t[i + 1] = cx;  t[i + 2] = cyi;  t[i + 3] = cz;  t[i + 4] = k;  t[i + 5] = 0
+  }
+  return i
+}
+# the sphere that holds every sphere of entry i's cell and class
+function ac_cell_x(t: words, i: int) -> float { return (float(t[i + 1]) + 0.5) * AC_CELL }
+function ac_cell_y(t: words, i: int) -> float { return (float(t[i + 2]) + 0.5) * AC_CELL }
+function ac_cell_z(t: words, i: int) -> float { return (float(t[i + 3]) + 0.5) * AC_CELL }
+function ac_cell_r(t: words, i: int) -> float {
+  var big = 16.0
+  for j in 0 .. t[i + 4] { big = big * 4.0 }
+  return AC_CELL_HALF + big
+}
+# the view's: the actor's spheres are its fog sphere (its place, its radius) and its side planes' (half its radius up, 1.5 its radius):
+# both within twice the radius of the middle
+function ac_cell_out(render3d_st: mut Render3dState, a: Actor) -> bool {
+  if render3d_st.ac_cell_pass == 0 or not a.still or a.leader != null or a.radius == 0.0 or render3d_st.ter_reflect { return false }
+  let r = a.radius * a.scale
+  let i = ac_cell_entry(render3d_st, a, a.y + r, r, false)
+  if i < 0 { return false }
+  let t = render3d_st.ac_cell
+  if t[i + 5] == 0 {
+    t[i + 5] = 1
+    if not cam_sphere_visible(render3d_st, ac_cell_x(t, i), ac_cell_y(t, i), ac_cell_z(t, i), ac_cell_r(t, i)) { t[i + 5] = 2 }
+  }
+  return t[i + 5] == 2
+}
+# a cascade's (or a local light's): the fog sphere and the light box's sphere (ac_casts: half the height up, 1.5 the larger of the
+# radius and that half height)
+function ac_cell_out_sh(render3d_st: mut Render3dState, a: Actor, light_vp: floats) -> bool {
+  if render3d_st.ac_cell_pass == 0 or not a.still or a.leader != null or a.model == null or a.radius == 0.0 { return false }
+  let hh = a.model.height * 0.5 * a.scale
+  let r = Math.max(a.radius * a.scale, hh)
+  let i = ac_cell_entry(render3d_st, a, a.y + hh, r, true)
+  if i < 0 { return false }
+  let t = render3d_st.ac_cell
+  if t[i + 5] == 0 {
+    let x = ac_cell_x(t, i);  let y = ac_cell_y(t, i);  let z = ac_cell_z(t, i);  let cr = ac_cell_r(t, i)
+    t[i + 5] = 1
+    if r3d_beyond_fog(render3d_st, x, y, z, cr) or not ac_in_light(render3d_st, light_vp, x, y, z, cr) { t[i + 5] = 2 }
+  }
+  return t[i + 5] == 2
+}
+# the view's test of actor a in an actor pass: its cell's first (ac_cell_out), then its own
+function ac_view_ok(render3d_st: mut Render3dState, a: Actor) -> bool {
+  if ac_cell_out(render3d_st, a) { return false }
+  return ac_visible(render3d_st, a, false)
+}
 function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool {
   if a.model == null { return false }
   if a.leader != null {
@@ -689,6 +783,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_census_at == -2 { render3d_st.ac_census_at = -1;  if r3d_env_has(render3d_st, "R3D_ACTOR_CENSUS") { render3d_st.ac_census_at = Text.to_int(r3d_env(render3d_st, "R3D_ACTOR_CENSUS")) } }
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { actor_census(render3d_st) }
   occ_read(render3d_st)                                     # last frame's occlusion tests (occlusion.ludic)
+  if not render3d_st.ter_reflect { ac_cell_open(render3d_st) } else { ac_cell_close(render3d_st) }
   # the plain actors that share a model, instanced (actor_inst.ludic); not in the water's reflection, which would refill the buffer
   var grouped = false
   var gathered = false
@@ -697,7 +792,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     for i in 0 .. len(render3d_st.ac_actors) {
       let a = render3d_st.ac_actors[i]
       if ai_plain(render3d_st, a) {
-        let v = ac_visible(render3d_st, a, false)
+        let v = ac_view_ok(render3d_st, a)
         a.vis_stamp = render3d_st.ai_stamp;  a.vis_ok = v
         if v { ai_gather(render3d_st, a) }
       }
@@ -713,7 +808,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     if grouped and ai_grouped(render3d_st, a) { continue }
     if gathered and a.vis_stamp == render3d_st.ai_stamp {
       if not a.vis_ok { continue }
-    } else if not ac_visible(render3d_st, a, false) { continue }
+    } else if not ac_view_ok(render3d_st, a) { continue }
     if a.blend != 0 { continue }
     var ap = render3d_st.ac_lit
     # a garment's fabric is opaque cloth (its part may be marked cut-out with the hair's: the program has no alpha test)
@@ -732,6 +827,7 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     if a2c { gpu_alpha_to_coverage(render3d_st, false) }
   }
   actor_draw_outlines(render3d_st)
+  ac_cell_close(render3d_st)
   gpu_cull(render3d_st, true)
 }
 # The eye occlusion shells (eyeshell.frag), after the opaque scene and its subsurface pass: the frame copied (post_capture_scene), then each
@@ -889,6 +985,7 @@ function ac_caster_small(render3d_st: mut Render3dState, a: Actor) -> bool {
 
 function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
   if render3d_st.ac_actors == null { return }
+  ac_cell_open(render3d_st)
   ac_lvp(render3d_st, render3d_st.ac_sh, light_vp)
   ac_lvp(render3d_st, render3d_st.ac_sh_cut, light_vp)
   ac_dither_frame(render3d_st, render3d_st.ac_sh_cut)
@@ -939,6 +1036,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { ac_caster_count(render3d_st, a) }
     if ac_proxy_figure(render3d_st, a) { actor_draw_proxy(render3d_st, a) } else { actor_draw_one(render3d_st, a, ap, true) }
   }
+  ac_cell_close(render3d_st)
   ac_shadow_lod_restore(render3d_st)
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at {
     print(`actor census, cascade {render3d_st.sh_cascade}: {render3d_st.ac_cc_actors} actors cast {render3d_st.ac_cc_draws} draws ({render3d_st.ac_cc_skinned} of them skinned, {render3d_st.ac_cc_cut} cutout)`)
@@ -957,6 +1055,9 @@ function ac_phase_skips(render3d_st: Render3dState, a: Actor) -> bool {
 # whether actor a casts into the light light_vp is drawing now
 function ac_casts(render3d_st: mut Render3dState, a: Actor, light_vp: floats) -> bool {
   if a.blend != 0 and not a.blend_casts and a.leader == null { return false }   # smoke and glow cast nothing
+  if a.visible or a.cast_hidden {
+    if a.casts and ac_cell_out_sh(render3d_st, a, light_vp) { return false }
+  }
   if not ac_visible(render3d_st, a, true) { return false }
   if a.blend != 0 and not a.blend_casts { return false }
   if a.radius != 0.0 {

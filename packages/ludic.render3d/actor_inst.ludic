@@ -86,7 +86,13 @@ function ai_plain(render3d_st: Render3dState, a: Actor) -> bool {
   if m == null { return false }
   if (a.cutout or a.skin != null or m.skin != null) and not render3d_st.ai_skin { return false }
   if a.skin != null and m.skin == null { return false }
-  return not ac_has_fabric(m) and not ac_has_eyes(m)
+  # the model's own answer, kept on it (asked again when its primitives grow, or a garment's fabric or a face's eyes are set: morph.ludic)
+  if m.ai_pl == 0 or m.ai_pl_n != len(m.prims) {
+    m.ai_pl = 2
+    if not ac_has_fabric(m) and not ac_has_eyes(m) { m.ai_pl = 1 }
+    m.ai_pl_n = len(m.prims)
+  }
+  return m.ai_pl == 1
 }
 
 # A skinned actor's palette into the frame's bone buffer, once a frame (every pass of the frame reads the same rows): each joint's

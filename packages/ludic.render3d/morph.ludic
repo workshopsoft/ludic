@@ -513,6 +513,7 @@ export function model_set_fabric(render3d_st: mut Render3dState, model: Model, p
     if pr.fab == null { pr.fab = floats(68) }
     for k in 0 .. 68 { pr.fab[k] = p[k] }
   }
+  model.ai_pl = 0
   free(ids)
   return true
 }
@@ -545,6 +546,7 @@ export function model_set_eyes(render3d_st: mut Render3dState, model: Model, cel
     if pr.eye == null { pr.eye = floats(5) }
     for k in 0 .. 5 { pr.eye[k] = cells[k] }
   }
+  model.ai_pl = 0
   free(ids)
   return true
 }

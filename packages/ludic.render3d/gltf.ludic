@@ -88,6 +88,8 @@ property Model {
   ai_first: Actor = null,
   ai_at:    int = 0,
   ai_fill:  int = 0,
+  ai_pl:    int = 0,         # no fabric and no eyes on any primitive (actor_inst.ludic ai_plain): 0 not yet asked, 1 yes, 2 no; ai_pl_n the
+  ai_pl_n:  int = 0,         # primitives it was asked over (a model still being built is asked again)
   s4:       int = 0,         # every primitive skin4 (actor.ludic ac_s4): 0 not yet asked, 1 yes, 2 no
   @owns(Skin) skin:   Skin           # the skeleton, for a skinned node (skin.ludic); null for a rigid model
 }
