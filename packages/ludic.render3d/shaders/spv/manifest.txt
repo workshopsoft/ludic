@@ -1920,7 +1920,7 @@ T 428caa3a u_ue_lsh 26
 T 428caa3a ua_skyview 27
 T 428caa3a ua_trans 28
 P 3e4b62f9 fullscreen.vert ssao_blur.frag 
-B 3e4b62f9 frag 0 2728
+B 3e4b62f9 frag 1 2732
 U 3e4b62f9 frag u_cascade_vp 0 mat4 6 64
 U 3e4b62f9 frag u_cascade_split 384 float 6 16
 U 3e4b62f9 frag u_cascade_range 480 float 6 16
@@ -2018,6 +2018,7 @@ U 3e4b62f9 frag u_lu_on 2672 vec4 1 0
 U 3e4b62f9 frag u_gslope 2688 vec4 1 0
 U 3e4b62f9 frag u_gslope_c 2704 vec4 1 0
 U 3e4b62f9 frag u_texel 2720 vec2 1 0
+U 3e4b62f9 frag u_ao_half 2728 float 1 0
 T 3e4b62f9 u_ao 2
 T 3e4b62f9 u_brdf 3
 T 3e4b62f9 u_depth 4
@@ -2157,6 +2158,7 @@ U 676965ab frag u_use_hzb 2968 float 1 0
 U 676965ab frag u_pk 2976 vec4 1 0
 U 676965ab frag u_full 2992 vec2 1 0
 U 676965ab frag u_ao_sun_ratio 3000 float 1 0
+U 676965ab frag u_ao_half 3004 float 1 0
 U 676965ab frag u_ao_q 3008 vec3 1 0
 T 676965ab u_brdf 2
 T 676965ab u_depth 3

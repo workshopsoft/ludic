@@ -22,6 +22,7 @@ uniform vec4 u_pk;          // 1 / proj[0][0], 1 / proj[1][1], proj[2][0], proj[
 uniform vec2 u_full;        // the frame's size, in pixels
 uniform float u_ao_sun_ratio; // the sun's light on a face square to it over the indirect light (post.ludic): the AO darkens the indirect
                               // share alone (0: the old whole-frame multiplier, R3D_UE_AO_INDIRECT=0)
+uniform float u_ao_half;   // 1: this target is half the frame (post.ludic post_ao_half): a texel reads its 2 x 2 block's top-left pixel
 uniform vec3 u_ao_q;        // Unreal's AO shader quality (post.ludic post_ao_quality): x the directions (3 or 6), y the steps, z its quad blur
 // A sample must be behind the surface by more than this much of its sideways distance from the pixel (the tangent of the
 // angle, 0.4 about 22 degrees) before it counts as occluded. The pixel's normal is its triangle's, so a ground of 1 m
@@ -45,12 +46,14 @@ vec3 tapPos(vec2 uv) {
   return vec3(d * (ndc.x + u_pk.z) * u_pk.x, d * (ndc.y + u_pk.w) * u_pk.y, -d);
 }
 void main() {
-  vec3 P = viewPos(v_uv);
+  // at half size the pixel the blur's upsample weights this texel by (ssao_blur.frag): its block's top-left, read exactly
+  vec2 auv = u_ao_half > 0.5 ? (vec2(ivec2(gl_FragCoord.xy) * 2) + 0.5) * u_texel : v_uv;
+  vec3 P = viewPos(auv);
   // past 900 m, or where a fog wall has already hidden everything (u_ao_far, post.ludic)
   // (no return before the quad blur below: it takes its neighbours' values by derivatives, which a quad must reach together)
   bool past = -P.z > (u_ao_far > 0.0 ? u_ao_far : 900.0);
-  vec3 Pr = viewPos(v_uv + vec2(u_texel.x, 0.0)), Pl = viewPos(v_uv - vec2(u_texel.x, 0.0));
-  vec3 Pu = viewPos(v_uv + vec2(0.0, u_texel.y)), Pd = viewPos(v_uv - vec2(0.0, u_texel.y));
+  vec3 Pr = viewPos(auv + vec2(u_texel.x, 0.0)), Pl = viewPos(auv - vec2(u_texel.x, 0.0));
+  vec3 Pu = viewPos(auv + vec2(0.0, u_texel.y)), Pd = viewPos(auv - vec2(0.0, u_texel.y));
   vec3 dx = (abs(Pr.z - P.z) < abs(P.z - Pl.z)) ? Pr - P : P - Pl;
   vec3 dy = (abs(Pu.z - P.z) < abs(P.z - Pd.z)) ? Pu - P : P - Pd;
   vec3 N = normalize(cross(dx, dy));
@@ -86,7 +89,7 @@ void main() {
       vec2 la = vec2(0.0);
       for (int st = 0; st < STEPS; st++) {
         vec2 o = lr * (float(st + 1) / float(STEPS));
-        vec3 SL = tapPos(v_uv + o), SR = tapPos(v_uv - o);
+        vec3 SL = tapPos(auv + o), SR = tapPos(auv - o);
         vec3 dL = SL - P, dR = SR - P;
         float nAng = clamp((1.0 - dot(dL, dR) * inversesqrt(max(dot(dL, dL) * dot(dR, dR), 1e-12))) * 0.5, 0.0, 1.0);
         // left / right: the samples' depth in front of the pixel (Unreal's view z grows away from the eye)

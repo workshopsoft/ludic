@@ -124,7 +124,12 @@ function post_targets__t(render3d_st: mut Render3dState, w: int, h: int) -> void
   # upsample in the tonemapper then stretched over the whole ground. They read as thin
   # transparent black bars, appear only where there is depth (never on the sky), and
   # are nothing to do with the shadow map or the reflection.
-  render3d_st.post_ao = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
+  # Since perf/post the taps run at half size (as Unreal's own SSAO setup pass and XeGTAO do) and the blur is the upsample: it
+  # runs at full size, each pixel weighting the half-size texels by the full-size depth each was taken at (ssao_blur.frag), so
+  # the tonemapper never stretches a half-size occlusion bilinearly. R3D_AO_HALF=0: the taps at full size again.
+  var aw = w;  var ah = h
+  if post_ao_half(render3d_st) { aw = (w + 1) / 2;  ah = (h + 1) / 2 }
+  render3d_st.post_ao = target_new(render3d_st, aw, ah, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
   render3d_st.post_ao_blur = target_new(render3d_st, w, h, GPU_RGBA16F, GPU_RGBA, GPU_HALF_FLOAT, false, GPU_LINEAR)
   render3d_st.post_ao_hzb = target_new(render3d_st, (w + 1) / 2, (h + 1) / 2, GPU_R32F, GPU_RED, GPU_FLOAT, false, GPU_NEAREST)
   if render3d_st.post_neutral == 0 { render3d_st.post_neutral = tex_solid(render3d_st, 0, 0, 0, 255) }
@@ -283,6 +288,8 @@ function post_copy_prev(render3d_st: mut Render3dState) -> void {
 # the screen-space bounce (ssgi.frag u_gi): off as Unreal 5.8 leaves its deprecated SSGI, R3D_UE_SSGI=1 on
 # (a game's setting: post_ssgi_want 1; the switch wins over it)
 function post_ssgi_on(render3d_st: mut Render3dState) -> bool { return render3d_st.post_ssgi_want == 1 or (r3d_env_has(render3d_st, "R3D_UE_SSGI") and r3d_env(render3d_st, "R3D_UE_SSGI") == "1") }
+# the AO taps at half size, upsampled by depth in the blur (post_init_targets); R3D_AO_HALF=0 full size
+function post_ao_half(render3d_st: mut Render3dState) -> bool { return not (r3d_env_has(render3d_st, "R3D_AO_HALF") and r3d_env(render3d_st, "R3D_AO_HALF") == "0") }
 function post_ao_hzb_on(render3d_st: mut Render3dState) -> bool { return not (r3d_env_has(render3d_st, "R3D_UE_AO_HZB") and r3d_env(render3d_st, "R3D_UE_AO_HZB") == "0") }
 
 # Unreal's AO shader quality from its post process volume's AmbientOcclusionQuality (Scene.cpp: 50 by default), as FSSAOHelper::
@@ -324,6 +331,9 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   var use_hzb = 0.0
   if hzb { use_hzb = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_use_hzb"), use_hzb)
+  var ao_half = 0.0
+  if render3d_st.post_ao.w < render3d_st.post_w { ao_half = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_ao_half"), ao_half)
   let pm = render3d_st.cam_proj
   u_f4(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_pk"), 1.0 / pm[0], 1.0 / pm[5], pm[8], pm[9])
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao, "u_full"), float(render3d_st.post_w), float(render3d_st.post_h))
@@ -374,6 +384,7 @@ function post_ssao_pass(render3d_st: mut Render3dState) -> void {
   r3d_bind_2d(render3d_st, render3d_st.post_p_ao_blur, "u_ao", 0, render3d_st.post_ao.color)
   r3d_bind_2d(render3d_st, render3d_st.post_p_ao_blur, "u_depth", 1, render3d_st.post_hdr.depth)
   u_f2(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao_blur, "u_texel"), 1.0 / float(render3d_st.post_ao.w), 1.0 / float(render3d_st.post_ao.h))
+  u_f(render3d_st, gpu_uniform(render3d_st, render3d_st.post_p_ao_blur, "u_ao_half"), ao_half)
   mesh_draw(render3d_st, render3d_st.post_fs)
 }
 
