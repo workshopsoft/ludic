@@ -131,7 +131,11 @@ property Actor {
   rvt_x0:     float = 0.0,
   rvt_z0:     float = 0.0,
   rvt_x1:     float = 0.0,
-  rvt_z1:     float = 0.0
+  rvt_z1:     float = 0.0,
+  # its place in the cell grid (ac_pass_actors): -1 none, -2 the rest list, else its cell; gc_slot its index in that list
+  gc_cell:    int = -1,
+  gc_slot:    int = 0,
+  gc_grid:    AcGrid
 }
 const ACTOR_POOL: int = 512
 # the grazing-light push a character's or a car's shadow lookup may take (lighting.glsl sunShadow): the terrain's 10 pushed it
@@ -319,6 +323,7 @@ function actor_remove(render3d_st: mut Render3dState, a: Actor) -> void {
   let r = a.row
   if r < 0 or r >= len(l) or l[r].id != a.id { return }
   if a.still { sc_drop(render3d_st, a) }      # its shadow is in the cascades that hold it (shadow_cache.ludic)
+  ac_grid_out(a, false)
   let last = List.pop(l)
   if last.id != a.id {
     l[r] = last
@@ -335,6 +340,8 @@ function actor_keep(render3d_st: mut Render3dState, a: Actor) -> void {
   a.row = len(render3d_st.ac_actors)
   @alloc_ok("within the stage's room made at start-up (@max 2048)")
   push(render3d_st.ac_actors, a)
+  ac_grid_out(a, false)
+  ac_grid_rest(ac_grid(render3d_st), a)
 }
 # colour one named part of the model (a material name from the file)
 @alloc_ok("an actor's part tint or hidden-part table, made once per actor and given back by actor_release")
@@ -369,6 +376,7 @@ function actor_new(render3d_st: mut Render3dState, model: Model) -> Actor {
 }
 
 function actor_place(a: Actor, x: float, y: float, z: float, yaw: float) -> void {
+  if a.gc_cell >= 0 and (a.x != x or a.y != y or a.z != z) { ac_grid_out(a, true) }   # moved: out of its cell, filed again by the next pass
   a.x = x;  a.y = y;  a.z = z;  a.yaw = yaw
   m4_trs(a.mat, x, y, z, yaw, a.scale)
 }
@@ -484,6 +492,171 @@ function ac_cell_out_sh(render3d_st: mut Render3dState, a: Actor, light_vp: floa
 function ac_view_ok(render3d_st: mut Render3dState, a: Actor) -> bool {
   if ac_cell_out(render3d_st, a) { return false }
   return ac_visible(render3d_st, a, false)
+}
+# The still actors kept by cell, so a pass visits only the cells it can see, as Unreal's scene octree hands a pass the primitives of the
+# nodes in view rather than every one. A still actor (on the stage, no leader, a model and a radius) is filed in the AC_CELL column its
+# place falls in; the column keeps the span of its actors' test spheres (the view's and the light's, ac_cell_out / ac_cell_out_sh), grown
+# as they come and reset when it empties. Every other actor is in the rest list, walked each pass; a new actor starts there and the next
+# pass files it. A filed actor moved by actor_place leaves its column for the rest and is filed again where it stands. A pass's list is
+# the rest and its visible columns' actors in their stage order (ac_actors), so draws and instancing go as the full walk's.
+# R3D_CELL_CULL=0, or a pass without cells (the water's reflection), walks the whole stage.
+property AcCol {
+  cx:    int = 0,
+  cz:    int = 0,
+  ylo:   float = 0.0,
+  yhi:   float = 0.0,
+  reach: float = 0.0,
+  @max(32768) l: []Actor = null
+}
+property AcGrid {
+  @max(16384) cols: []AcCol = null,
+  hash: words = null,                    # (column key + 1, its index) pairs, open addressing
+  @max(32768) rest: []Actor = null,
+  @max(32768) pass: []Actor = null
+}
+const AC_GRID_H: int = 32768
+@alloc_ok("the grid, made once")
+function ac_grid(render3d_st: mut Render3dState) -> AcGrid {
+  if render3d_st.ac_grid == null {
+    let g = new AcGrid
+    g.cols = new []AcCol
+    g.rest = new []Actor
+    g.pass = new []Actor
+    g.hash = words(AC_GRID_H * 2)
+    for i in 0 .. AC_GRID_H * 2 { g.hash[i] = 0 }
+    render3d_st.ac_grid = g
+  }
+  return render3d_st.ac_grid
+}
+@alloc_ok("the rest list grows to the stage's peak once")
+function ac_grid_rest(g: AcGrid, a: Actor) -> void {
+  a.gc_grid = g;  a.gc_cell = -2;  a.gc_slot = len(g.rest)
+  push(g.rest, a)
+}
+# actor a out of its list (to the rest when moved)
+function ac_grid_out(a: Actor, moved: bool) -> void {
+  let g = a.gc_grid
+  if g == null or a.gc_cell == -1 { return }
+  var l = g.rest
+  if a.gc_cell >= 0 { l = g.cols[a.gc_cell].l }
+  let s = a.gc_slot
+  if s >= 0 and s < len(l) and l[s] == a {
+    let last = List.pop(l)
+    if last != a { l[s] = last;  last.gc_slot = s }
+  }
+  if a.gc_cell >= 0 and len(l) == 0 { let c = g.cols[a.gc_cell];  c.ylo = 0.0;  c.yhi = 0.0;  c.reach = 0.0 }
+  a.gc_cell = -1
+  if moved { ac_grid_rest(g, a) }
+}
+function ac_grid_clear(render3d_st: mut Render3dState) -> void {
+  let g = render3d_st.ac_grid
+  if g == null { return }
+  for i in 0 .. len(g.rest) { g.rest[i].gc_cell = -1 }
+  List.clear(g.rest)
+  for i in 0 .. len(g.cols) {
+    let c = g.cols[i]
+    for j in 0 .. len(c.l) { c.l[j].gc_cell = -1 }
+    List.clear(c.l);  c.ylo = 0.0;  c.yhi = 0.0;  c.reach = 0.0
+  }
+  List.clear(g.pass)
+}
+function ac_grid_still(a: Actor) -> bool { return a.still and a.leader == null and a.model != null and a.radius > 0.0 }
+# the column of (cx, cz), made when first asked
+@alloc_ok("a column, made the first time an actor stands in it")
+function ac_grid_col(g: AcGrid, cx: int, cz: int) -> int {
+  let key = (cx + 32768) * 65536 + (cz + 32768) + 1
+  var h = ((cx * 7919 + cz * 1299709) % AC_GRID_H + AC_GRID_H) % AC_GRID_H
+  var n = 0
+  while n < AC_GRID_H {
+    let k = g.hash[h * 2]
+    if k == key { return g.hash[h * 2 + 1] }
+    if k == 0 {
+      let c = new AcCol
+      c.cx = cx;  c.cz = cz;  c.l = new []Actor
+      g.hash[h * 2] = key;  g.hash[h * 2 + 1] = len(g.cols)
+      push(g.cols, c)
+      return len(g.cols) - 1
+    }
+    h = (h + 1) % AC_GRID_H
+    n += 1
+  }
+  return -1
+}
+# file still actor a (in the rest at slot) in its column; false when there is none to take it
+@alloc_ok("a column's list grows to its peak once")
+function ac_grid_file(g: AcGrid, a: Actor) -> bool {
+  let ci = ac_grid_col(g, int(Math.floor(a.x / AC_CELL)), int(Math.floor(a.z / AC_CELL)))
+  if ci < 0 { return false }
+  ac_grid_out(a, false)
+  let c = g.cols[ci]
+  let rv = a.radius * a.scale
+  let hh = a.model.height * 0.5 * a.scale
+  let lo = a.y + Math.min(rv, hh)
+  let hi = a.y + Math.max(rv, hh)
+  let reach = 2.0 * Math.max(rv, hh) + 1.0
+  if len(c.l) == 0 { c.ylo = lo;  c.yhi = hi;  c.reach = reach } else {
+    c.ylo = Math.min(c.ylo, lo);  c.yhi = Math.max(c.yhi, hi);  c.reach = Math.max(c.reach, reach)
+  }
+  a.gc_grid = g;  a.gc_cell = ci;  a.gc_slot = len(c.l)
+  push(c.l, a)
+  return true
+}
+# whether this pass sees nothing of column c: the sphere about every test sphere its actors' cells and own tests use
+function ac_grid_col_out(render3d_st: mut Render3dState, c: AcCol, shadow: bool, light_vp: floats) -> bool {
+  let x = (float(c.cx) + 0.5) * AC_CELL
+  let z = (float(c.cz) + 0.5) * AC_CELL
+  let y = (c.ylo + c.yhi) * 0.5
+  let h = (c.yhi - c.ylo) * 0.5
+  let r = Math.sqrt(AC_CELL * AC_CELL * 0.5 + h * h) + c.reach
+  if shadow { return r3d_beyond_fog(render3d_st, x, y, z, r) or not ac_in_light(render3d_st, light_vp, x, y, z, r) }
+  return not cam_sphere_visible(render3d_st, x, y, z, r)
+}
+# the actors this pass walks: the whole stage without cells, else the rest and the visible columns' actors in stage order. A sun
+# cascade's moving phase draws no still actor, so it takes the rest alone.
+@alloc_ok("the pass list grows to its peak once")
+function ac_pass_actors(render3d_st: mut Render3dState, shadow: bool, light_vp: floats) -> []Actor {
+  if render3d_st.ac_cell_pass == 0 or render3d_st.ter_reflect { return render3d_st.ac_actors }
+  let g = ac_grid(render3d_st)
+  let out = g.pass
+  List.clear(out)
+  var i = 0
+  while i < len(g.rest) {
+    let a = g.rest[i]
+    if ac_grid_still(a) and ac_grid_file(g, a) { continue }      # (the rest's last took its slot)
+    push(out, a)
+    i += 1
+  }
+  if not (shadow and not render3d_st.sh_local and render3d_st.sh_phase == SH_PHASE_DYN) {
+    for ci in 0 .. len(g.cols) {
+      let c = g.cols[ci]
+      if len(c.l) == 0 or ac_grid_col_out(render3d_st, c, shadow, light_vp) { continue }
+      for j in 0 .. len(c.l) { push(out, c.l[j]) }
+    }
+  }
+  ac_sort_rows(out)
+  return out
+}
+# l in stage order (Actor.row), a heap sort: no recursion, no room
+function ac_sort_rows(l: []Actor) -> void {
+  let n = len(l)
+  var s = n / 2 - 1
+  while s >= 0 { ac_sift_rows(l, s, n);  s -= 1 }
+  var e = n - 1
+  while e > 0 {
+    let t = l[0];  l[0] = l[e];  l[e] = t
+    ac_sift_rows(l, 0, e)
+    e -= 1
+  }
+}
+function ac_sift_rows(l: []Actor, start: int, n: int) -> void {
+  var r = start
+  while 2 * r + 1 < n {
+    var c = 2 * r + 1
+    if c + 1 < n and l[c + 1].row > l[c].row { c += 1 }
+    if l[r].row >= l[c].row { return }
+    let t = l[r];  l[r] = l[c];  l[c] = t
+    r = c
+  }
 }
 function ac_visible(render3d_st: Render3dState, a: Actor, shadow: bool) -> bool {
   if a.model == null { return false }
@@ -784,13 +957,14 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at { actor_census(render3d_st) }
   occ_read(render3d_st)                                     # last frame's occlusion tests (occlusion.ludic)
   if not render3d_st.ter_reflect { ac_cell_open(render3d_st) } else { ac_cell_close(render3d_st) }
+  let pl = ac_pass_actors(render3d_st, false, render3d_st.cam_view)   # (the view's pass reads no light)
   # the plain actors that share a model, instanced (actor_inst.ludic); not in the water's reflection, which would refill the buffer
   var grouped = false
   var gathered = false
   if not render3d_st.ter_reflect and ai_on(render3d_st) {
     ai_begin(render3d_st)
-    for i in 0 .. len(render3d_st.ac_actors) {
-      let a = render3d_st.ac_actors[i]
+    for i in 0 .. len(pl) {
+      let a = pl[i]
       if ai_plain(render3d_st, a) {
         let v = ac_view_ok(render3d_st, a)
         a.vis_stamp = render3d_st.ai_stamp;  a.vis_ok = v
@@ -801,8 +975,8 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     grouped = ai_build(render3d_st, 0)
     if grouped { ai_draw(render3d_st, false) }
   }
-  for i in 0 .. len(render3d_st.ac_actors) {
-    let a = render3d_st.ac_actors[i]
+  for i in 0 .. len(pl) {
+    let a = pl[i]
     if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
     if a.shell or a.strands { continue }                 # (actor_draw_shells, actor_draw_strands: after the opaque scene)
     if grouped and ai_grouped(render3d_st, a) { continue }
@@ -986,6 +1160,7 @@ function ac_caster_small(render3d_st: mut Render3dState, a: Actor) -> bool {
 function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) -> void {
   if render3d_st.ac_actors == null { return }
   ac_cell_open(render3d_st)
+  let pl = ac_pass_actors(render3d_st, true, light_vp)
   ac_lvp(render3d_st, render3d_st.ac_sh, light_vp)
   ac_lvp(render3d_st, render3d_st.ac_sh_cut, light_vp)
   ac_dither_frame(render3d_st, render3d_st.ac_sh_cut)
@@ -1003,8 +1178,8 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
   if render3d_st.sh_phase == SH_PHASE_EXTRA { slot = AI_VEL_SLOT }       # a cache's extra subjects (a few): each drawn on its own
   if not render3d_st.sh_local and slot < AI_VEL_SLOT and ai_on(render3d_st) {      # (the last slot is the motion pass's)
     ai_begin(render3d_st)
-    for i in 0 .. len(render3d_st.ac_actors) {
-      let a = render3d_st.ac_actors[i]
+    for i in 0 .. len(pl) {
+      let a = pl[i]
       if ac_phase_skips(render3d_st, a) { continue }
       if ai_plain(render3d_st, a) {
         let c = ac_casts(render3d_st, a, light_vp)
@@ -1021,8 +1196,8 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
       ai_draw(render3d_st, true)
     }
   }
-  for i in 0 .. len(render3d_st.ac_actors) {
-    let a = render3d_st.ac_actors[i]
+  for i in 0 .. len(pl) {
+    let a = pl[i]
     if grouped and ai_grouped(render3d_st, a) { continue }
     if ac_phase_skips(render3d_st, a) { continue }
     if gathered and a.vis_stamp == render3d_st.ai_stamp {
@@ -1037,7 +1212,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     if ac_proxy_figure(render3d_st, a) { actor_draw_proxy(render3d_st, a) } else { actor_draw_one(render3d_st, a, ap, true) }
   }
   ac_cell_close(render3d_st)
-  ac_shadow_lod_restore(render3d_st)
+  ac_shadow_lod_restore(pl)
   if render3d_st.ac_census_at > 0 and render3d_st.ac_frame == render3d_st.ac_census_at {
     print(`actor census, cascade {render3d_st.sh_cascade}: {render3d_st.ac_cc_actors} actors cast {render3d_st.ac_cc_draws} draws ({render3d_st.ac_cc_skinned} of them skinned, {render3d_st.ac_cc_cut} cutout)`)
     render3d_st.ac_cc_actors = 0;  render3d_st.ac_cc_draws = 0;  render3d_st.ac_cc_skinned = 0;  render3d_st.ac_cc_cut = 0
@@ -1127,9 +1302,9 @@ function ac_shadow_lod(render3d_st: mut Render3dState, a: Actor, d: float) -> vo
   a.model = a.sh_lods[j]
 }
 # every caster back on the model the view draws, after a cascade's actors
-function ac_shadow_lod_restore(render3d_st: mut Render3dState) -> void {
-  for i in 0 .. len(render3d_st.ac_actors) {
-    let a = render3d_st.ac_actors[i]
+function ac_shadow_lod_restore(l: []Actor) -> void {
+  for i in 0 .. len(l) {
+    let a = l[i]
     if a.sh_keep != null { a.model = a.sh_keep;  a.sh_keep = null }
   }
 }
@@ -1177,8 +1352,9 @@ function actor_release_all(render3d_st: mut Render3dState) -> void {
 # their models belong to whoever loaded them. What is not kept again is lost: actor_release_all.
 function actor_clear_all(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_actors == null { return }
-  for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].row = -1 }
+  for i in 0 .. len(render3d_st.ac_actors) { render3d_st.ac_actors[i].row = -1;  render3d_st.ac_actors[i].gc_cell = -1 }
   List.clear(render3d_st.ac_actors)
+  ac_grid_clear(render3d_st)
   stc_clear_all(render3d_st)
   tpa_clear_all(render3d_st)
   outline_clear(render3d_st)
@@ -1217,6 +1393,7 @@ function actor_fresh_as(render3d_st: mut Render3dState, skinned: bool) -> Actor 
   a.sh_lods = null;  a.sh_lod_d = null;  a.sh_keep = null
   a.tag = "";  a.stc = false;  a.stc_vis = 0;  a.tpa = false
   a.rvt = false;  a.rvt_in = false
+  a.gc_cell = -1;  a.gc_grid = null
   return a
 }
 
