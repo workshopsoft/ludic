@@ -1,7 +1,10 @@
 # ============================================================================
 # tilemap_far.ludic - the far ground: past the patches a TileDraw draws (tilemap_draw.ludic, a radius of full detail), each tile
-# within a far radius is ONE actor, its patches at their coarsest baked level merged into one mesh, so the ground reaches as far
-# as a game draws its far proxies without an actor a patch (a 4 km radius of 128 m patches is three thousand). A tile's far mesh
+# within a far radius is merged at its patches' coarsest baked level, and the tiles of a TMF_GROUP x TMF_GROUP block (a group) are
+# ONE actor and one draw, so the ground reaches as far as a game draws its far proxies without an actor a patch (a 4 km radius of
+# 128 m patches is three thousand) or a tile (a whole island's ~400 tiles walked, culled and drawn every frame, shadows too). A
+# tile's merged mesh is kept on the CPU (its slot's buffers); a group whose tiles changed is put together again from them the same
+# frame (copies, no reading of tables), so a tile made again costs one group's upload. A tile's far mesh
 # holds exactly the patches the near draw does not hold now (a patch the near draw has not built yet included), so the two never
 # overlap and nothing is missing at the seam; it is made again when that set changes, nearest first: a tile whose mesh lacks a patch
 # the near draw no longer holds (a hole: the near draw let it go) on the same frame, up to `hole_budget` tiles, the others (the near
@@ -18,22 +21,37 @@
 #   each frame, after tmd_frame:  tmf_frame(render3d_st, far, cam_x, cam_z)
 #   at the end, before tmd_free:  tmf_free(render3d_st, far)
 #
-# A frame allocates nothing once the merged buffers have grown to the largest tile: every slot's mesh, model and primitive are made
+# A frame allocates nothing once the buffers have grown to the largest tile and group: every group's mesh, model and primitive are made
 # once (tmf_new); a rebuild refills them.
 # ============================================================================
 numbers float
 
 export property TmFar {
   tile: int = -1                     # the tile it draws (tz * cols + tx), -1 none
-  actor: Actor = null
-  model: Model = null
-  mesh: Mesh = null
-  held: bool = false                 # the mesh holds buffers
+  vb: floats = null                  # its merged mesh (about the tile's middle, heights over `lift`): vertices, colours, indices
+  cb: floats = null
+  ib: words = null
+  nv: int = 0
+  ni: int = 0
+  y0: float = 0.0                    # its height range
+  y1: float = 0.0
   built: bool = false                # made for the near draw's holdings in `near` (else made again)
   none: bool = false                 # the tile has no baked file: never asked again
   wait: int = 0                      # its table could not be read yet (tmm_load -1): not asked again before this frame (f.clock)
   nheld: int = 0                     # how many of its patches the near draw held when it was built
   used: int = 0                      # the frame it was last wanted
+  cx: float = 0.0                    # its middle (world) and the height its vertices are given from
+  cz: float = 0.0
+  lift: float = 0.0
+}
+
+# a block of TMF_GROUP x TMF_GROUP tiles: one actor, its tiles' meshes put together
+export property TmFarGroup {
+  actor: Actor = null
+  model: Model = null
+  mesh: Mesh = null
+  held: bool = false                 # the mesh holds buffers
+  dirty: bool = false                # a tile of it changed: put together again this frame
   cx: float = 0.0                    # where its actor stands (world), and its cull radius
   cz: float = 0.0
   lift: float = 0.0
@@ -45,9 +63,12 @@ export property TileFar {
   src: TileDraw = null               # the far tiles' tables, masks and expansion (a draw that is never framed and holds no patch)
   radius: float = 0.0
   slots: []TmFar = null
+  groups: []TmFarGroup = null        # per block of tiles (gz * gcols + gx)
+  gcols: int = 0
+  grows: int = 0
   slot_of: words = null              # per tile: the slot drawing it, -1 none
   near: words = null                 # per slot and patch: 1 where the near draw held the patch when the slot was built
-  vb: floats = null                  # the merged mesh being made: vertices (TM_VERT floats), colours (4), indices
+  vb: floats = null                  # a group's mesh being put together: vertices (TM_VERT floats), colours (4), indices
   cb: floats = null
   ib: words = null
   budget: int = 2                    # tiles made again a frame (the near draw took patches: the far mesh draws them twice meanwhile)
@@ -55,12 +76,13 @@ export property TileFar {
   clock: int = 0
   ox: float = 0.0
   oz: float = 0.0
-  shown: int = 0                     # far tiles on the stage now
+  shown: int = 0                     # far groups on the stage now (actors)
   builds: int = 0
   waits: int = 0                     # builds put off: the tile's table not readable yet
   build_us: long = 0                 # the time the builds took, all time
 }
 
+const TMF_GROUP: int = 4             # tiles a group's side
 const TMF_WAIT_FRAMES: int = 8         # a tile whose table cannot be read yet is asked again this many frames on
 const TMF_BUILT: int = 1
 const TMF_WAIT: int = 0
@@ -88,9 +110,19 @@ export function tmf_new(render3d_st: mut Render3dState, td: TileDraw, radius: fl
   f.slots = new []TmFar
   for s in 0 .. src.ms.mslots {
     let q = new TmFar
-    q.mesh = gpu_mesh_new(render3d_st)
-    q.model = tmd_model_of(render3d_st, td, q.mesh, 0, 0)
+    q.vb = floats(0)
+    q.cb = floats(0)
+    q.ib = words(0)
     push(f.slots, q)
+  }
+  f.gcols = (tm.cols + TMF_GROUP - 1) / TMF_GROUP
+  f.grows = (tm.rows + TMF_GROUP - 1) / TMF_GROUP
+  f.groups = new []TmFarGroup
+  for g in 0 .. f.gcols * f.grows {
+    let e = new TmFarGroup
+    e.mesh = gpu_mesh_new(render3d_st)
+    e.model = tmd_model_of(render3d_st, td, e.mesh, 0, 0)
+    push(f.groups, e)
   }
   f.near = words(src.ms.mslots * tm.patches * tm.patches)
   f.slot_of = words(tm.cols * tm.rows)
@@ -101,22 +133,40 @@ export function tmf_new(render3d_st: mut Render3dState, td: TileDraw, radius: fl
   return f
 }
 
-# a slot's tile let go: its actor off the stage, its buffers given back
+# the group tile t is in
+function tmf_group_of(f: TileFar, t: int) -> int {
+  let cols = f.td.tm.cols
+  return ((t / cols) / TMF_GROUP) * f.gcols + (t % cols) / TMF_GROUP
+}
+
+# a slot's tile let go: its mesh out of its group (put together again this frame)
 function tmf_release(render3d_st: mut Render3dState, f: TileFar, q: TmFar) -> void {
-  if q.actor != null { actor_release(render3d_st, q.actor);  q.actor = null;  f.shown -= 1 }
-  if q.held { gpu_mesh_free(render3d_st, q.mesh);  q.held = false }
+  if q.ni > 0 and q.tile >= 0 { f.groups[tmf_group_of(f, q.tile)].dirty = true }
+  q.nv = 0
+  q.ni = 0
   q.built = false
+}
+
+# a group's actor off the stage, its buffers given back
+function tmf_group_release(render3d_st: mut Render3dState, f: TileFar, e: TmFarGroup) -> void {
+  if e.actor != null { actor_release(render3d_st, e.actor);  e.actor = null;  f.shown -= 1 }
+  if e.held { gpu_mesh_free(render3d_st, e.mesh);  e.held = false }
 }
 
 export function tmf_free(render3d_st: mut Render3dState, f: TileFar) -> void {
   for s in 0 .. len(f.slots) {
     let q = f.slots[s]
     tmf_release(render3d_st, f, q)
-    if q.model != null { model_release(render3d_st, q.model) }
-    q.model = null
-    q.mesh = null
     if q.tile >= 0 { f.slot_of[q.tile] = -1 }
     q.tile = -1
+  }
+  for g in 0 .. len(f.groups) {
+    let e = f.groups[g]
+    tmf_group_release(render3d_st, f, e)
+    if e.model != null { model_release(render3d_st, e.model) }
+    e.model = null
+    e.mesh = null
+    e.dirty = false
   }
 }
 
@@ -178,9 +228,31 @@ function tmf_room(f: TileFar, v: int, nv: int, i: int, ni: int) -> void {
   }
 }
 
+# room for `nv` more vertices and `ni` more indices past (v, i) in slot q's buffers, grown by doubling (and kept)
+@alloc_ok("a far tile's buffers growing to its mesh, once")
+function tmf_slot_room(q: TmFar, v: int, nv: int, i: int, ni: int) -> void {
+  if (v + nv) * TM_VERT > len(q.vb) {
+    let n = max((v + nv) * 2, 256)
+    let vb = floats(n * TM_VERT)
+    let cb = floats(n * 4)
+    for k in 0 .. v * TM_VERT { vb[k] = q.vb[k] }
+    for k in 0 .. v * 4 { cb[k] = q.cb[k] }
+    free(q.vb);  free(q.cb)
+    q.vb = vb
+    q.cb = cb
+  }
+  if i + ni > len(q.ib) {
+    let ib = words(max((i + ni) * 2, 1024))
+    for k in 0 .. i { ib[k] = q.ib[k] }
+    free(q.ib)
+    q.ib = ib
+  }
+}
+
 # slot s's tile made again: every patch the near draw does not hold, at its coarsest level, into one mesh on one actor. TMF_BUILT;
-# TMF_WAIT when its table cannot be read yet (asked again); TMF_NONE when the tile has no file (never asked again)
-@alloc_ok("a far tile made again: its actor taken from the stage's spares, the mask reader's buffers made the first time")
+# TMF_WAIT when its table cannot be read yet (asked again); TMF_NONE when the tile has no file (never asked again). Into the slot's
+# own buffers, its group marked to be put together again
+@alloc_ok("a far tile made again: the mask reader's buffers made the first time")
 function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> int {
   let td = f.td
   let src = f.src
@@ -205,9 +277,7 @@ function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> int {
     y0 = Math.min(y0, tmm_ymin(src.ms, tm, ts, k % tm.patches, k / tm.patches, lod) - (2.0 * cell + tm.skirt))
     y1 = Math.max(y1, tmm_ymax(src.ms, tm, ts, k % tm.patches, k / tm.patches, lod))
   }
-  let half = tm.tile_size * 0.5
-  let r = Math.sqrt(2.0 * half * half + (y1 - y0) * (y1 - y0) * 0.25) + 1.0
-  let lift = (y0 + y1) * 0.5 - r
+  let lift = (y0 + y1) * 0.5
   let cx = tm.origin_x + (float(tx) + 0.5) * tm.tile_size
   let cz = tm.origin_z + (float(tz) + 0.5) * tm.tile_size
   var nv = 0
@@ -224,45 +294,106 @@ function tmf_build(render3d_st: mut Render3dState, f: TileFar, s: int) -> int {
     if not tmm_patch(src.ms, tm, ts, tx, tz, px, pz, lod, lift) { continue }
     let coloured = tmk_colours(render3d_st, src, ts, tx, tz, px, pz, lod)
     let ms = src.ms
-    tmf_room(f, nv, ms.nv, ni, ms.ni)
+    tmf_slot_room(q, nv, ms.nv, ni, ms.ni)
     # the patch's vertices are about its own middle: moved to the tile's
     let dx = tmap_patch_cx(tm, tx, px) - cx
     let dz = tmap_patch_cz(tm, tz, pz) - cz
     for v in 0 .. ms.nv {
       let o = (nv + v) * TM_VERT
-      for c in 0 .. TM_VERT { f.vb[o + c] = ms.vbuf[v * TM_VERT + c] }
-      f.vb[o] = f.vb[o] + dx
-      f.vb[o + 2] = f.vb[o + 2] + dz
-      if coloured { for c in 0 .. 4 { f.cb[(nv + v) * 4 + c] = src.cbuf[v * 4 + c] } }
-      else { f.cb[(nv + v) * 4] = td.color[0];  f.cb[(nv + v) * 4 + 1] = td.color[1];  f.cb[(nv + v) * 4 + 2] = td.color[2];  f.cb[(nv + v) * 4 + 3] = 1.0 }
+      for c in 0 .. TM_VERT { q.vb[o + c] = ms.vbuf[v * TM_VERT + c] }
+      q.vb[o] = q.vb[o] + dx
+      q.vb[o + 2] = q.vb[o + 2] + dz
+      if coloured { for c in 0 .. 4 { q.cb[(nv + v) * 4 + c] = src.cbuf[v * 4 + c] } }
+      else { q.cb[(nv + v) * 4] = td.color[0];  q.cb[(nv + v) * 4 + 1] = td.color[1];  q.cb[(nv + v) * 4 + 2] = td.color[2];  q.cb[(nv + v) * 4 + 3] = 1.0 }
     }
-    for i in 0 .. ms.ni { f.ib[ni + i] = ms.ibuf[i] + nv }
+    for i in 0 .. ms.ni { q.ib[ni + i] = ms.ibuf[i] + nv }
     nv += ms.nv
     ni += ms.ni
   }
   q.built = true
-  if ni == 0 {
-    # the near draw holds the whole tile
-    if q.actor != null { actor_release(render3d_st, q.actor);  q.actor = null;  f.shown -= 1 }
-    if q.held { gpu_mesh_free(render3d_st, q.mesh);  q.held = false }
-    return TMF_BUILT
-  }
-  tmf_fill(render3d_st, f, q, nv, ni)
-  if q.actor == null {
-    q.actor = actor_new_terrain(render3d_st, q.model, "terrain/far")     # the terrain pass's (terrain_pass.ludic)
-    f.shown += 1
-  } else { q.actor.model = q.model;  terrain_patch_changed(q.actor) }
-  q.actor.tint[0] = 1.0;  q.actor.tint[1] = 1.0;  q.actor.tint[2] = 1.0
-  q.actor.radius = r
-  q.actor.occ_hx = half + 0.5;  q.actor.occ_hy = (y1 - y0) * 0.5 + 0.5     # its occlusion test's box (occlusion.ludic)
-  q.cx = cx;  q.cz = cz;  q.lift = lift;  q.radius = r
-  actor_place(q.actor, cx - f.ox, lift, cz - f.oz, 0.0)
+  if ni > 0 or q.ni > 0 { f.groups[tmf_group_of(f, t)].dirty = true }
+  q.nv = nv
+  q.ni = ni
+  q.y0 = y0;  q.y1 = y1
+  q.cx = cx;  q.cz = cz;  q.lift = lift
   f.builds += 1
   return TMF_BUILT
 }
 
-# the merged buffers into slot q's mesh (the near draw's layout: position, normal, uv, and the land use's colour)
-function tmf_fill(render3d_st: mut Render3dState, f: TileFar, q: TmFar, nv: int, ni: int) -> void {
+# group g put together again from its tiles' meshes: one mesh about the middle of the tiles that have ground, on one actor (none
+# when the near draw holds all of them)
+function tmf_assemble(render3d_st: mut Render3dState, f: TileFar, g: int) -> void {
+  let tm = f.td.tm
+  let e = f.groups[g]
+  e.dirty = false
+  let gx = g % f.gcols
+  let gz = g / f.gcols
+  let half = tm.tile_size * 0.5
+  var bx0 = 1000000000.0
+  var bx1 = -1000000000.0
+  var bz0 = 1000000000.0
+  var bz1 = -1000000000.0
+  var y0 = 1000000000.0
+  var y1 = -1000000000.0
+  var any = false
+  for tz in gz * TMF_GROUP .. min(gz * TMF_GROUP + TMF_GROUP, tm.rows) {
+    for tx in gx * TMF_GROUP .. min(gx * TMF_GROUP + TMF_GROUP, tm.cols) {
+      let s = f.slot_of[tz * tm.cols + tx]
+      if s < 0 { continue }
+      let q = f.slots[s]
+      if not q.built or q.ni == 0 { continue }
+      any = true
+      bx0 = Math.min(bx0, q.cx - half);  bx1 = Math.max(bx1, q.cx + half)
+      bz0 = Math.min(bz0, q.cz - half);  bz1 = Math.max(bz1, q.cz + half)
+      y0 = Math.min(y0, q.y0);  y1 = Math.max(y1, q.y1)
+    }
+  }
+  if not any { tmf_group_release(render3d_st, f, e);  return }
+  let cx = (bx0 + bx1) * 0.5
+  let cz = (bz0 + bz1) * 0.5
+  let hx = Math.max(bx1 - bx0, bz1 - bz0) * 0.5
+  let r = Math.sqrt(2.0 * hx * hx + (y1 - y0) * (y1 - y0) * 0.25) + 1.0
+  let lift = (y0 + y1) * 0.5 - r
+  var nv = 0
+  var ni = 0
+  for tz in gz * TMF_GROUP .. min(gz * TMF_GROUP + TMF_GROUP, tm.rows) {
+    for tx in gx * TMF_GROUP .. min(gx * TMF_GROUP + TMF_GROUP, tm.cols) {
+      let s = f.slot_of[tz * tm.cols + tx]
+      if s < 0 { continue }
+      let q = f.slots[s]
+      if not q.built or q.ni == 0 { continue }
+      tmf_room(f, nv, q.nv, ni, q.ni)
+      let dx = q.cx - cx
+      let dy = q.lift - lift
+      let dz = q.cz - cz
+      for v in 0 .. q.nv {
+        let o = (nv + v) * TM_VERT
+        let i0 = v * TM_VERT
+        for c in 0 .. TM_VERT { f.vb[o + c] = q.vb[i0 + c] }
+        f.vb[o] = f.vb[o] + dx
+        f.vb[o + 1] = f.vb[o + 1] + dy
+        f.vb[o + 2] = f.vb[o + 2] + dz
+        for c in 0 .. 4 { f.cb[(nv + v) * 4 + c] = q.cb[v * 4 + c] }
+      }
+      for i in 0 .. q.ni { f.ib[ni + i] = q.ib[i] + nv }
+      nv += q.nv
+      ni += q.ni
+    }
+  }
+  tmf_fill(render3d_st, f, e, nv, ni)
+  if e.actor == null {
+    e.actor = actor_new_terrain(render3d_st, e.model, "terrain/far")     # the terrain pass's (terrain_pass.ludic)
+    f.shown += 1
+  } else { e.actor.model = e.model;  terrain_patch_changed(e.actor) }
+  e.actor.tint[0] = 1.0;  e.actor.tint[1] = 1.0;  e.actor.tint[2] = 1.0
+  e.actor.radius = r
+  e.actor.occ_hx = hx + 0.5;  e.actor.occ_hy = (y1 - y0) * 0.5 + 0.5     # its occlusion test's box (occlusion.ludic)
+  e.cx = cx;  e.cz = cz;  e.lift = lift;  e.radius = r
+  actor_place(e.actor, cx - f.ox, lift, cz - f.oz, 0.0)
+}
+
+# the merged buffers into group q's mesh (the near draw's layout: position, normal, uv, and the land use's colour)
+function tmf_fill(render3d_st: mut Render3dState, f: TileFar, q: TmFarGroup, nv: int, ni: int) -> void {
   tmd_textures(render3d_st)
   let m = q.mesh
   if q.held { gpu_mesh_free(render3d_st, m) }
@@ -308,9 +439,9 @@ export function tmf_frame(render3d_st: mut Render3dState, f: TileFar, cam_x: flo
   let doz = td.oz - f.oz
   f.ox = td.ox;  f.oz = td.oz
   if dox != 0.0 or doz != 0.0 {
-    for s in 0 .. len(f.slots) {
-      let q = f.slots[s]
-      if q.actor != null { actor_place(q.actor, q.cx - f.ox, q.lift, q.cz - f.oz, 0.0) }
+    for g in 0 .. len(f.groups) {
+      let e = f.groups[g]
+      if e.actor != null { actor_place(e.actor, e.cx - f.ox, e.lift, e.cz - f.oz, 0.0) }
     }
   }
   # the tiles within reach: the ones held kept, the others given a slot (a free one, else the one wanted longest ago)
@@ -386,6 +517,8 @@ export function tmf_frame(render3d_st: mut Render3dState, f: TileFar, cam_x: flo
       q.none = true
     }
   }
+  # the groups whose tiles changed put together again (the same frame: a hole filled above never waits on its group)
+  for g in 0 .. len(f.groups) { if f.groups[g].dirty { tmf_assemble(render3d_st, f, g) } }
   f.build_us += Time.now_us() - t0
 }
 
