@@ -1612,9 +1612,19 @@ function sc_prepass_levels(render3d_st: mut Render3dState, l: Layer) -> int {
 }
 # a layer the game flagged `grass` is ground cover the GPU blades stand in for: off while they draw
 function sc_grass_replaced(render3d_st: Render3dState) -> bool { return render3d_st.sc_skip_grass or ((render3d_st.grass_on or render3d_st.grass_force) and not render3d_st.grass_env_off and render3d_st.grass_prog != 0) }
-function scatter_draw(render3d_st: mut Render3dState) -> void {
+function scatter_draw(render3d_st: mut Render3dState) -> void { scatter_draw_class(render3d_st, 0) }
+# Apple's TBDR order (WWDC20 10602): every opaque draw first, then the alpha-tested (discard / alpha-to-coverage) ones, never
+# interleaved, so hidden-surface removal stays on for the opaque scene. The game's hook draws the solid layers (street furniture:
+# no foliage, card, blade, flower or impostor) with its opaque parts and the masked rest after its last opaque draw.
+function scatter_draw_opaque(render3d_st: mut Render3dState) -> void { scatter_draw_class(render3d_st, 1) }
+function scatter_draw_masked(render3d_st: mut Render3dState) -> void { scatter_draw_class(render3d_st, 2) }
+function sc_layer_masked(l: Layer) -> bool { return l.foliage or l.card or l.blade or l.flower or l.imp != null }
+# cls 0: every layer, 1: the solid ones, 2: the masked ones
+function scatter_draw_class(render3d_st: mut Render3dState, cls: int) -> void {
   for i in 0 .. len(render3d_st.sc_layers) {
     let l = render3d_st.sc_layers[i]
+    if cls == 1 and sc_layer_masked(l) { continue }
+    if cls == 2 and not sc_layer_masked(l) { continue }
     if render3d_st.sc_skip_blade and l.blade { continue }
     if render3d_st.sc_skip_flower and l.flower { continue }
     if render3d_st.sc_skip_card and l.card { continue }
