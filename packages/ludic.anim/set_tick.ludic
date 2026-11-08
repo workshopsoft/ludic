@@ -126,6 +126,7 @@ function advance_inst(anim_st: mut AnimState, pl: AnimPlayer, m: AnimMachine, k:
     dur = blend_weights(anim_st, pl, m, k, st)
     rate = as_speed(pl, m, st) * as_fit(pl, m, st, dur)
   }
+  if m.orate != null and st < len(m.orate) { rate = rate * m.orate[st] }
   m.i_rate[k] = rate
   m.i_dur[k] = dur
   if not (dur > 0.0) or dt <= 0.0 { return }

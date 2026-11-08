@@ -1,0 +1,65 @@
+# set_override.ludic - a player's own clip for a state of its graph: what a game's rows say one actor plays where the set says another
+# (a weapon's clip for aiming, reloading ...). The set stays as it is for every other actor; the override lives in this player's machine
+# (its clip slots and a rate per state) and is gone at the next bind. Nothing is allocated: the clips are the ones loaded.
+
+# the machine of player pl running set `set` (by key) and its state `state`: into out[0] (machine) and out[1] (state); false when none
+function ov_find(pl: AnimPlayer, set: string, state: string, out: words) -> bool {
+  if pl.mach == null { return false }
+  for mi in 0 .. len(pl.mach) {
+    let m = pl.mach[mi]
+    if m.set < 0 or AnimSets[m.set].key != set { continue }
+    let st = as_state(AnimSets[m.set], state)
+    if st < 0 { continue }
+    out[0] = mi
+    out[1] = st
+    return true
+  }
+  return false
+}
+
+# Every choice of the state plays `clip` (the rig's: its prefix is the player's), at `rate` times the set's rate. clip "" puts the set's own
+# clips back (and rate 1). False when the player runs no such set or state, the state plays a blend space or a sub graph, or the rig has
+# no such clip (then nothing changes).
+@alloc_ok("an override: an event, not a frame")
+export function animset_override(anim_st: AnimState, pl: AnimPlayer, set: string, state: string, clip: string, rate: float) -> bool {
+  let at = words(2)
+  if not ov_find(pl, set, state, at) { return false }
+  let m = pl.mach[at[0]]
+  let st = at[1]
+  let d = AnimSets[m.set].states[st]
+  if d.kind != "clips" or d.choices == null { return false }
+  var c: Clip = null
+  if clip != "" {
+    c = anim_find(anim_st, `{pl.rig}_{clip}`)
+    if c == null { return false }
+  }
+  for i in 0 .. m.ncl[st] {
+    let slot = m.base[st] + i
+    let own = anim_find(anim_st, m.names[slot])
+    # the set's own clip (clip "", or the same clip named): the slot as the binding made it, untouched when it is so already
+    if clip == "" or c == own {
+      if m.clips[slot] == own { continue }
+      m.clips[slot] = own
+      m.infos[slot] = animclips_find(d.choices[i].clip)
+    } else {
+      if m.clips[slot] == c { continue }
+      m.clips[slot] = c
+      m.infos[slot] = animclips_find(clip)
+    }
+    as_root_slot(pl, pl.sk, m, slot)
+  }
+  m.orate[st] = 1.0
+  if clip != "" and rate > 0.0 { m.orate[st] = rate }
+  return true
+}
+
+# the clip a state of a set plays on this player now (its first choice's: the override's when there is one), "" when none
+@alloc_ok("asked by a tool")
+export function animset_state_clip(pl: AnimPlayer, set: string, state: string) -> string {
+  let at = words(2)
+  if not ov_find(pl, set, state, at) { return "" }
+  let m = pl.mach[at[0]]
+  let st = at[1]
+  if m.ncl[st] == 0 or m.clips[m.base[st]] == null { return "" }
+  return m.clips[m.base[st]].name
+}

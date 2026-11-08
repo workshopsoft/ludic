@@ -98,22 +98,25 @@ export function animset_bind_skin(pl: AnimPlayer, sk: Skin) -> void {
   }
   for mi in 0 .. len(pl.mach) {
     let m = pl.mach[mi]
-    for slot in 0 .. len(m.names) {
-      m.rmp[slot] = -1
-      m.rmr[slot] = -1
-      let ii = m.infos[slot]
-      if ii < 0 or AnimClips[ii].root_motion != "extract" or m.clips[slot] == null { continue }
-      var node = pl.root
-      if AnimClips[ii].root_bone != "" {
-        let b = bone_node(pl, sk, AnimClips[ii].root_bone)
-        if b >= 0 { node = b }
-      }
-      let c = m.clips[slot]
-      for ch in 0 .. c.n {
-        if c.cnode[ch] != node { continue }
-        if c.cpath[ch] == AC_POS { m.rmp[slot] = ch } else { m.rmr[slot] = ch }
-      }
-    }
+    for slot in 0 .. len(m.names) { as_root_slot(pl, sk, m, slot) }
+  }
+}
+
+# the root's channels of one clip slot (its clip extracts root motion), -1 where none
+export function as_root_slot(pl: AnimPlayer, sk: Skin, m: AnimMachine, slot: int) -> void {
+  m.rmp[slot] = -1
+  m.rmr[slot] = -1
+  let ii = m.infos[slot]
+  if sk == null or ii < 0 or AnimClips[ii].root_motion != "extract" or m.clips[slot] == null { return }
+  var node = pl.root
+  if AnimClips[ii].root_bone != "" {
+    let b = bone_node(pl, sk, AnimClips[ii].root_bone)
+    if b >= 0 { node = b }
+  }
+  let c = m.clips[slot]
+  for ch in 0 .. c.n {
+    if c.cnode[ch] != node { continue }
+    if c.cpath[ch] == AC_POS { m.rmp[slot] = ch } else { m.rmr[slot] = ch }
   }
 }
 

@@ -125,6 +125,25 @@ program AnimSetTest {
     expect(not animset_can(pl, "nope"))
   }
 
+  test "a player's own clip for a state (animset_override) plays there at its rate, on that player only; \"\" puts the set's back" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
+    let sk = skin(render3d_st)
+    let pl = rig(anim_st)
+    let other = new AnimPlayer
+    expect(animset_bind(anim_st, other, ASET_TOY, "rig"))
+    expect(animset_override(anim_st, pl, "toy", "ground", "hop", 2.0))
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect(playing(pl) == "rig_hop")
+    expect(animset_state_clip(pl, "toy", "ground") == "rig_hop")
+    expect(animset_tick(anim_st, other, sk, 0.016))
+    expect(playing(other) == "rig_idle")
+    expect(not animset_override(anim_st, pl, "toy", "ground", "bow", 1.0))
+    expect(not animset_override(anim_st, pl, "toy", "nope", "hop", 1.0))
+    expect(not animset_override(anim_st, pl, "other", "ground", "hop", 1.0))
+    expect(animset_override(anim_st, pl, "toy", "ground", "", 1.0))
+    expect(animset_tick(anim_st, pl, sk, 0.016))
+    expect(playing(pl) == "rig_idle")
+  }
+
   test "a request goes by its via one-shot when the rig carries it, which hands on; else straight there" (anim_st: mut AnimState, render3d_st: mut Render3dState) {
     let sk = skin(render3d_st)
     let pl = rig(anim_st)

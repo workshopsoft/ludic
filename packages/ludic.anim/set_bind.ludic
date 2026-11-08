@@ -108,7 +108,7 @@ function as_masks_free(pl: AnimPlayer) -> void {
 function mach_free(m: AnimMachine) -> void {
   free(m.base);  free(m.ncl);  free(m.sub);  free(m.space);  free(m.px);  free(m.py);  free(m.spd);  free(m.dby)
   free(m.tfrom);  free(m.tto);  free(m.cbase);  free(m.cparam);  free(m.tord)
-  free(m.names);  free(m.clips);  free(m.infos);  free(m.rmp);  free(m.rmr);  free(m.nbase);  free(m.nparam);  free(m.rby)
+  free(m.names);  free(m.clips);  free(m.infos);  free(m.rmp);  free(m.rmr);  free(m.nbase);  free(m.nparam);  free(m.rby);  free(m.orate)
   free(m.i_st);  free(m.i_pick);  free(m.i_loops);  free(m.i_tr);  free(m.i_uid);  free(m.i_new);  free(m.i_wr)
   free(m.i_ph);  free(m.i_p0);  free(m.i_prog);  free(m.i_fdur);  free(m.i_rate);  free(m.i_dur)
   free(m.i_sn);  free(m.i_si);  free(m.i_sw)
@@ -144,10 +144,12 @@ function build_machine(pl: AnimPlayer, si: int, depth: int) -> int {
   m.nbase = new []int
   m.nparam = new []int
   m.rby = new []int
+  m.orate = new []float
   if s.states != null { m.ns = len(s.states) }
   for i in 0 .. m.ns {
     let d = s.states[i]
     push(m.base, len(m.names))
+    push(m.orate, 1.0)
     var sub = -1
     var space = -1
     var px = -1

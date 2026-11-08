@@ -35,6 +35,7 @@ export property AnimMachine {
   nbase: []int = null       # where a choice's need parameters start in nparam
   nparam: []int = null
   rby: []int = null         # a choice's rate_by parameter
+  orate: []float = null     # per state: the game's own rate on top of the set's (animset_override), 1 where none
   # the instances
   n_i: int = 0
   i_st: words = words(AM_INST)
