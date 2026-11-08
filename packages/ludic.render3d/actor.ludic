@@ -95,6 +95,10 @@ property Actor {
   ai_boff:    int = 0,
   ai_pbframe: int = 0,           # the frame and first row of its palette before that: last frame's, in last frame's buffer (ai_draw_vel)
   ai_pboff:   int = 0,
+  # the pass (ai_stamp) whose instancing gather already tested it, and the answer (ac_visible or ac_casts): the pass's own loop reads it
+  # back rather than testing an actor a second time (a city's building chunks, each its own model, were culled twice a pass)
+  vis_stamp:  int = 0,
+  vis_ok:     bool = false,
   # Unreal's Static mobility: it never moves, so the sun's cached cascades draw it once (shadow_cache.ludic). Moved, added or removed,
   # it puts them due a rebuild; the stamp and place are what the last static draw saw.
   still:      bool = false,
@@ -687,12 +691,18 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
   occ_read(render3d_st)                                     # last frame's occlusion tests (occlusion.ludic)
   # the plain actors that share a model, instanced (actor_inst.ludic); not in the water's reflection, which would refill the buffer
   var grouped = false
+  var gathered = false
   if not render3d_st.ter_reflect and ai_on(render3d_st) {
     ai_begin(render3d_st)
     for i in 0 .. len(render3d_st.ac_actors) {
       let a = render3d_st.ac_actors[i]
-      if ai_plain(render3d_st, a) and ac_visible(render3d_st, a, false) { ai_gather(render3d_st, a) }
+      if ai_plain(render3d_st, a) {
+        let v = ac_visible(render3d_st, a, false)
+        a.vis_stamp = render3d_st.ai_stamp;  a.vis_ok = v
+        if v { ai_gather(render3d_st, a) }
+      }
     }
+    gathered = true
     grouped = ai_build(render3d_st, 0)
     if grouped { ai_draw(render3d_st, false) }
   }
@@ -701,7 +711,9 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
     if a.shell or a.strands { continue }                 # (actor_draw_shells, actor_draw_strands: after the opaque scene)
     if grouped and ai_grouped(render3d_st, a) { continue }
-    if not ac_visible(render3d_st, a, false) { continue }
+    if gathered and a.vis_stamp == render3d_st.ai_stamp {
+      if not a.vis_ok { continue }
+    } else if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }
     var ap = render3d_st.ac_lit
     # a garment's fabric is opaque cloth (its part may be marked cut-out with the hair's: the program has no alpha test)
@@ -887,6 +899,7 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
   # the plain rigid casters that share a model, instanced (actor_inst.ludic): the sun's cascades only, each its own buffer (a local
   # light's shadow maps draw every caster on its own)
   var grouped = false
+  var gathered = false
   # a cache rebuild draws into a buffer of its own a cascade (the same cascade's moving casters are drawn the same frame)
   var slot = 1 + render3d_st.sh_cascade
   if render3d_st.sh_phase == SH_PHASE_STATIC { slot = AI_CACHE_SLOT + render3d_st.sh_cascade }
@@ -896,8 +909,13 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     for i in 0 .. len(render3d_st.ac_actors) {
       let a = render3d_st.ac_actors[i]
       if ac_phase_skips(render3d_st, a) { continue }
-      if ai_plain(render3d_st, a) and ac_casts(render3d_st, a, light_vp) and not ac_proxy_figure(render3d_st, a) { ai_gather(render3d_st, a) }
+      if ai_plain(render3d_st, a) {
+        let c = ac_casts(render3d_st, a, light_vp)
+        a.vis_stamp = render3d_st.ai_stamp;  a.vis_ok = c
+        if c and not ac_proxy_figure(render3d_st, a) { ai_gather(render3d_st, a) }
+      }
     }
+    gathered = true
     grouped = ai_build(render3d_st, slot)
     if grouped {
       ac_lvp(render3d_st, render3d_st.ac_sh_inst, light_vp)
@@ -910,7 +928,9 @@ function actor_draw_casters(render3d_st: mut Render3dState, light_vp: floats) ->
     let a = render3d_st.ac_actors[i]
     if grouped and ai_grouped(render3d_st, a) { continue }
     if ac_phase_skips(render3d_st, a) { continue }
-    if not ac_casts(render3d_st, a, light_vp) { continue }
+    if gathered and a.vis_stamp == render3d_st.ai_stamp {
+      if not a.vis_ok { continue }
+    } else if not ac_casts(render3d_st, a, light_vp) { continue }
     var ap = render3d_st.ac_sh
     if a.cutout or a.blend != 0 { ap = render3d_st.ac_sh_cut }
     ap = ac_s4(ap, a.model)
