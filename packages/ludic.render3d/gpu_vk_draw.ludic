@@ -1766,6 +1766,13 @@ function gvk_flush(render3d_st: mut Render3dState) -> void {
 # The finished frame: submitted and waited for. With a window, the screen image is blitted into
 # the swapchain's next image first - flipped, since the screen image keeps OpenGL's bottom-up rows
 # - and that image is presented.
+function gvk_headless_inflight(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.gvk_hl_inflight < 0 {
+    render3d_st.gvk_hl_inflight = 0
+    if r3d_env_has(render3d_st, "R3D_HEADLESS_INFLIGHT") and r3d_env(render3d_st, "R3D_HEADLESS_INFLIGHT") == "1" { render3d_st.gvk_hl_inflight = 1 }
+  }
+  return render3d_st.gvk_hl_inflight == 1
+}
 function gvk_present(render3d_st: mut Render3dState) -> void {
   gvk_prof_frame(render3d_st)
   if render3d_st.gvk_swap != 0 {
@@ -1779,6 +1786,16 @@ function gvk_present(render3d_st: mut Render3dState) -> void {
   render3d_st.gvk_plog_why = "gvk_present";  gvk_pass_end(render3d_st)
   gvk_labels_close(render3d_st)
   gvk_prime_in_frame(render3d_st, render3d_st.gvk_cb)
+  # R3D_HEADLESS_INFLIGHT=1: a headless frame is submitted without a wait, as a window's is (one frame in flight: the next frame's CPU runs
+  # while the GPU draws this one), so a headless run's frame time is the window's - the larger of the two, not their sum. A read-back or a
+  # shot still waits for it (gvk_flush waits on the frame in flight first)
+  if gvk_headless_inflight(render3d_st) and gvk_inflight_on(render3d_st) {
+    gvk_frame_submit(render3d_st, render3d_st.gvk_cb)
+    render3d_st.gvk_cb = null
+    render3d_st.gvk_frame_no += 1
+    if not render3d_st.gvk_frame_pending { gvk_retire_flush(render3d_st) }
+    return
+  }
   gvk_once_end(render3d_st, render3d_st.gvk_cb)
   render3d_st.gvk_cb = null
   render3d_st.gvk_frame_no += 1

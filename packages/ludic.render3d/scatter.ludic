@@ -829,7 +829,7 @@ function scatter_begin_frame(render3d_st: mut Render3dState) -> void {
 }
 
 # ---- the GPU-culled path ------------------------------------------------------------------
-# On Vulkan (R3D_GPU_CULL=0 turns it off): a tree layer (a LOD chain of up to four levels sharing up
+# On Vulkan, when asked (R3D_GPU_CULL=1; off by default, scatter_init): a tree layer (a LOD chain of up to four levels sharing up
 # to four materials, with an impostor, not streamed) is culled and split into its buckets by
 # scatter_cull.comp, and its lit, prepass, impostor and shadow-LOD draws read the records that pass
 # wrote - one draw per material covering every level. Nothing is partitioned or uploaded on the CPU
@@ -959,9 +959,11 @@ function layer_gpu_prepare(render3d_st: mut Render3dState, l: Layer) -> bool {
   if not render3d_st.sc_cull_tried {
     render3d_st.sc_cull_tried = true
     # Os.env is null when the variable is unset, and a compare reads through it: ask first
-    # on by default wherever there is compute; R3D_GPU_CULL=0 keeps the CPU partition (for comparing)
-    var off = false
-    if r3d_env_has(render3d_st, "R3D_GPU_CULL") { off = r3d_env(render3d_st, "R3D_GPU_CULL") == "0" }
+    # Off by default since 2026-11-09 (R3D_GPU_CULL=1 turns it on): its walk is one GPU thread a layer (the packing keeps the stage's order),
+    # dispatched before the frame's first pass where no timer sees it; with the lots' hundred-odd kit layers it was 4.5 ms of the Mac's GPU a
+    # frame (Island Highway: 17.6 -> 13.1 ms with the CPU partition) and 2 to 4 ms on the PC's
+    var off = true
+    if r3d_env_has(render3d_st, "R3D_GPU_CULL") { off = r3d_env(render3d_st, "R3D_GPU_CULL") != "1" }
     if gpu_has_compute(render3d_st) and gpu_has_mdi(render3d_st) and not off {
       render3d_st.sc_cull_prog = gpu_compute(render3d_st, "scatter_cull", 4)
       if render3d_st.sc_cull_prog > 0 { print("r3d: scatter: tree layers are culled on the GPU") }
