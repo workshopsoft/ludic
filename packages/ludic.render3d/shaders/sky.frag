@@ -216,6 +216,12 @@ void main() {
       float rl = dot(raw, vec3(0.2126, 0.7152, 0.0722));
       float bl = max(dot(textureLod(u_sky, skyUV(dir), 6.0).rgb, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
       cl = (1.0 - smoothstep(0.16, 0.40, sat)) * smoothstep(-0.02, 0.06, dir.y);
+      // the image's sun texels (the engine reads the sun's light from them) are no cloud: a game's generated sky keeps a few, and the
+      // atmosphere draws the sun itself
+      if (u_disc_on > 0.5) {
+        vec3 rs = vec3(u_sky_rot.y * dir.x + u_sky_rot.x * dir.z, dir.y, -u_sky_rot.x * dir.x + u_sky_rot.y * dir.z);
+        cl *= 1.0 - smoothstep(0.9990, 0.9980, dot(rs, u_sun_hdri));
+      }
       float al = dot(atm, vec3(0.2126, 0.7152, 0.0722));
       vec3 sunTint = u_disc_col / max(max(u_disc_col.r, max(u_disc_col.g, u_disc_col.b)), 1e-4);
       vec3 cloudCol = vec3(al * clamp(rl / bl, 0.7, 2.6) * 1.35) * mix(vec3(1.0), sunTint, 0.35);
