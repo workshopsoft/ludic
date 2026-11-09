@@ -955,6 +955,19 @@ function actor_census(render3d_st: Render3dState) -> void {
   }
   print(`actor census: {len(keys)} models, {total} lit draws`)
 }
+# the tags of the pass's actors drawn on their own (R3D_PROF_ACTORS)
+@alloc_ok("profiling only (R3D_PROF_ACTORS)")
+function ac_prof_tags(render3d_st: Render3dState, pl: []Actor, grouped: bool) -> []string {
+  let tags = new []string
+  for i in 0 .. len(pl) {
+    let a = pl[i]
+    if grouped and ai_grouped(render3d_st, a) { continue }
+    var seen = false
+    for k in 0 .. len(tags) { if tags[k] == a.tag { seen = true } }
+    if not seen { push(tags, a.tag) }
+  }
+  return tags
+}
 function actor_draw(render3d_st: mut Render3dState) -> void {
   if render3d_st.ac_actors == null { return }
   render3d_st.ac_frame += 1
@@ -980,31 +993,41 @@ function actor_draw(render3d_st: mut Render3dState) -> void {
     grouped = ai_build(render3d_st, 0)
     if grouped { ai_draw(render3d_st, false) }
   }
-  for i in 0 .. len(pl) {
-    let a = pl[i]
-    if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
-    if a.shell or a.strands { continue }                 # (actor_draw_shells, actor_draw_strands: after the opaque scene)
-    if grouped and ai_grouped(render3d_st, a) { continue }
-    if gathered and a.vis_stamp == render3d_st.ai_stamp {
-      if not a.vis_ok { continue }
-    } else if not ac_view_ok(render3d_st, a) { continue }
-    if a.blend != 0 { continue }
-    var ap = render3d_st.ac_lit
-    # a garment's fabric is opaque cloth (its part may be marked cut-out with the hair's: the program has no alpha test)
-    let fab = ac_has_fabric(a.model)
-    if fab { ap = render3d_st.ac_fab } else if a.cutout { ap = render3d_st.ac_lit_cut }
-    # a hair card (fabric mode 3) discards by its coverage: drawn as a cut-out (with only the plain fabric program, the cards' discarded
-    # texels kept the depth of what lay behind from being drawn on this GPU: holes to the ground and black against the sky)
-    if fab and ac_fabric_mode(a.model) == 3 { ap = render3d_st.ac_fab_cut }
-    if not fab and ac_has_eyes(a.model) { ap = render3d_st.ac_eye }       # a MetaHuman face (model_set_eyes)
-    ap = ac_s4(ap, a.model)
-    ac_bind_scene(render3d_st, ap)
-    # a cut-out's edge (a hair card's, a flame's) resolved by the samples' coverage, as the foliage's is (model.frag ALPHA_TEST)
-    let a2c = a.cutout and not fab and render3d_st.sc_a2c
-    if a2c { gpu_alpha_to_coverage(render3d_st, true) }
-    actor_draw_one(render3d_st, a, ap, false)
-    if a2c { gpu_alpha_to_coverage(render3d_st, false) }
+  # (R3D_PROF_ACTORS: the actors drawn on their own, a tag at a time, each a pass of its own)
+  var ptags: []string = null
+  if prof_actors_on(render3d_st) { ptags = ac_prof_tags(render3d_st, pl, grouped) }
+  var pk = 0
+  while pk == 0 or (ptags != null and pk < len(ptags)) {
+    if ptags != null and pk < len(ptags) { prof_split(render3d_st, prof_actor_name(render3d_st, ptags[pk], "single")) }
+    for i in 0 .. len(pl) {
+      let a = pl[i]
+      if ptags != null and pk < len(ptags) and a.tag != ptags[pk] { continue }
+      if a.blend != 0 and a.leader == null { continue }   # the blended pass draws it (actor_blend.ludic)
+      if a.shell or a.strands { continue }                 # (actor_draw_shells, actor_draw_strands: after the opaque scene)
+      if grouped and ai_grouped(render3d_st, a) { continue }
+      if gathered and a.vis_stamp == render3d_st.ai_stamp {
+        if not a.vis_ok { continue }
+      } else if not ac_view_ok(render3d_st, a) { continue }
+      if a.blend != 0 { continue }
+      var ap = render3d_st.ac_lit
+      # a garment's fabric is opaque cloth (its part may be marked cut-out with the hair's: the program has no alpha test)
+      let fab = ac_has_fabric(a.model)
+      if fab { ap = render3d_st.ac_fab } else if a.cutout { ap = render3d_st.ac_lit_cut }
+      # a hair card (fabric mode 3) discards by its coverage: drawn as a cut-out (with only the plain fabric program, the cards' discarded
+      # texels kept the depth of what lay behind from being drawn on this GPU: holes to the ground and black against the sky)
+      if fab and ac_fabric_mode(a.model) == 3 { ap = render3d_st.ac_fab_cut }
+      if not fab and ac_has_eyes(a.model) { ap = render3d_st.ac_eye }       # a MetaHuman face (model_set_eyes)
+      ap = ac_s4(ap, a.model)
+      ac_bind_scene(render3d_st, ap)
+      # a cut-out's edge (a hair card's, a flame's) resolved by the samples' coverage, as the foliage's is (model.frag ALPHA_TEST)
+      let a2c = a.cutout and not fab and render3d_st.sc_a2c
+      if a2c { gpu_alpha_to_coverage(render3d_st, true) }
+      actor_draw_one(render3d_st, a, ap, false)
+      if a2c { gpu_alpha_to_coverage(render3d_st, false) }
+    }
+    pk += 1
   }
+  if ptags != null { prof_split(render3d_st, "scene: actors") }
   actor_draw_outlines(render3d_st)
   ac_cell_close(render3d_st)
   gpu_cull(render3d_st, true)
@@ -1286,10 +1309,12 @@ function ac_fast_classify(render3d_st: mut Render3dState) -> void {
     while cap < n { cap = cap * 2 }
     render3d_st.acf_f = floats(cap * 5)
     render3d_st.acf_k = words(cap)
+    render3d_st.acf_dyn = words(cap)
     if render3d_st.acf_list == null { render3d_st.acf_list = new []Actor }
   }
   let f = render3d_st.acf_f
   let k = render3d_st.acf_k
+  var nd = 0
   for i in 0 .. n {
     let a = l[i]
     var c = 0
@@ -1310,7 +1335,9 @@ function ac_fast_classify(render3d_st: mut Render3dState) -> void {
       }
     }
     k[i] = c
+    if c == 2 or c == 3 { render3d_st.acf_dyn[nd] = i;  nd += 1 }
   }
+  render3d_st.acf_nd = nd
   render3d_st.acf_n = n
   render3d_st.acf_gen = render3d_st.ac_gen
   render3d_st.acf_frame = render3d_st.gvk_frame_no
@@ -1326,7 +1353,14 @@ function ac_fast_casters(render3d_st: mut Render3dState, light_vp: floats) -> []
   let local = render3d_st.sh_local
   let ph = render3d_st.sh_phase
   let dyn = not local and ph == SH_PHASE_DYN and render3d_st.sc_dyn_cull
-  for i in 0 .. render3d_st.acf_n {
+  # the moving phase scans only the movers' rows (classified this frame), not the whole stage: with a city's still buildings cached that
+  # is a few hundred rows, not 33 000, in each of the sun's cascades (R3D_ACTOR_FASTPATH_DYN=0: every row as before)
+  let only_dyn = not local and ph == SH_PHASE_DYN and ac_fast_dyn_on(render3d_st)
+  var cnt = render3d_st.acf_n
+  if only_dyn { cnt = render3d_st.acf_nd }
+  for ii in 0 .. cnt {
+    var i = ii
+    if only_dyn { i = render3d_st.acf_dyn[ii] }
     let c = k[i]
     if c == 0 { continue }
     if c != 3 {
@@ -1346,6 +1380,13 @@ function ac_fast_casters(render3d_st: mut Render3dState, light_vp: floats) -> []
   if render3d_st.acf_chk < 0 { render3d_st.acf_chk = 0;  if r3d_env_has(render3d_st, "R3D_ACTOR_FASTPATH_CHECK") { render3d_st.acf_chk = 1 } }
   if render3d_st.acf_chk == 1 { ac_fast_check(render3d_st, light_vp) }
   return out
+}
+function ac_fast_dyn_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.acf_dyn_on < 0 {
+    render3d_st.acf_dyn_on = 1
+    if r3d_env_has(render3d_st, "R3D_ACTOR_FASTPATH_DYN") and r3d_env(render3d_st, "R3D_ACTOR_FASTPATH_DYN") == "0" { render3d_st.acf_dyn_on = 0 }
+  }
+  return render3d_st.acf_dyn_on == 1
 }
 # R3D_ACTOR_FASTPATH_CHECK: every actor the list left out, asked in full (no shadow LOD swap kept): one that would cast is printed
 function ac_fast_check(render3d_st: mut Render3dState, light_vp: floats) -> void {
@@ -1827,6 +1868,13 @@ function ac_dither_frame(render3d_st: mut Render3dState, ap: AcProg) -> void {
   gpu_use_program(render3d_st, ap.prog)
   u_f(render3d_st, gpu_ul(render3d_st, ap.prog, UL_DITHER_FRAME), float(render3d_st.ac_frame % 64))
 }
+function ac_vel_still_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ac_vel_still < 0 {
+    render3d_st.ac_vel_still = 0
+    if r3d_env_has(render3d_st, "R3D_VEL_STILL") and r3d_env(render3d_st, "R3D_VEL_STILL") == "1" { render3d_st.ac_vel_still = 1 }
+  }
+  return render3d_st.ac_vel_still == 1
+}
 function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, frame: int) -> void {
   if render3d_st.ac_actors == null or render3d_st.ac_vel == null { return }
   let skip = ac_vel_skip_on(render3d_st)
@@ -1834,9 +1882,14 @@ function actor_draw_velocity(render3d_st: mut Render3dState, prev_vp: floats, fr
   if inst { ai_begin(render3d_st) }
   # pixels per metre at one metre's distance
   let ppm = float(render3d_st.post_h) * 0.5 / Math.tan(render3d_st.cam_fov * 0.5)
+  # a still actor never moves (Actor.still: a building module, a road or lot piece, a lamp post): the camera's motion from depth covers
+  # it, so it is not weighed at all - it was a visibility test, a size and a matrix compare and copy for each of the 33 000 a city view
+  # holds, every frame. R3D_VEL_STILL=1 weighs them as before
+  let still_too = ac_vel_still_on(render3d_st)
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
     if a.blend != 0 or a.shell or a.strands { continue }
+    if a.still and not still_too { continue }
     if not ac_visible(render3d_st, a, false) { continue }
     if a.blend != 0 { continue }                 # a part that follows a blended leader
     if a.leader != null and a.fmap != null { ac_follow_palette(a) }

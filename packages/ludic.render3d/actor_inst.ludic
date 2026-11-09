@@ -219,13 +219,48 @@ function ai_grouped(render3d_st: Render3dState, a: Actor) -> bool { return rende
 # each group's primitives, one instanced draw each, with the instanced program of its kind: the lit ones (shadow false) or the casters',
 # plain or cut out (the casters' light set on both by the caller)
 function ai_draw(render3d_st: mut Render3dState, shadow: bool) -> void {
+  if not shadow and prof_actors_on(render3d_st) { ai_draw_by_tag(render3d_st);  return }
+  ai_draw_some(render3d_st, shadow, false, "")
+}
+# R3D_PROF_ACTORS=1 (with R3D_PROF): the view's groups drawn a tag at a time, each tag a pass of its own in the GPU report ("actors: <tag>"),
+# so the actor pass's time is put on what it drew (a measurement: the draws are the same, only their order by tag)
+@alloc_ok("profiling only (R3D_PROF_ACTORS): the tags' pass names, made once each")
+function ai_draw_by_tag(render3d_st: mut Render3dState) -> void {
+  let tags = new []string
+  for j in 0 .. render3d_st.ai_nm {
+    let m = render3d_st.ai_models[j]
+    if m.ai_count < 2 or m.ai_first == null { continue }
+    let t = m.ai_first.tag
+    var seen = false
+    for k in 0 .. len(tags) { if tags[k] == t { seen = true } }
+    if not seen { push(tags, t) }
+  }
+  for k in 0 .. len(tags) {
+    prof_split(render3d_st, prof_actor_name(render3d_st, tags[k], "inst"))
+    ai_draw_some(render3d_st, false, true, tags[k])
+  }
+  for j in 0 .. render3d_st.ai_nm {
+    let m = render3d_st.ai_models[j]
+    render3d_st.ai_models[j] = null
+    if m != null { m.ai_first = null }
+  }
+  prof_split(render3d_st, "scene: actors")
+}
+# the groups to draw: every one (filt false: each let go as it is drawn), or only those whose first actor wears `tag` (kept)
+function ai_draw_some(render3d_st: mut Render3dState, shadow: bool, filt: bool, tag: string) -> void {
   let buf = render3d_st.ai_bufs[render3d_st.ai_pass]
   var cur: AcProg = null
   for j in 0 .. render3d_st.ai_nm {
     let m = render3d_st.ai_models[j]
-    render3d_st.ai_models[j] = null
+    if m == null { continue }
     let a = m.ai_first
-    m.ai_first = null
+    if a == null { continue }
+    if filt {
+      if a.tag != tag { continue }
+    } else {
+      render3d_st.ai_models[j] = null
+      m.ai_first = null
+    }
     if m.ai_count < 2 { continue }
     var ap = render3d_st.ac_lit_inst
     if shadow { ap = render3d_st.ac_sh_inst }

@@ -492,3 +492,20 @@ function prof_gen_report(render3d_st: Render3dState) -> void {
   print(`  frames that generated anything: {string(busy)} of {string(n)}`)
   print(`  median {string(sorted[n / 2])}   p95 {string(sorted[(n * 95) / 100])}   worst {string(sorted[n - 1])}   total {string(total)}`)
 }
+
+# R3D_PROF_ACTORS=1 (with R3D_PROF): the actor pass split by the actors' tags (actor_inst.ludic ai_draw_by_tag, actor.ludic actor_draw)
+function prof_actors_on(render3d_st: mut Render3dState) -> bool {
+  if not render3d_st.prof_on { return false }
+  if render3d_st.prof_act < 0 {
+    render3d_st.prof_act = 0
+    if r3d_env_has(render3d_st, "R3D_PROF_ACTORS") { render3d_st.prof_act = 1 }
+  }
+  return render3d_st.prof_act == 1
+}
+# the pass name of a tag's draws ("actors: <tag> <how>"), one pointer a name (interned)
+@alloc_ok("profiling only (R3D_PROF_ACTORS): a tag's pass name, interned")
+function prof_actor_name(render3d_st: mut Render3dState, tag: string, how: string) -> pointer {
+  var t = tag
+  if Text.length(t) == 0 { t = "untagged" }
+  return intern(`actors: {t} {how}`)
+}

@@ -222,6 +222,14 @@ function ue_ls_ceil_log2(v: int) -> int {
 
 # Each frame, after the sun's cascades: a map for each of the frame's shadowed lights (nearest first), packed into the atlases,
 # then drawn atlas by atlas
+# R3D_UE_LS_SHARE=0: a light with a shadow_from partner renders its own map as before
+function ue_ls_share_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.ue_ls_share < 0 {
+    render3d_st.ue_ls_share = 1
+    if r3d_env_has(render3d_st, "R3D_UE_LS_SHARE") and r3d_env(render3d_st, "R3D_UE_LS_SHARE") == "0" { render3d_st.ue_ls_share = 0 }
+  }
+  return render3d_st.ue_ls_share == 1
+}
 function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
   render3d_st.ue_ls_n = 0
   render3d_st.ue_lp_n = 0
@@ -236,9 +244,12 @@ function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
   ue_tl_reset(render3d_st, size)
   var page = 0
   var pages_spot = 0
+  render3d_st.ue_ls_frame += 1
+  let share = ue_ls_share_on(render3d_st)
   for k in 0 .. render3d_st.ue_ll_n {
     let l = render3d_st.ue_lls[int(render3d_st.ue_ll_pick[k])]
     if not l.spot or not l.cast_shadows { continue }
+    if share and l.shadow_from != null { continue }          # (its partner's map, below)
     let tile = ue_ls_spot_setup(render3d_st, l, k, screen_scale)
     if tile <= 0 { continue }
     var at = ue_tl_add(render3d_st, tile, tile)
@@ -253,9 +264,20 @@ function ue_lightshadows_pass(render3d_st: mut Render3dState) -> void {
     render3d_st.ue_ls_rec[o + 20] = float(page)
     render3d_st.ue_ls_rec[o + 28] = float(at % 65536);  render3d_st.ue_ls_rec[o + 29] = float(at / 65536);  render3d_st.ue_ls_rec[o + 30] = float(size);  render3d_st.ue_ls_rec[o + 31] = 0.0
     render3d_st.ue_ll_data[k * UE_LL_FLOATS + 16] = float(si)
+    l.ls_si = si
+    l.ls_frame = render3d_st.ue_ls_frame
     ue_ls_tile(render3d_st, k, si, page, at % 65536, at / 65536, tile)
     render3d_st.ue_ls_n += 1
     pages_spot = page + 1
+  }
+  # the lights that read their partner's map: its record, when the partner was given one this frame (else unshadowed this frame)
+  if share {
+    for k in 0 .. render3d_st.ue_ll_n {
+      let l = render3d_st.ue_lls[int(render3d_st.ue_ll_pick[k])]
+      if not l.spot or not l.cast_shadows or l.shadow_from == null { continue }
+      let src = l.shadow_from
+      if src.ls_frame == render3d_st.ue_ls_frame and src.ls_si >= 0 { render3d_st.ue_ll_data[k * UE_LL_FLOATS + 16] = float(src.ls_si) }
+    }
   }
   # the point lights' cube faces, in atlases of their own
   ue_tl_reset(render3d_st, size)
@@ -383,8 +405,12 @@ function ue_ls_spot_setup(render3d_st: mut Render3dState, l: UeLocalLight, k: in
   }
   let tile = res + UE_LS_BORDER * 2
   # the subject range (SetupWholeSceneProjection with the cone's bounding sphere): 0.1 cm .. AttenuationRadius
+  # (a light's shadow_reach, when set, ends the range nearer: only the casters within it are drawn, and a receiver past it reads the cleared
+  # far plane, lit - a headlamp's map holds the cars, people and props round the car, not the street 60 m on)
   let min_z = 0.001
-  let max_z = Math.max(radius, min_z * 2.0)
+  var reach = radius
+  if l.shadow_reach > 0.0 and l.shadow_reach < radius { reach = l.shadow_reach }
+  let max_z = Math.max(reach, min_z * 2.0)
   let si = render3d_st.ue_ls_n
   let o = si * UE_LS_REC
   ue_ls_matrix(render3d_st.ue_ls_m, l.x, l.y, l.z, fx, fy, fz, 1.0 / Math.tan(cone[1]), float(res) / float(tile), min_z, max_z)

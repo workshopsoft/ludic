@@ -44,7 +44,13 @@ property UeLocalLight {
   ies: int = -1,                               # IESTexture: a profile's layer (ies.ludic ies_profile_add), -1 none
   use_ies_brightness: bool = false,            # bUseIESBrightness: the profile's max candela is the intensity (in the light's units)
   ies_brightness_scale: float = 1.0,           # IESBrightnessScale
-  tan_x: float = 0.0, tan_y: float = 0.0, tan_z: float = 1.0      # the light's tangent (its up: the profile's 90 degree plane)
+  tan_x: float = 0.0, tan_y: float = 0.0, tan_z: float = 1.0,     # the light's tangent (its up: the profile's 90 degree plane)
+  # its shadow is another light's (ue_lightshadows.ludic): a pair of lamps a metre apart (a car's headlamps) cast one map, not two, the
+  # other read through its partner's (R3D_UE_LS_SHARE=0: each its own again). The partner must cast shadows and be lit this frame.
+  shadow_from: UeLocalLight = null,
+  shadow_reach: float = 0.0,                   # its shadow's subject range (m), 0 the AttenuationRadius (ue_lightshadows.ludic)
+  ls_si: int = -1,                             # the spot shadow record it was given this frame (ue_lightshadows_pass), and that frame
+  ls_frame: int = -1
 }
 
 export function r3d_ue_lights(render3d_st: mut Render3dState, on: bool) -> void {
@@ -193,7 +199,9 @@ function ue_lights_frame(render3d_st: mut Render3dState) -> void {
     # the spheres of the lights that cast: kgpu's local light caster cull (kgpu_frame_lights) gathers from them
     if l.cast_shadows and render3d_st.ue_ll_cull {
       let q = render3d_st.ue_ll_nsph * 4
-      render3d_st.ue_ll_sph[q] = l.x;  render3d_st.ue_ll_sph[q + 1] = l.y;  render3d_st.ue_ll_sph[q + 2] = l.z;  render3d_st.ue_ll_sph[q + 3] = l.attenuation_radius
+      var sr = l.attenuation_radius
+      if l.shadow_reach > 0.0 and l.shadow_reach < sr { sr = l.shadow_reach }
+      render3d_st.ue_ll_sph[q] = l.x;  render3d_st.ue_ll_sph[q + 1] = l.y;  render3d_st.ue_ll_sph[q + 2] = l.z;  render3d_st.ue_ll_sph[q + 3] = sr
       render3d_st.ue_ll_nsph += 1
     }
   }
