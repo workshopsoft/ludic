@@ -81,6 +81,9 @@ function tpa_cast_cascades(render3d_st: mut Render3dState) -> int {
 export function terrain_lod_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.tpa_lod < 0 {
     render3d_st.tpa_lod = tpa_env_on(render3d_st, "R3D_TERRAIN_LOD")
+    # R3D_TERRAIN_QUALITY=0: Unreal's LOD0ScreenSize 0.5 and the far surfaces from 500 m, as before; otherwise the finer levels (0.35) and the
+    # full surfaces to 1100 m (the flat island is all texture: the mean colour from 500 m read as blur)
+    if tpa_env_on(render3d_st, "R3D_TERRAIN_QUALITY") == 1 { render3d_st.tpa_lod0_ss = 0.35 }
     if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD0_SCREEN_SIZE") { render3d_st.tpa_lod0_ss = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD0_SCREEN_SIZE")), 0.1, 10.0) }
     if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD0_DISTRIBUTION") { render3d_st.tpa_lod0_dist = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD0_DISTRIBUTION")), 1.0, 10.0) }
     if r3d_env_has(render3d_st, "R3D_TERRAIN_LOD_DISTRIBUTION") { render3d_st.tpa_lod_dist = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_LOD_DISTRIBUTION")), 1.0, 10.0) }
@@ -109,6 +112,7 @@ function terrain_late_on(render3d_st: mut Render3dState) -> bool {
 function terrain_far_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.tpa_far < 0 {
     render3d_st.tpa_far = tpa_env_on(render3d_st, "R3D_TERRAIN_FAR_SIMPLE")
+    if tpa_env_on(render3d_st, "R3D_TERRAIN_QUALITY") == 1 { render3d_st.tpa_far_m0 = 1100.0; render3d_st.tpa_far_m1 = 1700.0 }
     if r3d_env_has(render3d_st, "R3D_TERRAIN_FAR_START") { render3d_st.tpa_far_m0 = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_FAR_START")), 0.0) }
     if r3d_env_has(render3d_st, "R3D_TERRAIN_FAR_END") { render3d_st.tpa_far_m1 = ue_parse_float(r3d_env(render3d_st, "R3D_TERRAIN_FAR_END")) }
     render3d_st.tpa_far_m1 = Math.max(render3d_st.tpa_far_m1, render3d_st.tpa_far_m0 + 1.0)
