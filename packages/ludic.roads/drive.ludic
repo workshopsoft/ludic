@@ -36,10 +36,12 @@ function rd_leader(roads_st: mut RoadsState, slot: int, c: RoadCar, edge: int, l
     if c.ka > 0.0 { path = span * c.ka }
     base = s0 + path - roads_st.rd_emouth_start[edge]
   }
+  let w = roads_st.rd_sw[edge / 2]
   var j = roads_st.rd_head[edge]
   while j >= 0 {
     let o = roads_st.rd_cars[j]
-    if j != slot and o.lane == lane and (next_road or o.s > c.s) {
+    # a car beside its lane (RoadCar.off: going round something) is followed only while it is less than half a lane apart
+    if j != slot and o.lane == lane and (next_road or o.s > c.s) and Math.abs(o.off - c.off) < w * 0.5 {
       let g = base + rd_way_pos(roads_st, o) - RoadCarKinds[o.kind].length - own
       if g < roads_st.rd_gap {
         roads_st.rd_gap = g
@@ -51,6 +53,27 @@ function rd_leader(roads_st: mut RoadsState, slot: int, c: RoadCar, edge: int, l
 }
 
 # each car's turn paths, measured once a tick: the one ahead once it is within RD_SCALE_LOOK of it, the one it is still on
+# a car on the other way of c's road that is in c's line (one of the two beside its lane: RoadCar.off): head on, its front ahead of c's
+function rd_head_on(roads_st: mut RoadsState, slot: int, c: RoadCar) -> void {
+  let e = c.edge
+  let r = e ^ 1
+  if r >= len(roads_st.rd_head) or roads_st.rd_elanes[r] <= 0 { return }
+  let w = roads_st.rd_sw[e / 2]
+  let uc = rd_car_u(roads_st, e, c)
+  let len_e = roads_st.rd_elen[e]
+  var j = roads_st.rd_head[r]
+  while j >= 0 {
+    let o = roads_st.rd_cars[j]
+    j = roads_st.rd_link[j]
+    if o.off == 0.0 and c.off == 0.0 { continue }
+    if Math.abs(uc + rd_car_u(roads_st, r, o)) > w * 0.8 { continue }
+    let g = len_e - o.s - c.s
+    if g <= 0.0 or g >= roads_st.rd_gap { continue }
+    roads_st.rd_gap = g
+    roads_st.rd_dv = c.v + o.v
+  }
+}
+
 function rd_turn_scales(roads_st: mut RoadsState) -> void {
   for i in 0 .. len(roads_st.rd_cars) {
     let c = roads_st.rd_cars[i]
@@ -142,6 +165,7 @@ function rd_step_car(roads_st: mut RoadsState, slot: int, dt: float) -> void {
   roads_st.rd_dv = 0.0
   # the car in front, here and on the road it goes on to (in the lane it will take)
   rd_leader(roads_st, slot, c, e, c.lane, false)
+  if c.pin < 0 { rd_head_on(roads_st, slot, c) }
   if next >= 0 and roads_st.rd_gap > d_end {
     let nl = roads_lane_onto(roads_st, e, c.lane, next)
     rd_leader(roads_st, slot, c, next, nl, true)

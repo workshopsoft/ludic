@@ -64,6 +64,9 @@ export property RoadCar {
   kka: float = 0.0              # ... its sharpest bend (1 / radius)
   kb: float = 0.0               # the turn path it is still on off the road it came by: its length over its span (0: none)
   kkb: float = 0.0
+  off: float = 0.0              # metres it drives beside its lane, towards the centre line (roads_car_shift: going round something; 0 in it)
+  ban: int = -1                 # an edge its routes keep off until ban_until (roads_car_turn_back: the road it found blocked)
+  ban_until: float = 0.0
   x: float = 0.0
   y: float = 0.0
   z: float = 0.0
@@ -132,6 +135,7 @@ export state RoadsState {
   rd_hk: []float = new []float
   rd_hv: []int = new []int
   rd_route_cost: float = 0.0
+  rd_ban_edge: int = -1                  # an edge roads_route_edges keeps off (-1 none): set round a car's own search (RoadCar.ban)
   # one place asked for: nearest and pose
   rd_near_seg: int = -1
   rd_near_s: float = 0.0

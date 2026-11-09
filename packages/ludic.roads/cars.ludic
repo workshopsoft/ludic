@@ -112,6 +112,9 @@ export function roads_spawn(roads_st: mut RoadsState, edge: int, s: float, lane:
   c.hold = -1
   c.pin = -1
   c.plane = 0
+  c.off = 0.0
+  c.ban = -1
+  c.ban_until = 0.0
   roads_st.rd_ncars += 1
   roads_pose(roads_st, edge, s, lane)
   c.x = roads_st.rd_pose_x
@@ -172,6 +175,11 @@ export function roads_spawn_random(roads_st: mut RoadsState) -> int {
 # a new destination for a wandering car: a random edge that can be reached from where it is; the car stops
 # wandering (and arrives at the end of its road) when none is found
 function rd_replan(roads_st: mut RoadsState, c: RoadCar) -> void {
+  if c.ban >= 0 and roads_st.rd_time < c.ban_until { roads_st.rd_ban_edge = c.ban } else { c.ban = -1 }
+  rd_replan_from(roads_st, c)
+  roads_st.rd_ban_edge = -1
+}
+function rd_replan_from(roads_st: mut RoadsState, c: RoadCar) -> void {
   let ne = len(roads_st.rd_efrom)
   for k in 0 .. 6 {
     let f = rd_below(roads_st, ne)
@@ -189,12 +197,12 @@ function rd_replan(roads_st: mut RoadsState, c: RoadCar) -> void {
   let o0 = roads_st.rd_out_start[n]
   let o1 = roads_st.rd_out_start[n + 1]
   var count = 0
-  for i in o0 .. o1 { if rd_may_turn(roads_st, c.edge, roads_st.rd_out[i]) { count += 1 } }
+  for i in o0 .. o1 { if rd_may_turn(roads_st, c.edge, roads_st.rd_out[i]) and roads_st.rd_out[i] != roads_st.rd_ban_edge { count += 1 } }
   if count > 0 {
     var pick = rd_below(roads_st, count)
     for i in o0 .. o1 {
       let f = roads_st.rd_out[i]
-      if not rd_may_turn(roads_st, c.edge, f) { continue }
+      if not rd_may_turn(roads_st, c.edge, f) or f == roads_st.rd_ban_edge { continue }
       if pick == 0 {
         List.clear(c.route)
         kept_push(c.route, c.edge)
@@ -245,4 +253,99 @@ export function roads_car_s(roads_st: RoadsState, id: int) -> float {
   let i = roads_car_slot(roads_st, id)
   if i < 0 { return 0.0 }
   return roads_st.rd_cars[i].s
+}
+
+# ---- going round what blocks a lane (the game decides when: these are the simulation's own moves, so the cars behind and the ones
+# coming the other way see them) ----------------------------------------------------------------------------------------------
+
+# car `id` drives `off` metres beside its lane, towards the centre line (into the lane inside it, or across into the other way's): its
+# place (roads_car_point, c.x / z) moves over, the cars behind in its lane stop following it once it is half a lane over, and the cars
+# coming the other way see it in their lane (rd_head_on). 0 puts it back in its lane. False when there is no such car
+export function roads_car_shift(roads_st: mut RoadsState, id: int, off: float) -> bool {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return false }
+  roads_st.rd_cars[i].off = off
+  return true
+}
+
+# car `id` moves to `lane` of its own road (a real lane change), keeping where it is on the ground: its offset takes up the step (the game
+# eases it back to 0 with roads_car_shift). False when there is no such car or lane, it is in a turn, or the lane has no room there
+export function roads_car_lane_change(roads_st: mut RoadsState, id: int, lane: int) -> bool {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return false }
+  let c = roads_st.rd_cars[i]
+  let e = c.edge
+  if lane < 0 or lane >= roads_st.rd_elanes[e] or lane == c.lane or c.pin >= 0 { return false }
+  if c.s > roads_st.rd_elen[e] - roads_st.rd_emouth_end[e] { return false }
+  if not rd_room(roads_st, e, lane, c.s, RoadCarKinds[c.kind].length) { return false }
+  let sgn = rd_centre_sign(roads_st)
+  let u0 = rd_lane_offset(roads_st, e, c.lane) - sgn * c.off
+  let u1 = rd_lane_offset(roads_st, e, lane)
+  c.off = (u1 - u0) * sgn
+  c.lane = lane
+  return true
+}
+
+# car `id` turns back where it stands: onto the other way of its road (its inside lane), its front where its rear was, and on by a new
+# route that keeps off the way it was going for `ban_secs` seconds (a re-route round what blocks it). False when its road is one way,
+# it is in a turn, or there is no room there
+export function roads_car_turn_back(roads_st: mut RoadsState, id: int, ban_secs: float) -> bool {
+  let i = roads_car_slot(roads_st, id)
+  if i < 0 { return false }
+  let c = roads_st.rd_cars[i]
+  let e = c.edge
+  let r = e ^ 1
+  if not roads_edge_ok(roads_st, r) or c.pin >= 0 { return false }
+  let len_e = roads_st.rd_elen[e]
+  if c.s > len_e - roads_st.rd_emouth_end[e] or c.s < roads_st.rd_emouth_start[e] { return false }
+  let length = RoadCarKinds[c.kind].length
+  let s = Math.clamp(len_e - c.s + length, 0.0, roads_st.rd_elen[r])
+  if not rd_room(roads_st, r, 0, s, length) { return false }
+  var dest = -1
+  if len(c.route) > 0 { dest = c.route[len(c.route) - 1] }
+  c.edge = r
+  c.lane = 0
+  c.s = s
+  c.v = 0.0
+  c.off = 0.0
+  c.at = 0
+  c.hold = -1
+  c.holds = false
+  c.waited = -1.0
+  c.stopped = 0.0
+  c.jam = 0.0
+  c.ka = 0.0
+  c.kb = 0.0
+  c.ban = e
+  c.ban_until = roads_st.rd_time + ban_secs
+  List.clear(c.route)
+  kept_push(c.route, r)
+  if c.wander {
+    rd_replan(roads_st, c)
+  } else if dest >= 0 and dest != e and dest != r {
+    roads_st.rd_ban_edge = e
+    let n = roads_route_edges(roads_st, r, dest, ROADS_FASTEST, roads_st.rd_route_tmp)
+    roads_st.rd_ban_edge = -1
+    if n >= 1 {
+      List.clear(c.route)
+      for k in 0 .. n { kept_push(c.route, roads_st.rd_route_tmp[k]) }
+    }
+  }
+  roads_car_point(roads_st, i, 0.0)
+  c.x = roads_st.rd_pose_x
+  c.z = roads_st.rd_pose_z
+  c.yaw = roads_st.rd_pose_yaw
+  c.y = roads_pose_y(roads_st)
+  return true
+}
+
+# the sign of "towards the centre line" against "right of travel": a game that drives on the left mirrors it
+function rd_centre_sign(roads_st: RoadsState) -> float {
+  if roads_st.rd_drive_left { return -1.0 }
+  return 1.0
+}
+
+# how far right of travel (of edge e) car o runs: its lane, less its offset towards the centre line
+function rd_car_u(roads_st: RoadsState, e: int, o: RoadCar) -> float {
+  return rd_lane_offset(roads_st, e, o.lane) - rd_centre_sign(roads_st) * o.off
 }

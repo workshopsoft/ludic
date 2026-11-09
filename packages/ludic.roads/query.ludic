@@ -305,3 +305,9 @@ export function roads_edge_for(roads_st: mut RoadsState, seg: int, x: float, z: 
   if fwd { return f }
   return b
 }
+
+# the width of one lane of edge `e` (metres): what a car beside its lane (roads_car_shift) moves over by to be in the next
+export function roads_edge_lane_width(roads_st: RoadsState, e: int) -> float {
+  if e < 0 or e >= len(roads_st.rd_efrom) { return 0.0 }
+  return roads_st.rd_sw[e / 2]
+}

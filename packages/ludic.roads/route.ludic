@@ -96,6 +96,7 @@ export function roads_route_edges(roads_st: mut RoadsState, e0: int, e1: int, mo
       let rule = roads_turn_rule(roads_st, e, f)
       if rule == ROAD_RULE_FORBID { continue }
       if f == (e ^ 1) and k1 - k0 > 1 { continue }          # a U-turn only where the road ends
+      if f == roads_st.rd_ban_edge { continue }             # a road a car found blocked (RoadCar.ban)
       var cost = roads_st.rd_elen[f]
       if mode == ROADS_FASTEST { cost = roads_st.rd_elen[f] / roads_st.rd_espeed[f] }
       let nd = d + cost + rd_turn_cost(roads_st, rule, n, mode)

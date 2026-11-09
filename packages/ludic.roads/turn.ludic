@@ -299,6 +299,16 @@ export function roads_turn_at(roads_st: mut RoadsState, d: float) -> void { rd_t
 # its length (the path's metres, not the road metres its span stands for). Behind where a car was made, its lane is carried
 # straight back
 export function roads_car_point(roads_st: mut RoadsState, slot: int, back: float) -> void {
+  rd_car_point_lane(roads_st, slot, back)
+  # beside its lane (RoadCar.off): moved over towards the centre line
+  let off = roads_st.rd_cars[slot].off
+  if off != 0.0 {
+    let k = off * rd_centre_sign(roads_st)
+    roads_st.rd_pose_x = roads_st.rd_pose_x + Math.cos(roads_st.rd_pose_yaw) * k
+    roads_st.rd_pose_z = roads_st.rd_pose_z - Math.sin(roads_st.rd_pose_yaw) * k
+  }
+}
+function rd_car_point_lane(roads_st: mut RoadsState, slot: int, back: float) -> void {
   let c = roads_st.rd_cars[slot]
   let e = c.edge
   let len_e = roads_st.rd_elen[e]
