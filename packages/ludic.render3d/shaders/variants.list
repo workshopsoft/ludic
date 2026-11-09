@@ -66,6 +66,8 @@ impostor.vert|impostor.frag|#define SHADOW_PASS;
 model.vert|bake.frag|
 model.vert|bake.frag|#define CARD;
 model.vert|bake.frag|#define FLOWER;
+model.vert|bake.frag|#define OCT;
+model.vert|bake.frag|#define FLOWER;#define OCT;
 model.vert|depth.frag|#define FOLIAGE;#define WIND;#define ALPHA_TEST;
 model.vert|depth.frag|#define FOLIAGE;#define WIND;#define ALPHA_TEST;#define NEAR_FADE;
 model.vert|model.frag|
@@ -133,6 +135,8 @@ kit.vert|kit.frag|#define DEPTH_ONLY;
 kit.vert|kit.frag|#define INTERIOR_MAP;#define FACADE;#define DEPTH_ONLY;
 kit.vert|shadow.frag|#define SHADOW_PASS;
 oimp.vert|oimp.frag|
+oimp.vert|oimp.frag|#define SCATTER;
+oimp.vert|oimp.frag|#define SCATTER;#define SHADOW_PASS;
 hlod.vert|hlod.frag|
 kit.vert|bake.frag|
 skin.vert|velocity.frag|#define VELOCITY;

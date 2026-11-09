@@ -38,7 +38,13 @@ layout(set = 0, binding = 0) uniform Params {
   float band0;        // per-instance cull band (m): start and end, 0 0 none
   float band1;
   float thin;         // a streamed layer's density scaling (layer_gpu_thin): past this (m) a hash-chosen share kept, scaled up; 0 none
+  float xfade;        // the crossfade band (m) before the far card takes over (scatter.ludic layer_xfade): an instance in it is in its
+  float xstart;       // mesh level's bucket AND the impostor's (model.vert / oimp.frag dither one out as the other in); xstart where the card starts
 } pr;
+// an instance at ground distance d, in mesh level lv, also draws as its far card: it is in the crossfade band
+bool in_xfade(uint lv, float d) {
+  return pr.xfade > 0.0 && pr.has_imp != 0u && lv < pr.n_lods && d > pr.xstart - pr.xfade && d < pr.xstart;
+}
 
 layout(set = 0, binding = 1) readonly buffer Src { float src[]; };
 layout(set = 0, binding = 2) buffer Dst { float dst[]; };
@@ -138,6 +144,15 @@ void main() {
     uint q = (lv * pr.cap + at) * 8u;
     for (uint k = 0u; k < 8u; k++) { dst[q + k] = src[o + k]; }
     dst[q + 3u] = src[o + 3u] * sc;
+    float dx2 = src[o] - pr.cam.x;
+    float dz2 = src[o + 2u] - pr.cam.z;
+    if (in_xfade(lv, sqrt(dx2 * dx2 + dz2 * dz2))) {
+      uint ai = atomicAdd(counts[n], 1u);
+      if (ai >= pr.cap) { return; }
+      uint qi = (n * pr.cap + ai) * 8u;
+      for (uint k = 0u; k < 8u; k++) { dst[qi + k] = src[o + k]; }
+      dst[qi + 3u] = src[o + 3u] * sc;
+    }
     return;
   }
   if (gl_GlobalInvocationID.x != 0u) { return; }
@@ -173,6 +188,11 @@ void main() {
     uint q = (lv * pr.cap + cnt[lv]) * 8u;
     for (uint k = 0u; k < 8u; k++) { dst[q + k] = src[o + k]; }
     cnt[lv] += 1u;
+    if (in_xfade(lv, d) && cnt[n] < pr.cap) {
+      uint qi = (n * pr.cap + cnt[n]) * 8u;
+      for (uint k = 0u; k < 8u; k++) { dst[qi + k] = src[o + k]; }
+      cnt[n] += 1u;
+    }
   }
   write_cmds(cnt);
   for (uint k = 0u; k < 5u; k++) { counts[k] = cnt[k]; }

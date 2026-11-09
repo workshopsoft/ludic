@@ -11,10 +11,13 @@ uniform vec3 u_face_dir;                 // direction the cards face (to the cam
 uniform float u_radius;
 uniform float u_height;
 uniform float u_tiles;
+uniform vec4 u_imp_match;                // x: blend the two nearest views (R3D_IMP_MATCH, imp_match in render.ludic)
 out vec2 v_uv;
 out vec3 v_wpos;
 out float v_seed;
 out float v_tile;
+out float v_tile1;                       // the next baked view round the axis, and how far toward it the viewer stands
+out float v_tblend;
 out float v_yaw;
 void main() {
   vec3 center = i_pos.xyz;
@@ -29,8 +32,28 @@ void main() {
   // (model.vert), which takes atan(x, -z) to atan(x, -z) - yaw: the viewer's angle in the tree's own frame is the world one PLUS
   // the yaw (it was minus: every turned tree's card showed the tree from 2 yaw off and the tree swung round when its mesh came in)
   float ang = atan(toCam.x, -toCam.z) + yaw;
-  float t = floor(fract(ang / 6.2831853) * u_tiles + 0.5);
+  // Unreal's impostors blend the baked frames round the viewer (ImpostorBaker's frame blending) rather than snapping to the nearest:
+  // snapped, a 12-view card showed the tree up to 15 degrees turned from the near mesh and swung 30 degrees at once as the camera
+  // went round it. The pass blends the two views either side of the viewer by its angle between them (the shadow keeps the nearest).
+  float f = fract(ang / 6.2831853) * u_tiles;
+#ifdef SHADOW_PASS
+  float t = floor(f + 0.5);
   v_tile = mod(t, u_tiles);
+  v_tile1 = v_tile;
+  v_tblend = 0.0;
+#else
+  if (u_imp_match.x > 0.5) {
+    float t0 = floor(f);
+    v_tile = mod(t0, u_tiles);
+    v_tile1 = mod(t0 + 1.0, u_tiles);
+    v_tblend = f - t0;
+  } else {
+    float t = floor(f + 0.5);
+    v_tile = mod(t, u_tiles);
+    v_tile1 = v_tile;
+    v_tblend = 0.0;
+  }
+#endif
   v_yaw = yaw;
   vec3 w = center + right * (a_xy.x * 2.0 * u_radius * i_pos.w) + vec3(0.0, a_xy.y * u_height * i_pos.w, 0.0);
   v_wpos = w;

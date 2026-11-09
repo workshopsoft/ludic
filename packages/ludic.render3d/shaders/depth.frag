@@ -41,6 +41,9 @@ void main() {
   // pass never sees those pixels either - its equal-depth test simply finds nothing to
   // match. A branch a metre from the lens stops being an opaque wall in front of the body.
   if (v_near < 0.999 && v_near < fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;
+#else
+  // (the crossfade to the far card, model.vert u_lod_fade: the same dither for every scatter program)
+  if (v_near < 0.999 && v_near < fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;
 #endif
   vec4 d = texture(u_diff, v_uv);
   float lod = textureQueryLod(u_diff, v_uv).x;

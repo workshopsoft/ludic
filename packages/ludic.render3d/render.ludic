@@ -58,6 +58,8 @@ function leaf_tr_flags(render3d_st: mut Render3dState) -> void {
   if r3d_env_has(render3d_st, "R3D_DBG_NRM") { render3d_st.dbg_nrm = Text.to_float(r3d_env(render3d_st, "R3D_DBG_NRM")) }
   if r3d_env_has(render3d_st, "R3D_FOLIAGE_DITHER") and r3d_env(render3d_st, "R3D_FOLIAGE_DITHER") == "0" { render3d_st.fol_dither = 0.0 }
   if r3d_env_has(render3d_st, "R3D_IMP_BRIGHT") { render3d_st.imp_bright = Text.to_float(r3d_env(render3d_st, "R3D_IMP_BRIGHT")) }
+  if r3d_env_has(render3d_st, "R3D_IMP_MATCH") and r3d_env(render3d_st, "R3D_IMP_MATCH") == "0" { render3d_st.imp_match = false }
+  if r3d_env_has(render3d_st, "R3D_IMP_INTERIOR") { render3d_st.imp_interior = Math.clamp(Text.to_float(r3d_env(render3d_st, "R3D_IMP_INTERIOR")), 0.0, 1.0) }
 }
 function fog_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_clip_y"), render3d_st.r3d_clip_y)

@@ -2,6 +2,8 @@ in vec2 v_uv;
 in vec3 v_wpos;
 in float v_seed;
 in float v_tile;
+in float v_tile1;
+in float v_tblend;
 in float v_yaw;
 out vec4 o_color;
 uniform sampler2D u_atlas_albedo;
@@ -10,18 +12,27 @@ uniform mat4 u_view;
 uniform float u_tiles;
 uniform vec3 u_tint;
 uniform float u_radius;
+uniform vec4 u_imp_match;   // x: view blend, y: the mesh's per-tree hue, z: no region tint (the mesh has none), w: the card's own interior darkening (1 as before)
 void main() {
   if (v_wpos.y < u_clip_y) discard;
 #ifndef SHADOW_PASS
   if (fogCut(v_wpos)) discard;   // the fog wall's dissolve (lighting.glsl)
 #endif
-  vec2 uv = vec2((v_tile + v_uv.x) / u_tiles, v_uv.y);
+  // The card's u runs to the viewer's LEFT (impostor.vert: right = (-toCam.z, 0, toCam.x) is -(f x up), the bake camera's own right
+  // negated), while the bake laid each view with u to its camera's right: read as it was, every card showed its view MIRRORED (a kiosk's
+  // awning on the wrong side, a crown flipped, the whole model shifted across its pivot), so the tree changed shape when its mesh came in.
+  // u_imp_match.x (R3D_IMP_MATCH=0: as before) reads the view the right way round.
+  float cu = (u_imp_match.x > 0.5) ? 1.0 - v_uv.x : v_uv.x;
+  vec2 uv = vec2((v_tile + cu) / u_tiles, v_uv.y);
 #ifdef SHADOW_PASS
   // the map's texels are coarse: read a finer mip so the crown's coverage is not averaged away
   vec4 a = texture(u_atlas_albedo, uv, -3.0);
   if (a.a < 0.22) discard;
 #else
   vec4 a = texture(u_atlas_albedo, uv);
+  vec2 uv1 = vec2((v_tile1 + cu) / u_tiles, v_uv.y);
+  // the next view, blended in premultiplied (the atlas is premultiplied by coverage): a crown turns smoothly between the baked views
+  if (v_tblend > 0.0) a = mix(a, texture(u_atlas_albedo, uv1), v_tblend);
   float rawA = a.a;
   a.rgb /= max(a.a, 1e-3);          // the atlas mips are premultiplied by coverage
   // alpha-to-coverage, sharpened per mip so the silhouette stays crisp at any distance
@@ -36,7 +47,9 @@ void main() {
   // that black into every silhouette texel — decoded, a half-covered texel pointed away
   // from everything and shaded near black, so each tree wore a dark outline. Dividing by
   // the same coverage restores the normal (and the AO in .a) of the covered part.
-  vec4 nn = texture(u_atlas_normal, uv) / max(rawA, 1e-3);
+  vec4 nn = texture(u_atlas_normal, uv);
+  if (v_tblend > 0.0) nn = mix(nn, texture(u_atlas_normal, uv1), v_tblend);
+  nn /= max(rawA, 1e-3);
   vec3 n = clamp(nn.rgb, 0.0, 1.0) * 2.0 - 1.0;
   // the tile was baked from angle tile*2pi/tiles around the canonical tree; rotate by the instance yaw
   float s = sin(v_yaw), c = cos(v_yaw);
@@ -56,7 +69,16 @@ void main() {
   n = normalize(mix(hull, n, mix(0.88, 0.70, far)));
   float dist = length(v_wpos - u_cam_pos);
   float viewDepth = -(u_view * vec4(v_wpos, 1.0)).z;
-  vec3 alb = a.rgb * u_tint * (0.85 + 0.3 * fract(v_seed * 7.13)) * regionTint(v_wpos, 0.4);
+  // the near mesh's own per-tree colour (model.frag: value +-15% by seed, and FOLIAGE's hue turn of red against blue by seed), so a
+  // tree keeps its colour when its mesh comes in; the mesh has no region tint, so the card none either (u_imp_match.z)
+  vec3 alb = a.rgb * u_tint * (0.85 + 0.3 * fract(v_seed * 7.13));
+  if (u_imp_match.z < 0.5) alb *= regionTint(v_wpos, 0.4);
+  if (u_imp_match.y > 0.5) {      // (y is 1 for a foliage layer only)
+    // the leaves only, as the mesh (its bark is not FOLIAGE): the green that stands over red and blue
+    float leaf = smoothstep(0.0, 0.04, a.g - max(a.r, a.b) * 0.9);
+    float hj = fract(v_seed * 3.71) - 0.5;
+    alb *= mix(vec3(1.0), vec3(1.0 + 0.20 * hj, 1.0, 1.0 - 0.20 * hj), leaf);
+  }
   // A distant stand reads as a dark mass, not as bright separate sprites - but this was
   // also pulling the colour out of it. Darken without desaturating: the same factor on
   // all three channels, and a touch of saturation put back, because the thing that makes
@@ -74,10 +96,10 @@ void main() {
   // the card itself is the caster: look up the shadow a little toward the sun so it does not self-shadow
   float shadow = sunShadow(v_wpos + u_sun_dir * u_radius * 0.7, vec3(0, 1, 0), viewDepth);
   // crowns are dense: darken toward the centre of the card as a cheap interior occlusion
-  float interior = 1.0 - 0.22 * smoothstep(0.9, 0.3, abs(q.x)) * smoothstep(1.0, 0.2, v_uv.y);
+  float interior = 1.0 - 0.22 * u_imp_match.w * smoothstep(0.9, 0.3, abs(q.x)) * smoothstep(1.0, 0.2, v_uv.y);
   // ground contact: the lowest part of anything sitting on the ground is occluded by it
   // (a boulder's underside, a trunk's base); without it a far boulder is a sticker on the grass
-  interior *= mix(0.55, 1.0, smoothstep(0.0, 0.3, v_uv.y));
+  interior *= mix(mix(1.0, 0.55, u_imp_match.w), 1.0, smoothstep(0.0, 0.3, v_uv.y));
   // the bake (bake.frag) writes the occlusion as arm.r x 0.49 (1 marks a surface's alternative): decoded as oimp.frag does, or every
   // card took half its own sky light (a far crown near black against its near mesh)
   float aoB = clamp(nn.a / 0.49, 0.0, 1.0);

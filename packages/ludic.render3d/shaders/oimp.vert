@@ -9,8 +9,16 @@ layout(location = 0) in vec2 a_xy;       // [-0.5, 0.5] x [0, 1]
 layout(location = 1) in vec2 a_uv;
 layout(location = 3) in vec4 i_pos;
 layout(location = 4) in vec4 i_rot;
+#ifdef SCATTER
+// a scatter layer's far card (scatter.ludic layer_draw_far): its instance record is (x, y, z, scale), (sin, cos, seed, wind) only
+uniform vec3 u_tint;
+uniform mat4 u_light_vp;
+uniform vec3 u_face_dir;                 // the shadow pass: the sun's direction, which the card faces there
+out vec4 v_cen;                          // the model's middle in the world, and the instance's scale (oimp.frag: the surface point)
+#else
 layout(location = 5) in vec4 i_tint;
 layout(location = 6) in vec4 i_box;      // a box kit's instance: w, d, h, radius (0: an ordinary instance)
+#endif
 uniform mat4 u_view;
 uniform mat4 u_proj;
 uniform vec3 u_cam_pos;
@@ -39,6 +47,10 @@ void main() {
   float half_side = u_radius * i_pos.w;
   float cy = u_centre_y * i_pos.w;
   vec3 toRef = vec3(1.0 / i_pos.w);
+#ifdef SCATTER
+  vec4 i_box = vec4(0.0);
+  vec4 i_tint = vec4(u_tint, 1.0);
+#endif
   if (i_box.w > 0.0 && u_box_ref.w > 0.0) {
     float hx = 0.0, hz = 0.0, top = 0.0;
     for (int k = 0; k < 16; k++) {
@@ -52,7 +64,11 @@ void main() {
     toRef = vec3(u_box_ref.x, u_box_ref.z, u_box_ref.y) / max(ext, vec3(1e-3));
   }
   vec3 centre = i_pos.xyz + vec3(0.0, cy, 0.0);
+#if defined(SCATTER) && defined(SHADOW_PASS)
+  vec3 toCam = normalize(u_face_dir) * 1000.0;      // the sun's view of it: the frames nearest the sun's direction
+#else
   vec3 toCam = u_cam_pos - centre;
+#endif
   float dist = length(toCam);
   vec3 dir = toCam / max(dist, 1e-4);
   // the frame to look from, in the model's own frame (the instance's yaw turned out of the view)
@@ -84,6 +100,13 @@ void main() {
   vec3 rel = w - centre;
   v_lctr = vec3(c * rel.x - s * rel.z, rel.y, s * rel.x + c * rel.z) * toRef;
   v_tint = i_tint;
+#ifdef SCATTER
+  v_cen = vec4(centre, i_pos.w);
+#endif
   v_rot = i_rot;
+#if defined(SCATTER) && defined(SHADOW_PASS)
+  gl_Position = u_light_vp * vec4(w, 1.0);
+#else
   gl_Position = u_proj * u_view * vec4(w, 1.0);
+#endif
 }

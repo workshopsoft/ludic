@@ -5,6 +5,13 @@ in vec2 v_uv;
 in float v_seed;
 layout(location = 0) out vec4 o_albedo;
 layout(location = 1) out vec4 o_normal;
+#ifdef OCT
+// an octahedral frame's depth (scatter.ludic impostor_paint_oct): how far the surface stands toward the frame's camera from the model's
+// middle, over the bounding sphere, 0..1 (Unreal's ImpostorBaker bakes it to re-project and to parallax the frames)
+layout(location = 2) out vec4 o_depth;
+uniform vec4 u_oct_c;          // the middle (model space) and the sphere's radius
+uniform vec4 u_oct_d;          // the frame's direction (toward its camera)
+#endif
 uniform sampler2D u_diff;
 uniform vec4 u_fac_base_inv;   // a glTF material's base colour factor, as 1 - factor
 uniform sampler2D u_arm;
@@ -35,4 +42,7 @@ void main() {
   // texels with the top (oimp.frag u_imp_alt): its occlusion means nothing (its maps are laid by place, not these uvs)
   bool alt = u_surf.x > 0.0 && u_s2.x > 0.0 && u_s2_e.w < 0.5;   // a flat roof's gravel (u_s2_e.w) is not the card's alternative
   o_normal = vec4(N * 0.5 + 0.5, alt ? 1.0 : texture(u_arm, v_uv).r * 0.49);
+#ifdef OCT
+  o_depth = vec4(clamp(dot(v_wpos - u_oct_c.xyz, u_oct_d.xyz) / u_oct_c.w * 0.5 + 0.5, 0.0, 1.0), 0.0, 0.0, 1.0);
+#endif
 }

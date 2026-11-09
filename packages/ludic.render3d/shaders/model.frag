@@ -454,6 +454,9 @@ void main() {
 #ifdef NEAR_FADE
   // the same dither as the prepass, for the draws that have no prepass in front of them
   if (v_near < 0.999 && v_near < fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;
+#else
+  // (the crossfade to the far card, model.vert u_lod_fade: the same dither for every scatter program)
+  if (v_near < 0.999 && v_near < fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;
 #endif
 #endif
   vec3 N = normalize(v_nrm);

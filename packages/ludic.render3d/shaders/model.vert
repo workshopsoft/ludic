@@ -90,6 +90,7 @@ out vec2 v_rot;
 // cards near the trunk are darkened as the crown's interior. This is how game trees
 // have been shaded since SpeedTree; without it a card crown reads as frosted.
 uniform float u_model_h;     // the model's height (m), 0 = not a crown
+uniform vec4 u_lod_fade;     // the crossfade to the layer's far card (scatter.ludic layer_xfade): where the card starts (m), the band (m; 0 none), the camera's x z
 uniform float u_open_crown;  // 1: its cards are not one round crown about its middle (a palm: fronds on a bare trunk): no hull
 out float v_hull;            // 0 at the crown's axis .. 1 at its rim
 // An aspen leaf hangs on a flattened stalk, so it twists in air a conifer does not feel at
@@ -233,5 +234,14 @@ void main() {
   float ax = 1.0;
   if (u_model_h > 2.0) ax = smoothstep(0.12, 0.30, length(a_pos.xz) / max(u_model_h * 0.22, 0.05));
   v_near = mix(1.0, clamp((gl_Position.w - 0.3) / 0.7, 0.0, 1.0), ax);   // 0.3 m to 1 m: the subtlety of Unreals camera-distance fade
+#endif
+#ifndef SHADOW_PASS
+  // Unreal's Dithered LOD Transition, by distance (Unity's LOD Group cross-fade): over the band before its far card takes over, the mesh
+  // is dithered out as the card (oimp.frag SCATTER) is dithered in by the complement of the same noise, eased (smoothstep), so no
+  // pixel is ever both or neither. The instance's own distance on the ground, as the cull measures it (scatter_cull.comp)
+  if (u_lod_fade.y > 0.0) {
+    float di = length(i_pos.xz - u_lod_fade.zw);
+    v_near *= 1.0 - smoothstep(u_lod_fade.x - u_lod_fade.y, u_lod_fade.x, di);
+  }
 #endif
 }
