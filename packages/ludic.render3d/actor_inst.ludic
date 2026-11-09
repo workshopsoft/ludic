@@ -20,7 +20,10 @@
 # FShaderDataType::GetBoneBufferForReading(bPrevious), GPUSkinVertexFactory.cpp: PreviousBoneMatrices beside BoneMatrices, filled from
 # SkeletalRenderGPUSkin.cpp's PreviousReferenceToLocal): the bone buffer is two, swapped at
 # a frame's first palette, so the one last frame wrote is still whole and its rows are where last frame put them (Actor.ai_pboff).
-const AI_MAX: int = 16384             # instances a pass; past it, actors are drawn on their own (a city's buildings, an actor each)
+# instances a pass at most; past it, actors are drawn on their own. It was 16 384: a city's buildings within their LOD0 reach are an actor
+# a module (33 000 visible down Island Highway by Greenheart Park, 2026-11-09), so half of them fell out to 16 000 draws of their own a
+# frame (32 ms of the CPU's recording, most of the GPU's actor pass). R3D_AI_MAX=<n> sets another (16384: as before)
+const AI_MAX_DEFAULT: int = 131072
 const AI_FIRST: int = 2048            # the instances a pass's buffer is made for; it grows to what a frame asks (gvk_buf_reserve)
 # three rows of the model matrix, the tint and the glow, the palette's first row (skinned), last frame's (the motion pass) and the
 # building's window seed (Actor.wseed), then last
@@ -54,9 +57,11 @@ function ai_init(render3d_st: mut Render3dState) -> void {
     render3d_st.ai_bufs[k] = gpu_buffer_new(render3d_st)
     gpu_buffer_upload(render3d_st, render3d_st.ai_bufs[k], AI_FIRST * AI_FLOATS * 4, null, GPU_DYNAMIC)
   }
-  render3d_st.ai_f = floats(AI_MAX * AI_FLOATS)
+  render3d_st.ai_max = AI_MAX_DEFAULT
+  if r3d_env_has(render3d_st, "R3D_AI_MAX") { render3d_st.ai_max = Math.clamp(Text.to_int(r3d_env(render3d_st, "R3D_AI_MAX")), 256, AI_MAX_DEFAULT) }
+  render3d_st.ai_f = floats(render3d_st.ai_max * AI_FLOATS)
   render3d_st.ai_cand = new []Actor
-  for i in 0 .. AI_MAX { push(render3d_st.ai_cand, null) }
+  for i in 0 .. render3d_st.ai_max { push(render3d_st.ai_cand, null) }
   render3d_st.ai_models = new []Model
   for i in 0 .. AI_MODELS { push(render3d_st.ai_models, null) }
   if render3d_st.ai_skin {
@@ -150,7 +155,7 @@ function ai_begin(render3d_st: mut Render3dState) -> void {
 # a plain actor this pass draws, gathered by its model; one unlike its model's first (its roughness, its light rig, its sides, cut out
 # or not) is not, nor a skinned one whose palette finds no room
 function ai_gather(render3d_st: mut Render3dState, a: Actor) -> void {
-  if render3d_st.ai_n >= AI_MAX { return }
+  if render3d_st.ai_n >= render3d_st.ai_max { return }
   let m = a.model
   if m.skin != null and not ai_palette(render3d_st, a) { return }
   if m.ai_stamp != render3d_st.ai_stamp {
