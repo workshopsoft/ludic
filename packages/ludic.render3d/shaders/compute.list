@@ -16,3 +16,6 @@ ue_histogram|ue_histogram.comp
 ue_histogram_convert|ue_histogram_convert.comp
 scatter_occl|scatter_occl.comp
 rvt_feedback|rvt_feedback.comp
+pis_reset|pis_reset.comp
+pis_cull|pis_cull.comp
+pis_args|pis_args.comp

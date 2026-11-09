@@ -1,0 +1,100 @@
+// pis_cull.comp - a persistent instance set's culling (pis.ludic): every instance of every model kept on the GPU, tested in parallel
+// against the view's frustum and the previous frame's furthest HZB (Unreal 5.8's r.InstanceCulling.OcclusionCull, as kinst_cull.comp
+// does it), the visible ones packed per model into Dst in actor_inst's instance layout (8 vec4: the model matrix as three rows, tint
+// and glow, palette and window seed, last frame's matrix), drawn by indirect calls with the actors' instanced programs. Two passes over
+// the same list, told apart by pr.info.z: 0 counts each model's visible instances, 1 (after pis_args.comp) writes them where they go.
+// No CPU work is proportional to the number of instances: a still building's card is added once and culled here every frame.
+layout(local_size_x = 64) in;
+
+layout(set = 0, binding = 0) uniform Params {
+  vec4 planes[6];       // left right bottom top near far: inside when dot(xyz, p) + w >= 0
+  vec4 cam;             // xyz the camera (render space)
+  uvec4 info;           // x instances (the high water), y models, z pass, w output capacity
+  mat4 hvp;             // the previous frame's HZB (occlusion.ludic occ_inst_params)
+  ivec4 hview;
+  ivec4 hlv[16];
+} pr;
+
+layout(set = 0, binding = 1) readonly buffer Src { vec4 src[]; };        // 10 vec4 an instance: the 8 of Dst, its bound sphere, (model, alive)
+layout(set = 0, binding = 2) buffer Counts { uint counts[]; };
+layout(set = 0, binding = 3) readonly buffer Offsets { uint offs[]; };
+layout(set = 0, binding = 4) buffer Cursors { uint cursors[]; };
+layout(set = 0, binding = 5) buffer Dst { vec4 dst[]; };
+layout(set = 0, binding = 6) readonly buffer Hzb { float hzb[]; };
+
+// ---- the previous frame's HZB test; kept in step with scatter_occl.comp and grass_cull.comp (hzb_test.comp is the actors') ----
+// BuildInstanceDrawCommands.usf: PrevCull = BoxCullFrustum(bounds, PrevLocalToTranslatedWorld, PrevTranslatedWorldToClip, ...); a box
+// that crosses the near plane is visible; PrevRect = GetScreenRect(HZBTestViewRect, PrevCull, 4); bIsVisible = IsVisibleHZB(PrevRect, true)
+// (Nanite/NaniteHZBCull.ush: MipLevelForRect, GetMinDepthFromHZB 4 x 4, visible when Rect.Depth >= MinDepth with reversed depth).
+// Unreal rounds PrevRect.Depth up to a half (RoundUpF16) for its 16-bit HZB; this HZB keeps the depth's 32-bit floats, so none is needed.
+// One rule more conservative than Unreal's: a box that reaches past the previous frame's view is visible (Unreal clamps its rect to
+// the view and tests only what was on screen), so turning never hides what the last frame could not see.
+float hzbAt(int lvl, int x, int y) {
+  ivec4 l = pr.hlv[lvl];
+  return hzb[l.z + min(y, l.y - 1) * l.x + min(x, l.x - 1)];
+}
+int hzbMip(ivec4 r) {                   // MipLevelForRect, DesiredFootprintPixels = 4 (MaxPixelOffset 3, MipOffset 1)
+  ivec2 mxy = findMSB(r.zw - r.xy);
+  int lvl = max(max(mxy.x, mxy.y) - 1, 0);
+  ivec2 span = (r.zw >> lvl) - (r.xy >> lvl);
+  if (span.x > 3 || span.y > 3) lvl += 1;
+  return lvl;
+}
+bool hzbVisible(vec3 c, vec3 e) {
+  if (pr.hview.w == 0) return true;
+  vec4 dx = (2.0 * e.x) * pr.hvp[0];
+  vec4 dy = (2.0 * e.y) * pr.hvp[1];
+  vec4 dz = (2.0 * e.z) * pr.hvp[2];
+  vec4 p0 = pr.hvp * vec4(c - e, 1.0);
+  vec2 rmin = vec2(1e30);
+  vec2 rmax = vec2(-1e30);
+  float maxZ = -1e30;
+  for (int k = 0; k < 8; k++) {
+    vec4 p = p0;
+    if ((k & 1) != 0) p += dx;
+    if ((k & 2) != 0) p += dy;
+    if ((k & 4) != 0) p += dz;
+    if (p.w <= 0.0 || p.z >= p.w) return true;        // bCrossesNearPlane (reversed depth: the near plane is z = w)
+    vec2 s = p.xy / p.w;
+    rmin = min(rmin, s);
+    rmax = max(rmax, s);
+    maxZ = max(maxZ, p.z / p.w);                      // the nearest corner's depth (Unreal's RectMax.z)
+  }
+  if (any(lessThan(rmin, vec2(-1.0))) || any(greaterThan(rmax, vec2(1.0)))) return true;
+  // GetScreenRect: the pixels whose centres the rect covers (rows as the depth's: no flip, as hzb_test.comp)
+  ivec2 vs = pr.hview.xy;
+  vec4 uv = clamp(vec4(rmin, rmax) * 0.5 + 0.5, 0.0, 1.0);
+  ivec4 px = ivec4(uv * vec4(vs, vs) + vec4(0.5, 0.5, -0.5, -0.5));
+  px.xy = max(px.xy, ivec2(0));
+  px.zw = min(px.zw, vs - 1);
+  ivec4 t = ivec4(px.xy, max(px.xy, px.zw)) >> 1;    // HZB mip 0 is half resolution
+  int lvl = min(hzbMip(t), pr.hview.z - 1);
+  t >>= lvl;
+  float d = 1.0;                                      // GetMinDepthFromHZB, 4 x 4
+  for (int y = 0; y < 4; y++) {
+    int yy = min(t.y + y, t.w);
+    for (int x = 0; x < 4; x++) d = min(d, hzbAt(lvl, min(t.x + x, t.z), yy));
+  }
+  return maxZ >= d;
+}
+
+void main() {
+  uint i = gl_GlobalInvocationID.x;
+  if (i >= pr.info.x) { return; }
+  vec4 meta = src[i * 10u + 9u];
+  if (meta.y < 0.5) { return; }                 // a free slot (pis_remove)
+  vec4 s = src[i * 10u + 8u];
+  for (int k = 0; k < 6; k++) {
+    if (dot(pr.planes[k].xyz, s.xyz) + pr.planes[k].w < -s.w) { return; }
+  }
+  if (pr.hview.w != 0 && !hzbVisible(s.xyz, vec3(s.w))) { return; }
+  uint m = uint(meta.x + 0.5);
+  if (pr.info.z == 0u) {
+    atomicAdd(counts[m], 1u);
+    return;
+  }
+  uint at = atomicAdd(cursors[m], 1u);
+  if (at >= counts[m]) { return; }              // (the model was clamped to what fits)
+  uint o = (offs[m] + at) * 8u;
+  for (uint k = 0u; k < 8u; k++) { dst[o + k] = src[i * 10u + k]; }
+}

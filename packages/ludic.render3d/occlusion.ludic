@@ -490,6 +490,7 @@ function occ_hzb_make(render3d_st: mut Render3dState) -> void {
 const OCC_INST_KINST: int = 1
 const OCC_INST_SCATTER: int = 2
 const OCC_INST_GRASS: int = 4
+const OCC_INST_PIS: int = 8          # persistent instance sets (pis.ludic, pis_cull.comp): R3D_PIS_OCCLUSION=0 turns it off
 const OCC_CUT_DEG: float = 75.0       # IsLargeCameraMovement's rotation threshold in bResetCamera (SceneVisibility.cpp)
 const OCC_CUT_M: float = 100.0        # r.CameraCutTranslationThreshold (GCameraCutTranslationThreshold, 10000 cm)
 
@@ -499,6 +500,7 @@ function occ_inst_flags(render3d_st: mut Render3dState) -> int {
     if not (r3d_env_has(render3d_st, "R3D_KINST_OCCLUSION") and r3d_env(render3d_st, "R3D_KINST_OCCLUSION") == "0") { f = f | OCC_INST_KINST }
     if not (r3d_env_has(render3d_st, "R3D_SCATTER_OCCLUSION") and r3d_env(render3d_st, "R3D_SCATTER_OCCLUSION") == "0") { f = f | OCC_INST_SCATTER }
     if not (r3d_env_has(render3d_st, "R3D_GRASS_OCCLUSION") and r3d_env(render3d_st, "R3D_GRASS_OCCLUSION") == "0") { f = f | OCC_INST_GRASS }
+    if not (r3d_env_has(render3d_st, "R3D_PIS_OCCLUSION") and r3d_env(render3d_st, "R3D_PIS_OCCLUSION") == "0") { f = f | OCC_INST_PIS }
     render3d_st.occ_inst_flags = f
   }
   return render3d_st.occ_inst_flags

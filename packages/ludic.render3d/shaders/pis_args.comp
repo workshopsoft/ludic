@@ -1,0 +1,29 @@
+// pis_args.comp - between a persistent instance set's count pass and its scatter pass (pis.ludic): the per-model counts become first
+// places (an exclusive scan, clamped so the total fits the output), and each model's draw records (its parts: one a mesh range, in the
+// batches' shared meshes) learn how many instances they draw and where they start. One invocation: a scan of a few hundred models is
+// a few microseconds.
+layout(local_size_x = 1) in;
+layout(set = 0, binding = 0) uniform Params {
+  uvec4 info;           // x models, y the output's capacity (instances)
+} pr;
+layout(set = 0, binding = 1) buffer Counts { uint counts[]; };
+layout(set = 0, binding = 2) buffer Offsets { uint offs[]; };
+layout(set = 0, binding = 3) readonly buffer Models { vec4 models[]; };   // a vec4 a model: its first entry in Recs, how many
+layout(set = 0, binding = 4) readonly buffer Recs { uint recs[]; };       // the models' draw records, a model's together
+layout(set = 0, binding = 5) buffer Cmds { uint cmds[]; };                // VkDrawIndexedIndirectCommand, 5 uints a record
+void main() {
+  uint running = 0u;
+  for (uint m = 0u; m < pr.info.x; m++) {
+    uint c = min(counts[m], pr.info.y - running);
+    counts[m] = c;
+    offs[m] = running;
+    running += c;
+    uint first = uint(models[m].x + 0.5);
+    uint n = uint(models[m].y + 0.5);
+    for (uint j = 0u; j < n; j++) {
+      uint r = recs[first + j] * 5u;
+      cmds[r + 1u] = c;
+      cmds[r + 4u] = offs[m];
+    }
+  }
+}

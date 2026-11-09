@@ -1,0 +1,364 @@
+# ============================================================================
+# pis.ludic - persistent instances: a game's still, plain models (a city's far building cards) kept on the GPU and culled there every
+# frame, drawn with the actors' own instanced programs (actor_inst.ludic ACTOR_INST: the same records, the same shading), so no CPU work
+# a frame is proportional to how many there are. Unreal's GPU Scene with its instance culling (r.InstanceCulling.OcclusionCull) is the
+# model: an instance is written once when it appears (pis_add), its slot marked free when it goes (pis_remove), and each frame
+#
+#   pis_frame   (before the frame's first pass: a game's r3d_on_prepare) reset -> pis_cull.comp count -> pis_args.comp (scan, draw
+#               records) -> pis_cull.comp scatter: a thread an instance, its bound sphere against the view's frustum and the previous
+#               frame's furthest HZB (occlusion.ludic), the visible ones packed per model in actor_inst's layout
+#   pis_draw    (in the game's r3d_on_draw, among the actors) one multi-draw indirect call a batch
+#
+# A batch is a mesh (a primitive of a model: its material, its textures) that many models' parts share, each part a range of its
+# indices (pis_batch, pis_part: a game puts all its far cards of one material in one mesh), so the set's draws are its batches, not
+# its models: a city's 400 far modules in 9 materials are 9 calls, and a model none of whose instances is visible costs its records'
+# zero counts only. pis_model makes a plain model its own batches (one a primitive, a part each).
+#
+# The set casts no shadow and draws no motion (a still card far off: the sun's cascades past a building's shadow reach and the camera's
+# motion from depth cover it). Its instances are in render space: a game moves them all with the floating origin (pis_shift).
+# A freed slot is held PIS_HOLD frames before it is used again (a frame in flight may still read it).
+# ============================================================================
+
+const PIS_SRC: int = 40          # floats a record: the 32 of actor_inst (AI_FLOATS), its bound sphere (render space), (model, alive, 0, 0)
+const PIS_DST: int = 32
+const PIS_PRM: int = 116         # pis_cull.comp's Params in words: 32 of its own, 84 of the previous frame's HZB (occ_inst_params)
+const PIS_REC_W: int = 20        # a VkDrawIndexedIndirectCommand
+const PIS_MODELS: int = 2048
+const PIS_RECS: int = 8192       # draw records (a model's parts)
+const PIS_BATCHES: int = 256
+const PIS_HOLD: int = 4
+
+export property PisSet {
+  ready: bool = false,
+  cap: int = 0,
+  high: int = 0,                 # slots handed out so far (the cull walks [0, high))
+  live: int = 0,
+  free: words = null,            # slots free to take, and how many
+  nfree: int = 0,
+  hold: words = null,            # slots freed, with the frame each may be taken again
+  hold_at: words = null,
+  nhold: int = 0,
+  frame: int = 0,
+  rec: floats = null,            # the records as written (the origin's shifts read them)
+  mkey: []Model = null,          # each model's own Model (pis_model), null for one made of parts (pis_model_begin)
+  nmodels: int = 0,
+  mrecs: words = null,           # the models' draw records, a model's together (mtab: its first entry here, how many)
+  nmr: int = 0,
+  bmodel: []Model = null,        # each batch: its mesh (a primitive of a model), its records' range and how many are used,
+  bprim: words = null,           # the roughness scale and sides it is drawn with
+  bfirst: words = null,
+  bused: words = null,
+  bcap: words = null,
+  brough: floats = null,
+  bone: words = null,
+  nrecs: int = 0,
+  cmds: words = null,
+  b_src: int = 0,
+  b_dst: int = 0,
+  b_counts: int = 0,
+  b_offs: int = 0,
+  b_cursors: int = 0,
+  b_cmds: int = 0,
+  b_models: int = 0,
+  b_mrecs: int = 0,
+  c_reset: int = 0,
+  c_cull: int = 0,
+  c_args: int = 0,
+  prm: words = null,
+  pa: words = null,
+  pr: words = null,
+  bufs: words = null,
+  mtab: floats = null,
+  tables_dirty: bool = true,
+  drawn: bool = false            # this frame's lists were made (pis_frame ran on a ready set)
+}
+
+# a set of up to `cap` instances: false (and nothing drawn) where there is no compute
+@alloc_ok("start-up: a set's buffers, made once")
+export function pis_new(render3d_st: mut Render3dState, cap: int) -> PisSet {
+  let ps = new PisSet
+  ps.cap = cap
+  if not gpu_has_compute(render3d_st) or not gpu_has_mdi(render3d_st) { return ps }
+  ps.c_reset = gpu_compute(render3d_st, "pis_reset", 2)
+  ps.c_cull = gpu_compute(render3d_st, "pis_cull", 6)
+  ps.c_args = gpu_compute(render3d_st, "pis_args", 5)
+  if ps.c_reset <= 0 or ps.c_cull <= 0 or ps.c_args <= 0 { return ps }
+  ps.rec = floats(cap * PIS_SRC)
+  for i in 0 .. cap * PIS_SRC { ps.rec[i] = 0.0 }
+  ps.free = words(cap)
+  ps.hold = words(cap)
+  ps.hold_at = words(cap)
+  ps.mkey = new []Model
+  ps.mrecs = words(PIS_RECS)
+  for i in 0 .. PIS_RECS { ps.mrecs[i] = 0 }
+  ps.bmodel = new []Model
+  ps.bprim = words(PIS_BATCHES)
+  ps.bfirst = words(PIS_BATCHES)
+  ps.bused = words(PIS_BATCHES)
+  ps.bcap = words(PIS_BATCHES)
+  ps.brough = floats(PIS_BATCHES)
+  ps.bone = words(PIS_BATCHES)
+  ps.cmds = words(PIS_RECS * 5)
+  for i in 0 .. PIS_RECS * 5 { ps.cmds[i] = 0 }
+  ps.mtab = floats(PIS_MODELS * 4)
+  for i in 0 .. PIS_MODELS * 4 { ps.mtab[i] = 0.0 }
+  ps.b_src = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, ps.b_src, cap * PIS_SRC * 4, data_of(ps.rec), GPU_DYNAMIC)
+  ps.b_dst = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, ps.b_dst, cap * PIS_DST * 4, null, GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, ps.b_dst)
+  ps.b_counts = pis_gpu_words(render3d_st, PIS_MODELS)
+  ps.b_offs = pis_gpu_words(render3d_st, PIS_MODELS)
+  ps.b_cursors = pis_gpu_words(render3d_st, PIS_MODELS)
+  ps.b_cmds = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, ps.b_cmds, PIS_RECS * PIS_REC_W, data_of(ps.cmds), GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, ps.b_cmds)
+  ps.b_models = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, ps.b_models, PIS_MODELS * 16, data_of(ps.mtab), GPU_DYNAMIC)
+  ps.b_mrecs = gpu_buffer_new(render3d_st)
+  gpu_buffer_upload(render3d_st, ps.b_mrecs, PIS_RECS * 4, data_of(ps.mrecs), GPU_DYNAMIC)
+  ps.prm = words(PIS_PRM)
+  ps.pa = words(4)
+  ps.pr = words(4)
+  ps.bufs = words(8)
+  ps.ready = true
+  return ps
+}
+@alloc_ok("start-up: a set's buffers, made once")
+function pis_gpu_words(render3d_st: mut Render3dState, n: int) -> int {
+  let b = gpu_buffer_new(render3d_st)
+  let z = words(n)
+  for i in 0 .. n { z[i] = 0 }
+  gpu_buffer_upload(render3d_st, b, n * 4, data_of(z), GPU_DYNAMIC)
+  gpu_buffer_gpu_owned(render3d_st, b)
+  free(z)
+  return b
+}
+
+# a batch: primitive j of model m (its mesh, material and textures), with room for `cap` parts, drawn with the roughness scale and
+# sides an actor of it would have; -1 when the set is full or not ready
+@alloc_ok("a batch made once")
+export function pis_batch(ps: PisSet, m: Model, j: int, cap: int, rough: float, one_sided: bool) -> int {
+  if not ps.ready or m == null or j < 0 or j >= len(m.prims) { return -1 }
+  let b = len(ps.bmodel)
+  if b >= PIS_BATCHES or ps.nrecs + cap > PIS_RECS { return -1 }
+  push(ps.bmodel, m)
+  ps.bprim[b] = j
+  ps.bfirst[b] = ps.nrecs
+  ps.bused[b] = 0
+  ps.bcap[b] = cap
+  ps.brough[b] = rough
+  ps.bone[b] = 0
+  if one_sided { ps.bone[b] = 1 }
+  for r in ps.nrecs .. ps.nrecs + cap {
+    for q in 0 .. 5 { ps.cmds[r * 5 + q] = 0 }
+  }
+  ps.nrecs += cap
+  return b
+}
+
+# a new model with no parts yet (its parts added next, before any other model is begun): its index, -1 when the set is full
+@alloc_ok("a model registered once")
+export function pis_model_begin(ps: PisSet) -> int {
+  if not ps.ready or ps.nmodels >= PIS_MODELS { return -1 }
+  let k = ps.nmodels
+  ps.nmodels += 1
+  push(ps.mkey, null)
+  ps.mtab[k * 4] = float(ps.nmr)
+  ps.mtab[k * 4 + 1] = 0.0
+  ps.tables_dirty = true
+  return k
+}
+
+# a part of model k (the one just begun): `count` indices of batch b's mesh from `first`, its vertices' numbers moved by `base`
+export function pis_part(ps: PisSet, k: int, b: int, first: int, count: int, base: int) -> bool {
+  if not ps.ready or k < 0 or b < 0 or b >= len(ps.bmodel) or ps.bused[b] >= ps.bcap[b] or ps.nmr >= PIS_RECS or count <= 0 { return false }
+  let r = ps.bfirst[b] + ps.bused[b]
+  ps.bused[b] += 1
+  ps.cmds[r * 5] = count
+  ps.cmds[r * 5 + 1] = 0
+  ps.cmds[r * 5 + 2] = first
+  ps.cmds[r * 5 + 3] = base
+  ps.cmds[r * 5 + 4] = 0
+  ps.mrecs[ps.nmr] = r
+  ps.nmr += 1
+  ps.mtab[k * 4 + 1] = ps.mtab[k * 4 + 1] + 1.0
+  ps.tables_dirty = true
+  return true
+}
+
+# model m's place in the set (the first time: a batch a primitive, its whole mesh a part); -1 when the set is full or not ready
+@alloc_ok("a model registered once, the first time an instance of it is added")
+export function pis_model(ps: PisSet, m: Model, rough: float, one_sided: bool) -> int {
+  if not ps.ready or m == null { return -1 }
+  for i in 0 .. len(ps.mkey) { if ps.mkey[i] == m { return i } }
+  let k = pis_model_begin(ps)
+  if k < 0 { return -1 }
+  ps.mkey[k] = m
+  for j in 0 .. len(m.prims) {
+    let b = pis_batch(ps, m, j, 1, rough, one_sided)
+    if b < 0 { return -1 }
+    pis_part(ps, k, b, 0, m.prims[j].mesh.count, 0)
+  }
+  return k
+}
+
+# an instance of model k (pis_model) with the model matrix `mat` (render space, column-major as Actor.mat), its tint, glow and window
+# seed, and its bound sphere (render space): its slot, -1 when the set is full
+export function pis_add(ps: PisSet, render3d_st: Render3dState, k: int, mat: floats, tr: float, tg: float, tb: float, emis: float, wseed: float, cx: float, cy: float, cz: float, r: float) -> int {
+  if not ps.ready or k < 0 { return -1 }
+  var s = -1
+  if ps.nfree > 0 {
+    ps.nfree -= 1
+    s = ps.free[ps.nfree]
+  } else if ps.high < ps.cap {
+    s = ps.high
+    ps.high += 1
+  } else { return -1 }
+  let f = ps.rec
+  let o = s * PIS_SRC
+  for row in 0 .. 3 {
+    f[o + row * 4] = mat[row];  f[o + row * 4 + 1] = mat[4 + row];  f[o + row * 4 + 2] = mat[8 + row];  f[o + row * 4 + 3] = mat[12 + row]
+    # (last frame's matrix: the same, a still instance)
+    f[o + 20 + row * 4] = mat[row];  f[o + 21 + row * 4] = mat[4 + row];  f[o + 22 + row * 4] = mat[8 + row];  f[o + 23 + row * 4] = mat[12 + row]
+  }
+  f[o + 12] = tr;  f[o + 13] = tg;  f[o + 14] = tb;  f[o + 15] = emis
+  f[o + 16] = 0.0;  f[o + 17] = 0.0;  f[o + 18] = wseed;  f[o + 19] = 0.0
+  f[o + 32] = cx;  f[o + 33] = cy;  f[o + 34] = cz;  f[o + 35] = r
+  f[o + 36] = float(k);  f[o + 37] = 1.0;  f[o + 38] = 0.0;  f[o + 39] = 0.0
+  pis_write(ps, render3d_st, s)
+  ps.live += 1
+  return s
+}
+
+# slot s let go: the cull skips it now, and it is taken again PIS_HOLD frames on
+export function pis_remove(ps: PisSet, render3d_st: Render3dState, s: int) -> void {
+  if not ps.ready or s < 0 or s >= ps.high { return }
+  let o = s * PIS_SRC
+  if ps.rec[o + 37] < 0.5 { return }
+  ps.rec[o + 37] = 0.0
+  pis_write(ps, render3d_st, s)
+  ps.live -= 1
+  ps.hold[ps.nhold] = s
+  ps.hold_at[ps.nhold] = ps.frame + PIS_HOLD
+  ps.nhold += 1
+}
+
+# every instance moved by (dx, dy, dz) in render space (the floating origin rebased)
+export function pis_shift(ps: PisSet, render3d_st: Render3dState, dx: float, dy: float, dz: float) -> void {
+  if not ps.ready or ps.high == 0 { return }
+  let f = ps.rec
+  for s in 0 .. ps.high {
+    let o = s * PIS_SRC
+    f[o + 3] = f[o + 3] + dx;  f[o + 7] = f[o + 7] + dy;  f[o + 11] = f[o + 11] + dz
+    f[o + 23] = f[o + 23] + dx;  f[o + 27] = f[o + 27] + dy;  f[o + 31] = f[o + 31] + dz
+    f[o + 32] = f[o + 32] + dx;  f[o + 33] = f[o + 33] + dy;  f[o + 34] = f[o + 34] + dz
+  }
+  let map = gpu_buffer_map(render3d_st, ps.b_src)
+  if map != null { mem_copy(map, data_of(f), ps.high * PIS_SRC * 4) }
+}
+
+function pis_write(ps: PisSet, render3d_st: Render3dState, s: int) -> void {
+  let map = gpu_buffer_map(render3d_st, ps.b_src)
+  if map == null { return }
+  mem_copy(mem_off(map, s * PIS_SRC * 4), mem_off(data_of(ps.rec), s * PIS_SRC * 4), PIS_SRC * 4)
+}
+
+# the frame's culling (before its first pass)
+export function pis_frame(render3d_st: mut Render3dState, ps: PisSet) -> void {
+  ps.drawn = false
+  if not ps.ready { return }
+  ps.frame += 1
+  # slots held long enough are free again
+  var i = 0
+  while i < ps.nhold {
+    if ps.hold_at[i] <= ps.frame {
+      ps.free[ps.nfree] = ps.hold[i]
+      ps.nfree += 1
+      ps.nhold -= 1
+      ps.hold[i] = ps.hold[ps.nhold]
+      ps.hold_at[i] = ps.hold_at[ps.nhold]
+    } else { i += 1 }
+  }
+  let nm = ps.nmodels
+  if ps.live == 0 or nm == 0 { return }
+  if ps.tables_dirty {
+    gpu_buffer_upload(render3d_st, ps.b_cmds, ps.nrecs * PIS_REC_W, data_of(ps.cmds), GPU_DYNAMIC)
+    gpu_buffer_upload(render3d_st, ps.b_models, nm * 16, data_of(ps.mtab), GPU_DYNAMIC)
+    gpu_buffer_upload(render3d_st, ps.b_mrecs, ps.nmr * 4, data_of(ps.mrecs), GPU_DYNAMIC)
+    ps.tables_dirty = false
+  }
+  let occ = occ_inst_live(render3d_st, OCC_INST_PIS)
+  # 1. the counters to zero
+  ps.pr[0] = nm;  ps.pr[1] = 0;  ps.pr[2] = 0;  ps.pr[3] = 0
+  ps.bufs[0] = ps.b_counts;  ps.bufs[1] = ps.b_cursors
+  gpu_dispatch(render3d_st, ps.c_reset, data_of(ps.pr), 16, ps.bufs, (nm + 63) / 64)
+  # 2. each model's visible instances counted
+  pis_params(render3d_st, ps, 0, occ)
+  pis_bind_cull(render3d_st, ps)
+  gpu_dispatch(render3d_st, ps.c_cull, data_of(ps.prm), PIS_PRM * 4, ps.bufs, (ps.high + 63) / 64)
+  # 3. counts to places, and the draw records
+  ps.pa[0] = nm;  ps.pa[1] = ps.cap;  ps.pa[2] = 0;  ps.pa[3] = 0
+  ps.bufs[0] = ps.b_counts;  ps.bufs[1] = ps.b_offs;  ps.bufs[2] = ps.b_models;  ps.bufs[3] = ps.b_mrecs;  ps.bufs[4] = ps.b_cmds
+  gpu_dispatch(render3d_st, ps.c_args, data_of(ps.pa), 16, ps.bufs, 1)
+  # 4. the visible ones written where they go
+  pis_params(render3d_st, ps, 1, occ)
+  pis_bind_cull(render3d_st, ps)
+  gpu_dispatch(render3d_st, ps.c_cull, data_of(ps.prm), PIS_PRM * 4, ps.bufs, (ps.high + 63) / 64)
+  ps.drawn = true
+}
+function pis_params(render3d_st: mut Render3dState, ps: PisSet, pass: int, occ: bool) -> void {
+  let planes = floats(24)
+  kinst_planes(render3d_st.cam_vp_clean, planes)
+  for i in 0 .. 24 { ps.prm[i] = float_bits(planes[i]) }
+  free(planes)
+  ps.prm[24] = float_bits(render3d_st.cam_pos[0])
+  ps.prm[25] = float_bits(render3d_st.cam_pos[1])
+  ps.prm[26] = float_bits(render3d_st.cam_pos[2])
+  ps.prm[27] = float_bits(1.0)
+  ps.prm[28] = ps.high
+  ps.prm[29] = ps.nmodels
+  ps.prm[30] = pass
+  ps.prm[31] = ps.cap
+  occ_inst_params(render3d_st, ps.prm, 32, occ)
+}
+function pis_bind_cull(render3d_st: Render3dState, ps: PisSet) -> void {
+  ps.bufs[0] = ps.b_src;  ps.bufs[1] = ps.b_counts;  ps.bufs[2] = ps.b_offs;  ps.bufs[3] = ps.b_cursors
+  ps.bufs[4] = ps.b_dst;  ps.bufs[5] = occ_inst_buf(render3d_st, ps.b_src)
+}
+
+# the visible instances drawn (in the actor pass: the lit, plain instanced programs, as ai_draw draws a plain group): a multi-draw
+# indirect call a batch, its records' counts and places written by pis_args.comp
+export function pis_draw(render3d_st: mut Render3dState, ps: PisSet) -> void {
+  if not ps.ready or not ps.drawn or not ai_on(render3d_st) { return }
+  var cur: AcProg = null
+  for b in 0 .. len(ps.bmodel) {
+    if ps.bused[b] == 0 { continue }
+    let m = ps.bmodel[b]
+    var ap = ac_s4(render3d_st.ac_lit_inst, m)
+    let p = ap.prog
+    if ap != cur {
+      cur = ap
+      ac_bind_scene(render3d_st, ap)
+      gpu_use_program(render3d_st, p)
+      u_f(render3d_st, gpu_ul(render3d_st, p, UL_SHADOW_TAN_MAX), ACTOR_SHADOW_TAN)
+      if render3d_st.ai_skin { gpu_bind_buffer(render3d_st, p, "u_ai_bones", render3d_st.ai_bone_buf) }
+    }
+    u_f(render3d_st, ap.l_skin, 0.0)
+    u_f(render3d_st, ap.l_rough, ps.brough[b])
+    u_f(render3d_st, ap.l_clit, 0.0)
+    gpu_cull(render3d_st, ps.bone[b] != 0)
+    let pr = m.prims[ps.bprim[b]]
+    gpu_tex_unit(render3d_st, 0);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.diff)
+    prim_factors(render3d_st, p, pr)
+    ac_bind_headmap(render3d_st, ap, pr);  ac_bind_micro(render3d_st, ap, pr);  ac_bind_bent(render3d_st, ap, pr)
+    gpu_tex_unit(render3d_st, 1);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.nrm)
+    gpu_tex_unit(render3d_st, 2);  gpu_tex_bind(render3d_st, GPU_TEX2D, pr.arm)
+    ai_attach(render3d_st, pr.mesh, ps.b_dst)
+    gpu_draw_mesh_indirect(render3d_st, pr.mesh, ps.b_cmds, ps.bfirst[b] * PIS_REC_W, ps.bused[b], 0, 0)
+  }
+  gpu_cull(render3d_st, true)
+}
+
+# how many instances the set holds (live) and its high water: a game's debug line
+export function pis_live(ps: PisSet) -> int { return ps.live }
