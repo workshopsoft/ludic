@@ -15,7 +15,7 @@ function baked_u32(b: []byte, o: int) -> int { return b[o] | (b[o + 1] << 8) | (
 @alloc_ok("a load: the baked file's name")
 function baked_tex_path(path: string, dir: string, ext: string) -> string {
   let n = len(path)
-  if n < 12 or path[0 .. 7] != "assets/" or path[n - 4 .. n] != ".png" { return "" }
+  if n < 12 or path[0..7] != "assets/" or path[n - 4..n] != ".png" { return "" }
   return `assets/baked/{dir}/{path[7 .. n - 4]}{ext}`
 }
 

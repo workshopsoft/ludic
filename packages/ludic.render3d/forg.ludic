@@ -32,7 +32,7 @@ property ForgOrigin {
   oz: double = 0.0,
   grid: double = 256.0,        # the origin is always a multiple of this (m)
   threshold: double = 1024.0,  # rebase when the camera is farther than this from the origin (horizontally)
-  vthreshold: double = 4096.0, # ... or this far vertically (a flight, a fall from orbit)
+  vthreshold: double = 4096.0,  # ... or this far vertically (a flight, a fall from orbit)
   shift_x: float = 0.0,        # the last rebase's shift: everything in render space moved by minus this
   shift_y: float = 0.0,
   shift_z: float = 0.0,

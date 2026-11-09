@@ -71,4 +71,3 @@ function post_meter_bind(render3d_st: mut Render3dState, prog: int) -> void {
   u_v3(render3d_st, gpu_uniform(render3d_st, prog, "u_sun_color"), render3d_st.sun_color)
   u_f(render3d_st, gpu_uniform(render3d_st, prog, "u_daylight"), render3d_st.day_light)
 }
-

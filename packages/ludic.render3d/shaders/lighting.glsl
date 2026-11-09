@@ -446,9 +446,51 @@ float g_dielF0 = 0.04;
 // look sets g_clayOff 1 before shade() (model.frag: skin, a translucent glass)
 uniform float u_clay;
 float g_clayOff = 0.0;
-const float CLAY_ROUGH = 0.88;
-const float CLAY_F0 = 0.6;          // x the dielectric's 0.04: 0.024
+const float CLAY_ROUGH = 1.0;
+const float CLAY_F0 = 0.25;         // x the dielectric's 0.04: 0.01
+const float CLAY_SPEC = 0.15;       // what clay keeps of every specular term (the sun's, the sky's reflection with its split-sum bias, the lamps'): a matte sheen only
 float clayK() { return clamp(u_clay, 0.0, 1.0) * (1.0 - g_clayOff); }
+// Clay is never smooth: lumps, dents and fingerprints (Rowbotham, "Creating a Realistic Clay Shader for Digital Stop Motion", UWE: plasticine
+// is matte, slightly translucent, "always a roughness to the surface as well as folds, fingerprint indents and general bumps"; Binns' clay
+// ShaderGraph: fingerprints and noise in the normals). A height field in world space - 3D value noise with its analytic derivatives
+// (Quilez) - tilts the shading normal: lumps ~1 m, dents ~25 cm, fingerprint ridges ~1 mm deep a few cm apart, each fading with distance
+// before it can shimmer.
+float clayHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+vec4 clayNoised(vec3 x) {
+  vec3 i = floor(x);
+  vec3 w = fract(x);
+  vec3 u = w * w * (3.0 - 2.0 * w);
+  vec3 du = 6.0 * w * (1.0 - w);
+  float a = clayHash(i);
+  float b = clayHash(i + vec3(1.0, 0.0, 0.0));
+  float c = clayHash(i + vec3(0.0, 1.0, 0.0));
+  float d = clayHash(i + vec3(1.0, 1.0, 0.0));
+  float e = clayHash(i + vec3(0.0, 0.0, 1.0));
+  float f = clayHash(i + vec3(1.0, 0.0, 1.0));
+  float g = clayHash(i + vec3(0.0, 1.0, 1.0));
+  float h = clayHash(i + vec3(1.0, 1.0, 1.0));
+  float k0 = a, k1 = b - a, k2 = c - a, k3 = e - a, k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + f, k7 = -a + b + c - d + e - f - g + h;
+  float v = k0 + k1 * u.x + k2 * u.y + k3 * u.z + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z;
+  vec3 dv = du * vec3(k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z, k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x, k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y);
+  return vec4(v * 2.0 - 1.0, dv * 2.0);
+}
+vec3 clayNormal(vec3 wpos, vec3 n, float clay, float dist) {
+  vec3 g = vec3(0.0);
+  float fl = clay * (1.0 - smoothstep(60.0, 250.0, dist));          // lumps
+  float fd = clay * (1.0 - smoothstep(15.0, 60.0, dist));           // dents
+  float ff = clay * (1.0 - smoothstep(3.0, 8.0, dist));             // fingerprints (read as wood grain past ~8 m)
+  if (fl > 0.0) g += clayNoised(wpos * 0.9).yzw * 0.9 * 0.035 * fl;
+  if (fd > 0.0) g += clayNoised(wpos * 3.7 + 17.0).yzw * 3.7 * 0.007 * fd;
+  if (ff > 0.0) {
+    vec4 q = clayNoised(wpos * 7.0 + 41.0);
+    g += cos(q.x * 30.0) * 30.0 * q.yzw * 7.0 * 0.0004 * ff;        // ridges along the noise's contours: whorls, as a thumb leaves
+  }
+  return normalize(n - (g - n * dot(g, n)));
+}
+const float CLAY_WRAP = 0.4;        // the sun's diffuse wrapped past the terminator (GPU Gems 1 ch. 16: (N.L + w) / (1 + w)): clay is translucent
+const float CLAY_SCATTER_W = 0.15;  // ... and a warm band where the light turns to shadow: on the terminator itself (raw N.L within -+w), not across
+const vec3 CLAY_SCATTER_C = vec3(0.08, 0.025, 0.012);   // a lit face seen at a glancing sun (a first try spanned the wrapped 0..0.6 and dyed whole walls orange)
+const float CLAY_SAT = 1.15;        // plasticine's colours are rich: the base colour's saturation raised a little
 // a base-colour emission's mask (model.frag: the ARM map's alpha on the plain path; a map with no alpha reads 1): which texels of a lit
 // surface glow - a far facade card's lit windows (game src/bld: kit.py bakes the card pages' ORM alpha)
 float g_emisMask = 1.0;
@@ -779,7 +821,7 @@ vec3 ueLocalLights(vec3 wpos, vec3 n, vec3 v, vec3 albedo, float a, float metal,
     vec3 H = normalize(v + L);
     vec3 F = F_Schlick(max(dot(v, H), 0.0), f0);
     vec4 misc = llMisc(i);
-    vec3 spec = min(D_GGX(max(dot(n, H), 0.0), a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale * misc.y;
+    vec3 spec = min(D_GGX(max(dot(n, H), 0.0), a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale * misc.y * mix(1.0, CLAY_SPEC, clayK());
     vec3 diff = (1.0 - F) * (1.0 - metal) * albedo / PI * misc.z;
     c += (diff + spec) * llCol(i).rgb * NoL * att;
   }
@@ -790,6 +832,11 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   float clay = clayK();
   rough = mix(rough, max(rough, CLAY_ROUGH), clay);
   metal *= 1.0 - clay;
+  if (clay > 0.0) {
+    n = clayNormal(wpos, n, clay, length(u_cam_pos - wpos));
+    float lum = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
+    albedo = clamp(mix(vec3(lum), albedo, mix(1.0, CLAY_SAT, clay)), 0.0, 1.0);
+  }
   vec3 v = normalize(u_cam_pos - wpos);
   float roughG = rough;                       // the material's own, as Unreal's ApplyBentNormal takes it (GBuffer.Roughness)
   vec3 l = u_sun_dir;
@@ -802,14 +849,19 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   float a = rough * rough;
   vec3 f0 = mix(vec3(g_dielF0 * mix(1.0, CLAY_F0, clay)), albedo, metal);
   vec3 F = F_Schlick(VoH, f0);
-  vec3 spec = min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale;   // cap the highlight: no half-float overflow, no fireflies
+  float clayS = mix(1.0, CLAY_SPEC, clay);
+  vec3 spec = min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale * clayS;   // cap the highlight: no half-float overflow, no fireflies
   vec3 kd = (1.0 - F) * (1.0 - metal);
   // a light zone takes the sun away (and the sky but its fraction) and adds its own ambient
   vec4 lzAmb;
   float lz = lightZone(wpos, lzAmb);
   float sunK = 1.0 - lz;
   float skyK = mix(1.0, lzAmb.a, lz);
-  vec3 direct = (kd * albedo / PI + spec) * u_sun_color * NoL * shadow * cloudShadow(wpos) * sunK;
+  // clay: the diffuse wrapped past the terminator, a warm scatter band where it turns (the specular keeps the plain N.L)
+  float NoLraw = dot(n, l);
+  float NoLw = mix(NoL, max((NoLraw + CLAY_WRAP) / (1.0 + CLAY_WRAP), 0.0), clay);
+  float scat = (1.0 - smoothstep(0.0, CLAY_SCATTER_W, abs(NoLraw))) * clay;
+  vec3 direct = ((kd * albedo / PI) * NoLw + (CLAY_SCATTER_C * albedo) * scat + spec * NoL) * u_sun_color * shadow * cloudShadow(wpos) * sunK;
   // IBL
   vec3 Fr = F_SchlickRough(NoV, f0, rough);
   vec3 kdi = (1.0 - Fr) * (1.0 - metal);
@@ -830,7 +882,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   vec3 r = reflect(-v, n);
   vec3 pre = skyPrefiltered(r, rough);
   vec2 brdf = texture(u_brdf, vec2(NoV, rough)).rg;
-  vec3 specIBL = pre * (Fr * brdf.x + brdf.y) * u_spec_scale * skyK;
+  vec3 specIBL = pre * (Fr * brdf.x + brdf.y) * u_spec_scale * skyK * clayS;
   // one bounce off the sunlit ground onto whatever faces it (a warm fill from below)
   vec3 groundAlb = groundAlbAt(wpos.y) * 0.55;
   vec3 bounce = kdi * albedo * groundAlb * (u_sun_color * max(u_sun_dir.y, 0.0) / PI * sunK + irr * skyK) * clamp(0.5 - 0.5 * n.y, 0.0, 1.0) * 0.5 * u_bounce;

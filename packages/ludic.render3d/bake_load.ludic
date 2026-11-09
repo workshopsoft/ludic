@@ -97,7 +97,7 @@ function sky_hdri_name(render3d_st: Render3dState) -> string {
   for i in 0 .. len(p) { if p[i] == 47 { from = i + 1 } }
   var to = len(p)
   if to - from > 4 and p[to - 4] == 46 { to -= 4 }
-  return p[from .. to]
+  return p[from..to]
 }
 # <dir>/<hdri>_y<start yaw in whole degrees>_w<prefilter width>.bin, the file one bake is
 @alloc_ok("a bake's name, made at a load")

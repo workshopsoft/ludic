@@ -108,7 +108,7 @@ export property IntrMgr {
   cols: int = 64,
   inside: bool = false,
   active: int = -1,        # the instance the local player is in (or going to)
-  phase: int = 0,
+    phase: int = 0,
   t: float = 0.0,
   dur_out: float = 0.3,
   dur_in: float = 0.4,

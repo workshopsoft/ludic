@@ -40,7 +40,7 @@ export property GroundEdit {
   remove: bool = false                             # gone from the map
   @Unit("m") @Range(-64, 64) dx: float = 0.0       # moved this far
   @Unit("m") @Range(-64, 64) dz: float = 0.0
-  @Unit("deg") @Range(-360, 360) turn: float = 0.0 # turned this far from its own yaw
+  @Unit("deg") @Range(-360, 360) turn: float = 0.0  # turned this far from its own yaw
   @Range(0.05, 10) resize: float = 1.0             # its own size times this
   @Ref(GroundKinds) kind: int = -1                 # grown as this kind instead (-1: its layer's own)
 }

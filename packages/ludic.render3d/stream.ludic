@@ -12,7 +12,6 @@
 # stream_emit(...) per instance. One Stream drives one Layer.
 # ============================================================================
 
-
 property Chunk {
   key:   int = 0,          # packed (cx, cz, band)
   used:  int = 0,          # the walk that last wanted it (for eviction)
