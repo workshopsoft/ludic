@@ -440,6 +440,15 @@ vec3 clCol(int i) { return i == 0 ? u_cl_col0 : (i == 1 ? u_cl_col1 : u_cl_col2)
 // a dielectric's reflectance at normal incidence: 0.04, Unreal's Specular 0.5 (0.08 x Specular). A material that keys its own
 // specular sets it before shade() (the jeans: spec_basic_intensity times the weave; a MetaHuman's skin: model.frag)
 float g_dielF0 = 0.04;
+// The clay look (render.ludic r3d_clay, R3D_CLAY; 0 every material as it is): every surface shade() lights becomes soft matte clay -
+// roughness at least CLAY_ROUGH, no metal, the dielectric specular at CLAY_F0 of its own, no clear coat. The base colour, the normal,
+// the occlusion and anything added after shade() (emission, a window's night light, a lamp) are kept. A material that keeps its own
+// look sets g_clayOff 1 before shade() (model.frag: skin, a translucent glass)
+uniform float u_clay;
+float g_clayOff = 0.0;
+const float CLAY_ROUGH = 0.88;
+const float CLAY_F0 = 0.6;          // x the dielectric's 0.04: 0.024
+float clayK() { return clamp(u_clay, 0.0, 1.0) * (1.0 - g_clayOff); }
 // a base-colour emission's mask (model.frag: the ARM map's alpha on the plain path; a map with no alpha reads 1): which texels of a lit
 // surface glow - a far facade card's lit windows (game src/bld: kit.py bakes the card pages' ORM alpha)
 float g_emisMask = 1.0;
@@ -778,6 +787,9 @@ vec3 ueLocalLights(vec3 wpos, vec3 n, vec3 v, vec3 albedo, float a, float metal,
 }
 
 vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, float shadow, float viewDepth) {
+  float clay = clayK();
+  rough = mix(rough, max(rough, CLAY_ROUGH), clay);
+  metal *= 1.0 - clay;
   vec3 v = normalize(u_cam_pos - wpos);
   float roughG = rough;                       // the material's own, as Unreal's ApplyBentNormal takes it (GBuffer.Roughness)
   vec3 l = u_sun_dir;
@@ -788,7 +800,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
   float VoH = max(dot(v, h), 0.0);
   rough = clamp(rough, 0.045, 1.0);
   float a = rough * rough;
-  vec3 f0 = mix(vec3(g_dielF0), albedo, metal);
+  vec3 f0 = mix(vec3(g_dielF0 * mix(1.0, CLAY_F0, clay)), albedo, metal);
   vec3 F = F_Schlick(VoH, f0);
   vec3 spec = min(D_GGX(NoH, a) * V_Smith(NoV, NoL, a), 12.0) * F * u_spec_scale;   // cap the highlight: no half-float overflow, no fireflies
   vec3 kd = (1.0 - F) * (1.0 - metal);
@@ -851,6 +863,7 @@ vec3 shade(vec3 wpos, vec3 n, vec3 albedo, float rough, float metal, float ao, f
 // roughness on the geometric normal Ng, its sun highlight and its sky reflection added, the base under it dimmed by the coat's
 // Fresnel at the view. `base` is shade()'s result for the paint under it
 vec3 clearCoat(vec3 base, vec3 wpos, vec3 Ng, float coat, float cRough, float shadow) {
+  coat *= 1.0 - clayK();              // clay has no coat
   vec3 v = normalize(u_cam_pos - wpos);
   vec3 l = u_sun_dir;
   vec3 h = normalize(v + l);

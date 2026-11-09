@@ -680,7 +680,12 @@ void main() {
     arm.r = pow(bt.a, u_bent_p.y);
     g_bentOn = true;
   }
+  // the clay look (lighting.glsl u_clay) leaves a skin as it is: a MetaHuman's skin, and its head at the head map's resolution
+#if defined(EYE) || defined(SSS_SPLIT)
+  if (head) g_clayOff = 1.0;
+#endif
   if (skin) {
+    g_clayOff = 1.0;
     // the skin's micro cavities rougher (Roughness Micro Cavity Multiply 1.35) and less specular (Micro Skin Cavity Specular Multiply
     // 0.6); its Specular 0.9 x 0.8 (MI_Skin_*: the regions' x Specular Base), Unreal's F0 = 0.08 x Specular
     arm.g *= 1.0 + 0.35 * sm.w;
@@ -1044,6 +1049,7 @@ void main() {
 #endif
   g_bentBase = alb;
 #ifdef TRANSLUCENT
+  g_clayOff = 1.0;                          // a glass (a car's windows, a bottle) keeps its reflection under the clay look
   // unlit: the base colour x emissive (added below; the base colour itself when emissive is 0) and the
   // material's emission, and no light at all
   vec3 col = (u_tr.w > 0.5) ? ((u_emissive > 0.0) ? vec3(0.0) : alb) : shade(v_wpos, n, alb, roughF, metalF, arm.r, shadow, viewDepth);
@@ -1151,6 +1157,7 @@ void main() {
 #ifdef BLADE
     sheen *= 0.2;   // a sward seen from above is tips edge-on to the sun: the leaf's glint frosted them white
 #endif
+    sheen *= 1.0 - clayK();   // clay has no waxy rim
     col += u_sun_color * sheen * shadow * cloudShadow(v_wpos) * 0.4 * (0.45 + 0.55 * arm.r) * sunLeft;
   }
 #endif
