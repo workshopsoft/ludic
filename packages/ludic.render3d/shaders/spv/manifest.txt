@@ -18221,7 +18221,7 @@ U 46e2325c vert u_level 128 float 1 0
 U 46e2325c vert u_center 136 vec2 1 0
 U 46e2325c vert u_extent 144 vec2 1 0
 I 46e2325c a_xz 0 vec2
-B 46e2325c frag 1 3072
+B 46e2325c frag 1 3088
 U 46e2325c frag u_cascade_vp 0 mat4 6 64
 U 46e2325c frag u_cascade_split 384 float 6 16
 U 46e2325c frag u_cascade_range 480 float 6 16
@@ -18331,12 +18331,13 @@ U 46e2325c frag u_wet_on 2964 float 1 0
 U 46e2325c frag u_wet_grid 2976 vec4 1 0
 U 46e2325c frag u_wet_rows 2992 float 1 0
 U 46e2325c frag u_sea 2996 float 1 0
-U 46e2325c frag u_wash 3000 float 1 0
-U 46e2325c frag u_fx_on 3004 float 1 0
-U 46e2325c frag u_fx_map 3008 vec4 1 0
-U 46e2325c frag u_fx_win 3024 vec4 1 0
-U 46e2325c frag u_tp_on 3040 float 1 0
-U 46e2325c frag u_tp_dims 3056 vec4 1 0
+U 46e2325c frag u_toon 3000 float 1 0
+U 46e2325c frag u_wash 3004 float 1 0
+U 46e2325c frag u_fx_on 3008 float 1 0
+U 46e2325c frag u_fx_map 3024 vec4 1 0
+U 46e2325c frag u_fx_win 3040 vec4 1 0
+U 46e2325c frag u_tp_on 3056 float 1 0
+U 46e2325c frag u_tp_dims 3072 vec4 1 0
 T 46e2325c u_brdf 2
 T 46e2325c u_depth 3
 T 46e2325c u_fx 4
@@ -18380,7 +18381,7 @@ U 1ebf3a80 vert u_level 144 float 1 0
 U 1ebf3a80 vert u_center 152 vec2 1 0
 U 1ebf3a80 vert u_extent 160 vec2 1 0
 I 1ebf3a80 a_pos 0 vec3
-B 1ebf3a80 frag 1 3072
+B 1ebf3a80 frag 1 3088
 U 1ebf3a80 frag u_cascade_vp 0 mat4 6 64
 U 1ebf3a80 frag u_cascade_split 384 float 6 16
 U 1ebf3a80 frag u_cascade_range 480 float 6 16
@@ -18490,12 +18491,13 @@ U 1ebf3a80 frag u_wet_on 2964 float 1 0
 U 1ebf3a80 frag u_wet_grid 2976 vec4 1 0
 U 1ebf3a80 frag u_wet_rows 2992 float 1 0
 U 1ebf3a80 frag u_sea 2996 float 1 0
-U 1ebf3a80 frag u_wash 3000 float 1 0
-U 1ebf3a80 frag u_fx_on 3004 float 1 0
-U 1ebf3a80 frag u_fx_map 3008 vec4 1 0
-U 1ebf3a80 frag u_fx_win 3024 vec4 1 0
-U 1ebf3a80 frag u_tp_on 3040 float 1 0
-U 1ebf3a80 frag u_tp_dims 3056 vec4 1 0
+U 1ebf3a80 frag u_toon 3000 float 1 0
+U 1ebf3a80 frag u_wash 3004 float 1 0
+U 1ebf3a80 frag u_fx_on 3008 float 1 0
+U 1ebf3a80 frag u_fx_map 3024 vec4 1 0
+U 1ebf3a80 frag u_fx_win 3040 vec4 1 0
+U 1ebf3a80 frag u_tp_on 3056 float 1 0
+U 1ebf3a80 frag u_tp_dims 3072 vec4 1 0
 T 1ebf3a80 u_brdf 2
 T 1ebf3a80 u_depth 3
 T 1ebf3a80 u_fx 4
@@ -18538,7 +18540,7 @@ U c321afe6 vert u_level 128 float 1 0
 U c321afe6 vert u_center 136 vec2 1 0
 U c321afe6 vert u_extent 144 vec2 1 0
 I c321afe6 a_xz 0 vec2
-B c321afe6 frag 1 3072
+B c321afe6 frag 1 3088
 U c321afe6 frag u_cascade_vp 0 mat4 6 64
 U c321afe6 frag u_cascade_split 384 float 6 16
 U c321afe6 frag u_cascade_range 480 float 6 16
@@ -18648,12 +18650,13 @@ U c321afe6 frag u_wet_on 2964 float 1 0
 U c321afe6 frag u_wet_grid 2976 vec4 1 0
 U c321afe6 frag u_wet_rows 2992 float 1 0
 U c321afe6 frag u_sea 2996 float 1 0
-U c321afe6 frag u_wash 3000 float 1 0
-U c321afe6 frag u_fx_on 3004 float 1 0
-U c321afe6 frag u_fx_map 3008 vec4 1 0
-U c321afe6 frag u_fx_win 3024 vec4 1 0
-U c321afe6 frag u_tp_on 3040 float 1 0
-U c321afe6 frag u_tp_dims 3056 vec4 1 0
+U c321afe6 frag u_toon 3000 float 1 0
+U c321afe6 frag u_wash 3004 float 1 0
+U c321afe6 frag u_fx_on 3008 float 1 0
+U c321afe6 frag u_fx_map 3024 vec4 1 0
+U c321afe6 frag u_fx_win 3040 vec4 1 0
+U c321afe6 frag u_tp_on 3056 float 1 0
+U c321afe6 frag u_tp_dims 3072 vec4 1 0
 T c321afe6 u_brdf 2
 T c321afe6 u_depth 3
 T c321afe6 u_fx 4

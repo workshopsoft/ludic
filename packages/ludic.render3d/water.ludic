@@ -108,6 +108,7 @@ function water_reflection_pass(render3d_st: mut Render3dState) -> void {
 # Mac, the five shot viewpoints: looking down at the meadow (c) 225 reflection draws -> none; every view
 # with the lake in it unchanged, byte-identical frames.
 function water_reflect_visible(render3d_st: mut Render3dState) -> bool {
+  if water_toon_on(render3d_st) { return false }
   if wp_mirrors(render3d_st) { return wp_any_visible(render3d_st) }
   if render3d_st.wb_primary < 0 { return false }
   if render3d_st.wb_refl_always < 0 { render3d_st.wb_refl_always = 0;  if r3d_env_has(render3d_st, "R3D_REFL_ALWAYS") { render3d_st.wb_refl_always = 1 } }
@@ -291,6 +292,17 @@ function water_cells_build(render3d_st: mut Render3dState) -> void {
   wb_block_add(render3d_st, bx0, bz0, bx1, bz1, first)
 }
 
+# Cartoon water (water.frag's toonWater): no reflection pass, no refraction, no copy of the scene. On by default; R3D_WATER_TOON=0
+# (or OCCUTOWN_WATER_TOON=0, which a shipped build reads too) draws the old realistic water.
+function water_toon_on(render3d_st: mut Render3dState) -> bool {
+  if render3d_st.water_toon < 0 {
+    render3d_st.water_toon = 1
+    if Os.has_env("OCCUTOWN_WATER_TOON") and Os.env("OCCUTOWN_WATER_TOON") == "0" { render3d_st.water_toon = 0 }
+    if r3d_env_has(render3d_st, "R3D_WATER_TOON") and r3d_env(render3d_st, "R3D_WATER_TOON") == "0" { render3d_st.water_toon = 0 }
+  }
+  return render3d_st.water_toon == 1
+}
+
 # the program and the plane are the process's, built once; the bodies are the map's
 @alloc_ok("a world being set up (a stream, a layer, water, post, a bake): the map loading or swapping, not a frame")
 function water_setup(render3d_st: mut Render3dState) -> void {
@@ -448,7 +460,11 @@ function water_draw_planes(render3d_st: mut Render3dState, depth_tex: int, p: in
   let ws = render3d_st.wt_wade_s
   u_f3(render3d_st, gpu_uniform(render3d_st, p, "u_wade"), wx, wz, ws)
   var ron = 0.0
-  if render3d_st.water_refl != null and render3d_st.wb_primary >= 0 {
+  let toon = water_toon_on(render3d_st)
+  var toon_f = 0.0
+  if toon { toon_f = 1.0 }
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_toon"), toon_f)
+  if render3d_st.water_refl != null and render3d_st.wb_primary >= 0 and not toon {
     # bind on its own unit first: generating the mip chain re-binds the texture on the active unit,
     # and it must not displace the depth texture the shader reads for the shore
     r3d_bind_2d(render3d_st, p, "u_refl", 1, render3d_st.water_refl.color);  ron = 1.0
@@ -464,7 +480,7 @@ function water_draw_planes(render3d_st: mut Render3dState, depth_tex: int, p: in
   # the bed is read through its mips too (water.frag's underBlur: what is under the surface softens
   # with its depth), so its chain is made the same way, on its own unit, before the depth binds
   r3d_bind_2d(render3d_st, p, "u_scene", 2, render3d_st.post_scene.color)
-  if first {
+  if first and not toon {
     gpu_tex_bind(render3d_st, GPU_TEX2D, render3d_st.post_scene.color)
     gpu_tex_param(render3d_st, GPU_TEX2D, GPU_TEXTURE_MIN_FILTER, GPU_LINEAR_MIPMAP_LINEAR)
     gpu_tex_mips(render3d_st, GPU_TEX2D)
@@ -540,7 +556,10 @@ function water_meshes_draw(render3d_st: mut Render3dState, depth_tex: int) -> vo
   water_wet_bind(render3d_st, p)
   sea_swell_bind(render3d_st, p)
   water_fx_bind(render3d_st, p)
+  var toon_m = 0.0
+  if water_toon_on(render3d_st) { toon_m = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wet_on"), 0.0)
+  u_f(render3d_st, gpu_uniform(render3d_st, p, "u_toon"), toon_m)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_refl_on"), 0.0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_clip_ellipse"), 0.0)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_sea"), 0.0)
