@@ -453,8 +453,8 @@ float clayK() { return clamp(u_clay, 0.0, 1.0) * (1.0 - g_clayOff); }
 // Clay is never smooth: lumps, dents and fingerprints (Rowbotham, "Creating a Realistic Clay Shader for Digital Stop Motion", UWE: plasticine
 // is matte, slightly translucent, "always a roughness to the surface as well as folds, fingerprint indents and general bumps"; Binns' clay
 // ShaderGraph: fingerprints and noise in the normals). A height field in world space - 3D value noise with its analytic derivatives
-// (Quilez) - tilts the shading normal: lumps ~1 m, dents ~25 cm, fingerprint ridges ~1 mm deep a few cm apart, each fading with distance
-// before it can shimmer.
+// (Quilez) - tilts the shading normal: lumps ~1 m, dents ~25 cm, each fading with distance before it can shimmer. (Fingerprint ridges were
+// tried and taken out on the user's word, 2026-11-09: they read as wood grain.)
 float clayHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 vec4 clayNoised(vec3 x) {
   vec3 i = floor(x);
@@ -478,13 +478,8 @@ vec3 clayNormal(vec3 wpos, vec3 n, float clay, float dist) {
   vec3 g = vec3(0.0);
   float fl = clay * (1.0 - smoothstep(60.0, 250.0, dist));          // lumps
   float fd = clay * (1.0 - smoothstep(15.0, 60.0, dist));           // dents
-  float ff = clay * (1.0 - smoothstep(3.0, 8.0, dist));             // fingerprints (read as wood grain past ~8 m)
   if (fl > 0.0) g += clayNoised(wpos * 0.9).yzw * 0.9 * 0.035 * fl;
   if (fd > 0.0) g += clayNoised(wpos * 3.7 + 17.0).yzw * 3.7 * 0.007 * fd;
-  if (ff > 0.0) {
-    vec4 q = clayNoised(wpos * 7.0 + 41.0);
-    g += cos(q.x * 30.0) * 30.0 * q.yzw * 7.0 * 0.0004 * ff;        // ridges along the noise's contours: whorls, as a thumb leaves
-  }
   return normalize(n - (g - n * dot(g, n)));
 }
 const float CLAY_WRAP = 0.4;        // the sun's diffuse wrapped past the terminator (GPU Gems 1 ch. 16: (N.L + w) / (1 + w)): clay is translucent
