@@ -40,7 +40,8 @@
 #
 # R3D_UE_SHADOW_CACHE=1 caches; 0 (the default, until proven) draws every cascade every frame as before; 2 draws the camera-centred
 # windows live every frame (to judge their texels against the slice fit). R3D_UE_SHADOW_CACHE_SLICES=1|2|3 (frames a rebuild takes),
-# _MARGIN (0.15), _SUN_STEP (degrees, 0.1), _TURN (degrees, 10). R3D_UE_SHADOW_CACHE_EXTRA=0: a new or shown caster rebuilds the cascades
+# _MARGIN (0.15), _SUN_STEP (degrees, 0.1), _TURN (degrees, 10), _SUN_JUMP (degrees the light turns in one frame that rebuild every
+# cascade at once: 1; 0 leaves a jump to the background rebuilds as before). R3D_UE_SHADOW_CACHE_EXTRA=0: a new or shown caster rebuilds the cascades
 # (as before); _HIDE=1: a hidden one does too; _REMESH=1: a terrain patch's new level does too; _DYN_CULL=0: the moving casters culled
 # to the whole window.
 # ============================================================================
@@ -87,6 +88,7 @@ function shadow_cache_mode(render3d_st: mut Render3dState) -> int {
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_MARGIN") { render3d_st.sc_margin = Math.clamp(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_MARGIN")), 0.02, 1.0) }
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_SUN_STEP") { render3d_st.sc_step = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_SUN_STEP")), 0.0) }
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_TURN") { render3d_st.sc_turn = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_TURN")), 0.0) }
+    if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_SUN_JUMP") { render3d_st.sc_jump = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_SUN_JUMP")), 0.0) }
     # the live cascades (shadow cache's sun is stepped, so a cached cascade's shadows tick with it: the nearest, whose texels are
     # small, stay live and turn smoothly with the sun - as Unreal, which draws a moving light's cascades every frame)
     if r3d_env_has(render3d_st, "R3D_UE_SHADOW_CACHE_LIVE") { render3d_st.sc_live = min(max(Text.to_int(r3d_env(render3d_st, "R3D_UE_SHADOW_CACHE_LIVE")), SC_FIRST_MIN), 4) }
@@ -227,6 +229,12 @@ function shadow_cache_plan(render3d_st: mut Render3dState) -> void {
   if render3d_st.sc_tex == 0 or render3d_st.sc_res != render3d_st.shadow_res { sc_make(render3d_st);  sc_invalidate(render3d_st) }
   if render3d_st.sc_mode != 1 { return }
   render3d_st.sc_active = true
+  # A light that turned more than sc_jump degrees since the last frame (the clock set to another hour, a day -> night jump, the light
+  # handed from the sun to the moon at dusk) throws every cached cascade away and draws it again this frame, as Unreal drops a CSM
+  # cache on any change of WorldToLight. Only the clock's slow, continuous turn is left to the stepped sun's background rebuilds:
+  # before, a cascade kept the old light's depth and projection until its rebuild's turn came - the day's shadows on the night.
+  let jumped = render3d_st.sc_jump > 0.0 and v3_dot(render3d_st.sun_dir, render3d_st.sh_sun) < Math.cos(Math.deg_to_rad(render3d_st.sc_jump))
+  if jumped { v3_copy(render3d_st.sh_sun_target, render3d_st.sun_dir) }
   # the sun, stepped: it moves on once the daylight's has gone sc_step degrees from it
   if v3_dot(render3d_st.sun_dir, render3d_st.sh_sun_target) < Math.cos(Math.deg_to_rad(render3d_st.sc_step)) { v3_copy(render3d_st.sh_sun_target, render3d_st.sun_dir) }
   v3_copy(render3d_st.sh_sun, render3d_st.sun_dir)             # the live cascade casts along the daylight's sun itself, every frame
@@ -234,7 +242,7 @@ function shadow_cache_plan(render3d_st: mut Render3dState) -> void {
   # what throws the whole cache away
   let jump = v3_dist(render3d_st.cam_pos, render3d_st.sc_cam) > SC_JUMP
   v3_copy(render3d_st.sc_cam, render3d_st.cam_pos)
-  if jump or render3d_st.sc_serial != render3d_st.sc_serial_now or render3d_st.sc_shlayers != render3d_st.sh_layers {
+  if jump or jumped or render3d_st.sc_serial != render3d_st.sc_serial_now or render3d_st.sc_shlayers != render3d_st.sh_layers {
     sc_invalidate(render3d_st)
   }
   render3d_st.sc_serial = render3d_st.sc_serial_now;  render3d_st.sc_shlayers = render3d_st.sh_layers

@@ -143,7 +143,20 @@ property Layer {
   n_lod:    words,
   lvl:      words,             # scratch: the level chosen per gathered instance
   lod_ss:   floats,            # each level's screen size (layer_lod_screen_sizes), or null: the levels are chosen by lod_dist
-  imp_auto: bool = false       # LOD0 only (r3d_lod0_only): an impostor from level 0 is wanted (scatter_lod0_impostors)
+  imp_auto: bool = false,      # LOD0 only (r3d_lod0_only): an impostor from level 0 is wanted (scatter_lod0_impostors)
+  # the mesh/card crossfade by time (layer_xf_weight, R3D_LOD_XFADE_TIME): two hash tables of the instances near the switch or fading
+  # (x, z, mesh weight, target a slot), the one written this partition (xf_cur) and the last; a slot is live while its stamp is its gen
+  xf_tab:   floats,
+  xf_st:    words,
+  xf_cap:   int = 0,
+  xf_cur:   int = 0,
+  xf_gen:   int = 2,
+  xf_n:     int = 0,
+  xf_old_n: int = 0,
+  xf_us:    int = 0,             # clock_now_us at the last partition
+  xf_step:  float = 0.0,         # the weight a fade in progress moves this partition (its dt over the fade time)
+  xf_live:  bool = false,        # a fade is in progress: partitioned again next frame though the view stood still
+  xf_wv:    floats               # scratch: each gathered instance's mesh weight (layer_partition_lods)
 }
 
 # the procedural models' one layout: position, normal, uv, interleaved at 32 bytes
@@ -1094,6 +1107,125 @@ function layer_xstart(l: Layer) -> float {
   return 0.0
 }
 
+# ---- the crossfade by time (Unreal's dithered LOD transition: r.LODFadeTime 0.25 s, FPrimitiveFadingState) -------------------------
+# An instance that crosses the switch (`xsw`, where its level turns to the card) starts a fade that ends sc_xf_time seconds later
+# whatever the camera does - a camera standing still finishes it, one racing past does not stretch or skip it - and a fade turned back
+# halfway goes back from where it is. Hysteresis: it turns to the card only sc_xf_hyst metres past the switch and back to the mesh only
+# as far inside it, so a camera at the edge does not flicker it. Each partition keeps the instances inside that band or still fading in a
+# hash table by position (the gathered set is ordered by cell, not by instance), the last partition's table read for their state. A
+# fading instance is drawn as both, its mesh weight packed into the copies' yaw (sin, cos scaled to 2 + weight: model.vert, oimp.vert
+# read it, 1 is an unpacked yaw), the mesh dithered out and the card in by its complement. Not on the GPU-culled path (R3D_GPU_CULL=1),
+# which keeps the distance band. R3D_LOD_XFADE_TIME=<s> the time (0.25), 0 the distance band as before; R3D_LOD_XFADE_HYST=<m> (2).
+const SC_XF_CAP: int = 8192
+const SC_XF_FRAME: float = 0.016667
+function sc_xf_time(render3d_st: mut Render3dState) -> float {
+  if render3d_st.sc_xf_time < 0.0 {
+    render3d_st.sc_xf_time = 0.25
+    if r3d_env_has(render3d_st, "R3D_LOD_XFADE_TIME") { render3d_st.sc_xf_time = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_LOD_XFADE_TIME")), 0.0) }
+    if r3d_env_has(render3d_st, "R3D_LOD_XFADE_HYST") { render3d_st.sc_xf_hyst = Math.max(ue_parse_float(r3d_env(render3d_st, "R3D_LOD_XFADE_HYST")), 0.0) }
+  }
+  return render3d_st.sc_xf_time
+}
+# the layer's crossfade runs by time: an octahedral card with a band, culled on the CPU
+function layer_xf_timed(render3d_st: mut Render3dState, l: Layer) -> bool {
+  return not l.g_on and layer_xfade(render3d_st, l) > 0.0 and sc_xf_time(render3d_st) > 0.0
+}
+# the band the draws' u_lod_fade dither by distance (none when the fade is by time: the instances carry their own weight)
+function layer_xfade_draw(render3d_st: mut Render3dState, l: Layer) -> float {
+  if layer_xf_timed(render3d_st, l) { return 0.0 }
+  return layer_xfade(render3d_st, l)
+}
+@alloc_ok("a layer's crossfade tables, made once when it first fades")
+function layer_xf_make(l: Layer) -> void {
+  l.xf_cap = SC_XF_CAP
+  l.xf_tab = floats(2 * SC_XF_CAP * 4)
+  l.xf_st = words(2 * SC_XF_CAP)
+  for i in 0 .. 2 * SC_XF_CAP { l.xf_st[i] = 0 }
+  l.xf_wv = floats(Math.max(len(l.scratch) / INST_FLOATS, l.cap) + 1)
+}
+# before a partition: the last table becomes the old one, a new gen the current; the time since the last partition
+function layer_xf_begin(render3d_st: mut Render3dState, l: Layer, total: int) -> void {
+  if l.xf_cap == 0 { layer_xf_make(l) }
+  if len(l.xf_wv) < total { layer_xf_grow(l, total) }
+  l.xf_cur = 1 - l.xf_cur
+  l.xf_gen += 1
+  l.xf_old_n = l.xf_n
+  l.xf_n = 0
+  let now = clock_now_us()
+  var dt = float(now - l.xf_us) * 0.000001
+  l.xf_us = now
+  dt = Math.clamp(dt, 0.0, 0.1)
+  l.xf_step = dt / sc_xf_time(render3d_st)
+  l.xf_live = false
+}
+@alloc_ok("the crossfade's scratch grown with the gathered set")
+function layer_xf_grow(l: Layer, n: int) -> void {
+  free(l.xf_wv)
+  l.xf_wv = floats(n + 1)
+}
+function sc_xf_hash(x: float, z: float, mask: int) -> int {
+  return (float_bits(x) * 73856093 + float_bits(z) * 19349663) & mask
+}
+# instance at (x, z), `d` from the camera, its level by distance on the mesh side (d < xsw) or not: its mesh weight this frame (1 the
+# mesh alone, 0 the card alone, between both), its state kept for the next partition while it is near the switch or fading
+function layer_xf_weight(render3d_st: Render3dState, l: Layer, x: float, z: float, d: float, xsw: float, mesh_side: bool) -> float {
+  let hy = Math.min(render3d_st.sc_xf_hyst, xsw * 0.1)
+  # far from the switch nothing is kept or fading (a fade lasts a quarter second: 20 m of it is a car at 80 m/s): its side, no lookup
+  if Math.abs(d - xsw) > hy + 20.0 {
+    if mesh_side { return 1.0 }
+    return 0.0
+  }
+  let cap = l.xf_cap
+  let mask = cap - 1
+  let h = sc_xf_hash(x, z, mask)
+  var tgt = 0.0
+  if mesh_side { tgt = 1.0 }
+  var w = tgt
+  var found = false
+  if l.xf_old_n > 0 {
+    let ob = (1 - l.xf_cur) * cap
+    let og = l.xf_gen - 1
+    var j = h
+    var probes = 0
+    while probes < cap and l.xf_st[ob + j] == og {
+      let r = (ob + j) * 4
+      if l.xf_tab[r] == x and l.xf_tab[r + 1] == z { w = l.xf_tab[r + 2];  tgt = l.xf_tab[r + 3];  found = true;  probes = cap }
+      else { j = (j + 1) & mask;  probes += 1 }
+    }
+  }
+  # hysteresis: the target turns only past the band
+  if found {
+    if tgt > 0.5 and d > xsw + hy { tgt = 0.0 }
+    if tgt < 0.5 and d < xsw - hy { tgt = 1.0 }
+  }
+  # toward the target: a fade begun now moves a frame's worth (the time since a still view's last partition is no fade's), one under
+  # way the time since the last partition
+  if w != tgt {
+    var step = l.xf_step
+    if w == 0.0 or w == 1.0 { step = Math.min(step, SC_XF_FRAME / sc_xf_time_of(render3d_st)) }
+    if tgt > w { w = Math.min(w + step, 1.0) } else { w = Math.max(w - step, 0.0) }
+  }
+  let fading = w != tgt
+  if fading { l.xf_live = true }
+  if (fading or Math.abs(d - xsw) <= hy) and l.xf_n < cap / 2 {
+    let nb = l.xf_cur * cap
+    var j = h
+    while l.xf_st[nb + j] == l.xf_gen { j = (j + 1) & mask }
+    l.xf_st[nb + j] = l.xf_gen
+    let r = (nb + j) * 4
+    l.xf_tab[r] = x;  l.xf_tab[r + 1] = z;  l.xf_tab[r + 2] = w;  l.xf_tab[r + 3] = tgt
+    l.xf_n += 1
+  }
+  return w
+}
+function sc_xf_time_of(render3d_st: Render3dState) -> float { return Math.max(render3d_st.sc_xf_time, 0.001) }
+# a copy at instance offset q of `tmp` drawn as both: its mesh weight packed into its yaw (model.vert, oimp.vert)
+function sc_xf_pack(tmp: floats, q: int, w: float) -> void {
+  let k = 2.0 + Math.clamp(w, 0.0, 1.0)
+  tmp[q + 4] = tmp[q + 4] * k
+  tmp[q + 5] = tmp[q + 5] * k
+}
+
 # the dispatch for the view as it stands: frustum, camera, distances, the layer's shape
 function layer_gpu_cull(render3d_st: mut Render3dState, l: Layer) -> void {
   let pr = render3d_st.sc_gpu_pr
@@ -1268,12 +1400,17 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
   if l.lod_ss != null and l.imp == null and render3d_st.cam_proj != null { ss_lod = 0;  if sc_lod_ss_on(render3d_st) { ss_lod = 1 } }
   let xf = layer_xfade(render3d_st, l)
   let xs = layer_xstart(l)
+  # the crossfade by time (layer_xf_weight): at the last level's end, where the level turns to the card
+  let timed = layer_xf_timed(render3d_st, l) and not open and ss_lod < 0
+  let xsw = l.lod_dist[n - 1]
+  if timed { layer_xf_begin(render3d_st, l, total) }
   var extra = 0
   for i in 0 .. total {
     let o = i * INST_FLOATS
     let dx = src[o] - render3d_st.cam_pos[0];  let dz = src[o + 2] - render3d_st.cam_pos[2]
     let d2 = dx * dx + dz * dz
     var lv = n + 1                           # n + 1 = dropped
+    var w = 1.0
     if (lc == 0.0 or not (d2 > cull2)) and not layer_ss_small(render3d_st, l, src, o, ssk) {
       let d = Math.sqrt(d2)
       lv = n                                 # n = the impostor bucket
@@ -1285,9 +1422,21 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
         if lv == n and open { lv = n - 1 }
         if lv == n and l.imp == null { lv = n + 1 }
       }
+      if timed and lv >= n - 1 and lv <= n {
+        w = layer_xf_weight(render3d_st, l, src[o], src[o + 2], d, xsw, lv < n)
+        if w <= 0.0 { lv = n }               # the card alone
+        else if lv == n { lv = n - 1 }       # the mesh kept past the switch (the hysteresis, or its fade out)
+      }
     }
     l.lvl[i] = lv
     counts[lv] += 1
+    if timed {
+      # (both while it fades, its weight beside it)
+      l.xf_wv[i] = w
+      if lv < n and w < 1.0 and total + extra < len(l.scratch) / INST_FLOATS { l.lvl[i] = lv + 100;  counts[n] += 1;  extra += 1 }
+      else if lv < n and w < 1.0 { l.xf_wv[i] = 1.0 }
+      continue
+    }
     # (also its card: the crossfade; as many as the scratch has room for past the layer's own)
     if lv < n and xf > 0.0 and d2 > (xs - xf) * (xs - xf) and d2 < xs * xs and total + extra < len(l.scratch) / INST_FLOATS { l.lvl[i] = lv + 100;  counts[n] += 1;  extra += 1 }
   }
@@ -1311,6 +1460,7 @@ function layer_partition_lods(render3d_st: mut Render3dState, l: Layer, src: flo
       let qi = fill[n] * INST_FLOATS
       fill[n] += 1
       for k in 0 .. INST_FLOATS { tmp[qi + k] = src[o + k] }
+      if timed { sc_xf_pack(tmp, q, l.xf_wv[i]);  sc_xf_pack(tmp, qi, l.xf_wv[i]) }
     }
   }
   for k in 0 .. n {
@@ -1380,7 +1530,7 @@ function layer_ss_dist(render3d_st: Render3dState, l: Layer, src: floats, o: int
 # split the instances by distance to the camera (only when the view changed)
 function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
   if render3d_st.sc_freeze { return }
-  if l.view_gen == render3d_st.sc_view_gen { return }
+  if l.view_gen == render3d_st.sc_view_gen and not l.xf_live { return }      # (a crossfade by time under way finishes with the view still)
   # a list the game refilled (it empties the layer, adds, and sets view_gen -1) is uploaded again, whatever its count
   if l.view_gen < 0 { l.g_n = -1 }
   l.view_gen = render3d_st.sc_view_gen
@@ -1428,6 +1578,9 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
     prof_layer_add(render3d_st, clock_now_us() - t_lu, total * INST_FLOATS * 4)
     return
   }
+  # the crossfade by time (layer_xf_weight) at `near`: a fading instance in both lists, its weight packed into each copy
+  let timed = l.near > 0.0 and l.imp != null and layer_xf_timed(render3d_st, l)
+  if timed { layer_xf_begin(render3d_st, l, total) }
   var i = 0
   while i < total {
     let o = i * INST_FLOATS
@@ -1436,6 +1589,24 @@ function layer_update(render3d_st: mut Render3dState, l: Layer) -> void {
     let d2 = dx * dx + dz * dz
     if lc != 0.0 and d2 > cull2 { i += 1;  continue }
     if layer_ss_small(render3d_st, l, src, o, ssk) { i += 1;  continue }
+    if timed {
+      let w = layer_xf_weight(render3d_st, l, src[o], src[o + 2], Math.sqrt(d2), l.near, d2 < near2)
+      # (the near list fills the scratch from its start, the far from its end: room for both while they do not meet)
+      if w > 0.0 and (nn + nf + 1) * INST_FLOATS <= far_off {
+        let q = nn * INST_FLOATS
+        for k in 0 .. INST_FLOATS { tmp[q + k] = src[o + k] }
+        nn += 1
+        if w < 1.0 { sc_xf_pack(tmp, q, w) }
+      }
+      if w < 1.0 and (nn + nf + 1) * INST_FLOATS <= far_off {
+        nf += 1
+        let q = far_off - nf * INST_FLOATS
+        for k in 0 .. INST_FLOATS { tmp[q + k] = src[o + k] }
+        if w > 0.0 { sc_xf_pack(tmp, q, w) }
+      }
+      i += 1
+      continue
+    }
     if l.near == 0.0 or d2 < near2 {
       let q = nn * INST_FLOATS
       for k in 0 .. INST_FLOATS { tmp[q + k] = src[o + k] }
@@ -1594,7 +1765,7 @@ function layer_draw_model(render3d_st: mut Render3dState, l: Layer, model: Model
   if not card and l.foliage { mh = model.height }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), mh)
   var xf = 0.0
-  if not shadow and not card { xf = layer_xfade(render3d_st, l) }
+  if not shadow and not card { xf = layer_xfade_draw(render3d_st, l) }
   u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_lod_fade"), layer_xstart(l), xf, render3d_st.cam_pos[0], render3d_st.cam_pos[2])
   var oc = 0.0
   if l.open_crown { oc = 1.0 }
@@ -1722,7 +1893,7 @@ function layer_draw_far_oct(render3d_st: mut Render3dState, l: Layer, shadow: bo
     var fol = 0.0
     if l.foliage { fol = 1.0 }
     u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_imp_fol"), fol, 0.0, 0.0, 0.0)
-    u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_lod_fade"), layer_xstart(l), layer_xfade(render3d_st, l), render3d_st.cam_pos[0], render3d_st.cam_pos[2])
+    u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_lod_fade"), layer_xstart(l), layer_xfade_draw(render3d_st, l), render3d_st.cam_pos[0], render3d_st.cam_pos[2])
     sky_bind_lighting(render3d_st, p)
     shadow_bind(render3d_st, p)
     fog_bind(render3d_st, p)
@@ -1785,7 +1956,7 @@ function layer_draw_depth(render3d_st: mut Render3dState, l: Layer, model: Model
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_wind"), l.wind)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_flutter"), l.flutter)
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_model_h"), model.height)
-  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_lod_fade"), layer_xstart(l), layer_xfade(render3d_st, l), render3d_st.cam_pos[0], render3d_st.cam_pos[2])   # (the lit pass's crossfade, cut here first)
+  u_f4(render3d_st, gpu_uniform(render3d_st, p, "u_lod_fade"), layer_xstart(l), layer_xfade_draw(render3d_st, l), render3d_st.cam_pos[0], render3d_st.cam_pos[2])   # (the lit pass's crossfade, cut here first)
   var oc = 0.0
   if l.open_crown { oc = 1.0 }
   u_f(render3d_st, gpu_uniform(render3d_st, p, "u_open_crown"), oc)

@@ -102,7 +102,10 @@ out float v_near;                // 0 in the camera's face, 1 past arm's length 
 out float v_quake;
 out float v_lh;                  // height above the model's base (m): a small plant's ground occlusion
 void main() {
+  // a crossfading copy carries its mesh weight in its yaw's length, 2 + weight (scatter.ludic sc_xf_pack); an ordinary yaw is 1 long
+  float rl = length(i_rot.xy);
   float s = i_rot.x, c = i_rot.y;
+  if (rl > 1.5) { s = i_rot.x / rl;  c = i_rot.y / rl; }
   v_quake = 0.0;
   vec3 p = a_pos * i_pos.w;
 #ifdef CARD
@@ -243,5 +246,7 @@ void main() {
     float di = length(i_pos.xz - u_lod_fade.zw);
     v_near *= 1.0 - smoothstep(u_lod_fade.x - u_lod_fade.y, u_lod_fade.x, di);
   }
+  // the crossfade by time (scatter.ludic layer_xf_weight): the instance's own weight, the card dithered in by its complement
+  if (rl > 1.5) v_near *= clamp(rl - 2.0, 0.0, 1.0);
 #endif
 }
