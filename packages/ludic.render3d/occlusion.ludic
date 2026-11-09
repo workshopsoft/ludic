@@ -9,17 +9,27 @@
 # By default it is Unreal's r.HZBOcclusion 1 instead (R3D_UE_HZB_OCCLUSION=0: the queries above) ("less GPU and CPU cost, more conservative"): after the resolve the
 # furthest HZB is built from the frame's depth (hzb_build.comp) and one dispatch tests every candidate's box against it
 # (hzb_test.comp, FHZBOcclusionTester / HZBOcclusion.usf), into a buffer read the next frame by the same rules.
-const OCC_MAX: int = 4096
+const OCC_MAX: int = 4096             # the queries path's pool
+# The HZB path's candidates a frame: Unreal's FHZBOcclusionTester holds SizeX x SizeY = 256 x 256 = 65536 primitives (HZBOcclusion.h;
+# AddBounds past it leaves the rest visible, untested). It was OCC_MAX's 4096 taken in actor order: with the city's 33 000 - 67 000
+# building modules most in view were never tested, and the static bucket's and the terrain's boxes after them were crowded out.
+# One box is 32 bytes up and 4 back and a thread of one dispatch. R3D_OCC_MAX=n another cap (4096: as before)
+const OCC_HZB_MAX: int = 65536
 const OCC_MIN_TRIS: int = 1000
 const OCC_SLACK: float = 1.1          # a model's box widened: a skinned figure's pose leaves its bind pose's bounds
 
 function occ_on(render3d_st: mut Render3dState) -> bool {
   if render3d_st.occ_state == 0 {
     render3d_st.occ_state = 2
+    render3d_st.occ_cap = OCC_HZB_MAX
+    if r3d_env_has(render3d_st, "R3D_OCC_MAX") { render3d_st.occ_cap = min(max(Text.to_int(r3d_env(render3d_st, "R3D_OCC_MAX")), 64), OCC_HZB_MAX) }
     if render3d_st.gpu_kind == GPU_VK and not (r3d_env_has(render3d_st, "R3D_UE_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_OCCLUSION") == "0") {
       if not (r3d_env_has(render3d_st, "R3D_UE_HZB_OCCLUSION") and r3d_env(render3d_st, "R3D_UE_HZB_OCCLUSION") == "0") {
         if occ_hzb_init(render3d_st) { render3d_st.occ_state = 1;  render3d_st.occ_hzb = true }
-      } else if render3d_st.gvk_has_hqr and occ_init(render3d_st) { render3d_st.occ_state = 1 }
+      } else if render3d_st.gvk_has_hqr {
+        render3d_st.occ_cap = OCC_MAX
+        if occ_init(render3d_st) { render3d_st.occ_state = 1 }
+      }
     }
     render3d_st.occ_min_tris = OCC_MIN_TRIS
     if r3d_env_has(render3d_st, "R3D_UE_OCCLUSION_MIN_TRIS") { render3d_st.occ_min_tris = Text.to_int(r3d_env(render3d_st, "R3D_UE_OCCLUSION_MIN_TRIS")) }
@@ -83,7 +93,7 @@ function occ_read(render3d_st: mut Render3dState) -> void {
   if render3d_st.tpa_actors != null { for i in 0 .. len(render3d_st.tpa_actors) { render3d_st.tpa_actors[i].occ_hidden = false } }
   render3d_st.occ_hidden_n = 0
   if render3d_st.occ_hzb and occ_late_on(render3d_st) {
-    if render3d_st.occ_hn != null { occ_hzb_read_late(render3d_st) }
+    if render3d_st.occ_hn != null { occ_stats(render3d_st, occ_hzb_read_late(render3d_st)) }
     return
   }
   let n = render3d_st.occ_n
@@ -105,10 +115,13 @@ function occ_read(render3d_st: mut Render3dState) -> void {
     Vk.reset_query_pool(render3d_st.gvk_dev, render3d_st.gvk_occ_pool, 0, n)
   }
   render3d_st.occ_n = 0
-  # R3D_UE_OCCLUSION_STATS=k: every k frames, how many were tested and how many of them hidden
+  occ_stats(render3d_st, n)
+}
+# R3D_UE_OCCLUSION_STATS=k: every k frames, how many were tested and how many of them hidden (the late HZB read's too)
+function occ_stats(render3d_st: mut Render3dState, n: int) -> void {
   if r3d_env_has(render3d_st, "R3D_UE_OCCLUSION_STATS") {
     let k = Text.to_int(r3d_env(render3d_st, "R3D_UE_OCCLUSION_STATS"))
-    if k > 0 and render3d_st.gvk_frame_no % k == 0 { print(`occlusion: {n} actors tested, {render3d_st.occ_hidden_n} hidden`) }
+    if k > 0 and render3d_st.gvk_frame_no % k == 0 { print(`occlusion: {n} actors tested, {render3d_st.occ_hidden_n} hidden, cap {render3d_st.occ_cap}`) }
   }
 }
 
@@ -120,8 +133,29 @@ function occ_hidden(render3d_st: Render3dState, a: Actor) -> bool {
 }
 
 # the box actor a is tested with: its cull sphere's middle and the ground's own extents (occ_hx), else its model's bounds
-function occ_bounds(a: Actor, b: floats) -> void {
+# A still actor whose model has a box (a building's module, a lot's piece) is tested by that box through its own matrix, as Unreal's
+# primitive bounds are its local box through LocalToWorld (FBoxSphereBounds::TransformBy): its centre and the extents' |M| sum. The
+# model-bounds box below took a.y as the model's base and ignored a non-uniform scale: a module placed by its middle (game bld) had its
+# box half a module too high and unscaled. R3D_OCC_MAT_BOUNDS=0: the model-bounds box for every actor
+function occ_bounds(render3d_st: mut Render3dState, a: Actor, b: floats) -> void {
   let s = a.scale
+  if render3d_st.occ_mat_bounds < 0 {
+    render3d_st.occ_mat_bounds = 1
+    if r3d_env_has(render3d_st, "R3D_OCC_MAT_BOUNDS") and r3d_env(render3d_st, "R3D_OCC_MAT_BOUNDS") == "0" { render3d_st.occ_mat_bounds = 0 }
+  }
+  let m0 = a.model
+  if render3d_st.occ_mat_bounds == 1 and a.occ_hx <= 0.0 and a.still and a.skin == null and m0.has_box {
+    let t = a.mat
+    let cx = (m0.bx0 + m0.bx1) * 0.5;  let cy = (m0.by0 + m0.by1) * 0.5;  let cz = (m0.bz0 + m0.bz1) * 0.5
+    let hx = (m0.bx1 - m0.bx0) * 0.5;  let hy = (m0.by1 - m0.by0) * 0.5;  let hz = (m0.bz1 - m0.bz0) * 0.5
+    b[0] = t[0] * cx + t[4] * cy + t[8] * cz + t[12]
+    b[1] = t[1] * cx + t[5] * cy + t[9] * cz + t[13]
+    b[2] = t[2] * cx + t[6] * cy + t[10] * cz + t[14]
+    b[3] = Math.abs(t[0]) * hx + Math.abs(t[4]) * hy + Math.abs(t[8]) * hz
+    b[4] = Math.abs(t[1]) * hx + Math.abs(t[5]) * hy + Math.abs(t[9]) * hz
+    b[5] = Math.abs(t[2]) * hx + Math.abs(t[6]) * hy + Math.abs(t[10]) * hz
+    return
+  }
   if a.occ_hx > 0.0 {
     b[0] = a.x;  b[1] = a.y + a.radius * s;  b[2] = a.z
     b[3] = a.occ_hx;  b[4] = a.occ_hy;  b[5] = a.occ_hx
@@ -157,10 +191,10 @@ function occ_candidate(render3d_st: mut Render3dState, a: Actor, b: floats, n: i
   if a.leader != null or a.blend != 0 or a.shell or a.strands or a.model == null { return false }
   if not occ_actors_on(render3d_st) { return false }
   if a.occ_hx <= 0.0 and a.model.tris < render3d_st.occ_min_tris {
-    if not render3d_st.occ_hzb or a.model.tris < render3d_st.occ_actor_tris or n >= OCC_MAX / 2 { return false }
+    if not render3d_st.occ_hzb or a.model.tris < render3d_st.occ_actor_tris or n >= render3d_st.occ_cap / 2 { return false }
   }
   if not ac_visible(render3d_st, a, false) { return false }
-  occ_bounds(a, b)
+  occ_bounds(render3d_st, a, b)
   let f = render3d_st.cam_fwd
   let cp = render3d_st.cam_pos
   let d = (b[0] - cp[0]) * f[0] + (b[1] - cp[1]) * f[1] + (b[2] - cp[2]) * f[2] - render3d_st.cam_near
@@ -192,7 +226,7 @@ function occ_pass(render3d_st: mut Render3dState) -> void {
   var n = 0
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if n >= OCC_MAX or not occ_candidate(render3d_st, a, b, n) { continue }
+    if n >= render3d_st.occ_cap or not occ_candidate(render3d_st, a, b, n) { continue }
     u_f3(render3d_st, l_c, b[0], b[1], b[2])
     u_f3(render3d_st, l_e, b[3], b[4], b[5])
     render3d_st.gvk_occ_q = n
@@ -206,7 +240,7 @@ function occ_pass(render3d_st: mut Render3dState) -> void {
   if render3d_st.stc_actors != null {
     for i in 0 .. len(render3d_st.stc_actors) {
       let a = render3d_st.stc_actors[i]
-      if n >= OCC_MAX or not stc_occ_candidate(render3d_st, a, b) { continue }
+      if n >= render3d_st.occ_cap or not stc_occ_candidate(render3d_st, a, b) { continue }
       u_f3(render3d_st, l_c, b[0], b[1], b[2])
       u_f3(render3d_st, l_e, b[3], b[4], b[5])
       render3d_st.gvk_occ_q = n
@@ -221,7 +255,7 @@ function occ_pass(render3d_st: mut Render3dState) -> void {
   if render3d_st.tpa_actors != null {
     for i in 0 .. len(render3d_st.tpa_actors) {
       let a = render3d_st.tpa_actors[i]
-      if n >= OCC_MAX or not tpa_occ_candidate(render3d_st, a, b) { continue }
+      if n >= render3d_st.occ_cap or not tpa_occ_candidate(render3d_st, a, b) { continue }
       u_f3(render3d_st, l_c, b[0], b[1], b[2])
       u_f3(render3d_st, l_e, b[3], b[4], b[5])
       render3d_st.gvk_occ_q = n
@@ -247,11 +281,12 @@ function occ_hzb_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.occ_hzb_build = gpu_compute_tex(render3d_st, "hzb_build", 1, 1)
   render3d_st.occ_hzb_test = gpu_compute(render3d_st, "hzb_test", 3)
   if render3d_st.occ_hzb_build == 0 or render3d_st.occ_hzb_test == 0 { return false }
+  let cap = render3d_st.occ_cap
   render3d_st.occ_list = new []Actor
-  for i in 0 .. OCC_MAX { push(render3d_st.occ_list, null) }
-  render3d_st.occ_ids = words(OCC_MAX)
+  for i in 0 .. cap { push(render3d_st.occ_list, null) }
+  render3d_st.occ_ids = words(cap)
   render3d_st.occ_b = floats(6)
-  render3d_st.occ_hzb_box = floats(OCC_MAX * 8)
+  render3d_st.occ_hzb_box = floats(cap * 8)
   render3d_st.occ_hzb_mips = words(OCC_HZB_MIPS * 4)
   render3d_st.occ_hzb_pr = words(24 + OCC_HZB_MIPS * 4)
   render3d_st.occ_hzb_bufs = words(3)
@@ -260,19 +295,19 @@ function occ_hzb_init(render3d_st: mut Render3dState) -> bool {
   render3d_st.occ_hzb_bounds = words(2)
   render3d_st.occ_hzb_res = words(2)
   render3d_st.occ_hl = new []Actor
-  for i in 0 .. 2 * OCC_MAX { push(render3d_st.occ_hl, null) }
-  render3d_st.occ_hi = words(2 * OCC_MAX)
+  for i in 0 .. 2 * cap { push(render3d_st.occ_hl, null) }
+  render3d_st.occ_hi = words(2 * cap)
   render3d_st.occ_hn = words(2)
   render3d_st.occ_htg = words(2)
   for k in 0 .. 2 {
     let bb = gpu_buffer_new(render3d_st)
-    gpu_buffer_upload(render3d_st, bb, OCC_MAX * 32, null, GPU_DYNAMIC)
+    gpu_buffer_upload(render3d_st, bb, cap * 32, null, GPU_DYNAMIC)
     render3d_st.occ_hzb_bounds[k] = bb
     let rb = gpu_buffer_new(render3d_st)
     gpu_buffer_readback(render3d_st, rb)
-    gpu_buffer_upload(render3d_st, rb, OCC_MAX * 4, null, GPU_DYNAMIC)
+    gpu_buffer_upload(render3d_st, rb, cap * 4, null, GPU_DYNAMIC)
     gpu_buffer_gpu_owned(render3d_st, rb)
-    Vk.zero(gpu_buffer_map(render3d_st, rb), OCC_MAX * 4)              # no tag: read as visible
+    Vk.zero(gpu_buffer_map(render3d_st, rb), cap * 4)              # no tag: read as visible
     render3d_st.occ_hzb_res[k] = rb
   }
   return true
@@ -333,7 +368,7 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
   var n = 0
   for i in 0 .. len(render3d_st.ac_actors) {
     let a = render3d_st.ac_actors[i]
-    if n >= OCC_MAX or not occ_candidate(render3d_st, a, b, n) { continue }
+    if n >= render3d_st.occ_cap or not occ_candidate(render3d_st, a, b, n) { continue }
     for k in 0 .. 3 { box[n * 8 + k] = b[k];  box[n * 8 + 4 + k] = b[3 + k] }
     box[n * 8 + 3] = 0.0;  box[n * 8 + 7] = 0.0
     render3d_st.occ_list[n] = a
@@ -344,7 +379,7 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
   if render3d_st.stc_actors != null {
     for i in 0 .. len(render3d_st.stc_actors) {
       let a = render3d_st.stc_actors[i]
-      if n >= OCC_MAX or not stc_occ_candidate(render3d_st, a, b) { continue }
+      if n >= render3d_st.occ_cap or not stc_occ_candidate(render3d_st, a, b) { continue }
       for k in 0 .. 3 { box[n * 8 + k] = b[k];  box[n * 8 + 4 + k] = b[3 + k] }
       box[n * 8 + 3] = 0.0;  box[n * 8 + 7] = 0.0
       render3d_st.occ_list[n] = a
@@ -356,7 +391,7 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
   if render3d_st.tpa_actors != null {
     for i in 0 .. len(render3d_st.tpa_actors) {
       let a = render3d_st.tpa_actors[i]
-      if n >= OCC_MAX or not tpa_occ_candidate(render3d_st, a, b) { continue }
+      if n >= render3d_st.occ_cap or not tpa_occ_candidate(render3d_st, a, b) { continue }
       for k in 0 .. 3 { box[n * 8 + k] = b[k];  box[n * 8 + 4 + k] = b[3 + k] }
       box[n * 8 + 3] = 0.0;  box[n * 8 + 7] = 0.0
       render3d_st.occ_list[n] = a
@@ -392,7 +427,7 @@ function occ_hzb_pass(render3d_st: mut Render3dState) -> void {
   bufs[0] = bounds;  bufs[1] = render3d_st.occ_hzb_buf;  bufs[2] = render3d_st.occ_hzb_res[slot]
   gpu_dispatch(render3d_st, render3d_st.occ_hzb_test, data_of(pr), (24 + OCC_HZB_MIPS * 4) * 4, bufs, (n + 63) / 64)
   if occ_late_on(render3d_st) {
-    let o = slot * OCC_MAX
+    let o = slot * render3d_st.occ_cap
     for i in 0 .. n {
       render3d_st.occ_hl[o + i] = render3d_st.occ_list[i]
       render3d_st.occ_hi[o + i] = render3d_st.occ_ids[i]
@@ -415,13 +450,13 @@ function occ_late_on(render3d_st: mut Render3dState) -> bool {
   return render3d_st.occ_late == 1
 }
 # frame N-2's results (the slot this frame will write next): hidden where that frame's tag says not visible
-function occ_hzb_read_late(render3d_st: mut Render3dState) -> void {
+function occ_hzb_read_late(render3d_st: mut Render3dState) -> int {
   let s = render3d_st.gvk_frame_no & 1
   let n = int(render3d_st.occ_hn[s])
-  if n <= 0 { return }
+  if n <= 0 { return 0 }
   let res = gpu_buffer_map(render3d_st, render3d_st.occ_hzb_res[s])
   let hidden = int(render3d_st.occ_htg[s]) << 1
-  let o = s * OCC_MAX
+  let o = s * render3d_st.occ_cap
   for i in 0 .. n {
     let a = render3d_st.occ_hl[o + i]
     render3d_st.occ_hl[o + i] = null
@@ -430,6 +465,7 @@ function occ_hzb_read_late(render3d_st: mut Render3dState) -> void {
     if a.occ_hidden { render3d_st.occ_hidden_n += 1 }
   }
   render3d_st.occ_hn[s] = 0
+  return n
 }
 
 # The furthest HZB from this frame's depth copy (occ_hzb_buf), and the view it was built under kept for the next frame's instance culls
