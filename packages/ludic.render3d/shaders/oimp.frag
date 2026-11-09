@@ -8,6 +8,7 @@ in vec3 v_fi;
 in vec4 v_tint;
 in vec4 v_rot;
 in vec3 v_ldir;
+in float v_xf;                     // the mesh's weight in a crossfade by time (oimp.vert, scatter.ludic sc_xf_pack), -1 none
 out vec4 o_color;
 uniform sampler2D u_atlas_albedo;
 uniform sampler2D u_atlas_normal;
@@ -65,6 +66,8 @@ void main() {
     float keepMesh = 1.0 - smoothstep(u_lod_fade.x - u_lod_fade.y, u_lod_fade.x, length(v_cen.xz - u_lod_fade.zw));
     if (keepMesh > 0.001 && keepMesh >= fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;
   }
+  // by time: the instance's own weight, the same complement
+  if (v_xf >= 0.0 && v_xf > 0.001 && v_xf >= fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453)) discard;
 #endif
   vec4 a = vec4(0.0);
   vec4 nn = vec4(0.0);

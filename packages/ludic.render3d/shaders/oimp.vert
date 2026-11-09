@@ -35,6 +35,7 @@ out vec4 v_fw;                           // the three frames' weights ...
 out vec3 v_fi;                           // ... and their indices
 out vec4 v_tint;
 out vec4 v_rot;                          // sin cos seed flags
+out float v_xf;                          // the mesh's weight in a crossfade by time (oimp.frag), -1 none
 out vec3 v_ldir;                         // the direction to the camera in the model's frame
 vec2 octEncode(vec3 d) {
   float l = abs(d.x) + max(d.y, 0.0) + abs(d.z);
@@ -42,7 +43,11 @@ vec2 octEncode(vec3 d) {
   return clamp(vec2(p.x + p.y + 1.0, p.x - p.y + 1.0) * 0.5, 0.0, 1.0);
 }
 void main() {
+  // a crossfading copy carries the mesh's weight in its yaw's length, 2 + weight (scatter.ludic sc_xf_pack); an ordinary yaw is 1 long
+  float rl = length(i_rot.xy);
   float s = i_rot.x, c = i_rot.y;
+  if (rl > 1.5) { s = i_rot.x / rl;  c = i_rot.y / rl; }
+  v_xf = rl > 1.5 ? clamp(rl - 2.0, 0.0, 1.0) : -1.0;
   // the instance's own bounds and how a point of it maps into the frames (1 for an ordinary kit, its scale doing the rest)
   float half_side = u_radius * i_pos.w;
   float cy = u_centre_y * i_pos.w;
@@ -103,7 +108,7 @@ void main() {
 #ifdef SCATTER
   v_cen = vec4(centre, i_pos.w);
 #endif
-  v_rot = i_rot;
+  v_rot = vec4(s, c, i_rot.zw);
 #if defined(SCATTER) && defined(SHADOW_PASS)
   gl_Position = u_light_vp * vec4(w, 1.0);
 #else
