@@ -23,6 +23,7 @@ uniform sampler2DArray u_wet_tiles;
 uniform vec4 u_wet_grid;          // tile (0, 0)'s corner in render space x, z; metres a tile; tiles a side (cols)
 uniform float u_wet_rows;
 uniform float u_sea;              // 1: the open sea (swell, deep colour, the shore foam band); 0: still water as before
+uniform float u_toon;             // 1: cartoon water (toonWater): depth-banded colour, scrolling highlights, foam waves; no reflection, no refraction
 uniform float u_wash;             // 1: the thin lapping wash on a still body's edge (the sea has its foam band instead)
 uniform sampler2D u_swell_a;      // the sea's swell as slopes (water_sea.ludic's bake), tiling every SEA_TILE_A metres
 uniform sampler2D u_swell_b;      // the same for the short ripples, tiling every SEA_TILE_B metres
@@ -253,13 +254,72 @@ float seaFoam(float d, float fwD, float rayLen, vec2 p, float t, float pixG) {
   // no foam on it, so it cannot flicker between white and the bank
   return foam * smoothstep(0.0, 0.03, rayLen);
 }
-// Which program this is: the sea's (WATER_SEA) is the sea's code alone, the others' (lakes, rivers, meshes) their own, so
-// neither carries the other's registers. The test is a constant in both.
 #ifdef WATER_SEA
 const bool sea = true;
 #else
 const bool sea = false;
 #endif
+// ---- cartoon water ----------------------------------------------------------------------------------------
+// No mirror and no refraction: the colour is a function of the water's depth over the bed (turquoise shallows into a deep blue,
+// in a few soft steps), a few scrolling highlight strokes, and foam: wave lines that run in to the shore and fade as they come,
+// and a white lip where the water meets the bank that breathes in and out. Everything comes from the depth under the pixel
+// (the scene depth the shore terms already read), the position and the clock; a few noise reads a pixel, no texture but the depth.
+vec3 toonWater(vec3 wp, vec3 v, float dist, float depthBelow, float rayLen, float fxFoam) {
+  float t = u_time;
+  vec2 p = wp.xz;
+  // a wobble along the coast so the lines are not rulers and the waves do not arrive all at once
+  float wob = gnoise(p * 0.45 + vec2(t * 0.05, 0.0));
+  float dd = depthBelow + 0.35 * wob * (1.0 - smoothstep(2.5, 5.0, depthBelow));
+  // depth colour: a gradient quantised into steps with soft risers
+  float dg = clamp(dd / (sea ? 7.0 : 4.0), 0.0, 1.0);
+  float q = dg * 4.0;
+  float stp = (floor(q) + smoothstep(0.35, 0.65, fract(q))) * 0.25;
+  vec3 shallow = vec3(0.16, 0.66, 0.64);
+  vec3 mid = vec3(0.05, 0.38, 0.56);
+  vec3 deep = vec3(0.025, 0.15, 0.42);
+  vec3 alb = mix(shallow, mid, clamp(stp * 2.0, 0.0, 1.0));
+  alb = mix(alb, deep, clamp(stp * 2.0 - 1.0, 0.0, 1.0));
+  // light: the sky's and a flat share of the sun's, no shadow read, so the colour reads the same everywhere
+  vec3 skyUp = textureLod(u_irradiance, vec2(0.5, 0.0), 0.0).rgb * u_ibl_scale;
+  vec3 lit = skyUp * 1.1 + u_sun_color * (max(u_sun_dir.y, 0.0) * 0.10);
+  // highlights: thin bright strokes drifting across, two layers going different ways; gone past a couple of hundred metres
+  float hl = 0.0;
+  float far = 1.0 - smoothstep(60.0, 220.0, dist);
+  if (far > 0.0) {
+    float a = gnoise(p * vec2(0.55, 0.9) + vec2(t * 0.16, t * 0.05) + wob * 0.8);
+    float b = gnoise(p * vec2(0.8, 0.5) - vec2(t * 0.07, t * 0.13) + 7.0);
+    hl = (smoothstep(0.27, 0.30, a) * (1.0 - smoothstep(0.30, 0.34, a)) + smoothstep(0.30, 0.33, b) * (1.0 - smoothstep(0.33, 0.37, b))) * far;
+  }
+  vec3 col = alb * lit;
+  col = mix(col, vec3(0.75, 0.95, 0.95) * lit, hl * 0.35);
+  // foam waves in the shallows (a basin, u_wash 0, has none)
+  float foam = 0.0;
+  if (u_wash > 0.5 || sea) {
+    float reach = sea ? 2.4 : 1.2;
+    float skew = 0.5 * (sin(p.x * 0.031 + 1.7) + sin(p.y * 0.027 - 0.9));       // out of step along the coast
+    for (int i = 0; i < 2; i++) {
+      float s = fract(t * 0.11 + 0.5 * float(i) + 0.12 * skew);                  // 0 far out, 1 at the shore
+      float at = mix(reach, 0.25, s * s);                                        // the line's depth: it slows in
+      float w = mix(0.07, 0.16, s);
+      float line = smoothstep(at - w, at - 0.4 * w, dd) * (1.0 - smoothstep(at, at + 0.5 * w, dd));
+      foam = max(foam, line * smoothstep(0.0, 0.12, s) * (1.0 - smoothstep(0.82, 1.0, s)));
+    }
+    // the lip: white where the wash is on the bank, in and out
+    float lip = 0.20 + 0.16 * (0.5 + 0.5 * sin(t * 0.9 + 2.0 * skew + 3.0 * wob));
+    foam = max(foam, 1.0 - smoothstep(lip, lip + 0.05, dd));
+    foam *= smoothstep(0.0, 0.03, rayLen) * (1.0 - smoothstep(90.0, 300.0, dist));
+    if (sea && u_wet_on > 0.5) { foam *= smoothstep(0.45, 0.9, wetMin4(p, 2.0)); }
+  }
+  if (u_wade.z > 0.0) {
+    float rd = length(p - u_wade.xy);
+    foam = max(foam, u_wade.z * smoothstep(0.55, 0.7, sin(rd * 6.5 - t * 8.0)) * exp(-rd * 0.6));
+  }
+  foam = max(foam, fxFoam);
+  col = mix(col, vec3(1.0) * (skyUp + u_sun_color * (max(u_sun_dir.y, 0.0) / 3.14159)), clamp(foam, 0.0, 1.0));
+  return applyFog(col, wp, dist);
+}
+// Which program this is: the sea's (WATER_SEA) is the sea's code alone, the others' (lakes, rivers, meshes) their own, so
+// neither carries the other's registers. The test is a constant in both.
 void main() {
   // A lake is an ellipse - the carved bed, the grass and a game's own water test all use
   // one - but its plane is the rectangle around it, and the corners between the two hold
@@ -282,6 +342,20 @@ void main() {
   float fwD = fwidth(depthBelow);                 // before any discard: a pixel's neighbours are all still running
   float alongRay = length(ground - wp);
   if (u_wet_on > 0.5 && wetAt(wp.xz) < 0.5) discard;
+  if (u_toon > 0.5) {
+    float tfx = 0.0;
+    if (u_fx_on > 0.5) {
+      vec2 rel = abs(wp.xz - u_fx_win.xy) / u_fx_win.z;
+      float fade = 1.0 - smoothstep(0.62, 0.9, max(rel.x, rel.y));
+      if (fade > 0.0) {
+        vec2 uv = (wp.xz / u_fx_map.w + u_fx_map.xy) / u_fx_map.z;
+        vec4 fxs = texture(u_fx, uv);
+        tfx = fxs.b * fade * (1.0 - smoothstep(0.08, 0.22, abs(fxs.a - wp.y))) * smoothstep(0.12, 0.5, fxs.b);
+      }
+    }
+    o_color = vec4(sane(toonWater(wp, v, dist, depthBelow, alongRay, tfx)), 1.0);
+    return;
+  }
   vec3 n;
   if (sea) {
     n = seaNormal(wp.xz, u_time, pixG);
